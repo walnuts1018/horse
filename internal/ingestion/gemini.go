@@ -234,7 +234,8 @@ func providerError(response *http.Response, body []byte) *GeminiAPIError {
 			apiErr.RetryAfter = max(apiErr.RetryAfter, time.Until(retryAt))
 		}
 	}
-	if strings.Contains(classificationText, "spend cap") || strings.Contains(classificationText, "spending limit") || strings.Contains(classificationText, "billing limit") || strings.Contains(classificationText, "budget exceeded") {
+	classificationText = strings.NewReplacer("_", " ", "-", " ").Replace(classificationText)
+	if strings.Contains(classificationText, "spend cap") || strings.Contains(classificationText, "spending cap") || strings.Contains(classificationText, "spending limit") || strings.Contains(classificationText, "billing limit") || strings.Contains(classificationText, "budget exceeded") {
 		apiErr.Kind, apiErr.Code = GeminiFailureSpendCap, "spend_cap_reached"
 		return apiErr
 	}
