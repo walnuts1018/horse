@@ -1,0 +1,20 @@
+no_tests: true
+type_system: database/sql
+plugins:
+  dbinfo:
+    destination: internal/postgres/generated/dbinfo
+  enums:
+    destination: internal/postgres/generated/enums
+  models:
+    destination: internal/postgres/generated/models
+  dberrors:
+    destination: internal/postgres/generated/dberrors
+  factory:
+    disabled: true
+  queries:
+    disabled: true
+sql:
+  dialect: psql
+  driver: github.com/jackc/pgx/v5/stdlib
+  pattern: migrations/*.sql
+  uuid_pkg: std

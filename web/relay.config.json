@@ -1,0 +1,8 @@
+{
+  "src": "./src",
+  "schema": "./.relay/schema.graphql",
+  "language": "typescript",
+  "artifactDirectory": "./src/shared/api/__generated__",
+  "eagerEsModules": true,
+  "useImportTypeSyntax": true
+}

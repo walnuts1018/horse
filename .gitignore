@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+web/node_modules/
+web/.output/
+web/.tanstack/
+web/dist/
+coverage/
+tmp/
+*.log
+.venv/
+__pycache__/
+.ruff_cache/

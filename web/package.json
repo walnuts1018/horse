@@ -1,0 +1,48 @@
+{
+  "name": "horse-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "relay": "node scripts/prepare-relay-schema.mjs && relay-compiler --noWatchman",
+    "relay:validate": "node scripts/prepare-relay-schema.mjs && relay-compiler --validate --noWatchman",
+    "build": "pnpm relay && vite build",
+    "start": "node .output/server/index.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint:steiger": "steiger ./src",
+    "lint:oxlint": "oxlint ./src",
+    "lint:style": "stylelint 'src/**/*.css'",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check ."
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.8.0",
+    "@fontsource-variable/noto-sans-jp": "5.3.0",
+    "@tanstack/react-router": "^1.132.0",
+    "@tanstack/react-start": "^1.132.0",
+    "graphql": "^17.0.2",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-relay": "^21.0.1",
+    "relay-runtime": "^21.0.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@feature-sliced/steiger-plugin": "^0.7.0",
+    "@types/node": "^24.7.2",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "babel-plugin-relay": "^21.0.1",
+    "nitro": "3.0.260610-beta",
+    "oxfmt": "0.68.0",
+    "oxlint": "^1.87.0",
+    "relay-compiler": "^21.0.1",
+    "steiger": "^0.6.0",
+    "stylelint": "^17.16.0",
+    "stylelint-config-standard": "^40.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7"
+  }
+}

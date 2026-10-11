@@ -1,0 +1,74 @@
+scalar Long
+
+enum PoolKind { PERSONAL SHARED }
+enum AccountKind { BANK CASH CARD OTHER }
+enum PurchaseStatus { DRAFT POSTED CLOSED }
+enum TransferKind { ADVANCE LOAN REPAYMENT GIFT }
+enum LedgerKind { PURCHASE FUNDING TRANSFER CORRECTION }
+enum AllocationRuleScope { CATEGORY MERCHANT }
+
+type Viewer { id: ID!, subject: String!, displayName: String!, households: [Household!]! }
+type Household { id: ID!, name: String!, revision: Int!, members: [Member!]!, pools: [Pool!]!, accounts: [Account!]!, categories: [Category!]!, defaultAllocation: [Allocation!]!, createdAt: String!, updatedAt: String! }
+type Member { id: ID!, displayName: String!, role: String! }
+type Pool { id: ID!, name: String!, kind: PoolKind!, defaultShareWeight: Long! }
+type Account { id: ID!, name: String!, kind: AccountKind!, poolId: ID }
+type Category { id: ID!, name: String!, parentId: ID, archived: Boolean! }
+type Allocation { poolId: ID!, poolName: String, weight: Long!, amountYen: Long }
+type AllocationRule { id: ID!, householdId: ID!, scope: AllocationRuleScope!, categoryId: ID, merchant: String, revision: Int!, allocations: [Allocation!]! }
+type Purchase { id: ID!, householdId: ID!, occurredAt: String!, merchant: String!, paymentAccountId: ID, paymentAccount: Account, items: [PurchaseItem!]!, totalYen: Long!, currency: String!, revision: Int!, status: PurchaseStatus!, createdAt: String!, updatedAt: String! }
+type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, categoryId: ID, allocations: [Allocation!]!, revision: Int! }
+type PageInfo { endCursor: String, hasNextPage: Boolean! }
+type PurchaseEdge { cursor: String!, node: Purchase! }
+type PurchaseConnection { edges: [PurchaseEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
+type LedgerEntry { id: ID!, kind: LedgerKind!, occurredAt: String!, description: String!, amountYen: Long!, currency: String!, fromMemberId: ID, toMemberId: ID, poolId: ID, sourcePurchaseId: ID, createdAt: String! }
+type LedgerEdge { cursor: String!, node: LedgerEntry! }
+type LedgerConnection { edges: [LedgerEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
+type SettlementLine { memberId: ID!, memberName: String!, scheduledYen: Long!, paidYen: Long!, carryYen: Long!, advanceCreditYen: Long!, amountDueYen: Long! }
+type Settlement { period: String!, status: String!, revision: Int!, lines: [SettlementLine!]!, createdAt: String }
+type MonthlyCategorySpending { period: String!, categoryId: ID, categoryName: String, amountYen: Long! }
+input AllocationInput { poolId: ID!, weight: Long! }
+input PurchaseItemInput { name: String!, amountYen: Long!, categoryId: ID, allocations: [AllocationInput!] }
+input CreatePurchaseInput { idempotencyKey: String!, householdId: ID!, occurredAt: String!, merchant: String!, paymentAccountId: ID, sourceDocumentId: ID, sourceReference: String, items: [PurchaseItemInput!]!, status: PurchaseStatus }
+input PurchasePatch { occurredAt: String, merchant: String, paymentAccountId: ID }
+input UpdatePurchaseInput { purchaseId: ID!, baseRevision: Int!, patch: PurchasePatch!, changedFields: [String!]! }
+input UpdatePurchaseItemInput { itemId: ID!, baseRevision: Int!, name: String, amountYen: Long, categoryId: ID, allocations: [AllocationInput!], changedFields: [String!]! }
+input CreateHouseholdInput { name: String!, memberNames: [String!]! }
+input CreatePoolInput { householdId: ID!, name: String!, kind: PoolKind! }
+input CreateAccountInput { householdId: ID!, name: String!, kind: AccountKind!, poolId: ID }
+input CreateCategoryInput { householdId: ID!, name: String!, parentId: ID }
+input SetDefaultAllocationInput { householdId: ID!, allocations: [AllocationInput!]! }
+input SetAllocationRuleInput { householdId: ID!, categoryId: ID, merchant: String, allocations: [AllocationInput!]! }
+input RecordFundingInput { householdId: ID!, memberId: ID!, poolId: ID!, amountYen: Long!, occurredAt: String!, idempotencyKey: String! }
+input RecordTransferInput { householdId: ID!, fromMemberId: ID!, toMemberId: ID!, kind: TransferKind!, loanId: ID, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
+input SetFundingScheduleInput { householdId: ID!, memberId: ID!, poolId: ID!, amountYen: Long!, cadence: String!, startsOn: String!, endsOn: String }
+input ClosePeriodInput { householdId: ID!, period: String!, expectedRevision: Int! }
+input CorrectPurchaseInput { householdId: ID!, purchaseId: ID!, itemId: ID, amountDeltaYen: Long!, reason: String!, allocations: [AllocationInput!]!, idempotencyKey: String! }
+
+type Query {
+  viewer: Viewer!
+  households: [Household!]!
+  household(id: ID!): Household!
+  allocationRules(householdId: ID!): [AllocationRule!]!
+  purchases(householdId: ID!, from: String, to: String, after: String, first: Int = 50): PurchaseConnection!
+  ledger(householdId: ID!, after: String, first: Int = 50): LedgerConnection!
+  settlement(householdId: ID!, period: String!): Settlement!
+  monthlyCategorySpending(householdId: ID!, from: String!, to: String!): [MonthlyCategorySpending!]!
+}
+type Mutation {
+  createHousehold(input: CreateHouseholdInput!): Household!
+  createPool(input: CreatePoolInput!): Pool!
+  createAccount(input: CreateAccountInput!): Account!
+  createCategory(input: CreateCategoryInput!): Category!
+  setCategoryArchived(categoryId: ID!, archived: Boolean!): Category!
+  setDefaultAllocation(input: SetDefaultAllocationInput!): Household!
+  setAllocationRule(input: SetAllocationRuleInput!): AllocationRule!
+  createPurchase(input: CreatePurchaseInput!): Purchase!
+  updatePurchase(input: UpdatePurchaseInput!): Purchase!
+  updatePurchaseItem(input: UpdatePurchaseItemInput!): PurchaseItem!
+  postPurchase(purchaseId: ID!, expectedRevision: Int!, idempotencyKey: String!): Purchase!
+  closePeriod(input: ClosePeriodInput!): Settlement!
+  correctPurchase(input: CorrectPurchaseInput!): Purchase!
+  recordFunding(input: RecordFundingInput!): LedgerEntry!
+  recordTransfer(input: RecordTransferInput!): LedgerEntry!
+  setFundingSchedule(input: SetFundingScheduleInput!): Boolean!
+}

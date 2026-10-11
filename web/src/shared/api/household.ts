@@ -1,0 +1,497 @@
+import { commitMutation, fetchQuery, graphql } from "react-relay";
+import {
+  Environment,
+  Network,
+  RecordSource,
+  Store,
+  type GraphQLTaggedNode,
+  type GraphQLResponse,
+  type OperationType,
+} from "relay-runtime";
+
+export type Pool = { id: string; name: string; kind: string; defaultShareWeight: number };
+export type Account = { id: string; name: string; kind: string; poolId?: string | null };
+export type Category = { id: string; name: string; archived?: boolean };
+export type Allocation = { poolId: string; poolName?: string; weight: number; amountYen?: number };
+export type PurchaseItem = {
+  id: string;
+  name: string;
+  amountYen: number;
+  revision: number;
+  categoryId?: string | null;
+  allocations: Allocation[];
+};
+export type Purchase = {
+  id: string;
+  householdId: string;
+  occurredAt: string;
+  merchant: string;
+  paymentAccountId?: string | null;
+  paymentAccount?: Account | null;
+  items: PurchaseItem[];
+  totalYen: number;
+  revision: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type Member = { id: string; displayName: string; role: string };
+export type Household = {
+  id: string;
+  name: string;
+  revision: number;
+  members: Member[];
+  pools: Pool[];
+  accounts: Account[];
+  categories: Category[];
+  defaultAllocation: Allocation[];
+};
+export type Settlement = {
+  period: string;
+  status: string;
+  revision: number;
+  lines: Array<{
+    memberId: string;
+    memberName: string;
+    scheduledYen: number;
+    paidYen: number;
+    carryYen: number;
+    advanceCreditYen: number;
+    amountDueYen: number;
+  }>;
+};
+export type AllocationRule = {
+  id: string;
+  householdId: string;
+  scope: "CATEGORY" | "MERCHANT";
+  categoryId?: string | null;
+  merchant?: string | null;
+  revision: number;
+  allocations: Allocation[];
+};
+export type LedgerEntry = {
+  id: string;
+  kind: string;
+  occurredAt: string;
+  description: string;
+  amountYen: number;
+  currency: string;
+  fromMemberId?: string | null;
+  toMemberId?: string | null;
+  poolId?: string | null;
+  sourcePurchaseId?: string | null;
+};
+export type Connection<T> = {
+  edges: Array<{ cursor: string; node: T }>;
+  pageInfo: { endCursor?: string | null; hasNextPage: boolean };
+  totalCount: number;
+};
+
+const apiErrorMessages: Record<string, string> = {
+  BAD_USER_INPUT: "入力内容を確認してください",
+  NOT_FOUND: "対象の記録が見つかりません。画面を更新してください",
+  UNAUTHENTICATED: "ログインし直してください",
+  CONFLICT: "別の更新が先に反映されました。最新の記録を確認してください",
+};
+
+export class ApiError extends Error {
+  readonly code?: string;
+  readonly status?: number;
+
+  constructor(message: string, code?: string, status?: number) {
+    const statusCode =
+      code ??
+      (status === 401
+        ? "UNAUTHENTICATED"
+        : status === 404
+          ? "NOT_FOUND"
+          : status === 409
+            ? "CONFLICT"
+            : undefined);
+    super((statusCode && apiErrorMessages[statusCode]) || message);
+    this.code = statusCode;
+    this.status = status;
+  }
+}
+
+let environment: Environment | undefined;
+
+export function getRelayEnvironment() {
+  if (environment) return environment;
+  const network = Network.create(async (operation, variables) => {
+    const response = await fetch("/graphql", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: operation.text, variables }),
+    });
+    if (!response.ok)
+      throw new ApiError(`GraphQL API returned ${response.status}`, undefined, response.status);
+    const result = (await response.json()) as {
+      data?: unknown;
+      errors?: Array<{ message: string; extensions?: { code?: string } }>;
+    };
+    if (result.errors?.length)
+      throw new ApiError(result.errors[0].message, result.errors[0].extensions?.code);
+    return result as GraphQLResponse;
+  });
+  const relayEnvironment = new Environment({ network, store: new Store(new RecordSource()) });
+  environment = relayEnvironment;
+  return relayEnvironment;
+}
+
+export async function executeGraphql<T, V extends OperationType["variables"]>(
+  operation: GraphQLTaggedNode,
+  variables: V,
+): Promise<T> {
+  const request = operation as { params?: { operationKind?: string } };
+  if (request.params?.operationKind === "mutation") {
+    return new Promise<T>((resolve, reject) =>
+      commitMutation(getRelayEnvironment(), {
+        mutation: operation,
+        variables,
+        onCompleted: (response, errors) =>
+          errors?.length
+            ? reject(
+                new ApiError(
+                  errors[0].message,
+                  (errors[0] as Error & { extensions?: { code?: string } }).extensions?.code,
+                ),
+              )
+            : resolve(response as T),
+        onError: reject,
+      }),
+    );
+  }
+  const result = await fetchQuery(getRelayEnvironment(), operation, variables, {
+    fetchPolicy: "network-only",
+  }).toPromise();
+  return result as T;
+}
+
+export async function readGraphql<T>(
+  operation: GraphQLTaggedNode,
+  variables: Record<string, unknown> = {},
+): Promise<T> {
+  return executeGraphql<T, Record<string, unknown>>(operation, variables);
+}
+
+export async function getViewer(): Promise<{ id: string; displayName: string; email?: string }> {
+  const response = await fetch("/auth/me", { credentials: "include" });
+  if (!response.ok)
+    throw new ApiError(`Session API returned ${response.status}`, undefined, response.status);
+  const data = (await response.json()) as {
+    authenticated?: boolean;
+    viewer?: { id: string; displayName?: string; email?: string };
+  };
+  if (data.authenticated === false)
+    throw new ApiError("ログインが必要です", "UNAUTHENTICATED", 401);
+  const viewer = data.viewer;
+  if (!viewer?.id) throw new ApiError("ログイン情報を取得できませんでした");
+  return { id: viewer.id, displayName: viewer.displayName ?? "メンバー", email: viewer.email };
+}
+
+export const householdQuery = graphql`
+  query HouseholdQuery($id: ID!) {
+    household(id: $id) {
+      id
+      name
+      revision
+      members {
+        id
+        displayName
+        role
+      }
+      pools {
+        id
+        name
+        kind
+        defaultShareWeight
+      }
+      accounts {
+        id
+        name
+        kind
+        poolId
+      }
+      categories {
+        id
+        name
+        parentId
+        archived
+      }
+      defaultAllocation {
+        poolId
+        weight
+      }
+    }
+  }
+`;
+
+export const householdsQuery = graphql`
+  query HouseholdsQuery {
+    households {
+      id
+      name
+    }
+  }
+`;
+
+export const purchasesQuery = graphql`
+  query PurchasesQuery($householdId: ID!, $from: String, $to: String, $after: String, $first: Int) {
+    purchases(householdId: $householdId, from: $from, to: $to, after: $after, first: $first) {
+      edges {
+        cursor
+        node {
+          id
+          householdId
+          occurredAt
+          merchant
+          paymentAccountId
+          paymentAccount {
+            id
+            name
+            kind
+            poolId
+          }
+          items {
+            id
+            name
+            amountYen
+            revision
+            categoryId
+            allocations {
+              poolId
+              poolName
+              weight
+              amountYen
+            }
+          }
+          totalYen
+          revision
+          status
+          createdAt
+          updatedAt
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      totalCount
+    }
+  }
+`;
+
+export const settlementQuery = graphql`
+  query SettlementQuery($householdId: ID!, $period: String!) {
+    settlement(householdId: $householdId, period: $period) {
+      period
+      status
+      revision
+      lines {
+        memberId
+        memberName
+        scheduledYen
+        paidYen
+        carryYen
+        advanceCreditYen
+        amountDueYen
+      }
+    }
+  }
+`;
+export const monthlyCategorySpendingQuery = graphql`
+  query MonthlyCategorySpendingQuery($householdId: ID!, $from: String!, $to: String!) {
+    monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {
+      period
+      categoryId
+      categoryName
+      amountYen
+    }
+  }
+`;
+export const allocationRulesQuery = graphql`
+  query AllocationRulesQuery($householdId: ID!) {
+    allocationRules(householdId: $householdId) {
+      id
+      householdId
+      scope
+      categoryId
+      merchant
+      revision
+      allocations {
+        poolId
+        poolName
+        weight
+        amountYen
+      }
+    }
+  }
+`;
+
+export const ledgerQuery = graphql`
+  query LedgerQuery($householdId: ID!, $after: String, $first: Int) {
+    ledger(householdId: $householdId, after: $after, first: $first) {
+      edges {
+        cursor
+        node {
+          id
+          kind
+          occurredAt
+          description
+          amountYen
+          currency
+          fromMemberId
+          toMemberId
+          poolId
+          sourcePurchaseId
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      totalCount
+    }
+  }
+`;
+
+export const createHouseholdMutation = graphql`
+  mutation CreateHouseholdMutation($input: CreateHouseholdInput!) {
+    createHousehold(input: $input) {
+      id
+    }
+  }
+`;
+
+export const createPurchaseMutation = graphql`
+  mutation CreatePurchaseMutation($input: CreatePurchaseInput!) {
+    createPurchase(input: $input) {
+      id
+      householdId
+      occurredAt
+      merchant
+      paymentAccountId
+      totalYen
+      revision
+      status
+      items {
+        id
+        name
+        amountYen
+        categoryId
+        allocations {
+          poolId
+          weight
+          amountYen
+        }
+      }
+    }
+  }
+`;
+
+export const updatePurchaseMutation = graphql`
+  mutation UpdatePurchaseMutation($input: UpdatePurchaseInput!) {
+    updatePurchase(input: $input) {
+      id
+      revision
+      occurredAt
+      merchant
+      paymentAccountId
+    }
+  }
+`;
+
+export const updatePurchaseItemMutation = graphql`
+  mutation UpdatePurchaseItemMutation($input: UpdatePurchaseItemInput!) {
+    updatePurchaseItem(input: $input) {
+      id
+      revision
+      name
+      amountYen
+      categoryId
+    }
+  }
+`;
+
+export const setCategoryArchivedMutation = graphql`
+  mutation SetCategoryArchivedMutation($categoryId: ID!, $archived: Boolean!) {
+    setCategoryArchived(categoryId: $categoryId, archived: $archived) {
+      id
+      archived
+    }
+  }
+`;
+export const setAllocationRuleMutation = graphql`
+  mutation SetAllocationRuleMutation($input: SetAllocationRuleInput!) {
+    setAllocationRule(input: $input) {
+      id
+      scope
+      categoryId
+      merchant
+      revision
+      allocations {
+        poolId
+        weight
+      }
+    }
+  }
+`;
+
+export const createPoolMutation = graphql`
+  mutation CreatePoolMutation($input: CreatePoolInput!) {
+    createPool(input: $input) {
+      id
+    }
+  }
+`;
+export const createAccountMutation = graphql`
+  mutation CreateAccountMutation($input: CreateAccountInput!) {
+    createAccount(input: $input) {
+      id
+    }
+  }
+`;
+export const createCategoryMutation = graphql`
+  mutation CreateCategoryMutation($input: CreateCategoryInput!) {
+    createCategory(input: $input) {
+      id
+    }
+  }
+`;
+export const setDefaultAllocationMutation = graphql`
+  mutation SetDefaultAllocationMutation($input: SetDefaultAllocationInput!) {
+    setDefaultAllocation(input: $input) {
+      id
+      revision
+    }
+  }
+`;
+export const recordFundingMutation = graphql`
+  mutation RecordFundingMutation($input: RecordFundingInput!) {
+    recordFunding(input: $input) {
+      id
+    }
+  }
+`;
+export const recordTransferMutation = graphql`
+  mutation RecordTransferMutation($input: RecordTransferInput!) {
+    recordTransfer(input: $input) {
+      id
+    }
+  }
+`;
+export const closePeriodMutation = graphql`
+  mutation ClosePeriodMutation($input: ClosePeriodInput!) {
+    closePeriod(input: $input) {
+      period
+      status
+      revision
+    }
+  }
+`;
+
+export function makeIdempotencyKey() {
+  return crypto.randomUUID();
+}
