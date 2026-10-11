@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<265260ac73bb738d6a6a996ec2d8ea34>>
+ * @generated SignedSource<<96bd7e7a7151baeee7e71c724738cd91>>
  * @lightSyntaxTransform
  */
 
@@ -25,6 +25,7 @@ export type PurchaseItemInput = {
   amountYen: any;
   categoryId?: string | null | undefined;
   name: string;
+  productVariantId?: string | null | undefined;
 };
 export type AllocationInput = {
   poolId: string;

@@ -30,6 +30,7 @@ func Where[Q psql.Filterable]() struct {
 	FundingObligations    fundingObligationWhere[Q]
 	FundingSchedules      fundingScheduleWhere[Q]
 	HouseholdEvents       householdEventWhere[Q]
+	HouseholdInvitations  householdInvitationWhere[Q]
 	HouseholdMembers      householdMemberWhere[Q]
 	Households            householdWhere[Q]
 	IdempotencyKeys       idempotencyKeyWhere[Q]
@@ -66,6 +67,7 @@ func Where[Q psql.Filterable]() struct {
 		FundingObligations    fundingObligationWhere[Q]
 		FundingSchedules      fundingScheduleWhere[Q]
 		HouseholdEvents       householdEventWhere[Q]
+		HouseholdInvitations  householdInvitationWhere[Q]
 		HouseholdMembers      householdMemberWhere[Q]
 		Households            householdWhere[Q]
 		IdempotencyKeys       idempotencyKeyWhere[Q]
@@ -101,6 +103,7 @@ func Where[Q psql.Filterable]() struct {
 		FundingObligations:    buildFundingObligationWhere[Q](FundingObligations.Columns),
 		FundingSchedules:      buildFundingScheduleWhere[Q](FundingSchedules.Columns),
 		HouseholdEvents:       buildHouseholdEventWhere[Q](HouseholdEvents.Columns),
+		HouseholdInvitations:  buildHouseholdInvitationWhere[Q](HouseholdInvitations.Columns),
 		HouseholdMembers:      buildHouseholdMemberWhere[Q](HouseholdMembers.Columns),
 		Households:            buildHouseholdWhere[Q](Households.Columns),
 		IdempotencyKeys:       buildIdempotencyKeyWhere[Q](IdempotencyKeys.Columns),

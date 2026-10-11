@@ -1,9 +1,11 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeftRight,
+  AlertCircle,
   BarChart3,
   BookOpen,
   Check,
+  CloudUpload,
   ChevronDown,
   ChevronRight,
   FileImage,
@@ -14,16 +16,25 @@ import {
   Settings2,
   X,
   Search,
+  WifiOff,
 } from "lucide-react";
 import {
   ApiError,
   createHouseholdMutation,
+  createPurchaseMutation,
   executeGraphql,
   getViewer,
   householdQuery,
   householdsQuery,
   type Household,
 } from "../shared/api";
+import {
+  claimPurchaseOutbox,
+  completePurchaseOutbox,
+  markPurchaseOutboxFailed,
+  renewPurchaseOutboxLease,
+  usePurchaseOutbox,
+} from "../shared/lib";
 import { AnalysisPage } from "../pages/analysis";
 import { HomePage } from "../pages/home";
 import { ImportsPage } from "../pages/imports";
@@ -41,6 +52,7 @@ async function read<T>(
 }
 
 export function App() {
+  const outbox = usePurchaseOutbox();
   const [viewer, setViewer] = useState<{ id: string; displayName: string; email?: string } | null>(
     null,
   );
@@ -53,6 +65,13 @@ export function App() {
   const [householdMenu, setHouseholdMenu] = useState(false);
   const [notice, setNotice] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
+  const activeSends = useRef(new Set<string>());
+  const senderId = useRef("");
+  const currentPage = useRef(page);
+  currentPage.current = page;
+  const currentHouseholdId = useRef(household?.id);
+  currentHouseholdId.current = household?.id;
+  const autoNavigateKey = useRef<string | null>(null);
 
   const refreshHousehold = async (id: string) => {
     const data = await read<{ household: Household }>(householdQuery, { id });
@@ -92,6 +111,77 @@ export function App() {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 3200);
   };
+  const showNoticeRef = useRef(showNotice);
+  showNoticeRef.current = showNotice;
+  const refreshHouseholdRef = useRef(refreshHousehold);
+  refreshHouseholdRef.current = refreshHousehold;
+  useEffect(() => {
+    if (!viewer || !outbox.ready || outbox.online !== true) return;
+    if (!senderId.current) senderId.current = crypto.randomUUID();
+    const owner = senderId.current;
+    const availableHouseholds = new Set(households.map((item) => item.id));
+    for (const entry of outbox.entries) {
+      const key = entry.input.idempotencyKey;
+      if (
+        entry.status !== "PENDING" ||
+        !availableHouseholds.has(entry.input.householdId) ||
+        activeSends.current.has(key)
+      )
+        continue;
+      activeSends.current.add(key);
+      void (async () => {
+        let claimed = false;
+        let leaseRenewal: number | undefined;
+        try {
+          const request = await claimPurchaseOutbox(key, owner);
+          if (!request) return;
+          claimed = true;
+          leaseRenewal = window.setInterval(() => {
+            void renewPurchaseOutboxLease(key, owner).catch(() => {});
+          }, 10_000);
+          await read<{ createPurchase: { id: string } }>(createPurchaseMutation, {
+            input: request.input,
+          });
+          await completePurchaseOutbox(key, owner);
+          if (currentHouseholdId.current === request.input.householdId) {
+            await refreshHouseholdRef.current(request.input.householdId);
+            showNoticeRef.current("買い物を帳簿に追加しました");
+          }
+          if (autoNavigateKey.current === key && currentPage.current === "new") {
+            autoNavigateKey.current = null;
+            setPage("ledger");
+          }
+        } catch (reason) {
+          if (claimed) {
+            const message =
+              reason instanceof ApiError
+                ? reason.message
+                : reason instanceof TypeError ||
+                    (reason instanceof DOMException &&
+                      ["AbortError", "NetworkError"].includes(reason.name))
+                  ? "接続を確認してから再送してください"
+                  : "買い物を送信できませんでした。再送または破棄してください";
+            await markPurchaseOutboxFailed(key, owner, message).catch(() => {});
+          }
+        } finally {
+          if (leaseRenewal !== undefined) window.clearInterval(leaseRenewal);
+          activeSends.current.delete(key);
+          if (claimed) await outbox.refresh();
+        }
+      })();
+    }
+  }, [viewer, households, outbox.entries, outbox.ready, outbox.online, outbox.refresh]);
+  const currentOutbox = outbox.entries.filter((entry) => entry.input.householdId === household?.id);
+  const failedOutboxCount = currentOutbox.filter((entry) => entry.status === "FAILED").length;
+  const pendingOutboxCount = currentOutbox.filter((entry) => entry.status === "PENDING").length;
+  const syncLabel =
+    outbox.online === false
+      ? "オフライン"
+      : failedOutboxCount > 0
+        ? `送信失敗 ${failedOutboxCount}件`
+        : pendingOutboxCount > 0
+          ? `送信待ち ${pendingOutboxCount}件`
+          : "";
   const logout = async () => {
     setLoggingOut(true);
     try {
@@ -299,21 +389,45 @@ export function App() {
             <b>{pageTitle(page)}</b>
           </div>
           <div className="topbar-actions">
+            {syncLabel && (
+              <button
+                className={`sync-status-pill ${failedOutboxCount ? "sync-status-error" : ""}`}
+                type="button"
+                onClick={() => setPage("new")}
+                disabled={!household}
+              >
+                {outbox.online === false ? (
+                  <WifiOff size={15} />
+                ) : failedOutboxCount ? (
+                  <AlertCircle size={15} />
+                ) : (
+                  <CloudUpload size={15} />
+                )}
+                <span>{syncLabel}</span>
+              </button>
+            )}
             <button className="search-pill" onClick={() => setPage("ledger")}>
               <Search size={16} />
               <span>帳簿を開く</span>
             </button>
           </div>
         </header>
+        {outbox.reloadMessage && (
+          <div className="database-upgrade-notice" role="alert">
+            <span>{outbox.reloadMessage}</span>
+            <button type="button" onClick={() => window.location.reload()}>
+              再読み込み
+            </button>
+          </div>
+        )}
         <div className="page-content">
           {page === "home" && household && <HomePage household={household} onNavigate={setPage} />}
           {page === "new" && household && (
             <PurchaseCreatePage
               household={household}
-              onSaved={async () => {
-                await refreshHousehold(household.id);
-                setPage("ledger");
-                showNotice("買い物を帳簿に追加しました");
+              onQueued={(idempotencyKey) => {
+                autoNavigateKey.current = idempotencyKey;
+                showNotice("送信待ちに保存しました");
               }}
             />
           )}

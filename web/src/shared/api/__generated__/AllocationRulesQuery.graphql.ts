@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1d103dcb2513b01bc61e80b9b495b276>>
+ * @generated SignedSource<<3acc7c4cff193bc14d92280864519346>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type AllocationRuleScope = "CATEGORY" | "MERCHANT" | "%future added value";
+export type AllocationRuleScope = "CATEGORY" | "MERCHANT" | "PRODUCT" | "PRODUCT_VARIANT" | "%future added value";
 export type AllocationRulesQuery$variables = {
   householdId: string;
 };

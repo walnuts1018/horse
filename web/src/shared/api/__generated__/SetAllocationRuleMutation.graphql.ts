@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a336f5de0e78e73cc2291f7871c0e729>>
+ * @generated SignedSource<<1d53a7bd328f1d322bf679fd034132a8>>
  * @lightSyntaxTransform
  */
 
@@ -8,12 +8,14 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type AllocationRuleScope = "CATEGORY" | "MERCHANT" | "%future added value";
+export type AllocationRuleScope = "CATEGORY" | "MERCHANT" | "PRODUCT" | "PRODUCT_VARIANT" | "%future added value";
 export type SetAllocationRuleInput = {
   allocations: ReadonlyArray<AllocationInput>;
   categoryId?: string | null | undefined;
   householdId: string;
   merchant?: string | null | undefined;
+  productConceptId?: string | null | undefined;
+  productVariantId?: string | null | undefined;
 };
 export type AllocationInput = {
   poolId: string;

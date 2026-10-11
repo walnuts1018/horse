@@ -81,6 +81,11 @@ type CreateHouseholdInput struct {
 	MemberNames []string `json:"memberNames"`
 }
 
+type CreateHouseholdInvitationInput struct {
+	HouseholdID string `json:"householdId"`
+	ExpiresAt   string `json:"expiresAt"`
+}
+
 type CreatePoolInput struct {
 	HouseholdID string   `json:"householdId"`
 	Name        string   `json:"name"`
@@ -114,6 +119,11 @@ type CreatePurchaseInput struct {
 	Status           *PurchaseStatus      `json:"status,omitempty"`
 }
 
+type CreatedHouseholdInvitation struct {
+	Invitation *HouseholdInvitation `json:"invitation"`
+	Token      string               `json:"token"`
+}
+
 type Household struct {
 	ID                string        `json:"id"`
 	Name              string        `json:"name"`
@@ -125,6 +135,16 @@ type Household struct {
 	DefaultAllocation []*Allocation `json:"defaultAllocation"`
 	CreatedAt         string        `json:"createdAt"`
 	UpdatedAt         string        `json:"updatedAt"`
+}
+
+type HouseholdInvitation struct {
+	ID          string  `json:"id"`
+	HouseholdID string  `json:"householdId"`
+	Role        string  `json:"role"`
+	ExpiresAt   string  `json:"expiresAt"`
+	CreatedAt   string  `json:"createdAt"`
+	RevokedAt   *string `json:"revokedAt,omitempty"`
+	AcceptedAt  *string `json:"acceptedAt,omitempty"`
 }
 
 type LedgerConnection struct {

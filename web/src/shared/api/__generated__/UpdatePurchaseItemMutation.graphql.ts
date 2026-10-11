@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0188a180c9eeba6431fb274ead4f64a1>>
+ * @generated SignedSource<<46370426a066690c0f7f2f23a7b226a9>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type ProductLearningScope = "ITEM_ONLY" | "MERCHANT_ALIAS" | "VARIANT_NAME" | "%future added value";
 export type UpdatePurchaseItemInput = {
   allocations?: ReadonlyArray<AllocationInput> | null | undefined;
   amountYen?: any | null | undefined;
@@ -16,6 +17,9 @@ export type UpdatePurchaseItemInput = {
   changedFields: ReadonlyArray<string>;
   itemId: string;
   name?: string | null | undefined;
+  productLearning?: ProductLearningScope | null | undefined;
+  productVariantId?: string | null | undefined;
+  variantName?: string | null | undefined;
 };
 export type AllocationInput = {
   poolId: string;

@@ -20,23 +20,25 @@ import {
 import { z } from "zod";
 import { Popover } from "@base-ui/react/popover";
 import {
-  createPurchaseMutation,
   makeIdempotencyKey,
   purchasesQuery,
   readGraphql,
   type Connection,
+  type CreatePurchaseInput,
   type Household,
   type Purchase,
 } from "../../../shared/api";
+import {
+  enqueuePurchase,
+  deletePurchaseDraft,
+  loadPurchaseDraft,
+  savePurchaseDraft,
+  usePurchaseOutbox,
+  type PurchaseDraftItem,
+} from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 
-type DraftItem = {
-  key: string;
-  name: string;
-  amount: string;
-  categoryId: string;
-  allocations: Array<{ poolId: string; weight: number }>;
-};
+type DraftItem = PurchaseDraftItem;
 const purchaseItemSchema = z.object({
   name: z.string().trim().min(1),
   amount: z.string().regex(/^[1-9]\d*$/),
@@ -56,35 +58,22 @@ const sum = (numbers: number[]) => numbers.reduce((total, value) => total + valu
 
 export function PurchaseCreatePage({
   household,
-  onSaved,
+  onQueued,
 }: {
   household: Household;
-  onSaved: () => void;
+  onQueued: (idempotencyKey: string) => void;
 }) {
-  const storageKey = `horse:draft:${household.id}`;
-  const initial = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem(storageKey) ?? "{}") as {
-        merchant?: string;
-        occurredAt?: string;
-        paymentAccountId?: string;
-        items?: DraftItem[];
-      };
-    } catch {
-      return {};
-    }
-  }, [storageKey]);
-  const [merchant, setMerchant] = useState(initial.merchant ?? "");
-  const [occurredAt, setOccurredAt] = useState(initial.occurredAt ?? localDateTime());
-  const [paymentAccountId, setPaymentAccountId] = useState(
-    initial.paymentAccountId ?? household.accounts[0]?.id ?? "",
-  );
-  const [items, setItems] = useState<DraftItem[]>(initial.items ?? []);
+  const [merchant, setMerchant] = useState("");
+  const [occurredAt, setOccurredAt] = useState(localDateTime);
+  const [paymentAccountId, setPaymentAccountId] = useState(household.accounts[0]?.id ?? "");
+  const [items, setItems] = useState<DraftItem[]>([]);
   const [itemName, setItemName] = useState("");
   const [itemAmount, setItemAmount] = useState("");
   const [categoryId, setCategoryId] = useState(
     household.categories.find((item) => !item.archived)?.id ?? "",
   );
+  const [storageReady, setStorageReady] = useState(false);
+  const [draftHouseholdId, setDraftHouseholdId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [undoItems, setUndoItems] = useState<DraftItem[] | null>(null);
@@ -93,22 +82,101 @@ export function PurchaseCreatePage({
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
+  const saving = useRef(false);
+  const draftTimer = useRef<number | null>(null);
+  const skipDraftSave = useRef(false);
   const composing = useRef(false);
+  const outbox = usePurchaseOutbox();
+  const householdOutbox = outbox.entries.filter(
+    (entry) => entry.input.householdId === household.id,
+  );
   const enabledCategories = household.categories.filter((category) => !category.archived);
   const defaultAllocations = household.defaultAllocation?.length
     ? household.defaultAllocation
     : household.pools.map((pool) => ({ poolId: pool.id, weight: pool.defaultShareWeight || 1 }));
 
+  const draft = { merchant, occurredAt, paymentAccountId, itemName, itemAmount, categoryId, items };
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({ merchant, occurredAt, paymentAccountId, items }),
-      );
-      setSavedAt(new Date());
+    let active = true;
+    setStorageReady(false);
+    setDraftHouseholdId(null);
+    void loadPurchaseDraft(household.id)
+      .then((loaded) => {
+        if (!active) return;
+        if (loaded) {
+          setMerchant(loaded.merchant);
+          setOccurredAt(loaded.occurredAt || localDateTime());
+          setPaymentAccountId(loaded.paymentAccountId || household.accounts[0]?.id || "");
+          setItemName(loaded.itemName);
+          setItemAmount(loaded.itemAmount);
+          setCategoryId(
+            loaded.categoryId || household.categories.find((item) => !item.archived)?.id || "",
+          );
+          setItems(loaded.items);
+          setSavedAt(new Date());
+        }
+        setDraftHouseholdId(household.id);
+      })
+      .catch((reason) => active && setMessage((reason as Error).message))
+      .finally(() => active && setStorageReady(true));
+    return () => {
+      active = false;
+    };
+  }, [household.id]);
+  useEffect(() => {
+    if (!storageReady || draftHouseholdId !== household.id) return;
+    if (skipDraftSave.current) {
+      skipDraftSave.current = false;
+      return;
+    }
+    if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
+    draftTimer.current = window.setTimeout(() => {
+      const current = draftRef.current;
+      const store =
+        current.merchant.trim() ||
+        current.itemName.trim() ||
+        current.itemAmount ||
+        current.items.length
+          ? savePurchaseDraft(household.id, current)
+          : deletePurchaseDraft(household.id);
+      void store
+        .then(() => setSavedAt(new Date()))
+        .catch((reason) => setMessage((reason as Error).message));
     }, 450);
-    return () => window.clearTimeout(timer);
-  }, [storageKey, merchant, occurredAt, paymentAccountId, items]);
+    return () => {
+      if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
+    };
+  }, [
+    household.id,
+    storageReady,
+    draftHouseholdId,
+    merchant,
+    occurredAt,
+    paymentAccountId,
+    itemName,
+    itemAmount,
+    categoryId,
+    items,
+  ]);
+  useEffect(
+    () => () => {
+      if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
+      if (storageReady && draftHouseholdId === household.id) {
+        const current = draftRef.current;
+        if (
+          current.merchant.trim() ||
+          current.itemName.trim() ||
+          current.itemAmount ||
+          current.items.length
+        )
+          void savePurchaseDraft(household.id, current);
+        else void deletePurchaseDraft(household.id);
+      }
+    },
+    [household.id, storageReady, draftHouseholdId],
+  );
   useEffect(() => {
     void readGraphql<{ purchases: Connection<Purchase> }>(purchasesQuery, {
       householdId: household.id,
@@ -137,6 +205,7 @@ export function PurchaseCreatePage({
       .slice(0, 4);
   }, [history, itemName]);
   const total = sum(items.map((item) => Number(item.amount) || 0));
+  const hasDraftContent = Boolean(merchant.trim() || itemName.trim() || itemAmount || items.length);
 
   const addItem = (name = itemName, amount = itemAmount) => {
     const parsed = purchaseItemSchema.safeParse({ name, amount });
@@ -215,6 +284,7 @@ export function PurchaseCreatePage({
     setItems((current) => current.map((item) => (item.key === key ? { ...item, ...patch } : item)));
   const save = async (event: FormEvent) => {
     event.preventDefault();
+    if (saving.current) return;
     if (!items.length) {
       setMessage("品目を1つ以上追加してください");
       return;
@@ -223,35 +293,50 @@ export function PurchaseCreatePage({
       setMessage("設定で決済元を登録してください");
       return;
     }
+    saving.current = true;
     setPending(true);
     setMessage("");
     try {
-      const data = await readGraphql<{ createPurchase: Purchase }>(createPurchaseMutation, {
-        input: {
-          idempotencyKey: makeIdempotencyKey(),
-          householdId: household.id,
-          occurredAt: new Date(occurredAt).toISOString(),
-          merchant: merchant.trim(),
-          paymentAccountId,
-          items: items.map((item) => ({
-            name: item.name,
-            amountYen: Number(item.amount),
-            categoryId: item.categoryId || null,
-            allocations: item.allocations.length
-              ? item.allocations.filter((allocation) => allocation.weight > 0)
-              : null,
-          })),
-        },
-      });
-      localStorage.removeItem(storageKey);
-      void data;
-      onSaved();
+      if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
+      const input: CreatePurchaseInput = {
+        idempotencyKey: makeIdempotencyKey(),
+        householdId: household.id,
+        occurredAt: new Date(occurredAt).toISOString(),
+        merchant: merchant.trim(),
+        paymentAccountId: paymentAccountId || null,
+        items: items.map((item) => ({
+          name: item.name,
+          amountYen: Number(item.amount),
+          categoryId: item.categoryId || null,
+          allocations: item.allocations.length
+            ? item.allocations.filter((allocation) => allocation.weight > 0)
+            : null,
+        })),
+      };
+      await enqueuePurchase(input);
+      skipDraftSave.current = true;
+      setMerchant("");
+      setOccurredAt(localDateTime());
+      setPaymentAccountId(household.accounts[0]?.id ?? "");
+      setItemName("");
+      setItemAmount("");
+      setCategoryId(enabledCategories[0]?.id ?? "");
+      setItems([]);
+      setSavedAt(null);
+      onQueued(input.idempotencyKey);
     } catch (reason) {
       setMessage((reason as Error).message);
     } finally {
+      saving.current = false;
       setPending(false);
     }
   };
+  if (!storageReady)
+    return (
+      <main className="loading-screen">
+        <span>{message || "下書きを読み込んでいます"}</span>
+      </main>
+    );
   const allocationName = (item: DraftItem) => {
     if (
       item.allocations.length === 0 ||
@@ -277,11 +362,10 @@ export function PurchaseCreatePage({
             戻る
           </button>
           <h1>買い物を追加</h1>
-          <p>同じ買い物の品目を続けて入力</p>
         </div>
         <span className="save-status">
           <span className="status-dot" />
-          {savedAt ? "下書きを保存" : "保存中"}
+          {savedAt ? "下書き保存済み" : "下書き保存中"}
         </span>
       </div>
       <section className="panel purchase-meta-form">
@@ -540,16 +624,84 @@ export function PurchaseCreatePage({
           <span>表計算の行を貼り付けできます</span>
         </div>
       </section>
+      {householdOutbox.length > 0 && (
+        <section className="panel purchase-outbox">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">送信待ち</span>
+              <h2>{householdOutbox.length}件</h2>
+            </div>
+          </div>
+          {householdOutbox.map((entry) => {
+            const failed = entry.status === "FAILED";
+            const sending = (entry.leaseUntil ?? 0) > Date.now();
+            const status = failed
+              ? "送信失敗"
+              : sending
+                ? "送信中"
+                : outbox.online === false
+                  ? "オフライン保存済み"
+                  : "送信待ち";
+            return (
+              <div className="purchase-outbox-row" key={entry.input.idempotencyKey}>
+                <div>
+                  <b>{entry.input.merchant || "店名未入力"}</b>
+                  <small>
+                    {status} ·{" "}
+                    {yen(entry.input.items.reduce((total, item) => total + item.amountYen, 0))}
+                  </small>
+                  {entry.lastError && (
+                    <small className="purchase-outbox-error">{entry.lastError}</small>
+                  )}
+                </div>
+                <div className="purchase-outbox-actions">
+                  {failed && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() =>
+                        void outbox
+                          .retry(entry.input.idempotencyKey)
+                          .catch((reason) => setMessage((reason as Error).message))
+                      }
+                    >
+                      再送
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={sending}
+                    onClick={() =>
+                      void outbox
+                        .discard(entry.input.idempotencyKey)
+                        .catch((reason) => setMessage((reason as Error).message))
+                    }
+                  >
+                    破棄
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
       <div className="composer-bottom">
         <div>
           <div className="total-label">
             合計 <strong>{yen(total)}</strong>
           </div>
           <span>
-            {items.length}品目 ·{" "}
-            {savedAt
-              ? `保存 ${savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}`
-              : "下書き保存中"}
+            {items.length}品目
+            {hasDraftContent && (
+              <>
+                {" · "}
+                {savedAt
+                  ? "下書き保存 " +
+                    savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
+                  : "下書き保存中"}
+              </>
+            )}
           </span>
         </div>
         <div className="composer-actions">
@@ -559,12 +711,18 @@ export function PurchaseCreatePage({
               元に戻す
             </button>
           )}
-          <button className="button button-primary" disabled={pending || items.length === 0}>
-            {pending ? "保存中" : "帳簿に追加"}
+          <button
+            className="button button-primary"
+            disabled={
+              pending || !outbox.ready || Boolean(outbox.storageError) || items.length === 0
+            }
+          >
+            {pending ? "保存中" : "保存して送信"}
             <Check size={16} />
           </button>
         </div>
       </div>
+      {outbox.storageError && <InlineError message={outbox.storageError} />}
       {message && <InlineError message={message} />}
     </form>
   );

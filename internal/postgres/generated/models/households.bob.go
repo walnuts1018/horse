@@ -63,6 +63,7 @@ type householdR struct {
 	FundingObligations    FundingObligationSlice    // funding_obligations.funding_obligations_household_id_fkey
 	FundingSchedules      FundingScheduleSlice      // funding_schedules.funding_schedules_household_id_fkey
 	HouseholdEvents       HouseholdEventSlice       // household_events.household_events_household_id_fkey
+	HouseholdInvitations  HouseholdInvitationSlice  // household_invitations.household_invitations_household_id_fkey
 	HouseholdMembers      HouseholdMemberSlice      // household_members.household_members_household_id_fkey
 	IdempotencyKeys       IdempotencyKeySlice       // idempotency_keys.idempotency_keys_household_id_fkey
 	Journals              JournalSlice              // journals.journals_household_id_fkey
@@ -93,6 +94,7 @@ type householdRLoaded struct {
 	FundingObligations    bool // funding_obligations.funding_obligations_household_id_fkey
 	FundingSchedules      bool // funding_schedules.funding_schedules_household_id_fkey
 	HouseholdEvents       bool // household_events.household_events_household_id_fkey
+	HouseholdInvitations  bool // household_invitations.household_invitations_household_id_fkey
 	HouseholdMembers      bool // household_members.household_members_household_id_fkey
 	IdempotencyKeys       bool // idempotency_keys.idempotency_keys_household_id_fkey
 	Journals              bool // journals.journals_household_id_fkey
@@ -953,6 +955,29 @@ func (os HouseholdSlice) HouseholdEvents(mods ...bob.Mod[*dialect.SelectQuery]) 
 
 	return HouseholdEvents.Query(append(mods,
 		sm.Where(HouseholdEvents.Columns.HouseholdID.EQ(PKArgExpr)),
+	)...)
+}
+
+// HouseholdInvitations starts a query for related objects on household_invitations
+func (o *Household) HouseholdInvitations(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdInvitationsQuery {
+	return HouseholdInvitations.Query(append(mods,
+		sm.Where(HouseholdInvitations.Columns.HouseholdID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os HouseholdSlice) HouseholdInvitations(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdInvitationsQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return HouseholdInvitations.Query(append(mods,
+		sm.Where(HouseholdInvitations.Columns.HouseholdID.EQ(PKArgExpr)),
 	)...)
 }
 
@@ -1956,6 +1981,76 @@ func (household0 *Household) AttachHouseholdEvents(ctx context.Context, exec bob
 	return nil
 }
 
+func insertHouseholdHouseholdInvitations0(ctx context.Context, exec bob.Executor, householdInvitations1 []*HouseholdInvitationSetter, household0 *Household) (HouseholdInvitationSlice, error) {
+	for i := range householdInvitations1 {
+		householdInvitations1[i].HouseholdID = func() *uuid.UUID { return &household0.ID }()
+	}
+
+	ret, err := HouseholdInvitations.Insert(bob.ToMods(householdInvitations1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertHouseholdHouseholdInvitations0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachHouseholdHouseholdInvitations0(ctx context.Context, exec bob.Executor, count int, householdInvitations1 HouseholdInvitationSlice, household0 *Household) (HouseholdInvitationSlice, error) {
+	setter := &HouseholdInvitationSetter{
+		HouseholdID: func() *uuid.UUID { return &household0.ID }(),
+	}
+
+	err := householdInvitations1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachHouseholdHouseholdInvitations0: %w", err)
+	}
+
+	return householdInvitations1, nil
+}
+
+func (household0 *Household) InsertHouseholdInvitations(ctx context.Context, exec bob.Executor, related ...*HouseholdInvitationSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	householdInvitations1, err := insertHouseholdHouseholdInvitations0(ctx, exec, related, household0)
+	if err != nil {
+		return err
+	}
+
+	household0.R.HouseholdInvitations = append(household0.R.HouseholdInvitations, householdInvitations1...)
+
+	for _, rel := range householdInvitations1 {
+		rel.R.Household = household0
+		rel.R.Loaded.Household = true
+	}
+	return nil
+}
+
+func (household0 *Household) AttachHouseholdInvitations(ctx context.Context, exec bob.Executor, related ...*HouseholdInvitation) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	householdInvitations1 := HouseholdInvitationSlice(related)
+
+	_, err = attachHouseholdHouseholdInvitations0(ctx, exec, len(related), householdInvitations1, household0)
+	if err != nil {
+		return err
+	}
+
+	household0.R.HouseholdInvitations = append(household0.R.HouseholdInvitations, householdInvitations1...)
+
+	for _, rel := range related {
+		rel.R.Household = household0
+		rel.R.Loaded.Household = true
+	}
+
+	return nil
+}
+
 func insertHouseholdHouseholdMembers0(ctx context.Context, exec bob.Executor, householdMembers1 []*HouseholdMemberSetter, household0 *Household) (HouseholdMemberSlice, error) {
 	for i := range householdMembers1 {
 		householdMembers1[i].HouseholdID = func() *uuid.UUID { return &household0.ID }()
@@ -2859,6 +2954,20 @@ func (w householdWhereR[Q]) HasHouseholdEvents(filters ...bob.Mod[*dialect.Selec
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasHouseholdInvitations filters parents that have a matching HouseholdInvitations using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to HouseholdInvitations).
+func (w householdWhereR[Q]) HasHouseholdInvitations(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(HouseholdInvitations.NameExpr()),
+		sm.Where(HouseholdInvitations.Columns.HouseholdID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasHouseholdMembers filters parents that have a matching HouseholdMembers using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -3295,6 +3404,22 @@ func (o *Household) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "HouseholdInvitations":
+		rels, ok := retrieved.(HouseholdInvitationSlice)
+		if !ok {
+			return fmt.Errorf("household cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.HouseholdInvitations = rels
+		o.R.Loaded.HouseholdInvitations = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Household = o
+				rel.R.Loaded.Household = true
+			}
+		}
+		return nil
 	case "HouseholdMembers":
 		rels, ok := retrieved.(HouseholdMemberSlice)
 		if !ok {
@@ -3479,6 +3604,7 @@ type householdThenLoader[Q orm.Loadable] struct {
 	FundingObligations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	FundingSchedules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	HouseholdEvents       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	HouseholdMembers      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	IdempotencyKeys       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Journals              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -3527,6 +3653,9 @@ func buildHouseholdThenLoader[Q orm.Loadable]() householdThenLoader[Q] {
 	}
 	type HouseholdEventsLoadInterface interface {
 		LoadHouseholdEvents(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type HouseholdInvitationsLoadInterface interface {
+		LoadHouseholdInvitations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type HouseholdMembersLoadInterface interface {
 		LoadHouseholdMembers(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -3630,6 +3759,12 @@ func buildHouseholdThenLoader[Q orm.Loadable]() householdThenLoader[Q] {
 			"HouseholdEvents",
 			func(ctx context.Context, exec bob.Executor, retrieved HouseholdEventsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadHouseholdEvents(ctx, exec, mods...)
+			},
+		),
+		HouseholdInvitations: thenLoadBuilder[Q](
+			"HouseholdInvitations",
+			func(ctx context.Context, exec bob.Executor, retrieved HouseholdInvitationsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadHouseholdInvitations(ctx, exec, mods...)
 			},
 		),
 		HouseholdMembers: thenLoadBuilder[Q](
@@ -4583,6 +4718,80 @@ func (os HouseholdSlice) LoadHouseholdEvents(ctx context.Context, exec bob.Execu
 	return nil
 }
 
+// LoadHouseholdInvitations loads the household's HouseholdInvitations into the .R struct
+func (o *Household) LoadHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.HouseholdInvitations = nil
+	o.R.Loaded.HouseholdInvitations = false
+
+	related, err := o.HouseholdInvitations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Household = o
+		rel.R.Loaded.Household = true
+	}
+
+	o.R.HouseholdInvitations = related
+	o.R.Loaded.HouseholdInvitations = true
+	return nil
+}
+
+// LoadHouseholdInvitations loads the household's HouseholdInvitations into the .R struct
+func (os HouseholdSlice) LoadHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	householdInvitations, err := os.HouseholdInvitations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.HouseholdInvitations = nil
+		o.R.Loaded.HouseholdInvitations = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	householdByKey := make(map[uuid.UUID][]*Household, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		householdByKey[o.ID] = append(householdByKey[o.ID], o)
+	}
+
+	for _, rel := range householdInvitations {
+
+		owners, ok := householdByKey[rel.HouseholdID]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			rel.R.Household = o
+			rel.R.Loaded.Household = true
+
+			o.R.HouseholdInvitations = append(o.R.HouseholdInvitations, rel)
+
+		}
+	}
+
+	return nil
+}
+
 // LoadHouseholdMembers loads the household's HouseholdMembers into the .R struct
 func (o *Household) LoadHouseholdMembers(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -5337,6 +5546,7 @@ type householdC struct {
 	FundingObligations    *int64
 	FundingSchedules      *int64
 	HouseholdEvents       *int64
+	HouseholdInvitations  *int64
 	HouseholdMembers      *int64
 	IdempotencyKeys       *int64
 	Journals              *int64
@@ -5380,6 +5590,8 @@ func (o *Household) PreloadCount(name string, count int64) error {
 		o.C.FundingSchedules = &count
 	case "HouseholdEvents":
 		o.C.HouseholdEvents = &count
+	case "HouseholdInvitations":
+		o.C.HouseholdInvitations = &count
 	case "HouseholdMembers":
 		o.C.HouseholdMembers = &count
 	case "IdempotencyKeys":
@@ -5417,6 +5629,7 @@ type householdCountPreloader struct {
 	FundingObligations    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	FundingSchedules      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	HouseholdEvents       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	HouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	HouseholdMembers      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	IdempotencyKeys       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	Journals              func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
@@ -5635,6 +5848,23 @@ func buildHouseholdCountPreloader() householdCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		HouseholdInvitations: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Household]("HouseholdInvitations", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Households.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(HouseholdInvitations.NameAsExpr()),
+					sm.Where(psql.Quote(HouseholdInvitations.Alias(), "household_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		HouseholdMembers: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*Household]("HouseholdMembers", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -5821,6 +6051,7 @@ type householdCountThenLoader[Q orm.Loadable] struct {
 	FundingObligations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	FundingSchedules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	HouseholdEvents       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	HouseholdMembers      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	IdempotencyKeys       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Journals              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -5869,6 +6100,9 @@ func buildHouseholdCountThenLoader[Q orm.Loadable]() householdCountThenLoader[Q]
 	}
 	type HouseholdEventsCountInterface interface {
 		LoadCountHouseholdEvents(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type HouseholdInvitationsCountInterface interface {
+		LoadCountHouseholdInvitations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type HouseholdMembersCountInterface interface {
 		LoadCountHouseholdMembers(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -5972,6 +6206,12 @@ func buildHouseholdCountThenLoader[Q orm.Loadable]() householdCountThenLoader[Q]
 			"HouseholdEvents",
 			func(ctx context.Context, exec bob.Executor, retrieved HouseholdEventsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountHouseholdEvents(ctx, exec, mods...)
+			},
+		),
+		HouseholdInvitations: countThenLoadBuilder[Q](
+			"HouseholdInvitations",
+			func(ctx context.Context, exec bob.Executor, retrieved HouseholdInvitationsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountHouseholdInvitations(ctx, exec, mods...)
 			},
 		),
 		HouseholdMembers: countThenLoadBuilder[Q](
@@ -6985,6 +7225,85 @@ func (os HouseholdSlice) LoadCountHouseholdEvents(ctx context.Context, exec bob.
 	return nil
 }
 
+// LoadCountHouseholdInvitations loads the count of HouseholdInvitations into the C struct
+func (o *Household) LoadCountHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.HouseholdInvitations(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.HouseholdInvitations = &count
+	return nil
+}
+
+// LoadCountHouseholdInvitations loads the count of HouseholdInvitations for a slice in a single batch query
+func (os HouseholdSlice) LoadCountHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			HouseholdInvitations.Columns.HouseholdID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(HouseholdInvitations.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.Where(HouseholdInvitations.Columns.HouseholdID.EQ(PKArgExpr)),
+		// GROUP BY fk columns
+		sm.GroupBy(HouseholdInvitations.Columns.HouseholdID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Single-column FK: direct map lookup
+	countMap := make(map[uuid.UUID]int64, len(results))
+	for _, r := range results {
+		countMap[r.ID] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[o.ID]
+		o.C.HouseholdInvitations = &count
+	}
+
+	return nil
+}
+
 // LoadCountHouseholdMembers loads the count of HouseholdMembers into the C struct
 func (o *Household) LoadCountHouseholdMembers(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -7789,6 +8108,7 @@ type householdJoins[Q dialect.Joinable] struct {
 	FundingObligations    modAs[Q, fundingObligationColumns]
 	FundingSchedules      modAs[Q, fundingScheduleColumns]
 	HouseholdEvents       modAs[Q, householdEventColumns]
+	HouseholdInvitations  modAs[Q, householdInvitationColumns]
 	HouseholdMembers      modAs[Q, householdMemberColumns]
 	IdempotencyKeys       modAs[Q, idempotencyKeyColumns]
 	Journals              modAs[Q, journalColumns]
@@ -7969,6 +8289,20 @@ func buildHouseholdJoins[Q dialect.Joinable](cols householdColumns, typ string) 
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, HouseholdEvents.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		HouseholdInvitations: modAs[Q, householdInvitationColumns]{
+			c: HouseholdInvitations.Columns,
+			f: func(to householdInvitationColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, HouseholdInvitations.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.ID),
 					))
 				}

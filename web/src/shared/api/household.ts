@@ -35,6 +35,19 @@ export type Purchase = {
   createdAt: string;
   updatedAt: string;
 };
+export type CreatePurchaseInput = {
+  idempotencyKey: string;
+  householdId: string;
+  occurredAt: string;
+  merchant: string;
+  paymentAccountId: string | null;
+  items: Array<{
+    name: string;
+    amountYen: number;
+    categoryId: string | null;
+    allocations: Array<{ poolId: string; weight: number }> | null;
+  }>;
+};
 export type Member = { id: string; displayName: string; role: string };
 export type Household = {
   id: string;
@@ -90,8 +103,15 @@ export type Connection<T> = {
 const apiErrorMessages: Record<string, string> = {
   BAD_USER_INPUT: "入力内容を確認してください",
   NOT_FOUND: "対象の記録が見つかりません。画面を更新してください",
-  UNAUTHENTICATED: "ログインし直してください",
-  CONFLICT: "別の更新が先に反映されました。最新の記録を確認してください",
+  UNAUTHENTICATED: "ログインし直してから再送してください",
+  FORBIDDEN: "操作する権限がありません。管理者に確認してください",
+  CONFLICT: "記録が更新されました。最新の帳簿を確認してください",
+  SERVER_ERROR: "一時的なサーバーエラーです。時間をおいて再送してください",
+  INTERNAL: "一時的なサーバーエラーです。時間をおいて再送してください",
+  INTERNAL_SERVER_ERROR: "一時的なサーバーエラーです。時間をおいて再送してください",
+  SERVICE_UNAVAILABLE: "一時的なサーバーエラーです。時間をおいて再送してください",
+  BAD_GATEWAY: "一時的なサーバーエラーです。時間をおいて再送してください",
+  GATEWAY_TIMEOUT: "一時的なサーバーエラーです。時間をおいて再送してください",
 };
 
 export class ApiError extends Error {
@@ -103,11 +123,15 @@ export class ApiError extends Error {
       code ??
       (status === 401
         ? "UNAUTHENTICATED"
-        : status === 404
-          ? "NOT_FOUND"
-          : status === 409
-            ? "CONFLICT"
-            : undefined);
+        : status === 403
+          ? "FORBIDDEN"
+          : status === 404
+            ? "NOT_FOUND"
+            : status === 409
+              ? "CONFLICT"
+              : status !== undefined && status >= 500
+                ? "SERVER_ERROR"
+                : undefined);
     super((statusCode && apiErrorMessages[statusCode]) || message);
     this.code = statusCode;
     this.status = status;

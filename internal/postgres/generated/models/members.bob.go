@@ -55,6 +55,8 @@ type memberR struct {
 	FundingObligations             FundingObligationSlice    // funding_obligations.funding_obligations_member_id_fkey
 	FundingSchedules               FundingScheduleSlice      // funding_schedules.funding_schedules_member_id_fkey
 	ActorHouseholdEvents           HouseholdEventSlice       // household_events.household_events_actor_id_fkey
+	AcceptedByHouseholdInvitations HouseholdInvitationSlice  // household_invitations.household_invitations_accepted_by_fkey
+	CreatedByHouseholdInvitations  HouseholdInvitationSlice  // household_invitations.household_invitations_created_by_fkey
 	HouseholdMembers               HouseholdMemberSlice      // household_members.household_members_member_id_fkey
 	CreatedByJournals              JournalSlice              // journals.journals_created_by_fkey
 	FromMemberLedgerEntries        LedgerEntrySlice          // ledger_entries.ledger_entries_from_member_id_fkey
@@ -81,6 +83,8 @@ type memberRLoaded struct {
 	FundingObligations             bool // funding_obligations.funding_obligations_member_id_fkey
 	FundingSchedules               bool // funding_schedules.funding_schedules_member_id_fkey
 	ActorHouseholdEvents           bool // household_events.household_events_actor_id_fkey
+	AcceptedByHouseholdInvitations bool // household_invitations.household_invitations_accepted_by_fkey
+	CreatedByHouseholdInvitations  bool // household_invitations.household_invitations_created_by_fkey
 	HouseholdMembers               bool // household_members.household_members_member_id_fkey
 	CreatedByJournals              bool // journals.journals_created_by_fkey
 	FromMemberLedgerEntries        bool // ledger_entries.ledger_entries_from_member_id_fkey
@@ -739,6 +743,52 @@ func (os MemberSlice) ActorHouseholdEvents(mods ...bob.Mod[*dialect.SelectQuery]
 
 	return HouseholdEvents.Query(append(mods,
 		sm.Where(HouseholdEvents.Columns.ActorID.EQ(PKArgExpr)),
+	)...)
+}
+
+// AcceptedByHouseholdInvitations starts a query for related objects on household_invitations
+func (o *Member) AcceptedByHouseholdInvitations(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdInvitationsQuery {
+	return HouseholdInvitations.Query(append(mods,
+		sm.Where(HouseholdInvitations.Columns.AcceptedBy.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os MemberSlice) AcceptedByHouseholdInvitations(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdInvitationsQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return HouseholdInvitations.Query(append(mods,
+		sm.Where(HouseholdInvitations.Columns.AcceptedBy.EQ(PKArgExpr)),
+	)...)
+}
+
+// CreatedByHouseholdInvitations starts a query for related objects on household_invitations
+func (o *Member) CreatedByHouseholdInvitations(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdInvitationsQuery {
+	return HouseholdInvitations.Query(append(mods,
+		sm.Where(HouseholdInvitations.Columns.CreatedBy.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os MemberSlice) CreatedByHouseholdInvitations(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdInvitationsQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return HouseholdInvitations.Query(append(mods,
+		sm.Where(HouseholdInvitations.Columns.CreatedBy.EQ(PKArgExpr)),
 	)...)
 }
 
@@ -1433,6 +1483,146 @@ func (member0 *Member) AttachActorHouseholdEvents(ctx context.Context, exec bob.
 	for _, rel := range related {
 		rel.R.ActorMember = member0
 		rel.R.Loaded.ActorMember = true
+	}
+
+	return nil
+}
+
+func insertMemberAcceptedByHouseholdInvitations0(ctx context.Context, exec bob.Executor, householdInvitations1 []*HouseholdInvitationSetter, member0 *Member) (HouseholdInvitationSlice, error) {
+	for i := range householdInvitations1 {
+		householdInvitations1[i].AcceptedBy = func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: member0.ID, Valid: true}; return &v }()
+	}
+
+	ret, err := HouseholdInvitations.Insert(bob.ToMods(householdInvitations1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertMemberAcceptedByHouseholdInvitations0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachMemberAcceptedByHouseholdInvitations0(ctx context.Context, exec bob.Executor, count int, householdInvitations1 HouseholdInvitationSlice, member0 *Member) (HouseholdInvitationSlice, error) {
+	setter := &HouseholdInvitationSetter{
+		AcceptedBy: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: member0.ID, Valid: true}; return &v }(),
+	}
+
+	err := householdInvitations1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachMemberAcceptedByHouseholdInvitations0: %w", err)
+	}
+
+	return householdInvitations1, nil
+}
+
+func (member0 *Member) InsertAcceptedByHouseholdInvitations(ctx context.Context, exec bob.Executor, related ...*HouseholdInvitationSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	householdInvitations1, err := insertMemberAcceptedByHouseholdInvitations0(ctx, exec, related, member0)
+	if err != nil {
+		return err
+	}
+
+	member0.R.AcceptedByHouseholdInvitations = append(member0.R.AcceptedByHouseholdInvitations, householdInvitations1...)
+
+	for _, rel := range householdInvitations1 {
+		rel.R.AcceptedByMember = member0
+		rel.R.Loaded.AcceptedByMember = true
+	}
+	return nil
+}
+
+func (member0 *Member) AttachAcceptedByHouseholdInvitations(ctx context.Context, exec bob.Executor, related ...*HouseholdInvitation) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	householdInvitations1 := HouseholdInvitationSlice(related)
+
+	_, err = attachMemberAcceptedByHouseholdInvitations0(ctx, exec, len(related), householdInvitations1, member0)
+	if err != nil {
+		return err
+	}
+
+	member0.R.AcceptedByHouseholdInvitations = append(member0.R.AcceptedByHouseholdInvitations, householdInvitations1...)
+
+	for _, rel := range related {
+		rel.R.AcceptedByMember = member0
+		rel.R.Loaded.AcceptedByMember = true
+	}
+
+	return nil
+}
+
+func insertMemberCreatedByHouseholdInvitations0(ctx context.Context, exec bob.Executor, householdInvitations1 []*HouseholdInvitationSetter, member0 *Member) (HouseholdInvitationSlice, error) {
+	for i := range householdInvitations1 {
+		householdInvitations1[i].CreatedBy = func() *uuid.UUID { return &member0.ID }()
+	}
+
+	ret, err := HouseholdInvitations.Insert(bob.ToMods(householdInvitations1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertMemberCreatedByHouseholdInvitations0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachMemberCreatedByHouseholdInvitations0(ctx context.Context, exec bob.Executor, count int, householdInvitations1 HouseholdInvitationSlice, member0 *Member) (HouseholdInvitationSlice, error) {
+	setter := &HouseholdInvitationSetter{
+		CreatedBy: func() *uuid.UUID { return &member0.ID }(),
+	}
+
+	err := householdInvitations1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachMemberCreatedByHouseholdInvitations0: %w", err)
+	}
+
+	return householdInvitations1, nil
+}
+
+func (member0 *Member) InsertCreatedByHouseholdInvitations(ctx context.Context, exec bob.Executor, related ...*HouseholdInvitationSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	householdInvitations1, err := insertMemberCreatedByHouseholdInvitations0(ctx, exec, related, member0)
+	if err != nil {
+		return err
+	}
+
+	member0.R.CreatedByHouseholdInvitations = append(member0.R.CreatedByHouseholdInvitations, householdInvitations1...)
+
+	for _, rel := range householdInvitations1 {
+		rel.R.CreatedByMember = member0
+		rel.R.Loaded.CreatedByMember = true
+	}
+	return nil
+}
+
+func (member0 *Member) AttachCreatedByHouseholdInvitations(ctx context.Context, exec bob.Executor, related ...*HouseholdInvitation) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	householdInvitations1 := HouseholdInvitationSlice(related)
+
+	_, err = attachMemberCreatedByHouseholdInvitations0(ctx, exec, len(related), householdInvitations1, member0)
+	if err != nil {
+		return err
+	}
+
+	member0.R.CreatedByHouseholdInvitations = append(member0.R.CreatedByHouseholdInvitations, householdInvitations1...)
+
+	for _, rel := range related {
+		rel.R.CreatedByMember = member0
+		rel.R.Loaded.CreatedByMember = true
 	}
 
 	return nil
@@ -2393,6 +2583,34 @@ func (w memberWhereR[Q]) HasActorHouseholdEvents(filters ...bob.Mod[*dialect.Sel
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasAcceptedByHouseholdInvitations filters parents that have a matching AcceptedByHouseholdInvitations using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to HouseholdInvitations).
+func (w memberWhereR[Q]) HasAcceptedByHouseholdInvitations(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(HouseholdInvitations.NameExpr()),
+		sm.Where(HouseholdInvitations.Columns.AcceptedBy.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasCreatedByHouseholdInvitations filters parents that have a matching CreatedByHouseholdInvitations using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to HouseholdInvitations).
+func (w memberWhereR[Q]) HasCreatedByHouseholdInvitations(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(HouseholdInvitations.NameExpr()),
+		sm.Where(HouseholdInvitations.Columns.CreatedBy.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasHouseholdMembers filters parents that have a matching HouseholdMembers using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -2747,6 +2965,38 @@ func (o *Member) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "AcceptedByHouseholdInvitations":
+		rels, ok := retrieved.(HouseholdInvitationSlice)
+		if !ok {
+			return fmt.Errorf("member cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.AcceptedByHouseholdInvitations = rels
+		o.R.Loaded.AcceptedByHouseholdInvitations = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.AcceptedByMember = o
+				rel.R.Loaded.AcceptedByMember = true
+			}
+		}
+		return nil
+	case "CreatedByHouseholdInvitations":
+		rels, ok := retrieved.(HouseholdInvitationSlice)
+		if !ok {
+			return fmt.Errorf("member cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.CreatedByHouseholdInvitations = rels
+		o.R.Loaded.CreatedByHouseholdInvitations = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.CreatedByMember = o
+				rel.R.Loaded.CreatedByMember = true
+			}
+		}
+		return nil
 	case "HouseholdMembers":
 		rels, ok := retrieved.(HouseholdMemberSlice)
 		if !ok {
@@ -2957,6 +3207,8 @@ type memberThenLoader[Q orm.Loadable] struct {
 	FundingObligations             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	FundingSchedules               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ActorHouseholdEvents           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AcceptedByHouseholdInvitations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByHouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	HouseholdMembers               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByJournals              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	FromMemberLedgerEntries        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -2989,6 +3241,12 @@ func buildMemberThenLoader[Q orm.Loadable]() memberThenLoader[Q] {
 	}
 	type ActorHouseholdEventsLoadInterface interface {
 		LoadActorHouseholdEvents(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type AcceptedByHouseholdInvitationsLoadInterface interface {
+		LoadAcceptedByHouseholdInvitations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type CreatedByHouseholdInvitationsLoadInterface interface {
+		LoadCreatedByHouseholdInvitations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type HouseholdMembersLoadInterface interface {
 		LoadHouseholdMembers(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -3062,6 +3320,18 @@ func buildMemberThenLoader[Q orm.Loadable]() memberThenLoader[Q] {
 			"ActorHouseholdEvents",
 			func(ctx context.Context, exec bob.Executor, retrieved ActorHouseholdEventsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadActorHouseholdEvents(ctx, exec, mods...)
+			},
+		),
+		AcceptedByHouseholdInvitations: thenLoadBuilder[Q](
+			"AcceptedByHouseholdInvitations",
+			func(ctx context.Context, exec bob.Executor, retrieved AcceptedByHouseholdInvitationsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadAcceptedByHouseholdInvitations(ctx, exec, mods...)
+			},
+		),
+		CreatedByHouseholdInvitations: thenLoadBuilder[Q](
+			"CreatedByHouseholdInvitations",
+			func(ctx context.Context, exec bob.Executor, retrieved CreatedByHouseholdInvitationsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCreatedByHouseholdInvitations(ctx, exec, mods...)
 			},
 		),
 		HouseholdMembers: thenLoadBuilder[Q](
@@ -3584,6 +3854,158 @@ func (os MemberSlice) LoadActorHouseholdEvents(ctx context.Context, exec bob.Exe
 			rel.R.Loaded.ActorMember = true
 
 			o.R.ActorHouseholdEvents = append(o.R.ActorHouseholdEvents, rel)
+
+		}
+	}
+
+	return nil
+}
+
+// LoadAcceptedByHouseholdInvitations loads the member's AcceptedByHouseholdInvitations into the .R struct
+func (o *Member) LoadAcceptedByHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.AcceptedByHouseholdInvitations = nil
+	o.R.Loaded.AcceptedByHouseholdInvitations = false
+
+	related, err := o.AcceptedByHouseholdInvitations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.AcceptedByMember = o
+		rel.R.Loaded.AcceptedByMember = true
+	}
+
+	o.R.AcceptedByHouseholdInvitations = related
+	o.R.Loaded.AcceptedByHouseholdInvitations = true
+	return nil
+}
+
+// LoadAcceptedByHouseholdInvitations loads the member's AcceptedByHouseholdInvitations into the .R struct
+func (os MemberSlice) LoadAcceptedByHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	householdInvitations, err := os.AcceptedByHouseholdInvitations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.AcceptedByHouseholdInvitations = nil
+		o.R.Loaded.AcceptedByHouseholdInvitations = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	memberByKey := make(map[uuid.UUID][]*Member, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		memberByKey[o.ID] = append(memberByKey[o.ID], o)
+	}
+
+	for _, rel := range householdInvitations {
+
+		if !rel.AcceptedBy.Valid {
+			continue
+		}
+
+		owners, ok := memberByKey[rel.AcceptedBy.V]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			rel.R.AcceptedByMember = o
+			rel.R.Loaded.AcceptedByMember = true
+
+			o.R.AcceptedByHouseholdInvitations = append(o.R.AcceptedByHouseholdInvitations, rel)
+
+		}
+	}
+
+	return nil
+}
+
+// LoadCreatedByHouseholdInvitations loads the member's CreatedByHouseholdInvitations into the .R struct
+func (o *Member) LoadCreatedByHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.CreatedByHouseholdInvitations = nil
+	o.R.Loaded.CreatedByHouseholdInvitations = false
+
+	related, err := o.CreatedByHouseholdInvitations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.CreatedByMember = o
+		rel.R.Loaded.CreatedByMember = true
+	}
+
+	o.R.CreatedByHouseholdInvitations = related
+	o.R.Loaded.CreatedByHouseholdInvitations = true
+	return nil
+}
+
+// LoadCreatedByHouseholdInvitations loads the member's CreatedByHouseholdInvitations into the .R struct
+func (os MemberSlice) LoadCreatedByHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	householdInvitations, err := os.CreatedByHouseholdInvitations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.CreatedByHouseholdInvitations = nil
+		o.R.Loaded.CreatedByHouseholdInvitations = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	memberByKey := make(map[uuid.UUID][]*Member, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		memberByKey[o.ID] = append(memberByKey[o.ID], o)
+	}
+
+	for _, rel := range householdInvitations {
+
+		owners, ok := memberByKey[rel.CreatedBy]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			rel.R.CreatedByMember = o
+			rel.R.Loaded.CreatedByMember = true
+
+			o.R.CreatedByHouseholdInvitations = append(o.R.CreatedByHouseholdInvitations, rel)
 
 		}
 	}
@@ -4495,6 +4917,8 @@ type memberC struct {
 	FundingObligations             *int64
 	FundingSchedules               *int64
 	ActorHouseholdEvents           *int64
+	AcceptedByHouseholdInvitations *int64
+	CreatedByHouseholdInvitations  *int64
 	HouseholdMembers               *int64
 	CreatedByJournals              *int64
 	FromMemberLedgerEntries        *int64
@@ -4528,6 +4952,10 @@ func (o *Member) PreloadCount(name string, count int64) error {
 		o.C.FundingSchedules = &count
 	case "ActorHouseholdEvents":
 		o.C.ActorHouseholdEvents = &count
+	case "AcceptedByHouseholdInvitations":
+		o.C.AcceptedByHouseholdInvitations = &count
+	case "CreatedByHouseholdInvitations":
+		o.C.CreatedByHouseholdInvitations = &count
 	case "HouseholdMembers":
 		o.C.HouseholdMembers = &count
 	case "CreatedByJournals":
@@ -4563,6 +4991,8 @@ type memberCountPreloader struct {
 	FundingObligations             func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	FundingSchedules               func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	ActorHouseholdEvents           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AcceptedByHouseholdInvitations func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedByHouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	HouseholdMembers               func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	CreatedByJournals              func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	FromMemberLedgerEntries        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
@@ -4676,6 +5106,40 @@ func buildMemberCountPreloader() memberCountPreloader {
 
 					sm.From(HouseholdEvents.NameAsExpr()),
 					sm.Where(psql.Quote(HouseholdEvents.Alias(), "actor_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+		AcceptedByHouseholdInvitations: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Member]("AcceptedByHouseholdInvitations", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Members.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(HouseholdInvitations.NameAsExpr()),
+					sm.Where(psql.Quote(HouseholdInvitations.Alias(), "accepted_by").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+		CreatedByHouseholdInvitations: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Member]("CreatedByHouseholdInvitations", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Members.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(HouseholdInvitations.NameAsExpr()),
+					sm.Where(psql.Quote(HouseholdInvitations.Alias(), "created_by").EQ(psql.Quote(parent, "id"))),
 				}
 				subqueryMods = append(subqueryMods, mods...)
 				return psql.Group(psql.Select(subqueryMods...).Expression)
@@ -4895,6 +5359,8 @@ type memberCountThenLoader[Q orm.Loadable] struct {
 	FundingObligations             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	FundingSchedules               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ActorHouseholdEvents           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AcceptedByHouseholdInvitations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByHouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	HouseholdMembers               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByJournals              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	FromMemberLedgerEntries        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -4927,6 +5393,12 @@ func buildMemberCountThenLoader[Q orm.Loadable]() memberCountThenLoader[Q] {
 	}
 	type ActorHouseholdEventsCountInterface interface {
 		LoadCountActorHouseholdEvents(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type AcceptedByHouseholdInvitationsCountInterface interface {
+		LoadCountAcceptedByHouseholdInvitations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type CreatedByHouseholdInvitationsCountInterface interface {
+		LoadCountCreatedByHouseholdInvitations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type HouseholdMembersCountInterface interface {
 		LoadCountHouseholdMembers(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -5000,6 +5472,18 @@ func buildMemberCountThenLoader[Q orm.Loadable]() memberCountThenLoader[Q] {
 			"ActorHouseholdEvents",
 			func(ctx context.Context, exec bob.Executor, retrieved ActorHouseholdEventsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountActorHouseholdEvents(ctx, exec, mods...)
+			},
+		),
+		AcceptedByHouseholdInvitations: countThenLoadBuilder[Q](
+			"AcceptedByHouseholdInvitations",
+			func(ctx context.Context, exec bob.Executor, retrieved AcceptedByHouseholdInvitationsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountAcceptedByHouseholdInvitations(ctx, exec, mods...)
+			},
+		),
+		CreatedByHouseholdInvitations: countThenLoadBuilder[Q](
+			"CreatedByHouseholdInvitations",
+			func(ctx context.Context, exec bob.Executor, retrieved CreatedByHouseholdInvitationsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountCreatedByHouseholdInvitations(ctx, exec, mods...)
 			},
 		),
 		HouseholdMembers: countThenLoadBuilder[Q](
@@ -5546,6 +6030,164 @@ func (os MemberSlice) LoadCountActorHouseholdEvents(ctx context.Context, exec bo
 		}
 		count := countMap[o.ID]
 		o.C.ActorHouseholdEvents = &count
+	}
+
+	return nil
+}
+
+// LoadCountAcceptedByHouseholdInvitations loads the count of AcceptedByHouseholdInvitations into the C struct
+func (o *Member) LoadCountAcceptedByHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.AcceptedByHouseholdInvitations(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.AcceptedByHouseholdInvitations = &count
+	return nil
+}
+
+// LoadCountAcceptedByHouseholdInvitations loads the count of AcceptedByHouseholdInvitations for a slice in a single batch query
+func (os MemberSlice) LoadCountAcceptedByHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			HouseholdInvitations.Columns.AcceptedBy.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(HouseholdInvitations.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.Where(HouseholdInvitations.Columns.AcceptedBy.EQ(PKArgExpr)),
+		// GROUP BY fk columns
+		sm.GroupBy(HouseholdInvitations.Columns.AcceptedBy),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Single-column FK: direct map lookup
+	countMap := make(map[uuid.UUID]int64, len(results))
+	for _, r := range results {
+		countMap[r.ID] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[o.ID]
+		o.C.AcceptedByHouseholdInvitations = &count
+	}
+
+	return nil
+}
+
+// LoadCountCreatedByHouseholdInvitations loads the count of CreatedByHouseholdInvitations into the C struct
+func (o *Member) LoadCountCreatedByHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.CreatedByHouseholdInvitations(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.CreatedByHouseholdInvitations = &count
+	return nil
+}
+
+// LoadCountCreatedByHouseholdInvitations loads the count of CreatedByHouseholdInvitations for a slice in a single batch query
+func (os MemberSlice) LoadCountCreatedByHouseholdInvitations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			HouseholdInvitations.Columns.CreatedBy.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(HouseholdInvitations.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.Where(HouseholdInvitations.Columns.CreatedBy.EQ(PKArgExpr)),
+		// GROUP BY fk columns
+		sm.GroupBy(HouseholdInvitations.Columns.CreatedBy),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Single-column FK: direct map lookup
+	countMap := make(map[uuid.UUID]int64, len(results))
+	for _, r := range results {
+		countMap[r.ID] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[o.ID]
+		o.C.CreatedByHouseholdInvitations = &count
 	}
 
 	return nil
@@ -6507,6 +7149,8 @@ type memberJoins[Q dialect.Joinable] struct {
 	FundingObligations             modAs[Q, fundingObligationColumns]
 	FundingSchedules               modAs[Q, fundingScheduleColumns]
 	ActorHouseholdEvents           modAs[Q, householdEventColumns]
+	AcceptedByHouseholdInvitations modAs[Q, householdInvitationColumns]
+	CreatedByHouseholdInvitations  modAs[Q, householdInvitationColumns]
 	HouseholdMembers               modAs[Q, householdMemberColumns]
 	CreatedByJournals              modAs[Q, journalColumns]
 	FromMemberLedgerEntries        modAs[Q, ledgerEntryColumns]
@@ -6606,6 +7250,34 @@ func buildMemberJoins[Q dialect.Joinable](cols memberColumns, typ string) member
 				{
 					mods = append(mods, dialect.Join[Q](typ, HouseholdEvents.NameExpr().As(to.Alias())).On(
 						to.ActorID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		AcceptedByHouseholdInvitations: modAs[Q, householdInvitationColumns]{
+			c: HouseholdInvitations.Columns,
+			f: func(to householdInvitationColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, HouseholdInvitations.NameExpr().As(to.Alias())).On(
+						to.AcceptedBy.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		CreatedByHouseholdInvitations: modAs[Q, householdInvitationColumns]{
+			c: HouseholdInvitations.Columns,
+			f: func(to householdInvitationColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, HouseholdInvitations.NameExpr().As(to.Alias())).On(
+						to.CreatedBy.EQ(cols.ID),
 					))
 				}
 

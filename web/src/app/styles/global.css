@@ -636,6 +636,50 @@ a {
   text-align: left;
 }
 
+.sync-status-pill {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid #e6ece7;
+  border-radius: 9px;
+  background: #fff;
+  color: #64776b;
+  font-size: 9px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sync-status-pill.sync-status-error {
+  border-color: #efd7d1;
+  color: #a96252;
+}
+
+.database-upgrade-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 24px 0;
+  padding: 10px 14px;
+  border: 1px solid #efd7d1;
+  border-radius: 9px;
+  background: #fffaf8;
+  color: #8d574b;
+  font-size: 11px;
+}
+
+.database-upgrade-notice button {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .search-pill kbd,
 .entry-input-wrap kbd,
 .entry-hint kbd {
@@ -1113,6 +1157,60 @@ a {
   grid-template-columns: 1.2fr 1fr 1.15fr;
   gap: 14px;
   margin-bottom: 14px;
+}
+
+.purchase-outbox {
+  margin-top: 14px;
+  padding: 16px 19px;
+}
+
+.purchase-outbox .panel-heading {
+  margin-bottom: 7px;
+}
+
+.purchase-outbox .panel-heading h2 {
+  margin: 2px 0 0;
+  font-size: 14px;
+}
+
+.purchase-outbox-row {
+  min-height: 55px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #eff2ef;
+}
+
+.purchase-outbox-row > div:first-child {
+  min-width: 0;
+}
+
+.purchase-outbox-row b,
+.purchase-outbox-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.purchase-outbox-row b {
+  font-size: 10px;
+  color: #53675a;
+}
+
+.purchase-outbox-row small {
+  margin-top: 4px;
+  color: #89968d;
+  font-size: 9px;
+}
+
+.purchase-outbox-row .purchase-outbox-error {
+  color: #a96252;
+}
+
+.purchase-outbox-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
 }
 
 .field-group {
@@ -2567,6 +2665,12 @@ a {
     padding: 0 14px;
   }
 
+  .database-upgrade-notice {
+    margin: 8px 12px 0;
+    padding: 9px 11px;
+    font-size: 10px;
+  }
+
   .topbar-actions {
     gap: 5px;
   }
@@ -2582,6 +2686,13 @@ a {
   .search-pill span,
   .search-pill kbd {
     display: none;
+  }
+
+  .sync-status-pill {
+    min-height: 30px;
+    gap: 4px;
+    padding: 0 6px;
+    font-size: 8px;
   }
 
   .help-button {

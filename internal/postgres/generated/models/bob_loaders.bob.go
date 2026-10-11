@@ -30,6 +30,7 @@ type preloaders struct {
 	FundingObligation    fundingObligationPreloader
 	FundingSchedule      fundingSchedulePreloader
 	HouseholdEvent       householdEventPreloader
+	HouseholdInvitation  householdInvitationPreloader
 	HouseholdMember      householdMemberPreloader
 	Household            householdPreloader
 	IdempotencyKey       idempotencyKeyPreloader
@@ -67,6 +68,7 @@ func getPreloaders() preloaders {
 		FundingObligation:    buildFundingObligationPreloader(),
 		FundingSchedule:      buildFundingSchedulePreloader(),
 		HouseholdEvent:       buildHouseholdEventPreloader(),
+		HouseholdInvitation:  buildHouseholdInvitationPreloader(),
 		HouseholdMember:      buildHouseholdMemberPreloader(),
 		Household:            buildHouseholdPreloader(),
 		IdempotencyKey:       buildIdempotencyKeyPreloader(),
@@ -110,6 +112,7 @@ type thenLoaders[Q orm.Loadable] struct {
 	FundingObligation    fundingObligationThenLoader[Q]
 	FundingSchedule      fundingScheduleThenLoader[Q]
 	HouseholdEvent       householdEventThenLoader[Q]
+	HouseholdInvitation  householdInvitationThenLoader[Q]
 	HouseholdMember      householdMemberThenLoader[Q]
 	Household            householdThenLoader[Q]
 	IdempotencyKey       idempotencyKeyThenLoader[Q]
@@ -147,6 +150,7 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		FundingObligation:    buildFundingObligationThenLoader[Q](),
 		FundingSchedule:      buildFundingScheduleThenLoader[Q](),
 		HouseholdEvent:       buildHouseholdEventThenLoader[Q](),
+		HouseholdInvitation:  buildHouseholdInvitationThenLoader[Q](),
 		HouseholdMember:      buildHouseholdMemberThenLoader[Q](),
 		Household:            buildHouseholdThenLoader[Q](),
 		IdempotencyKey:       buildIdempotencyKeyThenLoader[Q](),

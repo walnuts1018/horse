@@ -16,6 +16,21 @@ func (r *mutationResolver) CreateHousehold(ctx context.Context, input model.Crea
 	return r.createHousehold(ctx, input)
 }
 
+// CreateHouseholdInvitation is the resolver for the createHouseholdInvitation field.
+func (r *mutationResolver) CreateHouseholdInvitation(ctx context.Context, input model.CreateHouseholdInvitationInput) (*model.CreatedHouseholdInvitation, error) {
+	return r.createHouseholdInvitation(ctx, input)
+}
+
+// RevokeHouseholdInvitation is the resolver for the revokeHouseholdInvitation field.
+func (r *mutationResolver) RevokeHouseholdInvitation(ctx context.Context, householdID string, invitationID string) (*model.HouseholdInvitation, error) {
+	return r.revokeHouseholdInvitation(ctx, householdID, invitationID)
+}
+
+// AcceptHouseholdInvitation is the resolver for the acceptHouseholdInvitation field.
+func (r *mutationResolver) AcceptHouseholdInvitation(ctx context.Context, token string) (*model.Household, error) {
+	return r.acceptHouseholdInvitation(ctx, token)
+}
+
 // CreatePool is the resolver for the createPool field.
 func (r *mutationResolver) CreatePool(ctx context.Context, input model.CreatePoolInput) (*model.Pool, error) {
 	return r.createPool(ctx, input)
@@ -119,6 +134,11 @@ func (r *queryResolver) Households(ctx context.Context) ([]*model.Household, err
 // Household is the resolver for the household field.
 func (r *queryResolver) Household(ctx context.Context, id string) (*model.Household, error) {
 	return r.household(ctx, id)
+}
+
+// HouseholdInvitations is the resolver for the householdInvitations field.
+func (r *queryResolver) HouseholdInvitations(ctx context.Context, householdID string) ([]*model.HouseholdInvitation, error) {
+	return r.householdInvitations(ctx, householdID)
 }
 
 // AllocationRules is the resolver for the allocationRules field.

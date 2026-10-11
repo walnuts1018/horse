@@ -69,6 +69,11 @@ type ComplexityRoot struct {
 		ParentID func(childComplexity int) int
 	}
 
+	CreatedHouseholdInvitation struct {
+		Invitation func(childComplexity int) int
+		Token      func(childComplexity int) int
+	}
+
 	Household struct {
 		Accounts          func(childComplexity int) int
 		Categories        func(childComplexity int) int
@@ -80,6 +85,16 @@ type ComplexityRoot struct {
 		Pools             func(childComplexity int) int
 		Revision          func(childComplexity int) int
 		UpdatedAt         func(childComplexity int) int
+	}
+
+	HouseholdInvitation struct {
+		AcceptedAt  func(childComplexity int) int
+		CreatedAt   func(childComplexity int) int
+		ExpiresAt   func(childComplexity int) int
+		HouseholdID func(childComplexity int) int
+		ID          func(childComplexity int) int
+		RevokedAt   func(childComplexity int) int
+		Role        func(childComplexity int) int
 	}
 
 	LedgerConnection struct {
@@ -121,25 +136,28 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		ClosePeriod          func(childComplexity int, input model.ClosePeriodInput) int
-		CorrectPurchase      func(childComplexity int, input model.CorrectPurchaseInput) int
-		CreateAccount        func(childComplexity int, input model.CreateAccountInput) int
-		CreateCategory       func(childComplexity int, input model.CreateCategoryInput) int
-		CreateHousehold      func(childComplexity int, input model.CreateHouseholdInput) int
-		CreatePool           func(childComplexity int, input model.CreatePoolInput) int
-		CreateProductConcept func(childComplexity int, input model.CreateProductConceptInput) int
-		CreateProductVariant func(childComplexity int, input model.CreateProductVariantInput) int
-		CreatePurchase       func(childComplexity int, input model.CreatePurchaseInput) int
-		PostPurchase         func(childComplexity int, purchaseID string, expectedRevision int, idempotencyKey string) int
-		RecordFunding        func(childComplexity int, input model.RecordFundingInput) int
-		RecordTransfer       func(childComplexity int, input model.RecordTransferInput) int
-		SetAllocationRule    func(childComplexity int, input model.SetAllocationRuleInput) int
-		SetCategoryArchived  func(childComplexity int, categoryID string, archived bool) int
-		SetDefaultAllocation func(childComplexity int, input model.SetDefaultAllocationInput) int
-		SetFundingSchedule   func(childComplexity int, input model.SetFundingScheduleInput) int
-		SetProductAlias      func(childComplexity int, input model.SetProductAliasInput) int
-		UpdatePurchase       func(childComplexity int, input model.UpdatePurchaseInput) int
-		UpdatePurchaseItem   func(childComplexity int, input model.UpdatePurchaseItemInput) int
+		AcceptHouseholdInvitation func(childComplexity int, token string) int
+		ClosePeriod               func(childComplexity int, input model.ClosePeriodInput) int
+		CorrectPurchase           func(childComplexity int, input model.CorrectPurchaseInput) int
+		CreateAccount             func(childComplexity int, input model.CreateAccountInput) int
+		CreateCategory            func(childComplexity int, input model.CreateCategoryInput) int
+		CreateHousehold           func(childComplexity int, input model.CreateHouseholdInput) int
+		CreateHouseholdInvitation func(childComplexity int, input model.CreateHouseholdInvitationInput) int
+		CreatePool                func(childComplexity int, input model.CreatePoolInput) int
+		CreateProductConcept      func(childComplexity int, input model.CreateProductConceptInput) int
+		CreateProductVariant      func(childComplexity int, input model.CreateProductVariantInput) int
+		CreatePurchase            func(childComplexity int, input model.CreatePurchaseInput) int
+		PostPurchase              func(childComplexity int, purchaseID string, expectedRevision int, idempotencyKey string) int
+		RecordFunding             func(childComplexity int, input model.RecordFundingInput) int
+		RecordTransfer            func(childComplexity int, input model.RecordTransferInput) int
+		RevokeHouseholdInvitation func(childComplexity int, householdID string, invitationID string) int
+		SetAllocationRule         func(childComplexity int, input model.SetAllocationRuleInput) int
+		SetCategoryArchived       func(childComplexity int, categoryID string, archived bool) int
+		SetDefaultAllocation      func(childComplexity int, input model.SetDefaultAllocationInput) int
+		SetFundingSchedule        func(childComplexity int, input model.SetFundingScheduleInput) int
+		SetProductAlias           func(childComplexity int, input model.SetProductAliasInput) int
+		UpdatePurchase            func(childComplexity int, input model.UpdatePurchaseInput) int
+		UpdatePurchaseItem        func(childComplexity int, input model.UpdatePurchaseItemInput) int
 	}
 
 	PageInfo struct {
@@ -237,6 +255,7 @@ type ComplexityRoot struct {
 	Query struct {
 		AllocationRules         func(childComplexity int, householdID string) int
 		Household               func(childComplexity int, id string) int
+		HouseholdInvitations    func(childComplexity int, householdID string) int
 		Households              func(childComplexity int) int
 		Ledger                  func(childComplexity int, householdID string, after *string, first *int) int
 		MonthlyCategorySpending func(childComplexity int, householdID string, from string, to string) int
@@ -279,6 +298,9 @@ type ComplexityRoot struct {
 
 type MutationResolver interface {
 	CreateHousehold(ctx context.Context, input model.CreateHouseholdInput) (*model.Household, error)
+	CreateHouseholdInvitation(ctx context.Context, input model.CreateHouseholdInvitationInput) (*model.CreatedHouseholdInvitation, error)
+	RevokeHouseholdInvitation(ctx context.Context, householdID string, invitationID string) (*model.HouseholdInvitation, error)
+	AcceptHouseholdInvitation(ctx context.Context, token string) (*model.Household, error)
 	CreatePool(ctx context.Context, input model.CreatePoolInput) (*model.Pool, error)
 	CreateAccount(ctx context.Context, input model.CreateAccountInput) (*model.Account, error)
 	CreateCategory(ctx context.Context, input model.CreateCategoryInput) (*model.Category, error)
@@ -302,6 +324,7 @@ type QueryResolver interface {
 	Viewer(ctx context.Context) (*model.Viewer, error)
 	Households(ctx context.Context) ([]*model.Household, error)
 	Household(ctx context.Context, id string) (*model.Household, error)
+	HouseholdInvitations(ctx context.Context, householdID string) ([]*model.HouseholdInvitation, error)
 	AllocationRules(ctx context.Context, householdID string) ([]*model.AllocationRule, error)
 	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first *int) ([]*model.ProductSuggestion, error)
 	ProductCatalog(ctx context.Context, householdID string) ([]*model.ProductConcept, error)
@@ -459,6 +482,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Category.ParentID(childComplexity), true
 
+	case "CreatedHouseholdInvitation.invitation":
+		if e.ComplexityRoot.CreatedHouseholdInvitation.Invitation == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreatedHouseholdInvitation.Invitation(childComplexity), true
+	case "CreatedHouseholdInvitation.token":
+		if e.ComplexityRoot.CreatedHouseholdInvitation.Token == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreatedHouseholdInvitation.Token(childComplexity), true
+
 	case "Household.accounts":
 		if e.ComplexityRoot.Household.Accounts == nil {
 			break
@@ -519,6 +555,49 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Household.UpdatedAt(childComplexity), true
+
+	case "HouseholdInvitation.acceptedAt":
+		if e.ComplexityRoot.HouseholdInvitation.AcceptedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitation.AcceptedAt(childComplexity), true
+	case "HouseholdInvitation.createdAt":
+		if e.ComplexityRoot.HouseholdInvitation.CreatedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitation.CreatedAt(childComplexity), true
+	case "HouseholdInvitation.expiresAt":
+		if e.ComplexityRoot.HouseholdInvitation.ExpiresAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitation.ExpiresAt(childComplexity), true
+	case "HouseholdInvitation.householdId":
+		if e.ComplexityRoot.HouseholdInvitation.HouseholdID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitation.HouseholdID(childComplexity), true
+	case "HouseholdInvitation.id":
+		if e.ComplexityRoot.HouseholdInvitation.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitation.ID(childComplexity), true
+	case "HouseholdInvitation.revokedAt":
+		if e.ComplexityRoot.HouseholdInvitation.RevokedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitation.RevokedAt(childComplexity), true
+	case "HouseholdInvitation.role":
+		if e.ComplexityRoot.HouseholdInvitation.Role == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitation.Role(childComplexity), true
 
 	case "LedgerConnection.edges":
 		if e.ComplexityRoot.LedgerConnection.Edges == nil {
@@ -663,6 +742,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.MonthlyCategorySpending.Period(childComplexity), true
 
+	case "Mutation.acceptHouseholdInvitation":
+		if e.ComplexityRoot.Mutation.AcceptHouseholdInvitation == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_acceptHouseholdInvitation_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.AcceptHouseholdInvitation(childComplexity, args["token"].(string)), true
 	case "Mutation.closePeriod":
 		if e.ComplexityRoot.Mutation.ClosePeriod == nil {
 			break
@@ -718,6 +808,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.CreateHousehold(childComplexity, args["input"].(model.CreateHouseholdInput)), true
+	case "Mutation.createHouseholdInvitation":
+		if e.ComplexityRoot.Mutation.CreateHouseholdInvitation == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createHouseholdInvitation_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.CreateHouseholdInvitation(childComplexity, args["input"].(model.CreateHouseholdInvitationInput)), true
 	case "Mutation.createPool":
 		if e.ComplexityRoot.Mutation.CreatePool == nil {
 			break
@@ -795,6 +896,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RecordTransfer(childComplexity, args["input"].(model.RecordTransferInput)), true
+	case "Mutation.revokeHouseholdInvitation":
+		if e.ComplexityRoot.Mutation.RevokeHouseholdInvitation == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_revokeHouseholdInvitation_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.RevokeHouseholdInvitation(childComplexity, args["householdId"].(string), args["invitationId"].(string)), true
 	case "Mutation.setAllocationRule":
 		if e.ComplexityRoot.Mutation.SetAllocationRule == nil {
 			break
@@ -1277,6 +1389,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Household(childComplexity, args["id"].(string)), true
+	case "Query.householdInvitations":
+		if e.ComplexityRoot.Query.HouseholdInvitations == nil {
+			break
+		}
+
+		args, err := ec.field_Query_householdInvitations_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.HouseholdInvitations(childComplexity, args["householdId"].(string)), true
 	case "Query.households":
 		if e.ComplexityRoot.Query.Households == nil {
 			break
@@ -1470,6 +1593,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputCreateAccountInput,
 		ec.unmarshalInputCreateCategoryInput,
 		ec.unmarshalInputCreateHouseholdInput,
+		ec.unmarshalInputCreateHouseholdInvitationInput,
 		ec.unmarshalInputCreatePoolInput,
 		ec.unmarshalInputCreateProductConceptInput,
 		ec.unmarshalInputCreateProductVariantInput,
@@ -1572,6 +1696,8 @@ enum ProductLearningScope { ITEM_ONLY VARIANT_NAME MERCHANT_ALIAS }
 type Viewer { id: ID!, subject: String!, displayName: String!, households: [Household!]! }
 type Household { id: ID!, name: String!, revision: Int!, members: [Member!]!, pools: [Pool!]!, accounts: [Account!]!, categories: [Category!]!, defaultAllocation: [Allocation!]!, createdAt: String!, updatedAt: String! }
 type Member { id: ID!, displayName: String!, role: String! }
+type HouseholdInvitation { id: ID!, householdId: ID!, role: String!, expiresAt: String!, createdAt: String!, revokedAt: String, acceptedAt: String }
+type CreatedHouseholdInvitation { invitation: HouseholdInvitation!, token: String! }
 type Pool { id: ID!, name: String!, kind: PoolKind!, defaultShareWeight: Long! }
 type Account { id: ID!, name: String!, kind: AccountKind!, poolId: ID }
 type Category { id: ID!, name: String!, parentId: ID, archived: Boolean! }
@@ -1602,6 +1728,7 @@ input CreateProductConceptInput { householdId: ID!, name: String!, categoryId: I
 input CreateProductVariantInput { householdId: ID!, conceptId: ID!, name: String!, brand: String, packageSize: String, barcode: String }
 input SetProductAliasInput { householdId: ID!, variantId: ID!, merchant: String!, alias: String! }
 input CreateHouseholdInput { name: String!, memberNames: [String!]! }
+input CreateHouseholdInvitationInput { householdId: ID!, expiresAt: String! }
 input CreatePoolInput { householdId: ID!, name: String!, kind: PoolKind! }
 input CreateAccountInput { householdId: ID!, name: String!, kind: AccountKind!, poolId: ID }
 input CreateCategoryInput { householdId: ID!, name: String!, parentId: ID }
@@ -1617,6 +1744,7 @@ type Query {
   viewer: Viewer!
   households: [Household!]!
   household(id: ID!): Household!
+  householdInvitations(householdId: ID!): [HouseholdInvitation!]!
   allocationRules(householdId: ID!): [AllocationRule!]!
   productSuggestions(householdId: ID!, query: String!, merchant: String, first: Int = 8): [ProductSuggestion!]!
   productCatalog(householdId: ID!): [ProductConcept!]!
@@ -1627,6 +1755,9 @@ type Query {
 }
 type Mutation {
   createHousehold(input: CreateHouseholdInput!): Household!
+  createHouseholdInvitation(input: CreateHouseholdInvitationInput!): CreatedHouseholdInvitation!
+  revokeHouseholdInvitation(householdId: ID!, invitationId: ID!): HouseholdInvitation!
+  acceptHouseholdInvitation(token: String!): Household!
   createPool(input: CreatePoolInput!): Pool!
   createAccount(input: CreateAccountInput!): Account!
   createCategory(input: CreateCategoryInput!): Category!
@@ -1720,6 +1851,16 @@ func (ec *executionContext) childFields_Category(ctx context.Context, field grap
 	return nil, fmt.Errorf("no field named %q was found under type Category", field.Name)
 }
 
+func (ec *executionContext) childFields_CreatedHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "invitation":
+		return ec.fieldContext_CreatedHouseholdInvitation_invitation(ctx, field)
+	case "token":
+		return ec.fieldContext_CreatedHouseholdInvitation_token(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type CreatedHouseholdInvitation", field.Name)
+}
+
 func (ec *executionContext) childFields_Household(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "id":
@@ -1744,6 +1885,26 @@ func (ec *executionContext) childFields_Household(ctx context.Context, field gra
 		return ec.fieldContext_Household_updatedAt(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Household", field.Name)
+}
+
+func (ec *executionContext) childFields_HouseholdInvitation(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "id":
+		return ec.fieldContext_HouseholdInvitation_id(ctx, field)
+	case "householdId":
+		return ec.fieldContext_HouseholdInvitation_householdId(ctx, field)
+	case "role":
+		return ec.fieldContext_HouseholdInvitation_role(ctx, field)
+	case "expiresAt":
+		return ec.fieldContext_HouseholdInvitation_expiresAt(ctx, field)
+	case "createdAt":
+		return ec.fieldContext_HouseholdInvitation_createdAt(ctx, field)
+	case "revokedAt":
+		return ec.fieldContext_HouseholdInvitation_revokedAt(ctx, field)
+	case "acceptedAt":
+		return ec.fieldContext_HouseholdInvitation_acceptedAt(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type HouseholdInvitation", field.Name)
 }
 
 func (ec *executionContext) childFields_LedgerConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -2172,6 +2333,20 @@ func (ec *executionContext) childFields___Type(ctx context.Context, field graphq
 
 // region    ***************************** args.gotpl *****************************
 
+func (ec *executionContext) field_Mutation_acceptHouseholdInvitation_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "token",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["token"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_closePeriod_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2220,6 +2395,20 @@ func (ec *executionContext) field_Mutation_createCategory_args(ctx context.Conte
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.CreateCategoryInput, error) {
 			return ec.unmarshalNCreateCategoryInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateCategoryInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_createHouseholdInvitation_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.CreateHouseholdInvitationInput, error) {
+			return ec.unmarshalNCreateHouseholdInvitationInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateHouseholdInvitationInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -2356,6 +2545,28 @@ func (ec *executionContext) field_Mutation_recordTransfer_args(ctx context.Conte
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_revokeHouseholdInvitation_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "householdId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "invitationId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["invitationId"] = arg1
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_setAllocationRule_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2477,6 +2688,20 @@ func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs
 }
 
 func (ec *executionContext) field_Query_allocationRules_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "householdId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_householdInvitations_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "householdId",
@@ -3236,6 +3461,61 @@ func (ec *executionContext) fieldContext_Category_archived(_ context.Context, fi
 	return graphql.NewScalarFieldContext("Category", field, false, false, errors.New("field of type Boolean does not have child fields"))
 }
 
+func (ec *executionContext) _CreatedHouseholdInvitation_invitation(ctx context.Context, field graphql.CollectedField, obj *model.CreatedHouseholdInvitation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreatedHouseholdInvitation_invitation(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Invitation, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.HouseholdInvitation) graphql.Marshaler {
+			return ec.marshalNHouseholdInvitation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitation(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreatedHouseholdInvitation_invitation(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CreatedHouseholdInvitation",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HouseholdInvitation(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CreatedHouseholdInvitation_token(ctx context.Context, field graphql.CollectedField, obj *model.CreatedHouseholdInvitation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreatedHouseholdInvitation_token(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Token, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreatedHouseholdInvitation_token(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreatedHouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _Household_id(ctx context.Context, field graphql.CollectedField, obj *model.Household) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3509,6 +3789,167 @@ func (ec *executionContext) _Household_updatedAt(ctx context.Context, field grap
 }
 func (ec *executionContext) fieldContext_Household_updatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Household", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdInvitation_id(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitation_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitation_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdInvitation_householdId(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitation_householdId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.HouseholdID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitation_householdId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdInvitation_role(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitation_role(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Role, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitation_role(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdInvitation_expiresAt(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitation_expiresAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ExpiresAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitation_expiresAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdInvitation_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitation_createdAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitation_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdInvitation_revokedAt(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitation_revokedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RevokedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitation_revokedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdInvitation_acceptedAt(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitation_acceptedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AcceptedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitation_acceptedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _LedgerConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.LedgerConnection) (ret graphql.Marshaler) {
@@ -4105,6 +4546,138 @@ func (ec *executionContext) fieldContext_Mutation_createHousehold(ctx context.Co
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_createHousehold_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createHouseholdInvitation(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateHouseholdInvitation(ctx, fc.Args["input"].(model.CreateHouseholdInvitationInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.CreatedHouseholdInvitation) graphql.Marshaler {
+			return ec.marshalNCreatedHouseholdInvitation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatedHouseholdInvitation(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_CreatedHouseholdInvitation(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createHouseholdInvitation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_revokeHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_revokeHouseholdInvitation(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().RevokeHouseholdInvitation(ctx, fc.Args["householdId"].(string), fc.Args["invitationId"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.HouseholdInvitation) graphql.Marshaler {
+			return ec.marshalNHouseholdInvitation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitation(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_revokeHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HouseholdInvitation(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_revokeHouseholdInvitation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_acceptHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_acceptHouseholdInvitation(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().AcceptHouseholdInvitation(ctx, fc.Args["token"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Household) graphql.Marshaler {
+			return ec.marshalNHousehold2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHousehold(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_acceptHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Household(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_acceptHouseholdInvitation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -6527,6 +7100,50 @@ func (ec *executionContext) fieldContext_Query_household(ctx context.Context, fi
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_householdInvitations(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_householdInvitations(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().HouseholdInvitations(ctx, fc.Args["householdId"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.HouseholdInvitation) graphql.Marshaler {
+			return ec.marshalNHouseholdInvitation2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_householdInvitations(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HouseholdInvitation(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_householdInvitations_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_allocationRules(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -8641,6 +9258,43 @@ func (ec *executionContext) unmarshalInputCreateHouseholdInput(ctx context.Conte
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputCreateHouseholdInvitationInput(ctx context.Context, obj any) (model.CreateHouseholdInvitationInput, error) {
+	var it model.CreateHouseholdInvitationInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId", "expiresAt"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.HouseholdID = data
+		case "expiresAt":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("expiresAt"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ExpiresAt = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputCreatePoolInput(ctx context.Context, obj any) (model.CreatePoolInput, error) {
 	var it model.CreatePoolInput
 	if obj == nil {
@@ -9751,6 +10405,49 @@ func (ec *executionContext) _Category(ctx context.Context, sel ast.SelectionSet,
 	return out
 }
 
+var createdHouseholdInvitationImplementors = []string{"CreatedHouseholdInvitation"}
+
+func (ec *executionContext) _CreatedHouseholdInvitation(ctx context.Context, sel ast.SelectionSet, obj *model.CreatedHouseholdInvitation) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createdHouseholdInvitationImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreatedHouseholdInvitation")
+		case "invitation":
+			out.Values[i] = ec._CreatedHouseholdInvitation_invitation(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "token":
+			out.Values[i] = ec._CreatedHouseholdInvitation_token(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var householdImplementors = []string{"Household"}
 
 func (ec *executionContext) _Household(ctx context.Context, sel ast.SelectionSet, obj *model.Household) graphql.Marshaler {
@@ -9811,6 +10508,74 @@ func (ec *executionContext) _Household(ctx context.Context, sel ast.SelectionSet
 		case "updatedAt":
 			out.Values[i] = ec._Household_updatedAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var householdInvitationImplementors = []string{"HouseholdInvitation"}
+
+func (ec *executionContext) _HouseholdInvitation(ctx context.Context, sel ast.SelectionSet, obj *model.HouseholdInvitation) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, householdInvitationImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("HouseholdInvitation")
+		case "id":
+			out.Values[i] = ec._HouseholdInvitation_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "householdId":
+			out.Values[i] = ec._HouseholdInvitation_householdId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "role":
+			out.Values[i] = ec._HouseholdInvitation_role(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "expiresAt":
+			out.Values[i] = ec._HouseholdInvitation_expiresAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createdAt":
+			out.Values[i] = ec._HouseholdInvitation_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "revokedAt":
+			out.Values[i] = ec._HouseholdInvitation_revokedAt(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "acceptedAt":
+			out.Values[i] = ec._HouseholdInvitation_acceptedAt(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
 				out.Invalids++
 			}
 		default:
@@ -10137,6 +10902,27 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "createHousehold":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createHousehold(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createHouseholdInvitation":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createHouseholdInvitation(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "revokeHouseholdInvitation":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_revokeHouseholdInvitation(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "acceptHouseholdInvitation":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_acceptHouseholdInvitation(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -11002,6 +11788,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_household(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "householdInvitations":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_householdInvitations(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -11958,6 +12766,11 @@ func (ec *executionContext) unmarshalNCreateHouseholdInput2githubᚗcomᚋwalnut
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNCreateHouseholdInvitationInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateHouseholdInvitationInput(ctx context.Context, v any) (model.CreateHouseholdInvitationInput, error) {
+	res, err := ec.unmarshalInputCreateHouseholdInvitationInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNCreatePoolInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatePoolInput(ctx context.Context, v any) (model.CreatePoolInput, error) {
 	res, err := ec.unmarshalInputCreatePoolInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -11976,6 +12789,16 @@ func (ec *executionContext) unmarshalNCreateProductVariantInput2githubᚗcomᚋw
 func (ec *executionContext) unmarshalNCreatePurchaseInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatePurchaseInput(ctx context.Context, v any) (model.CreatePurchaseInput, error) {
 	res, err := ec.unmarshalInputCreatePurchaseInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNCreatedHouseholdInvitation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatedHouseholdInvitation(ctx context.Context, sel ast.SelectionSet, v *model.CreatedHouseholdInvitation) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._CreatedHouseholdInvitation(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNHousehold2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Household) graphql.Marshaler {
@@ -12002,6 +12825,32 @@ func (ec *executionContext) marshalNHousehold2ᚖgithubᚗcomᚋwalnuts1018ᚋho
 		return graphql.Null
 	}
 	return ec._Household(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNHouseholdInvitation2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.HouseholdInvitation) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNHouseholdInvitation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitation(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNHouseholdInvitation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitation(ctx context.Context, sel ast.SelectionSet, v *model.HouseholdInvitation) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._HouseholdInvitation(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v any) (string, error) {

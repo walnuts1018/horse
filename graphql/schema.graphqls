@@ -11,6 +11,8 @@ enum ProductLearningScope { ITEM_ONLY VARIANT_NAME MERCHANT_ALIAS }
 type Viewer { id: ID!, subject: String!, displayName: String!, households: [Household!]! }
 type Household { id: ID!, name: String!, revision: Int!, members: [Member!]!, pools: [Pool!]!, accounts: [Account!]!, categories: [Category!]!, defaultAllocation: [Allocation!]!, createdAt: String!, updatedAt: String! }
 type Member { id: ID!, displayName: String!, role: String! }
+type HouseholdInvitation { id: ID!, householdId: ID!, role: String!, expiresAt: String!, createdAt: String!, revokedAt: String, acceptedAt: String }
+type CreatedHouseholdInvitation { invitation: HouseholdInvitation!, token: String! }
 type Pool { id: ID!, name: String!, kind: PoolKind!, defaultShareWeight: Long! }
 type Account { id: ID!, name: String!, kind: AccountKind!, poolId: ID }
 type Category { id: ID!, name: String!, parentId: ID, archived: Boolean! }
@@ -41,6 +43,7 @@ input CreateProductConceptInput { householdId: ID!, name: String!, categoryId: I
 input CreateProductVariantInput { householdId: ID!, conceptId: ID!, name: String!, brand: String, packageSize: String, barcode: String }
 input SetProductAliasInput { householdId: ID!, variantId: ID!, merchant: String!, alias: String! }
 input CreateHouseholdInput { name: String!, memberNames: [String!]! }
+input CreateHouseholdInvitationInput { householdId: ID!, expiresAt: String! }
 input CreatePoolInput { householdId: ID!, name: String!, kind: PoolKind! }
 input CreateAccountInput { householdId: ID!, name: String!, kind: AccountKind!, poolId: ID }
 input CreateCategoryInput { householdId: ID!, name: String!, parentId: ID }
@@ -56,6 +59,7 @@ type Query {
   viewer: Viewer!
   households: [Household!]!
   household(id: ID!): Household!
+  householdInvitations(householdId: ID!): [HouseholdInvitation!]!
   allocationRules(householdId: ID!): [AllocationRule!]!
   productSuggestions(householdId: ID!, query: String!, merchant: String, first: Int = 8): [ProductSuggestion!]!
   productCatalog(householdId: ID!): [ProductConcept!]!
@@ -66,6 +70,9 @@ type Query {
 }
 type Mutation {
   createHousehold(input: CreateHouseholdInput!): Household!
+  createHouseholdInvitation(input: CreateHouseholdInvitationInput!): CreatedHouseholdInvitation!
+  revokeHouseholdInvitation(householdId: ID!, invitationId: ID!): HouseholdInvitation!
+  acceptHouseholdInvitation(token: String!): Household!
   createPool(input: CreatePoolInput!): Pool!
   createAccount(input: CreateAccountInput!): Account!
   createCategory(input: CreateCategoryInput!): Category!
