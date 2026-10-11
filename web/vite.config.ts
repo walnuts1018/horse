@@ -20,6 +20,7 @@ export default defineConfig({
               "/auth/**": { proxy: `${apiOrigin}/auth/**` },
               "/documents": { proxy: `${apiOrigin}/documents` },
               "/documents/**": { proxy: `${apiOrigin}/documents/**` },
+              "/purchases/**": { proxy: `${apiOrigin}/purchases/**` },
             },
           }
         : {},

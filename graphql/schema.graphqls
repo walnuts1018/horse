@@ -5,7 +5,8 @@ enum AccountKind { BANK CASH CARD OTHER }
 enum PurchaseStatus { DRAFT POSTED CLOSED }
 enum TransferKind { ADVANCE LOAN REPAYMENT GIFT }
 enum LedgerKind { PURCHASE FUNDING TRANSFER CORRECTION }
-enum AllocationRuleScope { CATEGORY MERCHANT }
+enum AllocationRuleScope { PRODUCT_VARIANT PRODUCT CATEGORY MERCHANT }
+enum ProductLearningScope { ITEM_ONLY VARIANT_NAME MERCHANT_ALIAS }
 
 type Viewer { id: ID!, subject: String!, displayName: String!, households: [Household!]! }
 type Household { id: ID!, name: String!, revision: Int!, members: [Member!]!, pools: [Pool!]!, accounts: [Account!]!, categories: [Category!]!, defaultAllocation: [Allocation!]!, createdAt: String!, updatedAt: String! }
@@ -14,9 +15,13 @@ type Pool { id: ID!, name: String!, kind: PoolKind!, defaultShareWeight: Long! }
 type Account { id: ID!, name: String!, kind: AccountKind!, poolId: ID }
 type Category { id: ID!, name: String!, parentId: ID, archived: Boolean! }
 type Allocation { poolId: ID!, poolName: String, weight: Long!, amountYen: Long }
-type AllocationRule { id: ID!, householdId: ID!, scope: AllocationRuleScope!, categoryId: ID, merchant: String, revision: Int!, allocations: [Allocation!]! }
+type AllocationRule { id: ID!, householdId: ID!, scope: AllocationRuleScope!, categoryId: ID, merchant: String, productConceptId: ID, productVariantId: ID, revision: Int!, allocations: [Allocation!]! }
+type ProductConcept { id: ID!, householdId: ID!, name: String!, normalizedName: String!, categoryId: ID, archived: Boolean!, revision: Int!, variants: [ProductVariant!]! }
+type ProductVariant { id: ID!, householdId: ID!, conceptId: ID!, name: String!, normalizedName: String!, brand: String!, packageSize: String!, barcode: String, archived: Boolean!, revision: Int!, aliases: [ProductAlias!]! }
+type ProductAlias { id: ID!, householdId: ID!, variantId: ID!, merchantKey: String!, alias: String!, normalizedAlias: String!, revision: Int! }
+type ProductSuggestion { concept: ProductConcept!, variant: ProductVariant!, matchedName: String!, score: Int! }
 type Purchase { id: ID!, householdId: ID!, occurredAt: String!, merchant: String!, paymentAccountId: ID, paymentAccount: Account, items: [PurchaseItem!]!, totalYen: Long!, currency: String!, revision: Int!, status: PurchaseStatus!, createdAt: String!, updatedAt: String! }
-type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, categoryId: ID, allocations: [Allocation!]!, revision: Int! }
+type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, categoryId: ID, productVariantId: ID, allocations: [Allocation!]!, revision: Int! }
 type PageInfo { endCursor: String, hasNextPage: Boolean! }
 type PurchaseEdge { cursor: String!, node: Purchase! }
 type PurchaseConnection { edges: [PurchaseEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
@@ -27,17 +32,20 @@ type SettlementLine { memberId: ID!, memberName: String!, scheduledYen: Long!, p
 type Settlement { period: String!, status: String!, revision: Int!, lines: [SettlementLine!]!, createdAt: String }
 type MonthlyCategorySpending { period: String!, categoryId: ID, categoryName: String, amountYen: Long! }
 input AllocationInput { poolId: ID!, weight: Long! }
-input PurchaseItemInput { name: String!, amountYen: Long!, categoryId: ID, allocations: [AllocationInput!] }
+input PurchaseItemInput { name: String!, amountYen: Long!, categoryId: ID, productVariantId: ID, allocations: [AllocationInput!] }
 input CreatePurchaseInput { idempotencyKey: String!, householdId: ID!, occurredAt: String!, merchant: String!, paymentAccountId: ID, sourceDocumentId: ID, sourceReference: String, items: [PurchaseItemInput!]!, status: PurchaseStatus }
 input PurchasePatch { occurredAt: String, merchant: String, paymentAccountId: ID }
 input UpdatePurchaseInput { purchaseId: ID!, baseRevision: Int!, patch: PurchasePatch!, changedFields: [String!]! }
-input UpdatePurchaseItemInput { itemId: ID!, baseRevision: Int!, name: String, amountYen: Long, categoryId: ID, allocations: [AllocationInput!], changedFields: [String!]! }
+input UpdatePurchaseItemInput { itemId: ID!, baseRevision: Int!, name: String, amountYen: Long, categoryId: ID, productVariantId: ID, productLearning: ProductLearningScope = ITEM_ONLY, variantName: String, allocations: [AllocationInput!], changedFields: [String!]! }
+input CreateProductConceptInput { householdId: ID!, name: String!, categoryId: ID }
+input CreateProductVariantInput { householdId: ID!, conceptId: ID!, name: String!, brand: String, packageSize: String, barcode: String }
+input SetProductAliasInput { householdId: ID!, variantId: ID!, merchant: String!, alias: String! }
 input CreateHouseholdInput { name: String!, memberNames: [String!]! }
 input CreatePoolInput { householdId: ID!, name: String!, kind: PoolKind! }
 input CreateAccountInput { householdId: ID!, name: String!, kind: AccountKind!, poolId: ID }
 input CreateCategoryInput { householdId: ID!, name: String!, parentId: ID }
 input SetDefaultAllocationInput { householdId: ID!, allocations: [AllocationInput!]! }
-input SetAllocationRuleInput { householdId: ID!, categoryId: ID, merchant: String, allocations: [AllocationInput!]! }
+input SetAllocationRuleInput { householdId: ID!, categoryId: ID, merchant: String, productConceptId: ID, productVariantId: ID, allocations: [AllocationInput!]! }
 input RecordFundingInput { householdId: ID!, memberId: ID!, poolId: ID!, amountYen: Long!, occurredAt: String!, idempotencyKey: String! }
 input RecordTransferInput { householdId: ID!, fromMemberId: ID!, toMemberId: ID!, kind: TransferKind!, loanId: ID, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
 input SetFundingScheduleInput { householdId: ID!, memberId: ID!, poolId: ID!, amountYen: Long!, cadence: String!, startsOn: String!, endsOn: String }
@@ -49,6 +57,8 @@ type Query {
   households: [Household!]!
   household(id: ID!): Household!
   allocationRules(householdId: ID!): [AllocationRule!]!
+  productSuggestions(householdId: ID!, query: String!, merchant: String, first: Int = 8): [ProductSuggestion!]!
+  productCatalog(householdId: ID!): [ProductConcept!]!
   purchases(householdId: ID!, from: String, to: String, after: String, first: Int = 50): PurchaseConnection!
   ledger(householdId: ID!, after: String, first: Int = 50): LedgerConnection!
   settlement(householdId: ID!, period: String!): Settlement!
@@ -62,6 +72,9 @@ type Mutation {
   setCategoryArchived(categoryId: ID!, archived: Boolean!): Category!
   setDefaultAllocation(input: SetDefaultAllocationInput!): Household!
   setAllocationRule(input: SetAllocationRuleInput!): AllocationRule!
+  createProductConcept(input: CreateProductConceptInput!): ProductConcept!
+  createProductVariant(input: CreateProductVariantInput!): ProductVariant!
+  setProductAlias(input: SetProductAliasInput!): ProductAlias!
   createPurchase(input: CreatePurchaseInput!): Purchase!
   updatePurchase(input: UpdatePurchaseInput!): Purchase!
   updatePurchaseItem(input: UpdatePurchaseItemInput!): PurchaseItem!

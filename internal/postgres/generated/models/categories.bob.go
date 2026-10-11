@@ -55,6 +55,7 @@ type categoryR struct {
 	Household         *Household          // categories.categories_household_id_fkey
 	Category          *Category           // categories.categories_household_id_parent_id_fkey
 	ReverseCategories CategorySlice       // categories.categories_household_id_parent_id_fkey__self_join_reverse
+	ProductConcepts   ProductConceptSlice // product_concepts.product_concepts_household_id_category_id_fkey
 	PurchaseItems     PurchaseItemSlice   // purchase_items.purchase_items_household_id_category_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
@@ -68,6 +69,7 @@ type categoryRLoaded struct {
 	Household         bool // categories.categories_household_id_fkey
 	Category          bool // categories.categories_household_id_parent_id_fkey
 	ReverseCategories bool // categories.categories_household_id_parent_id_fkey__self_join_reverse
+	ProductConcepts   bool // product_concepts.product_concepts_household_id_category_id_fkey
 	PurchaseItems     bool // purchase_items.purchase_items_household_id_category_id_fkey
 }
 
@@ -765,6 +767,35 @@ func (os CategorySlice) ReverseCategories(mods ...bob.Mod[*dialect.SelectQuery])
 	)...)
 }
 
+// ProductConcepts starts a query for related objects on product_concepts
+func (o *Category) ProductConcepts(mods ...bob.Mod[*dialect.SelectQuery]) ProductConceptsQuery {
+	return ProductConcepts.Query(append(mods,
+		sm.Where(ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(ProductConcepts.Columns.CategoryID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os CategorySlice) ProductConcepts(mods ...bob.Mod[*dialect.SelectQuery]) ProductConceptsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return ProductConcepts.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "CategoryID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "CategoryID"),
+		)).As("bob_rel_keys").On(ProductConcepts.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), ProductConcepts.Columns.CategoryID.EQ(psql.Quote("bob_rel_keys", "CategoryID"))),
+	)...)
+}
+
 // PurchaseItems starts a query for related objects on purchase_items
 func (o *Category) PurchaseItems(mods ...bob.Mod[*dialect.SelectQuery]) PurchaseItemsQuery {
 	return PurchaseItems.Query(append(mods,
@@ -1039,6 +1070,78 @@ func (category0 *Category) AttachReverseCategories(ctx context.Context, exec bob
 	return nil
 }
 
+func insertCategoryProductConcepts0(ctx context.Context, exec bob.Executor, productConcepts1 []*ProductConceptSetter, category0 *Category) (ProductConceptSlice, error) {
+	for i := range productConcepts1 {
+		productConcepts1[i].HouseholdID = func() *uuid.UUID { return &category0.HouseholdID }()
+		productConcepts1[i].CategoryID = func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: category0.ID, Valid: true}; return &v }()
+	}
+
+	ret, err := ProductConcepts.Insert(bob.ToMods(productConcepts1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertCategoryProductConcepts0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachCategoryProductConcepts0(ctx context.Context, exec bob.Executor, count int, productConcepts1 ProductConceptSlice, category0 *Category) (ProductConceptSlice, error) {
+	setter := &ProductConceptSetter{
+		HouseholdID: func() *uuid.UUID { return &category0.HouseholdID }(),
+		CategoryID:  func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: category0.ID, Valid: true}; return &v }(),
+	}
+
+	err := productConcepts1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachCategoryProductConcepts0: %w", err)
+	}
+
+	return productConcepts1, nil
+}
+
+func (category0 *Category) InsertProductConcepts(ctx context.Context, exec bob.Executor, related ...*ProductConceptSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	productConcepts1, err := insertCategoryProductConcepts0(ctx, exec, related, category0)
+	if err != nil {
+		return err
+	}
+
+	category0.R.ProductConcepts = append(category0.R.ProductConcepts, productConcepts1...)
+
+	for _, rel := range productConcepts1 {
+		rel.R.Category = category0
+		rel.R.Loaded.Category = true
+	}
+	return nil
+}
+
+func (category0 *Category) AttachProductConcepts(ctx context.Context, exec bob.Executor, related ...*ProductConcept) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	productConcepts1 := ProductConceptSlice(related)
+
+	_, err = attachCategoryProductConcepts0(ctx, exec, len(related), productConcepts1, category0)
+	if err != nil {
+		return err
+	}
+
+	category0.R.ProductConcepts = append(category0.R.ProductConcepts, productConcepts1...)
+
+	for _, rel := range related {
+		rel.R.Category = category0
+		rel.R.Loaded.Category = true
+	}
+
+	return nil
+}
+
 func insertCategoryPurchaseItems0(ctx context.Context, exec bob.Executor, purchaseItems1 []*PurchaseItemSetter, category0 *Category) (PurchaseItemSlice, error) {
 	for i := range purchaseItems1 {
 		purchaseItems1[i].HouseholdID = func() *uuid.UUID { return &category0.HouseholdID }()
@@ -1206,6 +1309,21 @@ func (w categoryWhereR[Q]) HasReverseCategories(filters ...bob.Mod[*dialect.Sele
 		sm.From(Categories.NameExpr().As("ReverseCategories")),
 		sm.Where(relTbl.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(relTbl.ParentID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasProductConcepts filters parents that have a matching ProductConcepts using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to ProductConcepts).
+func (w categoryWhereR[Q]) HasProductConcepts(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(ProductConcepts.NameExpr()),
+		sm.Where(ProductConcepts.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(ProductConcepts.Columns.CategoryID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -1386,6 +1504,22 @@ func (o *Category) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "ProductConcepts":
+		rels, ok := retrieved.(ProductConceptSlice)
+		if !ok {
+			return fmt.Errorf("category cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.ProductConcepts = rels
+		o.R.Loaded.ProductConcepts = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Category = o
+				rel.R.Loaded.Category = true
+			}
+		}
+		return nil
 	case "PurchaseItems":
 		rels, ok := retrieved.(PurchaseItemSlice)
 		if !ok {
@@ -1448,6 +1582,7 @@ type categoryThenLoader[Q orm.Loadable] struct {
 	Household         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Category          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ReverseCategories func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ProductConcepts   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	PurchaseItems     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
@@ -1463,6 +1598,9 @@ func buildCategoryThenLoader[Q orm.Loadable]() categoryThenLoader[Q] {
 	}
 	type ReverseCategoriesLoadInterface interface {
 		LoadReverseCategories(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type ProductConceptsLoadInterface interface {
+		LoadProductConcepts(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type PurchaseItemsLoadInterface interface {
 		LoadPurchaseItems(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -1491,6 +1629,12 @@ func buildCategoryThenLoader[Q orm.Loadable]() categoryThenLoader[Q] {
 			"ReverseCategories",
 			func(ctx context.Context, exec bob.Executor, retrieved ReverseCategoriesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadReverseCategories(ctx, exec, mods...)
+			},
+		),
+		ProductConcepts: thenLoadBuilder[Q](
+			"ProductConcepts",
+			func(ctx context.Context, exec bob.Executor, retrieved ProductConceptsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadProductConcepts(ctx, exec, mods...)
 			},
 		),
 		PurchaseItems: thenLoadBuilder[Q](
@@ -1790,6 +1934,78 @@ func (os CategorySlice) LoadReverseCategories(ctx context.Context, exec bob.Exec
 	return nil
 }
 
+// LoadProductConcepts loads the category's ProductConcepts into the .R struct
+func (o *Category) LoadProductConcepts(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.ProductConcepts = nil
+	o.R.Loaded.ProductConcepts = false
+
+	related, err := o.ProductConcepts(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Category = o
+		rel.R.Loaded.Category = true
+	}
+
+	o.R.ProductConcepts = related
+	o.R.Loaded.ProductConcepts = true
+	return nil
+}
+
+// LoadProductConcepts loads the category's ProductConcepts into the .R struct
+func (os CategorySlice) LoadProductConcepts(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	productConcepts, err := os.ProductConcepts(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.ProductConcepts = nil
+		o.R.Loaded.ProductConcepts = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range productConcepts {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !rel.CategoryID.Valid {
+				continue
+			}
+			if !(rel.CategoryID.Valid && o.ID == rel.CategoryID.V) {
+				continue
+			}
+
+			rel.R.Category = o
+			rel.R.Loaded.Category = true
+
+			o.R.ProductConcepts = append(o.R.ProductConcepts, rel)
+		}
+	}
+
+	return nil
+}
+
 // LoadPurchaseItems loads the category's PurchaseItems into the .R struct
 func (o *Category) LoadPurchaseItems(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -1866,6 +2082,7 @@ func (os CategorySlice) LoadPurchaseItems(ctx context.Context, exec bob.Executor
 type categoryC struct {
 	AllocationRules   *int64
 	ReverseCategories *int64
+	ProductConcepts   *int64
 	PurchaseItems     *int64
 }
 
@@ -1880,6 +2097,8 @@ func (o *Category) PreloadCount(name string, count int64) error {
 		o.C.AllocationRules = &count
 	case "ReverseCategories":
 		o.C.ReverseCategories = &count
+	case "ProductConcepts":
+		o.C.ProductConcepts = &count
 	case "PurchaseItems":
 		o.C.PurchaseItems = &count
 	}
@@ -1889,6 +2108,7 @@ func (o *Category) PreloadCount(name string, count int64) error {
 type categoryCountPreloader struct {
 	AllocationRules   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	ReverseCategories func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ProductConcepts   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	PurchaseItems     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
@@ -1930,6 +2150,24 @@ func buildCategoryCountPreloader() categoryCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		ProductConcepts: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Category]("ProductConcepts", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Categories.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(ProductConcepts.NameAsExpr()),
+					sm.Where(psql.Quote(ProductConcepts.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(ProductConcepts.Alias(), "category_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		PurchaseItems: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*Category]("PurchaseItems", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -1954,6 +2192,7 @@ func buildCategoryCountPreloader() categoryCountPreloader {
 type categoryCountThenLoader[Q orm.Loadable] struct {
 	AllocationRules   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ReverseCategories func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ProductConcepts   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	PurchaseItems     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
@@ -1963,6 +2202,9 @@ func buildCategoryCountThenLoader[Q orm.Loadable]() categoryCountThenLoader[Q] {
 	}
 	type ReverseCategoriesCountInterface interface {
 		LoadCountReverseCategories(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type ProductConceptsCountInterface interface {
+		LoadCountProductConcepts(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type PurchaseItemsCountInterface interface {
 		LoadCountPurchaseItems(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -1979,6 +2221,12 @@ func buildCategoryCountThenLoader[Q orm.Loadable]() categoryCountThenLoader[Q] {
 			"ReverseCategories",
 			func(ctx context.Context, exec bob.Executor, retrieved ReverseCategoriesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountReverseCategories(ctx, exec, mods...)
+			},
+		),
+		ProductConcepts: countThenLoadBuilder[Q](
+			"ProductConcepts",
+			func(ctx context.Context, exec bob.Executor, retrieved ProductConceptsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountProductConcepts(ctx, exec, mods...)
 			},
 		),
 		PurchaseItems: countThenLoadBuilder[Q](
@@ -2210,6 +2458,116 @@ func (os CategorySlice) LoadCountReverseCategories(ctx context.Context, exec bob
 	return nil
 }
 
+// LoadCountProductConcepts loads the count of ProductConcepts into the C struct
+func (o *Category) LoadCountProductConcepts(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.ProductConcepts(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.ProductConcepts = &count
+	return nil
+}
+
+// LoadCountProductConcepts loads the count of ProductConcepts for a slice in a single batch query
+func (os CategorySlice) LoadCountProductConcepts(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			ProductConcepts.Columns.HouseholdID.As("household_id"),
+			ProductConcepts.Columns.CategoryID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(ProductConcepts.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "CategoryID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "CategoryID"),
+		)).As("bob_rel_keys").On(
+			ProductConcepts.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			ProductConcepts.Columns.CategoryID.EQ(psql.Quote("bob_rel_keys", "CategoryID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(ProductConcepts.Columns.HouseholdID),
+		sm.GroupBy(ProductConcepts.Columns.CategoryID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.ProductConcepts = &count
+	}
+
+	return nil
+}
+
 // LoadCountPurchaseItems loads the count of PurchaseItems into the C struct
 func (o *Category) LoadCountPurchaseItems(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -2326,6 +2684,7 @@ type categoryJoins[Q dialect.Joinable] struct {
 	Household         modAs[Q, householdColumns]
 	Category          modAs[Q, categoryColumns]
 	ReverseCategories modAs[Q, categoryColumns]
+	ProductConcepts   modAs[Q, productConceptColumns]
 	PurchaseItems     modAs[Q, purchaseItemColumns]
 }
 
@@ -2386,6 +2745,20 @@ func buildCategoryJoins[Q dialect.Joinable](cols categoryColumns, typ string) ca
 				{
 					mods = append(mods, dialect.Join[Q](typ, Categories.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.HouseholdID), to.ParentID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		ProductConcepts: modAs[Q, productConceptColumns]{
+			c: ProductConcepts.Columns,
+			f: func(to productConceptColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, ProductConcepts.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.CategoryID.EQ(cols.ID),
 					))
 				}
 

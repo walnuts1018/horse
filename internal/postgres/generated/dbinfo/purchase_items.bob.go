@@ -114,6 +114,15 @@ var PurchaseItems = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		ProductVariantID: column{
+			Name:      "product_variant_id",
+			DBType:    "uuid",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: purchaseItemIndexes{
 		PurchaseItemsPkey: index{
@@ -158,6 +167,28 @@ var PurchaseItems = Table[
 			NullsFirst:    []bool{false, false, false},
 			NullsDistinct: false,
 			Where:         "",
+			Include:       []string{},
+		},
+		PurchaseItemsProductVariantIdx: index{
+			Type: "btree",
+			Name: "purchase_items_product_variant_idx",
+			Columns: []indexColumn{
+				{
+					Name:         "household_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "product_variant_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        false,
+			Comment:       "",
+			NullsFirst:    []bool{false, false},
+			NullsDistinct: false,
+			Where:         "(product_variant_id IS NOT NULL)",
 			Include:       []string{},
 		},
 		PurchaseItemsPurchaseIDIDKey: index{
@@ -207,6 +238,15 @@ var PurchaseItems = Table[
 			ForeignTable:   "purchases",
 			ForeignColumns: []string{"household_id", "id"},
 		},
+		PurchaseItemsPurchaseItemsProductVariantFK: foreignKey{
+			constraint: constraint{
+				Name:    "purchase_items.purchase_items_product_variant_fk",
+				Columns: []string{"household_id", "product_variant_id"},
+				Comment: "",
+			},
+			ForeignTable:   "product_variants",
+			ForeignColumns: []string{"household_id", "id"},
+		},
 	},
 	Uniques: purchaseItemUniques{
 		PurchaseItemsHouseholdIDPurchaseIDIDKey: constraint{
@@ -253,34 +293,37 @@ type purchaseItemColumns struct {
 	CreatedAt          column
 	UpdatedAt          column
 	AllocationOverride column
+	ProductVariantID   column
 }
 
 func (c purchaseItemColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.PurchaseID, c.Name, c.AmountYen, c.CategoryID, c.Revision, c.FieldRevisions, c.CreatedAt, c.UpdatedAt, c.AllocationOverride,
+		c.ID, c.HouseholdID, c.PurchaseID, c.Name, c.AmountYen, c.CategoryID, c.Revision, c.FieldRevisions, c.CreatedAt, c.UpdatedAt, c.AllocationOverride, c.ProductVariantID,
 	}
 }
 
 type purchaseItemIndexes struct {
 	PurchaseItemsPkey                       index
 	PurchaseItemsHouseholdIDPurchaseIDIDKey index
+	PurchaseItemsProductVariantIdx          index
 	PurchaseItemsPurchaseIDIDKey            index
 }
 
 func (i purchaseItemIndexes) AsSlice() []index {
 	return []index{
-		i.PurchaseItemsPkey, i.PurchaseItemsHouseholdIDPurchaseIDIDKey, i.PurchaseItemsPurchaseIDIDKey,
+		i.PurchaseItemsPkey, i.PurchaseItemsHouseholdIDPurchaseIDIDKey, i.PurchaseItemsProductVariantIdx, i.PurchaseItemsPurchaseIDIDKey,
 	}
 }
 
 type purchaseItemForeignKeys struct {
 	PurchaseItemsPurchaseItemsHouseholdIDCategoryIDFkey foreignKey
 	PurchaseItemsPurchaseItemsHouseholdIDPurchaseIDFkey foreignKey
+	PurchaseItemsPurchaseItemsProductVariantFK          foreignKey
 }
 
 func (f purchaseItemForeignKeys) AsSlice() []foreignKey {
 	return []foreignKey{
-		f.PurchaseItemsPurchaseItemsHouseholdIDCategoryIDFkey, f.PurchaseItemsPurchaseItemsHouseholdIDPurchaseIDFkey,
+		f.PurchaseItemsPurchaseItemsHouseholdIDCategoryIDFkey, f.PurchaseItemsPurchaseItemsHouseholdIDPurchaseIDFkey, f.PurchaseItemsPurchaseItemsProductVariantFK,
 	}
 }
 

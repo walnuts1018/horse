@@ -40,6 +40,7 @@ type PurchaseItem struct {
 	CreatedAt          time.Time                   `db:"created_at" `
 	UpdatedAt          time.Time                   `db:"updated_at" `
 	AllocationOverride bool                        `db:"allocation_override" `
+	ProductVariantID   sql.Null[uuid.UUID]         `db:"product_variant_id" `
 
 	R purchaseItemR `db:"-" `
 
@@ -58,11 +59,13 @@ type PurchaseItemsQuery = *psql.ViewQuery[*PurchaseItem, PurchaseItemSlice]
 
 // purchaseItemR is where relationships are stored.
 type purchaseItemR struct {
-	Corrections     CorrectionSlice     // corrections.corrections_purchase_id_item_id_fkey
-	EvidenceLinks   EvidenceLinkSlice   // evidence_links.evidence_links_purchase_id_item_id_fkey
-	ItemAllocations ItemAllocationSlice // item_allocations.item_allocations_household_id_purchase_id_item_id_fkey
-	Category        *Category           // purchase_items.purchase_items_household_id_category_id_fkey
-	Purchase        *Purchase           // purchase_items.purchase_items_household_id_purchase_id_fkey
+	Corrections        CorrectionSlice        // corrections.corrections_purchase_id_item_id_fkey
+	EvidenceLinks      EvidenceLinkSlice      // evidence_links.evidence_links_purchase_id_item_id_fkey
+	ItemAllocations    ItemAllocationSlice    // item_allocations.item_allocations_household_id_purchase_id_item_id_fkey
+	ProductCorrections ProductCorrectionSlice // product_corrections.product_corrections_household_id_purchase_id_item_id_fkey
+	Category           *Category              // purchase_items.purchase_items_household_id_category_id_fkey
+	Purchase           *Purchase              // purchase_items.purchase_items_household_id_purchase_id_fkey
+	ProductVariant     *ProductVariant        // purchase_items.purchase_items_product_variant_fk
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -71,16 +74,18 @@ type purchaseItemR struct {
 
 // purchaseItemRLoaded tracks which relationships on PurchaseItem have been loaded.
 type purchaseItemRLoaded struct {
-	Corrections     bool // corrections.corrections_purchase_id_item_id_fkey
-	EvidenceLinks   bool // evidence_links.evidence_links_purchase_id_item_id_fkey
-	ItemAllocations bool // item_allocations.item_allocations_household_id_purchase_id_item_id_fkey
-	Category        bool // purchase_items.purchase_items_household_id_category_id_fkey
-	Purchase        bool // purchase_items.purchase_items_household_id_purchase_id_fkey
+	Corrections        bool // corrections.corrections_purchase_id_item_id_fkey
+	EvidenceLinks      bool // evidence_links.evidence_links_purchase_id_item_id_fkey
+	ItemAllocations    bool // item_allocations.item_allocations_household_id_purchase_id_item_id_fkey
+	ProductCorrections bool // product_corrections.product_corrections_household_id_purchase_id_item_id_fkey
+	Category           bool // purchase_items.purchase_items_household_id_category_id_fkey
+	Purchase           bool // purchase_items.purchase_items_household_id_purchase_id_fkey
+	ProductVariant     bool // purchase_items.purchase_items_product_variant_fk
 }
 
 func buildPurchaseItemColumns(tableName string) purchaseItemColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "purchase_id", "name", "amount_yen", "category_id", "revision", "field_revisions", "created_at", "updated_at", "allocation_override",
+		"id", "household_id", "purchase_id", "name", "amount_yen", "category_id", "revision", "field_revisions", "created_at", "updated_at", "allocation_override", "product_variant_id",
 	)
 
 	if tableName != "" {
@@ -101,6 +106,7 @@ func buildPurchaseItemColumns(tableName string) purchaseItemColumns {
 		CreatedAt:          buildPurchaseItemColumn(tableName, "created_at"),
 		UpdatedAt:          buildPurchaseItemColumn(tableName, "updated_at"),
 		AllocationOverride: buildPurchaseItemColumn(tableName, "allocation_override"),
+		ProductVariantID:   buildPurchaseItemColumn(tableName, "product_variant_id"),
 	}
 }
 
@@ -118,6 +124,7 @@ type purchaseItemColumns struct {
 	CreatedAt          purchaseItemColumn
 	UpdatedAt          purchaseItemColumn
 	AllocationOverride purchaseItemColumn
+	ProductVariantID   purchaseItemColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -174,10 +181,11 @@ type PurchaseItemSetter struct {
 	CreatedAt          *time.Time                   `db:"created_at" `
 	UpdatedAt          *time.Time                   `db:"updated_at" `
 	AllocationOverride *bool                        `db:"allocation_override" `
+	ProductVariantID   *sql.Null[uuid.UUID]         `db:"product_variant_id" `
 }
 
 func (s PurchaseItemSetter) SetColumns() []string {
-	vals := make([]string, 0, 11)
+	vals := make([]string, 0, 12)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -210,6 +218,9 @@ func (s PurchaseItemSetter) SetColumns() []string {
 	}
 	if s.AllocationOverride != nil {
 		vals = append(vals, "allocation_override")
+	}
+	if s.ProductVariantID != nil {
+		vals = append(vals, "product_variant_id")
 	}
 	return vals
 }
@@ -302,6 +313,15 @@ func (s PurchaseItemSetter) Overwrite(t *PurchaseItem) {
 				return *new(bool)
 			}
 			return *s.AllocationOverride
+		}()
+	}
+	if s.ProductVariantID != nil {
+		t.ProductVariantID = func() sql.Null[uuid.UUID] {
+			if s.ProductVariantID == nil {
+				return *new(sql.Null[uuid.UUID])
+			}
+			v := s.ProductVariantID
+			return *v
 		}()
 	}
 }
@@ -423,6 +443,17 @@ func (s *PurchaseItemSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.AllocationOverride
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.ProductVariantID == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[uuid.UUID] {
+				if s.ProductVariantID == nil {
+					return *new(sql.Null[uuid.UUID])
+				}
+				v := s.ProductVariantID
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -431,7 +462,7 @@ func (s PurchaseItemSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s PurchaseItemSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 11)
+	exprs := make([]bob.Expression, 0, 12)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -510,6 +541,13 @@ func (s PurchaseItemSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.ProductVariantID != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "product_variant_id")...),
+			psql.Arg(s.ProductVariantID),
+		}})
+	}
+
 	return exprs
 }
 
@@ -520,7 +558,7 @@ func purchaseItemScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc
 		idx int
 		dst func(o *PurchaseItem) any
 	}
-	targets := make([]target, 0, 11)
+	targets := make([]target, 0, 12)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -545,6 +583,8 @@ func purchaseItemScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc
 			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.UpdatedAt }})
 		case "allocation_override":
 			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.AllocationOverride }})
+		case "product_variant_id":
+			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.ProductVariantID }})
 		}
 	}
 
@@ -910,6 +950,38 @@ func (os PurchaseItemSlice) ItemAllocations(mods ...bob.Mod[*dialect.SelectQuery
 	)...)
 }
 
+// ProductCorrections starts a query for related objects on product_corrections
+func (o *PurchaseItem) ProductCorrections(mods ...bob.Mod[*dialect.SelectQuery]) ProductCorrectionsQuery {
+	return ProductCorrections.Query(append(mods,
+		sm.Where(ProductCorrections.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(ProductCorrections.Columns.PurchaseID.EQ(psql.Arg(o.PurchaseID))), sm.Where(ProductCorrections.Columns.ItemID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os PurchaseItemSlice) ProductCorrections(mods ...bob.Mod[*dialect.SelectQuery]) ProductCorrectionsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkPurchaseID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPurchaseID = append(pkPurchaseID, o.PurchaseID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return ProductCorrections.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "PurchaseID"), psql.Quote("bob_rel_keys_src", "ItemID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkPurchaseID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "PurchaseID", "ItemID"),
+		)).As("bob_rel_keys").On(ProductCorrections.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), ProductCorrections.Columns.PurchaseID.EQ(psql.Quote("bob_rel_keys", "PurchaseID")), ProductCorrections.Columns.ItemID.EQ(psql.Quote("bob_rel_keys", "ItemID"))),
+	)...)
+}
+
 // Category starts a query for related objects on categories
 func (o *PurchaseItem) Category(mods ...bob.Mod[*dialect.SelectQuery]) CategoriesQuery {
 	return Categories.Query(append(mods,
@@ -965,6 +1037,35 @@ func (os PurchaseItemSlice) Purchase(mods ...bob.Mod[*dialect.SelectQuery]) Purc
 			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
 			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkPurchaseID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
 		)).As("bob_rel_keys").On(Purchases.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Purchases.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
+	)...)
+}
+
+// ProductVariant starts a query for related objects on product_variants
+func (o *PurchaseItem) ProductVariant(mods ...bob.Mod[*dialect.SelectQuery]) ProductVariantsQuery {
+	return ProductVariants.Query(append(mods,
+		sm.Where(ProductVariants.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(ProductVariants.Columns.ID.EQ(psql.Arg(o.ProductVariantID))),
+	)...)
+}
+
+func (os PurchaseItemSlice) ProductVariant(mods ...bob.Mod[*dialect.SelectQuery]) ProductVariantsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkProductVariantID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkProductVariantID = append(pkProductVariantID, o.ProductVariantID)
+	}
+
+	return ProductVariants.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkProductVariantID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(ProductVariants.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), ProductVariants.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
 	)...)
 }
 
@@ -1114,6 +1215,80 @@ func (purchaseItem0 *PurchaseItem) AttachItemAllocations(ctx context.Context, ex
 	return nil
 }
 
+func insertPurchaseItemProductCorrections0(ctx context.Context, exec bob.Executor, productCorrections1 []*ProductCorrectionSetter, purchaseItem0 *PurchaseItem) (ProductCorrectionSlice, error) {
+	for i := range productCorrections1 {
+		productCorrections1[i].HouseholdID = func() *uuid.UUID { return &purchaseItem0.HouseholdID }()
+		productCorrections1[i].PurchaseID = func() *uuid.UUID { return &purchaseItem0.PurchaseID }()
+		productCorrections1[i].ItemID = func() *uuid.UUID { return &purchaseItem0.ID }()
+	}
+
+	ret, err := ProductCorrections.Insert(bob.ToMods(productCorrections1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertPurchaseItemProductCorrections0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachPurchaseItemProductCorrections0(ctx context.Context, exec bob.Executor, count int, productCorrections1 ProductCorrectionSlice, purchaseItem0 *PurchaseItem) (ProductCorrectionSlice, error) {
+	setter := &ProductCorrectionSetter{
+		HouseholdID: func() *uuid.UUID { return &purchaseItem0.HouseholdID }(),
+		PurchaseID:  func() *uuid.UUID { return &purchaseItem0.PurchaseID }(),
+		ItemID:      func() *uuid.UUID { return &purchaseItem0.ID }(),
+	}
+
+	err := productCorrections1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachPurchaseItemProductCorrections0: %w", err)
+	}
+
+	return productCorrections1, nil
+}
+
+func (purchaseItem0 *PurchaseItem) InsertProductCorrections(ctx context.Context, exec bob.Executor, related ...*ProductCorrectionSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	productCorrections1, err := insertPurchaseItemProductCorrections0(ctx, exec, related, purchaseItem0)
+	if err != nil {
+		return err
+	}
+
+	purchaseItem0.R.ProductCorrections = append(purchaseItem0.R.ProductCorrections, productCorrections1...)
+
+	for _, rel := range productCorrections1 {
+		rel.R.PurchaseItem = purchaseItem0
+		rel.R.Loaded.PurchaseItem = true
+	}
+	return nil
+}
+
+func (purchaseItem0 *PurchaseItem) AttachProductCorrections(ctx context.Context, exec bob.Executor, related ...*ProductCorrection) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	productCorrections1 := ProductCorrectionSlice(related)
+
+	_, err = attachPurchaseItemProductCorrections0(ctx, exec, len(related), productCorrections1, purchaseItem0)
+	if err != nil {
+		return err
+	}
+
+	purchaseItem0.R.ProductCorrections = append(purchaseItem0.R.ProductCorrections, productCorrections1...)
+
+	for _, rel := range related {
+		rel.R.PurchaseItem = purchaseItem0
+		rel.R.Loaded.PurchaseItem = true
+	}
+
+	return nil
+}
+
 func attachPurchaseItemCategory0(ctx context.Context, exec bob.Executor, count int, purchaseItem0 *PurchaseItem, category1 *Category) (*PurchaseItem, error) {
 	setter := &PurchaseItemSetter{
 		HouseholdID: func() *uuid.UUID { return &category1.HouseholdID }(),
@@ -1216,6 +1391,57 @@ func (purchaseItem0 *PurchaseItem) AttachPurchase(ctx context.Context, exec bob.
 	return nil
 }
 
+func attachPurchaseItemProductVariant0(ctx context.Context, exec bob.Executor, count int, purchaseItem0 *PurchaseItem, productVariant1 *ProductVariant) (*PurchaseItem, error) {
+	setter := &PurchaseItemSetter{
+		HouseholdID:      func() *uuid.UUID { return &productVariant1.HouseholdID }(),
+		ProductVariantID: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: productVariant1.ID, Valid: true}; return &v }(),
+	}
+
+	err := purchaseItem0.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachPurchaseItemProductVariant0: %w", err)
+	}
+
+	return purchaseItem0, nil
+}
+
+func (purchaseItem0 *PurchaseItem) InsertProductVariant(ctx context.Context, exec bob.Executor, related *ProductVariantSetter) error {
+	var err error
+
+	productVariant1, err := ProductVariants.Insert(related).One(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("inserting related objects: %w", err)
+	}
+
+	_, err = attachPurchaseItemProductVariant0(ctx, exec, 1, purchaseItem0, productVariant1)
+	if err != nil {
+		return err
+	}
+
+	purchaseItem0.R.ProductVariant = productVariant1
+	purchaseItem0.R.Loaded.ProductVariant = true
+
+	productVariant1.R.PurchaseItems = append(productVariant1.R.PurchaseItems, purchaseItem0)
+
+	return nil
+}
+
+func (purchaseItem0 *PurchaseItem) AttachProductVariant(ctx context.Context, exec bob.Executor, productVariant1 *ProductVariant) error {
+	var err error
+
+	_, err = attachPurchaseItemProductVariant0(ctx, exec, 1, purchaseItem0, productVariant1)
+	if err != nil {
+		return err
+	}
+
+	purchaseItem0.R.ProductVariant = productVariant1
+	purchaseItem0.R.Loaded.ProductVariant = true
+
+	productVariant1.R.PurchaseItems = append(productVariant1.R.PurchaseItems, purchaseItem0)
+
+	return nil
+}
+
 type purchaseItemWhere[Q psql.Filterable] struct {
 	cols               purchaseItemColumns
 	ID                 psql.WhereMod[Q, uuid.UUID]
@@ -1229,6 +1455,7 @@ type purchaseItemWhere[Q psql.Filterable] struct {
 	CreatedAt          psql.WhereMod[Q, time.Time]
 	UpdatedAt          psql.WhereMod[Q, time.Time]
 	AllocationOverride psql.WhereMod[Q, bool]
+	ProductVariantID   psql.WhereNullMod[Q, uuid.UUID]
 	R                  purchaseItemWhereR[Q]
 }
 
@@ -1250,6 +1477,7 @@ func buildPurchaseItemWhere[Q psql.Filterable](cols purchaseItemColumns) purchas
 		CreatedAt:          psql.Where[Q, time.Time](cols.CreatedAt.Expression),
 		UpdatedAt:          psql.Where[Q, time.Time](cols.UpdatedAt.Expression),
 		AllocationOverride: psql.Where[Q, bool](cols.AllocationOverride.Expression),
+		ProductVariantID:   psql.WhereNull[Q, uuid.UUID](cols.ProductVariantID.Expression),
 		R:                  purchaseItemWhereR[Q]{cols: cols},
 	}
 }
@@ -1307,6 +1535,22 @@ func (w purchaseItemWhereR[Q]) HasItemAllocations(filters ...bob.Mod[*dialect.Se
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasProductCorrections filters parents that have a matching ProductCorrections using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to ProductCorrections).
+func (w purchaseItemWhereR[Q]) HasProductCorrections(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(ProductCorrections.NameExpr()),
+		sm.Where(ProductCorrections.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(ProductCorrections.Columns.PurchaseID.EQ(w.cols.PurchaseID)),
+		sm.Where(ProductCorrections.Columns.ItemID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasCategory filters parents that have a matching Category using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -1337,6 +1581,21 @@ func (w purchaseItemWhereR[Q]) HasPurchase(filters ...bob.Mod[*dialect.SelectQue
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasProductVariant filters parents that have a matching ProductVariant using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to ProductVariants).
+func (w purchaseItemWhereR[Q]) HasProductVariant(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(ProductVariants.NameExpr()),
+		sm.Where(ProductVariants.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(ProductVariants.Columns.ID.EQ(w.cols.ProductVariantID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // NULL-tolerant scan buffer for purchaseItemScanMapperNullable:
 // on a LEFT JOIN miss every column comes back NULL, so each field uses the
 // nullable version of the column type even when the column itself is NOT NULL.
@@ -1352,6 +1611,7 @@ type purchaseItemPreloadBuf struct {
 	CreatedAt          sql.Null[time.Time]
 	UpdatedAt          sql.Null[time.Time]
 	AllocationOverride sql.Null[bool]
+	ProductVariantID   sql.Null[uuid.UUID]
 }
 
 // purchaseItemScanMapperNullable maps the preloaded purchaseItem
@@ -1366,7 +1626,7 @@ func purchaseItemScanMapperNullable(prefix string) scan.Mapper[*PurchaseItem] {
 			idx int
 			dst func(b *purchaseItemPreloadBuf) any
 		}
-		targets := make([]target, 0, 11)
+		targets := make([]target, 0, 12)
 		for i, col := range cols {
 			name, ok := strings.CutPrefix(col, prefix)
 			if !ok {
@@ -1395,6 +1655,8 @@ func purchaseItemScanMapperNullable(prefix string) scan.Mapper[*PurchaseItem] {
 				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.UpdatedAt }})
 			case "allocation_override":
 				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.AllocationOverride }})
+			case "product_variant_id":
+				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.ProductVariantID }})
 			}
 		}
 
@@ -1427,7 +1689,8 @@ func purchaseItemScanMapperNullable(prefix string) scan.Mapper[*PurchaseItem] {
 					!(buf.FieldRevisions.Valid) &&
 					!(buf.CreatedAt.Valid) &&
 					!(buf.UpdatedAt.Valid) &&
-					!(buf.AllocationOverride.Valid) {
+					!(buf.AllocationOverride.Valid) &&
+					!(buf.ProductVariantID.Valid) {
 					return nil, nil
 				}
 
@@ -1463,6 +1726,7 @@ func purchaseItemScanMapperNullable(prefix string) scan.Mapper[*PurchaseItem] {
 				if buf.AllocationOverride.Valid {
 					o.AllocationOverride = buf.AllocationOverride.V
 				}
+				o.ProductVariantID = buf.ProductVariantID
 				return o, nil
 			}
 	}
@@ -1522,6 +1786,22 @@ func (o *PurchaseItem) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "ProductCorrections":
+		rels, ok := retrieved.(ProductCorrectionSlice)
+		if !ok {
+			return fmt.Errorf("purchaseItem cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.ProductCorrections = rels
+		o.R.Loaded.ProductCorrections = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.PurchaseItem = o
+				rel.R.Loaded.PurchaseItem = true
+			}
+		}
+		return nil
 	case "Category":
 		rel, ok := retrieved.(*Category)
 		if !ok {
@@ -1548,14 +1828,28 @@ func (o *PurchaseItem) Preload(name string, retrieved any) error {
 			rel.R.PurchaseItems = PurchaseItemSlice{o}
 		}
 		return nil
+	case "ProductVariant":
+		rel, ok := retrieved.(*ProductVariant)
+		if !ok {
+			return fmt.Errorf("purchaseItem cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.ProductVariant = rel
+		o.R.Loaded.ProductVariant = true
+
+		if rel != nil {
+			rel.R.PurchaseItems = PurchaseItemSlice{o}
+		}
+		return nil
 	default:
 		return fmt.Errorf("purchaseItem has no relationship %q", name)
 	}
 }
 
 type purchaseItemPreloader struct {
-	Category func(...psql.PreloadOption) psql.Preloader
-	Purchase func(...psql.PreloadOption) psql.Preloader
+	Category       func(...psql.PreloadOption) psql.Preloader
+	Purchase       func(...psql.PreloadOption) psql.Preloader
+	ProductVariant func(...psql.PreloadOption) psql.Preloader
 }
 
 func buildPurchaseItemPreloader() purchaseItemPreloader {
@@ -1586,15 +1880,30 @@ func buildPurchaseItemPreloader() purchaseItemPreloader {
 				},
 			}, Purchases.Columns.Names(), purchaseScanMapperNullable, opts...)
 		},
+		ProductVariant: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*ProductVariant, ProductVariantSlice](psql.PreloadRel{
+				Name: "ProductVariant",
+				Sides: []psql.PreloadSide{
+					{
+						From:        PurchaseItems,
+						To:          ProductVariants,
+						FromColumns: []string{"household_id", "product_variant_id"},
+						ToColumns:   []string{"household_id", "id"},
+					},
+				},
+			}, ProductVariants.Columns.Names(), productVariantScanMapperNullable, opts...)
+		},
 	}
 }
 
 type purchaseItemThenLoader[Q orm.Loadable] struct {
-	Corrections     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	EvidenceLinks   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ItemAllocations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Category        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Purchase        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Corrections        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	EvidenceLinks      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ItemAllocations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ProductCorrections func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Category           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Purchase           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ProductVariant     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildPurchaseItemThenLoader[Q orm.Loadable]() purchaseItemThenLoader[Q] {
@@ -1607,11 +1916,17 @@ func buildPurchaseItemThenLoader[Q orm.Loadable]() purchaseItemThenLoader[Q] {
 	type ItemAllocationsLoadInterface interface {
 		LoadItemAllocations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
+	type ProductCorrectionsLoadInterface interface {
+		LoadProductCorrections(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type CategoryLoadInterface interface {
 		LoadCategory(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type PurchaseLoadInterface interface {
 		LoadPurchase(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type ProductVariantLoadInterface interface {
+		LoadProductVariant(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return purchaseItemThenLoader[Q]{
@@ -1633,6 +1948,12 @@ func buildPurchaseItemThenLoader[Q orm.Loadable]() purchaseItemThenLoader[Q] {
 				return retrieved.LoadItemAllocations(ctx, exec, mods...)
 			},
 		),
+		ProductCorrections: thenLoadBuilder[Q](
+			"ProductCorrections",
+			func(ctx context.Context, exec bob.Executor, retrieved ProductCorrectionsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadProductCorrections(ctx, exec, mods...)
+			},
+		),
 		Category: thenLoadBuilder[Q](
 			"Category",
 			func(ctx context.Context, exec bob.Executor, retrieved CategoryLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -1643,6 +1964,12 @@ func buildPurchaseItemThenLoader[Q orm.Loadable]() purchaseItemThenLoader[Q] {
 			"Purchase",
 			func(ctx context.Context, exec bob.Executor, retrieved PurchaseLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadPurchase(ctx, exec, mods...)
+			},
+		),
+		ProductVariant: thenLoadBuilder[Q](
+			"ProductVariant",
+			func(ctx context.Context, exec bob.Executor, retrieved ProductVariantLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadProductVariant(ctx, exec, mods...)
 			},
 		),
 	}
@@ -1865,6 +2192,79 @@ func (os PurchaseItemSlice) LoadItemAllocations(ctx context.Context, exec bob.Ex
 	return nil
 }
 
+// LoadProductCorrections loads the purchaseItem's ProductCorrections into the .R struct
+func (o *PurchaseItem) LoadProductCorrections(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.ProductCorrections = nil
+	o.R.Loaded.ProductCorrections = false
+
+	related, err := o.ProductCorrections(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.PurchaseItem = o
+		rel.R.Loaded.PurchaseItem = true
+	}
+
+	o.R.ProductCorrections = related
+	o.R.Loaded.ProductCorrections = true
+	return nil
+}
+
+// LoadProductCorrections loads the purchaseItem's ProductCorrections into the .R struct
+func (os PurchaseItemSlice) LoadProductCorrections(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	productCorrections, err := os.ProductCorrections(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.ProductCorrections = nil
+		o.R.Loaded.ProductCorrections = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range productCorrections {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.PurchaseID == rel.PurchaseID) {
+				continue
+			}
+
+			if !(o.ID == rel.ItemID) {
+				continue
+			}
+
+			rel.R.PurchaseItem = o
+			rel.R.Loaded.PurchaseItem = true
+
+			o.R.ProductCorrections = append(o.R.ProductCorrections, rel)
+		}
+	}
+
+	return nil
+}
+
 // LoadCategory loads the purchaseItem's Category into the .R struct
 func (o *PurchaseItem) LoadCategory(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -2000,11 +2400,81 @@ func (os PurchaseItemSlice) LoadPurchase(ctx context.Context, exec bob.Executor,
 	return nil
 }
 
+// LoadProductVariant loads the purchaseItem's ProductVariant into the .R struct
+func (o *PurchaseItem) LoadProductVariant(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.ProductVariant = nil
+	o.R.Loaded.ProductVariant = false
+
+	related, err := o.ProductVariant(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.PurchaseItems = PurchaseItemSlice{o}
+
+	o.R.ProductVariant = related
+	o.R.Loaded.ProductVariant = true
+	return nil
+}
+
+// LoadProductVariant loads the purchaseItem's ProductVariant into the .R struct
+func (os PurchaseItemSlice) LoadProductVariant(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	productVariants, err := os.ProductVariant(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.ProductVariant = nil
+		o.R.Loaded.ProductVariant = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range productVariants {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.ProductVariantID.Valid {
+				continue
+			}
+
+			if !(o.ProductVariantID.Valid && o.ProductVariantID.V == rel.ID) {
+				continue
+			}
+
+			rel.R.PurchaseItems = append(rel.R.PurchaseItems, o)
+
+			o.R.ProductVariant = rel
+			break
+		}
+	}
+
+	return nil
+}
+
 // purchaseItemC is where relationship counts are stored.
 type purchaseItemC struct {
-	Corrections     *int64
-	EvidenceLinks   *int64
-	ItemAllocations *int64
+	Corrections        *int64
+	EvidenceLinks      *int64
+	ItemAllocations    *int64
+	ProductCorrections *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -2020,14 +2490,17 @@ func (o *PurchaseItem) PreloadCount(name string, count int64) error {
 		o.C.EvidenceLinks = &count
 	case "ItemAllocations":
 		o.C.ItemAllocations = &count
+	case "ProductCorrections":
+		o.C.ProductCorrections = &count
 	}
 	return nil
 }
 
 type purchaseItemCountPreloader struct {
-	Corrections     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	EvidenceLinks   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	ItemAllocations func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Corrections        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	EvidenceLinks      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ItemAllocations    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ProductCorrections func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildPurchaseItemCountPreloader() purchaseItemCountPreloader {
@@ -2087,13 +2560,33 @@ func buildPurchaseItemCountPreloader() purchaseItemCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		ProductCorrections: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*PurchaseItem]("ProductCorrections", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = PurchaseItems.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(ProductCorrections.NameAsExpr()),
+					sm.Where(psql.Quote(ProductCorrections.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(ProductCorrections.Alias(), "purchase_id").EQ(psql.Quote(parent, "purchase_id"))),
+					sm.Where(psql.Quote(ProductCorrections.Alias(), "item_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 	}
 }
 
 type purchaseItemCountThenLoader[Q orm.Loadable] struct {
-	Corrections     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	EvidenceLinks   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ItemAllocations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Corrections        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	EvidenceLinks      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ItemAllocations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ProductCorrections func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildPurchaseItemCountThenLoader[Q orm.Loadable]() purchaseItemCountThenLoader[Q] {
@@ -2105,6 +2598,9 @@ func buildPurchaseItemCountThenLoader[Q orm.Loadable]() purchaseItemCountThenLoa
 	}
 	type ItemAllocationsCountInterface interface {
 		LoadCountItemAllocations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type ProductCorrectionsCountInterface interface {
+		LoadCountProductCorrections(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return purchaseItemCountThenLoader[Q]{
@@ -2124,6 +2620,12 @@ func buildPurchaseItemCountThenLoader[Q orm.Loadable]() purchaseItemCountThenLoa
 			"ItemAllocations",
 			func(ctx context.Context, exec bob.Executor, retrieved ItemAllocationsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountItemAllocations(ctx, exec, mods...)
+			},
+		),
+		ProductCorrections: countThenLoadBuilder[Q](
+			"ProductCorrections",
+			func(ctx context.Context, exec bob.Executor, retrieved ProductCorrectionsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountProductCorrections(ctx, exec, mods...)
 			},
 		),
 	}
@@ -2474,13 +2976,140 @@ func (os PurchaseItemSlice) LoadCountItemAllocations(ctx context.Context, exec b
 	return nil
 }
 
+// LoadCountProductCorrections loads the count of ProductCorrections into the C struct
+func (o *PurchaseItem) LoadCountProductCorrections(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.ProductCorrections(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.ProductCorrections = &count
+	return nil
+}
+
+// LoadCountProductCorrections loads the count of ProductCorrections for a slice in a single batch query
+func (os PurchaseItemSlice) LoadCountProductCorrections(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkPurchaseID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPurchaseID = append(pkPurchaseID, o.PurchaseID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		PurchaseID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			ProductCorrections.Columns.HouseholdID.As("household_id"),
+			ProductCorrections.Columns.PurchaseID.As("purchase_id"),
+			ProductCorrections.Columns.ItemID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(ProductCorrections.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "PurchaseID"),
+				psql.Quote("bob_rel_keys_src", "ItemID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkPurchaseID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "PurchaseID", "ItemID"),
+		)).As("bob_rel_keys").On(
+			ProductCorrections.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			ProductCorrections.Columns.PurchaseID.EQ(psql.Quote("bob_rel_keys", "PurchaseID")),
+			ProductCorrections.Columns.ItemID.EQ(psql.Quote("bob_rel_keys", "ItemID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(ProductCorrections.Columns.HouseholdID),
+		sm.GroupBy(ProductCorrections.Columns.PurchaseID),
+		sm.GroupBy(ProductCorrections.Columns.ItemID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		PurchaseID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			PurchaseID: r.PurchaseID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			PurchaseID: o.PurchaseID,
+
+			ID: o.ID,
+		}]
+		o.C.ProductCorrections = &count
+	}
+
+	return nil
+}
+
 type purchaseItemJoins[Q dialect.Joinable] struct {
-	typ             string
-	Corrections     modAs[Q, correctionColumns]
-	EvidenceLinks   modAs[Q, evidenceLinkColumns]
-	ItemAllocations modAs[Q, itemAllocationColumns]
-	Category        modAs[Q, categoryColumns]
-	Purchase        modAs[Q, purchaseColumns]
+	typ                string
+	Corrections        modAs[Q, correctionColumns]
+	EvidenceLinks      modAs[Q, evidenceLinkColumns]
+	ItemAllocations    modAs[Q, itemAllocationColumns]
+	ProductCorrections modAs[Q, productCorrectionColumns]
+	Category           modAs[Q, categoryColumns]
+	Purchase           modAs[Q, purchaseColumns]
+	ProductVariant     modAs[Q, productVariantColumns]
 }
 
 func (j purchaseItemJoins[Q]) aliasedAs(alias string) purchaseItemJoins[Q] {
@@ -2532,6 +3161,20 @@ func buildPurchaseItemJoins[Q dialect.Joinable](cols purchaseItemColumns, typ st
 				return mods
 			},
 		},
+		ProductCorrections: modAs[Q, productCorrectionColumns]{
+			c: ProductCorrections.Columns,
+			f: func(to productCorrectionColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, ProductCorrections.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.PurchaseID.EQ(cols.PurchaseID), to.ItemID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
 		Category: modAs[Q, categoryColumns]{
 			c: Categories.Columns,
 			f: func(to categoryColumns) bob.Mod[Q] {
@@ -2554,6 +3197,20 @@ func buildPurchaseItemJoins[Q dialect.Joinable](cols purchaseItemColumns, typ st
 				{
 					mods = append(mods, dialect.Join[Q](typ, Purchases.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.PurchaseID),
+					))
+				}
+
+				return mods
+			},
+		},
+		ProductVariant: modAs[Q, productVariantColumns]{
+			c: ProductVariants.Columns,
+			f: func(to productVariantColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, ProductVariants.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.ProductVariantID),
 					))
 				}
 

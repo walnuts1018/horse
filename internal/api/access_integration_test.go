@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/walnuts1018/horse/internal/auth"
@@ -98,5 +99,84 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	server.ServeHTTP(contentResponse, contentRequest)
 	if contentResponse.Code != http.StatusNotFound {
 		t.Fatalf("non-member original document request was not hidden: status=%d body=%s", contentResponse.Code, contentResponse.Body.String())
+	}
+
+	purchaseID, itemID, jobID := uuid.NewV7().String(), uuid.NewV7().String(), uuid.NewV7().String()
+	if _, err := db.Exec(ctx, `INSERT INTO purchases(id,household_id,occurred_at,allocation_rule_version,created_by) VALUES ($1,$2,$3,1,$4)`, purchaseID, householdID, time.Now(), ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO purchase_items(id,household_id,purchase_id,name,amount_yen) VALUES ($1,$2,$3,'test item',0)`, itemID, householdID, purchaseID); err != nil {
+		t.Fatal(err)
+	}
+	verification := ingestion.Verification{Receipt: ingestion.Receipt{Items: []ingestion.Item{{PrintedName: "printed item", Name: "test item", Region: &ingestion.Region{Top: 0.1, Left: 0.2, Bottom: 0.3, Right: 0.8}}}}}
+	payload, err := json.Marshal(verification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO extraction_jobs(id,household_id,source_document_id,status,result) VALUES ($1,$2,$3,'succeeded',$4::jsonb)`, jobID, householdID, documentID, string(payload)); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/documents/" + documentID + "/matches", "/documents?householdId=" + householdID} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.AddCookie(&http.Cookie{Name: "horse_session", Value: cookieValue, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("non-member source observation exposed: path=%s status=%d", path, response.Code)
+		}
+	}
+	evidenceRequest := httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseID+"/evidence", nil)
+	evidenceRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: cookieValue, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	evidenceResponse := httptest.NewRecorder()
+	server.ServeHTTP(evidenceResponse, evidenceRequest)
+	if evidenceResponse.Code != http.StatusNotFound {
+		t.Fatalf("non-member evidence was exposed: %d", evidenceResponse.Code)
+	}
+
+	ownerCookie := "integration-owner-" + uuid.NewV7().String()
+	ownerHash := sha256.Sum256([]byte(ownerCookie))
+	if _, err := db.Exec(ctx, `INSERT INTO oidc_sessions(token_hash,member_id,expiry) VALUES ($1,$2,now()+interval '10 minutes')`, ownerHash[:], ownerID); err != nil {
+		t.Fatal(err)
+	}
+	confirm := func(index int) *httptest.ResponseRecorder {
+		t.Helper()
+		body, err := json.Marshal(map[string]any{"purchaseId": purchaseID, "itemId": itemID, "sourceItemIndex": index, "observationJobId": jobID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/documents/"+documentID+"/confirm", strings.NewReader(string(body)))
+		request.Header.Set("Origin", "http://horse.test")
+		request.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, request)
+		return response
+	}
+	if response := confirm(1); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid observation index accepted: %d %s", response.Code, response.Body.String())
+	}
+	var confirmations int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM document_confirmations WHERE source_document_id=$1`, documentID).Scan(&confirmations); err != nil || confirmations != 0 {
+		t.Fatalf("invalid evidence confirmation persisted: %d %v", confirmations, err)
+	}
+	if response := confirm(0); response.Code != http.StatusOK {
+		t.Fatalf("evidence link failed: %d %s", response.Code, response.Body.String())
+	}
+	// 解析結果の更新後も、確認した観測と原本座標は証拠に保存された状態を保つ。
+	if _, err := db.Exec(ctx, `UPDATE extraction_jobs SET result='{}'::jsonb WHERE id=$1`, jobID); err != nil {
+		t.Fatal(err)
+	}
+	evidenceRequest = httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseID+"/evidence", nil)
+	evidenceRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	evidenceResponse = httptest.NewRecorder()
+	server.ServeHTTP(evidenceResponse, evidenceRequest)
+	if evidenceResponse.Code != http.StatusOK || !strings.Contains(evidenceResponse.Body.String(), `"printedName":"printed item"`) || !strings.Contains(evidenceResponse.Body.String(), `"top":0.1`) {
+		t.Fatalf("observation snapshot missing: %d %s", evidenceResponse.Code, evidenceResponse.Body.String())
+	}
+	documentRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID, nil)
+	documentRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	documentResponse := httptest.NewRecorder()
+	server.ServeHTTP(documentResponse, documentRequest)
+	if documentResponse.Code != http.StatusOK || !strings.Contains(documentResponse.Body.String(), `"purchaseId":"`+purchaseID+`"`) {
+		t.Fatalf("confirmation reference missing: %d %s", documentResponse.Code, documentResponse.Body.String())
 	}
 }

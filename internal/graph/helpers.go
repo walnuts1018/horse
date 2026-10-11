@@ -173,14 +173,14 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 	result.Revision, result.Currency = int(revision), "JPY"
 	result.TotalYen = graphLong(total)
 	result.Items = make([]*model.PurchaseItem, 0)
-	rows, err := db.Query(ctx, `SELECT id::text, name, amount_yen, category_id::text, revision FROM purchase_items WHERE purchase_id = $1 ORDER BY created_at, id`, purchaseID)
+	rows, err := db.Query(ctx, `SELECT id::text,name,amount_yen,category_id::text,product_variant_id::text,revision FROM purchase_items WHERE purchase_id=$1 ORDER BY created_at,id`, purchaseID)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		item := &model.PurchaseItem{Currency: "JPY", Allocations: make([]*model.Allocation, 0)}
 		var amount, itemRevision int64
-		if err := rows.Scan(&item.ID, &item.Name, &amount, &item.CategoryID, &itemRevision); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &amount, &item.CategoryID, &item.ProductVariantID, &itemRevision); err != nil {
 			rows.Close()
 			return nil, err
 		}

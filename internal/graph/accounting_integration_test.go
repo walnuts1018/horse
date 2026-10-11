@@ -93,8 +93,64 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || storeRule.Scope != model.AllocationRuleScopeMerchant || *storeRule.Merchant != "market" {
 		t.Fatalf("merchant allocation rule was not normalized: rule=%#v error=%v", storeRule, err)
 	}
+	productConcept, err := resolver.CreateProductConcept(ctx, model.CreateProductConceptInput{HouseholdID: householdID, Name: "Yogurt", CategoryID: &category.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	productVariant, err := resolver.CreateProductVariant(ctx, model.CreateProductVariantInput{HouseholdID: householdID, ConceptID: productConcept.ID, Name: "Plain yogurt 400g", Brand: new("Private Brand"), PackageSize: new("400g")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	productConceptRule, err := resolver.SetAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, ProductConceptID: &productConcept.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}, {PoolID: poolB.ID, Weight: 4}}})
+	if err != nil || productConceptRule.Scope != model.AllocationRuleScopeProduct {
+		t.Fatalf("product concept rule was not saved: rule=%#v error=%v", productConceptRule, err)
+	}
+	conceptPurchase, err := resolver.CreatePurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:59:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 500, ProductVariantID: &productVariant.ID}}})
+	if err != nil || conceptPurchase.Items[0].CategoryID == nil || *conceptPurchase.Items[0].CategoryID != category.ID || conceptPurchase.Items[0].Allocations[0].AmountYen == nil || *conceptPurchase.Items[0].Allocations[0].AmountYen != 100 {
+		t.Fatalf("linked product should inherit its category and concept rule: purchase=%#v error=%v", conceptPurchase, err)
+	}
+	productVariantRule, err := resolver.SetAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, ProductVariantID: &productVariant.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 4}, {PoolID: poolB.ID, Weight: 1}}})
+	if err != nil || productVariantRule.Scope != model.AllocationRuleScopeProductVariant {
+		t.Fatalf("product variant rule was not saved: rule=%#v error=%v", productVariantRule, err)
+	}
+	variantPurchase, err := resolver.CreatePurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:58:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 600, ProductVariantID: &productVariant.ID}}})
+	if err != nil || variantPurchase.Items[0].Allocations[0].AmountYen == nil || *variantPurchase.Items[0].Allocations[0].AmountYen != 480 {
+		t.Fatalf("product variant rule should precede concept/category/merchant rules: purchase=%#v error=%v", variantPurchase, err)
+	}
+	correctedPurchase, err := resolver.CreatePurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:57:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 350}}})
+	if err != nil || correctedPurchase.Items[0].ProductVariantID != nil {
+		t.Fatalf("unmatched product should remain unnormalized until the user selects a candidate: purchase=%#v error=%v", correctedPurchase, err)
+	}
+	learnedItem, err := resolver.UpdatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: correctedPurchase.Items[0].ID, BaseRevision: correctedPurchase.Items[0].Revision, ProductVariantID: &productVariant.ID, ProductLearning: new(model.ProductLearningScopeMerchantAlias), ChangedFields: []string{"productVariantId"}})
+	if err != nil || learnedItem.ProductVariantID == nil || *learnedItem.ProductVariantID != productVariant.ID {
+		t.Fatalf("merchant alias correction did not link the canonical variant: item=%#v error=%v", learnedItem, err)
+	}
+	if learnedItem.Allocations[0].AmountYen == nil || *learnedItem.Allocations[0].AmountYen != 280 {
+		t.Fatalf("linking a product should apply its higher-priority rule: allocations=%#v", learnedItem.Allocations)
+	}
+	market := " MARKET "
+	suggestions, err := apiResolver.Query().ProductSuggestions(ctx, householdID, "YOG-PB", &market, nil)
+	if err != nil || len(suggestions) == 0 || suggestions[0].Variant.ID != productVariant.ID || suggestions[0].MatchedName != "YOG-PB 400" {
+		t.Fatalf("learned store alias was not suggested first: suggestions=%#v error=%v", suggestions, err)
+	}
+	canonicalName := "Plain yogurt 400g unsweetened"
+	learnedItem, err = resolver.UpdatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: learnedItem.ID, BaseRevision: learnedItem.Revision, ProductVariantID: &productVariant.ID, ProductLearning: new(model.ProductLearningScopeVariantName), VariantName: &canonicalName, ChangedFields: []string{"productVariantId"}})
+	if err != nil {
+		t.Fatalf("normalized product name correction failed: %v", err)
+	}
+	suggestions, err = apiResolver.Query().ProductSuggestions(ctx, householdID, "unsweetened", nil, nil)
+	if err != nil || len(suggestions) == 0 || suggestions[0].Variant.Name != canonicalName {
+		t.Fatalf("corrected canonical variant name was not searchable: suggestions=%#v error=%v", suggestions, err)
+	}
+	var correctionCount int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM product_corrections WHERE item_id=$1`, learnedItem.ID).Scan(&correctionCount); err != nil || correctionCount != 2 {
+		t.Fatalf("product correction learning was not recorded: count=%d error=%v", correctionCount, err)
+	}
+	if _, err := db.Exec(ctx, `DELETE FROM purchases WHERE id IN ($1,$2,$3)`, conceptPurchase.ID, variantPurchase.ID, correctedPurchase.ID); err != nil {
+		t.Fatal(err)
+	}
 	rules, err := apiResolver.Query().AllocationRules(ctx, householdID)
-	if err != nil || len(rules) != 2 {
+	if err != nil || len(rules) != 4 {
 		t.Fatalf("allocation rule query failed: rules=%#v error=%v", rules, err)
 	}
 	purchase, err := resolver.CreatePurchase(ctx, model.CreatePurchaseInput{

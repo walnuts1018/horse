@@ -18,13 +18,6 @@ var AllocationRuleErrors = &allocationRuleErrors{
 		s:       "allocation_rules_household_id_id_key",
 	},
 
-	ErrCheckAllocationRulesCheck: &CheckConstraintError{
-		schema:  "",
-		table:   "allocation_rules",
-		columns: []string{"category_id", "merchant_key"},
-		s:       "allocation_rules_check",
-	},
-
 	ErrCheckAllocationRulesMerchantKeyCheck: &CheckConstraintError{
 		schema:  "",
 		table:   "allocation_rules",
@@ -38,6 +31,13 @@ var AllocationRuleErrors = &allocationRuleErrors{
 		columns: []string{"revision"},
 		s:       "allocation_rules_revision_check",
 	},
+
+	ErrCheckAllocationRulesScopeCheck: &CheckConstraintError{
+		schema:  "",
+		table:   "allocation_rules",
+		columns: []string{"category_id", "merchant_key", "product_concept_id", "product_variant_id"},
+		s:       "allocation_rules_scope_check",
+	},
 }
 
 type allocationRuleErrors struct {
@@ -45,9 +45,9 @@ type allocationRuleErrors struct {
 
 	ErrUniqueAllocationRulesHouseholdIdIdKey *UniqueConstraintError
 
-	ErrCheckAllocationRulesCheck *CheckConstraintError
-
 	ErrCheckAllocationRulesMerchantKeyCheck *CheckConstraintError
 
 	ErrCheckAllocationRulesRevisionCheck *CheckConstraintError
+
+	ErrCheckAllocationRulesScopeCheck *CheckConstraintError
 }

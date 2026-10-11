@@ -40,6 +40,10 @@ type preloaders struct {
 	Member               memberPreloader
 	OidcSession          oidcSessionPreloader
 	Pool                 poolPreloader
+	ProductAlias         productAliasPreloader
+	ProductConcept       productConceptPreloader
+	ProductCorrection    productCorrectionPreloader
+	ProductVariant       productVariantPreloader
 	PurchaseItem         purchaseItemPreloader
 	Purchase             purchasePreloader
 	SettlementLine       settlementLinePreloader
@@ -73,6 +77,10 @@ func getPreloaders() preloaders {
 		Member:               buildMemberPreloader(),
 		OidcSession:          buildOidcSessionPreloader(),
 		Pool:                 buildPoolPreloader(),
+		ProductAlias:         buildProductAliasPreloader(),
+		ProductConcept:       buildProductConceptPreloader(),
+		ProductCorrection:    buildProductCorrectionPreloader(),
+		ProductVariant:       buildProductVariantPreloader(),
 		PurchaseItem:         buildPurchaseItemPreloader(),
 		Purchase:             buildPurchasePreloader(),
 		SettlementLine:       buildSettlementLinePreloader(),
@@ -112,6 +120,10 @@ type thenLoaders[Q orm.Loadable] struct {
 	Member               memberThenLoader[Q]
 	OidcSession          oidcSessionThenLoader[Q]
 	Pool                 poolThenLoader[Q]
+	ProductAlias         productAliasThenLoader[Q]
+	ProductConcept       productConceptThenLoader[Q]
+	ProductCorrection    productCorrectionThenLoader[Q]
+	ProductVariant       productVariantThenLoader[Q]
 	PurchaseItem         purchaseItemThenLoader[Q]
 	Purchase             purchaseThenLoader[Q]
 	SettlementLine       settlementLineThenLoader[Q]
@@ -145,6 +157,10 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		Member:               buildMemberThenLoader[Q](),
 		OidcSession:          buildOidcSessionThenLoader[Q](),
 		Pool:                 buildPoolThenLoader[Q](),
+		ProductAlias:         buildProductAliasThenLoader[Q](),
+		ProductConcept:       buildProductConceptThenLoader[Q](),
+		ProductCorrection:    buildProductCorrectionThenLoader[Q](),
+		ProductVariant:       buildProductVariantThenLoader[Q](),
 		PurchaseItem:         buildPurchaseItemThenLoader[Q](),
 		Purchase:             buildPurchaseThenLoader[Q](),
 		SettlementLine:       buildSettlementLineThenLoader[Q](),

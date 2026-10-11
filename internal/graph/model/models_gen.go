@@ -29,13 +29,15 @@ type AllocationInput struct {
 }
 
 type AllocationRule struct {
-	ID          string              `json:"id"`
-	HouseholdID string              `json:"householdId"`
-	Scope       AllocationRuleScope `json:"scope"`
-	CategoryID  *string             `json:"categoryId,omitempty"`
-	Merchant    *string             `json:"merchant,omitempty"`
-	Revision    int                 `json:"revision"`
-	Allocations []*Allocation       `json:"allocations"`
+	ID               string              `json:"id"`
+	HouseholdID      string              `json:"householdId"`
+	Scope            AllocationRuleScope `json:"scope"`
+	CategoryID       *string             `json:"categoryId,omitempty"`
+	Merchant         *string             `json:"merchant,omitempty"`
+	ProductConceptID *string             `json:"productConceptId,omitempty"`
+	ProductVariantID *string             `json:"productVariantId,omitempty"`
+	Revision         int                 `json:"revision"`
+	Allocations      []*Allocation       `json:"allocations"`
 }
 
 type Category struct {
@@ -83,6 +85,21 @@ type CreatePoolInput struct {
 	HouseholdID string   `json:"householdId"`
 	Name        string   `json:"name"`
 	Kind        PoolKind `json:"kind"`
+}
+
+type CreateProductConceptInput struct {
+	HouseholdID string  `json:"householdId"`
+	Name        string  `json:"name"`
+	CategoryID  *string `json:"categoryId,omitempty"`
+}
+
+type CreateProductVariantInput struct {
+	HouseholdID string  `json:"householdId"`
+	ConceptID   string  `json:"conceptId"`
+	Name        string  `json:"name"`
+	Brand       *string `json:"brand,omitempty"`
+	PackageSize *string `json:"packageSize,omitempty"`
+	Barcode     *string `json:"barcode,omitempty"`
 }
 
 type CreatePurchaseInput struct {
@@ -163,6 +180,48 @@ type Pool struct {
 	DefaultShareWeight Long     `json:"defaultShareWeight"`
 }
 
+type ProductAlias struct {
+	ID              string `json:"id"`
+	HouseholdID     string `json:"householdId"`
+	VariantID       string `json:"variantId"`
+	MerchantKey     string `json:"merchantKey"`
+	Alias           string `json:"alias"`
+	NormalizedAlias string `json:"normalizedAlias"`
+	Revision        int    `json:"revision"`
+}
+
+type ProductConcept struct {
+	ID             string            `json:"id"`
+	HouseholdID    string            `json:"householdId"`
+	Name           string            `json:"name"`
+	NormalizedName string            `json:"normalizedName"`
+	CategoryID     *string           `json:"categoryId,omitempty"`
+	Archived       bool              `json:"archived"`
+	Revision       int               `json:"revision"`
+	Variants       []*ProductVariant `json:"variants"`
+}
+
+type ProductSuggestion struct {
+	Concept     *ProductConcept `json:"concept"`
+	Variant     *ProductVariant `json:"variant"`
+	MatchedName string          `json:"matchedName"`
+	Score       int             `json:"score"`
+}
+
+type ProductVariant struct {
+	ID             string          `json:"id"`
+	HouseholdID    string          `json:"householdId"`
+	ConceptID      string          `json:"conceptId"`
+	Name           string          `json:"name"`
+	NormalizedName string          `json:"normalizedName"`
+	Brand          string          `json:"brand"`
+	PackageSize    string          `json:"packageSize"`
+	Barcode        *string         `json:"barcode,omitempty"`
+	Archived       bool            `json:"archived"`
+	Revision       int             `json:"revision"`
+	Aliases        []*ProductAlias `json:"aliases"`
+}
+
 type Purchase struct {
 	ID               string          `json:"id"`
 	HouseholdID      string          `json:"householdId"`
@@ -191,20 +250,22 @@ type PurchaseEdge struct {
 }
 
 type PurchaseItem struct {
-	ID          string        `json:"id"`
-	Name        string        `json:"name"`
-	AmountYen   Long          `json:"amountYen"`
-	Currency    string        `json:"currency"`
-	CategoryID  *string       `json:"categoryId,omitempty"`
-	Allocations []*Allocation `json:"allocations"`
-	Revision    int           `json:"revision"`
+	ID               string        `json:"id"`
+	Name             string        `json:"name"`
+	AmountYen        Long          `json:"amountYen"`
+	Currency         string        `json:"currency"`
+	CategoryID       *string       `json:"categoryId,omitempty"`
+	ProductVariantID *string       `json:"productVariantId,omitempty"`
+	Allocations      []*Allocation `json:"allocations"`
+	Revision         int           `json:"revision"`
 }
 
 type PurchaseItemInput struct {
-	Name        string             `json:"name"`
-	AmountYen   Long               `json:"amountYen"`
-	CategoryID  *string            `json:"categoryId,omitempty"`
-	Allocations []*AllocationInput `json:"allocations,omitempty"`
+	Name             string             `json:"name"`
+	AmountYen        Long               `json:"amountYen"`
+	CategoryID       *string            `json:"categoryId,omitempty"`
+	ProductVariantID *string            `json:"productVariantId,omitempty"`
+	Allocations      []*AllocationInput `json:"allocations,omitempty"`
 }
 
 type PurchasePatch struct {
@@ -238,10 +299,12 @@ type RecordTransferInput struct {
 }
 
 type SetAllocationRuleInput struct {
-	HouseholdID string             `json:"householdId"`
-	CategoryID  *string            `json:"categoryId,omitempty"`
-	Merchant    *string            `json:"merchant,omitempty"`
-	Allocations []*AllocationInput `json:"allocations"`
+	HouseholdID      string             `json:"householdId"`
+	CategoryID       *string            `json:"categoryId,omitempty"`
+	Merchant         *string            `json:"merchant,omitempty"`
+	ProductConceptID *string            `json:"productConceptId,omitempty"`
+	ProductVariantID *string            `json:"productVariantId,omitempty"`
+	Allocations      []*AllocationInput `json:"allocations"`
 }
 
 type SetDefaultAllocationInput struct {
@@ -257,6 +320,13 @@ type SetFundingScheduleInput struct {
 	Cadence     string  `json:"cadence"`
 	StartsOn    string  `json:"startsOn"`
 	EndsOn      *string `json:"endsOn,omitempty"`
+}
+
+type SetProductAliasInput struct {
+	HouseholdID string `json:"householdId"`
+	VariantID   string `json:"variantId"`
+	Merchant    string `json:"merchant"`
+	Alias       string `json:"alias"`
 }
 
 type Settlement struct {
@@ -285,13 +355,16 @@ type UpdatePurchaseInput struct {
 }
 
 type UpdatePurchaseItemInput struct {
-	ItemID        string             `json:"itemId"`
-	BaseRevision  int                `json:"baseRevision"`
-	Name          *string            `json:"name,omitempty"`
-	AmountYen     *Long              `json:"amountYen,omitempty"`
-	CategoryID    *string            `json:"categoryId,omitempty"`
-	Allocations   []*AllocationInput `json:"allocations,omitempty"`
-	ChangedFields []string           `json:"changedFields"`
+	ItemID           string                `json:"itemId"`
+	BaseRevision     int                   `json:"baseRevision"`
+	Name             *string               `json:"name,omitempty"`
+	AmountYen        *Long                 `json:"amountYen,omitempty"`
+	CategoryID       *string               `json:"categoryId,omitempty"`
+	ProductVariantID *string               `json:"productVariantId,omitempty"`
+	ProductLearning  *ProductLearningScope `json:"productLearning,omitempty"`
+	VariantName      *string               `json:"variantName,omitempty"`
+	Allocations      []*AllocationInput    `json:"allocations,omitempty"`
+	ChangedFields    []string              `json:"changedFields"`
 }
 
 type Viewer struct {
@@ -363,18 +436,22 @@ func (e AccountKind) MarshalJSON() ([]byte, error) {
 type AllocationRuleScope string
 
 const (
-	AllocationRuleScopeCategory AllocationRuleScope = "CATEGORY"
-	AllocationRuleScopeMerchant AllocationRuleScope = "MERCHANT"
+	AllocationRuleScopeProductVariant AllocationRuleScope = "PRODUCT_VARIANT"
+	AllocationRuleScopeProduct        AllocationRuleScope = "PRODUCT"
+	AllocationRuleScopeCategory       AllocationRuleScope = "CATEGORY"
+	AllocationRuleScopeMerchant       AllocationRuleScope = "MERCHANT"
 )
 
 var AllAllocationRuleScope = []AllocationRuleScope{
+	AllocationRuleScopeProductVariant,
+	AllocationRuleScopeProduct,
 	AllocationRuleScopeCategory,
 	AllocationRuleScopeMerchant,
 }
 
 func (e AllocationRuleScope) IsValid() bool {
 	switch e {
-	case AllocationRuleScopeCategory, AllocationRuleScopeMerchant:
+	case AllocationRuleScopeProductVariant, AllocationRuleScopeProduct, AllocationRuleScopeCategory, AllocationRuleScopeMerchant:
 		return true
 	}
 	return false
@@ -524,6 +601,63 @@ func (e *PoolKind) UnmarshalJSON(b []byte) error {
 }
 
 func (e PoolKind) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type ProductLearningScope string
+
+const (
+	ProductLearningScopeItemOnly      ProductLearningScope = "ITEM_ONLY"
+	ProductLearningScopeVariantName   ProductLearningScope = "VARIANT_NAME"
+	ProductLearningScopeMerchantAlias ProductLearningScope = "MERCHANT_ALIAS"
+)
+
+var AllProductLearningScope = []ProductLearningScope{
+	ProductLearningScopeItemOnly,
+	ProductLearningScopeVariantName,
+	ProductLearningScopeMerchantAlias,
+}
+
+func (e ProductLearningScope) IsValid() bool {
+	switch e {
+	case ProductLearningScopeItemOnly, ProductLearningScopeVariantName, ProductLearningScopeMerchantAlias:
+		return true
+	}
+	return false
+}
+
+func (e ProductLearningScope) String() string {
+	return string(e)
+}
+
+func (e *ProductLearningScope) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ProductLearningScope(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ProductLearningScope", str)
+	}
+	return nil
+}
+
+func (e ProductLearningScope) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ProductLearningScope) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ProductLearningScope) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

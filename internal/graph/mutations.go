@@ -251,8 +251,14 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 	if err != nil {
 		return nil, err
 	}
-	if (input.CategoryID == nil) == (input.Merchant == nil) {
-		return nil, fmt.Errorf("%w: select one category or merchant rule key", ErrBadInput)
+	scopeCount := 0
+	for _, selected := range []*string{input.ProductVariantID, input.ProductConceptID, input.CategoryID, input.Merchant} {
+		if selected != nil {
+			scopeCount++
+		}
+	}
+	if scopeCount != 1 {
+		return nil, fmt.Errorf("%w: select exactly one product, category, or merchant rule key", ErrBadInput)
 	}
 	weights, err := allocationWeights(input.Allocations)
 	if err != nil {
@@ -288,16 +294,35 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 			return nil, ErrNotFound
 		}
 	}
+	for _, reference := range []struct {
+		table string
+		id    *string
+	}{{"categories", input.CategoryID}, {"product_concepts", input.ProductConceptID}, {"product_variants", input.ProductVariantID}} {
+		if reference.id == nil {
+			continue
+		}
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM `+reference.table+` WHERE household_id=$1 AND id=$2)`, input.HouseholdID, *reference.id).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, ErrNotFound
+		}
+	}
 	var ruleID string
 	var revision int64
 	if input.CategoryID != nil {
 		err = tx.QueryRow(ctx, `SELECT id::text, revision FROM allocation_rules WHERE household_id = $1 AND category_id = $2 FOR UPDATE`, input.HouseholdID, *input.CategoryID).Scan(&ruleID, &revision)
-	} else {
+	} else if input.Merchant != nil {
 		err = tx.QueryRow(ctx, `SELECT id::text, revision FROM allocation_rules WHERE household_id = $1 AND merchant_key = $2 FOR UPDATE`, input.HouseholdID, merchantKey).Scan(&ruleID, &revision)
+	} else if input.ProductConceptID != nil {
+		err = tx.QueryRow(ctx, `SELECT id::text,revision FROM allocation_rules WHERE household_id=$1 AND product_concept_id=$2 FOR UPDATE`, input.HouseholdID, *input.ProductConceptID).Scan(&ruleID, &revision)
+	} else {
+		err = tx.QueryRow(ctx, `SELECT id::text,revision FROM allocation_rules WHERE household_id=$1 AND product_variant_id=$2 FOR UPDATE`, input.HouseholdID, *input.ProductVariantID).Scan(&ruleID, &revision)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		ruleID, revision = newID(), 1
-		if _, err := tx.Exec(ctx, `INSERT INTO allocation_rules(id, household_id, category_id, merchant_key, revision) VALUES ($1,$2,$3,$4,$5)`, ruleID, input.HouseholdID, input.CategoryID, nullableMerchantKey(input.Merchant, merchantKey), revision); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO allocation_rules(id,household_id,category_id,merchant_key,product_concept_id,product_variant_id,revision) VALUES ($1,$2,$3,$4,$5,$6,$7)`, ruleID, input.HouseholdID, input.CategoryID, nullableMerchantKey(input.Merchant, merchantKey), input.ProductConceptID, input.ProductVariantID, revision); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
@@ -316,7 +341,17 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 			return nil, err
 		}
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "allocation.rule.updated", ruleID, revision, []string{"allocations"}, user.MemberID); err != nil {
+	changedFields := []string{"allocations"}
+	if input.ProductVariantID != nil {
+		changedFields = append(changedFields, "productVariantId")
+	} else if input.ProductConceptID != nil {
+		changedFields = append(changedFields, "productConceptId")
+	} else if input.CategoryID != nil {
+		changedFields = append(changedFields, "categoryId")
+	} else {
+		changedFields = append(changedFields, "merchant")
+	}
+	if err := writeEvent(ctx, tx, input.HouseholdID, "allocation.rule.updated", ruleID, revision, changedFields, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -336,10 +371,10 @@ func nullableMerchantKey(merchant *string, normalized string) any {
 	return normalized
 }
 
-func allocationRuleWeights(ctx context.Context, tx pgx.Tx, householdID string, categoryID *string, merchant string) ([]domain.Weight, *string, int64, error) {
+func allocationRuleWeights(ctx context.Context, tx pgx.Tx, householdID string, categoryID, productVariantID *string, merchant string) ([]domain.Weight, *string, int64, error) {
 	var ruleID string
 	var revision int64
-	err := tx.QueryRow(ctx, `SELECT id::text, revision FROM allocation_rules WHERE household_id = $1 AND (($2::uuid IS NOT NULL AND category_id = $2) OR ($3 <> '' AND merchant_key = $3)) ORDER BY (category_id IS NULL), id LIMIT 1`, householdID, categoryID, merchant).Scan(&ruleID, &revision)
+	err := tx.QueryRow(ctx, `SELECT ar.id::text,ar.revision FROM allocation_rules ar LEFT JOIN product_variants pv ON pv.household_id=ar.household_id AND pv.id=$3::uuid WHERE ar.household_id=$1 AND (($3::uuid IS NOT NULL AND ar.product_variant_id=$3::uuid) OR (pv.concept_id IS NOT NULL AND ar.product_concept_id=pv.concept_id) OR ($2::uuid IS NOT NULL AND ar.category_id=$2::uuid) OR ($4<>'' AND ar.merchant_key=$4)) ORDER BY CASE WHEN $3::uuid IS NOT NULL AND ar.product_variant_id=$3::uuid THEN 0 WHEN pv.concept_id IS NOT NULL AND ar.product_concept_id=pv.concept_id THEN 1 WHEN $2::uuid IS NOT NULL AND ar.category_id=$2::uuid THEN 2 WHEN $4<>'' AND ar.merchant_key=$4 THEN 3 ELSE 4 END,ar.id LIMIT 1`, householdID, categoryID, productVariantID, merchant).Scan(&ruleID, &revision)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, 0, nil
 	}
@@ -473,6 +508,20 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 		if itemInput == nil || strings.TrimSpace(itemInput.Name) == "" || len(itemInput.Name) > 240 || itemInput.AmountYen < 0 || int64(itemInput.AmountYen) > maxMoney {
 			return nil, fmt.Errorf("%w: invalid purchase item", ErrBadInput)
 		}
+		categoryID := itemInput.CategoryID
+		if itemInput.ProductVariantID != nil {
+			var productCategoryID *string
+			err := tx.QueryRow(ctx, `SELECT c.category_id::text FROM product_variants v JOIN product_concepts c ON c.id=v.concept_id WHERE v.id=$1 AND v.household_id=$2 AND NOT v.archived AND NOT c.archived`, *itemInput.ProductVariantID, input.HouseholdID).Scan(&productCategoryID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, ErrNotFound
+			}
+			if err != nil {
+				return nil, err
+			}
+			if categoryID == nil {
+				categoryID = productCategoryID
+			}
+		}
 		weights := defaults
 		var appliedRuleID *string
 		appliedRuleVersion := ruleVersion
@@ -484,7 +533,7 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 			}
 			allocationOverride = true
 		} else {
-			ruleWeights, ruleID, revision, ruleErr := allocationRuleWeights(ctx, tx, input.HouseholdID, itemInput.CategoryID, merchantRuleKey)
+			ruleWeights, ruleID, revision, ruleErr := allocationRuleWeights(ctx, tx, input.HouseholdID, categoryID, itemInput.ProductVariantID, merchantRuleKey)
 			if ruleErr != nil {
 				return nil, ruleErr
 			}
@@ -497,7 +546,7 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 			return nil, fmt.Errorf("%w: %w", ErrBadInput, err)
 		}
 		itemID := newID()
-		if _, err := tx.Exec(ctx, `INSERT INTO purchase_items(id, household_id, purchase_id, name, amount_yen, category_id, allocation_override) VALUES ($1, $2, $3, $4, $5, $6, $7)`, itemID, input.HouseholdID, purchaseID, strings.TrimSpace(itemInput.Name), int64(itemInput.AmountYen), itemInput.CategoryID, allocationOverride); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO purchase_items(id,household_id,purchase_id,name,amount_yen,category_id,product_variant_id,allocation_override) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, itemID, input.HouseholdID, purchaseID, strings.TrimSpace(itemInput.Name), int64(itemInput.AmountYen), categoryID, itemInput.ProductVariantID, allocationOverride); err != nil {
 			return nil, err
 		}
 		for _, allocation := range allocated {
@@ -767,11 +816,11 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	var householdID, purchaseID, status, name, merchant string
 	var amount int64
 	var revision, ruleVersion int64
-	var categoryID *string
+	var categoryID, productVariantID *string
 	var allocationOverride bool
 	var fieldRevisions []byte
 	var observedOccurredAt time.Time
-	err = tx.QueryRow(ctx, `SELECT i.household_id::text,i.purchase_id::text,p.status,p.occurred_at,i.name,i.amount_yen,i.category_id::text,i.revision,i.field_revisions,p.allocation_rule_version,p.merchant,i.allocation_override FROM purchase_items i JOIN purchases p ON p.id=i.purchase_id WHERE i.id=$1`, input.ItemID).Scan(&householdID, &purchaseID, &status, &observedOccurredAt, &name, &amount, &categoryID, &revision, &fieldRevisions, &ruleVersion, &merchant, &allocationOverride)
+	err = tx.QueryRow(ctx, `SELECT i.household_id::text,i.purchase_id::text,p.status,p.occurred_at,i.name,i.amount_yen,i.category_id::text,i.product_variant_id::text,i.revision,i.field_revisions,p.allocation_rule_version,p.merchant,i.allocation_override FROM purchase_items i JOIN purchases p ON p.id=i.purchase_id WHERE i.id=$1`, input.ItemID).Scan(&householdID, &purchaseID, &status, &observedOccurredAt, &name, &amount, &categoryID, &productVariantID, &revision, &fieldRevisions, &ruleVersion, &merchant, &allocationOverride)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -785,7 +834,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 		return nil, err
 	}
 	var lockedOccurredAt time.Time
-	err = tx.QueryRow(ctx, `SELECT p.status,p.occurred_at,i.name,i.amount_yen,i.category_id::text,i.revision,i.field_revisions,p.allocation_rule_version,p.merchant,i.allocation_override FROM purchase_items i JOIN purchases p ON p.id=i.purchase_id WHERE i.id=$1 AND i.purchase_id=$2 FOR UPDATE OF i,p`, input.ItemID, purchaseID).Scan(&status, &lockedOccurredAt, &name, &amount, &categoryID, &revision, &fieldRevisions, &ruleVersion, &merchant, &allocationOverride)
+	err = tx.QueryRow(ctx, `SELECT p.status,p.occurred_at,i.name,i.amount_yen,i.category_id::text,i.product_variant_id::text,i.revision,i.field_revisions,p.allocation_rule_version,p.merchant,i.allocation_override FROM purchase_items i JOIN purchases p ON p.id=i.purchase_id WHERE i.id=$1 AND i.purchase_id=$2 FOR UPDATE OF i,p`, input.ItemID, purchaseID).Scan(&status, &lockedOccurredAt, &name, &amount, &categoryID, &productVariantID, &revision, &fieldRevisions, &ruleVersion, &merchant, &allocationOverride)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -801,7 +850,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if input.BaseRevision > int(revision) {
 		return nil, ErrConflict
 	}
-	if err := validateChangedFields(input.ChangedFields, "name", "amountYen", "categoryId", "allocations"); err != nil {
+	if err := validateChangedFields(input.ChangedFields, "name", "amountYen", "categoryId", "productVariantId", "allocations"); err != nil {
 		return nil, err
 	}
 	for _, field := range input.ChangedFields {
@@ -820,8 +869,11 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			}
 		}
 	}
-	if input.Name != nil && !slices.Contains(input.ChangedFields, "name") || input.AmountYen != nil && !slices.Contains(input.ChangedFields, "amountYen") || input.CategoryID != nil && !slices.Contains(input.ChangedFields, "categoryId") || input.Allocations != nil && !slices.Contains(input.ChangedFields, "allocations") {
+	if input.Name != nil && !slices.Contains(input.ChangedFields, "name") || input.AmountYen != nil && !slices.Contains(input.ChangedFields, "amountYen") || input.CategoryID != nil && !slices.Contains(input.ChangedFields, "categoryId") || input.ProductVariantID != nil && !slices.Contains(input.ChangedFields, "productVariantId") || input.Allocations != nil && !slices.Contains(input.ChangedFields, "allocations") {
 		return nil, fmt.Errorf("%w: patch contains fields missing from changedFields", ErrBadInput)
+	}
+	if input.ProductLearning != nil && !slices.Contains(input.ChangedFields, "productVariantId") {
+		return nil, fmt.Errorf("%w: product learning requires a product variant change", ErrBadInput)
 	}
 	conflict, err := valuesConflict(fieldRevisions, input.BaseRevision, input.ChangedFields)
 	if err != nil {
@@ -847,6 +899,30 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if updateCategoryID {
 		newCategory = input.CategoryID
 	}
+	updateProductVariantID := slices.Contains(input.ChangedFields, "productVariantId")
+	newProductVariantID := productVariantID
+	if updateProductVariantID {
+		newProductVariantID = input.ProductVariantID
+	}
+	learningScope := model.ProductLearningScopeItemOnly
+	if input.ProductLearning != nil {
+		learningScope = *input.ProductLearning
+	}
+	if !learningScope.IsValid() || input.VariantName != nil && learningScope != model.ProductLearningScopeVariantName {
+		return nil, fmt.Errorf("%w: invalid product learning scope", ErrBadInput)
+	}
+	if updateProductVariantID && newProductVariantID != nil {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_variants v JOIN product_concepts c ON c.id=v.concept_id WHERE v.id=$1 AND v.household_id=$2 AND NOT v.archived AND NOT c.archived)`, *newProductVariantID, householdID).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, ErrNotFound
+		}
+	}
+	if learningScope != model.ProductLearningScopeItemOnly && newProductVariantID == nil {
+		return nil, fmt.Errorf("%w: product learning requires a linked variant", ErrBadInput)
+	}
 	var weights []domain.Weight
 	var appliedRuleID *string
 	var appliedRuleVersion = ruleVersion
@@ -854,8 +930,8 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if input.Allocations != nil {
 		weights, err = allocationWeights(input.Allocations)
 		newAllocationOverride = true
-	} else if slices.Contains(input.ChangedFields, "categoryId") && !allocationOverride {
-		weights, appliedRuleID, appliedRuleVersion, err = allocationRuleWeights(ctx, tx, householdID, newCategory, normalizeMerchant(merchant))
+	} else if (updateCategoryID || updateProductVariantID) && !allocationOverride {
+		weights, appliedRuleID, appliedRuleVersion, err = allocationRuleWeights(ctx, tx, householdID, newCategory, newProductVariantID, normalizeMerchant(merchant))
 		if err == nil && appliedRuleID == nil {
 			weights, err = loadWeights(ctx, tx, householdID, ruleVersion)
 		}
@@ -897,8 +973,47 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE purchase_items SET name = $2, amount_yen = $3, category_id = CASE WHEN $8 THEN $4::uuid ELSE category_id END, allocation_override = $5, revision = $6, field_revisions = $7, updated_at = now() WHERE id = $1`, input.ItemID, newName, newAmount, newCategory, newAllocationOverride, newRevision, updatedFields, updateCategoryID); err != nil {
+	if learningScope == model.ProductLearningScopeVariantName {
+		variantName := strings.TrimSpace(trimOptional(input.VariantName))
+		variantKey := normalizeProductText(variantName)
+		if variantKey == "" || len(variantName) > 240 {
+			return nil, fmt.Errorf("%w: invalid normalized product name", ErrBadInput)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE product_variants SET name=$2,normalized_name=$3,revision=revision+1,updated_at=now() WHERE id=$1 AND household_id=$4`, *newProductVariantID, variantName, variantKey, householdID); err != nil {
+			return nil, err
+		}
+		var productRevision int64
+		if err := tx.QueryRow(ctx, `SELECT revision FROM product_variants WHERE id=$1`, *newProductVariantID).Scan(&productRevision); err != nil {
+			return nil, err
+		}
+		if err := writeEvent(ctx, tx, householdID, "product.variant.renamed", *newProductVariantID, productRevision, []string{"name"}, user.MemberID); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE purchase_items SET name=$2,amount_yen=$3,category_id=CASE WHEN $8 THEN $4::uuid ELSE category_id END,product_variant_id=CASE WHEN $9 THEN $10::uuid ELSE product_variant_id END,allocation_override=$5,revision=$6,field_revisions=$7,updated_at=now() WHERE id=$1`, input.ItemID, newName, newAmount, newCategory, newAllocationOverride, newRevision, updatedFields, updateCategoryID, updateProductVariantID, newProductVariantID); err != nil {
 		return nil, err
+	}
+	if updateProductVariantID && newProductVariantID != nil {
+		merchantKey := normalizeMerchant(merchant)
+		if learningScope == model.ProductLearningScopeMerchantAlias {
+			if merchantKey == "" {
+				return nil, fmt.Errorf("%w: merchant-specific learning requires a merchant", ErrBadInput)
+			}
+			var aliasID string
+			if err := upsertProductAlias(ctx, tx, householdID, *newProductVariantID, merchantKey, name, normalizeProductText(name), &aliasID); err != nil {
+				return nil, err
+			}
+			var aliasRevision int64
+			if err := tx.QueryRow(ctx, `SELECT revision FROM product_aliases WHERE id=$1`, aliasID).Scan(&aliasRevision); err != nil {
+				return nil, err
+			}
+			if err := writeEvent(ctx, tx, householdID, "product.alias.learned", aliasID, aliasRevision, []string{"alias", "variantId", "merchant"}, user.MemberID); err != nil {
+				return nil, err
+			}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO product_corrections(id,household_id,purchase_id,item_id,raw_name,previous_product_variant_id,product_variant_id,learning_scope,merchant_key,actor_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, newID(), householdID, purchaseID, input.ItemID, name, productVariantID, *newProductVariantID, learningScope, merchantKey, user.MemberID); err != nil {
+			return nil, err
+		}
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM item_allocations WHERE item_id = $1`, input.ItemID); err != nil {
 		return nil, err

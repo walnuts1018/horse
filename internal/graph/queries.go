@@ -121,14 +121,19 @@ func loadAllocationRule(ctx context.Context, db *pgxpool.Pool, ruleID string) (*
 	var result model.AllocationRule
 	var categoryID *string
 	var merchant *string
+	var productConceptID, productVariantID *string
 	var revision int64
-	if err := db.QueryRow(ctx, `SELECT id::text, household_id::text, category_id::text, merchant_key, revision FROM allocation_rules WHERE id = $1`, ruleID).Scan(&result.ID, &result.HouseholdID, &categoryID, &merchant, &revision); errors.Is(err, pgx.ErrNoRows) {
+	if err := db.QueryRow(ctx, `SELECT id::text,household_id::text,category_id::text,merchant_key,product_concept_id::text,product_variant_id::text,revision FROM allocation_rules WHERE id=$1`, ruleID).Scan(&result.ID, &result.HouseholdID, &categoryID, &merchant, &productConceptID, &productVariantID, &revision); errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	result.CategoryID, result.Merchant, result.Revision = categoryID, merchant, int(revision)
-	if categoryID != nil {
+	result.CategoryID, result.Merchant, result.ProductConceptID, result.ProductVariantID, result.Revision = categoryID, merchant, productConceptID, productVariantID, int(revision)
+	if productVariantID != nil {
+		result.Scope = model.AllocationRuleScopeProductVariant
+	} else if productConceptID != nil {
+		result.Scope = model.AllocationRuleScopeProduct
+	} else if categoryID != nil {
 		result.Scope = model.AllocationRuleScopeCategory
 	} else {
 		result.Scope = model.AllocationRuleScopeMerchant

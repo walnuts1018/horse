@@ -46,6 +46,21 @@ func (r *mutationResolver) SetAllocationRule(ctx context.Context, input model.Se
 	return r.setAllocationRule(ctx, input)
 }
 
+// CreateProductConcept is the resolver for the createProductConcept field.
+func (r *mutationResolver) CreateProductConcept(ctx context.Context, input model.CreateProductConceptInput) (*model.ProductConcept, error) {
+	return r.createProductConcept(ctx, input)
+}
+
+// CreateProductVariant is the resolver for the createProductVariant field.
+func (r *mutationResolver) CreateProductVariant(ctx context.Context, input model.CreateProductVariantInput) (*model.ProductVariant, error) {
+	return r.createProductVariant(ctx, input)
+}
+
+// SetProductAlias is the resolver for the setProductAlias field.
+func (r *mutationResolver) SetProductAlias(ctx context.Context, input model.SetProductAliasInput) (*model.ProductAlias, error) {
+	return r.setProductAlias(ctx, input)
+}
+
 // CreatePurchase is the resolver for the createPurchase field.
 func (r *mutationResolver) CreatePurchase(ctx context.Context, input model.CreatePurchaseInput) (*model.Purchase, error) {
 	return r.createPurchase(ctx, input)
@@ -109,6 +124,16 @@ func (r *queryResolver) Household(ctx context.Context, id string) (*model.Househ
 // AllocationRules is the resolver for the allocationRules field.
 func (r *queryResolver) AllocationRules(ctx context.Context, householdID string) ([]*model.AllocationRule, error) {
 	return r.allocationRules(ctx, householdID)
+}
+
+// ProductSuggestions is the resolver for the productSuggestions field.
+func (r *queryResolver) ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first *int) ([]*model.ProductSuggestion, error) {
+	return r.productSuggestions(ctx, householdID, query, merchant, first)
+}
+
+// ProductCatalog is the resolver for the productCatalog field.
+func (r *queryResolver) ProductCatalog(ctx context.Context, householdID string) ([]*model.ProductConcept, error) {
+	return r.productCatalog(ctx, householdID)
 }
 
 // Purchases is the resolver for the purchases field.

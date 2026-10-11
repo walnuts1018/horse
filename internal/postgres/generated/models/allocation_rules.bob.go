@@ -27,13 +27,15 @@ import (
 
 // AllocationRule is an object representing the database table.
 type AllocationRule struct {
-	ID          uuid.UUID           `db:"id,pk" `
-	HouseholdID uuid.UUID           `db:"household_id" `
-	CategoryID  sql.Null[uuid.UUID] `db:"category_id" `
-	MerchantKey sql.Null[string]    `db:"merchant_key" `
-	Revision    int64               `db:"revision" `
-	CreatedAt   time.Time           `db:"created_at" `
-	UpdatedAt   time.Time           `db:"updated_at" `
+	ID               uuid.UUID           `db:"id,pk" `
+	HouseholdID      uuid.UUID           `db:"household_id" `
+	CategoryID       sql.Null[uuid.UUID] `db:"category_id" `
+	MerchantKey      sql.Null[string]    `db:"merchant_key" `
+	Revision         int64               `db:"revision" `
+	CreatedAt        time.Time           `db:"created_at" `
+	UpdatedAt        time.Time           `db:"updated_at" `
+	ProductConceptID sql.Null[uuid.UUID] `db:"product_concept_id" `
+	ProductVariantID sql.Null[uuid.UUID] `db:"product_variant_id" `
 
 	R allocationRuleR `db:"-" `
 
@@ -55,6 +57,8 @@ type allocationRuleR struct {
 	AllocationRuleWeights AllocationRuleWeightSlice // allocation_rule_weights.allocation_rule_weights_household_id_rule_id_fkey
 	Category              *Category                 // allocation_rules.allocation_rules_household_id_category_id_fkey
 	Household             *Household                // allocation_rules.allocation_rules_household_id_fkey
+	ProductConcept        *ProductConcept           // allocation_rules.allocation_rules_product_concept_fk
+	ProductVariant        *ProductVariant           // allocation_rules.allocation_rules_product_variant_fk
 	ItemAllocations       ItemAllocationSlice       // item_allocations.item_allocations_rule_fk
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
@@ -67,12 +71,14 @@ type allocationRuleRLoaded struct {
 	AllocationRuleWeights bool // allocation_rule_weights.allocation_rule_weights_household_id_rule_id_fkey
 	Category              bool // allocation_rules.allocation_rules_household_id_category_id_fkey
 	Household             bool // allocation_rules.allocation_rules_household_id_fkey
+	ProductConcept        bool // allocation_rules.allocation_rules_product_concept_fk
+	ProductVariant        bool // allocation_rules.allocation_rules_product_variant_fk
 	ItemAllocations       bool // item_allocations.item_allocations_rule_fk
 }
 
 func buildAllocationRuleColumns(tableName string) allocationRuleColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "category_id", "merchant_key", "revision", "created_at", "updated_at",
+		"id", "household_id", "category_id", "merchant_key", "revision", "created_at", "updated_at", "product_concept_id", "product_variant_id",
 	)
 
 	if tableName != "" {
@@ -80,28 +86,32 @@ func buildAllocationRuleColumns(tableName string) allocationRuleColumns {
 	}
 
 	return allocationRuleColumns{
-		ColumnsExpr: columnsExpr,
-		tableAlias:  tableName,
-		ID:          buildAllocationRuleColumn(tableName, "id"),
-		HouseholdID: buildAllocationRuleColumn(tableName, "household_id"),
-		CategoryID:  buildAllocationRuleColumn(tableName, "category_id"),
-		MerchantKey: buildAllocationRuleColumn(tableName, "merchant_key"),
-		Revision:    buildAllocationRuleColumn(tableName, "revision"),
-		CreatedAt:   buildAllocationRuleColumn(tableName, "created_at"),
-		UpdatedAt:   buildAllocationRuleColumn(tableName, "updated_at"),
+		ColumnsExpr:      columnsExpr,
+		tableAlias:       tableName,
+		ID:               buildAllocationRuleColumn(tableName, "id"),
+		HouseholdID:      buildAllocationRuleColumn(tableName, "household_id"),
+		CategoryID:       buildAllocationRuleColumn(tableName, "category_id"),
+		MerchantKey:      buildAllocationRuleColumn(tableName, "merchant_key"),
+		Revision:         buildAllocationRuleColumn(tableName, "revision"),
+		CreatedAt:        buildAllocationRuleColumn(tableName, "created_at"),
+		UpdatedAt:        buildAllocationRuleColumn(tableName, "updated_at"),
+		ProductConceptID: buildAllocationRuleColumn(tableName, "product_concept_id"),
+		ProductVariantID: buildAllocationRuleColumn(tableName, "product_variant_id"),
 	}
 }
 
 type allocationRuleColumns struct {
 	expr.ColumnsExpr
-	tableAlias  string
-	ID          allocationRuleColumn
-	HouseholdID allocationRuleColumn
-	CategoryID  allocationRuleColumn
-	MerchantKey allocationRuleColumn
-	Revision    allocationRuleColumn
-	CreatedAt   allocationRuleColumn
-	UpdatedAt   allocationRuleColumn
+	tableAlias       string
+	ID               allocationRuleColumn
+	HouseholdID      allocationRuleColumn
+	CategoryID       allocationRuleColumn
+	MerchantKey      allocationRuleColumn
+	Revision         allocationRuleColumn
+	CreatedAt        allocationRuleColumn
+	UpdatedAt        allocationRuleColumn
+	ProductConceptID allocationRuleColumn
+	ProductVariantID allocationRuleColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -147,17 +157,19 @@ func (c allocationRuleColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type AllocationRuleSetter struct {
-	ID          *uuid.UUID           `db:"id,pk" `
-	HouseholdID *uuid.UUID           `db:"household_id" `
-	CategoryID  *sql.Null[uuid.UUID] `db:"category_id" `
-	MerchantKey *sql.Null[string]    `db:"merchant_key" `
-	Revision    *int64               `db:"revision" `
-	CreatedAt   *time.Time           `db:"created_at" `
-	UpdatedAt   *time.Time           `db:"updated_at" `
+	ID               *uuid.UUID           `db:"id,pk" `
+	HouseholdID      *uuid.UUID           `db:"household_id" `
+	CategoryID       *sql.Null[uuid.UUID] `db:"category_id" `
+	MerchantKey      *sql.Null[string]    `db:"merchant_key" `
+	Revision         *int64               `db:"revision" `
+	CreatedAt        *time.Time           `db:"created_at" `
+	UpdatedAt        *time.Time           `db:"updated_at" `
+	ProductConceptID *sql.Null[uuid.UUID] `db:"product_concept_id" `
+	ProductVariantID *sql.Null[uuid.UUID] `db:"product_variant_id" `
 }
 
 func (s AllocationRuleSetter) SetColumns() []string {
-	vals := make([]string, 0, 7)
+	vals := make([]string, 0, 9)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -178,6 +190,12 @@ func (s AllocationRuleSetter) SetColumns() []string {
 	}
 	if s.UpdatedAt != nil {
 		vals = append(vals, "updated_at")
+	}
+	if s.ProductConceptID != nil {
+		vals = append(vals, "product_concept_id")
+	}
+	if s.ProductVariantID != nil {
+		vals = append(vals, "product_variant_id")
 	}
 	return vals
 }
@@ -239,6 +257,24 @@ func (s AllocationRuleSetter) Overwrite(t *AllocationRule) {
 				return *new(time.Time)
 			}
 			return *s.UpdatedAt
+		}()
+	}
+	if s.ProductConceptID != nil {
+		t.ProductConceptID = func() sql.Null[uuid.UUID] {
+			if s.ProductConceptID == nil {
+				return *new(sql.Null[uuid.UUID])
+			}
+			v := s.ProductConceptID
+			return *v
+		}()
+	}
+	if s.ProductVariantID != nil {
+		t.ProductVariantID = func() sql.Null[uuid.UUID] {
+			if s.ProductVariantID == nil {
+				return *new(sql.Null[uuid.UUID])
+			}
+			v := s.ProductVariantID
+			return *v
 		}()
 	}
 }
@@ -321,6 +357,28 @@ func (s *AllocationRuleSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.UpdatedAt
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.ProductConceptID == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[uuid.UUID] {
+				if s.ProductConceptID == nil {
+					return *new(sql.Null[uuid.UUID])
+				}
+				v := s.ProductConceptID
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.ProductVariantID == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[uuid.UUID] {
+				if s.ProductVariantID == nil {
+					return *new(sql.Null[uuid.UUID])
+				}
+				v := s.ProductVariantID
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -329,7 +387,7 @@ func (s AllocationRuleSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s AllocationRuleSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 7)
+	exprs := make([]bob.Expression, 0, 9)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -380,6 +438,20 @@ func (s AllocationRuleSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.ProductConceptID != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "product_concept_id")...),
+			psql.Arg(s.ProductConceptID),
+		}})
+	}
+
+	if s.ProductVariantID != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "product_variant_id")...),
+			psql.Arg(s.ProductVariantID),
+		}})
+	}
+
 	return exprs
 }
 
@@ -390,7 +462,7 @@ func allocationRuleScanMapper(ctx context.Context, cols []string) (scan.BeforeFu
 		idx int
 		dst func(o *AllocationRule) any
 	}
-	targets := make([]target, 0, 7)
+	targets := make([]target, 0, 9)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -407,6 +479,10 @@ func allocationRuleScanMapper(ctx context.Context, cols []string) (scan.BeforeFu
 			targets = append(targets, target{i, func(o *AllocationRule) any { return &o.CreatedAt }})
 		case "updated_at":
 			targets = append(targets, target{i, func(o *AllocationRule) any { return &o.UpdatedAt }})
+		case "product_concept_id":
+			targets = append(targets, target{i, func(o *AllocationRule) any { return &o.ProductConceptID }})
+		case "product_variant_id":
+			targets = append(targets, target{i, func(o *AllocationRule) any { return &o.ProductVariantID }})
 		}
 	}
 
@@ -770,6 +846,64 @@ func (os AllocationRuleSlice) Household(mods ...bob.Mod[*dialect.SelectQuery]) H
 	)...)
 }
 
+// ProductConcept starts a query for related objects on product_concepts
+func (o *AllocationRule) ProductConcept(mods ...bob.Mod[*dialect.SelectQuery]) ProductConceptsQuery {
+	return ProductConcepts.Query(append(mods,
+		sm.Where(ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(ProductConcepts.Columns.ID.EQ(psql.Arg(o.ProductConceptID))),
+	)...)
+}
+
+func (os AllocationRuleSlice) ProductConcept(mods ...bob.Mod[*dialect.SelectQuery]) ProductConceptsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkProductConceptID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkProductConceptID = append(pkProductConceptID, o.ProductConceptID)
+	}
+
+	return ProductConcepts.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkProductConceptID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(ProductConcepts.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), ProductConcepts.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
+	)...)
+}
+
+// ProductVariant starts a query for related objects on product_variants
+func (o *AllocationRule) ProductVariant(mods ...bob.Mod[*dialect.SelectQuery]) ProductVariantsQuery {
+	return ProductVariants.Query(append(mods,
+		sm.Where(ProductVariants.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(ProductVariants.Columns.ID.EQ(psql.Arg(o.ProductVariantID))),
+	)...)
+}
+
+func (os AllocationRuleSlice) ProductVariant(mods ...bob.Mod[*dialect.SelectQuery]) ProductVariantsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkProductVariantID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkProductVariantID = append(pkProductVariantID, o.ProductVariantID)
+	}
+
+	return ProductVariants.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkProductVariantID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(ProductVariants.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), ProductVariants.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
+	)...)
+}
+
 // ItemAllocations starts a query for related objects on item_allocations
 func (o *AllocationRule) ItemAllocations(mods ...bob.Mod[*dialect.SelectQuery]) ItemAllocationsQuery {
 	return ItemAllocations.Query(append(mods,
@@ -972,6 +1106,108 @@ func (allocationRule0 *AllocationRule) AttachHousehold(ctx context.Context, exec
 	return nil
 }
 
+func attachAllocationRuleProductConcept0(ctx context.Context, exec bob.Executor, count int, allocationRule0 *AllocationRule, productConcept1 *ProductConcept) (*AllocationRule, error) {
+	setter := &AllocationRuleSetter{
+		HouseholdID:      func() *uuid.UUID { return &productConcept1.HouseholdID }(),
+		ProductConceptID: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: productConcept1.ID, Valid: true}; return &v }(),
+	}
+
+	err := allocationRule0.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachAllocationRuleProductConcept0: %w", err)
+	}
+
+	return allocationRule0, nil
+}
+
+func (allocationRule0 *AllocationRule) InsertProductConcept(ctx context.Context, exec bob.Executor, related *ProductConceptSetter) error {
+	var err error
+
+	productConcept1, err := ProductConcepts.Insert(related).One(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("inserting related objects: %w", err)
+	}
+
+	_, err = attachAllocationRuleProductConcept0(ctx, exec, 1, allocationRule0, productConcept1)
+	if err != nil {
+		return err
+	}
+
+	allocationRule0.R.ProductConcept = productConcept1
+	allocationRule0.R.Loaded.ProductConcept = true
+
+	productConcept1.R.AllocationRules = append(productConcept1.R.AllocationRules, allocationRule0)
+
+	return nil
+}
+
+func (allocationRule0 *AllocationRule) AttachProductConcept(ctx context.Context, exec bob.Executor, productConcept1 *ProductConcept) error {
+	var err error
+
+	_, err = attachAllocationRuleProductConcept0(ctx, exec, 1, allocationRule0, productConcept1)
+	if err != nil {
+		return err
+	}
+
+	allocationRule0.R.ProductConcept = productConcept1
+	allocationRule0.R.Loaded.ProductConcept = true
+
+	productConcept1.R.AllocationRules = append(productConcept1.R.AllocationRules, allocationRule0)
+
+	return nil
+}
+
+func attachAllocationRuleProductVariant0(ctx context.Context, exec bob.Executor, count int, allocationRule0 *AllocationRule, productVariant1 *ProductVariant) (*AllocationRule, error) {
+	setter := &AllocationRuleSetter{
+		HouseholdID:      func() *uuid.UUID { return &productVariant1.HouseholdID }(),
+		ProductVariantID: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: productVariant1.ID, Valid: true}; return &v }(),
+	}
+
+	err := allocationRule0.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachAllocationRuleProductVariant0: %w", err)
+	}
+
+	return allocationRule0, nil
+}
+
+func (allocationRule0 *AllocationRule) InsertProductVariant(ctx context.Context, exec bob.Executor, related *ProductVariantSetter) error {
+	var err error
+
+	productVariant1, err := ProductVariants.Insert(related).One(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("inserting related objects: %w", err)
+	}
+
+	_, err = attachAllocationRuleProductVariant0(ctx, exec, 1, allocationRule0, productVariant1)
+	if err != nil {
+		return err
+	}
+
+	allocationRule0.R.ProductVariant = productVariant1
+	allocationRule0.R.Loaded.ProductVariant = true
+
+	productVariant1.R.AllocationRules = append(productVariant1.R.AllocationRules, allocationRule0)
+
+	return nil
+}
+
+func (allocationRule0 *AllocationRule) AttachProductVariant(ctx context.Context, exec bob.Executor, productVariant1 *ProductVariant) error {
+	var err error
+
+	_, err = attachAllocationRuleProductVariant0(ctx, exec, 1, allocationRule0, productVariant1)
+	if err != nil {
+		return err
+	}
+
+	allocationRule0.R.ProductVariant = productVariant1
+	allocationRule0.R.Loaded.ProductVariant = true
+
+	productVariant1.R.AllocationRules = append(productVariant1.R.AllocationRules, allocationRule0)
+
+	return nil
+}
+
 func insertAllocationRuleItemAllocations0(ctx context.Context, exec bob.Executor, itemAllocations1 []*ItemAllocationSetter, allocationRule0 *AllocationRule) (ItemAllocationSlice, error) {
 	for i := range itemAllocations1 {
 		itemAllocations1[i].HouseholdID = func() *uuid.UUID { return &allocationRule0.HouseholdID }()
@@ -1045,15 +1281,17 @@ func (allocationRule0 *AllocationRule) AttachItemAllocations(ctx context.Context
 }
 
 type allocationRuleWhere[Q psql.Filterable] struct {
-	cols        allocationRuleColumns
-	ID          psql.WhereMod[Q, uuid.UUID]
-	HouseholdID psql.WhereMod[Q, uuid.UUID]
-	CategoryID  psql.WhereNullMod[Q, uuid.UUID]
-	MerchantKey psql.WhereNullMod[Q, string]
-	Revision    psql.WhereMod[Q, int64]
-	CreatedAt   psql.WhereMod[Q, time.Time]
-	UpdatedAt   psql.WhereMod[Q, time.Time]
-	R           allocationRuleWhereR[Q]
+	cols             allocationRuleColumns
+	ID               psql.WhereMod[Q, uuid.UUID]
+	HouseholdID      psql.WhereMod[Q, uuid.UUID]
+	CategoryID       psql.WhereNullMod[Q, uuid.UUID]
+	MerchantKey      psql.WhereNullMod[Q, string]
+	Revision         psql.WhereMod[Q, int64]
+	CreatedAt        psql.WhereMod[Q, time.Time]
+	UpdatedAt        psql.WhereMod[Q, time.Time]
+	ProductConceptID psql.WhereNullMod[Q, uuid.UUID]
+	ProductVariantID psql.WhereNullMod[Q, uuid.UUID]
+	R                allocationRuleWhereR[Q]
 }
 
 func (allocationRuleWhere[Q]) AliasedAs(alias string) allocationRuleWhere[Q] {
@@ -1062,15 +1300,17 @@ func (allocationRuleWhere[Q]) AliasedAs(alias string) allocationRuleWhere[Q] {
 
 func buildAllocationRuleWhere[Q psql.Filterable](cols allocationRuleColumns) allocationRuleWhere[Q] {
 	return allocationRuleWhere[Q]{
-		cols:        cols,
-		ID:          psql.Where[Q, uuid.UUID](cols.ID.Expression),
-		HouseholdID: psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
-		CategoryID:  psql.WhereNull[Q, uuid.UUID](cols.CategoryID.Expression),
-		MerchantKey: psql.WhereNull[Q, string](cols.MerchantKey.Expression),
-		Revision:    psql.Where[Q, int64](cols.Revision.Expression),
-		CreatedAt:   psql.Where[Q, time.Time](cols.CreatedAt.Expression),
-		UpdatedAt:   psql.Where[Q, time.Time](cols.UpdatedAt.Expression),
-		R:           allocationRuleWhereR[Q]{cols: cols},
+		cols:             cols,
+		ID:               psql.Where[Q, uuid.UUID](cols.ID.Expression),
+		HouseholdID:      psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		CategoryID:       psql.WhereNull[Q, uuid.UUID](cols.CategoryID.Expression),
+		MerchantKey:      psql.WhereNull[Q, string](cols.MerchantKey.Expression),
+		Revision:         psql.Where[Q, int64](cols.Revision.Expression),
+		CreatedAt:        psql.Where[Q, time.Time](cols.CreatedAt.Expression),
+		UpdatedAt:        psql.Where[Q, time.Time](cols.UpdatedAt.Expression),
+		ProductConceptID: psql.WhereNull[Q, uuid.UUID](cols.ProductConceptID.Expression),
+		ProductVariantID: psql.WhereNull[Q, uuid.UUID](cols.ProductVariantID.Expression),
+		R:                allocationRuleWhereR[Q]{cols: cols},
 	}
 }
 
@@ -1125,6 +1365,36 @@ func (w allocationRuleWhereR[Q]) HasHousehold(filters ...bob.Mod[*dialect.Select
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasProductConcept filters parents that have a matching ProductConcept using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to ProductConcepts).
+func (w allocationRuleWhereR[Q]) HasProductConcept(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(ProductConcepts.NameExpr()),
+		sm.Where(ProductConcepts.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(ProductConcepts.Columns.ID.EQ(w.cols.ProductConceptID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasProductVariant filters parents that have a matching ProductVariant using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to ProductVariants).
+func (w allocationRuleWhereR[Q]) HasProductVariant(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(ProductVariants.NameExpr()),
+		sm.Where(ProductVariants.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(ProductVariants.Columns.ID.EQ(w.cols.ProductVariantID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasItemAllocations filters parents that have a matching ItemAllocations using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -1144,13 +1414,15 @@ func (w allocationRuleWhereR[Q]) HasItemAllocations(filters ...bob.Mod[*dialect.
 // on a LEFT JOIN miss every column comes back NULL, so each field uses the
 // nullable version of the column type even when the column itself is NOT NULL.
 type allocationRulePreloadBuf struct {
-	ID          sql.Null[uuid.UUID]
-	HouseholdID sql.Null[uuid.UUID]
-	CategoryID  sql.Null[uuid.UUID]
-	MerchantKey sql.Null[string]
-	Revision    sql.Null[int64]
-	CreatedAt   sql.Null[time.Time]
-	UpdatedAt   sql.Null[time.Time]
+	ID               sql.Null[uuid.UUID]
+	HouseholdID      sql.Null[uuid.UUID]
+	CategoryID       sql.Null[uuid.UUID]
+	MerchantKey      sql.Null[string]
+	Revision         sql.Null[int64]
+	CreatedAt        sql.Null[time.Time]
+	UpdatedAt        sql.Null[time.Time]
+	ProductConceptID sql.Null[uuid.UUID]
+	ProductVariantID sql.Null[uuid.UUID]
 }
 
 // allocationRuleScanMapperNullable maps the preloaded allocationRule
@@ -1165,7 +1437,7 @@ func allocationRuleScanMapperNullable(prefix string) scan.Mapper[*AllocationRule
 			idx int
 			dst func(b *allocationRulePreloadBuf) any
 		}
-		targets := make([]target, 0, 7)
+		targets := make([]target, 0, 9)
 		for i, col := range cols {
 			name, ok := strings.CutPrefix(col, prefix)
 			if !ok {
@@ -1186,6 +1458,10 @@ func allocationRuleScanMapperNullable(prefix string) scan.Mapper[*AllocationRule
 				targets = append(targets, target{i, func(b *allocationRulePreloadBuf) any { return &b.CreatedAt }})
 			case "updated_at":
 				targets = append(targets, target{i, func(b *allocationRulePreloadBuf) any { return &b.UpdatedAt }})
+			case "product_concept_id":
+				targets = append(targets, target{i, func(b *allocationRulePreloadBuf) any { return &b.ProductConceptID }})
+			case "product_variant_id":
+				targets = append(targets, target{i, func(b *allocationRulePreloadBuf) any { return &b.ProductVariantID }})
 			}
 		}
 
@@ -1214,7 +1490,9 @@ func allocationRuleScanMapperNullable(prefix string) scan.Mapper[*AllocationRule
 					!(buf.MerchantKey.Valid) &&
 					!(buf.Revision.Valid) &&
 					!(buf.CreatedAt.Valid) &&
-					!(buf.UpdatedAt.Valid) {
+					!(buf.UpdatedAt.Valid) &&
+					!(buf.ProductConceptID.Valid) &&
+					!(buf.ProductVariantID.Valid) {
 					return nil, nil
 				}
 
@@ -1236,6 +1514,8 @@ func allocationRuleScanMapperNullable(prefix string) scan.Mapper[*AllocationRule
 				if buf.UpdatedAt.Valid {
 					o.UpdatedAt = buf.UpdatedAt.V
 				}
+				o.ProductConceptID = buf.ProductConceptID
+				o.ProductVariantID = buf.ProductVariantID
 				return o, nil
 			}
 	}
@@ -1289,6 +1569,32 @@ func (o *AllocationRule) Preload(name string, retrieved any) error {
 			rel.R.AllocationRules = AllocationRuleSlice{o}
 		}
 		return nil
+	case "ProductConcept":
+		rel, ok := retrieved.(*ProductConcept)
+		if !ok {
+			return fmt.Errorf("allocationRule cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.ProductConcept = rel
+		o.R.Loaded.ProductConcept = true
+
+		if rel != nil {
+			rel.R.AllocationRules = AllocationRuleSlice{o}
+		}
+		return nil
+	case "ProductVariant":
+		rel, ok := retrieved.(*ProductVariant)
+		if !ok {
+			return fmt.Errorf("allocationRule cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.ProductVariant = rel
+		o.R.Loaded.ProductVariant = true
+
+		if rel != nil {
+			rel.R.AllocationRules = AllocationRuleSlice{o}
+		}
+		return nil
 	case "ItemAllocations":
 		rels, ok := retrieved.(ItemAllocationSlice)
 		if !ok {
@@ -1311,8 +1617,10 @@ func (o *AllocationRule) Preload(name string, retrieved any) error {
 }
 
 type allocationRulePreloader struct {
-	Category  func(...psql.PreloadOption) psql.Preloader
-	Household func(...psql.PreloadOption) psql.Preloader
+	Category       func(...psql.PreloadOption) psql.Preloader
+	Household      func(...psql.PreloadOption) psql.Preloader
+	ProductConcept func(...psql.PreloadOption) psql.Preloader
+	ProductVariant func(...psql.PreloadOption) psql.Preloader
 }
 
 func buildAllocationRulePreloader() allocationRulePreloader {
@@ -1343,6 +1651,32 @@ func buildAllocationRulePreloader() allocationRulePreloader {
 				},
 			}, Households.Columns.Names(), householdScanMapperNullable, opts...)
 		},
+		ProductConcept: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*ProductConcept, ProductConceptSlice](psql.PreloadRel{
+				Name: "ProductConcept",
+				Sides: []psql.PreloadSide{
+					{
+						From:        AllocationRules,
+						To:          ProductConcepts,
+						FromColumns: []string{"household_id", "product_concept_id"},
+						ToColumns:   []string{"household_id", "id"},
+					},
+				},
+			}, ProductConcepts.Columns.Names(), productConceptScanMapperNullable, opts...)
+		},
+		ProductVariant: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*ProductVariant, ProductVariantSlice](psql.PreloadRel{
+				Name: "ProductVariant",
+				Sides: []psql.PreloadSide{
+					{
+						From:        AllocationRules,
+						To:          ProductVariants,
+						FromColumns: []string{"household_id", "product_variant_id"},
+						ToColumns:   []string{"household_id", "id"},
+					},
+				},
+			}, ProductVariants.Columns.Names(), productVariantScanMapperNullable, opts...)
+		},
 	}
 }
 
@@ -1350,6 +1684,8 @@ type allocationRuleThenLoader[Q orm.Loadable] struct {
 	AllocationRuleWeights func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Category              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Household             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ProductConcept        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ProductVariant        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ItemAllocations       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
@@ -1362,6 +1698,12 @@ func buildAllocationRuleThenLoader[Q orm.Loadable]() allocationRuleThenLoader[Q]
 	}
 	type HouseholdLoadInterface interface {
 		LoadHousehold(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type ProductConceptLoadInterface interface {
+		LoadProductConcept(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type ProductVariantLoadInterface interface {
+		LoadProductVariant(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type ItemAllocationsLoadInterface interface {
 		LoadItemAllocations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -1384,6 +1726,18 @@ func buildAllocationRuleThenLoader[Q orm.Loadable]() allocationRuleThenLoader[Q]
 			"Household",
 			func(ctx context.Context, exec bob.Executor, retrieved HouseholdLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadHousehold(ctx, exec, mods...)
+			},
+		),
+		ProductConcept: thenLoadBuilder[Q](
+			"ProductConcept",
+			func(ctx context.Context, exec bob.Executor, retrieved ProductConceptLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadProductConcept(ctx, exec, mods...)
+			},
+		),
+		ProductVariant: thenLoadBuilder[Q](
+			"ProductVariant",
+			func(ctx context.Context, exec bob.Executor, retrieved ProductVariantLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadProductVariant(ctx, exec, mods...)
 			},
 		),
 		ItemAllocations: thenLoadBuilder[Q](
@@ -1602,6 +1956,144 @@ func (os AllocationRuleSlice) LoadHousehold(ctx context.Context, exec bob.Execut
 
 			o.R.Household = rel
 
+		}
+	}
+
+	return nil
+}
+
+// LoadProductConcept loads the allocationRule's ProductConcept into the .R struct
+func (o *AllocationRule) LoadProductConcept(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.ProductConcept = nil
+	o.R.Loaded.ProductConcept = false
+
+	related, err := o.ProductConcept(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.AllocationRules = AllocationRuleSlice{o}
+
+	o.R.ProductConcept = related
+	o.R.Loaded.ProductConcept = true
+	return nil
+}
+
+// LoadProductConcept loads the allocationRule's ProductConcept into the .R struct
+func (os AllocationRuleSlice) LoadProductConcept(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	productConcepts, err := os.ProductConcept(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.ProductConcept = nil
+		o.R.Loaded.ProductConcept = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range productConcepts {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.ProductConceptID.Valid {
+				continue
+			}
+
+			if !(o.ProductConceptID.Valid && o.ProductConceptID.V == rel.ID) {
+				continue
+			}
+
+			rel.R.AllocationRules = append(rel.R.AllocationRules, o)
+
+			o.R.ProductConcept = rel
+			break
+		}
+	}
+
+	return nil
+}
+
+// LoadProductVariant loads the allocationRule's ProductVariant into the .R struct
+func (o *AllocationRule) LoadProductVariant(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.ProductVariant = nil
+	o.R.Loaded.ProductVariant = false
+
+	related, err := o.ProductVariant(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.AllocationRules = AllocationRuleSlice{o}
+
+	o.R.ProductVariant = related
+	o.R.Loaded.ProductVariant = true
+	return nil
+}
+
+// LoadProductVariant loads the allocationRule's ProductVariant into the .R struct
+func (os AllocationRuleSlice) LoadProductVariant(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	productVariants, err := os.ProductVariant(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.ProductVariant = nil
+		o.R.Loaded.ProductVariant = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range productVariants {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.ProductVariantID.Valid {
+				continue
+			}
+
+			if !(o.ProductVariantID.Valid && o.ProductVariantID.V == rel.ID) {
+				continue
+			}
+
+			rel.R.AllocationRules = append(rel.R.AllocationRules, o)
+
+			o.R.ProductVariant = rel
+			break
 		}
 	}
 
@@ -2001,6 +2493,8 @@ type allocationRuleJoins[Q dialect.Joinable] struct {
 	AllocationRuleWeights modAs[Q, allocationRuleWeightColumns]
 	Category              modAs[Q, categoryColumns]
 	Household             modAs[Q, householdColumns]
+	ProductConcept        modAs[Q, productConceptColumns]
+	ProductVariant        modAs[Q, productVariantColumns]
 	ItemAllocations       modAs[Q, itemAllocationColumns]
 }
 
@@ -2047,6 +2541,34 @@ func buildAllocationRuleJoins[Q dialect.Joinable](cols allocationRuleColumns, ty
 				{
 					mods = append(mods, dialect.Join[Q](typ, Households.NameExpr().As(to.Alias())).On(
 						to.ID.EQ(cols.HouseholdID),
+					))
+				}
+
+				return mods
+			},
+		},
+		ProductConcept: modAs[Q, productConceptColumns]{
+			c: ProductConcepts.Columns,
+			f: func(to productConceptColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, ProductConcepts.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.ProductConceptID),
+					))
+				}
+
+				return mods
+			},
+		},
+		ProductVariant: modAs[Q, productVariantColumns]{
+			c: ProductVariants.Columns,
+			f: func(to productVariantColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, ProductVariants.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.ProductVariantID),
 					))
 				}
 

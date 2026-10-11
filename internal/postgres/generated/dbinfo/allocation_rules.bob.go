@@ -78,6 +78,24 @@ var AllocationRules = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		ProductConceptID: column{
+			Name:      "product_concept_id",
+			DBType:    "uuid",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
+		ProductVariantID: column{
+			Name:      "product_variant_id",
+			DBType:    "uuid",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: allocationRuleIndexes{
 		AllocationRulesPkey: index{
@@ -163,6 +181,50 @@ var AllocationRules = Table[
 			Where:         "(merchant_key IS NOT NULL)",
 			Include:       []string{},
 		},
+		AllocationRulesProductConceptKey: index{
+			Type: "btree",
+			Name: "allocation_rules_product_concept_key",
+			Columns: []indexColumn{
+				{
+					Name:         "household_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "product_concept_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        true,
+			Comment:       "",
+			NullsFirst:    []bool{false, false},
+			NullsDistinct: false,
+			Where:         "(product_concept_id IS NOT NULL)",
+			Include:       []string{},
+		},
+		AllocationRulesProductVariantKey: index{
+			Type: "btree",
+			Name: "allocation_rules_product_variant_key",
+			Columns: []indexColumn{
+				{
+					Name:         "household_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "product_variant_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        true,
+			Comment:       "",
+			NullsFirst:    []bool{false, false},
+			NullsDistinct: false,
+			Where:         "(product_variant_id IS NOT NULL)",
+			Include:       []string{},
+		},
 	},
 	PrimaryKey: &constraint{
 		Name:    "allocation_rules_pkey",
@@ -188,6 +250,24 @@ var AllocationRules = Table[
 			ForeignTable:   "households",
 			ForeignColumns: []string{"id"},
 		},
+		AllocationRulesAllocationRulesProductConceptFK: foreignKey{
+			constraint: constraint{
+				Name:    "allocation_rules.allocation_rules_product_concept_fk",
+				Columns: []string{"household_id", "product_concept_id"},
+				Comment: "",
+			},
+			ForeignTable:   "product_concepts",
+			ForeignColumns: []string{"household_id", "id"},
+		},
+		AllocationRulesAllocationRulesProductVariantFK: foreignKey{
+			constraint: constraint{
+				Name:    "allocation_rules.allocation_rules_product_variant_fk",
+				Columns: []string{"household_id", "product_variant_id"},
+				Comment: "",
+			},
+			ForeignTable:   "product_variants",
+			ForeignColumns: []string{"household_id", "id"},
+		},
 	},
 	Uniques: allocationRuleUniques{
 		AllocationRulesHouseholdIDIDKey: constraint{
@@ -197,14 +277,6 @@ var AllocationRules = Table[
 		},
 	},
 	Checks: allocationRuleChecks{
-		AllocationRulesCheck: check{
-			constraint: constraint{
-				Name:    "allocation_rules_check",
-				Columns: []string{"category_id", "merchant_key"},
-				Comment: "",
-			},
-			Expression: "((category_id IS NOT NULL) <> (merchant_key IS NOT NULL))",
-		},
 		AllocationRulesMerchantKeyCheck: check{
 			constraint: constraint{
 				Name:    "allocation_rules_merchant_key_check",
@@ -221,47 +293,61 @@ var AllocationRules = Table[
 			},
 			Expression: "(revision > 0)",
 		},
+		AllocationRulesScopeCheck: check{
+			constraint: constraint{
+				Name:    "allocation_rules_scope_check",
+				Columns: []string{"category_id", "merchant_key", "product_concept_id", "product_variant_id"},
+				Comment: "",
+			},
+			Expression: "(num_nonnulls(category_id, merchant_key, product_concept_id, product_variant_id) = 1)",
+		},
 	},
 	Comment: "",
 }
 
 type allocationRuleColumns struct {
-	ID          column
-	HouseholdID column
-	CategoryID  column
-	MerchantKey column
-	Revision    column
-	CreatedAt   column
-	UpdatedAt   column
+	ID               column
+	HouseholdID      column
+	CategoryID       column
+	MerchantKey      column
+	Revision         column
+	CreatedAt        column
+	UpdatedAt        column
+	ProductConceptID column
+	ProductVariantID column
 }
 
 func (c allocationRuleColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.CategoryID, c.MerchantKey, c.Revision, c.CreatedAt, c.UpdatedAt,
+		c.ID, c.HouseholdID, c.CategoryID, c.MerchantKey, c.Revision, c.CreatedAt, c.UpdatedAt, c.ProductConceptID, c.ProductVariantID,
 	}
 }
 
 type allocationRuleIndexes struct {
-	AllocationRulesPkey             index
-	AllocationRulesCategoryKey      index
-	AllocationRulesHouseholdIDIDKey index
-	AllocationRulesMerchantKey      index
+	AllocationRulesPkey              index
+	AllocationRulesCategoryKey       index
+	AllocationRulesHouseholdIDIDKey  index
+	AllocationRulesMerchantKey       index
+	AllocationRulesProductConceptKey index
+	AllocationRulesProductVariantKey index
 }
 
 func (i allocationRuleIndexes) AsSlice() []index {
 	return []index{
-		i.AllocationRulesPkey, i.AllocationRulesCategoryKey, i.AllocationRulesHouseholdIDIDKey, i.AllocationRulesMerchantKey,
+		i.AllocationRulesPkey, i.AllocationRulesCategoryKey, i.AllocationRulesHouseholdIDIDKey, i.AllocationRulesMerchantKey, i.AllocationRulesProductConceptKey, i.AllocationRulesProductVariantKey,
 	}
 }
 
 type allocationRuleForeignKeys struct {
 	AllocationRulesAllocationRulesHouseholdIDCategoryIDFkey foreignKey
 	AllocationRulesAllocationRulesHouseholdIDFkey           foreignKey
+	AllocationRulesAllocationRulesProductConceptFK          foreignKey
+	AllocationRulesAllocationRulesProductVariantFK          foreignKey
 }
 
 func (f allocationRuleForeignKeys) AsSlice() []foreignKey {
 	return []foreignKey{
-		f.AllocationRulesAllocationRulesHouseholdIDCategoryIDFkey, f.AllocationRulesAllocationRulesHouseholdIDFkey,
+		f.AllocationRulesAllocationRulesHouseholdIDCategoryIDFkey, f.AllocationRulesAllocationRulesHouseholdIDFkey, f.AllocationRulesAllocationRulesProductConceptFK, f.AllocationRulesAllocationRulesProductVariantFK,
 	}
 }
 
@@ -276,13 +362,13 @@ func (u allocationRuleUniques) AsSlice() []constraint {
 }
 
 type allocationRuleChecks struct {
-	AllocationRulesCheck            check
 	AllocationRulesMerchantKeyCheck check
 	AllocationRulesRevisionCheck    check
+	AllocationRulesScopeCheck       check
 }
 
 func (c allocationRuleChecks) AsSlice() []check {
 	return []check{
-		c.AllocationRulesCheck, c.AllocationRulesMerchantKeyCheck, c.AllocationRulesRevisionCheck,
+		c.AllocationRulesMerchantKeyCheck, c.AllocationRulesRevisionCheck, c.AllocationRulesScopeCheck,
 	}
 }

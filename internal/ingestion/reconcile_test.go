@@ -5,6 +5,24 @@ import (
 	"time"
 )
 
+func TestStatementObservationsKeepIndependentReferences(t *testing.T) {
+	result := Verification{Statements: []StatementEntry{
+		{Row: 2, TransactionID: "card-1", Merchant: "店舗", Amount: 100, OccurredAt: "2026-10-12T00:00:00+09:00"},
+		{Row: 3, Merchant: "店舗", Amount: 100, OccurredAt: "2026-10-12T00:00:00+09:00"},
+	}}
+	observations := SourceObservations("document", "hash", "card", result)
+	if len(observations) != 2 || observations[0].SourceReference != "transaction:card-1" || observations[1].SourceReference != "row:3" {
+		t.Fatalf("statement references lost: %#v", observations)
+	}
+	matched := Reconcile(Observation{DocumentID: "new", Merchant: "店舗", Amount: 100, OccurredAt: observations[0].OccurredAt}, observations)
+	if len(matched) != 2 || matched[0].SourceReference == matched[1].SourceReference {
+		t.Fatalf("equal amount statements were collapsed: %#v", matched)
+	}
+	if !observations[0].OccurredAt.Equal(time.Date(2026, 10, 11, 15, 0, 0, 0, time.UTC)) {
+		t.Fatalf("statement timezone lost: %v", observations[0].OccurredAt)
+	}
+}
+
 func TestReconcile(t *testing.T) {
 	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {

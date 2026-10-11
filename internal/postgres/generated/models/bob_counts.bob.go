@@ -29,6 +29,8 @@ type preloadCounts struct {
 	Journal         journalCountPreloader
 	Member          memberCountPreloader
 	Pool            poolCountPreloader
+	ProductConcept  productConceptCountPreloader
+	ProductVariant  productVariantCountPreloader
 	PurchaseItem    purchaseItemCountPreloader
 	Purchase        purchaseCountPreloader
 	SettlementRun   settlementRunCountPreloader
@@ -46,6 +48,8 @@ func getPreloadCount() preloadCounts {
 		Journal:         buildJournalCountPreloader(),
 		Member:          buildMemberCountPreloader(),
 		Pool:            buildPoolCountPreloader(),
+		ProductConcept:  buildProductConceptCountPreloader(),
+		ProductVariant:  buildProductVariantCountPreloader(),
 		PurchaseItem:    buildPurchaseItemCountPreloader(),
 		Purchase:        buildPurchaseCountPreloader(),
 		SettlementRun:   buildSettlementRunCountPreloader(),
@@ -63,6 +67,8 @@ type thenLoadCounts[Q orm.Loadable] struct {
 	Journal         journalCountThenLoader[Q]
 	Member          memberCountThenLoader[Q]
 	Pool            poolCountThenLoader[Q]
+	ProductConcept  productConceptCountThenLoader[Q]
+	ProductVariant  productVariantCountThenLoader[Q]
 	PurchaseItem    purchaseItemCountThenLoader[Q]
 	Purchase        purchaseCountThenLoader[Q]
 	SettlementRun   settlementRunCountThenLoader[Q]
@@ -80,6 +86,8 @@ func getThenLoadCount[Q orm.Loadable]() thenLoadCounts[Q] {
 		Journal:         buildJournalCountThenLoader[Q](),
 		Member:          buildMemberCountThenLoader[Q](),
 		Pool:            buildPoolCountThenLoader[Q](),
+		ProductConcept:  buildProductConceptCountThenLoader[Q](),
+		ProductVariant:  buildProductVariantCountThenLoader[Q](),
 		PurchaseItem:    buildPurchaseItemCountThenLoader[Q](),
 		Purchase:        buildPurchaseCountThenLoader[Q](),
 		SettlementRun:   buildSettlementRunCountThenLoader[Q](),

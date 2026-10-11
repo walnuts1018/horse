@@ -41,6 +41,10 @@ func Where[Q psql.Filterable]() struct {
 	OidcSessions          oidcSessionWhere[Q]
 	OidcStates            oidcStateWhere[Q]
 	Pools                 poolWhere[Q]
+	ProductAliases        productAliasWhere[Q]
+	ProductConcepts       productConceptWhere[Q]
+	ProductCorrections    productCorrectionWhere[Q]
+	ProductVariants       productVariantWhere[Q]
 	PurchaseItems         purchaseItemWhere[Q]
 	Purchases             purchaseWhere[Q]
 	SettlementLines       settlementLineWhere[Q]
@@ -73,6 +77,10 @@ func Where[Q psql.Filterable]() struct {
 		OidcSessions          oidcSessionWhere[Q]
 		OidcStates            oidcStateWhere[Q]
 		Pools                 poolWhere[Q]
+		ProductAliases        productAliasWhere[Q]
+		ProductConcepts       productConceptWhere[Q]
+		ProductCorrections    productCorrectionWhere[Q]
+		ProductVariants       productVariantWhere[Q]
 		PurchaseItems         purchaseItemWhere[Q]
 		Purchases             purchaseWhere[Q]
 		SettlementLines       settlementLineWhere[Q]
@@ -104,6 +112,10 @@ func Where[Q psql.Filterable]() struct {
 		OidcSessions:          buildOidcSessionWhere[Q](OidcSessions.Columns),
 		OidcStates:            buildOidcStateWhere[Q](OidcStates.Columns),
 		Pools:                 buildPoolWhere[Q](Pools.Columns),
+		ProductAliases:        buildProductAliasWhere[Q](ProductAliases.Columns),
+		ProductConcepts:       buildProductConceptWhere[Q](ProductConcepts.Columns),
+		ProductCorrections:    buildProductCorrectionWhere[Q](ProductCorrections.Columns),
+		ProductVariants:       buildProductVariantWhere[Q](ProductVariants.Columns),
 		PurchaseItems:         buildPurchaseItemWhere[Q](PurchaseItems.Columns),
 		Purchases:             buildPurchaseWhere[Q](Purchases.Columns),
 		SettlementLines:       buildSettlementLineWhere[Q](SettlementLines.Columns),
