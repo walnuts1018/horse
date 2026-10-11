@@ -19,6 +19,7 @@ export type PurchaseItem = {
   amountYen: number;
   revision: number;
   categoryId?: string | null;
+  productVariantId?: string | null;
   allocations: Allocation[];
 };
 export type Purchase = {
@@ -45,6 +46,7 @@ export type CreatePurchaseInput = {
     name: string;
     amountYen: number;
     categoryId: string | null;
+    productVariantId?: string | null;
     allocations: Array<{ poolId: string; weight: number }> | null;
   }>;
 };
@@ -76,11 +78,52 @@ export type Settlement = {
 export type AllocationRule = {
   id: string;
   householdId: string;
-  scope: "CATEGORY" | "MERCHANT";
+  scope: "PRODUCT_VARIANT" | "PRODUCT" | "CATEGORY" | "MERCHANT";
   categoryId?: string | null;
   merchant?: string | null;
+  productConceptId?: string | null;
+  productVariantId?: string | null;
   revision: number;
   allocations: Allocation[];
+};
+export type ProductAlias = { id: string; alias: string; merchantKey: string; revision: number };
+export type ProductVariant = {
+  id: string;
+  householdId: string;
+  conceptId: string;
+  name: string;
+  normalizedName: string;
+  brand: string;
+  packageSize: string;
+  barcode?: string | null;
+  archived: boolean;
+  revision: number;
+  aliases: ProductAlias[];
+};
+export type ProductConcept = {
+  id: string;
+  householdId: string;
+  name: string;
+  normalizedName: string;
+  categoryId?: string | null;
+  archived: boolean;
+  revision: number;
+  variants: ProductVariant[];
+};
+export type ProductSuggestion = {
+  concept: ProductConcept;
+  variant: ProductVariant;
+  matchedName: string;
+  score: number;
+};
+export type HouseholdInvitation = {
+  id: string;
+  householdId: string;
+  role: string;
+  expiresAt: string;
+  createdAt: string;
+  revokedAt?: string | null;
+  acceptedAt?: string | null;
 };
 export type LedgerEntry = {
   id: string;
@@ -284,6 +327,7 @@ export const purchasesQuery = graphql`
             amountYen
             revision
             categoryId
+            productVariantId
             allocations {
               poolId
               poolName
@@ -343,6 +387,8 @@ export const allocationRulesQuery = graphql`
       scope
       categoryId
       merchant
+      productConceptId
+      productVariantId
       revision
       allocations {
         poolId
@@ -405,6 +451,7 @@ export const createPurchaseMutation = graphql`
         name
         amountYen
         categoryId
+        productVariantId
         allocations {
           poolId
           weight
@@ -454,11 +501,153 @@ export const setAllocationRuleMutation = graphql`
       scope
       categoryId
       merchant
+      productConceptId
+      productVariantId
       revision
       allocations {
         poolId
         weight
       }
+    }
+  }
+`;
+
+export const householdInvitationsQuery = graphql`
+  query HouseholdInvitationsQuery($householdId: ID!) {
+    householdInvitations(householdId: $householdId) {
+      id
+      householdId
+      role
+      expiresAt
+      createdAt
+      revokedAt
+      acceptedAt
+    }
+  }
+`;
+
+export const createHouseholdInvitationMutation = graphql`
+  mutation CreateHouseholdInvitationMutation($input: CreateHouseholdInvitationInput!) {
+    createHouseholdInvitation(input: $input) {
+      token
+      invitation {
+        id
+        householdId
+        role
+        expiresAt
+        createdAt
+        revokedAt
+        acceptedAt
+      }
+    }
+  }
+`;
+
+export const revokeHouseholdInvitationMutation = graphql`
+  mutation RevokeHouseholdInvitationMutation($householdId: ID!, $invitationId: ID!) {
+    revokeHouseholdInvitation(householdId: $householdId, invitationId: $invitationId) {
+      id
+      revokedAt
+    }
+  }
+`;
+
+export const acceptHouseholdInvitationMutation = graphql`
+  mutation AcceptHouseholdInvitationMutation($token: String!) {
+    acceptHouseholdInvitation(token: $token) {
+      id
+      name
+    }
+  }
+`;
+
+export const productCatalogQuery = graphql`
+  query ProductCatalogQuery($householdId: ID!) {
+    productCatalog(householdId: $householdId) {
+      id
+      householdId
+      name
+      normalizedName
+      categoryId
+      archived
+      revision
+      variants {
+        id
+        householdId
+        conceptId
+        name
+        normalizedName
+        brand
+        packageSize
+        barcode
+        archived
+        revision
+        aliases {
+          id
+          alias
+          merchantKey
+          revision
+        }
+      }
+    }
+  }
+`;
+
+export const productSuggestionsQuery = graphql`
+  query ProductSuggestionsQuery(
+    $householdId: ID!
+    $query: String!
+    $merchant: String
+    $first: Int
+  ) {
+    productSuggestions(
+      householdId: $householdId
+      query: $query
+      merchant: $merchant
+      first: $first
+    ) {
+      concept {
+        id
+        name
+        categoryId
+      }
+      variant {
+        id
+        name
+        brand
+        packageSize
+      }
+      matchedName
+      score
+    }
+  }
+`;
+
+export const createProductConceptMutation = graphql`
+  mutation CreateProductConceptMutation($input: CreateProductConceptInput!) {
+    createProductConcept(input: $input) {
+      id
+      name
+    }
+  }
+`;
+
+export const createProductVariantMutation = graphql`
+  mutation CreateProductVariantMutation($input: CreateProductVariantInput!) {
+    createProductVariant(input: $input) {
+      id
+      name
+    }
+  }
+`;
+
+export const setProductAliasMutation = graphql`
+  mutation SetProductAliasMutation($input: SetProductAliasInput!) {
+    setProductAlias(input: $input) {
+      id
+      alias
+      merchantKey
+      revision
     }
   }
 `;

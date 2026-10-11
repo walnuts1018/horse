@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<96bd7e7a7151baeee7e71c724738cd91>>
+ * @generated SignedSource<<f2d12315c63d6a604b3f1ecc634af2bf>>
  * @lightSyntaxTransform
  */
 
@@ -48,6 +48,7 @@ export type CreatePurchaseMutation$data = {
       readonly categoryId: string | null | undefined;
       readonly id: string;
       readonly name: string;
+      readonly productVariantId: string | null | undefined;
     }>;
     readonly merchant: string;
     readonly occurredAt: string;
@@ -176,6 +177,13 @@ v3 = [
           {
             "alias": null,
             "args": null,
+            "kind": "ScalarField",
+            "name": "productVariantId",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
             "concreteType": "Allocation",
             "kind": "LinkedField",
             "name": "allocations",
@@ -224,16 +232,16 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "f3b64bb426006ff7e78168b1db03f35c",
+    "cacheID": "7a5aa34be89e455988ce0e3991876f9a",
     "id": null,
     "metadata": {},
     "name": "CreatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    id\n    householdId\n    occurredAt\n    merchant\n    paymentAccountId\n    totalYen\n    revision\n    status\n    items {\n      id\n      name\n      amountYen\n      categoryId\n      allocations {\n        poolId\n        weight\n        amountYen\n      }\n    }\n  }\n}\n"
+    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    id\n    householdId\n    occurredAt\n    merchant\n    paymentAccountId\n    totalYen\n    revision\n    status\n    items {\n      id\n      name\n      amountYen\n      categoryId\n      productVariantId\n      allocations {\n        poolId\n        weight\n        amountYen\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "22a42d8213ef05c0ba08a8fb650f51a5";
+(node as any).hash = "3e1bc42abd70612178f49ef80a9a2963";
 
 export default node;

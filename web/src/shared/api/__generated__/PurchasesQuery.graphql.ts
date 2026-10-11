@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<34b56f0b7284bbbed01c1729958cbbc8>>
+ * @generated SignedSource<<1cdef18ef1ab33df5f6cb060a5023987>>
  * @lightSyntaxTransform
  */
 
@@ -36,6 +36,7 @@ export type PurchasesQuery$data = {
           readonly categoryId: string | null | undefined;
           readonly id: string;
           readonly name: string;
+          readonly productVariantId: string | null | undefined;
           readonly revision: number;
         }>;
         readonly merchant: string;
@@ -256,6 +257,13 @@ v10 = [
                   {
                     "alias": null,
                     "args": null,
+                    "kind": "ScalarField",
+                    "name": "productVariantId",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
                     "concreteType": "Allocation",
                     "kind": "LinkedField",
                     "name": "allocations",
@@ -384,16 +392,16 @@ return {
     "selections": (v10/*:: as any*/)
   },
   "params": {
-    "cacheID": "305f85d57dd30d89df1c26263707fba3",
+    "cacheID": "2fead9c587d1aec974df19263c5f7f2b",
     "id": null,
     "metadata": {},
     "name": "PurchasesQuery",
     "operationKind": "query",
-    "text": "query PurchasesQuery(\n  $householdId: ID!\n  $from: String\n  $to: String\n  $after: String\n  $first: Int\n) {\n  purchases(householdId: $householdId, from: $from, to: $to, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        paymentAccountId\n        paymentAccount {\n          id\n          name\n          kind\n          poolId\n        }\n        items {\n          id\n          name\n          amountYen\n          revision\n          categoryId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n        }\n        totalYen\n        revision\n        status\n        createdAt\n        updatedAt\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query PurchasesQuery(\n  $householdId: ID!\n  $from: String\n  $to: String\n  $after: String\n  $first: Int\n) {\n  purchases(householdId: $householdId, from: $from, to: $to, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        paymentAccountId\n        paymentAccount {\n          id\n          name\n          kind\n          poolId\n        }\n        items {\n          id\n          name\n          amountYen\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n        }\n        totalYen\n        revision\n        status\n        createdAt\n        updatedAt\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "0eb0ff8a164fb9d001173ea1f0c0f732";
+(node as any).hash = "534f9cb570601fae99969d89c05bddc0";
 
 export default node;

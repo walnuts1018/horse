@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BookOpen, ChevronDown, ChevronRight, Plus, Search } from "lucide-react";
 import {
   ApiError,
   purchasesQuery,
+  productCatalogQuery,
   readGraphql,
   updatePurchaseItemMutation,
   updatePurchaseMutation,
@@ -10,6 +11,7 @@ import {
   type Household,
   type Purchase,
   type PurchaseItem,
+  type ProductConcept,
 } from "../../../shared/api";
 import { EmptyState, InlineError } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../shared/api";
@@ -35,8 +37,19 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     paymentAccountId: string;
   } | null>(null);
   const [itemDrafts, setItemDrafts] = useState<
-    Record<string, { name: string; amountYen: string; categoryId: string }>
+    Record<
+      string,
+      {
+        name: string;
+        amountYen: string;
+        categoryId: string;
+        productVariantId: string;
+        productLearning: "ITEM_ONLY" | "VARIANT_NAME" | "MERCHANT_ALIAS";
+        variantName: string;
+      }
+    >
   >({});
+  const [catalog, setCatalog] = useState<ProductConcept[]>([]);
   const [editError, setEditError] = useState("");
   const [conflict, setConflict] = useState<{
     label: string;
@@ -54,6 +67,17 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       .map((edge) => edge.node)
       .find((purchase) => purchase.id === purchaseId);
   };
+  useEffect(() => {
+    let active = true;
+    void readGraphql<{ productCatalog: ProductConcept[] }>(productCatalogQuery, {
+      householdId: household.id,
+    })
+      .then((result) => active && setCatalog(result.productCatalog))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [household.id]);
   const startEditing = (purchase: Purchase) => {
     const occurredAt = new Date(purchase.occurredAt);
     occurredAt.setMinutes(occurredAt.getMinutes() - occurredAt.getTimezoneOffset());
@@ -67,7 +91,14 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       Object.fromEntries(
         purchase.items.map((item) => [
           item.id,
-          { name: item.name, amountYen: String(item.amountYen), categoryId: item.categoryId ?? "" },
+          {
+            name: item.name,
+            amountYen: String(item.amountYen),
+            categoryId: item.categoryId ?? "",
+            productVariantId: item.productVariantId ?? "",
+            productLearning: "ITEM_ONLY",
+            variantName: "",
+          },
         ]),
       ),
     );
@@ -81,11 +112,15 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       name: draft.name.trim(),
       amountYen: Number(draft.amountYen),
       categoryId: draft.categoryId || null,
+      productVariantId: draft.productVariantId || null,
     };
     const changedFields = [
       ...(patch.name !== item.name ? ["name"] : []),
       ...(patch.amountYen !== item.amountYen ? ["amountYen"] : []),
       ...(!sameNullableString(patch.categoryId, item.categoryId) ? ["categoryId"] : []),
+      ...(!sameNullableString(patch.productVariantId, item.productVariantId)
+        ? ["productVariantId"]
+        : []),
     ] as Array<keyof typeof patch>;
     if (!changedFields.length) return;
     const changedPatch = Object.fromEntries(changedFields.map((field) => [field, patch[field]]));
@@ -95,6 +130,14 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           itemId: item.id,
           baseRevision: item.revision,
           ...changedPatch,
+          ...(changedFields.includes("productVariantId") && patch.productVariantId
+            ? {
+                productLearning: draft.productLearning,
+                ...(draft.productLearning === "VARIANT_NAME"
+                  ? { variantName: draft.variantName.trim() }
+                  : {}),
+              }
+            : {}),
           changedFields,
         },
       });
@@ -121,6 +164,14 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                   itemId: current.id,
                   baseRevision: current.revision,
                   ...changedPatch,
+                  ...(changedFields.includes("productVariantId") && patch.productVariantId
+                    ? {
+                        productLearning: draft.productLearning,
+                        ...(draft.productLearning === "VARIANT_NAME"
+                          ? { variantName: draft.variantName.trim() }
+                          : {}),
+                      }
+                    : {}),
                   changedFields,
                 },
               });
@@ -393,6 +444,79 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                                 </option>
                               ))}
                           </select>
+                          <select
+                            aria-label="正規商品"
+                            value={
+                              itemDrafts[item.id]?.productVariantId ?? item.productVariantId ?? ""
+                            }
+                            onChange={(event) =>
+                              setItemDrafts((current) => ({
+                                ...current,
+                                [item.id]: {
+                                  ...current[item.id],
+                                  productVariantId: event.target.value,
+                                  variantName:
+                                    catalog
+                                      .flatMap((concept) => concept.variants)
+                                      .find((variant) => variant.id === event.target.value)?.name ??
+                                    "",
+                                },
+                              }))
+                            }
+                          >
+                            <option value="">商品未選択</option>
+                            {catalog.flatMap((concept) =>
+                              concept.variants
+                                .filter((variant) => !variant.archived)
+                                .map((variant) => (
+                                  <option key={variant.id} value={variant.id}>
+                                    {concept.name} · {variant.name}
+                                  </option>
+                                )),
+                            )}
+                          </select>
+                          {itemDrafts[item.id]?.productVariantId !==
+                            (item.productVariantId ?? "") &&
+                            itemDrafts[item.id]?.productVariantId && (
+                              <>
+                                <select
+                                  aria-label="商品名の学習範囲"
+                                  value={itemDrafts[item.id]?.productLearning ?? "ITEM_ONLY"}
+                                  onChange={(event) =>
+                                    setItemDrafts((current) => ({
+                                      ...current,
+                                      [item.id]: {
+                                        ...current[item.id],
+                                        productLearning: event.target.value as
+                                          | "ITEM_ONLY"
+                                          | "VARIANT_NAME"
+                                          | "MERCHANT_ALIAS",
+                                      },
+                                    }))
+                                  }
+                                >
+                                  <option value="ITEM_ONLY">この品目だけ</option>
+                                  <option value="VARIANT_NAME">バリエーション名として学習</option>
+                                  <option value="MERCHANT_ALIAS">この店の別表記として学習</option>
+                                </select>
+                                {itemDrafts[item.id]?.productLearning === "VARIANT_NAME" && (
+                                  <input
+                                    aria-label="バリエーション名"
+                                    value={itemDrafts[item.id]?.variantName ?? ""}
+                                    onChange={(event) =>
+                                      setItemDrafts((current) => ({
+                                        ...current,
+                                        [item.id]: {
+                                          ...current[item.id],
+                                          variantName: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="バリエーション名"
+                                  />
+                                )}
+                              </>
+                            )}
                           <input
                             aria-label="金額"
                             inputMode="numeric"

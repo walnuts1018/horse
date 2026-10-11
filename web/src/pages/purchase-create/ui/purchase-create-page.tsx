@@ -22,11 +22,13 @@ import { Popover } from "@base-ui/react/popover";
 import {
   makeIdempotencyKey,
   purchasesQuery,
+  productSuggestionsQuery,
   readGraphql,
   type Connection,
   type CreatePurchaseInput,
   type Household,
   type Purchase,
+  type ProductSuggestion,
 } from "../../../shared/api";
 import {
   enqueuePurchase,
@@ -69,6 +71,8 @@ export function PurchaseCreatePage({
   const [items, setItems] = useState<DraftItem[]>([]);
   const [itemName, setItemName] = useState("");
   const [itemAmount, setItemAmount] = useState("");
+  const [selectedProductVariantId, setSelectedProductVariantId] = useState("");
+  const [productSuggestions, setProductSuggestions] = useState<ProductSuggestion[]>([]);
   const [categoryId, setCategoryId] = useState(
     household.categories.find((item) => !item.archived)?.id ?? "",
   );
@@ -186,6 +190,28 @@ export function PurchaseCreatePage({
       .catch(() => {});
   }, [household.id]);
   useEffect(() => {
+    const query = itemName.trim();
+    if (query.length < 2) {
+      setProductSuggestions([]);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void readGraphql<{ productSuggestions: ProductSuggestion[] }>(productSuggestionsQuery, {
+        householdId: household.id,
+        query,
+        merchant: merchant.trim() || null,
+        first: 6,
+      })
+        .then((result) => active && setProductSuggestions(result.productSuggestions))
+        .catch(() => active && setProductSuggestions([]));
+    }, 220);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [household.id, itemName, merchant]);
+  useEffect(() => {
     if (!itemName.trim()) return;
     const match = history
       .flatMap((purchase) => purchase.items)
@@ -214,12 +240,15 @@ export function PurchaseCreatePage({
       key: crypto.randomUUID(),
       ...parsed.data,
       categoryId,
+      ...(selectedProductVariantId ? { productVariantId: selectedProductVariantId } : {}),
       allocations: [],
     };
     setUndoItems(items);
     setItems((current) => [...current, item]);
     setItemName("");
     setItemAmount("");
+    setSelectedProductVariantId("");
+    setProductSuggestions([]);
     setFocused("name");
     nameRef.current?.focus();
     return true;
@@ -311,6 +340,7 @@ export function PurchaseCreatePage({
           allocations: item.allocations.length
             ? item.allocations.filter((allocation) => allocation.weight > 0)
             : null,
+          productVariantId: item.productVariantId || null,
         })),
       };
       await enqueuePurchase(input);
@@ -537,7 +567,10 @@ export function PurchaseCreatePage({
             <input
               ref={nameRef}
               value={itemName}
-              onChange={(e) => setItemName(e.target.value)}
+              onChange={(e) => {
+                setItemName(e.target.value);
+                setSelectedProductVariantId("");
+              }}
               onFocus={() => setFocused("name")}
               onBlur={() => window.setTimeout(() => setFocused(null), 160)}
               onKeyDown={onNameKey}
@@ -553,7 +586,7 @@ export function PurchaseCreatePage({
               autoComplete="off"
             />
             <kbd>Enter</kbd>
-            {focused === "name" && suggestions.length > 0 && (
+            {focused === "name" && suggestions.length > 0 && productSuggestions.length === 0 && (
               <div className="suggestions">
                 {suggestions.map((name) => (
                   <button
@@ -562,6 +595,7 @@ export function PurchaseCreatePage({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       setItemName(name);
+                      setSelectedProductVariantId("");
                       amountRef.current?.focus();
                       setFocused("amount");
                     }}
@@ -572,6 +606,34 @@ export function PurchaseCreatePage({
                   </button>
                 ))}
               </div>
+            )}
+            {focused === "name" && productSuggestions.length > 0 && !selectedProductVariantId && (
+              <div className="suggestions product-suggestions">
+                {productSuggestions.map((candidate) => (
+                  <button
+                    type="button"
+                    key={candidate.variant.id}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setSelectedProductVariantId(candidate.variant.id);
+                      setItemName(candidate.matchedName || itemName.trim());
+                      if (candidate.concept.categoryId) setCategoryId(candidate.concept.categoryId);
+                      setProductSuggestions([]);
+                      amountRef.current?.focus();
+                      setFocused("amount");
+                    }}
+                  >
+                    <Search size={13} />
+                    <span>{candidate.matchedName}</span>
+                    <small>
+                      {candidate.concept.name} · {candidate.variant.name}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            )}
+            {selectedProductVariantId && (
+              <small className="selected-product-label">商品を選択済み</small>
             )}
           </div>
           <div className="entry-input-wrap amount-wrap">

@@ -1535,6 +1535,24 @@ a {
   font-size: 8px;
 }
 
+.product-suggestions button {
+  flex-wrap: wrap;
+}
+
+.product-suggestions button > small {
+  flex-basis: 100%;
+  padding-left: 20px;
+  color: #89978e;
+  font-size: 8px;
+}
+
+.selected-product-label {
+  display: block;
+  margin-top: 4px;
+  color: #4b7a58;
+  font-size: 8px;
+}
+
 .composer-bottom {
   margin-top: 15px;
   display: flex;
@@ -2113,6 +2131,35 @@ a {
 
 .settings-section .panel-heading h2 {
   font-size: 15px;
+}
+
+.invitation-issued {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.invitation-issued input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 9px;
+  font-size: 10px;
+}
+
+.invitation-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 22px 0;
+  padding: 12px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
 }
 
 .count-badge {
@@ -3629,6 +3676,17 @@ a {
 }
 
 @media (width <= 700px) {
+  .invitation-prompt {
+    align-items: stretch;
+    flex-direction: column;
+    margin-inline: 12px;
+  }
+
+  .invitation-issued {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .conflict-panel {
     align-items: stretch;
     flex-direction: column;

@@ -6,6 +6,7 @@ export type PurchaseDraftItem = {
   name: string;
   amount: string;
   categoryId: string;
+  productVariantId?: string;
   allocations: Array<{ poolId: string; weight: number }>;
 };
 

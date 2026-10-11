@@ -22,6 +22,7 @@ import {
   ApiError,
   createHouseholdMutation,
   createPurchaseMutation,
+  acceptHouseholdInvitationMutation,
   executeGraphql,
   getViewer,
   householdQuery,
@@ -65,6 +66,8 @@ export function App() {
   const [householdMenu, setHouseholdMenu] = useState(false);
   const [notice, setNotice] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
+  const [pendingInvitation, setPendingInvitation] = useState("");
+  const [acceptingInvitation, setAcceptingInvitation] = useState(false);
   const activeSends = useRef(new Set<string>());
   const senderId = useRef("");
   const currentPage = useRef(page);
@@ -77,6 +80,19 @@ export function App() {
     const data = await read<{ household: Household }>(householdQuery, { id });
     setHousehold(data.household);
   };
+
+  useEffect(() => {
+    const key = "horse:pending-household-invitation";
+    const fragment = window.location.hash.slice(1);
+    const inviteToken = new URLSearchParams(fragment).get("invite");
+    if (inviteToken) {
+      window.sessionStorage.setItem(key, inviteToken);
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      setPendingInvitation(inviteToken);
+    } else {
+      setPendingInvitation(window.sessionStorage.getItem(key) ?? "");
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -196,6 +212,28 @@ export function App() {
       setLoggingOut(false);
     }
   };
+  const acceptInvitation = async () => {
+    if (!pendingInvitation || acceptingInvitation) return;
+    setAcceptingInvitation(true);
+    try {
+      const result = await read<{ acceptHouseholdInvitation: { id: string; name: string } }>(
+        acceptHouseholdInvitationMutation,
+        { token: pendingInvitation },
+      );
+      window.sessionStorage.removeItem("horse:pending-household-invitation");
+      setPendingInvitation("");
+      await refreshHousehold(result.acceptHouseholdInvitation.id);
+      setHouseholds((current) => [
+        { id: result.acceptHouseholdInvitation.id, name: result.acceptHouseholdInvitation.name },
+        ...current.filter((item) => item.id !== result.acceptHouseholdInvitation.id),
+      ]);
+      showNotice("家計簿に参加しました");
+    } catch (reason) {
+      showNotice((reason as Error).message);
+    } finally {
+      setAcceptingInvitation(false);
+    }
+  };
   const selectHousehold = async (id: string) => {
     try {
       await refreshHousehold(id);
@@ -224,6 +262,7 @@ export function App() {
           <a className="button button-primary button-wide" href="/auth/login">
             ログイン <ChevronRight size={18} />
           </a>
+          {pendingInvitation && <p>ログイン後に招待を確認できます</p>}
           {error && error !== "ログインして家計簿を開く" && <p className="inline-error">{error}</p>}
         </div>
       </main>
@@ -420,6 +459,19 @@ export function App() {
             </button>
           </div>
         )}
+        {pendingInvitation && (
+          <section className="invitation-prompt" role="region" aria-label="家計簿への招待">
+            <span>家計簿への招待があります</span>
+            <button
+              className="button button-primary"
+              type="button"
+              disabled={acceptingInvitation}
+              onClick={() => void acceptInvitation()}
+            >
+              {acceptingInvitation ? "参加中" : "招待を受け入れる"}
+            </button>
+          </section>
+        )}
         <div className="page-content">
           {page === "home" && household && <HomePage household={household} onNavigate={setPage} />}
           {page === "new" && household && (
@@ -449,6 +501,9 @@ export function App() {
           {page === "settings" && household && (
             <SettingsPage
               household={household}
+              isOwner={household.members.some(
+                (member) => member.id === viewer.id && member.role === "OWNER",
+              )}
               onRefresh={() => refreshHousehold(household.id)}
               onNotice={showNotice}
             />

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3acc7c4cff193bc14d92280864519346>>
+ * @generated SignedSource<<3978e8e10f8cd514292880c67a1c49c9>>
  * @lightSyntaxTransform
  */
 
@@ -24,6 +24,8 @@ export type AllocationRulesQuery$data = {
     readonly householdId: string;
     readonly id: string;
     readonly merchant: string | null | undefined;
+    readonly productConceptId: string | null | undefined;
+    readonly productVariantId: string | null | undefined;
     readonly revision: number;
     readonly scope: AllocationRuleScope;
   }>;
@@ -95,6 +97,20 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
+        "name": "productConceptId",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "productVariantId",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
         "name": "revision",
         "storageKey": null
       },
@@ -159,16 +175,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "6ff7620568b23e28eeddef743e9cd828",
+    "cacheID": "1ce449ad44faacc0cc9a0ca4dcba0990",
     "id": null,
     "metadata": {},
     "name": "AllocationRulesQuery",
     "operationKind": "query",
-    "text": "query AllocationRulesQuery(\n  $householdId: ID!\n) {\n  allocationRules(householdId: $householdId) {\n    id\n    householdId\n    scope\n    categoryId\n    merchant\n    revision\n    allocations {\n      poolId\n      poolName\n      weight\n      amountYen\n    }\n  }\n}\n"
+    "text": "query AllocationRulesQuery(\n  $householdId: ID!\n) {\n  allocationRules(householdId: $householdId) {\n    id\n    householdId\n    scope\n    categoryId\n    merchant\n    productConceptId\n    productVariantId\n    revision\n    allocations {\n      poolId\n      poolName\n      weight\n      amountYen\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c8e9a22ae2a01caccf8e22c0a7a3e0f1";
+(node as any).hash = "8b958181f1aad9e4ef277bb005a474dd";
 
 export default node;
