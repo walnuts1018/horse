@@ -194,10 +194,25 @@ type PageInfo struct {
 }
 
 type Pool struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	Kind               PoolKind `json:"kind"`
-	DefaultShareWeight Long     `json:"defaultShareWeight"`
+	ID                 string                      `json:"id"`
+	Name               string                      `json:"name"`
+	Kind               PoolKind                    `json:"kind"`
+	DefaultShareWeight Long                        `json:"defaultShareWeight"`
+	OwnerMemberID      *string                     `json:"ownerMemberId,omitempty"`
+	FundingShares      []*PoolFundingShare         `json:"fundingShares"`
+	SettlementPolicy   *SharedPoolSettlementPolicy `json:"settlementPolicy,omitempty"`
+	FundingRuleVersion int                         `json:"fundingRuleVersion"`
+}
+
+type PoolFundingShare struct {
+	MemberID   string `json:"memberId"`
+	MemberName string `json:"memberName"`
+	Weight     Long   `json:"weight"`
+}
+
+type PoolFundingShareInput struct {
+	MemberID string `json:"memberId"`
+	Weight   Long   `json:"weight"`
 }
 
 type ProductAlias struct {
@@ -342,6 +357,15 @@ type SetFundingScheduleInput struct {
 	EndsOn      *string `json:"endsOn,omitempty"`
 }
 
+type SetPoolFundingRuleInput struct {
+	HouseholdID      string                      `json:"householdId"`
+	PoolID           string                      `json:"poolId"`
+	OwnerMemberID    *string                     `json:"ownerMemberId,omitempty"`
+	FundingShares    []*PoolFundingShareInput    `json:"fundingShares"`
+	SettlementPolicy *SharedPoolSettlementPolicy `json:"settlementPolicy,omitempty"`
+	ExpectedVersion  int                         `json:"expectedVersion"`
+}
+
 type SetProductAliasInput struct {
 	HouseholdID string `json:"householdId"`
 	VariantID   string `json:"variantId"`
@@ -358,13 +382,15 @@ type Settlement struct {
 }
 
 type SettlementLine struct {
-	MemberID         string `json:"memberId"`
-	MemberName       string `json:"memberName"`
-	ScheduledYen     Long   `json:"scheduledYen"`
-	PaidYen          Long   `json:"paidYen"`
-	CarryYen         Long   `json:"carryYen"`
-	AdvanceCreditYen Long   `json:"advanceCreditYen"`
-	AmountDueYen     Long   `json:"amountDueYen"`
+	MemberID             string `json:"memberId"`
+	MemberName           string `json:"memberName"`
+	ScheduledYen         Long   `json:"scheduledYen"`
+	PaidYen              Long   `json:"paidYen"`
+	CarryYen             Long   `json:"carryYen"`
+	PriorBalanceYen      Long   `json:"priorBalanceYen"`
+	MonthlyAdjustmentYen Long   `json:"monthlyAdjustmentYen"`
+	AdvanceCreditYen     Long   `json:"advanceCreditYen"`
+	AmountDueYen         Long   `json:"amountDueYen"`
 }
 
 type UpdatePurchaseInput struct {
@@ -735,6 +761,61 @@ func (e *PurchaseStatus) UnmarshalJSON(b []byte) error {
 }
 
 func (e PurchaseStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type SharedPoolSettlementPolicy string
+
+const (
+	SharedPoolSettlementPolicyBalanceToStandard SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD"
+	SharedPoolSettlementPolicyReimbursePersonal SharedPoolSettlementPolicy = "REIMBURSE_PERSONAL"
+)
+
+var AllSharedPoolSettlementPolicy = []SharedPoolSettlementPolicy{
+	SharedPoolSettlementPolicyBalanceToStandard,
+	SharedPoolSettlementPolicyReimbursePersonal,
+}
+
+func (e SharedPoolSettlementPolicy) IsValid() bool {
+	switch e {
+	case SharedPoolSettlementPolicyBalanceToStandard, SharedPoolSettlementPolicyReimbursePersonal:
+		return true
+	}
+	return false
+}
+
+func (e SharedPoolSettlementPolicy) String() string {
+	return string(e)
+}
+
+func (e *SharedPoolSettlementPolicy) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SharedPoolSettlementPolicy(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SharedPoolSettlementPolicy", str)
+	}
+	return nil
+}
+
+func (e SharedPoolSettlementPolicy) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SharedPoolSettlementPolicy) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SharedPoolSettlementPolicy) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

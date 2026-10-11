@@ -7,13 +7,15 @@ enum TransferKind { ADVANCE LOAN REPAYMENT GIFT }
 enum LedgerKind { PURCHASE FUNDING TRANSFER CORRECTION }
 enum AllocationRuleScope { PRODUCT_VARIANT PRODUCT CATEGORY MERCHANT }
 enum ProductLearningScope { ITEM_ONLY VARIANT_NAME MERCHANT_ALIAS }
+enum SharedPoolSettlementPolicy { BALANCE_TO_STANDARD REIMBURSE_PERSONAL }
 
 type Viewer { id: ID!, subject: String!, displayName: String!, households: [Household!]! }
 type Household { id: ID!, name: String!, revision: Int!, members: [Member!]!, pools: [Pool!]!, accounts: [Account!]!, categories: [Category!]!, defaultAllocation: [Allocation!]!, createdAt: String!, updatedAt: String! }
 type Member { id: ID!, displayName: String!, role: String! }
 type HouseholdInvitation { id: ID!, householdId: ID!, role: String!, expiresAt: String!, createdAt: String!, revokedAt: String, acceptedAt: String }
 type CreatedHouseholdInvitation { invitation: HouseholdInvitation!, token: String! }
-type Pool { id: ID!, name: String!, kind: PoolKind!, defaultShareWeight: Long! }
+type Pool { id: ID!, name: String!, kind: PoolKind!, defaultShareWeight: Long!, ownerMemberId: ID, fundingShares: [PoolFundingShare!]!, settlementPolicy: SharedPoolSettlementPolicy, fundingRuleVersion: Int! }
+type PoolFundingShare { memberId: ID!, memberName: String!, weight: Long! }
 type Account { id: ID!, name: String!, kind: AccountKind!, poolId: ID }
 type Category { id: ID!, name: String!, parentId: ID, archived: Boolean! }
 type Allocation { poolId: ID!, poolName: String, weight: Long!, amountYen: Long }
@@ -30,7 +32,7 @@ type PurchaseConnection { edges: [PurchaseEdge!]!, pageInfo: PageInfo!, totalCou
 type LedgerEntry { id: ID!, kind: LedgerKind!, occurredAt: String!, description: String!, amountYen: Long!, currency: String!, fromMemberId: ID, toMemberId: ID, poolId: ID, sourcePurchaseId: ID, createdAt: String! }
 type LedgerEdge { cursor: String!, node: LedgerEntry! }
 type LedgerConnection { edges: [LedgerEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
-type SettlementLine { memberId: ID!, memberName: String!, scheduledYen: Long!, paidYen: Long!, carryYen: Long!, advanceCreditYen: Long!, amountDueYen: Long! }
+type SettlementLine { memberId: ID!, memberName: String!, scheduledYen: Long!, paidYen: Long!, carryYen: Long!, priorBalanceYen: Long!, monthlyAdjustmentYen: Long!, advanceCreditYen: Long!, amountDueYen: Long! }
 type Settlement { period: String!, status: String!, revision: Int!, lines: [SettlementLine!]!, createdAt: String }
 type MonthlyCategorySpending { period: String!, categoryId: ID, categoryName: String, amountYen: Long! }
 input AllocationInput { poolId: ID!, weight: Long! }
@@ -45,6 +47,8 @@ input SetProductAliasInput { householdId: ID!, variantId: ID!, merchant: String!
 input CreateHouseholdInput { name: String!, memberNames: [String!]! }
 input CreateHouseholdInvitationInput { householdId: ID!, expiresAt: String! }
 input CreatePoolInput { householdId: ID!, name: String!, kind: PoolKind! }
+input PoolFundingShareInput { memberId: ID!, weight: Long! }
+input SetPoolFundingRuleInput { householdId: ID!, poolId: ID!, ownerMemberId: ID, fundingShares: [PoolFundingShareInput!]!, settlementPolicy: SharedPoolSettlementPolicy, expectedVersion: Int! }
 input CreateAccountInput { householdId: ID!, name: String!, kind: AccountKind!, poolId: ID }
 input CreateCategoryInput { householdId: ID!, name: String!, parentId: ID }
 input SetDefaultAllocationInput { householdId: ID!, allocations: [AllocationInput!]! }
@@ -78,6 +82,7 @@ type Mutation {
   createCategory(input: CreateCategoryInput!): Category!
   setCategoryArchived(categoryId: ID!, archived: Boolean!): Category!
   setDefaultAllocation(input: SetDefaultAllocationInput!): Household!
+  setPoolFundingRule(input: SetPoolFundingRuleInput!): Pool!
   setAllocationRule(input: SetAllocationRuleInput!): AllocationRule!
   createProductConcept(input: CreateProductConceptInput!): ProductConcept!
   createProductVariant(input: CreateProductVariantInput!): ProductVariant!

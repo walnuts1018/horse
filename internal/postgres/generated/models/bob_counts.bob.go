@@ -25,9 +25,11 @@ type preloadCounts struct {
 	AllocationRule  allocationRuleCountPreloader
 	Category        categoryCountPreloader
 	FundingSchedule fundingScheduleCountPreloader
+	HouseholdMember householdMemberCountPreloader
 	Household       householdCountPreloader
 	Journal         journalCountPreloader
 	Member          memberCountPreloader
+	PoolFundingRule poolFundingRuleCountPreloader
 	Pool            poolCountPreloader
 	ProductConcept  productConceptCountPreloader
 	ProductVariant  productVariantCountPreloader
@@ -44,9 +46,11 @@ func getPreloadCount() preloadCounts {
 		AllocationRule:  buildAllocationRuleCountPreloader(),
 		Category:        buildCategoryCountPreloader(),
 		FundingSchedule: buildFundingScheduleCountPreloader(),
+		HouseholdMember: buildHouseholdMemberCountPreloader(),
 		Household:       buildHouseholdCountPreloader(),
 		Journal:         buildJournalCountPreloader(),
 		Member:          buildMemberCountPreloader(),
+		PoolFundingRule: buildPoolFundingRuleCountPreloader(),
 		Pool:            buildPoolCountPreloader(),
 		ProductConcept:  buildProductConceptCountPreloader(),
 		ProductVariant:  buildProductVariantCountPreloader(),
@@ -63,9 +67,11 @@ type thenLoadCounts[Q orm.Loadable] struct {
 	AllocationRule  allocationRuleCountThenLoader[Q]
 	Category        categoryCountThenLoader[Q]
 	FundingSchedule fundingScheduleCountThenLoader[Q]
+	HouseholdMember householdMemberCountThenLoader[Q]
 	Household       householdCountThenLoader[Q]
 	Journal         journalCountThenLoader[Q]
 	Member          memberCountThenLoader[Q]
+	PoolFundingRule poolFundingRuleCountThenLoader[Q]
 	Pool            poolCountThenLoader[Q]
 	ProductConcept  productConceptCountThenLoader[Q]
 	ProductVariant  productVariantCountThenLoader[Q]
@@ -82,9 +88,11 @@ func getThenLoadCount[Q orm.Loadable]() thenLoadCounts[Q] {
 		AllocationRule:  buildAllocationRuleCountThenLoader[Q](),
 		Category:        buildCategoryCountThenLoader[Q](),
 		FundingSchedule: buildFundingScheduleCountThenLoader[Q](),
+		HouseholdMember: buildHouseholdMemberCountThenLoader[Q](),
 		Household:       buildHouseholdCountThenLoader[Q](),
 		Journal:         buildJournalCountThenLoader[Q](),
 		Member:          buildMemberCountThenLoader[Q](),
+		PoolFundingRule: buildPoolFundingRuleCountThenLoader[Q](),
 		Pool:            buildPoolCountThenLoader[Q](),
 		ProductConcept:  buildProductConceptCountThenLoader[Q](),
 		ProductVariant:  buildProductVariantCountThenLoader[Q](),

@@ -41,6 +41,8 @@ func Where[Q psql.Filterable]() struct {
 	Members               memberWhere[Q]
 	OidcSessions          oidcSessionWhere[Q]
 	OidcStates            oidcStateWhere[Q]
+	PoolFundingRules      poolFundingRuleWhere[Q]
+	PoolFundingShares     poolFundingShareWhere[Q]
 	Pools                 poolWhere[Q]
 	ProductAliases        productAliasWhere[Q]
 	ProductConcepts       productConceptWhere[Q]
@@ -78,6 +80,8 @@ func Where[Q psql.Filterable]() struct {
 		Members               memberWhere[Q]
 		OidcSessions          oidcSessionWhere[Q]
 		OidcStates            oidcStateWhere[Q]
+		PoolFundingRules      poolFundingRuleWhere[Q]
+		PoolFundingShares     poolFundingShareWhere[Q]
 		Pools                 poolWhere[Q]
 		ProductAliases        productAliasWhere[Q]
 		ProductConcepts       productConceptWhere[Q]
@@ -114,6 +118,8 @@ func Where[Q psql.Filterable]() struct {
 		Members:               buildMemberWhere[Q](Members.Columns),
 		OidcSessions:          buildOidcSessionWhere[Q](OidcSessions.Columns),
 		OidcStates:            buildOidcStateWhere[Q](OidcStates.Columns),
+		PoolFundingRules:      buildPoolFundingRuleWhere[Q](PoolFundingRules.Columns),
+		PoolFundingShares:     buildPoolFundingShareWhere[Q](PoolFundingShares.Columns),
 		Pools:                 buildPoolWhere[Q](Pools.Columns),
 		ProductAliases:        buildProductAliasWhere[Q](ProductAliases.Columns),
 		ProductConcepts:       buildProductConceptWhere[Q](ProductConcepts.Columns),

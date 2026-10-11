@@ -56,6 +56,11 @@ func (r *mutationResolver) SetDefaultAllocation(ctx context.Context, input model
 	return r.setDefaultAllocation(ctx, input)
 }
 
+// SetPoolFundingRule is the resolver for the setPoolFundingRule field.
+func (r *mutationResolver) SetPoolFundingRule(ctx context.Context, input model.SetPoolFundingRuleInput) (*model.Pool, error) {
+	return r.setPoolFundingRule(ctx, input)
+}
+
 // SetAllocationRule is the resolver for the setAllocationRule field.
 func (r *mutationResolver) SetAllocationRule(ctx context.Context, input model.SetAllocationRuleInput) (*model.AllocationRule, error) {
 	return r.setAllocationRule(ctx, input)

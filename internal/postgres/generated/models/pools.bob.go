@@ -27,11 +27,12 @@ import (
 
 // Pool is an object representing the database table.
 type Pool struct {
-	ID          uuid.UUID `db:"id,pk" `
-	HouseholdID uuid.UUID `db:"household_id" `
-	Name        string    `db:"name" `
-	Kind        string    `db:"kind" `
-	CreatedAt   time.Time `db:"created_at" `
+	ID                 uuid.UUID `db:"id,pk" `
+	HouseholdID        uuid.UUID `db:"household_id" `
+	Name               string    `db:"name" `
+	Kind               string    `db:"kind" `
+	CreatedAt          time.Time `db:"created_at" `
+	FundingRuleVersion int32     `db:"funding_rule_version" `
 
 	R poolR `db:"-" `
 
@@ -57,6 +58,7 @@ type poolR struct {
 	FundingSchedules      FundingScheduleSlice      // funding_schedules.funding_schedules_household_id_pool_id_fkey
 	ItemAllocations       ItemAllocationSlice       // item_allocations.item_allocations_household_id_pool_id_fkey
 	LedgerEntries         LedgerEntrySlice          // ledger_entries.ledger_entries_household_id_pool_id_fkey
+	PoolFundingRules      PoolFundingRuleSlice      // pool_funding_rules.pool_funding_rules_household_id_pool_id_fkey
 	Household             *Household                // pools.pools_household_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
@@ -73,12 +75,13 @@ type poolRLoaded struct {
 	FundingSchedules      bool // funding_schedules.funding_schedules_household_id_pool_id_fkey
 	ItemAllocations       bool // item_allocations.item_allocations_household_id_pool_id_fkey
 	LedgerEntries         bool // ledger_entries.ledger_entries_household_id_pool_id_fkey
+	PoolFundingRules      bool // pool_funding_rules.pool_funding_rules_household_id_pool_id_fkey
 	Household             bool // pools.pools_household_id_fkey
 }
 
 func buildPoolColumns(tableName string) poolColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "name", "kind", "created_at",
+		"id", "household_id", "name", "kind", "created_at", "funding_rule_version",
 	)
 
 	if tableName != "" {
@@ -86,24 +89,26 @@ func buildPoolColumns(tableName string) poolColumns {
 	}
 
 	return poolColumns{
-		ColumnsExpr: columnsExpr,
-		tableAlias:  tableName,
-		ID:          buildPoolColumn(tableName, "id"),
-		HouseholdID: buildPoolColumn(tableName, "household_id"),
-		Name:        buildPoolColumn(tableName, "name"),
-		Kind:        buildPoolColumn(tableName, "kind"),
-		CreatedAt:   buildPoolColumn(tableName, "created_at"),
+		ColumnsExpr:        columnsExpr,
+		tableAlias:         tableName,
+		ID:                 buildPoolColumn(tableName, "id"),
+		HouseholdID:        buildPoolColumn(tableName, "household_id"),
+		Name:               buildPoolColumn(tableName, "name"),
+		Kind:               buildPoolColumn(tableName, "kind"),
+		CreatedAt:          buildPoolColumn(tableName, "created_at"),
+		FundingRuleVersion: buildPoolColumn(tableName, "funding_rule_version"),
 	}
 }
 
 type poolColumns struct {
 	expr.ColumnsExpr
-	tableAlias  string
-	ID          poolColumn
-	HouseholdID poolColumn
-	Name        poolColumn
-	Kind        poolColumn
-	CreatedAt   poolColumn
+	tableAlias         string
+	ID                 poolColumn
+	HouseholdID        poolColumn
+	Name               poolColumn
+	Kind               poolColumn
+	CreatedAt          poolColumn
+	FundingRuleVersion poolColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -149,15 +154,16 @@ func (c poolColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type PoolSetter struct {
-	ID          *uuid.UUID `db:"id,pk" `
-	HouseholdID *uuid.UUID `db:"household_id" `
-	Name        *string    `db:"name" `
-	Kind        *string    `db:"kind" `
-	CreatedAt   *time.Time `db:"created_at" `
+	ID                 *uuid.UUID `db:"id,pk" `
+	HouseholdID        *uuid.UUID `db:"household_id" `
+	Name               *string    `db:"name" `
+	Kind               *string    `db:"kind" `
+	CreatedAt          *time.Time `db:"created_at" `
+	FundingRuleVersion *int32     `db:"funding_rule_version" `
 }
 
 func (s PoolSetter) SetColumns() []string {
-	vals := make([]string, 0, 5)
+	vals := make([]string, 0, 6)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -172,6 +178,9 @@ func (s PoolSetter) SetColumns() []string {
 	}
 	if s.CreatedAt != nil {
 		vals = append(vals, "created_at")
+	}
+	if s.FundingRuleVersion != nil {
+		vals = append(vals, "funding_rule_version")
 	}
 	return vals
 }
@@ -215,6 +224,14 @@ func (s PoolSetter) Overwrite(t *Pool) {
 				return *new(time.Time)
 			}
 			return *s.CreatedAt
+		}()
+	}
+	if s.FundingRuleVersion != nil {
+		t.FundingRuleVersion = func() int32 {
+			if s.FundingRuleVersion == nil {
+				return *new(int32)
+			}
+			return *s.FundingRuleVersion
 		}()
 	}
 }
@@ -275,6 +292,16 @@ func (s *PoolSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.CreatedAt
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.FundingRuleVersion == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() int32 {
+				if s.FundingRuleVersion == nil {
+					return *new(int32)
+				}
+				return *s.FundingRuleVersion
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -283,7 +310,7 @@ func (s PoolSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s PoolSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 5)
+	exprs := make([]bob.Expression, 0, 6)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -320,6 +347,13 @@ func (s PoolSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.FundingRuleVersion != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "funding_rule_version")...),
+			psql.Arg(s.FundingRuleVersion),
+		}})
+	}
+
 	return exprs
 }
 
@@ -330,7 +364,7 @@ func poolScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc, func(a
 		idx int
 		dst func(o *Pool) any
 	}
-	targets := make([]target, 0, 5)
+	targets := make([]target, 0, 6)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -343,6 +377,8 @@ func poolScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc, func(a
 			targets = append(targets, target{i, func(o *Pool) any { return &o.Kind }})
 		case "created_at":
 			targets = append(targets, target{i, func(o *Pool) any { return &o.CreatedAt }})
+		case "funding_rule_version":
+			targets = append(targets, target{i, func(o *Pool) any { return &o.FundingRuleVersion }})
 		}
 	}
 
@@ -818,6 +854,35 @@ func (os PoolSlice) LedgerEntries(mods ...bob.Mod[*dialect.SelectQuery]) LedgerE
 			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "PoolID")),
 			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "PoolID"),
 		)).As("bob_rel_keys").On(LedgerEntries.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), LedgerEntries.Columns.PoolID.EQ(psql.Quote("bob_rel_keys", "PoolID"))),
+	)...)
+}
+
+// PoolFundingRules starts a query for related objects on pool_funding_rules
+func (o *Pool) PoolFundingRules(mods ...bob.Mod[*dialect.SelectQuery]) PoolFundingRulesQuery {
+	return PoolFundingRules.Query(append(mods,
+		sm.Where(PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(PoolFundingRules.Columns.PoolID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os PoolSlice) PoolFundingRules(mods ...bob.Mod[*dialect.SelectQuery]) PoolFundingRulesQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return PoolFundingRules.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "PoolID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "PoolID"),
+		)).As("bob_rel_keys").On(PoolFundingRules.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), PoolFundingRules.Columns.PoolID.EQ(psql.Quote("bob_rel_keys", "PoolID"))),
 	)...)
 }
 
@@ -1355,6 +1420,78 @@ func (pool0 *Pool) AttachLedgerEntries(ctx context.Context, exec bob.Executor, r
 	return nil
 }
 
+func insertPoolPoolFundingRules0(ctx context.Context, exec bob.Executor, poolFundingRules1 []*PoolFundingRuleSetter, pool0 *Pool) (PoolFundingRuleSlice, error) {
+	for i := range poolFundingRules1 {
+		poolFundingRules1[i].HouseholdID = func() *uuid.UUID { return &pool0.HouseholdID }()
+		poolFundingRules1[i].PoolID = func() *uuid.UUID { return &pool0.ID }()
+	}
+
+	ret, err := PoolFundingRules.Insert(bob.ToMods(poolFundingRules1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertPoolPoolFundingRules0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachPoolPoolFundingRules0(ctx context.Context, exec bob.Executor, count int, poolFundingRules1 PoolFundingRuleSlice, pool0 *Pool) (PoolFundingRuleSlice, error) {
+	setter := &PoolFundingRuleSetter{
+		HouseholdID: func() *uuid.UUID { return &pool0.HouseholdID }(),
+		PoolID:      func() *uuid.UUID { return &pool0.ID }(),
+	}
+
+	err := poolFundingRules1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachPoolPoolFundingRules0: %w", err)
+	}
+
+	return poolFundingRules1, nil
+}
+
+func (pool0 *Pool) InsertPoolFundingRules(ctx context.Context, exec bob.Executor, related ...*PoolFundingRuleSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	poolFundingRules1, err := insertPoolPoolFundingRules0(ctx, exec, related, pool0)
+	if err != nil {
+		return err
+	}
+
+	pool0.R.PoolFundingRules = append(pool0.R.PoolFundingRules, poolFundingRules1...)
+
+	for _, rel := range poolFundingRules1 {
+		rel.R.Pool = pool0
+		rel.R.Loaded.Pool = true
+	}
+	return nil
+}
+
+func (pool0 *Pool) AttachPoolFundingRules(ctx context.Context, exec bob.Executor, related ...*PoolFundingRule) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	poolFundingRules1 := PoolFundingRuleSlice(related)
+
+	_, err = attachPoolPoolFundingRules0(ctx, exec, len(related), poolFundingRules1, pool0)
+	if err != nil {
+		return err
+	}
+
+	pool0.R.PoolFundingRules = append(pool0.R.PoolFundingRules, poolFundingRules1...)
+
+	for _, rel := range related {
+		rel.R.Pool = pool0
+		rel.R.Loaded.Pool = true
+	}
+
+	return nil
+}
+
 func attachPoolHousehold0(ctx context.Context, exec bob.Executor, count int, pool0 *Pool, household1 *Household) (*Pool, error) {
 	setter := &PoolSetter{
 		HouseholdID: func() *uuid.UUID { return &household1.ID }(),
@@ -1406,13 +1543,14 @@ func (pool0 *Pool) AttachHousehold(ctx context.Context, exec bob.Executor, house
 }
 
 type poolWhere[Q psql.Filterable] struct {
-	cols        poolColumns
-	ID          psql.WhereMod[Q, uuid.UUID]
-	HouseholdID psql.WhereMod[Q, uuid.UUID]
-	Name        psql.WhereMod[Q, string]
-	Kind        psql.WhereMod[Q, string]
-	CreatedAt   psql.WhereMod[Q, time.Time]
-	R           poolWhereR[Q]
+	cols               poolColumns
+	ID                 psql.WhereMod[Q, uuid.UUID]
+	HouseholdID        psql.WhereMod[Q, uuid.UUID]
+	Name               psql.WhereMod[Q, string]
+	Kind               psql.WhereMod[Q, string]
+	CreatedAt          psql.WhereMod[Q, time.Time]
+	FundingRuleVersion psql.WhereMod[Q, int32]
+	R                  poolWhereR[Q]
 }
 
 func (poolWhere[Q]) AliasedAs(alias string) poolWhere[Q] {
@@ -1421,13 +1559,14 @@ func (poolWhere[Q]) AliasedAs(alias string) poolWhere[Q] {
 
 func buildPoolWhere[Q psql.Filterable](cols poolColumns) poolWhere[Q] {
 	return poolWhere[Q]{
-		cols:        cols,
-		ID:          psql.Where[Q, uuid.UUID](cols.ID.Expression),
-		HouseholdID: psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
-		Name:        psql.Where[Q, string](cols.Name.Expression),
-		Kind:        psql.Where[Q, string](cols.Kind.Expression),
-		CreatedAt:   psql.Where[Q, time.Time](cols.CreatedAt.Expression),
-		R:           poolWhereR[Q]{cols: cols},
+		cols:               cols,
+		ID:                 psql.Where[Q, uuid.UUID](cols.ID.Expression),
+		HouseholdID:        psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		Name:               psql.Where[Q, string](cols.Name.Expression),
+		Kind:               psql.Where[Q, string](cols.Kind.Expression),
+		CreatedAt:          psql.Where[Q, time.Time](cols.CreatedAt.Expression),
+		FundingRuleVersion: psql.Where[Q, int32](cols.FundingRuleVersion.Expression),
+		R:                  poolWhereR[Q]{cols: cols},
 	}
 }
 
@@ -1543,6 +1682,21 @@ func (w poolWhereR[Q]) HasLedgerEntries(filters ...bob.Mod[*dialect.SelectQuery]
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasPoolFundingRules filters parents that have a matching PoolFundingRules using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to PoolFundingRules).
+func (w poolWhereR[Q]) HasPoolFundingRules(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(PoolFundingRules.NameExpr()),
+		sm.Where(PoolFundingRules.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(PoolFundingRules.Columns.PoolID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasHousehold filters parents that have a matching Household using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -1561,11 +1715,12 @@ func (w poolWhereR[Q]) HasHousehold(filters ...bob.Mod[*dialect.SelectQuery]) mo
 // on a LEFT JOIN miss every column comes back NULL, so each field uses the
 // nullable version of the column type even when the column itself is NOT NULL.
 type poolPreloadBuf struct {
-	ID          sql.Null[uuid.UUID]
-	HouseholdID sql.Null[uuid.UUID]
-	Name        sql.Null[string]
-	Kind        sql.Null[string]
-	CreatedAt   sql.Null[time.Time]
+	ID                 sql.Null[uuid.UUID]
+	HouseholdID        sql.Null[uuid.UUID]
+	Name               sql.Null[string]
+	Kind               sql.Null[string]
+	CreatedAt          sql.Null[time.Time]
+	FundingRuleVersion sql.Null[int32]
 }
 
 // poolScanMapperNullable maps the preloaded pool
@@ -1580,7 +1735,7 @@ func poolScanMapperNullable(prefix string) scan.Mapper[*Pool] {
 			idx int
 			dst func(b *poolPreloadBuf) any
 		}
-		targets := make([]target, 0, 5)
+		targets := make([]target, 0, 6)
 		for i, col := range cols {
 			name, ok := strings.CutPrefix(col, prefix)
 			if !ok {
@@ -1597,6 +1752,8 @@ func poolScanMapperNullable(prefix string) scan.Mapper[*Pool] {
 				targets = append(targets, target{i, func(b *poolPreloadBuf) any { return &b.Kind }})
 			case "created_at":
 				targets = append(targets, target{i, func(b *poolPreloadBuf) any { return &b.CreatedAt }})
+			case "funding_rule_version":
+				targets = append(targets, target{i, func(b *poolPreloadBuf) any { return &b.FundingRuleVersion }})
 			}
 		}
 
@@ -1623,7 +1780,8 @@ func poolScanMapperNullable(prefix string) scan.Mapper[*Pool] {
 					!(buf.HouseholdID.Valid) &&
 					!(buf.Name.Valid) &&
 					!(buf.Kind.Valid) &&
-					!(buf.CreatedAt.Valid) {
+					!(buf.CreatedAt.Valid) &&
+					!(buf.FundingRuleVersion.Valid) {
 					return nil, nil
 				}
 
@@ -1642,6 +1800,9 @@ func poolScanMapperNullable(prefix string) scan.Mapper[*Pool] {
 				}
 				if buf.CreatedAt.Valid {
 					o.CreatedAt = buf.CreatedAt.V
+				}
+				if buf.FundingRuleVersion.Valid {
+					o.FundingRuleVersion = buf.FundingRuleVersion.V
 				}
 				return o, nil
 			}
@@ -1766,6 +1927,22 @@ func (o *Pool) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "PoolFundingRules":
+		rels, ok := retrieved.(PoolFundingRuleSlice)
+		if !ok {
+			return fmt.Errorf("pool cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.PoolFundingRules = rels
+		o.R.Loaded.PoolFundingRules = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Pool = o
+				rel.R.Loaded.Pool = true
+			}
+		}
+		return nil
 	case "Household":
 		rel, ok := retrieved.(*Household)
 		if !ok {
@@ -1814,6 +1991,7 @@ type poolThenLoader[Q orm.Loadable] struct {
 	FundingSchedules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ItemAllocations       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	LedgerEntries         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Household             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
@@ -1838,6 +2016,9 @@ func buildPoolThenLoader[Q orm.Loadable]() poolThenLoader[Q] {
 	}
 	type LedgerEntriesLoadInterface interface {
 		LoadLedgerEntries(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type PoolFundingRulesLoadInterface interface {
+		LoadPoolFundingRules(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type HouseholdLoadInterface interface {
 		LoadHousehold(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -1884,6 +2065,12 @@ func buildPoolThenLoader[Q orm.Loadable]() poolThenLoader[Q] {
 			"LedgerEntries",
 			func(ctx context.Context, exec bob.Executor, retrieved LedgerEntriesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadLedgerEntries(ctx, exec, mods...)
+			},
+		),
+		PoolFundingRules: thenLoadBuilder[Q](
+			"PoolFundingRules",
+			func(ctx context.Context, exec bob.Executor, retrieved PoolFundingRulesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadPoolFundingRules(ctx, exec, mods...)
 			},
 		),
 		Household: thenLoadBuilder[Q](
@@ -2384,6 +2571,75 @@ func (os PoolSlice) LoadLedgerEntries(ctx context.Context, exec bob.Executor, mo
 	return nil
 }
 
+// LoadPoolFundingRules loads the pool's PoolFundingRules into the .R struct
+func (o *Pool) LoadPoolFundingRules(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.PoolFundingRules = nil
+	o.R.Loaded.PoolFundingRules = false
+
+	related, err := o.PoolFundingRules(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Pool = o
+		rel.R.Loaded.Pool = true
+	}
+
+	o.R.PoolFundingRules = related
+	o.R.Loaded.PoolFundingRules = true
+	return nil
+}
+
+// LoadPoolFundingRules loads the pool's PoolFundingRules into the .R struct
+func (os PoolSlice) LoadPoolFundingRules(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	poolFundingRules, err := os.PoolFundingRules(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.PoolFundingRules = nil
+		o.R.Loaded.PoolFundingRules = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range poolFundingRules {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.ID == rel.PoolID) {
+				continue
+			}
+
+			rel.R.Pool = o
+			rel.R.Loaded.Pool = true
+
+			o.R.PoolFundingRules = append(o.R.PoolFundingRules, rel)
+		}
+	}
+
+	return nil
+}
+
 // LoadHousehold loads the pool's Household into the .R struct
 func (o *Pool) LoadHousehold(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -2468,6 +2724,7 @@ type poolC struct {
 	FundingSchedules      *int64
 	ItemAllocations       *int64
 	LedgerEntries         *int64
+	PoolFundingRules      *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -2491,6 +2748,8 @@ func (o *Pool) PreloadCount(name string, count int64) error {
 		o.C.ItemAllocations = &count
 	case "LedgerEntries":
 		o.C.LedgerEntries = &count
+	case "PoolFundingRules":
+		o.C.PoolFundingRules = &count
 	}
 	return nil
 }
@@ -2503,6 +2762,7 @@ type poolCountPreloader struct {
 	FundingSchedules      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	ItemAllocations       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	LedgerEntries         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	PoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildPoolCountPreloader() poolCountPreloader {
@@ -2633,6 +2893,24 @@ func buildPoolCountPreloader() poolCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		PoolFundingRules: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Pool]("PoolFundingRules", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Pools.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(PoolFundingRules.NameAsExpr()),
+					sm.Where(psql.Quote(PoolFundingRules.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(PoolFundingRules.Alias(), "pool_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 	}
 }
 
@@ -2644,6 +2922,7 @@ type poolCountThenLoader[Q orm.Loadable] struct {
 	FundingSchedules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ItemAllocations       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	LedgerEntries         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildPoolCountThenLoader[Q orm.Loadable]() poolCountThenLoader[Q] {
@@ -2667,6 +2946,9 @@ func buildPoolCountThenLoader[Q orm.Loadable]() poolCountThenLoader[Q] {
 	}
 	type LedgerEntriesCountInterface interface {
 		LoadCountLedgerEntries(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type PoolFundingRulesCountInterface interface {
+		LoadCountPoolFundingRules(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return poolCountThenLoader[Q]{
@@ -2710,6 +2992,12 @@ func buildPoolCountThenLoader[Q orm.Loadable]() poolCountThenLoader[Q] {
 			"LedgerEntries",
 			func(ctx context.Context, exec bob.Executor, retrieved LedgerEntriesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountLedgerEntries(ctx, exec, mods...)
+			},
+		),
+		PoolFundingRules: countThenLoadBuilder[Q](
+			"PoolFundingRules",
+			func(ctx context.Context, exec bob.Executor, retrieved PoolFundingRulesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountPoolFundingRules(ctx, exec, mods...)
 			},
 		),
 	}
@@ -3485,6 +3773,116 @@ func (os PoolSlice) LoadCountLedgerEntries(ctx context.Context, exec bob.Executo
 	return nil
 }
 
+// LoadCountPoolFundingRules loads the count of PoolFundingRules into the C struct
+func (o *Pool) LoadCountPoolFundingRules(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.PoolFundingRules(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.PoolFundingRules = &count
+	return nil
+}
+
+// LoadCountPoolFundingRules loads the count of PoolFundingRules for a slice in a single batch query
+func (os PoolSlice) LoadCountPoolFundingRules(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			PoolFundingRules.Columns.HouseholdID.As("household_id"),
+			PoolFundingRules.Columns.PoolID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(PoolFundingRules.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "PoolID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "PoolID"),
+		)).As("bob_rel_keys").On(
+			PoolFundingRules.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			PoolFundingRules.Columns.PoolID.EQ(psql.Quote("bob_rel_keys", "PoolID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(PoolFundingRules.Columns.HouseholdID),
+		sm.GroupBy(PoolFundingRules.Columns.PoolID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.PoolFundingRules = &count
+	}
+
+	return nil
+}
+
 type poolJoins[Q dialect.Joinable] struct {
 	typ                   string
 	Accounts              modAs[Q, accountColumns]
@@ -3494,6 +3892,7 @@ type poolJoins[Q dialect.Joinable] struct {
 	FundingSchedules      modAs[Q, fundingScheduleColumns]
 	ItemAllocations       modAs[Q, itemAllocationColumns]
 	LedgerEntries         modAs[Q, ledgerEntryColumns]
+	PoolFundingRules      modAs[Q, poolFundingRuleColumns]
 	Household             modAs[Q, householdColumns]
 }
 
@@ -3595,6 +3994,20 @@ func buildPoolJoins[Q dialect.Joinable](cols poolColumns, typ string) poolJoins[
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, LedgerEntries.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.PoolID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		PoolFundingRules: modAs[Q, poolFundingRuleColumns]{
+			c: PoolFundingRules.Columns,
+			f: func(to poolFundingRuleColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, PoolFundingRules.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.HouseholdID), to.PoolID.EQ(cols.ID),
 					))
 				}

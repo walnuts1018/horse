@@ -83,6 +83,9 @@ func (r *mutationResolver) createPool(ctx context.Context, input model.CreatePoo
 	if _, err := tx.Exec(ctx, `INSERT INTO pools(id, household_id, name, kind) VALUES ($1, $2, $3, $4)`, poolID, input.HouseholdID, name, input.Kind); err != nil {
 		return nil, err
 	}
+	if _, err := tx.Exec(ctx, `INSERT INTO pool_funding_rules(household_id,pool_id,version,created_by) VALUES($1,$2,1,$3)`, input.HouseholdID, poolID, user.MemberID); err != nil {
+		return nil, err
+	}
 	newVersion := version + 1
 	if _, err := tx.Exec(ctx, `INSERT INTO allocation_defaults(household_id, version, pool_id, weight) SELECT household_id, $3, pool_id, weight FROM allocation_defaults WHERE household_id = $1 AND version = $2`, input.HouseholdID, version, newVersion); err != nil {
 		return nil, err
@@ -99,7 +102,16 @@ func (r *mutationResolver) createPool(ctx context.Context, input model.CreatePoo
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return &model.Pool{ID: poolID, Name: name, Kind: input.Kind, DefaultShareWeight: 1}, nil
+	household, err := loadHousehold(ctx, r.DB, input.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	for _, pool := range household.Pools {
+		if pool.ID == poolID {
+			return pool, nil
+		}
+	}
+	return nil, ErrNotFound
 }
 
 func (r *mutationResolver) createAccount(ctx context.Context, input model.CreateAccountInput) (*model.Account, error) {
@@ -446,7 +458,7 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
-	period := occurredAt.UTC().Format("2006-01")
+	period := accountingPeriod(occurredAt)
 	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, input.HouseholdID, period); err != nil {
 		return nil, err
 	}
@@ -704,7 +716,7 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 			return nil, err
 		}
 	}
-	if err := lockAccountingPeriods(ctx, tx, observedHouseholdID, observedOccurredAt.UTC().Format("2006-01"), targetOccurredAt.UTC().Format("2006-01")); err != nil {
+	if err := lockAccountingPeriods(ctx, tx, observedHouseholdID, accountingPeriod(observedOccurredAt), accountingPeriod(targetOccurredAt)); err != nil {
 		return nil, err
 	}
 	var revision int64
@@ -830,7 +842,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	if err := lockAccountingPeriods(ctx, tx, householdID, observedOccurredAt.UTC().Format("2006-01")); err != nil {
+	if err := lockAccountingPeriods(ctx, tx, householdID, accountingPeriod(observedOccurredAt)); err != nil {
 		return nil, err
 	}
 	var lockedOccurredAt time.Time
@@ -1083,7 +1095,7 @@ func (r *mutationResolver) postPurchase(ctx context.Context, purchaseID string, 
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
-	period := occurredAt.UTC().Format("2006-01")
+	period := accountingPeriod(occurredAt)
 	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, householdID, period); err != nil {
 		return nil, err
 	}
@@ -1104,7 +1116,7 @@ func (r *mutationResolver) postPurchase(ctx context.Context, purchaseID string, 
 	if err != nil {
 		return nil, err
 	}
-	if occurredAt.UTC().Format("2006-01") != period {
+	if accountingPeriod(occurredAt) != period {
 		return nil, ErrConflict
 	}
 	if revision != int64(expectedRevision) {
@@ -1219,7 +1231,7 @@ func (r *mutationResolver) recordFunding(ctx context.Context, input model.Record
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
-	period := occurredAt.UTC().Format("2006-01")
+	period := accountingPeriod(occurredAt)
 	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, input.HouseholdID, period); err != nil {
 		return nil, err
 	}
@@ -1336,7 +1348,7 @@ func (r *mutationResolver) recordTransfer(ctx context.Context, input model.Recor
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
-	period := occurredAt.UTC().Format("2006-01")
+	period := accountingPeriod(occurredAt)
 	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, input.HouseholdID, period); err != nil {
 		return nil, err
 	}
@@ -1437,6 +1449,15 @@ func (r *mutationResolver) setFundingSchedule(ctx context.Context, input model.S
 		return false, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	var lockedHouseholdID string
+	if err := tx.QueryRow(ctx, `SELECT id::text FROM households WHERE id=$1 FOR UPDATE`, input.HouseholdID).Scan(&lockedHouseholdID); errors.Is(err, pgx.ErrNoRows) {
+		return false, ErrNotFound
+	} else if err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE funding_schedules SET ends_on = LEAST(COALESCE(ends_on, $4::date - 1), $4::date - 1), active = false WHERE household_id = $1 AND member_id = $2 AND pool_id = $3 AND active AND starts_on < $4`, input.HouseholdID, input.MemberID, input.PoolID, start); err != nil {
+		return false, err
+	}
 	if _, err := tx.Exec(ctx, `UPDATE funding_schedules SET active = false WHERE household_id = $1 AND member_id = $2 AND pool_id = $3 AND active`, input.HouseholdID, input.MemberID, input.PoolID); err != nil {
 		return false, err
 	}
@@ -1455,7 +1476,7 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 	if err != nil {
 		return nil, err
 	}
-	periodStart, err := time.Parse("2006-01", input.Period)
+	periodStart, err := parseAccountingPeriod(input.Period)
 	if err != nil {
 		return nil, fmt.Errorf("%w: period must use YYYY-MM", ErrBadInput)
 	}
@@ -1465,6 +1486,12 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	var lockedHouseholdID string
+	if err := tx.QueryRow(ctx, `SELECT id::text FROM households WHERE id=$1 FOR UPDATE`, input.HouseholdID).Scan(&lockedHouseholdID); errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, input.HouseholdID, input.Period); err != nil {
 		return nil, err
 	}
@@ -1486,7 +1513,7 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 	if drafts != 0 {
 		return nil, fmt.Errorf("%w: post or remove draft purchases before closing the period", ErrConflict)
 	}
-	schedules, err := tx.Query(ctx, `SELECT id::text, member_id::text, pool_id::text, amount_yen FROM funding_schedules WHERE household_id = $1 AND active AND cadence = 'MONTHLY' AND starts_on < $3 AND (ends_on IS NULL OR ends_on >= $2)`, input.HouseholdID, periodStart, periodEnd)
+	schedules, err := tx.Query(ctx, `SELECT id::text, member_id::text, pool_id::text, amount_yen FROM funding_schedules WHERE household_id = $1 AND (active OR ends_on IS NOT NULL) AND cadence = 'MONTHLY' AND starts_on < $3 AND (ends_on IS NULL OR ends_on >= $2)`, input.HouseholdID, periodStart, periodEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -1512,17 +1539,25 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 			return nil, err
 		}
 	}
-	lines, err := calculateSettlement(ctx, tx, input.HouseholdID, input.Period)
+	rules, err := poolFundingRules(ctx, tx, input.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	lines, err := calculateSettlementPreviewWithRules(ctx, tx, input.HouseholdID, input.Period, rules)
 	if err != nil {
 		return nil, err
 	}
 	settlementID := newID()
 	newRevision := revision + 1
-	if _, err := tx.Exec(ctx, `INSERT INTO settlement_runs(id, household_id, period, revision, status, created_by) VALUES ($1, $2, $3, $4, 'CLOSED', $5)`, settlementID, input.HouseholdID, input.Period, newRevision, user.MemberID); err != nil {
+	fundingSnapshot, err := json.Marshal(rules)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO settlement_runs(id, household_id, period, revision, status, created_by, funding_snapshot) VALUES ($1, $2, $3, $4, 'CLOSED', $5, $6)`, settlementID, input.HouseholdID, input.Period, newRevision, user.MemberID, fundingSnapshot); err != nil {
 		return nil, err
 	}
 	for _, line := range lines {
-		if _, err := tx.Exec(ctx, `INSERT INTO settlement_lines(settlement_run_id, member_id, scheduled_yen, paid_yen, carry_yen, advance_credit_yen, amount_due_yen) VALUES ($1, $2, $3, $4, $5, $6, $7)`, settlementID, line.MemberID, int64(line.ScheduledYen), int64(line.PaidYen), int64(line.CarryYen), int64(line.AdvanceCreditYen), int64(line.AmountDueYen)); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO settlement_lines(settlement_run_id, member_id, scheduled_yen, paid_yen, carry_yen, monthly_adjustment_yen, advance_credit_yen, amount_due_yen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, settlementID, line.MemberID, int64(line.ScheduledYen), int64(line.PaidYen), int64(line.CarryYen), int64(line.MonthlyAdjustmentYen), int64(line.AdvanceCreditYen), int64(line.AmountDueYen)); err != nil {
 			return nil, err
 		}
 	}
@@ -1539,28 +1574,6 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 		return nil, err
 	}
 	return (&queryResolver{r.Resolver}).settlement(ctx, input.HouseholdID, input.Period)
-}
-
-func calculateSettlement(ctx context.Context, db interface {
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-}, householdID, period string) ([]domain.SettlementAmount, error) {
-	rows, err := db.Query(ctx, `SELECT m.id::text, m.display_name, COALESCE(cur.scheduled_yen, 0), COALESCE(cur.paid_yen, 0), COALESCE(prev.owed_yen, 0) FROM household_members hm JOIN members m ON m.id = hm.member_id LEFT JOIN (SELECT member_id, sum(amount_yen) scheduled_yen, sum(paid_yen) paid_yen FROM funding_obligations WHERE household_id = $1 AND period = $2 GROUP BY member_id) cur ON cur.member_id = m.id LEFT JOIN (SELECT member_id, sum(amount_yen - paid_yen) owed_yen FROM funding_obligations WHERE household_id = $1 AND period < $2 GROUP BY member_id) prev ON prev.member_id = m.id WHERE hm.household_id = $1 ORDER BY m.display_name`, householdID, period)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	inputs := make([]domain.SettlementInput, 0)
-	for rows.Next() {
-		var input domain.SettlementInput
-		if err := rows.Scan(&input.MemberID, &input.MemberName, &input.ScheduledYen, &input.PaidYen, &input.PreviousOwedYen); err != nil {
-			return nil, err
-		}
-		inputs = append(inputs, input)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return domain.CalculateSettlement(inputs)
 }
 
 func (r *mutationResolver) correctPurchase(ctx context.Context, input model.CorrectPurchaseInput) (*model.Purchase, error) {
@@ -1582,7 +1595,7 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	var period string
-	err = tx.QueryRow(ctx, `SELECT to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM') FROM purchases WHERE id = $1 AND household_id = $2`, input.PurchaseID, input.HouseholdID).Scan(&period)
+	err = tx.QueryRow(ctx, `SELECT to_char(occurred_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM') FROM purchases WHERE id = $1 AND household_id = $2`, input.PurchaseID, input.HouseholdID).Scan(&period)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -1601,7 +1614,7 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	}
 	var status string
 	var lockedPeriod string
-	err = tx.QueryRow(ctx, `SELECT status, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM') FROM purchases WHERE id = $1 AND household_id = $2 FOR UPDATE`, input.PurchaseID, input.HouseholdID).Scan(&status, &lockedPeriod)
+	err = tx.QueryRow(ctx, `SELECT status, to_char(occurred_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM') FROM purchases WHERE id = $1 AND household_id = $2 FOR UPDATE`, input.PurchaseID, input.HouseholdID).Scan(&status, &lockedPeriod)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

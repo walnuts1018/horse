@@ -60,6 +60,15 @@ var Pools = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		FundingRuleVersion: column{
+			Name:      "funding_rule_version",
+			DBType:    "integer",
+			Default:   "1",
+			Comment:   "",
+			Nullable:  false,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: poolIndexes{
 		PoolsPkey: index{
@@ -153,6 +162,14 @@ var Pools = Table[
 		},
 	},
 	Checks: poolChecks{
+		PoolsFundingRuleVersionCheck: check{
+			constraint: constraint{
+				Name:    "pools_funding_rule_version_check",
+				Columns: []string{"funding_rule_version"},
+				Comment: "",
+			},
+			Expression: "(funding_rule_version > 0)",
+		},
 		PoolsKindCheck: check{
 			constraint: constraint{
 				Name:    "pools_kind_check",
@@ -166,16 +183,17 @@ var Pools = Table[
 }
 
 type poolColumns struct {
-	ID          column
-	HouseholdID column
-	Name        column
-	Kind        column
-	CreatedAt   column
+	ID                 column
+	HouseholdID        column
+	Name               column
+	Kind               column
+	CreatedAt          column
+	FundingRuleVersion column
 }
 
 func (c poolColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.Name, c.Kind, c.CreatedAt,
+		c.ID, c.HouseholdID, c.Name, c.Kind, c.CreatedAt, c.FundingRuleVersion,
 	}
 }
 
@@ -213,11 +231,12 @@ func (u poolUniques) AsSlice() []constraint {
 }
 
 type poolChecks struct {
-	PoolsKindCheck check
+	PoolsFundingRuleVersionCheck check
+	PoolsKindCheck               check
 }
 
 func (c poolChecks) AsSlice() []check {
 	return []check{
-		c.PoolsKindCheck,
+		c.PoolsFundingRuleVersionCheck, c.PoolsKindCheck,
 	}
 }

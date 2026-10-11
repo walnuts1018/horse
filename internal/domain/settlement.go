@@ -5,25 +5,27 @@ import (
 	"math"
 )
 
-var ErrInvalidSettlement = errors.New("settlement amounts must not be negative")
+var ErrInvalidSettlement = errors.New("invalid settlement amounts")
 
 type SettlementInput struct {
-	MemberID         string
-	MemberName       string
-	ScheduledYen     int64
-	PaidYen          int64
-	PreviousOwedYen  int64
-	AdvanceCreditYen int64
+	MemberID             string
+	MemberName           string
+	ScheduledYen         int64
+	PaidYen              int64
+	PreviousOwedYen      int64
+	MonthlyAdjustmentYen int64
+	AdvanceCreditYen     int64
 }
 
 type SettlementAmount struct {
-	MemberID         string
-	MemberName       string
-	ScheduledYen     int64
-	PaidYen          int64
-	CarryYen         int64
-	AdvanceCreditYen int64
-	AmountDueYen     int64
+	MemberID             string
+	MemberName           string
+	ScheduledYen         int64
+	PaidYen              int64
+	CarryYen             int64
+	MonthlyAdjustmentYen int64
+	AdvanceCreditYen     int64
+	AmountDueYen         int64
 }
 
 func CalculateSettlement(inputs []SettlementInput) ([]SettlementAmount, error) {
@@ -37,6 +39,10 @@ func CalculateSettlement(inputs []SettlementInput) ([]SettlementAmount, error) {
 		if !ok {
 			return nil, ErrInvalidSettlement
 		}
+		amountDue, ok = addInt64(amountDue, input.MonthlyAdjustmentYen)
+		if !ok {
+			return nil, ErrInvalidSettlement
+		}
 		amountDue, ok = subtractInt64(amountDue, input.PaidYen)
 		if !ok {
 			return nil, ErrInvalidSettlement
@@ -47,7 +53,7 @@ func CalculateSettlement(inputs []SettlementInput) ([]SettlementAmount, error) {
 		}
 		result[index] = SettlementAmount{
 			MemberID: input.MemberID, MemberName: input.MemberName, ScheduledYen: input.ScheduledYen,
-			PaidYen: input.PaidYen, CarryYen: carry, AdvanceCreditYen: input.AdvanceCreditYen, AmountDueYen: amountDue,
+			PaidYen: input.PaidYen, CarryYen: carry, MonthlyAdjustmentYen: input.MonthlyAdjustmentYen, AdvanceCreditYen: input.AdvanceCreditYen, AmountDueYen: amountDue,
 		}
 	}
 	return result, nil

@@ -40,6 +40,8 @@ type preloaders struct {
 	LedgerEntry          ledgerEntryPreloader
 	Member               memberPreloader
 	OidcSession          oidcSessionPreloader
+	PoolFundingRule      poolFundingRulePreloader
+	PoolFundingShare     poolFundingSharePreloader
 	Pool                 poolPreloader
 	ProductAlias         productAliasPreloader
 	ProductConcept       productConceptPreloader
@@ -78,6 +80,8 @@ func getPreloaders() preloaders {
 		LedgerEntry:          buildLedgerEntryPreloader(),
 		Member:               buildMemberPreloader(),
 		OidcSession:          buildOidcSessionPreloader(),
+		PoolFundingRule:      buildPoolFundingRulePreloader(),
+		PoolFundingShare:     buildPoolFundingSharePreloader(),
 		Pool:                 buildPoolPreloader(),
 		ProductAlias:         buildProductAliasPreloader(),
 		ProductConcept:       buildProductConceptPreloader(),
@@ -122,6 +126,8 @@ type thenLoaders[Q orm.Loadable] struct {
 	LedgerEntry          ledgerEntryThenLoader[Q]
 	Member               memberThenLoader[Q]
 	OidcSession          oidcSessionThenLoader[Q]
+	PoolFundingRule      poolFundingRuleThenLoader[Q]
+	PoolFundingShare     poolFundingShareThenLoader[Q]
 	Pool                 poolThenLoader[Q]
 	ProductAlias         productAliasThenLoader[Q]
 	ProductConcept       productConceptThenLoader[Q]
@@ -160,6 +166,8 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		LedgerEntry:          buildLedgerEntryThenLoader[Q](),
 		Member:               buildMemberThenLoader[Q](),
 		OidcSession:          buildOidcSessionThenLoader[Q](),
+		PoolFundingRule:      buildPoolFundingRuleThenLoader[Q](),
+		PoolFundingShare:     buildPoolFundingShareThenLoader[Q](),
 		Pool:                 buildPoolThenLoader[Q](),
 		ProductAlias:         buildProductAliasThenLoader[Q](),
 		ProductConcept:       buildProductConceptThenLoader[Q](),

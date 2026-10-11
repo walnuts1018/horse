@@ -8,7 +8,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
@@ -289,7 +288,7 @@ func (r *queryResolver) settlement(ctx context.Context, householdID, period stri
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	if _, err := time.Parse("2006-01", period); err != nil {
+	if _, err := parseAccountingPeriod(period); err != nil {
 		return nil, fmt.Errorf("%w: period must use YYYY-MM", ErrBadInput)
 	}
 	var closedRevision int64
@@ -299,16 +298,17 @@ func (r *queryResolver) settlement(ctx context.Context, householdID, period stri
 		result := &model.Settlement{Period: period, Status: "CLOSED", Revision: int(closedRevision), Lines: make([]*model.SettlementLine, 0)}
 		created := timeString(closedAt)
 		result.CreatedAt = &created
-		rows, err := r.DB.Query(ctx, `SELECT sl.member_id::text, m.display_name, sl.scheduled_yen, sl.paid_yen, sl.carry_yen, sl.advance_credit_yen, sl.amount_due_yen FROM settlement_lines sl JOIN settlement_runs sr ON sr.id = sl.settlement_run_id JOIN members m ON m.id = sl.member_id WHERE sr.household_id = $1 AND sr.period = $2 AND sr.revision = $3 ORDER BY m.display_name`, householdID, period, closedRevision)
+		rows, err := r.DB.Query(ctx, `SELECT sl.member_id::text, m.display_name, sl.scheduled_yen, sl.paid_yen, sl.carry_yen, sl.monthly_adjustment_yen, sl.advance_credit_yen, sl.amount_due_yen FROM settlement_lines sl JOIN settlement_runs sr ON sr.id = sl.settlement_run_id JOIN members m ON m.id = sl.member_id WHERE sr.household_id = $1 AND sr.period = $2 AND sr.revision = $3 ORDER BY m.display_name`, householdID, period, closedRevision)
 		if err != nil {
 			return nil, err
 		}
 		for rows.Next() {
 			line := &model.SettlementLine{}
-			if err := rows.Scan(&line.MemberID, &line.MemberName, &line.ScheduledYen, &line.PaidYen, &line.CarryYen, &line.AdvanceCreditYen, &line.AmountDueYen); err != nil {
+			if err := rows.Scan(&line.MemberID, &line.MemberName, &line.ScheduledYen, &line.PaidYen, &line.CarryYen, &line.MonthlyAdjustmentYen, &line.AdvanceCreditYen, &line.AmountDueYen); err != nil {
 				rows.Close()
 				return nil, err
 			}
+			line.PriorBalanceYen = line.CarryYen
 			result.Lines = append(result.Lines, line)
 		}
 		rows.Close()
@@ -318,29 +318,12 @@ func (r *queryResolver) settlement(ctx context.Context, householdID, period stri
 		return nil, err
 	}
 	result := &model.Settlement{Period: period, Status: "OPEN", Revision: 0, Lines: make([]*model.SettlementLine, 0)}
-	inputs := make([]domain.SettlementInput, 0)
-	rows, err := r.DB.Query(ctx, `SELECT m.id::text, m.display_name, COALESCE(cur.scheduled_yen, 0), COALESCE(cur.paid_yen, 0), COALESCE(prev.owed_yen, 0) FROM household_members hm JOIN members m ON m.id = hm.member_id LEFT JOIN (SELECT member_id, sum(amount_yen) scheduled_yen, sum(paid_yen) paid_yen FROM funding_obligations WHERE household_id = $1 AND period = $2 GROUP BY member_id) cur ON cur.member_id = m.id LEFT JOIN (SELECT member_id, sum(amount_yen - paid_yen) owed_yen FROM funding_obligations WHERE household_id = $1 AND period < $2 GROUP BY member_id) prev ON prev.member_id = m.id WHERE hm.household_id = $1 ORDER BY m.display_name`, householdID, period)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var input domain.SettlementInput
-		if err := rows.Scan(&input.MemberID, &input.MemberName, &input.ScheduledYen, &input.PaidYen, &input.PreviousOwedYen); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		inputs = append(inputs, input)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	settlement, err := domain.CalculateSettlement(inputs)
+	settlement, err := calculateSettlementPreview(ctx, r.DB, householdID, period)
 	if err != nil {
 		return nil, err
 	}
 	for _, line := range settlement {
-		result.Lines = append(result.Lines, &model.SettlementLine{MemberID: line.MemberID, MemberName: line.MemberName, ScheduledYen: graphLong(line.ScheduledYen), PaidYen: graphLong(line.PaidYen), CarryYen: graphLong(line.CarryYen), AdvanceCreditYen: graphLong(line.AdvanceCreditYen), AmountDueYen: graphLong(line.AmountDueYen)})
+		result.Lines = append(result.Lines, &model.SettlementLine{MemberID: line.MemberID, MemberName: line.MemberName, ScheduledYen: graphLong(line.ScheduledYen), PaidYen: graphLong(line.PaidYen), CarryYen: graphLong(line.CarryYen), PriorBalanceYen: graphLong(line.CarryYen), MonthlyAdjustmentYen: graphLong(line.MonthlyAdjustmentYen), AdvanceCreditYen: graphLong(line.AdvanceCreditYen), AmountDueYen: graphLong(line.AmountDueYen)})
 	}
 	return result, nil
 }
@@ -349,24 +332,24 @@ func (r *queryResolver) monthlyCategorySpending(ctx context.Context, householdID
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	fromMonth, err := time.Parse("2006-01", from)
+	fromMonth, err := parseAccountingPeriod(from)
 	if err != nil {
 		return nil, fmt.Errorf("%w: from must use YYYY-MM", ErrBadInput)
 	}
-	toMonth, err := time.Parse("2006-01", to)
+	toMonth, err := parseAccountingPeriod(to)
 	if err != nil || toMonth.Before(fromMonth) || toMonth.After(fromMonth.AddDate(10, 0, 0)) {
 		return nil, fmt.Errorf("%w: to must be within ten years after from", ErrBadInput)
 	}
 	endExclusive := toMonth.AddDate(0, 1, 0)
 	rows, err := r.DB.Query(ctx, `
 		WITH spending AS (
-			SELECT date_trunc('month', p.occurred_at)::date AS period, i.category_id, sum(i.amount_yen)::bigint AS amount_yen
+			SELECT date_trunc('month', p.occurred_at AT TIME ZONE 'Asia/Tokyo')::date AS period, i.category_id, sum(i.amount_yen)::bigint AS amount_yen
 			FROM purchases p
 			JOIN purchase_items i ON i.purchase_id = p.id
 			WHERE p.household_id = $1 AND p.status IN ('POSTED', 'CLOSED') AND p.occurred_at >= $2 AND p.occurred_at < $3
 			GROUP BY 1, 2
 			UNION ALL
-			SELECT date_trunc('month', p.occurred_at)::date AS period, i.category_id, sum(c.amount_delta_yen)::bigint AS amount_yen
+			SELECT date_trunc('month', p.occurred_at AT TIME ZONE 'Asia/Tokyo')::date AS period, i.category_id, sum(c.amount_delta_yen)::bigint AS amount_yen
 			FROM corrections c
 			JOIN purchases p ON p.id = c.purchase_id
 			LEFT JOIN purchase_items i ON i.id = c.item_id

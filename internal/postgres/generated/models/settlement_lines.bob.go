@@ -24,13 +24,14 @@ import (
 
 // SettlementLine is an object representing the database table.
 type SettlementLine struct {
-	SettlementRunID  uuid.UUID `db:"settlement_run_id,pk" `
-	MemberID         uuid.UUID `db:"member_id,pk" `
-	ScheduledYen     int64     `db:"scheduled_yen" `
-	PaidYen          int64     `db:"paid_yen" `
-	CarryYen         int64     `db:"carry_yen" `
-	AdvanceCreditYen int64     `db:"advance_credit_yen" `
-	AmountDueYen     int64     `db:"amount_due_yen" `
+	SettlementRunID      uuid.UUID `db:"settlement_run_id,pk" `
+	MemberID             uuid.UUID `db:"member_id,pk" `
+	ScheduledYen         int64     `db:"scheduled_yen" `
+	PaidYen              int64     `db:"paid_yen" `
+	CarryYen             int64     `db:"carry_yen" `
+	AdvanceCreditYen     int64     `db:"advance_credit_yen" `
+	AmountDueYen         int64     `db:"amount_due_yen" `
+	MonthlyAdjustmentYen int64     `db:"monthly_adjustment_yen" `
 
 	R settlementLineR `db:"-" `
 }
@@ -63,7 +64,7 @@ type settlementLineRLoaded struct {
 
 func buildSettlementLineColumns(tableName string) settlementLineColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"settlement_run_id", "member_id", "scheduled_yen", "paid_yen", "carry_yen", "advance_credit_yen", "amount_due_yen",
+		"settlement_run_id", "member_id", "scheduled_yen", "paid_yen", "carry_yen", "advance_credit_yen", "amount_due_yen", "monthly_adjustment_yen",
 	)
 
 	if tableName != "" {
@@ -71,28 +72,30 @@ func buildSettlementLineColumns(tableName string) settlementLineColumns {
 	}
 
 	return settlementLineColumns{
-		ColumnsExpr:      columnsExpr,
-		tableAlias:       tableName,
-		SettlementRunID:  buildSettlementLineColumn(tableName, "settlement_run_id"),
-		MemberID:         buildSettlementLineColumn(tableName, "member_id"),
-		ScheduledYen:     buildSettlementLineColumn(tableName, "scheduled_yen"),
-		PaidYen:          buildSettlementLineColumn(tableName, "paid_yen"),
-		CarryYen:         buildSettlementLineColumn(tableName, "carry_yen"),
-		AdvanceCreditYen: buildSettlementLineColumn(tableName, "advance_credit_yen"),
-		AmountDueYen:     buildSettlementLineColumn(tableName, "amount_due_yen"),
+		ColumnsExpr:          columnsExpr,
+		tableAlias:           tableName,
+		SettlementRunID:      buildSettlementLineColumn(tableName, "settlement_run_id"),
+		MemberID:             buildSettlementLineColumn(tableName, "member_id"),
+		ScheduledYen:         buildSettlementLineColumn(tableName, "scheduled_yen"),
+		PaidYen:              buildSettlementLineColumn(tableName, "paid_yen"),
+		CarryYen:             buildSettlementLineColumn(tableName, "carry_yen"),
+		AdvanceCreditYen:     buildSettlementLineColumn(tableName, "advance_credit_yen"),
+		AmountDueYen:         buildSettlementLineColumn(tableName, "amount_due_yen"),
+		MonthlyAdjustmentYen: buildSettlementLineColumn(tableName, "monthly_adjustment_yen"),
 	}
 }
 
 type settlementLineColumns struct {
 	expr.ColumnsExpr
-	tableAlias       string
-	SettlementRunID  settlementLineColumn
-	MemberID         settlementLineColumn
-	ScheduledYen     settlementLineColumn
-	PaidYen          settlementLineColumn
-	CarryYen         settlementLineColumn
-	AdvanceCreditYen settlementLineColumn
-	AmountDueYen     settlementLineColumn
+	tableAlias           string
+	SettlementRunID      settlementLineColumn
+	MemberID             settlementLineColumn
+	ScheduledYen         settlementLineColumn
+	PaidYen              settlementLineColumn
+	CarryYen             settlementLineColumn
+	AdvanceCreditYen     settlementLineColumn
+	AmountDueYen         settlementLineColumn
+	MonthlyAdjustmentYen settlementLineColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -138,17 +141,18 @@ func (c settlementLineColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type SettlementLineSetter struct {
-	SettlementRunID  *uuid.UUID `db:"settlement_run_id,pk" `
-	MemberID         *uuid.UUID `db:"member_id,pk" `
-	ScheduledYen     *int64     `db:"scheduled_yen" `
-	PaidYen          *int64     `db:"paid_yen" `
-	CarryYen         *int64     `db:"carry_yen" `
-	AdvanceCreditYen *int64     `db:"advance_credit_yen" `
-	AmountDueYen     *int64     `db:"amount_due_yen" `
+	SettlementRunID      *uuid.UUID `db:"settlement_run_id,pk" `
+	MemberID             *uuid.UUID `db:"member_id,pk" `
+	ScheduledYen         *int64     `db:"scheduled_yen" `
+	PaidYen              *int64     `db:"paid_yen" `
+	CarryYen             *int64     `db:"carry_yen" `
+	AdvanceCreditYen     *int64     `db:"advance_credit_yen" `
+	AmountDueYen         *int64     `db:"amount_due_yen" `
+	MonthlyAdjustmentYen *int64     `db:"monthly_adjustment_yen" `
 }
 
 func (s SettlementLineSetter) SetColumns() []string {
-	vals := make([]string, 0, 7)
+	vals := make([]string, 0, 8)
 	if s.SettlementRunID != nil {
 		vals = append(vals, "settlement_run_id")
 	}
@@ -169,6 +173,9 @@ func (s SettlementLineSetter) SetColumns() []string {
 	}
 	if s.AmountDueYen != nil {
 		vals = append(vals, "amount_due_yen")
+	}
+	if s.MonthlyAdjustmentYen != nil {
+		vals = append(vals, "monthly_adjustment_yen")
 	}
 	return vals
 }
@@ -228,6 +235,14 @@ func (s SettlementLineSetter) Overwrite(t *SettlementLine) {
 				return *new(int64)
 			}
 			return *s.AmountDueYen
+		}()
+	}
+	if s.MonthlyAdjustmentYen != nil {
+		t.MonthlyAdjustmentYen = func() int64 {
+			if s.MonthlyAdjustmentYen == nil {
+				return *new(int64)
+			}
+			return *s.MonthlyAdjustmentYen
 		}()
 	}
 }
@@ -308,6 +323,16 @@ func (s *SettlementLineSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.AmountDueYen
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.MonthlyAdjustmentYen == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() int64 {
+				if s.MonthlyAdjustmentYen == nil {
+					return *new(int64)
+				}
+				return *s.MonthlyAdjustmentYen
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -316,7 +341,7 @@ func (s SettlementLineSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s SettlementLineSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 7)
+	exprs := make([]bob.Expression, 0, 8)
 
 	if s.SettlementRunID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -367,6 +392,13 @@ func (s SettlementLineSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.MonthlyAdjustmentYen != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "monthly_adjustment_yen")...),
+			psql.Arg(s.MonthlyAdjustmentYen),
+		}})
+	}
+
 	return exprs
 }
 
@@ -377,7 +409,7 @@ func settlementLineScanMapper(ctx context.Context, cols []string) (scan.BeforeFu
 		idx int
 		dst func(o *SettlementLine) any
 	}
-	targets := make([]target, 0, 7)
+	targets := make([]target, 0, 8)
 	for i, col := range cols {
 		switch col {
 		case "settlement_run_id":
@@ -394,6 +426,8 @@ func settlementLineScanMapper(ctx context.Context, cols []string) (scan.BeforeFu
 			targets = append(targets, target{i, func(o *SettlementLine) any { return &o.AdvanceCreditYen }})
 		case "amount_due_yen":
 			targets = append(targets, target{i, func(o *SettlementLine) any { return &o.AmountDueYen }})
+		case "monthly_adjustment_yen":
+			targets = append(targets, target{i, func(o *SettlementLine) any { return &o.MonthlyAdjustmentYen }})
 		}
 	}
 
@@ -834,15 +868,16 @@ func (settlementLine0 *SettlementLine) AttachSettlementRun(ctx context.Context, 
 }
 
 type settlementLineWhere[Q psql.Filterable] struct {
-	cols             settlementLineColumns
-	SettlementRunID  psql.WhereMod[Q, uuid.UUID]
-	MemberID         psql.WhereMod[Q, uuid.UUID]
-	ScheduledYen     psql.WhereMod[Q, int64]
-	PaidYen          psql.WhereMod[Q, int64]
-	CarryYen         psql.WhereMod[Q, int64]
-	AdvanceCreditYen psql.WhereMod[Q, int64]
-	AmountDueYen     psql.WhereMod[Q, int64]
-	R                settlementLineWhereR[Q]
+	cols                 settlementLineColumns
+	SettlementRunID      psql.WhereMod[Q, uuid.UUID]
+	MemberID             psql.WhereMod[Q, uuid.UUID]
+	ScheduledYen         psql.WhereMod[Q, int64]
+	PaidYen              psql.WhereMod[Q, int64]
+	CarryYen             psql.WhereMod[Q, int64]
+	AdvanceCreditYen     psql.WhereMod[Q, int64]
+	AmountDueYen         psql.WhereMod[Q, int64]
+	MonthlyAdjustmentYen psql.WhereMod[Q, int64]
+	R                    settlementLineWhereR[Q]
 }
 
 func (settlementLineWhere[Q]) AliasedAs(alias string) settlementLineWhere[Q] {
@@ -851,15 +886,16 @@ func (settlementLineWhere[Q]) AliasedAs(alias string) settlementLineWhere[Q] {
 
 func buildSettlementLineWhere[Q psql.Filterable](cols settlementLineColumns) settlementLineWhere[Q] {
 	return settlementLineWhere[Q]{
-		cols:             cols,
-		SettlementRunID:  psql.Where[Q, uuid.UUID](cols.SettlementRunID.Expression),
-		MemberID:         psql.Where[Q, uuid.UUID](cols.MemberID.Expression),
-		ScheduledYen:     psql.Where[Q, int64](cols.ScheduledYen.Expression),
-		PaidYen:          psql.Where[Q, int64](cols.PaidYen.Expression),
-		CarryYen:         psql.Where[Q, int64](cols.CarryYen.Expression),
-		AdvanceCreditYen: psql.Where[Q, int64](cols.AdvanceCreditYen.Expression),
-		AmountDueYen:     psql.Where[Q, int64](cols.AmountDueYen.Expression),
-		R:                settlementLineWhereR[Q]{cols: cols},
+		cols:                 cols,
+		SettlementRunID:      psql.Where[Q, uuid.UUID](cols.SettlementRunID.Expression),
+		MemberID:             psql.Where[Q, uuid.UUID](cols.MemberID.Expression),
+		ScheduledYen:         psql.Where[Q, int64](cols.ScheduledYen.Expression),
+		PaidYen:              psql.Where[Q, int64](cols.PaidYen.Expression),
+		CarryYen:             psql.Where[Q, int64](cols.CarryYen.Expression),
+		AdvanceCreditYen:     psql.Where[Q, int64](cols.AdvanceCreditYen.Expression),
+		AmountDueYen:         psql.Where[Q, int64](cols.AmountDueYen.Expression),
+		MonthlyAdjustmentYen: psql.Where[Q, int64](cols.MonthlyAdjustmentYen.Expression),
+		R:                    settlementLineWhereR[Q]{cols: cols},
 	}
 }
 

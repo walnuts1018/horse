@@ -6,6 +6,7 @@ package models
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -21,19 +22,21 @@ import (
 	"github.com/stephenafamo/bob/expr"
 	"github.com/stephenafamo/bob/mods"
 	"github.com/stephenafamo/bob/orm"
+	"github.com/stephenafamo/bob/types"
 	"github.com/stephenafamo/bob/types/pgtypes"
 	"github.com/stephenafamo/scan"
 )
 
 // SettlementRun is an object representing the database table.
 type SettlementRun struct {
-	ID          uuid.UUID `db:"id,pk" `
-	HouseholdID uuid.UUID `db:"household_id" `
-	Period      string    `db:"period" `
-	Revision    int64     `db:"revision" `
-	Status      string    `db:"status" `
-	CreatedBy   uuid.UUID `db:"created_by" `
-	CreatedAt   time.Time `db:"created_at" `
+	ID              uuid.UUID                   `db:"id,pk" `
+	HouseholdID     uuid.UUID                   `db:"household_id" `
+	Period          string                      `db:"period" `
+	Revision        int64                       `db:"revision" `
+	Status          string                      `db:"status" `
+	CreatedBy       uuid.UUID                   `db:"created_by" `
+	CreatedAt       time.Time                   `db:"created_at" `
+	FundingSnapshot types.JSON[json.RawMessage] `db:"funding_snapshot" `
 
 	R settlementRunR `db:"-" `
 
@@ -70,7 +73,7 @@ type settlementRunRLoaded struct {
 
 func buildSettlementRunColumns(tableName string) settlementRunColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "period", "revision", "status", "created_by", "created_at",
+		"id", "household_id", "period", "revision", "status", "created_by", "created_at", "funding_snapshot",
 	)
 
 	if tableName != "" {
@@ -78,28 +81,30 @@ func buildSettlementRunColumns(tableName string) settlementRunColumns {
 	}
 
 	return settlementRunColumns{
-		ColumnsExpr: columnsExpr,
-		tableAlias:  tableName,
-		ID:          buildSettlementRunColumn(tableName, "id"),
-		HouseholdID: buildSettlementRunColumn(tableName, "household_id"),
-		Period:      buildSettlementRunColumn(tableName, "period"),
-		Revision:    buildSettlementRunColumn(tableName, "revision"),
-		Status:      buildSettlementRunColumn(tableName, "status"),
-		CreatedBy:   buildSettlementRunColumn(tableName, "created_by"),
-		CreatedAt:   buildSettlementRunColumn(tableName, "created_at"),
+		ColumnsExpr:     columnsExpr,
+		tableAlias:      tableName,
+		ID:              buildSettlementRunColumn(tableName, "id"),
+		HouseholdID:     buildSettlementRunColumn(tableName, "household_id"),
+		Period:          buildSettlementRunColumn(tableName, "period"),
+		Revision:        buildSettlementRunColumn(tableName, "revision"),
+		Status:          buildSettlementRunColumn(tableName, "status"),
+		CreatedBy:       buildSettlementRunColumn(tableName, "created_by"),
+		CreatedAt:       buildSettlementRunColumn(tableName, "created_at"),
+		FundingSnapshot: buildSettlementRunColumn(tableName, "funding_snapshot"),
 	}
 }
 
 type settlementRunColumns struct {
 	expr.ColumnsExpr
-	tableAlias  string
-	ID          settlementRunColumn
-	HouseholdID settlementRunColumn
-	Period      settlementRunColumn
-	Revision    settlementRunColumn
-	Status      settlementRunColumn
-	CreatedBy   settlementRunColumn
-	CreatedAt   settlementRunColumn
+	tableAlias      string
+	ID              settlementRunColumn
+	HouseholdID     settlementRunColumn
+	Period          settlementRunColumn
+	Revision        settlementRunColumn
+	Status          settlementRunColumn
+	CreatedBy       settlementRunColumn
+	CreatedAt       settlementRunColumn
+	FundingSnapshot settlementRunColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -145,17 +150,18 @@ func (c settlementRunColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type SettlementRunSetter struct {
-	ID          *uuid.UUID `db:"id,pk" `
-	HouseholdID *uuid.UUID `db:"household_id" `
-	Period      *string    `db:"period" `
-	Revision    *int64     `db:"revision" `
-	Status      *string    `db:"status" `
-	CreatedBy   *uuid.UUID `db:"created_by" `
-	CreatedAt   *time.Time `db:"created_at" `
+	ID              *uuid.UUID                   `db:"id,pk" `
+	HouseholdID     *uuid.UUID                   `db:"household_id" `
+	Period          *string                      `db:"period" `
+	Revision        *int64                       `db:"revision" `
+	Status          *string                      `db:"status" `
+	CreatedBy       *uuid.UUID                   `db:"created_by" `
+	CreatedAt       *time.Time                   `db:"created_at" `
+	FundingSnapshot *types.JSON[json.RawMessage] `db:"funding_snapshot" `
 }
 
 func (s SettlementRunSetter) SetColumns() []string {
-	vals := make([]string, 0, 7)
+	vals := make([]string, 0, 8)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -176,6 +182,9 @@ func (s SettlementRunSetter) SetColumns() []string {
 	}
 	if s.CreatedAt != nil {
 		vals = append(vals, "created_at")
+	}
+	if s.FundingSnapshot != nil {
+		vals = append(vals, "funding_snapshot")
 	}
 	return vals
 }
@@ -235,6 +244,14 @@ func (s SettlementRunSetter) Overwrite(t *SettlementRun) {
 				return *new(time.Time)
 			}
 			return *s.CreatedAt
+		}()
+	}
+	if s.FundingSnapshot != nil {
+		t.FundingSnapshot = func() types.JSON[json.RawMessage] {
+			if s.FundingSnapshot == nil {
+				return *new(types.JSON[json.RawMessage])
+			}
+			return *s.FundingSnapshot
 		}()
 	}
 }
@@ -315,6 +332,16 @@ func (s *SettlementRunSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.CreatedAt
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.FundingSnapshot == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() types.JSON[json.RawMessage] {
+				if s.FundingSnapshot == nil {
+					return *new(types.JSON[json.RawMessage])
+				}
+				return *s.FundingSnapshot
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -323,7 +350,7 @@ func (s SettlementRunSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s SettlementRunSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 7)
+	exprs := make([]bob.Expression, 0, 8)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -374,6 +401,13 @@ func (s SettlementRunSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.FundingSnapshot != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "funding_snapshot")...),
+			psql.Arg(s.FundingSnapshot),
+		}})
+	}
+
 	return exprs
 }
 
@@ -384,7 +418,7 @@ func settlementRunScanMapper(ctx context.Context, cols []string) (scan.BeforeFun
 		idx int
 		dst func(o *SettlementRun) any
 	}
-	targets := make([]target, 0, 7)
+	targets := make([]target, 0, 8)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -401,6 +435,8 @@ func settlementRunScanMapper(ctx context.Context, cols []string) (scan.BeforeFun
 			targets = append(targets, target{i, func(o *SettlementRun) any { return &o.CreatedBy }})
 		case "created_at":
 			targets = append(targets, target{i, func(o *SettlementRun) any { return &o.CreatedAt }})
+		case "funding_snapshot":
+			targets = append(targets, target{i, func(o *SettlementRun) any { return &o.FundingSnapshot }})
 		}
 	}
 
@@ -930,15 +966,16 @@ func (settlementRun0 *SettlementRun) AttachHousehold(ctx context.Context, exec b
 }
 
 type settlementRunWhere[Q psql.Filterable] struct {
-	cols        settlementRunColumns
-	ID          psql.WhereMod[Q, uuid.UUID]
-	HouseholdID psql.WhereMod[Q, uuid.UUID]
-	Period      psql.WhereMod[Q, string]
-	Revision    psql.WhereMod[Q, int64]
-	Status      psql.WhereMod[Q, string]
-	CreatedBy   psql.WhereMod[Q, uuid.UUID]
-	CreatedAt   psql.WhereMod[Q, time.Time]
-	R           settlementRunWhereR[Q]
+	cols            settlementRunColumns
+	ID              psql.WhereMod[Q, uuid.UUID]
+	HouseholdID     psql.WhereMod[Q, uuid.UUID]
+	Period          psql.WhereMod[Q, string]
+	Revision        psql.WhereMod[Q, int64]
+	Status          psql.WhereMod[Q, string]
+	CreatedBy       psql.WhereMod[Q, uuid.UUID]
+	CreatedAt       psql.WhereMod[Q, time.Time]
+	FundingSnapshot psql.WhereMod[Q, types.JSON[json.RawMessage]]
+	R               settlementRunWhereR[Q]
 }
 
 func (settlementRunWhere[Q]) AliasedAs(alias string) settlementRunWhere[Q] {
@@ -947,15 +984,16 @@ func (settlementRunWhere[Q]) AliasedAs(alias string) settlementRunWhere[Q] {
 
 func buildSettlementRunWhere[Q psql.Filterable](cols settlementRunColumns) settlementRunWhere[Q] {
 	return settlementRunWhere[Q]{
-		cols:        cols,
-		ID:          psql.Where[Q, uuid.UUID](cols.ID.Expression),
-		HouseholdID: psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
-		Period:      psql.Where[Q, string](cols.Period.Expression),
-		Revision:    psql.Where[Q, int64](cols.Revision.Expression),
-		Status:      psql.Where[Q, string](cols.Status.Expression),
-		CreatedBy:   psql.Where[Q, uuid.UUID](cols.CreatedBy.Expression),
-		CreatedAt:   psql.Where[Q, time.Time](cols.CreatedAt.Expression),
-		R:           settlementRunWhereR[Q]{cols: cols},
+		cols:            cols,
+		ID:              psql.Where[Q, uuid.UUID](cols.ID.Expression),
+		HouseholdID:     psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		Period:          psql.Where[Q, string](cols.Period.Expression),
+		Revision:        psql.Where[Q, int64](cols.Revision.Expression),
+		Status:          psql.Where[Q, string](cols.Status.Expression),
+		CreatedBy:       psql.Where[Q, uuid.UUID](cols.CreatedBy.Expression),
+		CreatedAt:       psql.Where[Q, time.Time](cols.CreatedAt.Expression),
+		FundingSnapshot: psql.Where[Q, types.JSON[json.RawMessage]](cols.FundingSnapshot.Expression),
+		R:               settlementRunWhereR[Q]{cols: cols},
 	}
 }
 
@@ -1012,13 +1050,14 @@ func (w settlementRunWhereR[Q]) HasHousehold(filters ...bob.Mod[*dialect.SelectQ
 // on a LEFT JOIN miss every column comes back NULL, so each field uses the
 // nullable version of the column type even when the column itself is NOT NULL.
 type settlementRunPreloadBuf struct {
-	ID          sql.Null[uuid.UUID]
-	HouseholdID sql.Null[uuid.UUID]
-	Period      sql.Null[string]
-	Revision    sql.Null[int64]
-	Status      sql.Null[string]
-	CreatedBy   sql.Null[uuid.UUID]
-	CreatedAt   sql.Null[time.Time]
+	ID              sql.Null[uuid.UUID]
+	HouseholdID     sql.Null[uuid.UUID]
+	Period          sql.Null[string]
+	Revision        sql.Null[int64]
+	Status          sql.Null[string]
+	CreatedBy       sql.Null[uuid.UUID]
+	CreatedAt       sql.Null[time.Time]
+	FundingSnapshot sql.Null[types.JSON[json.RawMessage]]
 }
 
 // settlementRunScanMapperNullable maps the preloaded settlementRun
@@ -1033,7 +1072,7 @@ func settlementRunScanMapperNullable(prefix string) scan.Mapper[*SettlementRun] 
 			idx int
 			dst func(b *settlementRunPreloadBuf) any
 		}
-		targets := make([]target, 0, 7)
+		targets := make([]target, 0, 8)
 		for i, col := range cols {
 			name, ok := strings.CutPrefix(col, prefix)
 			if !ok {
@@ -1054,6 +1093,8 @@ func settlementRunScanMapperNullable(prefix string) scan.Mapper[*SettlementRun] 
 				targets = append(targets, target{i, func(b *settlementRunPreloadBuf) any { return &b.CreatedBy }})
 			case "created_at":
 				targets = append(targets, target{i, func(b *settlementRunPreloadBuf) any { return &b.CreatedAt }})
+			case "funding_snapshot":
+				targets = append(targets, target{i, func(b *settlementRunPreloadBuf) any { return &b.FundingSnapshot }})
 			}
 		}
 
@@ -1082,7 +1123,8 @@ func settlementRunScanMapperNullable(prefix string) scan.Mapper[*SettlementRun] 
 					!(buf.Revision.Valid) &&
 					!(buf.Status.Valid) &&
 					!(buf.CreatedBy.Valid) &&
-					!(buf.CreatedAt.Valid) {
+					!(buf.CreatedAt.Valid) &&
+					!(buf.FundingSnapshot.Valid) {
 					return nil, nil
 				}
 
@@ -1107,6 +1149,9 @@ func settlementRunScanMapperNullable(prefix string) scan.Mapper[*SettlementRun] 
 				}
 				if buf.CreatedAt.Valid {
 					o.CreatedAt = buf.CreatedAt.V
+				}
+				if buf.FundingSnapshot.Valid {
+					o.FundingSnapshot = buf.FundingSnapshot.V
 				}
 				return o, nil
 			}

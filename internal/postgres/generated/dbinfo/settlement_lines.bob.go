@@ -78,6 +78,15 @@ var SettlementLines = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		MonthlyAdjustmentYen: column{
+			Name:      "monthly_adjustment_yen",
+			DBType:    "bigint",
+			Default:   "0",
+			Comment:   "",
+			Nullable:  false,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: settlementLineIndexes{
 		SettlementLinesPkey: index{
@@ -133,18 +142,19 @@ var SettlementLines = Table[
 }
 
 type settlementLineColumns struct {
-	SettlementRunID  column
-	MemberID         column
-	ScheduledYen     column
-	PaidYen          column
-	CarryYen         column
-	AdvanceCreditYen column
-	AmountDueYen     column
+	SettlementRunID      column
+	MemberID             column
+	ScheduledYen         column
+	PaidYen              column
+	CarryYen             column
+	AdvanceCreditYen     column
+	AmountDueYen         column
+	MonthlyAdjustmentYen column
 }
 
 func (c settlementLineColumns) AsSlice() []column {
 	return []column{
-		c.SettlementRunID, c.MemberID, c.ScheduledYen, c.PaidYen, c.CarryYen, c.AdvanceCreditYen, c.AmountDueYen,
+		c.SettlementRunID, c.MemberID, c.ScheduledYen, c.PaidYen, c.CarryYen, c.AdvanceCreditYen, c.AmountDueYen, c.MonthlyAdjustmentYen,
 	}
 }
 

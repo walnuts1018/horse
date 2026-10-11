@@ -343,11 +343,11 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	for _, line := range settlement.Lines {
 		byMember[line.MemberID] = line
 	}
-	if byMember[memberA].ScheduledYen != 6000 || byMember[memberA].PaidYen != 6000 || byMember[memberA].AmountDueYen != 0 {
-		t.Fatalf("member A schedule/payment mismatch: %#v", byMember[memberA])
+	if byMember[memberA].ScheduledYen != 6000 || byMember[memberA].PaidYen != 6000 || byMember[memberA].PriorBalanceYen != 18000 || byMember[memberA].AmountDueYen != 18000 {
+		t.Fatalf("member A schedule/payment and three prior unpaid months mismatch: %#v", byMember[memberA])
 	}
-	if byMember[memberB].ScheduledYen != 4000 || byMember[memberB].PaidYen != 0 || byMember[memberB].AmountDueYen != 4000 {
-		t.Fatalf("member B missed payment was not carried: %#v", byMember[memberB])
+	if byMember[memberB].ScheduledYen != 4000 || byMember[memberB].PaidYen != 0 || byMember[memberB].PriorBalanceYen != 12000 || byMember[memberB].AmountDueYen != 16000 {
+		t.Fatalf("member B missed payments were not carried through the prior open months: %#v", byMember[memberB])
 	}
 	spending, err := apiResolver.Query().MonthlyCategorySpending(ctx, householdID, "2026-04", "2026-04")
 	if err != nil || len(spending) != 2 {
@@ -355,5 +355,201 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	}
 	if spending[0].CategoryID == nil || *spending[0].CategoryID != category.ID || spending[0].AmountYen != 700 {
 		t.Fatalf("category spending mismatch: %#v", spending[0])
+	}
+}
+
+func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing.T) {
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+	memberA, memberB := uuid.NewV7().String(), uuid.NewV7().String()
+	for id, name := range map[string]string{memberA: "A", memberB: "B"} {
+		if _, err := db.Exec(ctx, `INSERT INTO members(id,oidc_subject,display_name) VALUES ($1,$2,$3)`, id, "settlement-integration:"+id, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() {
+		_, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, memberA)
+		_, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, memberB)
+	}()
+	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "settlement-integration:" + memberA, DisplayName: "A"})
+	apiResolver := &Resolver{DB: db}
+	mutation := apiResolver.Mutation()
+	household, err := mutation.CreateHousehold(ctx, model.CreateHouseholdInput{Name: "settlement snapshot"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = db.Exec(context.Background(), `DELETE FROM households WHERE id=$1`, household.ID) }()
+	if _, err := db.Exec(ctx, `INSERT INTO household_members(household_id,member_id) VALUES($1,$2)`, household.ID, memberB); err != nil {
+		t.Fatal(err)
+	}
+	personalA, err := mutation.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "A wallet", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	personalB, err := mutation.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "B wallet", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared, err := mutation.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Shared", Kind: model.PoolKindShared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, configuration := range []model.SetPoolFundingRuleInput{
+		{HouseholdID: household.ID, PoolID: personalA.ID, OwnerMemberID: &memberA, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1},
+		{HouseholdID: household.ID, PoolID: personalB.ID, OwnerMemberID: &memberB, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1},
+		{HouseholdID: household.ID, PoolID: shared.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, SettlementPolicy: new(model.SharedPoolSettlementPolicyBalanceToStandard), ExpectedVersion: 1},
+	} {
+		if _, err := mutation.SetPoolFundingRule(ctx, configuration); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sharedAccount, err := mutation.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "shared card", Kind: model.AccountKindCard, PoolID: &shared.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchase, err := mutation.CreatePurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-04-10T12:00:00Z", Merchant: "market", PaymentAccountID: &sharedAccount.ID,
+		Items: []*model.PurchaseItemInput{{Name: "shared-paid personal item", AmountYen: 1000, Allocations: []*model.AllocationInput{{PoolID: personalA.ID, Weight: 1}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.PostPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String()); err != nil {
+		t.Fatal(err)
+	}
+	closed, err := mutation.ClosePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: "2026-04", ExpectedRevision: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedLines := settlementByMember(t, closed.Lines)
+	if closedLines[memberA].MonthlyAdjustmentYen != 400 || closedLines[memberA].AmountDueYen != 400 || closedLines[memberB].MonthlyAdjustmentYen != -400 || closedLines[memberB].AmountDueYen != -400 {
+		t.Fatalf("shared-pool actual spending was not balanced against 60/40 funding shares: %#v", closedLines)
+	}
+	sharedPolicy := model.SharedPoolSettlementPolicyReimbursePersonal
+	if _, err := mutation.SetPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: shared.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, SettlementPolicy: &sharedPolicy, ExpectedVersion: 2}); err != nil {
+		t.Fatal(err)
+	}
+	reloadedClosed, err := apiResolver.Query().Settlement(ctx, household.ID, "2026-04")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadedLines := settlementByMember(t, reloadedClosed.Lines)
+	if reloadedLines[memberA].AmountDueYen != 400 || reloadedLines[memberA].MonthlyAdjustmentYen != 400 || reloadedLines[memberB].AmountDueYen != -400 || reloadedLines[memberB].MonthlyAdjustmentYen != -400 {
+		t.Fatalf("editing a pool rule rewrote the closed snapshot: %#v", reloadedLines)
+	}
+	next, err := apiResolver.Query().Settlement(ctx, household.ID, "2026-05")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextLines := settlementByMember(t, next.Lines)
+	if nextLines[memberA].PriorBalanceYen != 400 || nextLines[memberA].AmountDueYen != 400 || nextLines[memberB].PriorBalanceYen != -400 || nextLines[memberB].AmountDueYen != -400 {
+		t.Fatalf("closed balance did not become the sole next-month carry: %#v", nextLines)
+	}
+}
+
+func settlementByMember(t *testing.T, lines []*model.SettlementLine) map[string]*model.SettlementLine {
+	t.Helper()
+	result := make(map[string]*model.SettlementLine, len(lines))
+	for _, line := range lines {
+		result[line.MemberID] = line
+	}
+	return result
+}
+
+func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+	memberID := uuid.NewV7().String()
+	if _, err := db.Exec(ctx, `INSERT INTO members(id,oidc_subject,display_name) VALUES($1,$2,'JST')`, memberID, "period-boundary:"+memberID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, memberID) }()
+	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: "period-boundary:" + memberID, DisplayName: "JST"})
+	apiResolver := &Resolver{DB: db}
+	mutation := apiResolver.Mutation()
+	household, err := mutation.CreateHousehold(ctx, model.CreateHouseholdInput{Name: "Japan time boundary"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = db.Exec(context.Background(), `DELETE FROM households WHERE id=$1`, household.ID) }()
+	pool, err := mutation.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Personal", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.SetFundingSchedule(ctx, model.SetFundingScheduleInput{HouseholdID: household.ID, MemberID: memberID, PoolID: pool.ID, AmountYen: 700, Cadence: "MONTHLY", StartsOn: "2026-10-01"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, occurredAt := range []string{"2026-09-30T23:59:59+09:00", "2026-10-01T00:00:00+09:00"} {
+		purchase, err := mutation.CreatePurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: occurredAt, Merchant: "boundary", Items: []*model.PurchaseItemInput{{Name: "boundary item", AmountYen: 100}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := mutation.PostPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	spending, err := apiResolver.Query().MonthlyCategorySpending(ctx, household.ID, "2026-09", "2026-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spendingByPeriod := make(map[string]int64, len(spending))
+	for _, item := range spending {
+		spendingByPeriod[item.Period] += int64(item.AmountYen)
+	}
+	if spendingByPeriod["2026-09"] != 100 || spendingByPeriod["2026-10"] != 100 {
+		t.Fatalf("monthly spending did not follow Japan time boundaries: %#v", spendingByPeriod)
+	}
+	closed, err := mutation.ClosePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: "2026-09", ExpectedRevision: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(closed.Lines) != 1 || closed.Lines[0].ScheduledYen != 0 {
+		t.Fatalf("October schedule leaked into September close: %#v", closed.Lines)
+	}
+	october, err := apiResolver.Query().Settlement(ctx, household.ID, "2026-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(october.Lines) != 1 || october.Lines[0].ScheduledYen != 700 {
+		t.Fatalf("October schedule was missing at its Japan-time start: %#v", october.Lines)
+	}
+	var statuses []string
+	rows, err := db.Query(ctx, `SELECT status FROM purchases WHERE household_id=$1 ORDER BY occurred_at`, household.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var status string
+		if err := rows.Scan(&status); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		statuses = append(statuses, status)
+	}
+	rows.Close()
+	if len(statuses) != 2 || statuses[0] != "CLOSED" || statuses[1] != "POSTED" {
+		t.Fatalf("period close crossed the Japan-time boundary: %#v", statuses)
 	}
 }

@@ -25,6 +25,13 @@ var PoolErrors = &poolErrors{
 		s:       "pools_household_id_name_key",
 	},
 
+	ErrCheckPoolsFundingRuleVersionCheck: &CheckConstraintError{
+		schema:  "",
+		table:   "pools",
+		columns: []string{"funding_rule_version"},
+		s:       "pools_funding_rule_version_check",
+	},
+
 	ErrCheckPoolsKindCheck: &CheckConstraintError{
 		schema:  "",
 		table:   "pools",
@@ -39,6 +46,8 @@ type poolErrors struct {
 	ErrUniquePoolsHouseholdIdIdKey *UniqueConstraintError
 
 	ErrUniquePoolsHouseholdIdNameKey *UniqueConstraintError
+
+	ErrCheckPoolsFundingRuleVersionCheck *CheckConstraintError
 
 	ErrCheckPoolsKindCheck *CheckConstraintError
 }

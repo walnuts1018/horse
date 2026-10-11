@@ -78,6 +78,15 @@ var SettlementRuns = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		FundingSnapshot: column{
+			Name:      "funding_snapshot",
+			DBType:    "jsonb",
+			Default:   "'{}'::jsonb",
+			Comment:   "",
+			Nullable:  false,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: settlementRunIndexes{
 		SettlementRunsPkey: index{
@@ -171,18 +180,19 @@ var SettlementRuns = Table[
 }
 
 type settlementRunColumns struct {
-	ID          column
-	HouseholdID column
-	Period      column
-	Revision    column
-	Status      column
-	CreatedBy   column
-	CreatedAt   column
+	ID              column
+	HouseholdID     column
+	Period          column
+	Revision        column
+	Status          column
+	CreatedBy       column
+	CreatedAt       column
+	FundingSnapshot column
 }
 
 func (c settlementRunColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.Period, c.Revision, c.Status, c.CreatedBy, c.CreatedAt,
+		c.ID, c.HouseholdID, c.Period, c.Revision, c.Status, c.CreatedBy, c.CreatedAt, c.FundingSnapshot,
 	}
 }
 

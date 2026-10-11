@@ -87,13 +87,13 @@ func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*
 		return nil, err
 	}
 	result.Pools = make([]*model.Pool, 0)
-	rows, err = db.Query(ctx, `SELECT p.id::text, p.name, p.kind, COALESCE(d.weight, 0) FROM pools p LEFT JOIN allocation_defaults d ON d.household_id = p.household_id AND d.pool_id = p.id AND d.version = $2 WHERE p.household_id = $1 ORDER BY p.created_at, p.id`, householdID, allocationVersion)
+	rows, err = db.Query(ctx, `SELECT p.id::text, p.name, p.kind, COALESCE(d.weight, 0), p.funding_rule_version FROM pools p LEFT JOIN allocation_defaults d ON d.household_id = p.household_id AND d.pool_id = p.id AND d.version = $2 WHERE p.household_id = $1 ORDER BY p.created_at, p.id`, householdID, allocationVersion)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		pool := &model.Pool{}
-		if err := rows.Scan(&pool.ID, &pool.Name, &pool.Kind, &pool.DefaultShareWeight); err != nil {
+		if err := rows.Scan(&pool.ID, &pool.Name, &pool.Kind, &pool.DefaultShareWeight, &pool.FundingRuleVersion); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -101,6 +101,39 @@ func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	fundingRows, err := db.Query(ctx, `SELECT r.pool_id::text,r.owner_member_id::text,r.settlement_policy,s.member_id::text,s.weight,m.display_name FROM pool_funding_rules r LEFT JOIN pool_funding_shares s ON s.household_id=r.household_id AND s.pool_id=r.pool_id AND s.version=r.version LEFT JOIN members m ON m.id=s.member_id JOIN pools p ON p.household_id=r.household_id AND p.id=r.pool_id AND p.funding_rule_version=r.version WHERE r.household_id=$1 ORDER BY r.pool_id,s.member_id`, householdID)
+	if err != nil {
+		return nil, err
+	}
+	poolByID := make(map[string]*model.Pool, len(result.Pools))
+	for _, pool := range result.Pools {
+		pool.FundingShares = make([]*model.PoolFundingShare, 0)
+		poolByID[pool.ID] = pool
+	}
+	for fundingRows.Next() {
+		var poolID string
+		var owner, policy, memberID, memberName *string
+		var weight *int64
+		if err := fundingRows.Scan(&poolID, &owner, &policy, &memberID, &weight, &memberName); err != nil {
+			fundingRows.Close()
+			return nil, err
+		}
+		pool := poolByID[poolID]
+		if owner != nil {
+			pool.OwnerMemberID = owner
+		}
+		if policy != nil {
+			value := model.SharedPoolSettlementPolicy(*policy)
+			pool.SettlementPolicy = &value
+		}
+		if memberID != nil {
+			pool.FundingShares = append(pool.FundingShares, &model.PoolFundingShare{MemberID: *memberID, MemberName: *memberName, Weight: graphLong(*weight)})
+		}
+	}
+	fundingRows.Close()
+	if err := fundingRows.Err(); err != nil {
 		return nil, err
 	}
 	result.Accounts = make([]*model.Account, 0)

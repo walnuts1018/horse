@@ -53,6 +53,8 @@ type joins[Q dialect.Joinable] struct {
 	LedgerEntries         joinSet[ledgerEntryJoins[Q]]
 	Members               joinSet[memberJoins[Q]]
 	OidcSessions          joinSet[oidcSessionJoins[Q]]
+	PoolFundingRules      joinSet[poolFundingRuleJoins[Q]]
+	PoolFundingShares     joinSet[poolFundingShareJoins[Q]]
 	Pools                 joinSet[poolJoins[Q]]
 	ProductAliases        joinSet[productAliasJoins[Q]]
 	ProductConcepts       joinSet[productConceptJoins[Q]]
@@ -99,6 +101,8 @@ func getJoins[Q dialect.Joinable]() joins[Q] {
 		LedgerEntries:         buildJoinSet[ledgerEntryJoins[Q]](LedgerEntries.Columns, buildLedgerEntryJoins),
 		Members:               buildJoinSet[memberJoins[Q]](Members.Columns, buildMemberJoins),
 		OidcSessions:          buildJoinSet[oidcSessionJoins[Q]](OidcSessions.Columns, buildOidcSessionJoins),
+		PoolFundingRules:      buildJoinSet[poolFundingRuleJoins[Q]](PoolFundingRules.Columns, buildPoolFundingRuleJoins),
+		PoolFundingShares:     buildJoinSet[poolFundingShareJoins[Q]](PoolFundingShares.Columns, buildPoolFundingShareJoins),
 		Pools:                 buildJoinSet[poolJoins[Q]](Pools.Columns, buildPoolJoins),
 		ProductAliases:        buildJoinSet[productAliasJoins[Q]](ProductAliases.Columns, buildProductAliasJoins),
 		ProductConcepts:       buildJoinSet[productConceptJoins[Q]](ProductConcepts.Columns, buildProductConceptJoins),

@@ -62,6 +62,7 @@ type memberR struct {
 	FromMemberLedgerEntries        LedgerEntrySlice          // ledger_entries.ledger_entries_from_member_id_fkey
 	ToMemberLedgerEntries          LedgerEntrySlice          // ledger_entries.ledger_entries_to_member_id_fkey
 	OidcSessions                   OidcSessionSlice          // oidc_sessions.oidc_sessions_member_id_fkey
+	CreatedByPoolFundingRules      PoolFundingRuleSlice      // pool_funding_rules.pool_funding_rules_created_by_fkey
 	ActorProductCorrections        ProductCorrectionSlice    // product_corrections.product_corrections_actor_id_fkey
 	CreatedByPurchases             PurchaseSlice             // purchases.purchases_created_by_fkey
 	SettlementLines                SettlementLineSlice       // settlement_lines.settlement_lines_member_id_fkey
@@ -90,6 +91,7 @@ type memberRLoaded struct {
 	FromMemberLedgerEntries        bool // ledger_entries.ledger_entries_from_member_id_fkey
 	ToMemberLedgerEntries          bool // ledger_entries.ledger_entries_to_member_id_fkey
 	OidcSessions                   bool // oidc_sessions.oidc_sessions_member_id_fkey
+	CreatedByPoolFundingRules      bool // pool_funding_rules.pool_funding_rules_created_by_fkey
 	ActorProductCorrections        bool // product_corrections.product_corrections_actor_id_fkey
 	CreatedByPurchases             bool // purchases.purchases_created_by_fkey
 	SettlementLines                bool // settlement_lines.settlement_lines_member_id_fkey
@@ -904,6 +906,29 @@ func (os MemberSlice) OidcSessions(mods ...bob.Mod[*dialect.SelectQuery]) OidcSe
 
 	return OidcSessions.Query(append(mods,
 		sm.Where(OidcSessions.Columns.MemberID.EQ(PKArgExpr)),
+	)...)
+}
+
+// CreatedByPoolFundingRules starts a query for related objects on pool_funding_rules
+func (o *Member) CreatedByPoolFundingRules(mods ...bob.Mod[*dialect.SelectQuery]) PoolFundingRulesQuery {
+	return PoolFundingRules.Query(append(mods,
+		sm.Where(PoolFundingRules.Columns.CreatedBy.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os MemberSlice) CreatedByPoolFundingRules(mods ...bob.Mod[*dialect.SelectQuery]) PoolFundingRulesQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return PoolFundingRules.Query(append(mods,
+		sm.Where(PoolFundingRules.Columns.CreatedBy.EQ(PKArgExpr)),
 	)...)
 }
 
@@ -1978,6 +2003,76 @@ func (member0 *Member) AttachOidcSessions(ctx context.Context, exec bob.Executor
 	return nil
 }
 
+func insertMemberCreatedByPoolFundingRules0(ctx context.Context, exec bob.Executor, poolFundingRules1 []*PoolFundingRuleSetter, member0 *Member) (PoolFundingRuleSlice, error) {
+	for i := range poolFundingRules1 {
+		poolFundingRules1[i].CreatedBy = func() *uuid.UUID { return &member0.ID }()
+	}
+
+	ret, err := PoolFundingRules.Insert(bob.ToMods(poolFundingRules1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertMemberCreatedByPoolFundingRules0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachMemberCreatedByPoolFundingRules0(ctx context.Context, exec bob.Executor, count int, poolFundingRules1 PoolFundingRuleSlice, member0 *Member) (PoolFundingRuleSlice, error) {
+	setter := &PoolFundingRuleSetter{
+		CreatedBy: func() *uuid.UUID { return &member0.ID }(),
+	}
+
+	err := poolFundingRules1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachMemberCreatedByPoolFundingRules0: %w", err)
+	}
+
+	return poolFundingRules1, nil
+}
+
+func (member0 *Member) InsertCreatedByPoolFundingRules(ctx context.Context, exec bob.Executor, related ...*PoolFundingRuleSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	poolFundingRules1, err := insertMemberCreatedByPoolFundingRules0(ctx, exec, related, member0)
+	if err != nil {
+		return err
+	}
+
+	member0.R.CreatedByPoolFundingRules = append(member0.R.CreatedByPoolFundingRules, poolFundingRules1...)
+
+	for _, rel := range poolFundingRules1 {
+		rel.R.CreatedByMember = member0
+		rel.R.Loaded.CreatedByMember = true
+	}
+	return nil
+}
+
+func (member0 *Member) AttachCreatedByPoolFundingRules(ctx context.Context, exec bob.Executor, related ...*PoolFundingRule) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	poolFundingRules1 := PoolFundingRuleSlice(related)
+
+	_, err = attachMemberCreatedByPoolFundingRules0(ctx, exec, len(related), poolFundingRules1, member0)
+	if err != nil {
+		return err
+	}
+
+	member0.R.CreatedByPoolFundingRules = append(member0.R.CreatedByPoolFundingRules, poolFundingRules1...)
+
+	for _, rel := range related {
+		rel.R.CreatedByMember = member0
+		rel.R.Loaded.CreatedByMember = true
+	}
+
+	return nil
+}
+
 func insertMemberActorProductCorrections0(ctx context.Context, exec bob.Executor, productCorrections1 []*ProductCorrectionSetter, member0 *Member) (ProductCorrectionSlice, error) {
 	for i := range productCorrections1 {
 		productCorrections1[i].ActorID = func() *uuid.UUID { return &member0.ID }()
@@ -2681,6 +2776,20 @@ func (w memberWhereR[Q]) HasOidcSessions(filters ...bob.Mod[*dialect.SelectQuery
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasCreatedByPoolFundingRules filters parents that have a matching CreatedByPoolFundingRules using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to PoolFundingRules).
+func (w memberWhereR[Q]) HasCreatedByPoolFundingRules(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(PoolFundingRules.NameExpr()),
+		sm.Where(PoolFundingRules.Columns.CreatedBy.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasActorProductCorrections filters parents that have a matching ActorProductCorrections using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -3077,6 +3186,22 @@ func (o *Member) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "CreatedByPoolFundingRules":
+		rels, ok := retrieved.(PoolFundingRuleSlice)
+		if !ok {
+			return fmt.Errorf("member cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.CreatedByPoolFundingRules = rels
+		o.R.Loaded.CreatedByPoolFundingRules = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.CreatedByMember = o
+				rel.R.Loaded.CreatedByMember = true
+			}
+		}
+		return nil
 	case "ActorProductCorrections":
 		rels, ok := retrieved.(ProductCorrectionSlice)
 		if !ok {
@@ -3214,6 +3339,7 @@ type memberThenLoader[Q orm.Loadable] struct {
 	FromMemberLedgerEntries        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ToMemberLedgerEntries          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	OidcSessions                   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByPoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ActorProductCorrections        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByPurchases             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SettlementLines                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -3262,6 +3388,9 @@ func buildMemberThenLoader[Q orm.Loadable]() memberThenLoader[Q] {
 	}
 	type OidcSessionsLoadInterface interface {
 		LoadOidcSessions(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type CreatedByPoolFundingRulesLoadInterface interface {
+		LoadCreatedByPoolFundingRules(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type ActorProductCorrectionsLoadInterface interface {
 		LoadActorProductCorrections(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -3362,6 +3491,12 @@ func buildMemberThenLoader[Q orm.Loadable]() memberThenLoader[Q] {
 			"OidcSessions",
 			func(ctx context.Context, exec bob.Executor, retrieved OidcSessionsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadOidcSessions(ctx, exec, mods...)
+			},
+		),
+		CreatedByPoolFundingRules: thenLoadBuilder[Q](
+			"CreatedByPoolFundingRules",
+			func(ctx context.Context, exec bob.Executor, retrieved CreatedByPoolFundingRulesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCreatedByPoolFundingRules(ctx, exec, mods...)
 			},
 		),
 		ActorProductCorrections: thenLoadBuilder[Q](
@@ -4391,6 +4526,80 @@ func (os MemberSlice) LoadOidcSessions(ctx context.Context, exec bob.Executor, m
 	return nil
 }
 
+// LoadCreatedByPoolFundingRules loads the member's CreatedByPoolFundingRules into the .R struct
+func (o *Member) LoadCreatedByPoolFundingRules(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.CreatedByPoolFundingRules = nil
+	o.R.Loaded.CreatedByPoolFundingRules = false
+
+	related, err := o.CreatedByPoolFundingRules(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.CreatedByMember = o
+		rel.R.Loaded.CreatedByMember = true
+	}
+
+	o.R.CreatedByPoolFundingRules = related
+	o.R.Loaded.CreatedByPoolFundingRules = true
+	return nil
+}
+
+// LoadCreatedByPoolFundingRules loads the member's CreatedByPoolFundingRules into the .R struct
+func (os MemberSlice) LoadCreatedByPoolFundingRules(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	poolFundingRules, err := os.CreatedByPoolFundingRules(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.CreatedByPoolFundingRules = nil
+		o.R.Loaded.CreatedByPoolFundingRules = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	memberByKey := make(map[uuid.UUID][]*Member, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		memberByKey[o.ID] = append(memberByKey[o.ID], o)
+	}
+
+	for _, rel := range poolFundingRules {
+
+		owners, ok := memberByKey[rel.CreatedBy]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			rel.R.CreatedByMember = o
+			rel.R.Loaded.CreatedByMember = true
+
+			o.R.CreatedByPoolFundingRules = append(o.R.CreatedByPoolFundingRules, rel)
+
+		}
+	}
+
+	return nil
+}
+
 // LoadActorProductCorrections loads the member's ActorProductCorrections into the .R struct
 func (o *Member) LoadActorProductCorrections(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -4924,6 +5133,7 @@ type memberC struct {
 	FromMemberLedgerEntries        *int64
 	ToMemberLedgerEntries          *int64
 	OidcSessions                   *int64
+	CreatedByPoolFundingRules      *int64
 	ActorProductCorrections        *int64
 	CreatedByPurchases             *int64
 	SettlementLines                *int64
@@ -4966,6 +5176,8 @@ func (o *Member) PreloadCount(name string, count int64) error {
 		o.C.ToMemberLedgerEntries = &count
 	case "OidcSessions":
 		o.C.OidcSessions = &count
+	case "CreatedByPoolFundingRules":
+		o.C.CreatedByPoolFundingRules = &count
 	case "ActorProductCorrections":
 		o.C.ActorProductCorrections = &count
 	case "CreatedByPurchases":
@@ -4998,6 +5210,7 @@ type memberCountPreloader struct {
 	FromMemberLedgerEntries        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	ToMemberLedgerEntries          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	OidcSessions                   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedByPoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	ActorProductCorrections        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	CreatedByPurchases             func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	SettlementLines                func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
@@ -5230,6 +5443,23 @@ func buildMemberCountPreloader() memberCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		CreatedByPoolFundingRules: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Member]("CreatedByPoolFundingRules", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Members.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(PoolFundingRules.NameAsExpr()),
+					sm.Where(psql.Quote(PoolFundingRules.Alias(), "created_by").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		ActorProductCorrections: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*Member]("ActorProductCorrections", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -5366,6 +5596,7 @@ type memberCountThenLoader[Q orm.Loadable] struct {
 	FromMemberLedgerEntries        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ToMemberLedgerEntries          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	OidcSessions                   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByPoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ActorProductCorrections        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByPurchases             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SettlementLines                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -5414,6 +5645,9 @@ func buildMemberCountThenLoader[Q orm.Loadable]() memberCountThenLoader[Q] {
 	}
 	type OidcSessionsCountInterface interface {
 		LoadCountOidcSessions(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type CreatedByPoolFundingRulesCountInterface interface {
+		LoadCountCreatedByPoolFundingRules(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type ActorProductCorrectionsCountInterface interface {
 		LoadCountActorProductCorrections(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -5514,6 +5748,12 @@ func buildMemberCountThenLoader[Q orm.Loadable]() memberCountThenLoader[Q] {
 			"OidcSessions",
 			func(ctx context.Context, exec bob.Executor, retrieved OidcSessionsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountOidcSessions(ctx, exec, mods...)
+			},
+		),
+		CreatedByPoolFundingRules: countThenLoadBuilder[Q](
+			"CreatedByPoolFundingRules",
+			func(ctx context.Context, exec bob.Executor, retrieved CreatedByPoolFundingRulesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountCreatedByPoolFundingRules(ctx, exec, mods...)
 			},
 		),
 		ActorProductCorrections: countThenLoadBuilder[Q](
@@ -6588,6 +6828,85 @@ func (os MemberSlice) LoadCountOidcSessions(ctx context.Context, exec bob.Execut
 	return nil
 }
 
+// LoadCountCreatedByPoolFundingRules loads the count of CreatedByPoolFundingRules into the C struct
+func (o *Member) LoadCountCreatedByPoolFundingRules(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.CreatedByPoolFundingRules(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.CreatedByPoolFundingRules = &count
+	return nil
+}
+
+// LoadCountCreatedByPoolFundingRules loads the count of CreatedByPoolFundingRules for a slice in a single batch query
+func (os MemberSlice) LoadCountCreatedByPoolFundingRules(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			PoolFundingRules.Columns.CreatedBy.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(PoolFundingRules.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.Where(PoolFundingRules.Columns.CreatedBy.EQ(PKArgExpr)),
+		// GROUP BY fk columns
+		sm.GroupBy(PoolFundingRules.Columns.CreatedBy),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Single-column FK: direct map lookup
+	countMap := make(map[uuid.UUID]int64, len(results))
+	for _, r := range results {
+		countMap[r.ID] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[o.ID]
+		o.C.CreatedByPoolFundingRules = &count
+	}
+
+	return nil
+}
+
 // LoadCountActorProductCorrections loads the count of ActorProductCorrections into the C struct
 func (o *Member) LoadCountActorProductCorrections(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -7156,6 +7475,7 @@ type memberJoins[Q dialect.Joinable] struct {
 	FromMemberLedgerEntries        modAs[Q, ledgerEntryColumns]
 	ToMemberLedgerEntries          modAs[Q, ledgerEntryColumns]
 	OidcSessions                   modAs[Q, oidcSessionColumns]
+	CreatedByPoolFundingRules      modAs[Q, poolFundingRuleColumns]
 	ActorProductCorrections        modAs[Q, productCorrectionColumns]
 	CreatedByPurchases             modAs[Q, purchaseColumns]
 	SettlementLines                modAs[Q, settlementLineColumns]
@@ -7348,6 +7668,20 @@ func buildMemberJoins[Q dialect.Joinable](cols memberColumns, typ string) member
 				{
 					mods = append(mods, dialect.Join[Q](typ, OidcSessions.NameExpr().As(to.Alias())).On(
 						to.MemberID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		CreatedByPoolFundingRules: modAs[Q, poolFundingRuleColumns]{
+			c: PoolFundingRules.Columns,
+			f: func(to poolFundingRuleColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, PoolFundingRules.NameExpr().As(to.Alias())).On(
+						to.CreatedBy.EQ(cols.ID),
 					))
 				}
 
