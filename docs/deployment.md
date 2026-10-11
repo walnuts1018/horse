@@ -24,6 +24,26 @@ Horseのアップロード原本はSeaweedFSの非公開`horse`バケットに�
 
 Blackbox exporterは`https://horse.walnuts.dev/healthz`を30秒間隔で確認します。`target="horse"`のprobeが5分間連続で失敗すると`HorsePublicProbeFailed` alertを発火します。HorseのPodがまだ存在しないため、このalertの発火とAlertmanagerへの配送は本番環境で未検証です。
 
+## Gemini APIの課金
+
+Gemini APIは無料用と有料用のGoogle Cloud Projectを分け、無料ProjectにはBilling Accountをリンクしません。有料ProjectにはTerraform管理のSpendCapを設定し、Gemini API serviceだけを月500円に制限します。SpendCapは50%、80%、100%でBilling Account administratorsとProject Ownersへ通知します。追加の300円到達通知は別のalerts-only Budgetで管理します。
+
+Google Cloud Free TrialのWelcome creditはGemini APIとAI Studioの利用料に適用されません。Gemini APIのPaid Tierを有効にするにはAI Studioで有料Projectの状態を確認し、Billing Accountのlink後に必要なPrepay設定を完了する必要があります。新規ユーザーはPrepayの利用を求められる場合があり、その場合のcredits購入や支払設定は運用者がAI Studioで行います。TerraformはPrepay購入や自動reloadを設定しません。
+
+SpendCapは請求の見積り遅延を伴い、適用は即時ではありません。Googleの公式説明では請求データ処理に約10分の遅れが発生する場合があり、上限を超えた請求が発生する可能性があります。SpendCapは超過を完全には保証しないため、Workerは`GEMINI_ENABLED=false`の状態を維持し、運用者がBilling状態、SpendCap、AI StudioのPaid Tierを確認した後でのみ有効化します。
+
+## Google CloudのTerraform認証
+
+専用Projectは`walnuts-horse-gemini-free`と`walnuts-horse-gemini-paid`を使用します。組織に属さないProjectをサービスアカウントから新規作成できないため、初回はGoogle ConsoleでProjectを作成し、infraのTerraform import blockで管理対象へ取り込みます。既存Projectは使用しません。
+
+HCP Terraformの`walnuts-dev`組織、`Default Project`、`infra` workspaceだけをWorkload Identity Federationの信頼対象とします。workspace IDとOIDC audienceも照合し、planとapplyのphaseごとに別のサービスアカウントへ短期認証を発行します。長期サービスアカウントキーは作成しません。
+
+計画用アカウントは専用ProjectのViewer、有料Projectの予算読取ロール、対象Billing AccountのProject Billing Costs Managerを使用します。ViewerにはAPIキー値の読取権限が含まれるため、Terraformのplanとstateへのアクセスを制限します。適用用アカウントは専用ProjectのViewer、Service Usage Admin、API Keys Adminに加え、有料Projectだけの予算管理ロールとProject Billing Manager、対象Billing AccountのBilling Userを使用します。Owner、Editor、IAM policyの変更権限は付与しません。
+
+初回のWIF、サービスアカウント、カスタムロール、IAM bindingは管理者がConsoleで設定し、Terraformへimportします。通常のapplyではこれらの設定を読取できても権限変更はできません。IAMや認証設定に差分が出た場合は適用を止め、管理者が変更内容を確認してbootstrap手順で対応します。通常のapplyを成功させるために権限を自動で追加しないでください。
+
+有料APIキーは月500円のSpendCap作成に成功してから発行し、キーの利用先をGemini APIに限定します。キーは1PasswordのCONCEALEDフィールドへ保存し、External Secretsを通じてWorkerだけへ渡します。Workerの外部HTTPS通信は`generativelanguage.googleapis.com`だけを許可します。DNSとDB、S3、RabbitMQ、OCR、OTelへの内部通信は別途許可します。
+
 ## 検証状況
 
 この手順による復元試験はまだ実施していません。初回の障害対応に使う前に、隔離したnamespaceまたはクラスタでPostgreSQLとS3の復元を実施し、所要時間、必要な権限、復旧後のデータ検証を記録してください。
