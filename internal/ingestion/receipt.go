@@ -79,8 +79,20 @@ type Verification struct {
 }
 
 type ExtractionRun struct {
-	Receipt Receipt  `json:"receipt"`
-	Issues  []string `json:"issues"`
+	Route         string   `json:"route"`
+	Project       string   `json:"project"`
+	Model         string   `json:"model"`
+	ThinkingLevel string   `json:"thinkingLevel"`
+	ServiceTier   string   `json:"serviceTier"`
+	InputTokens   int64    `json:"inputTokens"`
+	OutputTokens  int64    `json:"outputTokens"`
+	EstimatedJPY  float64  `json:"estimatedCostJPY"`
+	LatencyMillis int64    `json:"latencyMillis"`
+	Reason        string   `json:"reason"`
+	Status        string   `json:"status"`
+	ErrorCode     string   `json:"errorCode,omitempty"`
+	Receipt       *Receipt `json:"receipt,omitempty"`
+	Issues        []string `json:"issues,omitempty"`
 }
 
 // Verifyは印字額と解釈を保持したまま税込負担額を導出する。合計一致だけでは曖昧な税解釈を確定しない。

@@ -25,6 +25,13 @@ var ExtractionJobErrors = &extractionJobErrors{
 		s:       "extraction_jobs_attempt_check",
 	},
 
+	ErrCheckExtractionJobsFailureCountCheck: &CheckConstraintError{
+		schema:  "",
+		table:   "extraction_jobs",
+		columns: []string{"failure_count"},
+		s:       "extraction_jobs_failure_count_check",
+	},
+
 	ErrCheckExtractionJobsStatusCheck: &CheckConstraintError{
 		schema:  "",
 		table:   "extraction_jobs",
@@ -46,6 +53,8 @@ type extractionJobErrors struct {
 	ErrUniqueExtractionJobsSourceDocumentIdVersionKey *UniqueConstraintError
 
 	ErrCheckExtractionJobsAttemptCheck *CheckConstraintError
+
+	ErrCheckExtractionJobsFailureCountCheck *CheckConstraintError
 
 	ErrCheckExtractionJobsStatusCheck *CheckConstraintError
 

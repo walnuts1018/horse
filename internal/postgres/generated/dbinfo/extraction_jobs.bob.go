@@ -123,6 +123,15 @@ var ExtractionJobs = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		FailureCount: column{
+			Name:      "failure_count",
+			DBType:    "integer",
+			Default:   "0",
+			Comment:   "",
+			Nullable:  false,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: extractionJobIndexes{
 		ExtractionJobsPkey: index{
@@ -223,6 +232,14 @@ var ExtractionJobs = Table[
 			},
 			Expression: "(attempt >= 0)",
 		},
+		ExtractionJobsFailureCountCheck: check{
+			constraint: constraint{
+				Name:    "extraction_jobs_failure_count_check",
+				Columns: []string{"failure_count"},
+				Comment: "",
+			},
+			Expression: "(failure_count >= 0)",
+		},
 		ExtractionJobsStatusCheck: check{
 			constraint: constraint{
 				Name:    "extraction_jobs_status_check",
@@ -256,11 +273,12 @@ type extractionJobColumns struct {
 	AvailableAt      column
 	CreatedAt        column
 	UpdatedAt        column
+	FailureCount     column
 }
 
 func (c extractionJobColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.SourceDocumentID, c.Version, c.Status, c.Request, c.Result, c.ErrorCode, c.Attempt, c.AvailableAt, c.CreatedAt, c.UpdatedAt,
+		c.ID, c.HouseholdID, c.SourceDocumentID, c.Version, c.Status, c.Request, c.Result, c.ErrorCode, c.Attempt, c.AvailableAt, c.CreatedAt, c.UpdatedAt, c.FailureCount,
 	}
 }
 
@@ -298,13 +316,14 @@ func (u extractionJobUniques) AsSlice() []constraint {
 }
 
 type extractionJobChecks struct {
-	ExtractionJobsAttemptCheck check
-	ExtractionJobsStatusCheck  check
-	ExtractionJobsVersionCheck check
+	ExtractionJobsAttemptCheck      check
+	ExtractionJobsFailureCountCheck check
+	ExtractionJobsStatusCheck       check
+	ExtractionJobsVersionCheck      check
 }
 
 func (c extractionJobChecks) AsSlice() []check {
 	return []check{
-		c.ExtractionJobsAttemptCheck, c.ExtractionJobsStatusCheck, c.ExtractionJobsVersionCheck,
+		c.ExtractionJobsAttemptCheck, c.ExtractionJobsFailureCountCheck, c.ExtractionJobsStatusCheck, c.ExtractionJobsVersionCheck,
 	}
 }

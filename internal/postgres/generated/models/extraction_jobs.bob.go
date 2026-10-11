@@ -40,6 +40,7 @@ type ExtractionJob struct {
 	AvailableAt      time.Time                             `db:"available_at" `
 	CreatedAt        time.Time                             `db:"created_at" `
 	UpdatedAt        time.Time                             `db:"updated_at" `
+	FailureCount     int32                                 `db:"failure_count" `
 
 	R extractionJobR `db:"-" `
 }
@@ -72,7 +73,7 @@ type extractionJobRLoaded struct {
 
 func buildExtractionJobColumns(tableName string) extractionJobColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "source_document_id", "version", "status", "request", "result", "error_code", "attempt", "available_at", "created_at", "updated_at",
+		"id", "household_id", "source_document_id", "version", "status", "request", "result", "error_code", "attempt", "available_at", "created_at", "updated_at", "failure_count",
 	)
 
 	if tableName != "" {
@@ -94,6 +95,7 @@ func buildExtractionJobColumns(tableName string) extractionJobColumns {
 		AvailableAt:      buildExtractionJobColumn(tableName, "available_at"),
 		CreatedAt:        buildExtractionJobColumn(tableName, "created_at"),
 		UpdatedAt:        buildExtractionJobColumn(tableName, "updated_at"),
+		FailureCount:     buildExtractionJobColumn(tableName, "failure_count"),
 	}
 }
 
@@ -112,6 +114,7 @@ type extractionJobColumns struct {
 	AvailableAt      extractionJobColumn
 	CreatedAt        extractionJobColumn
 	UpdatedAt        extractionJobColumn
+	FailureCount     extractionJobColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -169,10 +172,11 @@ type ExtractionJobSetter struct {
 	AvailableAt      *time.Time                             `db:"available_at" `
 	CreatedAt        *time.Time                             `db:"created_at" `
 	UpdatedAt        *time.Time                             `db:"updated_at" `
+	FailureCount     *int32                                 `db:"failure_count" `
 }
 
 func (s ExtractionJobSetter) SetColumns() []string {
-	vals := make([]string, 0, 12)
+	vals := make([]string, 0, 13)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -208,6 +212,9 @@ func (s ExtractionJobSetter) SetColumns() []string {
 	}
 	if s.UpdatedAt != nil {
 		vals = append(vals, "updated_at")
+	}
+	if s.FailureCount != nil {
+		vals = append(vals, "failure_count")
 	}
 	return vals
 }
@@ -309,6 +316,14 @@ func (s ExtractionJobSetter) Overwrite(t *ExtractionJob) {
 				return *new(time.Time)
 			}
 			return *s.UpdatedAt
+		}()
+	}
+	if s.FailureCount != nil {
+		t.FailureCount = func() int32 {
+			if s.FailureCount == nil {
+				return *new(int32)
+			}
+			return *s.FailureCount
 		}()
 	}
 }
@@ -441,6 +456,16 @@ func (s *ExtractionJobSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.UpdatedAt
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.FailureCount == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() int32 {
+				if s.FailureCount == nil {
+					return *new(int32)
+				}
+				return *s.FailureCount
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -449,7 +474,7 @@ func (s ExtractionJobSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s ExtractionJobSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 12)
+	exprs := make([]bob.Expression, 0, 13)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -535,6 +560,13 @@ func (s ExtractionJobSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.FailureCount != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "failure_count")...),
+			psql.Arg(s.FailureCount),
+		}})
+	}
+
 	return exprs
 }
 
@@ -545,7 +577,7 @@ func extractionJobScanMapper(ctx context.Context, cols []string) (scan.BeforeFun
 		idx int
 		dst func(o *ExtractionJob) any
 	}
-	targets := make([]target, 0, 12)
+	targets := make([]target, 0, 13)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -572,6 +604,8 @@ func extractionJobScanMapper(ctx context.Context, cols []string) (scan.BeforeFun
 			targets = append(targets, target{i, func(o *ExtractionJob) any { return &o.CreatedAt }})
 		case "updated_at":
 			targets = append(targets, target{i, func(o *ExtractionJob) any { return &o.UpdatedAt }})
+		case "failure_count":
+			targets = append(targets, target{i, func(o *ExtractionJob) any { return &o.FailureCount }})
 		}
 	}
 
@@ -1021,6 +1055,7 @@ type extractionJobWhere[Q psql.Filterable] struct {
 	AvailableAt      psql.WhereMod[Q, time.Time]
 	CreatedAt        psql.WhereMod[Q, time.Time]
 	UpdatedAt        psql.WhereMod[Q, time.Time]
+	FailureCount     psql.WhereMod[Q, int32]
 	R                extractionJobWhereR[Q]
 }
 
@@ -1043,6 +1078,7 @@ func buildExtractionJobWhere[Q psql.Filterable](cols extractionJobColumns) extra
 		AvailableAt:      psql.Where[Q, time.Time](cols.AvailableAt.Expression),
 		CreatedAt:        psql.Where[Q, time.Time](cols.CreatedAt.Expression),
 		UpdatedAt:        psql.Where[Q, time.Time](cols.UpdatedAt.Expression),
+		FailureCount:     psql.Where[Q, int32](cols.FailureCount.Expression),
 		R:                extractionJobWhereR[Q]{cols: cols},
 	}
 }

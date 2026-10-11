@@ -26,6 +26,11 @@ APIを`mise run api`、フロントエンドを`mise run web:dev`で起動する
 取り込みワーカーはS3とGeminiの設定を加えて`mise run worker`で起動する。
 認証を伴う実操作には、開発用のコールバックURLを登録したZITADELクライアントが必要となる。
 
+Geminiには無料・有料の別ProjectとAPIキーを設定する。
+`GEMINI_ENABLED=true`を設定するまで、画像やメールの解析ジョブは待機し、カード・銀行CSVの取り込みだけを処理する。
+Google側の月額Spend Capと警告メールはinfraのTerraformで管理する。
+Spend Capによる停止中も、帳簿の閲覧と手入力は利用できる。
+
 DBスキーマの変更後は`mise run hash:migrations`と`mise run db:generate`を実行する。
 GraphQLスキーマの変更後は`mise run generate:graphql`と`mise run web:relay`を実行する。
 

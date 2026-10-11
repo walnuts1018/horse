@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -39,8 +40,27 @@ func run() error {
 	if os.Getenv("DATABASE_URL") == "" {
 		return errors.New("DATABASE_URL is required")
 	}
-	if os.Getenv("GEMINI_API_KEY") == "" || os.Getenv("GEMINI_MODEL") == "" {
-		slog.Warn("Gemini is not configured; only deterministic statement imports are available")
+	freeAPIKey, paidAPIKey := os.Getenv("GEMINI_FREE_API_KEY"), os.Getenv("GEMINI_PAID_API_KEY")
+	geminiEnabled, err := strconv.ParseBool(os.Getenv("GEMINI_ENABLED"))
+	if err != nil && os.Getenv("GEMINI_ENABLED") != "" {
+		return errors.New("GEMINI_ENABLED must be true or false")
+	}
+	if !geminiEnabled {
+		slog.Info("Gemini extraction is disabled; source documents remain queued")
+	} else if freeAPIKey == "" && paidAPIKey == "" {
+		slog.Warn("Gemini is enabled but no API keys are configured; only deterministic statement imports are available")
+	}
+	usdJPY := 158.535
+	rate := os.Getenv("USDJPY_RATE")
+	if rate == "" {
+		rate = os.Getenv("GEMINI_USDJPY_RATE")
+	}
+	if value := rate; value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil || parsed <= 0 {
+			return errors.New("GEMINI_USDJPY_RATE must be a positive number")
+		}
+		usdJPY = parsed
 	}
 	db, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
@@ -51,7 +71,21 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	worker := ingestion.Worker{DB: db, Store: store, Gemini: ingestion.Gemini{APIKey: os.Getenv("GEMINI_API_KEY"), Model: os.Getenv("GEMINI_MODEL")}, FallbackModel: os.Getenv("GEMINI_FALLBACK_MODEL"), OCR: ingestion.OCR{Endpoint: os.Getenv("OCR_URL")}}
+	worker := ingestion.Worker{
+		DB:            db,
+		Store:         store,
+		GeminiEnabled: geminiEnabled && (freeAPIKey != "" || paidAPIKey != ""),
+		Router: ingestion.GeminiRouter{
+			Free:       ingestion.Gemini{APIKey: freeAPIKey, Project: os.Getenv("GEMINI_FREE_PROJECT_ID")},
+			Paid:       ingestion.Gemini{APIKey: paidAPIKey, Project: os.Getenv("GEMINI_PAID_PROJECT_ID")},
+			FlashModel: os.Getenv("GEMINI_FLASH_MODEL"),
+			LiteModel:  os.Getenv("GEMINI_LITE_MODEL"),
+			ProModel:   os.Getenv("GEMINI_PRO_MODEL"),
+			USDJPYRate: usdJPY,
+			Background: true,
+		},
+		OCR: ingestion.OCR{Endpoint: os.Getenv("OCR_URL")},
+	}
 	health, err := startHealthServer(db)
 	if err != nil {
 		return err
