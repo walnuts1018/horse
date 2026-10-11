@@ -188,13 +188,34 @@ export function SettlementPage({ household }: { household: Household }) {
               <div className="profile-avatar">{line.memberName.slice(0, 1)}</div>
               <div className="settlement-person">
                 <b>{line.memberName}</b>
-                <span>
-                  予定 {yen(line.scheduledYen)} · 入金済み {yen(line.paidYen)}
-                  {line.carryYen ? ` · 繰越 ${yen(line.carryYen)}` : ""}
-                </span>
+                <dl className="settlement-breakdown">
+                  <div>
+                    <dt>今月予定</dt>
+                    <dd>{yen(line.scheduledYen)}</dd>
+                  </div>
+                  <div>
+                    <dt>前月残高</dt>
+                    <dd>{yen(line.priorBalanceYen)}</dd>
+                  </div>
+                  <div>
+                    <dt>月次調整</dt>
+                    <dd>{yen(line.monthlyAdjustmentYen)}</dd>
+                  </div>
+                  <div>
+                    <dt>入金済み</dt>
+                    <dd>{yen(line.paidYen)}</dd>
+                  </div>
+                  <div>
+                    <dt>立替充当</dt>
+                    <dd>{yen(line.advanceCreditYen)}</dd>
+                  </div>
+                </dl>
               </div>
               <div className="settlement-amount">
-                <b>{yen(line.amountDueYen)}</b>
+                <b className={line.amountDueYen < 0 ? "settlement-credit" : undefined}>
+                  {yen(line.amountDueYen)}
+                </b>
+                <small>次回精算残高</small>
                 <button
                   className="text-button"
                   disabled={pending || line.amountDueYen <= 0}

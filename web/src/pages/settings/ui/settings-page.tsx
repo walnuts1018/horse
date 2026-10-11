@@ -16,6 +16,8 @@ import {
   setProductAliasMutation,
   readGraphql,
   setDefaultAllocationMutation,
+  setPoolFundingRuleMutation,
+  type SharedPoolSettlementPolicy,
   type AllocationRule,
   type HouseholdInvitation,
   type ProductConcept,
@@ -54,6 +56,16 @@ export function SettingsPage({
       household.pools.map((pool) => [pool.id, String(pool.defaultShareWeight || 1)]),
     ),
   );
+  const [fundingDrafts, setFundingDrafts] = useState<
+    Record<
+      string,
+      {
+        ownerMemberId: string;
+        policy: SharedPoolSettlementPolicy;
+        weights: Record<string, string>;
+      }
+    >
+  >({});
   const [pending, setPending] = useState(false);
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
   const [invitations, setInvitations] = useState<HouseholdInvitation[]>([]);
@@ -91,6 +103,27 @@ export function SettingsPage({
     );
     setInvitations(result.householdInvitations);
   };
+  useEffect(() => {
+    setFundingDrafts(
+      Object.fromEntries(
+        household.pools.map((pool) => [
+          pool.id,
+          {
+            ownerMemberId: pool.ownerMemberId ?? "",
+            policy: pool.settlementPolicy ?? "BALANCE_TO_STANDARD",
+            weights: Object.fromEntries(
+              household.members.map((member) => [
+                member.id,
+                String(
+                  pool.fundingShares.find((share) => share.memberId === member.id)?.weight ?? "",
+                ),
+              ]),
+            ),
+          },
+        ]),
+      ),
+    );
+  }, [household.id, household.pools, household.members]);
   useEffect(() => {
     setInvitationLink("");
     setIssuedInvitationId("");
@@ -148,6 +181,45 @@ export function SettingsPage({
         }))
         .filter((item) => item.weight > 0),
     });
+  };
+  const saveFundingRule = async (event: FormEvent, poolId: string) => {
+    event.preventDefault();
+    const pool = household.pools.find((item) => item.id === poolId);
+    const draft = fundingDrafts[poolId];
+    if (!pool || !draft) return;
+    const fundingShares = household.members
+      .map((member) => ({
+        memberId: member.id,
+        weight: Math.max(0, Number(draft.weights[member.id]) || 0),
+      }))
+      .filter((share) => share.weight > 0);
+    if (pool.kind === "PERSONAL" && !draft.ownerMemberId) {
+      onNotice("所有者を選択してください");
+      return;
+    }
+    if (pool.kind === "SHARED" && fundingShares.length === 0) {
+      onNotice("拠出比率を入力してください");
+      return;
+    }
+    setPending(true);
+    try {
+      await readGraphql(setPoolFundingRuleMutation, {
+        input: {
+          householdId: household.id,
+          poolId,
+          ownerMemberId: pool.kind === "PERSONAL" ? draft.ownerMemberId : null,
+          fundingShares: pool.kind === "SHARED" ? fundingShares : [],
+          settlementPolicy: pool.kind === "SHARED" ? draft.policy : null,
+          expectedVersion: pool.fundingRuleVersion,
+        },
+      });
+      await onRefresh();
+      onNotice("精算設定を保存しました");
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
   };
   const archiveCategory = async (categoryId: string, archived: boolean) => {
     setPending(true);
@@ -324,15 +396,101 @@ export function SettingsPage({
           </div>
           <div className="settings-rows">
             {household.pools.map((pool) => (
-              <div className="setting-row" key={pool.id}>
-                <div className="pool-avatar">{pool.name.slice(0, 1)}</div>
-                <div>
-                  <b>{pool.name}</b>
-                  <small>
-                    {pool.kind === "SHARED" ? "共用" : "個人"} · 標準比率 {pool.defaultShareWeight}
-                  </small>
+              <div className="pool-funding-card" key={pool.id}>
+                <div className="setting-row">
+                  <div className="pool-avatar">{pool.name.slice(0, 1)}</div>
+                  <div>
+                    <b>{pool.name}</b>
+                    <small>
+                      {pool.kind === "SHARED" ? "共用" : "個人"} · 品目負担の標準比{" "}
+                      {pool.defaultShareWeight}
+                    </small>
+                  </div>
+                  {(pool.kind === "PERSONAL" && !pool.ownerMemberId) ||
+                  (pool.kind === "SHARED" &&
+                    (!pool.fundingShares.length || !pool.settlementPolicy)) ? (
+                    <span className="period-chip">設定が必要</span>
+                  ) : null}
+                  <ChevronRight size={16} />
                 </div>
-                <ChevronRight size={16} />
+                <form
+                  className="pool-funding-form"
+                  onSubmit={(event) => void saveFundingRule(event, pool.id)}
+                >
+                  {pool.kind === "PERSONAL" ? (
+                    <label>
+                      所有者
+                      <select
+                        required
+                        value={fundingDrafts[pool.id]?.ownerMemberId ?? ""}
+                        onChange={(event) =>
+                          setFundingDrafts((current) => ({
+                            ...current,
+                            [pool.id]: { ...current[pool.id], ownerMemberId: event.target.value },
+                          }))
+                        }
+                      >
+                        <option value="">メンバーを選択</option>
+                        {household.members.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <>
+                      <label>
+                        精算方法
+                        <select
+                          value={fundingDrafts[pool.id]?.policy ?? "BALANCE_TO_STANDARD"}
+                          onChange={(event) =>
+                            setFundingDrafts((current) => ({
+                              ...current,
+                              [pool.id]: {
+                                ...current[pool.id],
+                                policy: event.target.value as SharedPoolSettlementPolicy,
+                              },
+                            }))
+                          }
+                        >
+                          <option value="BALANCE_TO_STANDARD">負担割合の平準化</option>
+                          <option value="REIMBURSE_PERSONAL">予算外支出の補填</option>
+                        </select>
+                      </label>
+                      <div className="pool-funding-shares">
+                        {household.members.map((member) => (
+                          <label key={member.id}>
+                            <span>{member.displayName}</span>
+                            <div className="number-field">
+                              <input
+                                inputMode="numeric"
+                                value={fundingDrafts[pool.id]?.weights[member.id] ?? ""}
+                                onChange={(event) =>
+                                  setFundingDrafts((current) => ({
+                                    ...current,
+                                    [pool.id]: {
+                                      ...current[pool.id],
+                                      weights: {
+                                        ...current[pool.id].weights,
+                                        [member.id]: event.target.value.replace(/\D/g, ""),
+                                      },
+                                    },
+                                  }))
+                                }
+                              />
+                              <small>比</small>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  <button className="button button-soft" disabled={pending}>
+                    <Check size={15} />
+                    精算設定を保存
+                  </button>
+                </form>
               </div>
             ))}
           </div>

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<08d4e5120adc18524941a570bf4ab7b2>>
+ * @generated SignedSource<<bf4712c1ec5bfab6263b35191ce51a74>>
  * @lightSyntaxTransform
  */
 
@@ -20,7 +20,9 @@ export type SettlementQuery$data = {
       readonly carryYen: any;
       readonly memberId: string;
       readonly memberName: string;
+      readonly monthlyAdjustmentYen: any;
       readonly paidYen: any;
+      readonly priorBalanceYen: any;
       readonly scheduledYen: any;
     }>;
     readonly period: string;
@@ -134,6 +136,20 @@ v1 = [
             "alias": null,
             "args": null,
             "kind": "ScalarField",
+            "name": "priorBalanceYen",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "monthlyAdjustmentYen",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
             "name": "advanceCreditYen",
             "storageKey": null
           },
@@ -169,16 +185,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "ef3b04533d5159bfd18ebc54e18cb5df",
+    "cacheID": "04f9f0b9775751ffa41ae50cff3b0d88",
     "id": null,
     "metadata": {},
     "name": "SettlementQuery",
     "operationKind": "query",
-    "text": "query SettlementQuery(\n  $householdId: ID!\n  $period: String!\n) {\n  settlement(householdId: $householdId, period: $period) {\n    period\n    status\n    revision\n    lines {\n      memberId\n      memberName\n      scheduledYen\n      paidYen\n      carryYen\n      advanceCreditYen\n      amountDueYen\n    }\n  }\n}\n"
+    "text": "query SettlementQuery(\n  $householdId: ID!\n  $period: String!\n) {\n  settlement(householdId: $householdId, period: $period) {\n    period\n    status\n    revision\n    lines {\n      memberId\n      memberName\n      scheduledYen\n      paidYen\n      carryYen\n      priorBalanceYen\n      monthlyAdjustmentYen\n      advanceCreditYen\n      amountDueYen\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "a5198b936633e91f616247190a070690";
+(node as any).hash = "186ff6623f2c5f68749aa105e41a1134";
 
 export default node;

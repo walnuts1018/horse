@@ -1843,6 +1843,31 @@ a {
   margin-top: 5px;
 }
 
+.settlement-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 12px;
+  margin: 7px 0 8px;
+  color: #829087;
+  font-size: 9px;
+}
+
+.settlement-breakdown > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.settlement-breakdown dt,
+.settlement-breakdown dd {
+  margin: 0;
+}
+
+.settlement-breakdown dd {
+  color: #526258;
+  font-variant-numeric: tabular-nums;
+}
+
 .settlement-amount {
   text-align: right;
 }
@@ -1853,6 +1878,17 @@ a {
     700 14px "Noto Sans JP Variable",
     sans-serif;
   color: #42544a;
+}
+
+.settlement-amount > b.settlement-credit {
+  color: #41735b;
+}
+
+.settlement-amount > small {
+  display: block;
+  color: #9aa59e;
+  font-size: 8px;
+  margin-top: 2px;
 }
 
 .settlement-amount .text-button {
@@ -2133,6 +2169,50 @@ a {
   font-size: 15px;
 }
 
+.pool-funding-card {
+  padding: 5px 0 12px;
+  border-bottom: 1px solid #eff2ef;
+}
+
+.pool-funding-form {
+  display: grid;
+  gap: 11px;
+  padding: 5px 0 0 44px;
+}
+
+.pool-funding-form > label {
+  display: grid;
+  gap: 5px;
+  color: #718078;
+  font-size: 10px;
+}
+
+.pool-funding-form select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #e9ede9;
+  border-radius: 8px;
+  padding: 0 9px;
+  color: #53635a;
+  background: #fff;
+  font-size: 11px;
+}
+
+.pool-funding-shares {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 12px;
+}
+
+.pool-funding-shares > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: #718078;
+  font-size: 10px;
+}
+
 .invitation-issued {
   display: flex;
   gap: 8px;
@@ -2160,6 +2240,14 @@ a {
   background: #fff;
   color: var(--ink);
   font-size: 12px;
+}
+
+.invitation-prompt > span {
+  flex: 1;
+}
+
+.invitation-prompt .text-button {
+  flex: 0 0 auto;
 }
 
 .count-badge {
@@ -3150,17 +3238,25 @@ a {
 
   .settlement-line {
     gap: 8px;
-    min-height: 67px;
+    min-height: 0;
+    padding: 10px 0;
+    align-items: flex-start;
   }
 
-  .settlement-person span {
+  .settlement-breakdown {
+    grid-template-columns: 1fr;
+    gap: 3px;
     font-size: 8px;
-    max-width: 190px;
-    line-height: 1.6;
+    line-height: 1.45;
   }
 
   .settlement-amount > b {
     font-size: 12px;
+  }
+
+  .settlement-amount > small {
+    max-width: 74px;
+    font-size: 7px;
   }
 
   .settlement-actions .button {
@@ -3234,6 +3330,10 @@ a {
 
   .settings-section {
     padding: 15px 13px;
+  }
+
+  .pool-funding-form {
+    padding-left: 0;
   }
 
   .inline-create {

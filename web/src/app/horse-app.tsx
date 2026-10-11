@@ -234,6 +234,10 @@ export function App() {
       setAcceptingInvitation(false);
     }
   };
+  const dismissInvitation = () => {
+    window.sessionStorage.removeItem("horse:pending-household-invitation");
+    setPendingInvitation("");
+  };
   const selectHousehold = async (id: string) => {
     try {
       await refreshHousehold(id);
@@ -469,6 +473,9 @@ export function App() {
               onClick={() => void acceptInvitation()}
             >
               {acceptingInvitation ? "参加中" : "招待を受け入れる"}
+            </button>
+            <button className="text-button" type="button" onClick={dismissInvitation}>
+              閉じる
             </button>
           </section>
         )}

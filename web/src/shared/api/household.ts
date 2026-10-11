@@ -9,7 +9,18 @@ import {
   type OperationType,
 } from "relay-runtime";
 
-export type Pool = { id: string; name: string; kind: string; defaultShareWeight: number };
+export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL";
+export type PoolFundingShare = { memberId: string; memberName: string; weight: number };
+export type Pool = {
+  id: string;
+  name: string;
+  kind: string;
+  defaultShareWeight: number;
+  ownerMemberId?: string | null;
+  fundingShares: PoolFundingShare[];
+  settlementPolicy?: SharedPoolSettlementPolicy | null;
+  fundingRuleVersion: number;
+};
 export type Account = { id: string; name: string; kind: string; poolId?: string | null };
 export type Category = { id: string; name: string; archived?: boolean };
 export type Allocation = { poolId: string; poolName?: string; weight: number; amountYen?: number };
@@ -71,6 +82,8 @@ export type Settlement = {
     scheduledYen: number;
     paidYen: number;
     carryYen: number;
+    priorBalanceYen: number;
+    monthlyAdjustmentYen: number;
     advanceCreditYen: number;
     amountDueYen: number;
   }>;
@@ -274,6 +287,14 @@ export const householdQuery = graphql`
         name
         kind
         defaultShareWeight
+        ownerMemberId
+        fundingShares {
+          memberId
+          memberName
+          weight
+        }
+        settlementPolicy
+        fundingRuleVersion
       }
       accounts {
         id
@@ -363,6 +384,8 @@ export const settlementQuery = graphql`
         scheduledYen
         paidYen
         carryYen
+        priorBalanceYen
+        monthlyAdjustmentYen
         advanceCreditYen
         amountDueYen
       }
@@ -678,6 +701,22 @@ export const setDefaultAllocationMutation = graphql`
     setDefaultAllocation(input: $input) {
       id
       revision
+    }
+  }
+`;
+export const setPoolFundingRuleMutation = graphql`
+  mutation SetPoolFundingRuleMutation($input: SetPoolFundingRuleInput!) {
+    setPoolFundingRule(input: $input) {
+      id
+      kind
+      ownerMemberId
+      fundingRuleVersion
+      settlementPolicy
+      fundingShares {
+        memberId
+        memberName
+        weight
+      }
     }
   }
 `;
