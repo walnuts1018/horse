@@ -3,6 +3,9 @@
 ## バックアップの構成
 
 HorseのPostgreSQLデータは共有クラスタ`postgresql-default`に保存されます。CloudNativePGのScheduledBackupはクラスタ全体をSeaweedFSの`cloudnative-pg-backup`バケットへ保存し、WALアーカイブを使った時点復旧に対応します。現在のスケジュールはcron式`0 0 19 */7 * *`、保持期間は7日です。復旧可能な時刻はベースバックアップとWALアーカイブの状態に依存するため、障害対応時に`Backup`リソースとObjectStoreの状態を確認してください。
+2026年10月12日のkurumiの読取確認では、ClusterのReady、ContinuousArchiving、LastBackupSucceededがすべてTrueで、ObjectStoreの最終成功バックアップは2026年10月8日19時01分22秒UTC、最初の復旧可能時点は10月1日19時01分18秒UTCでした。
+同時点では`Backup`リソースが残っていなかったため、復旧時刻の判断にはObjectStoreの`status.serverRecoveryWindow`も確認します。
+これはバックアップ状態の確認であり、復元試験の成功を示すものではありません。
 
 Horseのアップロード原本はSeaweedFSの非公開`horse`バケットに保存されます。バケットではS3 versioningを有効にします。誤上書きや削除後の復元に利用できますが、古いオブジェクトversionを期限削除するlifecycle policyは設定していないため、保存量と費用を定期的に確認してください。versioningは誤削除対策であり、SeaweedFS障害やクラスタ全損に備える独立したオフサイトコピーではありません。
 
