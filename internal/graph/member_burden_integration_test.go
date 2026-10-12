@@ -88,7 +88,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	occurredAt := purchaseDate.UTC().Format(time.RFC3339)
 	period := accountingPeriod(purchaseDate)
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
-		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: occurredAt, Merchant: "Shop", PaymentAccountID: &account.ID,
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: occurredAt, Merchant: "Shop", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 1000}},
 		Items: []*model.PurchaseItemInput{{Name: "item", AmountYen: 1000}},
 	})
 	if err != nil {

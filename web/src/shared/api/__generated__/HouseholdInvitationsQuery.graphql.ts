@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0b13da802cd7ecf264af714571fd84bb>>
+ * @generated SignedSource<<cbb33601d0f11d949b99ad260a818a79>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type HouseholdInvitationStatus = "ACCEPTED" | "EXPIRED" | "PENDING" | "REVOKED" | "%future added value";
 export type HouseholdInvitationsQuery$variables = {
   householdId: string;
 };
@@ -20,6 +21,7 @@ export type HouseholdInvitationsQuery$data = {
     readonly id: string;
     readonly revokedAt: string | null | undefined;
     readonly role: string;
+    readonly status: HouseholdInvitationStatus;
   }>;
 };
 export type HouseholdInvitationsQuery = {
@@ -75,6 +77,13 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
+        "name": "status",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
         "name": "expiresAt",
         "storageKey": null
       },
@@ -121,16 +130,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "7d972170b6a597038e9f78a005a8375d",
+    "cacheID": "2d2da2744a2e20b857c31a1f489751df",
     "id": null,
     "metadata": {},
     "name": "HouseholdInvitationsQuery",
     "operationKind": "query",
-    "text": "query HouseholdInvitationsQuery(\n  $householdId: ID!\n) {\n  householdInvitations(householdId: $householdId) {\n    id\n    householdId\n    role\n    expiresAt\n    createdAt\n    revokedAt\n    acceptedAt\n  }\n}\n"
+    "text": "query HouseholdInvitationsQuery(\n  $householdId: ID!\n) {\n  householdInvitations(householdId: $householdId) {\n    id\n    householdId\n    role\n    status\n    expiresAt\n    createdAt\n    revokedAt\n    acceptedAt\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "9b7634a2e9523e418f5f5c15b936f86b";
+(node as any).hash = "142de40e50ad3fb20c656a7619380a8b";
 
 export default node;

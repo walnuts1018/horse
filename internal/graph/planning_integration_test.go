@@ -80,7 +80,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	printedUnit := "kg"
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-04-12T11:59:00Z", Merchant: "Market",
-		PaymentAccountID: &account.ID,
+		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 800}},
 		Items: []*model.PurchaseItemInput{{
 			Name: "Yogurt", AmountYen: 500,
 			Quantity:         &model.PurchaseQuantityInput{Numerator: quantityNumerator, Denominator: quantityDenominator, Unit: quantityUnit},

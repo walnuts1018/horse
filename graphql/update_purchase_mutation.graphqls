@@ -18,6 +18,5 @@ input UpdatePurchaseInput {
 input PurchasePatch {
   occurredAt: String
   merchant: String
-  paymentAccountId: ID @nodeID(of: "Account")
   paymentAllocations: [PurchasePaymentInput!]
 }

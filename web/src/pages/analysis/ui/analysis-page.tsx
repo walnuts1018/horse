@@ -114,12 +114,7 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
         );
       }
     }
-    const payments = purchase.paymentAllocations?.length
-      ? purchase.paymentAllocations
-      : purchase.paymentAccountId
-        ? [{ paymentAccountId: purchase.paymentAccountId, amountYen: purchase.totalYen }]
-        : [];
-    for (const payment of payments) {
+    for (const payment of purchase.paymentAllocations) {
       const account = household.accounts.find(
         (candidate) => candidate.id === payment.paymentAccountId,
       );

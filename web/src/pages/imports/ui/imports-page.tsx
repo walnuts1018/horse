@@ -583,6 +583,20 @@ export function ImportsPage({
     setPending(true);
     setMessage("");
     try {
+      const purchaseItems = items.map((item, index) => ({
+        name: item.name,
+        amountYen: manualAmountOverrides[document.id]
+          ? (item.grossAmount ?? item.printedAmount)
+          : (candidate?.amounts[index] ?? item.grossAmount ?? item.printedAmount),
+        quantityNumerator: item.quantityNumerator,
+        quantityDenominator: item.quantityDenominator,
+        quantityUnit: item.quantityUnit,
+        printedUnitPriceYen: item.printedUnitPriceYen,
+        printedUnitPriceQuantityNumerator: item.printedUnitPriceQuantityNumerator,
+        printedUnitPriceQuantityDenominator: item.printedUnitPriceQuantityDenominator,
+        printedUnitPriceUnit: item.printedUnitPriceUnit,
+        allocations: null,
+      }));
       const created = await createAndPostPurchase({
         idempotencyKey: await importIdempotencyKey(document.id, "receipt"),
         householdId: household.id,
@@ -592,23 +606,17 @@ export function ImportsPage({
           ? new Date(receipt.purchasedAt).toISOString()
           : new Date().toISOString(),
         merchant: receipt?.merchant ?? "",
-        paymentAccountId: paymentAccountId || null,
+        paymentAllocations: paymentAccountId
+          ? [
+              {
+                paymentAccountId,
+                amountYen: purchaseItems.reduce((total, item) => total + item.amountYen, 0),
+              },
+            ]
+          : [],
         receiptCandidateId: candidateID || null,
         manualAmountOverrideReason: overrideReason || null,
-        items: items.map((item, index) => ({
-          name: item.name,
-          amountYen: manualAmountOverrides[document.id]
-            ? (item.grossAmount ?? item.printedAmount)
-            : (candidate?.amounts[index] ?? item.grossAmount ?? item.printedAmount),
-          quantityNumerator: item.quantityNumerator,
-          quantityDenominator: item.quantityDenominator,
-          quantityUnit: item.quantityUnit,
-          printedUnitPriceYen: item.printedUnitPriceYen,
-          printedUnitPriceQuantityNumerator: item.printedUnitPriceQuantityNumerator,
-          printedUnitPriceQuantityDenominator: item.printedUnitPriceQuantityDenominator,
-          printedUnitPriceUnit: item.printedUnitPriceUnit,
-          allocations: null,
-        })),
+        items: purchaseItems,
       });
       await refreshPurchases();
       const evidenceResponse = await fetch(
@@ -662,7 +670,9 @@ export function ImportsPage({
         sourceReference: reference,
         occurredAt: new Date(entry.occurredAt).toISOString(),
         merchant: entry.merchant,
-        paymentAccountId: paymentAccountId || null,
+        paymentAllocations: paymentAccountId
+          ? [{ paymentAccountId, amountYen: Math.abs(entry.amount) }]
+          : [],
         items: [
           {
             name: entry.merchant || "カード利用",

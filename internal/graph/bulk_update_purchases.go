@@ -204,15 +204,7 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 		}
 		paymentAccountID := purchase.PaymentAccountID
 		if target.updatePayments {
-			if len(target.payments) == 0 {
-				paymentAccountID = sql.Null[gofrsuuid.UUID]{}
-			} else {
-				accountID, err := gofrsuuid.FromString(target.payments[0].PaymentAccountID)
-				if err != nil {
-					return nil, err
-				}
-				paymentAccountID = sql.Null[gofrsuuid.UUID]{V: accountID, Valid: true}
-			}
+			paymentAccountID = sql.Null[gofrsuuid.UUID]{}
 			if err := replacePurchasePaymentRows(ctx, tx, householdID.String(), target.input.PurchaseID, target.payments); err != nil {
 				return nil, err
 			}

@@ -15,7 +15,7 @@ export type PurchaseDraftItem = {
 export type PurchaseDraft = {
   merchant: string;
   occurredAt: string;
-  paymentAccountId: string;
+  paymentAccountId?: string;
   paymentAllocations?: Array<{ paymentAccountId: string; amountYen: string }>;
   paymentAutoTotal?: boolean;
   itemName: string;
@@ -103,12 +103,20 @@ function migrateOutbox(value: unknown, key: IDBValidKey): PurchaseOutboxEntry | 
 }
 
 function normalizePurchaseInput(input: CreatePurchaseInput): CreatePurchaseInput {
+  const legacy = input as CreatePurchaseInput & { paymentAccountId?: string | null };
+  const { paymentAccountId, ...canonical } = legacy;
   return {
-    ...input,
+    ...canonical,
     origin: input.origin ?? "MANUAL",
-    ...(input.paymentAllocations?.length && input.paymentAccountId
-      ? { paymentAccountId: null }
-      : {}),
+    paymentAllocations:
+      input.paymentAllocations?.length || !paymentAccountId
+        ? (input.paymentAllocations ?? [])
+        : [
+            {
+              paymentAccountId,
+              amountYen: input.items.reduce((total, item) => total + item.amountYen, 0),
+            },
+          ],
   };
 }
 

@@ -493,7 +493,6 @@ type CreatePurchaseInput struct {
 	OccurredAt                 string                  `json:"occurredAt"`
 	Merchant                   string                  `json:"merchant"`
 	Origin                     *PurchaseOrigin         `json:"origin,omitempty"`
-	PaymentAccountID           *string                 `json:"paymentAccountId,omitempty"`
 	PaymentAllocations         []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
 	SourceDocumentID           *string                 `json:"sourceDocumentId,omitempty"`
 	SourceReference            *string                 `json:"sourceReference,omitempty"`
@@ -565,13 +564,14 @@ type Household struct {
 func (Household) IsNode() {}
 
 type HouseholdInvitation struct {
-	ID          string  `json:"id"`
-	HouseholdID string  `json:"householdId"`
-	Role        string  `json:"role"`
-	ExpiresAt   string  `json:"expiresAt"`
-	CreatedAt   string  `json:"createdAt"`
-	RevokedAt   *string `json:"revokedAt,omitempty"`
-	AcceptedAt  *string `json:"acceptedAt,omitempty"`
+	ID          string                    `json:"id"`
+	HouseholdID string                    `json:"householdId"`
+	Role        string                    `json:"role"`
+	Status      HouseholdInvitationStatus `json:"status"`
+	ExpiresAt   string                    `json:"expiresAt"`
+	CreatedAt   string                    `json:"createdAt"`
+	RevokedAt   *string                   `json:"revokedAt,omitempty"`
+	AcceptedAt  *string                   `json:"acceptedAt,omitempty"`
 }
 
 func (HouseholdInvitation) IsNode() {}
@@ -803,8 +803,6 @@ type Purchase struct {
 	Origin             PurchaseOrigin        `json:"origin"`
 	HasEvidence        bool                  `json:"hasEvidence"`
 	SourceKinds        []SourceKind          `json:"sourceKinds"`
-	PaymentAccountID   *string               `json:"paymentAccountId,omitempty"`
-	PaymentAccount     *Account              `json:"paymentAccount,omitempty"`
 	PaymentAllocations []*PurchasePayment    `json:"paymentAllocations"`
 	Items              []*PurchaseItem       `json:"items"`
 	Corrections        []*PurchaseCorrection `json:"corrections"`
@@ -894,7 +892,6 @@ func (this PurchaseLedgerEntry) GetCreatedAt() string   { return this.CreatedAt 
 type PurchasePatch struct {
 	OccurredAt         *string                 `json:"occurredAt,omitempty"`
 	Merchant           *string                 `json:"merchant,omitempty"`
-	PaymentAccountID   *string                 `json:"paymentAccountId,omitempty"`
 	PaymentAllocations []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
 }
 
@@ -1437,6 +1434,65 @@ func (e *AllocationRuleScope) UnmarshalJSON(b []byte) error {
 }
 
 func (e AllocationRuleScope) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type HouseholdInvitationStatus string
+
+const (
+	HouseholdInvitationStatusPending  HouseholdInvitationStatus = "PENDING"
+	HouseholdInvitationStatusAccepted HouseholdInvitationStatus = "ACCEPTED"
+	HouseholdInvitationStatusRevoked  HouseholdInvitationStatus = "REVOKED"
+	HouseholdInvitationStatusExpired  HouseholdInvitationStatus = "EXPIRED"
+)
+
+var AllHouseholdInvitationStatus = []HouseholdInvitationStatus{
+	HouseholdInvitationStatusPending,
+	HouseholdInvitationStatusAccepted,
+	HouseholdInvitationStatusRevoked,
+	HouseholdInvitationStatusExpired,
+}
+
+func (e HouseholdInvitationStatus) IsValid() bool {
+	switch e {
+	case HouseholdInvitationStatusPending, HouseholdInvitationStatusAccepted, HouseholdInvitationStatusRevoked, HouseholdInvitationStatusExpired:
+		return true
+	}
+	return false
+}
+
+func (e HouseholdInvitationStatus) String() string {
+	return string(e)
+}
+
+func (e *HouseholdInvitationStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = HouseholdInvitationStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid HouseholdInvitationStatus", str)
+	}
+	return nil
+}
+
+func (e HouseholdInvitationStatus) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *HouseholdInvitationStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e HouseholdInvitationStatus) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

@@ -6,6 +6,7 @@ export const householdInvitationsQuery = graphql`
       id
       householdId
       role
+      status
       expiresAt
       createdAt
       revokedAt
@@ -25,6 +26,7 @@ export const createHouseholdInvitationMutation = graphql`
             id
             householdId
             role
+            status
             expiresAt
             createdAt
             revokedAt
@@ -47,6 +49,7 @@ export const revokeHouseholdInvitationMutation = graphql`
       ... on RevokeHouseholdInvitationSuccess {
         result {
           id
+          status
           revokedAt
         }
       }

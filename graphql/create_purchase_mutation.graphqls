@@ -14,7 +14,6 @@ input CreatePurchaseInput {
   occurredAt: String!
   merchant: String!
   origin: PurchaseOrigin
-  paymentAccountId: ID @nodeID(of: "Account")
   paymentAllocations: [PurchasePaymentInput!]
   sourceDocumentId: ID
   sourceReference: String

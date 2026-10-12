@@ -128,9 +128,7 @@ export type Purchase = {
   origin: "AI" | "MANUAL" | "UNKNOWN";
   hasEvidence: boolean;
   sourceKinds: string[];
-  paymentAccountId?: string | null;
-  paymentAccount?: Account | null;
-  paymentAllocations?: PurchasePayment[];
+  paymentAllocations: PurchasePayment[];
   corrections?: PurchaseCorrection[];
   items: PurchaseItem[];
   totalYen: number;
@@ -149,7 +147,6 @@ export type CreatePurchaseInput = {
   sourceReference?: string | null;
   receiptCandidateId?: string | null;
   manualAmountOverrideReason?: string | null;
-  paymentAccountId: string | null;
   paymentAllocations?: PurchasePaymentInput[];
   items: Array<{
     name: string;
@@ -272,6 +269,7 @@ export type HouseholdInvitation = {
   id: string;
   householdId: string;
   role: string;
+  status: "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED";
   expiresAt: string;
   createdAt: string;
   revokedAt?: string | null;

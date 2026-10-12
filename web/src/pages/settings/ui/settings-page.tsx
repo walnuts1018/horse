@@ -1609,11 +1609,7 @@ export function SettingsPage({
                 <h2>招待</h2>
               </div>
               <span className="count-badge">
-                {
-                  invitations.filter(
-                    (invitation) => !invitation.revokedAt && !invitation.acceptedAt,
-                  ).length
-                }
+                {invitations.filter((invitation) => invitation.status === "PENDING").length}
               </span>
             </div>
             <form className="inline-create" onSubmit={issueInvitation}>
@@ -1657,14 +1653,16 @@ export function SettingsPage({
                   <div>
                     <b>{new Date(invitation.expiresAt).toLocaleDateString("ja-JP")}まで</b>
                     <small>
-                      {invitation.acceptedAt
+                      {invitation.status === "ACCEPTED"
                         ? "参加済み"
-                        : invitation.revokedAt
+                        : invitation.status === "REVOKED"
                           ? "失効"
-                          : "未使用"}
+                          : invitation.status === "EXPIRED"
+                            ? "期限切れ"
+                            : "未使用"}
                     </small>
                   </div>
-                  {!invitation.acceptedAt && !invitation.revokedAt && (
+                  {invitation.status === "PENDING" && (
                     <button
                       className="text-button"
                       disabled={pending}

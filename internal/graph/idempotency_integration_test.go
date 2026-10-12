@@ -74,12 +74,12 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 
 	key := uuid.NewV7().String()
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
-		IdempotencyKey:   key,
-		HouseholdID:      household.ID,
-		OccurredAt:       "2026-10-13T10:00:00+09:00",
-		Merchant:         "Idempotency test",
-		PaymentAccountID: &account.ID,
-		Items:            []*model.PurchaseItemInput{{Name: "test item", AmountYen: 100}},
+		IdempotencyKey:     key,
+		HouseholdID:        household.ID,
+		OccurredAt:         "2026-10-13T10:00:00+09:00",
+		Merchant:           "Idempotency test",
+		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 100}},
+		Items:              []*model.PurchaseItemInput{{Name: "test item", AmountYen: 100}},
 	})
 	if err != nil {
 		t.Fatal(err)

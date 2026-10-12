@@ -56,13 +56,6 @@ export const purchaseListFragment = graphql`
           origin
           hasEvidence
           sourceKinds
-          paymentAccountId
-          paymentAccount {
-            id
-            name
-            kind
-            poolId
-          }
           paymentAllocations {
             paymentAccountId
             amountYen
@@ -118,7 +111,6 @@ export const createPurchaseMutation = graphql`
           householdId
           occurredAt
           merchant
-          paymentAccountId
           totalYen
           revision
           status
@@ -172,7 +164,6 @@ export const updatePurchaseMutation = graphql`
           revision
           occurredAt
           merchant
-          paymentAccountId
         }
       }
       ... on MutationError {

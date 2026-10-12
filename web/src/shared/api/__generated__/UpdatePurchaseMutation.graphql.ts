@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<343edd8c75b3182ea7f25f879afde048>>
+ * @generated SignedSource<<aa1c3a10737fbbb3bd6fd739658c32dd>>
  * @lightSyntaxTransform
  */
 
@@ -18,7 +18,6 @@ export type UpdatePurchaseInput = {
 export type PurchasePatch = {
   merchant?: string | null | undefined;
   occurredAt?: string | null | undefined;
-  paymentAccountId?: string | null | undefined;
   paymentAllocations?: ReadonlyArray<PurchasePaymentInput> | null | undefined;
 };
 export type PurchasePaymentInput = {
@@ -39,7 +38,6 @@ export type UpdatePurchaseMutation$data = {
       readonly id: string;
       readonly merchant: string;
       readonly occurredAt: string;
-      readonly paymentAccountId: string | null | undefined;
       readonly revision: number;
     };
   } | {
@@ -121,13 +119,6 @@ v1 = [
                 "kind": "ScalarField",
                 "name": "merchant",
                 "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "paymentAccountId",
-                "storageKey": null
               }
             ],
             "storageKey": null
@@ -179,16 +170,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "ad19f96cd685c3daf2a1b25e1af85532",
+    "cacheID": "6041998676162d4e57379d5d9425d685",
     "id": null,
     "metadata": {},
     "name": "UpdatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation UpdatePurchaseMutation(\n  $input: UpdatePurchaseInput!\n) {\n  updatePurchase(input: $input) {\n    __typename\n    ... on UpdatePurchaseSuccess {\n      result {\n        id\n        revision\n        occurredAt\n        merchant\n        paymentAccountId\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation UpdatePurchaseMutation(\n  $input: UpdatePurchaseInput!\n) {\n  updatePurchase(input: $input) {\n    __typename\n    ... on UpdatePurchaseSuccess {\n      result {\n        id\n        revision\n        occurredAt\n        merchant\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "745433f732d5d56fce0c67e31f5bdff4";
+(node as any).hash = "a0e3dae3ed399af49b16389b1f3ca54a";
 
 export default node;

@@ -28,7 +28,7 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	db, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
@@ -88,8 +88,8 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if invitation.Invitation.Role != "MEMBER" || len(invitation.Token) != 43 {
-			t.Fatalf("unexpected invitation role or token: role=%q token length=%d", invitation.Invitation.Role, len(invitation.Token))
+		if invitation.Invitation.Role != "MEMBER" || invitation.Invitation.Status != model.HouseholdInvitationStatusPending || len(invitation.Token) != 43 {
+			t.Fatalf("unexpected invitation: role=%q status=%q token length=%d", invitation.Invitation.Role, invitation.Invitation.Status, len(invitation.Token))
 		}
 		return invitation
 	}
@@ -112,7 +112,7 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	}
 	ownerQuery := (&Resolver{DB: db}).Query()
 	listed, err := ownerQuery.HouseholdInvitations(ownerCtx, household.ID)
-	if err != nil || len(listed) != 1 || listed[0].ID != active.Invitation.ID {
+	if err != nil || len(listed) != 1 || listed[0].ID != active.Invitation.ID || listed[0].Status != model.HouseholdInvitationStatusPending {
 		t.Fatalf("owner invitation list failed: invitations=%#v error=%v", listed, err)
 	}
 	if _, err := ownerQuery.HouseholdInvitations(memberCtx, household.ID); !errors.Is(err, ErrNotFound) {
@@ -129,6 +129,10 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	}
 	if _, err := resolver.acceptHouseholdInvitation(memberCtx, active.Token); err != nil {
 		t.Fatalf("valid invitation was not accepted: %v", err)
+	}
+	listed, err = ownerQuery.HouseholdInvitations(ownerCtx, household.ID)
+	if err != nil || len(listed) != 1 || listed[0].Status != model.HouseholdInvitationStatusAccepted {
+		t.Fatalf("accepted invitation status was not returned: invitations=%#v error=%v", listed, err)
 	}
 	householdUUID, _ := gofrsuuid.FromString(household.ID)
 	memberUUID, _ := gofrsuuid.FromString(memberID)
@@ -162,10 +166,28 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if _, err := resolver.acceptHouseholdInvitation(otherCtx, expired.Token); !errors.Is(err, ErrConflict) {
 		t.Fatalf("expired invitation must be rejected: error=%v", err)
 	}
+	listed, err = ownerQuery.HouseholdInvitations(ownerCtx, household.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiredStatusFound := false
+	for _, invitation := range listed {
+		if invitation.ID == expired.Invitation.ID && invitation.Status == model.HouseholdInvitationStatusExpired {
+			expiredStatusFound = true
+			break
+		}
+	}
+	if !expiredStatusFound {
+		t.Fatalf("expired invitation status was not returned: invitations=%#v", listed)
+	}
 
 	revoked := createInvitation(time.Now().Add(24 * time.Hour))
-	if _, err := resolver.revokeHouseholdInvitation(ownerCtx, household.ID, revoked.Invitation.ID); err != nil {
+	revokedResult, err := resolver.revokeHouseholdInvitation(ownerCtx, household.ID, revoked.Invitation.ID)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if revokedResult.Status != model.HouseholdInvitationStatusRevoked {
+		t.Fatalf("revoked invitation status was not returned: status=%q", revokedResult.Status)
 	}
 	if _, err := resolver.acceptHouseholdInvitation(otherCtx, revoked.Token); !errors.Is(err, ErrConflict) {
 		t.Fatalf("revoked invitation must be rejected: error=%v", err)

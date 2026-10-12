@@ -309,14 +309,10 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     setPurchaseDraft({
       merchant: purchase.merchant,
       occurredAt: occurredAt.toISOString().slice(0, 16),
-      paymentAllocations: purchase.paymentAllocations?.length
-        ? purchase.paymentAllocations.map((payment) => ({
-            paymentAccountId: payment.paymentAccountId,
-            amountYen: String(payment.amountYen),
-          }))
-        : purchase.paymentAccountId
-          ? [{ paymentAccountId: purchase.paymentAccountId, amountYen: String(purchase.totalYen) }]
-          : [],
+      paymentAllocations: purchase.paymentAllocations.map((payment) => ({
+        paymentAccountId: payment.paymentAccountId,
+        amountYen: String(payment.amountYen),
+      })),
     });
     setItemDrafts(
       Object.fromEntries(
@@ -564,13 +560,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         amountYen: Number(payment.amountYen),
       }),
     );
-    const currentAllocations = (
-      purchase.paymentAllocations?.length
-        ? purchase.paymentAllocations
-        : purchase.paymentAccountId
-          ? [{ paymentAccountId: purchase.paymentAccountId, amountYen: purchase.totalYen }]
-          : []
-    ).map((payment) => ({
+    const currentAllocations = purchase.paymentAllocations.map((payment) => ({
       paymentAccountId: payment.paymentAccountId,
       amountYen: payment.amountYen,
     }));
@@ -668,10 +658,9 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           item.allocations.some((allocation) => allocation.poolId === poolFilter),
         )) &&
       (!accountFilter ||
-        purchase.paymentAllocations?.some(
+        purchase.paymentAllocations.some(
           (payment) => payment.paymentAccountId === accountFilter,
-        ) ||
-        purchase.paymentAccountId === accountFilter) &&
+        )) &&
       (!tagFilter ||
         purchase.items.some((item) => item.tags.some((tag) => tag.id === tagFilter))) &&
       (!minimumAmount || purchase.totalYen >= Number(minimumAmount)) &&
@@ -684,10 +673,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       (!fromMonth || month >= fromMonth) &&
       (!toMonth || month <= toMonth) &&
       (!accountFilter ||
-        purchase.paymentAllocations?.some(
-          (payment) => payment.paymentAccountId === accountFilter,
-        ) ||
-        purchase.paymentAccountId === accountFilter);
+        purchase.paymentAllocations.some((payment) => payment.paymentAccountId === accountFilter));
     if (!purchaseMatches) return [];
     return purchase.items
       .filter((item) => {
@@ -893,14 +879,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         if (bulkMerchantActive) patch.merchant = purchase.merchant;
         if (bulkOccurredAtActive) patch.occurredAt = purchase.occurredAt;
         if (bulkPaymentAccountId)
-          patch.paymentAllocations = purchase.paymentAllocations?.length
-            ? purchase.paymentAllocations.map(({ paymentAccountId, amountYen }) => ({
-                paymentAccountId,
-                amountYen,
-              }))
-            : purchase.paymentAccountId
-              ? [{ paymentAccountId: purchase.paymentAccountId, amountYen: purchase.totalYen }]
-              : [];
+          patch.paymentAllocations = purchase.paymentAllocations.map(
+            ({ paymentAccountId, amountYen }) => ({
+              paymentAccountId,
+              amountYen,
+            }),
+          );
         undoEntries.push({
           purchaseId: purchase.id,
           baseRevision:
@@ -1665,7 +1649,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                               return `${accountName} ${yen(payment.amountYen)}`;
                             })
                             .join(" / ")
-                        : (purchase.paymentAccount?.name ?? "決済元未設定")}
+                        : "決済元未設定"}
                     </span>
                   </div>
                   <div className="purchase-meta">

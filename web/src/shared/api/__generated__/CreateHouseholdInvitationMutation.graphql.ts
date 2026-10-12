@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bc97885e9505de1fc9060bcd7796634d>>
+ * @generated SignedSource<<0f6f6d31fc70a1a2a35ff29a578a0635>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type HouseholdInvitationStatus = "ACCEPTED" | "EXPIRED" | "PENDING" | "REVOKED" | "%future added value";
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type CreateHouseholdInvitationInput = {
   expiresAt: string;
@@ -28,6 +29,7 @@ export type CreateHouseholdInvitationMutation$data = {
         readonly id: string;
         readonly revokedAt: string | null | undefined;
         readonly role: string;
+        readonly status: HouseholdInvitationStatus;
       };
       readonly token: string;
     };
@@ -127,6 +129,13 @@ v1 = [
                     "alias": null,
                     "args": null,
                     "kind": "ScalarField",
+                    "name": "status",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
                     "name": "expiresAt",
                     "storageKey": null
                   },
@@ -204,16 +213,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "a4548d860fbf741eb3be91199e6c504c",
+    "cacheID": "e76075286a66a39366806a2ca2ef18da",
     "id": null,
     "metadata": {},
     "name": "CreateHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateHouseholdInvitationMutation(\n  $input: CreateHouseholdInvitationInput!\n) {\n  createHouseholdInvitation(input: $input) {\n    __typename\n    ... on CreateHouseholdInvitationSuccess {\n      result {\n        token\n        invitation {\n          id\n          householdId\n          role\n          expiresAt\n          createdAt\n          revokedAt\n          acceptedAt\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreateHouseholdInvitationMutation(\n  $input: CreateHouseholdInvitationInput!\n) {\n  createHouseholdInvitation(input: $input) {\n    __typename\n    ... on CreateHouseholdInvitationSuccess {\n      result {\n        token\n        invitation {\n          id\n          householdId\n          role\n          status\n          expiresAt\n          createdAt\n          revokedAt\n          acceptedAt\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "148c7c32e1ab85d994dccec37ef0c5e3";
+(node as any).hash = "7fd18b7806a3fb1a8ba3f4bfd86ced7d";
 
 export default node;

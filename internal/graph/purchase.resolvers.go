@@ -21,11 +21,6 @@ func (r *purchaseResolver) HouseholdID(ctx context.Context, obj *model.Purchase)
 	return encodeNodeID("Household", obj.HouseholdID)
 }
 
-// PaymentAccountID is the resolver for the paymentAccountId field.
-func (r *purchaseResolver) PaymentAccountID(ctx context.Context, obj *model.Purchase) (*string, error) {
-	return encodeNodeIDPtr("Account", obj.PaymentAccountID)
-}
-
 // Purchases is the resolver for the purchases field.
 func (r *queryResolver) Purchases(ctx context.Context, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error) {
 	return r.purchases(ctx, householdID, from, to, origin, hasEvidence, after, before, first, last)

@@ -713,9 +713,6 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	if len(merchant) > 240 {
 		return nil, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
 	}
-	if len(input.PaymentAllocations) > 0 && input.PaymentAccountID != nil {
-		return nil, fmt.Errorf("%w: use paymentAllocations or paymentAccountId, not both", ErrBadInput)
-	}
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -817,19 +814,11 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	if err != nil {
 		return nil, err
 	}
-	var legacyAccount sql.Null[gofrsuuid.UUID]
-	if input.PaymentAccountID != nil {
-		accountUUID, parseErr := gofrsuuid.FromString(*input.PaymentAccountID)
-		if parseErr != nil {
-			return nil, fmt.Errorf("%w: invalid payment account id", ErrBadInput)
-		}
-		legacyAccount = sql.Null[gofrsuuid.UUID]{V: accountUUID, Valid: true}
-	}
 	purchaseStatus := string(status)
 	purchaseOrigin := string(origin)
 	if _, err := models.Purchases.Insert(&models.PurchaseSetter{
 		ID: &purchaseUUID, HouseholdID: &householdUUID, OccurredAt: &occurredAt, Merchant: &merchant,
-		PaymentAccountID: &legacyAccount, Status: &purchaseStatus, AllocationRuleVersion: &ruleVersion, CreatedBy: &createdBy, Origin: &purchaseOrigin,
+		Status: &purchaseStatus, AllocationRuleVersion: &ruleVersion, CreatedBy: &createdBy, Origin: &purchaseOrigin,
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
@@ -1491,7 +1480,7 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 	if input.BaseRevision > int(purchase.Revision) {
 		return nil, ErrConflict
 	}
-	if err := validateChangedFields(input.ChangedFields, "occurredAt", "merchant", "paymentAccountId", "paymentAllocations"); err != nil {
+	if err := validateChangedFields(input.ChangedFields, "occurredAt", "merchant", "paymentAllocations"); err != nil {
 		return nil, err
 	}
 	for _, field := range input.ChangedFields {
@@ -1510,11 +1499,8 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 			}
 		}
 	}
-	if input.Patch != nil && (input.Patch.OccurredAt != nil && !slices.Contains(input.ChangedFields, "occurredAt") || input.Patch.Merchant != nil && !slices.Contains(input.ChangedFields, "merchant") || input.Patch.PaymentAccountID != nil && !slices.Contains(input.ChangedFields, "paymentAccountId") || input.Patch.PaymentAllocations != nil && !slices.Contains(input.ChangedFields, "paymentAllocations")) {
+	if input.Patch != nil && (input.Patch.OccurredAt != nil && !slices.Contains(input.ChangedFields, "occurredAt") || input.Patch.Merchant != nil && !slices.Contains(input.ChangedFields, "merchant") || input.Patch.PaymentAllocations != nil && !slices.Contains(input.ChangedFields, "paymentAllocations")) {
 		return nil, fmt.Errorf("%w: patch contains fields missing from changedFields", ErrBadInput)
-	}
-	if slices.Contains(input.ChangedFields, "paymentAllocations") && slices.Contains(input.ChangedFields, "paymentAccountId") {
-		return nil, fmt.Errorf("%w: paymentAllocations and paymentAccountId cannot be changed together", ErrBadInput)
 	}
 	conflict, err := valuesConflict(purchase.FieldRevisions.Val, input.BaseRevision, input.ChangedFields)
 	if err != nil {
@@ -1528,10 +1514,9 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 	if err != nil {
 		return nil, err
 	}
-	updateAccountID := slices.Contains(input.ChangedFields, "paymentAccountId")
 	updatePayments := slices.Contains(input.ChangedFields, "paymentAllocations")
 	paymentAccountID := purchase.PaymentAccountID
-	if updateAccountID {
+	if updatePayments {
 		paymentAccountID = sql.Null[gofrsuuid.UUID]{}
 	}
 	if input.Patch != nil {
@@ -1548,19 +1533,6 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 				return nil, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
 			}
 			purchase.Merchant = value
-		}
-		if updateAccountID && input.Patch.PaymentAccountID != nil {
-			paymentAccountUUID, err := gofrsuuid.FromString(*input.Patch.PaymentAccountID)
-			if err != nil {
-				return nil, err
-			}
-			paymentAccountID = sql.Null[gofrsuuid.UUID]{V: paymentAccountUUID, Valid: true}
-			if _, err := models.PurchasePayments.Delete(dm.Where(psql.And(
-				models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
-				models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
-			))).Exec(ctx, executor); err != nil {
-				return nil, err
-			}
 		}
 		if updatePayments {
 			payments, err := validatePurchasePaymentInputs(ctx, tx, householdID, input.Patch.PaymentAllocations)
@@ -1591,15 +1563,6 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 				if paid != total {
 					return nil, fmt.Errorf("%w: payment allocations must equal purchase total", ErrBadInput)
 				}
-			}
-			if len(payments) > 0 {
-				paymentAccountUUID, err := gofrsuuid.FromString(payments[0].PaymentAccountID)
-				if err != nil {
-					return nil, err
-				}
-				paymentAccountID = sql.Null[gofrsuuid.UUID]{V: paymentAccountUUID, Valid: true}
-			} else {
-				paymentAccountID = sql.Null[gofrsuuid.UUID]{}
 			}
 			if err := replacePurchasePaymentRows(ctx, tx, householdID, input.PurchaseID, payments); err != nil {
 				return nil, err

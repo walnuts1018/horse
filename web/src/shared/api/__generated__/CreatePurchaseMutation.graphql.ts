@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<851fef13b85f8b286888404ae6519492>>
+ * @generated SignedSource<<5aa6b68230e93bd2663da881851ad081>>
  * @lightSyntaxTransform
  */
 
@@ -19,7 +19,6 @@ export type CreatePurchaseInput = {
   merchant: string;
   occurredAt: string;
   origin?: PurchaseOrigin | null | undefined;
-  paymentAccountId?: string | null | undefined;
   paymentAllocations?: ReadonlyArray<PurchasePaymentInput> | null | undefined;
   receiptCandidateId?: string | null | undefined;
   sourceDocumentId?: string | null | undefined;
@@ -102,7 +101,6 @@ export type CreatePurchaseMutation$data = {
       }>;
       readonly merchant: string;
       readonly occurredAt: string;
-      readonly paymentAccountId: string | null | undefined;
       readonly revision: number;
       readonly status: PurchaseStatus;
       readonly totalYen: any;
@@ -236,13 +234,6 @@ v8 = [
                 "args": null,
                 "kind": "ScalarField",
                 "name": "merchant",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "paymentAccountId",
                 "storageKey": null
               },
               {
@@ -452,16 +443,16 @@ return {
     "selections": (v8/*:: as any*/)
   },
   "params": {
-    "cacheID": "4e6b435aec4b73b775e39485031afac3",
+    "cacheID": "64ab1509a30c573bbd65427015ed2e92",
     "id": null,
     "metadata": {},
     "name": "CreatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    __typename\n    ... on CreatePurchaseSuccess {\n      result {\n        id\n        householdId\n        occurredAt\n        merchant\n        paymentAccountId\n        totalYen\n        revision\n        status\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    __typename\n    ... on CreatePurchaseSuccess {\n      result {\n        id\n        householdId\n        occurredAt\n        merchant\n        totalYen\n        revision\n        status\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "7c14862be4bd29dc79fe975da5a229c2";
+(node as any).hash = "c422b11c0d89da5d47e7360b5c318673";
 
 export default node;

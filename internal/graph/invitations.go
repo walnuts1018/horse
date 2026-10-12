@@ -77,7 +77,7 @@ func (r *mutationResolver) createHouseholdInvitation(ctx context.Context, input 
 		return nil, err
 	}
 	return &model.CreatedHouseholdInvitation{
-		Invitation: &model.HouseholdInvitation{ID: id, HouseholdID: input.HouseholdID, Role: "MEMBER", ExpiresAt: timeString(storedExpiresAt), CreatedAt: timeString(createdAt)},
+		Invitation: &model.HouseholdInvitation{ID: id, HouseholdID: input.HouseholdID, Role: "MEMBER", Status: model.HouseholdInvitationStatusPending, ExpiresAt: timeString(storedExpiresAt), CreatedAt: timeString(createdAt)},
 		Token:      token,
 	}, nil
 }
@@ -104,6 +104,7 @@ func (r *queryResolver) householdInvitations(ctx context.Context, householdID st
 		invitation.ID, invitation.HouseholdID, invitation.Role = row.ID.String(), row.HouseholdID.String(), row.Role
 		invitation.ExpiresAt, invitation.CreatedAt = timeString(row.ExpiresAt), timeString(row.CreatedAt)
 		invitation.RevokedAt, invitation.AcceptedAt = optionalTimeString(invitationTimePointer(row.RevokedAt)), optionalTimeString(invitationTimePointer(row.AcceptedAt))
+		invitation.Status = householdInvitationStatus(row.AcceptedAt, row.RevokedAt, row.ExpiresAt, time.Now())
 		invitations = append(invitations, invitation)
 	}
 	return invitations, nil
@@ -164,7 +165,21 @@ func (r *mutationResolver) revokeHouseholdInvitation(ctx context.Context, househ
 	invitation := model.HouseholdInvitation{ID: invitationRow.ID.String(), HouseholdID: invitationRow.HouseholdID.String(), Role: invitationRow.Role}
 	invitation.ExpiresAt, invitation.CreatedAt = timeString(invitationRow.ExpiresAt), timeString(invitationRow.CreatedAt)
 	invitation.RevokedAt, invitation.AcceptedAt = optionalTimeString(invitationTimePointer(invitationRow.RevokedAt)), optionalTimeString(invitationTimePointer(invitationRow.AcceptedAt))
+	invitation.Status = householdInvitationStatus(invitationRow.AcceptedAt, invitationRow.RevokedAt, invitationRow.ExpiresAt, time.Now())
 	return &invitation, nil
+}
+
+func householdInvitationStatus(acceptedAt, revokedAt sql.Null[time.Time], expiresAt, now time.Time) model.HouseholdInvitationStatus {
+	if acceptedAt.Valid {
+		return model.HouseholdInvitationStatusAccepted
+	}
+	if revokedAt.Valid {
+		return model.HouseholdInvitationStatusRevoked
+	}
+	if !expiresAt.After(now) {
+		return model.HouseholdInvitationStatusExpired
+	}
+	return model.HouseholdInvitationStatusPending
 }
 
 func (r *mutationResolver) acceptHouseholdInvitation(ctx context.Context, token string) (*model.Household, error) {

@@ -6,8 +6,6 @@ type Purchase implements Node {
   origin: PurchaseOrigin!
   hasEvidence: Boolean!
   sourceKinds: [SourceKind!]!
-  paymentAccountId: ID @goField(forceResolver: true)
-  paymentAccount: Account
   paymentAllocations: [PurchasePayment!]!
   items: [PurchaseItem!]!
   corrections: [PurchaseCorrection!]!

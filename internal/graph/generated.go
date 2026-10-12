@@ -302,6 +302,7 @@ type ComplexityRoot struct {
 		ID          func(childComplexity int) int
 		RevokedAt   func(childComplexity int) int
 		Role        func(childComplexity int) int
+		Status      func(childComplexity int) int
 	}
 
 	LedgerConnection struct {
@@ -478,8 +479,6 @@ type ComplexityRoot struct {
 		Merchant           func(childComplexity int) int
 		OccurredAt         func(childComplexity int) int
 		Origin             func(childComplexity int) int
-		PaymentAccount     func(childComplexity int) int
-		PaymentAccountID   func(childComplexity int) int
 		PaymentAllocations func(childComplexity int) int
 		Revision           func(childComplexity int) int
 		SourceKinds        func(childComplexity int) int
@@ -856,8 +855,6 @@ type ProductVariantResolver interface {
 type PurchaseResolver interface {
 	ID(ctx context.Context, obj *model.Purchase) (string, error)
 	HouseholdID(ctx context.Context, obj *model.Purchase) (string, error)
-
-	PaymentAccountID(ctx context.Context, obj *model.Purchase) (*string, error)
 }
 type PurchaseCorrectionResolver interface {
 	ID(ctx context.Context, obj *model.PurchaseCorrection) (string, error)
@@ -1745,6 +1742,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.HouseholdInvitation.Role(childComplexity), true
+	case "HouseholdInvitation.status":
+		if e.ComplexityRoot.HouseholdInvitation.Status == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitation.Status(childComplexity), true
 
 	case "LedgerConnection.edges":
 		if e.ComplexityRoot.LedgerConnection.Edges == nil {
@@ -2648,18 +2651,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Purchase.Origin(childComplexity), true
-	case "Purchase.paymentAccount":
-		if e.ComplexityRoot.Purchase.PaymentAccount == nil {
-			break
-		}
-
-		return e.ComplexityRoot.Purchase.PaymentAccount(childComplexity), true
-	case "Purchase.paymentAccountId":
-		if e.ComplexityRoot.Purchase.PaymentAccountID == nil {
-			break
-		}
-
-		return e.ComplexityRoot.Purchase.PaymentAccountID(childComplexity), true
 	case "Purchase.paymentAllocations":
 		if e.ComplexityRoot.Purchase.PaymentAllocations == nil {
 			break
@@ -4247,7 +4238,6 @@ input CreatePurchaseInput {
   occurredAt: String!
   merchant: String!
   origin: PurchaseOrigin
-  paymentAccountId: ID @nodeID(of: "Account")
   paymentAllocations: [PurchasePaymentInput!]
   sourceDocumentId: ID
   sourceReference: String
@@ -4311,10 +4301,18 @@ extend type Query {
   household(id: ID! @nodeID(of: "Household")): Household
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/household_invitation.graphqls", Input: `type HouseholdInvitation implements Node {
+	{Name: "../../graphql/household_invitation.graphqls", Input: `enum HouseholdInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+type HouseholdInvitation implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   role: String!
+  status: HouseholdInvitationStatus!
   expiresAt: String!
   createdAt: String!
   revokedAt: String
@@ -4502,8 +4500,6 @@ extend type Query {
   origin: PurchaseOrigin!
   hasEvidence: Boolean!
   sourceKinds: [SourceKind!]!
-  paymentAccountId: ID @goField(forceResolver: true)
-  paymentAccount: Account
   paymentAllocations: [PurchasePayment!]!
   items: [PurchaseItem!]!
   corrections: [PurchaseCorrection!]!
@@ -5059,7 +5055,6 @@ input UpdatePurchaseInput {
 input PurchasePatch {
   occurredAt: String
   merchant: String
-  paymentAccountId: ID @nodeID(of: "Account")
   paymentAllocations: [PurchasePaymentInput!]
 }
 `, BuiltIn: false},
@@ -5387,6 +5382,8 @@ func (ec *executionContext) childFields_HouseholdInvitation(ctx context.Context,
 		return ec.fieldContext_HouseholdInvitation_householdId(ctx, field)
 	case "role":
 		return ec.fieldContext_HouseholdInvitation_role(ctx, field)
+	case "status":
+		return ec.fieldContext_HouseholdInvitation_status(ctx, field)
 	case "expiresAt":
 		return ec.fieldContext_HouseholdInvitation_expiresAt(ctx, field)
 	case "createdAt":
@@ -5649,10 +5646,6 @@ func (ec *executionContext) childFields_Purchase(ctx context.Context, field grap
 		return ec.fieldContext_Purchase_hasEvidence(ctx, field)
 	case "sourceKinds":
 		return ec.fieldContext_Purchase_sourceKinds(ctx, field)
-	case "paymentAccountId":
-		return ec.fieldContext_Purchase_paymentAccountId(ctx, field)
-	case "paymentAccount":
-		return ec.fieldContext_Purchase_paymentAccount(ctx, field)
 	case "paymentAllocations":
 		return ec.fieldContext_Purchase_paymentAllocations(ctx, field)
 	case "items":
@@ -11682,6 +11675,29 @@ func (ec *executionContext) fieldContext_HouseholdInvitation_role(_ context.Cont
 	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _HouseholdInvitation_status(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitation_status(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Status, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.HouseholdInvitationStatus) graphql.Marshaler {
+			return ec.marshalNHouseholdInvitationStatus2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationStatus(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitation_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type HouseholdInvitationStatus does not have child fields"))
+}
+
 func (ec *executionContext) _HouseholdInvitation_expiresAt(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -15253,61 +15269,6 @@ func (ec *executionContext) _Purchase_sourceKinds(ctx context.Context, field gra
 }
 func (ec *executionContext) fieldContext_Purchase_sourceKinds(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type SourceKind does not have child fields"))
-}
-
-func (ec *executionContext) _Purchase_paymentAccountId(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Purchase_paymentAccountId(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			return ec.Resolvers.Purchase().PaymentAccountID(ctx, obj)
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOID2ᚖstring(ctx, selections, v)
-		},
-		true,
-		false,
-	)
-}
-func (ec *executionContext) fieldContext_Purchase_paymentAccountId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Purchase", field, true, true, errors.New("field of type ID does not have child fields"))
-}
-
-func (ec *executionContext) _Purchase_paymentAccount(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Purchase_paymentAccount(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			return obj.PaymentAccount, nil
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *model.Account) graphql.Marshaler {
-			return ec.marshalOAccount2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccount(ctx, selections, v)
-		},
-		true,
-		false,
-	)
-}
-func (ec *executionContext) fieldContext_Purchase_paymentAccount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Purchase",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_Account(ctx, field)
-		},
-	}
-	return fc, nil
 }
 
 func (ec *executionContext) _Purchase_paymentAllocations(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
@@ -21742,7 +21703,7 @@ func (ec *executionContext) unmarshalInputCreatePurchaseInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"idempotencyKey", "householdId", "occurredAt", "merchant", "origin", "paymentAccountId", "paymentAllocations", "sourceDocumentId", "sourceReference", "receiptCandidateId", "manualAmountOverrideReason", "items", "status"}
+	fieldsInOrder := [...]string{"idempotencyKey", "householdId", "occurredAt", "merchant", "origin", "paymentAllocations", "sourceDocumentId", "sourceReference", "receiptCandidateId", "manualAmountOverrideReason", "items", "status"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -21804,35 +21765,6 @@ func (ec *executionContext) unmarshalInputCreatePurchaseInput(ctx context.Contex
 				return it, err
 			}
 			it.Origin = data
-		case "paymentAccountId":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
-			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
-
-			directive1 := func(ctx context.Context) (any, error) {
-				of, err := ec.unmarshalNString2string(ctx, "Account")
-				if err != nil {
-					var zeroVal *string
-					return zeroVal, err
-				}
-				if ec.Directives.NodeID == nil {
-					var zeroVal *string
-					return zeroVal, errors.New("directive nodeID is not implemented")
-				}
-				return ec.Directives.NodeID(ctx, obj, directive0, of)
-			}
-
-			tmp, err := directive1(ctx)
-			if err != nil {
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-			if data, ok := tmp.(*string); ok {
-				it.PaymentAccountID = data
-			} else if tmp == nil {
-				it.PaymentAccountID = nil
-			} else {
-				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
 		case "paymentAllocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAllocations"))
 			data, err := ec.unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
@@ -22222,7 +22154,7 @@ func (ec *executionContext) unmarshalInputPurchasePatch(ctx context.Context, obj
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"occurredAt", "merchant", "paymentAccountId", "paymentAllocations"}
+	fieldsInOrder := [...]string{"occurredAt", "merchant", "paymentAllocations"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -22243,35 +22175,6 @@ func (ec *executionContext) unmarshalInputPurchasePatch(ctx context.Context, obj
 				return it, err
 			}
 			it.Merchant = data
-		case "paymentAccountId":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
-			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
-
-			directive1 := func(ctx context.Context) (any, error) {
-				of, err := ec.unmarshalNString2string(ctx, "Account")
-				if err != nil {
-					var zeroVal *string
-					return zeroVal, err
-				}
-				if ec.Directives.NodeID == nil {
-					var zeroVal *string
-					return zeroVal, errors.New("directive nodeID is not implemented")
-				}
-				return ec.Directives.NodeID(ctx, obj, directive0, of)
-			}
-
-			tmp, err := directive1(ctx)
-			if err != nil {
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-			if data, ok := tmp.(*string); ok {
-				it.PaymentAccountID = data
-			} else if tmp == nil {
-				it.PaymentAccountID = nil
-			} else {
-				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
 		case "paymentAllocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAllocations"))
 			data, err := ec.unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
@@ -28047,6 +27950,11 @@ func (ec *executionContext) _HouseholdInvitation(ctx context.Context, sel ast.Se
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "status":
+			out.Values[i] = ec._HouseholdInvitation_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
 		case "expiresAt":
 			out.Values[i] = ec._HouseholdInvitation_expiresAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -29909,49 +29817,6 @@ func (ec *executionContext) _Purchase(ctx context.Context, sel ast.SelectionSet,
 		case "sourceKinds":
 			out.Values[i] = ec._Purchase_sourceKinds(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&out.Invalids, 1)
-			}
-		case "paymentAccountId":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Purchase_paymentAccountId(ctx, field, obj)
-				if res == graphql.RequiredNull {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.IsDeferred() {
-				deferredFieldSet.AddField(field)
-				fieldIndex := len(deferredFieldSet.Values) - 1
-				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, deferredFieldSet)
-				})
-
-				for _, deferrable := range field.Deferrables {
-					view, ok := deferLabelToView[deferrable.Label]
-					if !ok {
-						view = deferredFieldSet.NewView()
-						deferLabelToView[deferrable.Label] = view
-					}
-					view.AddIndices(fieldIndex)
-				}
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "paymentAccount":
-			out.Values[i] = ec._Purchase_paymentAccount(ctx, field, obj)
-			if out.Values[i] == graphql.RequiredNull {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "paymentAllocations":
@@ -33747,6 +33612,16 @@ func (ec *executionContext) marshalNHouseholdInvitation2ᚖgithubᚗcomᚋwalnut
 		return graphql.Null
 	}
 	return ec._HouseholdInvitation(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNHouseholdInvitationStatus2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationStatus(ctx context.Context, v any) (model.HouseholdInvitationStatus, error) {
+	var res model.HouseholdInvitationStatus
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNHouseholdInvitationStatus2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationStatus(ctx context.Context, sel ast.SelectionSet, v model.HouseholdInvitationStatus) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v any) (string, error) {

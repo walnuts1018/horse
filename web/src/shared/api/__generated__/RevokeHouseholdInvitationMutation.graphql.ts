@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ca8db2b69131ab3ece04efe0b0750f3f>>
+ * @generated SignedSource<<2acc9192af32231d8f6cee0fe50eda24>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type HouseholdInvitationStatus = "ACCEPTED" | "EXPIRED" | "PENDING" | "REVOKED" | "%future added value";
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type RevokeHouseholdInvitationMutation$variables = {
   householdId: string;
@@ -23,6 +24,7 @@ export type RevokeHouseholdInvitationMutation$data = {
     readonly result: {
       readonly id: string;
       readonly revokedAt: string | null | undefined;
+      readonly status: HouseholdInvitationStatus;
     };
   } | {
     // This will never be '%other', but we need some
@@ -97,6 +99,13 @@ v1 = [
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
+                "name": "status",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
                 "name": "revokedAt",
                 "storageKey": null
               }
@@ -150,16 +159,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "a28351db551e3d47f80fadcdb48f214a",
+    "cacheID": "3128ba4dcbefd20f0f04b09d8ccd9e9b",
     "id": null,
     "metadata": {},
     "name": "RevokeHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation RevokeHouseholdInvitationMutation(\n  $householdId: ID!\n  $invitationId: ID!\n) {\n  revokeHouseholdInvitation(householdId: $householdId, invitationId: $invitationId) {\n    __typename\n    ... on RevokeHouseholdInvitationSuccess {\n      result {\n        id\n        revokedAt\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation RevokeHouseholdInvitationMutation(\n  $householdId: ID!\n  $invitationId: ID!\n) {\n  revokeHouseholdInvitation(householdId: $householdId, invitationId: $invitationId) {\n    __typename\n    ... on RevokeHouseholdInvitationSuccess {\n      result {\n        id\n        status\n        revokedAt\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "0ca805d4e415d569194c53752c5d5e08";
+(node as any).hash = "aba3e2f49b1cd259d6acba163dfe99a0";
 
 export default node;

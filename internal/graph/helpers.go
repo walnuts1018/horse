@@ -289,9 +289,12 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 		result.SourceKinds = append(result.SourceKinds, kind)
 	}
 	slices.Sort(result.SourceKinds)
+	var legacyPaymentAccount *model.Account
 	if purchase.PaymentAccountID.Valid {
-		paymentAccountID := purchase.PaymentAccountID.V.String()
-		result.PaymentAccountID = &paymentAccountID
+		if err := purchase.LoadAccount(ctx, executor); err != nil {
+			return nil, err
+		}
+		legacyPaymentAccount = graphAccount(purchase.R.Account)
 	}
 	items, err := models.PurchaseItems.Query(
 		sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),
@@ -381,12 +384,6 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 		result.Items = append(result.Items, item)
 	}
 	result.TotalYen = graphLong(total)
-	if purchase.PaymentAccountID.Valid {
-		if err := purchase.LoadAccount(ctx, executor); err != nil {
-			return nil, err
-		}
-		result.PaymentAccount = graphAccount(purchase.R.Account)
-	}
 	paymentRows, err := models.PurchasePayments.Query(
 		sm.Where(models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),
 		sm.OrderBy(models.PurchasePayments.Columns.LineNo),
@@ -403,9 +400,10 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 			Account: graphAccount(storedPayment.R.Account),
 		})
 	}
-	if len(result.PaymentAllocations) == 0 && result.PaymentAccountID != nil {
-		account := result.PaymentAccount
-		result.PaymentAllocations = append(result.PaymentAllocations, &model.PurchasePayment{PaymentAccountID: *result.PaymentAccountID, Account: account, AmountYen: graphLong(total)})
+	if len(result.PaymentAllocations) == 0 && purchase.PaymentAccountID.Valid {
+		result.PaymentAllocations = append(result.PaymentAllocations, &model.PurchasePayment{
+			PaymentAccountID: purchase.PaymentAccountID.V.String(), Account: legacyPaymentAccount, AmountYen: graphLong(total),
+		})
 	}
 	correctionRows, err := models.Corrections.Query(
 		sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),

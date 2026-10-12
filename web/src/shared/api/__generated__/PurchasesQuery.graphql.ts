@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3d4b3bfb822d846ba5327f24d9abd630>>
+ * @generated SignedSource<<f1c63364aed4566e34d75d73a4208011>>
  * @lightSyntaxTransform
  */
 
@@ -114,7 +114,7 @@ v10 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "paymentAccountId",
+  "name": "amountYen",
   "storageKey": null
 },
 v11 = {
@@ -127,27 +127,19 @@ v11 = {
 v12 = {
   "alias": null,
   "args": null,
-  "kind": "ScalarField",
-  "name": "poolId",
-  "storageKey": null
-},
-v13 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "amountYen",
-  "storageKey": null
-},
-v14 = {
-  "alias": null,
-  "args": null,
   "concreteType": "PurchasePayment",
   "kind": "LinkedField",
   "name": "paymentAllocations",
   "plural": true,
   "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "paymentAccountId",
+      "storageKey": null
+    },
     (v10/*:: as any*/),
-    (v13/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -164,14 +156,14 @@ v14 = {
   ],
   "storageKey": null
 },
-v15 = {
+v13 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "denominator",
   "storageKey": null
 },
-v16 = [
+v14 = [
   {
     "alias": null,
     "args": null,
@@ -179,7 +171,7 @@ v16 = [
     "name": "numerator",
     "storageKey": null
   },
-  (v15/*:: as any*/),
+  (v13/*:: as any*/),
   {
     "alias": null,
     "args": null,
@@ -188,7 +180,7 @@ v16 = [
     "storageKey": null
   }
 ],
-v17 = {
+v15 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
@@ -293,29 +285,7 @@ return {
                     "name": "sourceKinds",
                     "storageKey": null
                   },
-                  (v10/*:: as any*/),
-                  {
-                    "alias": null,
-                    "args": null,
-                    "concreteType": "Account",
-                    "kind": "LinkedField",
-                    "name": "paymentAccount",
-                    "plural": false,
-                    "selections": [
-                      (v7/*:: as any*/),
-                      (v11/*:: as any*/),
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "kind",
-                        "storageKey": null
-                      },
-                      (v12/*:: as any*/)
-                    ],
-                    "storageKey": null
-                  },
-                  (v14/*:: as any*/),
+                  (v12/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -326,7 +296,7 @@ return {
                     "selections": [
                       (v7/*:: as any*/),
                       (v11/*:: as any*/),
-                      (v13/*:: as any*/),
+                      (v10/*:: as any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -341,7 +311,7 @@ return {
                         "kind": "LinkedField",
                         "name": "quantity",
                         "plural": false,
-                        "selections": (v16/*:: as any*/),
+                        "selections": (v14/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -352,7 +322,7 @@ return {
                         "name": "printedUnitPrice",
                         "plural": false,
                         "selections": [
-                          (v13/*:: as any*/),
+                          (v10/*:: as any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -360,7 +330,7 @@ return {
                             "kind": "LinkedField",
                             "name": "basis",
                             "plural": false,
-                            "selections": (v16/*:: as any*/),
+                            "selections": (v14/*:: as any*/),
                             "storageKey": null
                           }
                         ],
@@ -381,11 +351,11 @@ return {
                             "name": "numeratorYen",
                             "storageKey": null
                           },
-                          (v15/*:: as any*/)
+                          (v13/*:: as any*/)
                         ],
                         "storageKey": null
                       },
-                      (v17/*:: as any*/),
+                      (v15/*:: as any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -408,7 +378,13 @@ return {
                         "name": "allocations",
                         "plural": true,
                         "selections": [
-                          (v12/*:: as any*/),
+                          {
+                            "alias": null,
+                            "args": null,
+                            "kind": "ScalarField",
+                            "name": "poolId",
+                            "storageKey": null
+                          },
                           {
                             "alias": null,
                             "args": null,
@@ -423,7 +399,7 @@ return {
                             "name": "weight",
                             "storageKey": null
                           },
-                          (v13/*:: as any*/)
+                          (v10/*:: as any*/)
                         ],
                         "storageKey": null
                       },
@@ -445,7 +421,7 @@ return {
                             "name": "archived",
                             "storageKey": null
                           },
-                          (v17/*:: as any*/)
+                          (v15/*:: as any*/)
                         ],
                         "storageKey": null
                       }
@@ -497,11 +473,11 @@ return {
                         "name": "settlementMonth",
                         "storageKey": null
                       },
-                      (v14/*:: as any*/)
+                      (v12/*:: as any*/)
                     ],
                     "storageKey": null
                   },
-                  (v17/*:: as any*/),
+                  (v15/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -603,12 +579,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "ad4d2d8e279abcbcce2fb7eaac10090f",
+    "cacheID": "223586ed503917c4b6ff6e4ca5c8dea0",
     "id": null,
     "metadata": {},
     "name": "PurchasesQuery",
     "operationKind": "query",
-    "text": "query PurchasesQuery(\n  $householdId: ID!\n  $from: String\n  $to: String\n  $origin: PurchaseOrigin\n  $hasEvidence: Boolean\n  $first: Int\n) {\n  ...PurchaseListFragment_oDAFC\n}\n\nfragment PurchaseListFragment_oDAFC on Query {\n  purchases(householdId: $householdId, from: $from, to: $to, origin: $origin, hasEvidence: $hasEvidence, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAccountId\n        paymentAccount {\n          id\n          name\n          kind\n          poolId\n        }\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections {\n          id\n          itemId\n          amountDeltaYen\n          reason\n          occurredAt\n          settlementMonth\n          paymentAllocations {\n            paymentAccountId\n            amountYen\n            account {\n              id\n              name\n            }\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n        __typename\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query PurchasesQuery(\n  $householdId: ID!\n  $from: String\n  $to: String\n  $origin: PurchaseOrigin\n  $hasEvidence: Boolean\n  $first: Int\n) {\n  ...PurchaseListFragment_oDAFC\n}\n\nfragment PurchaseListFragment_oDAFC on Query {\n  purchases(householdId: $householdId, from: $from, to: $to, origin: $origin, hasEvidence: $hasEvidence, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections {\n          id\n          itemId\n          amountDeltaYen\n          reason\n          occurredAt\n          settlementMonth\n          paymentAllocations {\n            paymentAccountId\n            amountYen\n            account {\n              id\n              name\n            }\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n        __typename\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();

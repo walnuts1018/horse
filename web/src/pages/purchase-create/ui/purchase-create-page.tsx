@@ -125,7 +125,6 @@ export function PurchaseCreatePage({
   const draft = {
     merchant,
     occurredAt,
-    paymentAccountId: paymentRows[0]?.paymentAccountId ?? "",
     paymentAllocations: paymentRows.map((payment) => ({
       paymentAccountId: payment.paymentAccountId,
       amountYen:
@@ -459,7 +458,6 @@ export function PurchaseCreatePage({
         occurredAt: new Date(occurredAt).toISOString(),
         merchant: merchant.trim(),
         origin: "MANUAL",
-        paymentAccountId: null,
         paymentAllocations: paymentRows.map((payment) => ({
           paymentAccountId: payment.paymentAccountId,
           amountYen: paymentAmount(payment),
