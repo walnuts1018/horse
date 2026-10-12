@@ -35,6 +35,8 @@ Gemini APIは無料用と有料用のGoogle Cloud Projectを分け、無料Proje
 
 Google Cloud Free TrialのWelcome creditはGemini APIとAI Studioの利用料に適用されません。Gemini APIのPaid Tierを有効にするにはAI Studioで有料Projectの状態を確認し、Billing Accountのlink後に必要なPrepay設定を完了する必要があります。新規ユーザーはPrepayの利用を求められる場合があり、その場合のcredits購入や支払設定は運用者がAI Studioで行います。TerraformはPrepay購入や自動reloadを設定しません。
 
+2026年10月12日のHCP Terraform実行[`run-25fQB7YJd6NaMdDa`](https://app.terraform.io/app/walnuts-dev/workspaces/infra/runs/run-25fQB7YJd6NaMdDa)では、300円の警告予算の更新が成功し、500円のSpendCap作成だけがGoogle APIの`400 FAILED_PRECONDITION`で失敗しました。予算APIの認証はapplyフェーズの短期トークンを使用し、予算更新のupdateMaskから変更できないbudgetFilterを除外しています。AI Studioでは有料Projectが「無料トライアル」「前払いが必要」と表示されていますが、APIの応答は前提条件の詳細を返していないため、この表示だけで失敗原因を断定できません。SpendCap、有料APIキー、AI専用Secretの作成完了は未確認です。[Googleの請求手順](https://ai.google.dev/gemini-api/docs/billing/)に従って運用者が必要な請求設定を完了した後、Terraformを再実行し、SpendCapの作成と状態を確認してください。
+
 SpendCapは請求の見積り遅延を伴い、適用は即時ではありません。Googleの公式説明では請求データ処理に約10分の遅れが発生する場合があり、上限を超えた請求が発生する可能性があります。SpendCapは超過を完全には保証しないため、Workerは`GEMINI_ENABLED=false`の状態を維持し、運用者がBilling状態、SpendCap、AI StudioのPaid Tierを確認した後でのみ有効化します。
 
 ## Google CloudのTerraform認証
