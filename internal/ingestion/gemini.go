@@ -14,17 +14,20 @@ import (
 )
 
 const PromptVersion = "receipt-2026-10-12.3"
+const GeminiPriceTableVersion = "gemini-prices-2026-10-v1"
 const MaxDocumentBytes = 20 << 20
 const MaxOutputTokens = 16_384
 
 type Gemini struct {
-	APIKey       string
-	Model        string
-	Project      string
-	ProjectRoute string
-	USDJPYRate   float64
-	Endpoint     string
-	HTTPClient   *http.Client
+	APIKey           string
+	Model            string
+	Project          string
+	ProjectRoute     string
+	USDJPYRate       float64
+	USDJPYRateSource string
+	USDJPYRateAsOf   string
+	Endpoint         string
+	HTTPClient       *http.Client
 }
 
 type GeminiRequestOptions struct {
@@ -55,6 +58,17 @@ func (g Gemini) Extract(ctx context.Context, document Document, hints []HistoryH
 func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []HistoryHint, options GeminiRequestOptions) (Receipt, ExtractionRun, error) {
 	started := time.Now()
 	run := ExtractionRun{Route: g.ProjectRoute, Project: g.Project, Model: g.Model, ThinkingLevel: options.ThinkingLevel, ServiceTier: options.ServiceTier, Reason: options.Reason}
+	run.PromptVersion = PromptVersion
+	run.PriceTableVersion = GeminiPriceTableVersion
+	run.USDJPYRate = g.USDJPYRate
+	run.USDJPYRateSource = g.USDJPYRateSource
+	run.USDJPYRateAsOf = g.USDJPYRateAsOf
+	if run.USDJPYRateSource == "" {
+		run.USDJPYRateSource = "unspecified"
+	}
+	if run.USDJPYRateAsOf == "" {
+		run.USDJPYRateAsOf = "unspecified"
+	}
 	if run.ThinkingLevel == "" {
 		run.ThinkingLevel = "low"
 	}
@@ -68,6 +82,7 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		run.LatencyMillis = time.Since(started).Milliseconds()
 		if err != nil {
 			run.Status = "failed"
+			run.PriceEstimateStatus = "unavailable_failed_run"
 			if apiErr, ok := errors.AsType[*GeminiAPIError](err); ok {
 				run.ErrorCode = apiErr.Code
 			}
@@ -76,7 +91,29 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		run.Status = "succeeded"
 		run.InputTokens = receipt.InputTokens
 		run.OutputTokens = receipt.OutputTokens
-		run.EstimatedJPY = estimateCostJPY(run.Route, run.Model, run.ServiceTier, run.InputTokens, run.OutputTokens, g.USDJPYRate, time.Now().UTC())
+		run.PricingCurrency = "USD"
+		run.PricedAt = time.Now().UTC()
+		switch run.Route {
+		case ProjectFree:
+			run.PriceEstimateStatus = "free_tier"
+		default:
+			inputPrice, outputPrice := modelPrices(run.Model, run.PricedAt)
+			if inputPrice == 0 && outputPrice == 0 {
+				run.PriceEstimateStatus = "unknown_model_price"
+			} else {
+				if run.ServiceTier == "flex" {
+					inputPrice, outputPrice = inputPrice/2, outputPrice/2
+				}
+				run.InputUSDPerMillion = inputPrice
+				run.OutputUSDPerMillion = outputPrice
+				if g.USDJPYRate <= 0 {
+					run.PriceEstimateStatus = "missing_exchange_rate"
+				} else {
+					run.PriceEstimateStatus = "estimated_paid"
+					run.EstimatedJPY = estimateCostJPY(run.Route, run.Model, run.ServiceTier, run.InputTokens, run.OutputTokens, g.USDJPYRate, run.PricedAt)
+				}
+			}
+		}
 		return receipt, run, nil
 	}
 	if g.APIKey == "" || g.Model == "" {

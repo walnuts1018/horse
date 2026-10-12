@@ -1,0 +1,56 @@
+{
+  "version": "synthetic-v1",
+  "cases": [
+    {
+      "id": "synthetic-two-line-receipt",
+      "expected": {
+        "currency": "JPY",
+        "total": 330,
+        "items": [
+          {
+            "printedName": "りんご",
+            "name": "りんご",
+            "printedAmount": 110,
+            "priceBasis": "TAX_INCLUDED",
+            "verification": "confirmed"
+          },
+          {
+            "printedName": "牛乳",
+            "name": "牛乳",
+            "printedAmount": 220,
+            "priceBasis": "TAX_INCLUDED",
+            "verification": "confirmed"
+          }
+        ]
+      },
+      "actual": {
+        "currency": "JPY",
+        "total": 330,
+        "items": [
+          {
+            "printedName": "りんご",
+            "name": "りんご",
+            "printedAmount": 110,
+            "priceBasis": "TAX_INCLUDED",
+            "verification": "confirmed"
+          },
+          {
+            "printedName": "牛乳",
+            "name": "牛乳",
+            "printedAmount": 220,
+            "priceBasis": "TAX_INCLUDED",
+            "verification": "confirmed"
+          }
+        ]
+      },
+      "runs": [
+        {
+          "model": "synthetic-model",
+          "priceEstimateStatus": "estimated_paid",
+          "estimatedCostJPY": 2.5
+        }
+      ],
+      "humanCorrectionOperations": 0
+    }
+  ]
+}

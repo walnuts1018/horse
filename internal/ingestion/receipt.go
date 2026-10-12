@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"time"
 )
 
 const MaxAmount int64 = 1_000_000_000_000
@@ -81,20 +82,30 @@ type Verification struct {
 }
 
 type ExtractionRun struct {
-	Route         string   `json:"route"`
-	Project       string   `json:"project"`
-	Model         string   `json:"model"`
-	ThinkingLevel string   `json:"thinkingLevel"`
-	ServiceTier   string   `json:"serviceTier"`
-	InputTokens   int64    `json:"inputTokens"`
-	OutputTokens  int64    `json:"outputTokens"`
-	EstimatedJPY  float64  `json:"estimatedCostJPY"`
-	LatencyMillis int64    `json:"latencyMillis"`
-	Reason        string   `json:"reason"`
-	Status        string   `json:"status"`
-	ErrorCode     string   `json:"errorCode,omitempty"`
-	Receipt       *Receipt `json:"receipt,omitempty"`
-	Issues        []string `json:"issues,omitempty"`
+	Route               string    `json:"route"`
+	Project             string    `json:"project"`
+	Model               string    `json:"model"`
+	PromptVersion       string    `json:"promptVersion"`
+	ThinkingLevel       string    `json:"thinkingLevel"`
+	ServiceTier         string    `json:"serviceTier"`
+	InputTokens         int64     `json:"inputTokens"`
+	OutputTokens        int64     `json:"outputTokens"`
+	EstimatedJPY        float64   `json:"estimatedCostJPY"`
+	PricingCurrency     string    `json:"pricingCurrency"`
+	InputUSDPerMillion  float64   `json:"inputUsdPerMillionTokens"`
+	OutputUSDPerMillion float64   `json:"outputUsdPerMillionTokens"`
+	PriceTableVersion   string    `json:"priceTableVersion"`
+	PriceEstimateStatus string    `json:"priceEstimateStatus"`
+	USDJPYRate          float64   `json:"usdJpyRate"`
+	USDJPYRateSource    string    `json:"usdJpyRateSource"`
+	USDJPYRateAsOf      string    `json:"usdJpyRateAsOf"`
+	PricedAt            time.Time `json:"pricedAt"`
+	LatencyMillis       int64     `json:"latencyMillis"`
+	Reason              string    `json:"reason"`
+	Status              string    `json:"status"`
+	ErrorCode           string    `json:"errorCode,omitempty"`
+	Receipt             *Receipt  `json:"receipt,omitempty"`
+	Issues              []string  `json:"issues,omitempty"`
 }
 
 // Verifyは印字額と解釈を保持したまま税込負担額を導出する。合計一致だけでは曖昧な税解釈を確定しない。

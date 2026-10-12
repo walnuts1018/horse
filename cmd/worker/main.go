@@ -62,6 +62,19 @@ func run() error {
 		}
 		usdJPY = parsed
 	}
+	rateSource := os.Getenv("USDJPY_RATE_SOURCE")
+	if rateSource == "" {
+		rateSource = "application_default"
+		if rate != "" {
+			rateSource = "operator_config"
+		}
+	}
+	rateAsOf := os.Getenv("USDJPY_RATE_AS_OF")
+	if rateAsOf != "" {
+		if _, err := time.Parse("2006-01-02", rateAsOf); err != nil {
+			return errors.New("USDJPY_RATE_AS_OF must use YYYY-MM-DD")
+		}
+	}
 	db, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		return errors.New("initialize worker database failed")
@@ -76,13 +89,15 @@ func run() error {
 		Store:         store,
 		GeminiEnabled: geminiEnabled && (freeAPIKey != "" || paidAPIKey != ""),
 		Router: ingestion.GeminiRouter{
-			Free:       ingestion.Gemini{APIKey: freeAPIKey, Project: os.Getenv("GEMINI_FREE_PROJECT_ID")},
-			Paid:       ingestion.Gemini{APIKey: paidAPIKey, Project: os.Getenv("GEMINI_PAID_PROJECT_ID")},
-			FlashModel: os.Getenv("GEMINI_FLASH_MODEL"),
-			LiteModel:  os.Getenv("GEMINI_LITE_MODEL"),
-			ProModel:   os.Getenv("GEMINI_PRO_MODEL"),
-			USDJPYRate: usdJPY,
-			Background: true,
+			Free:             ingestion.Gemini{APIKey: freeAPIKey, Project: os.Getenv("GEMINI_FREE_PROJECT_ID")},
+			Paid:             ingestion.Gemini{APIKey: paidAPIKey, Project: os.Getenv("GEMINI_PAID_PROJECT_ID")},
+			FlashModel:       os.Getenv("GEMINI_FLASH_MODEL"),
+			LiteModel:        os.Getenv("GEMINI_LITE_MODEL"),
+			ProModel:         os.Getenv("GEMINI_PRO_MODEL"),
+			USDJPYRate:       usdJPY,
+			USDJPYRateSource: rateSource,
+			USDJPYRateAsOf:   rateAsOf,
+			Background:       true,
 		},
 		OCR: ingestion.OCR{Endpoint: os.Getenv("OCR_URL")},
 	}

@@ -17,12 +17,16 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 )
 
 type ObjectStore struct {
 	Client *s3.Client
 	Bucket string
 }
+
+const StorageEncryptionVersion = "sse-v1"
 
 func NewObjectStore(endpoint, bucket, accessKey, secretKey string) (*ObjectStore, error) {
 	u, err := url.Parse(endpoint)
@@ -63,12 +67,34 @@ func (s *ObjectStore) Put(ctx context.Context, householdID, mimeType string, dat
 		return "", "", errors.New("invalid household identifier")
 	}
 	hash := DocumentHash(data)
-	key := householdID + "/originals/" + hash
-	_, err := s.Client.PutObject(ctx, &s3.PutObjectInput{Bucket: new(s.Bucket), Key: new(key), Body: bytes.NewReader(data), ContentLength: new(int64(len(data))), ContentType: new(mimeType)})
+	key := householdID + "/originals/" + StorageEncryptionVersion + "/" + hash
+	_, err := s.Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: new(s.Bucket), Key: new(key), Body: bytes.NewReader(data), ContentLength: new(int64(len(data))),
+		ContentType: new(mimeType), ServerSideEncryption: types.ServerSideEncryptionAes256, IfNoneMatch: new("*"),
+		Metadata: map[string]string{"sha256": hash},
+	})
 	if err != nil {
+		var apiError smithy.APIError
+		if errors.As(err, &apiError) && apiError.ErrorCode() == "PreconditionFailed" {
+			if verifyErr := s.verifyExistingEncryptedObject(ctx, key, mimeType, hash, data); verifyErr == nil {
+				return key, hash, nil
+			}
+		}
 		return "", "", errors.New("store original document failed")
 	}
 	return key, hash, nil
+}
+
+func (s *ObjectStore) verifyExistingEncryptedObject(ctx context.Context, key, mimeType, hash string, data []byte) error {
+	head, err := s.Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: new(s.Bucket), Key: new(key)})
+	if err != nil || head.ServerSideEncryption != types.ServerSideEncryptionAes256 || head.Metadata["sha256"] != hash || head.ContentLength == nil || *head.ContentLength != int64(len(data)) {
+		return errors.New("existing object is not the same encrypted original")
+	}
+	stored, err := s.Get(ctx, key, mimeType)
+	if err != nil || !bytes.Equal(stored.Data, data) {
+		return errors.New("existing object does not match original content")
+	}
+	return nil
 }
 
 func (s *ObjectStore) Get(ctx context.Context, key, mimeType string) (Document, error) {
@@ -80,6 +106,11 @@ func (s *ObjectStore) Get(ctx context.Context, key, mimeType string) (Document, 
 		closeErr := object.Body.Close()
 		return Document{}, errors.Join(errors.New("invalid original document"), closeErr)
 	}
+	encryptedVersion := strings.Contains(key, "/originals/"+StorageEncryptionVersion+"/")
+	if encryptedVersion && object.ServerSideEncryption != types.ServerSideEncryptionAes256 {
+		closeErr := object.Body.Close()
+		return Document{}, errors.Join(errors.New("original object is missing required SSE-S3 encryption"), closeErr)
+	}
 	data, readErr := io.ReadAll(io.LimitReader(object.Body, MaxDocumentBytes+1))
 	closeErr := object.Body.Close()
 	if readErr != nil || closeErr != nil {
@@ -87,6 +118,9 @@ func (s *ObjectStore) Get(ctx context.Context, key, mimeType string) (Document, 
 	}
 	if len(data) > MaxDocumentBytes {
 		return Document{}, errors.New("original document exceeds limit")
+	}
+	if encryptedVersion && DocumentHash(data) != key[strings.LastIndex(key, "/")+1:] {
+		return Document{}, errors.New("original document hash does not match object key")
 	}
 	return Document{MIMEType: mimeType, Data: data}, nil
 }

@@ -15,6 +15,10 @@ run = "go test ./... -v"
 description = "Goの静的解析"
 run = "golangci-lint run ./..."
 
+[tasks."evaluation:run"]
+description = "保存済みのAI評価データセットをオフライン評価"
+run = "go run ./cmd/evaluate --dataset ${EVALUATION_DATASET:-internal/evaluation/datasets/synthetic-v1.json}"
+
 [tasks."web:dev"]
 description = "フロントエンドの開発サーバー"
 dir = "web"

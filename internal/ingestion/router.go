@@ -48,13 +48,15 @@ func (e *GeminiAPIError) Is(target error) bool {
 }
 
 type GeminiRouter struct {
-	Free       Gemini
-	Paid       Gemini
-	FlashModel string
-	LiteModel  string
-	ProModel   string
-	USDJPYRate float64
-	Background bool
+	Free             Gemini
+	Paid             Gemini
+	FlashModel       string
+	LiteModel        string
+	ProModel         string
+	USDJPYRate       float64
+	USDJPYRateSource string
+	USDJPYRateAsOf   string
+	Background       bool
 }
 
 type GeminiRouteOptions struct {
@@ -116,6 +118,8 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 			continue
 		}
 		client.USDJPYRate = r.USDJPYRate
+		client.USDJPYRateSource = r.USDJPYRateSource
+		client.USDJPYRateAsOf = r.USDJPYRateAsOf
 		routeTier := "standard"
 		if client.ProjectRoute == ProjectPaid {
 			routeTier = tier

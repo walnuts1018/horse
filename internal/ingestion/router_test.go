@@ -57,6 +57,9 @@ func TestGeminiRouterUsesFreeThenPaidFlexOnQuota(t *testing.T) {
 	if runs[1].InputTokens != 1000 || runs[1].OutputTokens != 275 || runs[1].EstimatedJPY <= 0 || runs[1].LatencyMillis < 0 {
 		t.Fatalf("run usage metadata is incomplete: %#v", runs[1])
 	}
+	if runs[0].PromptVersion != PromptVersion || runs[0].PriceTableVersion != GeminiPriceTableVersion || runs[0].PriceEstimateStatus != "unavailable_failed_run" || runs[1].PromptVersion != PromptVersion || runs[1].PriceTableVersion != GeminiPriceTableVersion || runs[1].PriceEstimateStatus != "estimated_paid" || runs[1].USDJPYRate != 158.535 || runs[1].USDJPYRateSource != "unspecified" || runs[1].PricedAt.IsZero() {
+		t.Fatalf("run audit metadata is incomplete: %#v", runs)
+	}
 	if paidBody["service_tier"] != "flex" {
 		t.Fatalf("background paid route must use Flex: request=%#v", paidBody)
 	}
@@ -245,6 +248,41 @@ func TestEstimatedGeminiCostUsesProjectTierAndPriceChange(t *testing.T) {
 	after := estimateCostJPY(ProjectPaid, ModelReceipt, "standard", 1_000_000, 1_000_000, 100, cutover)
 	if before != 450 || flex != 225 || after != 900 || estimateCostJPY(ProjectFree, ModelReceipt, "standard", 1_000_000, 1_000_000, 100, cutover) != 0 {
 		t.Fatalf("unexpected estimated prices: before=%f flex=%f after=%f", before, flex, after)
+	}
+}
+
+func TestGeminiRunDoesNotLabelUnknownModelPriceAsFree(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeGeminiSuccess(w, `{"merchant":"Market","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
+	}))
+	defer server.Close()
+	router := GeminiRouter{
+		Paid:       Gemini{APIKey: "paid-test-key", Project: "paid-id", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()},
+		USDJPYRate: 150,
+	}
+	_, runs, err := router.Generate(context.Background(), "receipt", Document{MIMEType: "image/jpeg", Data: []byte("test input")}, nil, GeminiRouteOptions{Model: "future-model", PaidOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].PriceEstimateStatus != "unknown_model_price" || runs[0].EstimatedJPY != 0 || runs[0].PricedAt.IsZero() {
+		t.Fatalf("unknown model was reported as a zero-cost run: %#v", runs)
+	}
+}
+
+func TestGeminiRunKeepsPriceSnapshotWhenExchangeRateIsMissing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeGeminiSuccess(w, `{"merchant":"Market","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
+	}))
+	defer server.Close()
+	router := GeminiRouter{
+		Paid: Gemini{APIKey: "paid-test-key", Project: "paid-id", Endpoint: server.URL + "/v1beta/"},
+	}
+	_, runs, err := router.Generate(context.Background(), "receipt", Document{MIMEType: "image/jpeg", Data: []byte("test input")}, nil, GeminiRouteOptions{PaidOnly: true, ServiceTier: "flex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].PriceEstimateStatus != "missing_exchange_rate" || runs[0].InputUSDPerMillion != 0.375 || runs[0].OutputUSDPerMillion != 1.875 || runs[0].EstimatedJPY != 0 {
+		t.Fatalf("run should preserve model and tier price snapshot without inventing a converted estimate: %#v", runs)
 	}
 }
 
