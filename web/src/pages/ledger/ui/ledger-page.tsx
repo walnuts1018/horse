@@ -528,13 +528,16 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   const bulkAllocationEntries = Object.entries(bulkAllocations)
     .filter(([, weight]) => Number(weight) > 0)
     .map(([poolId, weight]) => ({ poolId, weight: Number(weight) }));
-  const toggleItem = (itemId: string) =>
-    setSelectedItems((current) => {
-      const next = new Set(current);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
-      return next;
-    });
+  const toggleItem = (itemId: string) => {
+    const next = new Set(selectedItems);
+    if (next.has(itemId)) next.delete(itemId);
+    else if (next.size >= 100) {
+      setBulkError("一括変更は100品目までです");
+      return;
+    } else next.add(itemId);
+    setBulkError("");
+    setSelectedItems(next);
+  };
   const applyBulkEdit = async () => {
     if (!bulkCategory && !bulkAllocationsActive && !bulkVariantId && !bulkTagsActive) return;
     const targets = purchases.flatMap((purchase) =>
