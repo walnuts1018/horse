@@ -1,6 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Activity, Check, ChevronRight, Plus, Wallet } from "lucide-react";
+import { Activity, ArrowLeftRight, Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import {
+  accountMovementsQuery,
+  accountBalancesQuery,
+  accountIncomesQuery,
+  archiveBudgetMutation,
+  archiveRecurringExpenseMutation,
+  archiveTagMutation,
+  budgetsQuery,
   createAccountMutation,
   createCategoryMutation,
   createPoolMutation,
@@ -11,18 +18,49 @@ import {
   householdInvitationsQuery,
   revokeHouseholdInvitationMutation,
   productCatalogQuery,
+  recurringExpensesQuery,
+  recordAccountMovementMutation,
+  recordExternalIncomeMutation,
   createProductConceptMutation,
   createProductVariantMutation,
+  createTagMutation,
   setProductAliasMutation,
   readGraphql,
   setDefaultAllocationMutation,
   setPoolFundingRuleMutation,
+  setBudgetMutation,
+  setRecurringExpenseMutation,
+  tagsQuery,
+  updateTagMutation,
   type SharedPoolSettlementPolicy,
   type AllocationRule,
   type HouseholdInvitation,
   type ProductConcept,
   type Household,
+  type AccountMovement,
+  type AccountBalance,
+  type AccountIncome,
+  type Budget,
+  type RecurringExpense,
+  type Tag,
 } from "../../../shared/api";
+
+const currentMonth = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+  }).format(new Date());
+const localDateTime = () => {
+  const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
+  return date.toISOString().slice(0, 16);
+};
+const yen = (amount: number) =>
+  new Intl.NumberFormat("ja-JP", {
+    style: "currency",
+    currency: "JPY",
+    maximumFractionDigits: 0,
+  }).format(amount);
 
 export function SettingsPage({
   household,
@@ -39,6 +77,9 @@ export function SettingsPage({
   const [poolKind, setPoolKind] = useState("PERSONAL");
   const [accountName, setAccountName] = useState("");
   const [accountPool, setAccountPool] = useState("");
+  const [accountKind, setAccountKind] = useState("BANK");
+  const [openingBalanceYen, setOpeningBalanceYen] = useState("");
+  const [openingBalanceAt, setOpeningBalanceAt] = useState(localDateTime().slice(0, 10));
   const [categoryName, setCategoryName] = useState("");
   const [allocationRules, setAllocationRules] = useState<AllocationRule[]>([]);
   const [ruleScope, setRuleScope] = useState<
@@ -83,6 +124,41 @@ export function SettingsPage({
   const [aliasName, setAliasName] = useState("");
   const [ruleProductId, setRuleProductId] = useState("");
   const [ruleVariantId, setRuleVariantId] = useState("");
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [tagName, setTagName] = useState("");
+  const [tagDrafts, setTagDrafts] = useState<Record<string, string>>({});
+  const [budgetPeriod, setBudgetPeriod] = useState(currentMonth);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgetName, setBudgetName] = useState("");
+  const [budgetCategoryId, setBudgetCategoryId] = useState("");
+  const [budgetAmount, setBudgetAmount] = useState("");
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [recurring, setRecurring] = useState<RecurringExpense[]>([]);
+  const [recurringName, setRecurringName] = useState("");
+  const [recurringMerchant, setRecurringMerchant] = useState("");
+  const [recurringAmount, setRecurringAmount] = useState("");
+  const [recurringCategoryId, setRecurringCategoryId] = useState("");
+  const [recurringAccountId, setRecurringAccountId] = useState("");
+  const [recurringCadence, setRecurringCadence] = useState("MONTHLY");
+  const [recurringStartsOn, setRecurringStartsOn] = useState(new Date().toISOString().slice(0, 10));
+  const [recurringNextDueOn, setRecurringNextDueOn] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+  const [recurringEndsOn, setRecurringEndsOn] = useState("");
+  const [editingRecurring, setEditingRecurring] = useState<RecurringExpense | null>(null);
+  const [movements, setMovements] = useState<AccountMovement[]>([]);
+  const [incomes, setIncomes] = useState<AccountIncome[]>([]);
+  const [balances, setBalances] = useState<AccountBalance[]>([]);
+  const [incomeAccountId, setIncomeAccountId] = useState("");
+  const [incomeAmount, setIncomeAmount] = useState("");
+  const [incomeDescription, setIncomeDescription] = useState("");
+  const [incomeDate, setIncomeDate] = useState(localDateTime);
+  const [movementKind, setMovementKind] = useState<"TRANSFER" | "CARD_BILL_PAYMENT">("TRANSFER");
+  const [movementFrom, setMovementFrom] = useState("");
+  const [movementTo, setMovementTo] = useState("");
+  const [movementAmount, setMovementAmount] = useState("");
+  const [movementDescription, setMovementDescription] = useState("");
+  const [movementDate, setMovementDate] = useState(localDateTime);
   const refreshRules = async () => {
     const result = await readGraphql<{ allocationRules: AllocationRule[] }>(allocationRulesQuery, {
       householdId: household.id,
@@ -102,6 +178,40 @@ export function SettingsPage({
       { householdId: household.id },
     );
     setInvitations(result.householdInvitations);
+  };
+  const refreshPlanning = async () => {
+    const [tagResult, budgetResult, recurringResult, movementResult, incomeResult, balanceResult] =
+      await Promise.all([
+        readGraphql<{ tags: Tag[] }>(tagsQuery, {
+          householdId: household.id,
+          includeArchived: true,
+        }),
+        readGraphql<{ budgets: Budget[] }>(budgetsQuery, {
+          householdId: household.id,
+          period: budgetPeriod,
+        }),
+        readGraphql<{ recurringExpenses: RecurringExpense[] }>(recurringExpensesQuery, {
+          householdId: household.id,
+          includeArchived: true,
+        }),
+        readGraphql<{ accountMovements: AccountMovement[] }>(accountMovementsQuery, {
+          householdId: household.id,
+          first: 50,
+        }),
+        readGraphql<{ accountIncomes: AccountIncome[] }>(accountIncomesQuery, {
+          householdId: household.id,
+          first: 50,
+        }),
+        readGraphql<{ accountBalances: AccountBalance[] }>(accountBalancesQuery, {
+          householdId: household.id,
+        }),
+      ]);
+    setTags(tagResult.tags);
+    setBudgets(budgetResult.budgets);
+    setRecurring(recurringResult.recurringExpenses);
+    setMovements(movementResult.accountMovements);
+    setIncomes(incomeResult.accountIncomes);
+    setBalances(balanceResult.accountBalances);
   };
   useEffect(() => {
     setFundingDrafts(
@@ -127,10 +237,39 @@ export function SettingsPage({
   useEffect(() => {
     setInvitationLink("");
     setIssuedInvitationId("");
-    void Promise.all([refreshRules(), refreshProducts(), refreshInvitations()]).catch((reason) =>
-      onNotice((reason as Error).message),
-    );
+    void Promise.all([
+      refreshRules(),
+      refreshProducts(),
+      refreshInvitations(),
+      refreshPlanning(),
+    ]).catch((reason) => onNotice((reason as Error).message));
   }, [household.id, isOwner]);
+  useEffect(() => {
+    let active = true;
+    void readGraphql<{ budgets: Budget[] }>(budgetsQuery, {
+      householdId: household.id,
+      period: budgetPeriod,
+    })
+      .then((result) => active && setBudgets(result.budgets))
+      .catch((reason) => active && onNotice((reason as Error).message));
+    return () => {
+      active = false;
+    };
+  }, [household.id, budgetPeriod]);
+  useEffect(() => {
+    const sourceAccounts = household.accounts.filter((account) =>
+      movementKind === "TRANSFER" ? account.kind !== "CARD" : account.kind === "BANK",
+    );
+    const destinationAccounts = household.accounts.filter((account) =>
+      movementKind === "TRANSFER" ? account.kind !== "CARD" : account.kind === "CARD",
+    );
+    if (!sourceAccounts.some((account) => account.id === movementFrom)) {
+      setMovementFrom(sourceAccounts[0]?.id ?? "");
+    }
+    if (!destinationAccounts.some((account) => account.id === movementTo)) {
+      setMovementTo(destinationAccounts[0]?.id ?? "");
+    }
+  }, [household.accounts, movementKind, movementFrom, movementTo]);
   const saveMutation = async (
     mutation: Parameters<typeof readGraphql>[0],
     input: Record<string, unknown>,
@@ -140,6 +279,231 @@ export function SettingsPage({
       await readGraphql<Record<string, unknown>>(mutation, { input });
       await onRefresh();
       onNotice("設定を保存しました");
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+  const saveTag = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = tagName.trim();
+    if (!name) return;
+    setPending(true);
+    try {
+      await readGraphql(createTagMutation, { input: { householdId: household.id, name } });
+      setTagName("");
+      await refreshPlanning();
+      onNotice("タグを追加しました");
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+  const renameTag = async (tag: Tag) => {
+    const name = (tagDrafts[tag.id] ?? tag.name).trim();
+    if (!name || name === tag.name) return;
+    setPending(true);
+    try {
+      await readGraphql(updateTagMutation, {
+        input: { tagId: tag.id, baseRevision: tag.revision, name },
+      });
+      setTagDrafts((current) => ({ ...current, [tag.id]: name }));
+      await refreshPlanning();
+      onNotice("タグ名を保存しました");
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+  const archiveTag = async (tag: Tag) => {
+    setPending(true);
+    try {
+      await readGraphql(archiveTagMutation, {
+        tagId: tag.id,
+        baseRevision: tag.revision,
+        archived: !tag.archived,
+      });
+      await refreshPlanning();
+      onNotice(tag.archived ? "タグを再表示しました" : "タグを非表示にしました");
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+  const saveBudget = async (event: FormEvent) => {
+    event.preventDefault();
+    const amountYen = Number(budgetAmount);
+    if (!amountYen || amountYen < 1) return;
+    setPending(true);
+    try {
+      await readGraphql(setBudgetMutation, {
+        input: {
+          householdId: household.id,
+          budgetId: editingBudget?.id,
+          baseRevision: editingBudget?.revision,
+          categoryId: budgetCategoryId || null,
+          name:
+            budgetName.trim() ||
+            (budgetCategoryId
+              ? household.categories.find((category) => category.id === budgetCategoryId)?.name
+              : "全体予算") ||
+            "全体予算",
+          amountYen,
+          startsOn: editingBudget?.startsOn ?? `${budgetPeriod}-01`,
+          endsOn: editingBudget?.endsOn ?? null,
+        },
+      });
+      setEditingBudget(null);
+      setBudgetName("");
+      setBudgetAmount("");
+      await refreshPlanning();
+      onNotice("予算を保存しました");
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+  const editBudget = (budget: Budget) => {
+    setEditingBudget(budget);
+    setBudgetCategoryId(budget.categoryId ?? "");
+    setBudgetName(budget.name);
+    setBudgetAmount(String(budget.amountYen));
+  };
+  const archiveBudget = async (budget: Budget) => {
+    setPending(true);
+    try {
+      await readGraphql(archiveBudgetMutation, {
+        budgetId: budget.id,
+        baseRevision: budget.revision,
+        archived: !budget.archived,
+      });
+      await refreshPlanning();
+      onNotice(budget.archived ? "予算を再表示しました" : "予算を非表示にしました");
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+  const saveRecurring = async (event: FormEvent) => {
+    event.preventDefault();
+    const amountYen = Number(recurringAmount);
+    if (!recurringName.trim() || !amountYen || amountYen < 1) return;
+    setPending(true);
+    try {
+      await readGraphql(setRecurringExpenseMutation, {
+        input: {
+          householdId: household.id,
+          expenseId: editingRecurring?.id,
+          baseRevision: editingRecurring?.revision,
+          name: recurringName.trim(),
+          merchant: recurringMerchant.trim(),
+          amountYen,
+          categoryId: recurringCategoryId || null,
+          paymentAccountId: recurringAccountId || null,
+          cadence: recurringCadence,
+          startsOn: recurringStartsOn,
+          nextDueOn: recurringNextDueOn,
+          endsOn: recurringEndsOn || null,
+        },
+      });
+      setEditingRecurring(null);
+      setRecurringName("");
+      setRecurringMerchant("");
+      setRecurringAmount("");
+      setRecurringEndsOn("");
+      await refreshPlanning();
+      onNotice("定期支出を保存しました");
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+  const editRecurring = (expense: RecurringExpense) => {
+    setEditingRecurring(expense);
+    setRecurringName(expense.name);
+    setRecurringMerchant(expense.merchant);
+    setRecurringAmount(String(expense.amountYen));
+    setRecurringCategoryId(expense.categoryId ?? "");
+    setRecurringAccountId(expense.paymentAccountId ?? "");
+    setRecurringCadence(expense.cadence);
+    setRecurringStartsOn(expense.startsOn);
+    setRecurringNextDueOn(expense.nextDueOn);
+    setRecurringEndsOn(expense.endsOn ?? "");
+  };
+  const archiveRecurringExpense = async (expense: RecurringExpense) => {
+    setPending(true);
+    try {
+      await readGraphql(archiveRecurringExpenseMutation, {
+        expenseId: expense.id,
+        baseRevision: expense.revision,
+        archived: !expense.archived,
+      });
+      await refreshPlanning();
+      onNotice(expense.archived ? "定期支出を再表示しました" : "定期支出を終了しました");
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+  const saveMovement = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!movementFrom || !movementTo || movementFrom === movementTo || !Number(movementAmount))
+      return;
+    setPending(true);
+    try {
+      await readGraphql(recordAccountMovementMutation, {
+        input: {
+          householdId: household.id,
+          kind: movementKind,
+          fromAccountId: movementFrom,
+          toAccountId: movementTo,
+          amountYen: Number(movementAmount),
+          occurredAt: new Date(movementDate).toISOString(),
+          description: movementDescription.trim(),
+          idempotencyKey: crypto.randomUUID(),
+        },
+      });
+      setMovementAmount("");
+      setMovementDescription("");
+      setMovementDate(localDateTime());
+      await refreshPlanning();
+      onNotice(
+        movementKind === "TRANSFER" ? "口座移動を記録しました" : "カード請求の支払いを記録しました",
+      );
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+  const saveIncome = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!incomeAccountId || !Number(incomeAmount)) return;
+    setPending(true);
+    try {
+      await readGraphql(recordExternalIncomeMutation, {
+        input: {
+          householdId: household.id,
+          accountId: incomeAccountId,
+          amountYen: Number(incomeAmount),
+          occurredAt: new Date(incomeDate).toISOString(),
+          description: incomeDescription.trim(),
+          idempotencyKey: crypto.randomUUID(),
+        },
+      });
+      setIncomeAmount("");
+      setIncomeDescription("");
+      setIncomeDate(localDateTime());
+      await refreshPlanning();
+      onNotice("入金を記録しました");
     } catch (reason) {
       onNotice((reason as Error).message);
     } finally {
@@ -156,12 +520,28 @@ export function SettingsPage({
   };
   const addAccount = (event: FormEvent) => {
     event.preventDefault();
-    void saveMutation(createAccountMutation, {
-      householdId: household.id,
-      name: accountName.trim(),
-      kind: "BANK",
-      poolId: accountPool || null,
-    }).then(() => setAccountName(""));
+    if (openingBalanceYen && !Number.isFinite(Number(openingBalanceYen))) return;
+    setPending(true);
+    void readGraphql(createAccountMutation, {
+      input: {
+        householdId: household.id,
+        name: accountName.trim(),
+        kind: accountKind,
+        poolId: accountPool || null,
+        ...(openingBalanceYen
+          ? { openingBalanceYen: Number(openingBalanceYen), openingBalanceAt }
+          : {}),
+      },
+    })
+      .then(async () => {
+        setAccountName("");
+        setOpeningBalanceYen("");
+        await onRefresh();
+        await refreshPlanning();
+        onNotice("口座を追加しました");
+      })
+      .catch((reason) => onNotice((reason as Error).message))
+      .finally(() => setPending(false));
   };
   const addCategory = (event: FormEvent) => {
     event.preventDefault();
@@ -529,7 +909,16 @@ export function SettingsPage({
                   <b>{account.name}</b>
                   <small>
                     {household.pools.find((pool) => pool.id === account.poolId)?.name ?? "個人"} ·{" "}
-                    {account.kind}
+                    {(
+                      { BANK: "銀行", CASH: "現金", CARD: "カード", OTHER: "その他" } as Record<
+                        string,
+                        string
+                      >
+                    )[account.kind] ?? account.kind}{" "}
+                    · 残高{" "}
+                    {yen(
+                      balances.find((balance) => balance.accountId === account.id)?.balanceYen ?? 0,
+                    )}
                   </small>
                 </div>
                 <ChevronRight size={16} />
@@ -543,6 +932,12 @@ export function SettingsPage({
               placeholder="口座・カード名"
               required
             />
+            <select value={accountKind} onChange={(event) => setAccountKind(event.target.value)}>
+              <option value="BANK">銀行</option>
+              <option value="CASH">現金</option>
+              <option value="CARD">カード</option>
+              <option value="OTHER">その他</option>
+            </select>
             <select value={accountPool} onChange={(e) => setAccountPool(e.target.value)}>
               <option value="">紐づくプール</option>
               {household.pools.map((pool) => (
@@ -551,6 +946,26 @@ export function SettingsPage({
                 </option>
               ))}
             </select>
+            <input
+              aria-label="初期残高"
+              type="number"
+              step="1"
+              value={openingBalanceYen}
+              onChange={(event) => setOpeningBalanceYen(event.target.value)}
+              placeholder="初期残高"
+            />
+            {openingBalanceYen && (
+              <label>
+                基準日
+                <input
+                  aria-label="初期残高の基準日"
+                  type="date"
+                  value={openingBalanceAt}
+                  onChange={(event) => setOpeningBalanceAt(event.target.value)}
+                  required
+                />
+              </label>
+            )}
             <button className="button button-soft" disabled={pending}>
               <Plus size={15} />
               追加
@@ -985,6 +1400,456 @@ export function SettingsPage({
             </div>
           </section>
         )}
+        <section className="panel settings-section">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">品目管理</span>
+              <h2>タグ</h2>
+            </div>
+            <span className="count-badge">{tags.filter((tag) => !tag.archived).length}</span>
+          </div>
+          <div className="settings-rows">
+            {tags.map((tag) => (
+              <div className="setting-row" key={tag.id}>
+                <input
+                  aria-label={`${tag.name}のタグ名`}
+                  value={tagDrafts[tag.id] ?? tag.name}
+                  disabled={tag.archived}
+                  onChange={(event) =>
+                    setTagDrafts((current) => ({ ...current, [tag.id]: event.target.value }))
+                  }
+                />
+                <button
+                  className="text-button"
+                  disabled={
+                    pending || tag.archived || (tagDrafts[tag.id] ?? tag.name).trim() === tag.name
+                  }
+                  onClick={() => void renameTag(tag)}
+                >
+                  保存
+                </button>
+                <button
+                  className="text-button"
+                  disabled={pending}
+                  onClick={() => void archiveTag(tag)}
+                >
+                  {tag.archived ? "再表示" : "非表示"}
+                </button>
+              </div>
+            ))}
+          </div>
+          <form className="inline-create" onSubmit={(event) => void saveTag(event)}>
+            <input
+              value={tagName}
+              onChange={(event) => setTagName(event.target.value)}
+              placeholder="タグ名"
+              maxLength={80}
+              required
+            />
+            <button className="button button-soft" disabled={pending}>
+              <Plus size={15} />
+              追加
+            </button>
+          </form>
+        </section>
+        <section className="panel settings-section">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">予算と実績</span>
+              <h2>月次予算</h2>
+            </div>
+            <input
+              aria-label="予算の対象月"
+              type="month"
+              value={budgetPeriod}
+              onChange={(event) => setBudgetPeriod(event.target.value)}
+            />
+          </div>
+          <div className="settings-rows">
+            {budgets.map((budget) => {
+              const ratio =
+                budget.amountYen > 0
+                  ? Math.min(100, (budget.actualYen / budget.amountYen) * 100)
+                  : 0;
+              return (
+                <div className="setting-row" key={budget.id}>
+                  <div>
+                    <b>{budget.name}</b>
+                    <small>
+                      {yen(budget.actualYen)} / {yen(budget.amountYen)} ·{" "}
+                      {budget.remainingYen >= 0
+                        ? `残り${yen(budget.remainingYen)}`
+                        : `${yen(-budget.remainingYen)}超過`}
+                    </small>
+                    <progress max="100" value={ratio} aria-label={`${budget.name}の予算使用率`} />
+                  </div>
+                  <button
+                    className="text-button"
+                    disabled={pending}
+                    onClick={() => editBudget(budget)}
+                  >
+                    編集
+                  </button>
+                  <button
+                    className="text-button"
+                    disabled={pending}
+                    onClick={() => void archiveBudget(budget)}
+                  >
+                    非表示
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <form className="inline-create" onSubmit={(event) => void saveBudget(event)}>
+            <input
+              value={budgetName}
+              onChange={(event) => setBudgetName(event.target.value)}
+              placeholder="予算名（省略可）"
+            />
+            <select
+              value={budgetCategoryId}
+              onChange={(event) => setBudgetCategoryId(event.target.value)}
+            >
+              <option value="">全体</option>
+              {household.categories
+                .filter((category) => !category.archived)
+                .map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+            </select>
+            <input
+              aria-label="予算額"
+              type="number"
+              min="1"
+              step="1"
+              value={budgetAmount}
+              onChange={(event) => setBudgetAmount(event.target.value)}
+              placeholder="予算額"
+              required
+            />
+            <button className="button button-primary" disabled={pending}>
+              <Check size={15} />
+              {editingBudget ? "変更を保存" : "予算を追加"}
+            </button>
+            {editingBudget && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setEditingBudget(null);
+                  setBudgetName("");
+                  setBudgetAmount("");
+                }}
+              >
+                取消
+              </button>
+            )}
+          </form>
+        </section>
+        <section className="panel settings-section">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">予定</span>
+              <h2>定期支出</h2>
+            </div>
+            <span className="count-badge">
+              {recurring.filter((expense) => !expense.archived).length}
+            </span>
+          </div>
+          <div className="settings-rows">
+            {recurring.map((expense) => (
+              <div className="setting-row" key={expense.id}>
+                <div>
+                  <b>{expense.name}</b>
+                  <small>
+                    {expense.merchant} · {yen(expense.amountYen)} ·{" "}
+                    {expense.cadence === "WEEKLY"
+                      ? "毎週"
+                      : expense.cadence === "YEARLY"
+                        ? "毎年"
+                        : "毎月"}{" "}
+                    · 次回 {expense.nextDueOn}
+                  </small>
+                </div>
+                <button
+                  className="text-button"
+                  disabled={pending || expense.archived}
+                  onClick={() => editRecurring(expense)}
+                >
+                  編集
+                </button>
+                <button
+                  className="text-button"
+                  disabled={pending}
+                  onClick={() => void archiveRecurringExpense(expense)}
+                >
+                  {expense.archived ? "再表示" : "終了"}
+                </button>
+              </div>
+            ))}
+          </div>
+          <form className="allocation-rule-form" onSubmit={(event) => void saveRecurring(event)}>
+            <input
+              value={recurringName}
+              onChange={(event) => setRecurringName(event.target.value)}
+              placeholder="支出名"
+              required
+            />
+            <input
+              value={recurringMerchant}
+              onChange={(event) => setRecurringMerchant(event.target.value)}
+              placeholder="店舗"
+            />
+            <input
+              aria-label="定期支出額"
+              type="number"
+              min="1"
+              value={recurringAmount}
+              onChange={(event) => setRecurringAmount(event.target.value)}
+              placeholder="金額"
+              required
+            />
+            <select
+              aria-label="頻度"
+              value={recurringCadence}
+              onChange={(event) => setRecurringCadence(event.target.value)}
+            >
+              <option value="WEEKLY">毎週</option>
+              <option value="MONTHLY">毎月</option>
+              <option value="YEARLY">毎年</option>
+            </select>
+            <select
+              aria-label="カテゴリ"
+              value={recurringCategoryId}
+              onChange={(event) => setRecurringCategoryId(event.target.value)}
+            >
+              <option value="">カテゴリなし</option>
+              {household.categories
+                .filter((category) => !category.archived)
+                .map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+            </select>
+            <select
+              aria-label="決済元"
+              value={recurringAccountId}
+              onChange={(event) => setRecurringAccountId(event.target.value)}
+            >
+              <option value="">決済元なし</option>
+              {household.accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+            <label>
+              開始日
+              <input
+                type="date"
+                value={recurringStartsOn}
+                onChange={(event) => setRecurringStartsOn(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              次回日
+              <input
+                type="date"
+                value={recurringNextDueOn}
+                onChange={(event) => setRecurringNextDueOn(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              終了日
+              <input
+                type="date"
+                value={recurringEndsOn}
+                onChange={(event) => setRecurringEndsOn(event.target.value)}
+              />
+            </label>
+            <button className="button button-primary" disabled={pending}>
+              <Check size={15} />
+              {editingRecurring ? "変更を保存" : "予定を追加"}
+            </button>
+            {editingRecurring && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setEditingRecurring(null)}
+              >
+                取消
+              </button>
+            )}
+          </form>
+        </section>
+        <section className="panel settings-section">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">口座間の移動</span>
+              <h2>資金移動</h2>
+            </div>
+            <ArrowLeftRight size={18} />
+          </div>
+          <form className="allocation-rule-form" onSubmit={(event) => void saveIncome(event)}>
+            <label>
+              入金先
+              <select
+                value={incomeAccountId}
+                onChange={(event) => setIncomeAccountId(event.target.value)}
+                required
+              >
+                <option value="">口座を選択</option>
+                {household.accounts
+                  .filter((account) => account.kind !== "CARD")
+                  .map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <input
+              aria-label="入金額"
+              type="number"
+              min="1"
+              value={incomeAmount}
+              onChange={(event) => setIncomeAmount(event.target.value)}
+              placeholder="入金額"
+              required
+            />
+            <input
+              aria-label="入金日時"
+              type="datetime-local"
+              value={incomeDate}
+              onChange={(event) => setIncomeDate(event.target.value)}
+              required
+            />
+            <input
+              value={incomeDescription}
+              onChange={(event) => setIncomeDescription(event.target.value)}
+              placeholder="入金の摘要"
+            />
+            <button className="button button-soft" disabled={pending || !incomeAccountId}>
+              <Plus size={15} />
+              入金を記録
+            </button>
+          </form>
+          <form className="allocation-rule-form" onSubmit={(event) => void saveMovement(event)}>
+            <select
+              value={movementKind}
+              onChange={(event) =>
+                setMovementKind(event.target.value as "TRANSFER" | "CARD_BILL_PAYMENT")
+              }
+            >
+              <option value="TRANSFER">口座移動</option>
+              <option value="CARD_BILL_PAYMENT">カード請求の支払い</option>
+            </select>
+            <select
+              aria-label="移動元"
+              value={movementFrom}
+              onChange={(event) => setMovementFrom(event.target.value)}
+              required
+            >
+              <option value="">移動元</option>
+              {household.accounts
+                .filter((account) =>
+                  movementKind === "TRANSFER" ? account.kind !== "CARD" : account.kind === "BANK",
+                )
+                .map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+            </select>
+            <select
+              aria-label="移動先"
+              value={movementTo}
+              onChange={(event) => setMovementTo(event.target.value)}
+              required
+            >
+              <option value="">移動先</option>
+              {household.accounts
+                .filter((account) =>
+                  movementKind === "TRANSFER" ? account.kind !== "CARD" : account.kind === "CARD",
+                )
+                .map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+            </select>
+            <input
+              aria-label="移動額"
+              type="number"
+              min="1"
+              value={movementAmount}
+              onChange={(event) => setMovementAmount(event.target.value)}
+              placeholder="金額"
+              required
+            />
+            <input
+              aria-label="移動日時"
+              type="datetime-local"
+              value={movementDate}
+              onChange={(event) => setMovementDate(event.target.value)}
+              required
+            />
+            <input
+              value={movementDescription}
+              onChange={(event) => setMovementDescription(event.target.value)}
+              placeholder="摘要"
+            />
+            <button
+              className="button button-primary"
+              disabled={pending || !movementFrom || !movementTo || movementFrom === movementTo}
+            >
+              <Check size={15} />
+              記録
+            </button>
+          </form>
+          <div className="settings-rows">
+            {incomes.map((income) => (
+              <div className="setting-row" key={income.id}>
+                <div>
+                  <b>外部入金</b>
+                  <small>
+                    {new Date(income.occurredAt).toLocaleDateString("ja-JP")} ·{" "}
+                    {household.accounts.find((account) => account.id === income.accountId)?.name} ·{" "}
+                    {income.description}
+                  </small>
+                </div>
+                <strong>{yen(income.amountYen)}</strong>
+              </div>
+            ))}
+            {movements.map((movement) => (
+              <div className="setting-row" key={movement.id}>
+                <div>
+                  <b>{movement.kind === "CARD_BILL_PAYMENT" ? "カード請求の支払い" : "口座移動"}</b>
+                  <small>
+                    {new Date(movement.occurredAt).toLocaleDateString("ja-JP")} ·{" "}
+                    {
+                      household.accounts.find((account) => account.id === movement.fromAccountId)
+                        ?.name
+                    }{" "}
+                    →{" "}
+                    {
+                      household.accounts.find((account) => account.id === movement.toAccountId)
+                        ?.name
+                    }{" "}
+                    · {movement.description}
+                  </small>
+                </div>
+                <strong>{yen(movement.amountYen)}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
         <section className="panel settings-section member-section">
           <div className="panel-heading">
             <div>

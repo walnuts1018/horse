@@ -1731,6 +1731,37 @@ a {
   min-height: 34px;
 }
 
+.ledger-bulk-allocations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 6px 9px;
+}
+
+.ledger-bulk-allocations legend,
+.ledger-bulk-allocations label {
+  color: #526258;
+  font-size: 11px;
+}
+
+.ledger-bulk-allocations label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ledger-bulk-allocations input[type="number"] {
+  width: 58px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 5px;
+}
+
 .ledger-more {
   display: flex;
   justify-content: center;
@@ -3979,6 +4010,207 @@ a {
   padding: 10px;
   color: var(--green-dark);
   font-size: 12px;
+}
+
+.evidence-preview,
+.evidence-crop-panel,
+.evidence-group-panel {
+  margin-top: 12px;
+}
+
+.evidence-image-stage {
+  position: relative;
+  overflow: hidden;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f5f7f5;
+  line-height: 0;
+}
+
+.evidence-image-stage img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.evidence-region {
+  position: absolute;
+  min-width: 3px;
+  min-height: 3px;
+  border: 2px solid #377758;
+  border-radius: 4px;
+  background: rgb(76 155 108 / 10%);
+  cursor: pointer;
+}
+
+.evidence-region-selected {
+  border-color: #e58a36;
+  background: rgb(229 138 54 / 20%);
+}
+
+.evidence-pdf-preview {
+  width: 100%;
+  height: min(70vh, 720px);
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.evidence-crop-panel,
+.evidence-group-panel {
+  padding: 14px;
+}
+
+.evidence-source-items,
+.evidence-ocr-lines,
+.evidence-match-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.evidence-ocr-lines {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.evidence-match-group {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.evidence-match-group > small {
+  color: var(--muted);
+}
+
+.crop-coordinate-fields {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(60px, 1fr));
+  align-items: end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.crop-coordinate-fields label,
+.crop-coordinate-fields input {
+  min-width: 0;
+}
+
+.evidence-match-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.evidence-match-row span {
+  display: grid;
+  gap: 4px;
+}
+
+.evidence-match-row small {
+  color: var(--muted);
+}
+
+.item-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.item-tag-list i {
+  border-radius: 999px;
+  background: var(--green-wash);
+  padding: 2px 7px;
+  color: var(--green-dark);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.analysis-budget-panel {
+  margin-top: 14px;
+  padding: 18px 20px;
+}
+
+.analysis-budget-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(100px, 2fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.analysis-budget-row > div {
+  display: grid;
+  gap: 4px;
+}
+
+.analysis-budget-row small {
+  color: var(--muted);
+}
+
+.setting-row > input {
+  min-width: 0;
+  max-width: 220px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 8px;
+}
+
+.ledger-bulk-actions select[multiple] {
+  min-height: 72px;
+}
+
+.ledger-evidence-panel {
+  grid-column: 1 / -1;
+  padding: 12px;
+}
+
+.ledger-evidence-entry {
+  display: grid;
+  gap: 6px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ledger-evidence-entry > a {
+  color: var(--green-dark);
+}
+
+.evidence-item-highlighted {
+  border-radius: 8px;
+  background: #fff4e8;
+}
+
+.analysis-budget-row progress,
+.setting-row progress {
+  width: 100%;
+  height: 8px;
+  border: 0;
+  border-radius: 99px;
+  background: #edf1ed;
+  accent-color: #4d8963;
+}
+
+.analysis-budget-row progress::-webkit-progress-bar,
+.setting-row progress::-webkit-progress-bar {
+  border-radius: 99px;
+  background: #edf1ed;
+}
+
+.analysis-budget-row progress::-webkit-progress-value,
+.setting-row progress::-webkit-progress-value {
+  border-radius: 99px;
+  background: #4d8963;
 }
 
 .conflict-panel {

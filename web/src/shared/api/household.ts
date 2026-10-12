@@ -24,6 +24,65 @@ export type Pool = {
 export type Account = { id: string; name: string; kind: string; poolId?: string | null };
 export type Category = { id: string; name: string; archived?: boolean };
 export type Allocation = { poolId: string; poolName?: string; weight: number; amountYen?: number };
+export type Tag = {
+  id: string;
+  householdId: string;
+  name: string;
+  archived: boolean;
+  revision: number;
+};
+export type Budget = {
+  id: string;
+  householdId: string;
+  categoryId?: string | null;
+  name: string;
+  amountYen: number;
+  actualYen: number;
+  remainingYen: number;
+  startsOn: string;
+  endsOn?: string | null;
+  archived: boolean;
+  revision: number;
+};
+export type RecurringExpense = {
+  id: string;
+  householdId: string;
+  name: string;
+  merchant: string;
+  amountYen: number;
+  currency: string;
+  categoryId?: string | null;
+  paymentAccountId?: string | null;
+  cadence: string;
+  startsOn: string;
+  nextDueOn: string;
+  endsOn?: string | null;
+  archived: boolean;
+  revision: number;
+};
+export type AccountMovement = {
+  id: string;
+  householdId: string;
+  kind: "TRANSFER" | "CARD_BILL_PAYMENT";
+  occurredAt: string;
+  fromAccountId: string;
+  toAccountId: string;
+  amountYen: number;
+  currency: string;
+  description: string;
+  createdAt: string;
+};
+export type AccountBalance = { accountId: string; balanceYen: number; currency: string };
+export type AccountIncome = {
+  id: string;
+  householdId: string;
+  accountId: string;
+  amountYen: number;
+  currency: string;
+  occurredAt: string;
+  description: string;
+  createdAt: string;
+};
 export type PurchaseItem = {
   id: string;
   name: string;
@@ -32,6 +91,7 @@ export type PurchaseItem = {
   categoryId?: string | null;
   productVariantId?: string | null;
   allocations: Allocation[];
+  tags: Tag[];
 };
 export type Purchase = {
   id: string;
@@ -385,6 +445,13 @@ export const purchasesQuery = graphql`
               weight
               amountYen
             }
+            tags {
+              id
+              householdId
+              name
+              archived
+              revision
+            }
           }
           totalYen
           corrections {
@@ -535,6 +602,13 @@ export const createPurchaseMutation = graphql`
         amountYen
         categoryId
         productVariantId
+        tags {
+          id
+          name
+          archived
+          revision
+          householdId
+        }
         allocations {
           poolId
           weight
@@ -809,6 +883,246 @@ export const closePeriodMutation = graphql`
       period
       status
       revision
+    }
+  }
+`;
+
+export const tagsQuery = graphql`
+  query TagsQuery($householdId: ID!, $includeArchived: Boolean) {
+    tags(householdId: $householdId, includeArchived: $includeArchived) {
+      id
+      householdId
+      name
+      archived
+      revision
+    }
+  }
+`;
+
+export const createTagMutation = graphql`
+  mutation CreateTagMutation($input: CreateTagInput!) {
+    createTag(input: $input) {
+      id
+      householdId
+      name
+      archived
+      revision
+    }
+  }
+`;
+
+export const updateTagMutation = graphql`
+  mutation UpdateTagMutation($input: UpdateTagInput!) {
+    updateTag(input: $input) {
+      id
+      householdId
+      name
+      archived
+      revision
+    }
+  }
+`;
+
+export const archiveTagMutation = graphql`
+  mutation ArchiveTagMutation($tagId: ID!, $baseRevision: Int!, $archived: Boolean!) {
+    archiveTag(tagId: $tagId, baseRevision: $baseRevision, archived: $archived) {
+      id
+      archived
+      revision
+    }
+  }
+`;
+
+export const bulkUpdatePurchaseItemsMutation = graphql`
+  mutation BulkUpdatePurchaseItemsMutation($input: BulkUpdatePurchaseItemsInput!) {
+    bulkUpdatePurchaseItems(input: $input) {
+      id
+      revision
+      categoryId
+      productVariantId
+      allocations {
+        poolId
+        weight
+      }
+      tags {
+        id
+        name
+        revision
+        archived
+      }
+    }
+  }
+`;
+
+export const budgetsQuery = graphql`
+  query BudgetsQuery($householdId: ID!, $period: String!) {
+    budgets(householdId: $householdId, period: $period) {
+      id
+      householdId
+      categoryId
+      name
+      amountYen
+      actualYen
+      remainingYen
+      startsOn
+      endsOn
+      archived
+      revision
+    }
+  }
+`;
+
+export const setBudgetMutation = graphql`
+  mutation SetBudgetMutation($input: SetBudgetInput!) {
+    setBudget(input: $input) {
+      id
+      categoryId
+      name
+      amountYen
+      actualYen
+      remainingYen
+      startsOn
+      endsOn
+      archived
+      revision
+    }
+  }
+`;
+
+export const archiveBudgetMutation = graphql`
+  mutation ArchiveBudgetMutation($budgetId: ID!, $baseRevision: Int!, $archived: Boolean!) {
+    archiveBudget(budgetId: $budgetId, baseRevision: $baseRevision, archived: $archived) {
+      id
+      archived
+      revision
+    }
+  }
+`;
+
+export const recurringExpensesQuery = graphql`
+  query RecurringExpensesQuery($householdId: ID!, $includeArchived: Boolean) {
+    recurringExpenses(householdId: $householdId, includeArchived: $includeArchived) {
+      id
+      householdId
+      name
+      merchant
+      amountYen
+      currency
+      categoryId
+      paymentAccountId
+      cadence
+      startsOn
+      nextDueOn
+      endsOn
+      archived
+      revision
+    }
+  }
+`;
+
+export const setRecurringExpenseMutation = graphql`
+  mutation SetRecurringExpenseMutation($input: SetRecurringExpenseInput!) {
+    setRecurringExpense(input: $input) {
+      id
+      name
+      merchant
+      amountYen
+      categoryId
+      paymentAccountId
+      cadence
+      startsOn
+      nextDueOn
+      endsOn
+      archived
+      revision
+    }
+  }
+`;
+
+export const archiveRecurringExpenseMutation = graphql`
+  mutation ArchiveRecurringExpenseMutation(
+    $expenseId: ID!
+    $baseRevision: Int!
+    $archived: Boolean!
+  ) {
+    archiveRecurringExpense(
+      expenseId: $expenseId
+      baseRevision: $baseRevision
+      archived: $archived
+    ) {
+      id
+      archived
+      revision
+    }
+  }
+`;
+
+export const accountMovementsQuery = graphql`
+  query AccountMovementsQuery($householdId: ID!, $first: Int) {
+    accountMovements(householdId: $householdId, first: $first) {
+      id
+      householdId
+      kind
+      occurredAt
+      fromAccountId
+      toAccountId
+      amountYen
+      currency
+      description
+      createdAt
+    }
+  }
+`;
+
+export const accountBalancesQuery = graphql`
+  query AccountBalancesQuery($householdId: ID!) {
+    accountBalances(householdId: $householdId) {
+      accountId
+      balanceYen
+      currency
+    }
+  }
+`;
+
+export const accountIncomesQuery = graphql`
+  query AccountIncomesQuery($householdId: ID!, $first: Int) {
+    accountIncomes(householdId: $householdId, first: $first) {
+      id
+      householdId
+      accountId
+      amountYen
+      currency
+      occurredAt
+      description
+      createdAt
+    }
+  }
+`;
+
+export const recordAccountMovementMutation = graphql`
+  mutation RecordAccountMovementMutation($input: RecordAccountMovementInput!) {
+    recordAccountMovement(input: $input) {
+      id
+      kind
+      occurredAt
+      fromAccountId
+      toAccountId
+      amountYen
+      description
+    }
+  }
+`;
+
+export const recordExternalIncomeMutation = graphql`
+  mutation RecordExternalIncomeMutation($input: RecordExternalIncomeInput!) {
+    recordExternalIncome(input: $input) {
+      id
+      householdId
+      accountId
+      currency
+      occurredAt
+      amountYen
+      description
     }
   }
 `;

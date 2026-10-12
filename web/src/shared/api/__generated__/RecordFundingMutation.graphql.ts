@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<6e637fcc09dbb0a0d5bc54b8972b903b>>
+ * @generated SignedSource<<b59db28b50db1dcb43109184a8b4f23e>>
  * @lightSyntaxTransform
  */
 
@@ -10,11 +10,13 @@
 import type { ConcreteRequest } from 'relay-runtime';
 export type RecordFundingInput = {
   amountYen: any;
+  destinationAccountId?: string | null | undefined;
   householdId: string;
   idempotencyKey: string;
   memberId: string;
   occurredAt: string;
   poolId: string;
+  sourceAccountId?: string | null | undefined;
 };
 export type RecordFundingMutation$variables = {
   input: RecordFundingInput;

@@ -1,9 +1,11 @@
 import { BarChart3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
+  budgetsQuery,
   monthlyCategorySpendingQuery,
   readGraphql,
   type Household,
+  type Budget,
   type Purchase,
 } from "../../../shared/api";
 import { useHouseholdPurchases } from "../../../shared/api";
@@ -135,6 +137,8 @@ export function AnalysisPage({ household }: { household: Household }) {
   >([]);
   const [spendingLoading, setSpendingLoading] = useState(true);
   const [spendingError, setSpendingError] = useState("");
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgetError, setBudgetError] = useState("");
   useEffect(() => {
     let active = true;
     setSpendingLoading(true);
@@ -151,6 +155,19 @@ export function AnalysisPage({ household }: { household: Household }) {
       active = false;
     };
   }, [household.id, months[0], currentMonth]);
+  useEffect(() => {
+    let active = true;
+    setBudgetError("");
+    void readGraphql<{ budgets: Budget[] }>(budgetsQuery, {
+      householdId: household.id,
+      period: currentMonth,
+    })
+      .then((result) => active && setBudgets(result.budgets))
+      .catch((reason) => active && setBudgetError((reason as Error).message));
+    return () => {
+      active = false;
+    };
+  }, [household.id, currentMonth]);
 
   const data = purchaseDimensions(purchases, household);
   const categories = Array.from(
@@ -194,7 +211,7 @@ export function AnalysisPage({ household }: { household: Household }) {
     account: "決済元",
   };
   const isLoading = loading || loadingMore || spendingLoading;
-  const loadError = error || moreError || spendingError;
+  const loadError = error || moreError || spendingError || budgetError;
 
   return (
     <>
@@ -248,6 +265,41 @@ export function AnalysisPage({ household }: { household: Household }) {
           <small>{peakRow ? yen(peakRow.amount) : "記録なし"}</small>
         </section>
       </div>
+      {budgets.length > 0 && (
+        <section className="panel analysis-budget-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">{currentMonth}の予算</span>
+              <h2>予算と実績</h2>
+            </div>
+          </div>
+          {budgets.map((budget) => {
+            const ratio =
+              budget.amountYen > 0
+                ? Math.min(100, Math.max(0, (budget.actualYen / budget.amountYen) * 100))
+                : 0;
+            const category = household.categories.find(
+              (candidate) => candidate.id === budget.categoryId,
+            );
+            return (
+              <div className="analysis-budget-row" key={budget.id}>
+                <div>
+                  <b>{category?.name ?? budget.name}</b>
+                  <small>
+                    {yen(budget.actualYen)} / {yen(budget.amountYen)}
+                  </small>
+                </div>
+                <progress max="100" value={ratio} aria-label={`${budget.name}の予算使用率`} />
+                <strong className={budget.remainingYen < 0 ? "settlement-credit" : undefined}>
+                  {budget.remainingYen < 0
+                    ? `${yen(-budget.remainingYen)}超過`
+                    : `残り${yen(budget.remainingYen)}`}
+                </strong>
+              </div>
+            );
+          })}
+        </section>
+      )}
       <div className="analysis-grid">
         <section className="panel analysis-chart-panel">
           <div className="panel-heading">

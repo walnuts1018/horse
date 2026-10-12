@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0f40beaa61c6d64581ef7fb8c410d66d>>
+ * @generated SignedSource<<b791227de06e27994d2bc0589be23730>>
  * @lightSyntaxTransform
  */
 
@@ -12,6 +12,7 @@ export type TransferKind = "ADVANCE" | "GIFT" | "LOAN" | "REPAYMENT" | "%future 
 export type RecordTransferInput = {
   amountYen: any;
   description: string;
+  destinationAccountId?: string | null | undefined;
   fromMemberId: string;
   householdId: string;
   idempotencyKey: string;

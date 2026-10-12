@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e47ff20918fc85e258fc325e95eb2569>>
+ * @generated SignedSource<<99be9d39706b25b4f530672c698ab718>>
  * @lightSyntaxTransform
  */
 
@@ -54,6 +54,13 @@ export type CreatePurchaseMutation$data = {
       readonly id: string;
       readonly name: string;
       readonly productVariantId: string | null | undefined;
+      readonly tags: ReadonlyArray<{
+        readonly archived: boolean;
+        readonly householdId: string;
+        readonly id: string;
+        readonly name: string;
+        readonly revision: number;
+      }>;
     }>;
     readonly merchant: string;
     readonly occurredAt: string;
@@ -87,10 +94,31 @@ v2 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
+  "name": "householdId",
+  "storageKey": null
+},
+v3 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "revision",
+  "storageKey": null
+},
+v4 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v5 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
   "name": "amountYen",
   "storageKey": null
 },
-v3 = [
+v6 = [
   {
     "alias": null,
     "args": [
@@ -106,13 +134,7 @@ v3 = [
     "plural": false,
     "selections": [
       (v1/*:: as any*/),
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "householdId",
-        "storageKey": null
-      },
+      (v2/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -141,13 +163,7 @@ v3 = [
         "name": "totalYen",
         "storageKey": null
       },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
-      },
+      (v3/*:: as any*/),
       {
         "alias": null,
         "args": null,
@@ -164,14 +180,8 @@ v3 = [
         "plural": true,
         "selections": [
           (v1/*:: as any*/),
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "name",
-            "storageKey": null
-          },
-          (v2/*:: as any*/),
+          (v4/*:: as any*/),
+          (v5/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -184,6 +194,28 @@ v3 = [
             "args": null,
             "kind": "ScalarField",
             "name": "productVariantId",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Tag",
+            "kind": "LinkedField",
+            "name": "tags",
+            "plural": true,
+            "selections": [
+              (v1/*:: as any*/),
+              (v4/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "archived",
+                "storageKey": null
+              },
+              (v3/*:: as any*/),
+              (v2/*:: as any*/)
+            ],
             "storageKey": null
           },
           {
@@ -208,7 +240,7 @@ v3 = [
                 "name": "weight",
                 "storageKey": null
               },
-              (v2/*:: as any*/)
+              (v5/*:: as any*/)
             ],
             "storageKey": null
           }
@@ -225,7 +257,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "CreatePurchaseMutation",
-    "selections": (v3/*:: as any*/),
+    "selections": (v6/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
@@ -234,19 +266,19 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "CreatePurchaseMutation",
-    "selections": (v3/*:: as any*/)
+    "selections": (v6/*:: as any*/)
   },
   "params": {
-    "cacheID": "7a5aa34be89e455988ce0e3991876f9a",
+    "cacheID": "fc2c28360985933b7b6098178debc8a9",
     "id": null,
     "metadata": {},
     "name": "CreatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    id\n    householdId\n    occurredAt\n    merchant\n    paymentAccountId\n    totalYen\n    revision\n    status\n    items {\n      id\n      name\n      amountYen\n      categoryId\n      productVariantId\n      allocations {\n        poolId\n        weight\n        amountYen\n      }\n    }\n  }\n}\n"
+    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    id\n    householdId\n    occurredAt\n    merchant\n    paymentAccountId\n    totalYen\n    revision\n    status\n    items {\n      id\n      name\n      amountYen\n      categoryId\n      productVariantId\n      tags {\n        id\n        name\n        archived\n        revision\n        householdId\n      }\n      allocations {\n        poolId\n        weight\n        amountYen\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3e1bc42abd70612178f49ef80a9a2963";
+(node as any).hash = "5ac61e50d48aee7fecbd44fa6370dee0";
 
 export default node;

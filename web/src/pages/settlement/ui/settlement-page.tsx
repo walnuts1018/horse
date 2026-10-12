@@ -52,6 +52,9 @@ export function SettlementPage({ household }: { household: Household }) {
   const [transferDescription, setTransferDescription] = useState("");
   const [transferLoanId, setTransferLoanId] = useState("");
   const [transferPaymentAccountId, setTransferPaymentAccountId] = useState("");
+  const [transferDestinationAccountId, setTransferDestinationAccountId] = useState("");
+  const [fundingSourceAccounts, setFundingSourceAccounts] = useState<Record<string, string>>({});
+  const [fundingDestinationAccountId, setFundingDestinationAccountId] = useState("");
   const load = async () => {
     try {
       const [settlementData, ledgerData, loanData] = await Promise.all([
@@ -93,6 +96,12 @@ export function SettlementPage({ household }: { household: Household }) {
           amountYen,
           occurredAt: new Date().toISOString(),
           idempotencyKey: makeIdempotencyKey(),
+          ...(fundingSourceAccounts[memberId]
+            ? { sourceAccountId: fundingSourceAccounts[memberId] }
+            : {}),
+          ...(fundingDestinationAccountId
+            ? { destinationAccountId: fundingDestinationAccountId }
+            : {}),
         },
       });
       await load();
@@ -144,6 +153,7 @@ export function SettlementPage({ household }: { household: Household }) {
           kind: transferKind,
           ...(transferKind === "REPAYMENT" ? { loanId: transferLoanId } : {}),
           paymentAccountId: transferPaymentAccountId || null,
+          destinationAccountId: transferDestinationAccountId || null,
           amountYen,
           occurredAt: new Date().toISOString(),
           description: transferDescription.trim() || "メンバー間の送金",
@@ -154,6 +164,7 @@ export function SettlementPage({ household }: { household: Household }) {
       setTransferDescription("");
       setTransferLoanId("");
       setTransferPaymentAccountId("");
+      setTransferDestinationAccountId("");
       setTransferOpen(false);
       await load();
     } catch (reason) {
@@ -272,6 +283,51 @@ export function SettlementPage({ household }: { household: Household }) {
                   {yen(line.amountDueYen)}
                 </b>
                 <small>次回精算残高</small>
+                <label className="settlement-account-select">
+                  <span>拠出元</span>
+                  <select
+                    value={fundingSourceAccounts[line.memberId] ?? ""}
+                    onChange={(event) =>
+                      setFundingSourceAccounts((current) => ({
+                        ...current,
+                        [line.memberId]: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">口座外</option>
+                    {household.accounts
+                      .filter((account) => {
+                        const pool = household.pools.find(
+                          (candidate) => candidate.id === account.poolId,
+                        );
+                        return pool?.kind === "PERSONAL" && pool.ownerMemberId === line.memberId;
+                      })
+                      .map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label className="settlement-account-select">
+                  <span>入金先</span>
+                  <select
+                    value={fundingDestinationAccountId}
+                    onChange={(event) => setFundingDestinationAccountId(event.target.value)}
+                  >
+                    <option value="">未指定</option>
+                    {household.accounts
+                      .filter((account) => {
+                        const sharedPool = household.pools.find((pool) => pool.kind === "SHARED");
+                        return sharedPool?.id === account.poolId && account.kind !== "CARD";
+                      })
+                      .map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
                 <button
                   className="text-button"
                   disabled={pending || line.amountDueYen <= 0}
@@ -406,6 +462,22 @@ export function SettlementPage({ household }: { household: Household }) {
                     {account.name}
                   </option>
                 ))}
+              </select>
+            </label>
+            <label>
+              入金先口座
+              <select
+                value={transferDestinationAccountId}
+                onChange={(event) => setTransferDestinationAccountId(event.target.value)}
+              >
+                <option value="">口座外</option>
+                {household.accounts
+                  .filter((account) => account.kind !== "CARD")
+                  .map((account) => (
+                    <option value={account.id} key={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
               </select>
             </label>
             <label>

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronRight, FileImage, ShieldCheck, Upload, X } from "lucide-react";
+import { Check, ChevronRight, FileImage, Link2, ShieldCheck, Upload, X } from "lucide-react";
 import {
   createPurchaseMutation,
   makeIdempotencyKey,
   readGraphql,
   type Household,
+  type Purchase,
 } from "../../../shared/api";
 import { InlineError } from "../../../shared/ui";
+import { useHouseholdPurchases } from "../../../shared/api";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -24,7 +26,16 @@ type ExtractedItem = {
   confidence: number;
   verification: string;
   categoryHint?: string;
+  region?: Region;
 };
+type Region = { page: number; top: number; left: number; bottom: number; right: number };
+type MatchCandidate = {
+  documentId: string;
+  sourceReference: string;
+  state: string;
+  reasons: string[];
+};
+type ObservationCandidates = { sourceReference: string; matches: MatchCandidate[] };
 type StatementEntry = {
   row: number;
   kind: string;
@@ -44,6 +55,7 @@ type VerificationCandidate = {
 };
 type DocumentReview = {
   id: string;
+  jobId?: string;
   name?: string;
   status: string;
   sourceKind?: string;
@@ -51,13 +63,16 @@ type DocumentReview = {
   createdAt?: string;
   sha256?: string;
   duplicateOf?: string;
+  confirmations?: Array<{ sourceReference: string; purchaseId: string }>;
   result?: {
     receipt?: { merchant?: string; purchasedAt?: string; items?: ExtractedItem[] };
     computedTotal?: number;
     balanced?: boolean;
     candidates?: VerificationCandidate[];
     issues?: string[];
-    ocrLines?: Array<{ text: string; confidence: number }>;
+    transform?: number[];
+    transformPage?: number;
+    ocrLines?: Array<{ text: string; confidence: number; region?: Region }>;
     statements?: StatementEntry[];
   };
 };
@@ -110,7 +125,20 @@ export function ImportsPage({
   const [confirmedStatements, setConfirmedStatements] = useState<Set<string>>(() => new Set());
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
   const [paymentAccountId, setPaymentAccountId] = useState(household.accounts[0]?.id ?? "");
+  const [cropRegion, setCropRegion] = useState<Region | null>(null);
+  const [cropPending, setCropPending] = useState(false);
+  const [observations, setObservations] = useState<ObservationCandidates[]>([]);
+  const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
+  const [targetPurchaseId, setTargetPurchaseId] = useState("");
+  const [targetItemId, setTargetItemId] = useState("");
+  const [activeObservationRef, setActiveObservationRef] = useState("");
+  const [receiptEvidenceIndex, setReceiptEvidenceIndex] = useState("0");
+  const { purchases: recentPurchases, refresh: refreshPurchases } = useHouseholdPurchases(
+    household.id,
+    100,
+  );
   const selectedDocument = documents.find((document) => document.id === selected);
+  const targetPurchase = recentPurchases.find((purchase) => purchase.id === targetPurchaseId);
   const refreshDocuments = useCallback(
     async (silent = false) => {
       try {
@@ -157,6 +185,36 @@ export function ImportsPage({
     const interval = window.setInterval(() => void refreshDocuments(true), 1200);
     return () => window.clearInterval(interval);
   }, [hasProcessingDocuments, refreshDocuments]);
+  useEffect(() => {
+    if (!selectedDocument || !selectedDocument.result) {
+      setObservations([]);
+      setSelectedMatches(new Set());
+      return;
+    }
+    let active = true;
+    setObservations([]);
+    setSelectedMatches(new Set());
+    void fetch(`/documents/${encodeURIComponent(selectedDocument.id)}/matches`, {
+      credentials: "include",
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`照合候補を取得できませんでした (${response.status})`);
+        return (await response.json()) as { observations: ObservationCandidates[] };
+      })
+      .then((payload) => {
+        if (!active) return;
+        setObservations(payload.observations);
+        if (!selectedDocument.result?.receipt?.items?.length) {
+          setActiveObservationRef(payload.observations[0]?.sourceReference ?? "");
+        } else {
+          setActiveObservationRef("");
+        }
+      })
+      .catch((reason) => active && setMessage((reason as Error).message));
+    return () => {
+      active = false;
+    };
+  }, [selectedDocument?.id, selectedDocument?.jobId, selectedDocument?.status]);
   const addFiles = (selected: FileList | null) => {
     if (!selected) return;
     setFiles((current) => [
@@ -249,6 +307,86 @@ export function ImportsPage({
       setPending(false);
     }
   };
+  const retryDocumentCrop = async (document: DocumentReview) => {
+    if (!cropRegion) return;
+    setCropPending(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/documents/${encodeURIComponent(document.id)}/retry`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hints: [], crop: cropRegion }),
+      });
+      if (!response.ok) throw new Error(`範囲を再抽出できませんでした (${response.status})`);
+      const accepted = (await response.json()) as { jobId: string; status: string };
+      setDocuments((current) =>
+        current.map((entry) =>
+          entry.id === document.id
+            ? { ...entry, jobId: accepted.jobId, status: accepted.status, result: undefined }
+            : entry,
+        ),
+      );
+      await refreshDocuments(true);
+    } catch (reason) {
+      setMessage((reason as Error).message);
+    } finally {
+      setCropPending(false);
+    }
+  };
+  const confirmEvidenceGroup = async () => {
+    if (
+      !selectedDocument ||
+      !targetPurchaseId ||
+      (!activeObservationRef && !selectedDocument.result?.receipt?.items?.length)
+    )
+      return;
+    const selectedCandidates = observations.flatMap((observation) =>
+      observation.matches
+        .filter((candidate) =>
+          selectedMatches.has(
+            `${observation.sourceReference}\u0000${candidate.documentId}\u0000${candidate.sourceReference}`,
+          ),
+        )
+        .map((candidate) => ({
+          documentId: candidate.documentId,
+          sourceReference: candidate.sourceReference,
+          ...(targetItemId ? { itemId: targetItemId } : {}),
+        })),
+    );
+    const isReceiptObservation =
+      Boolean(selectedDocument.result?.receipt?.items?.length) && !activeObservationRef;
+    const receiptIndex = Number(receiptEvidenceIndex);
+    const sources = [
+      {
+        documentId: selectedDocument.id,
+        sourceReference: activeObservationRef,
+        ...(targetItemId ? { itemId: targetItemId } : {}),
+        ...(isReceiptObservation && selectedDocument.jobId && targetItemId
+          ? { observationJobId: selectedDocument.jobId, sourceItemIndex: receiptIndex }
+          : {}),
+      },
+      ...selectedCandidates,
+    ];
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/purchases/${encodeURIComponent(targetPurchaseId)}/evidence`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sources }),
+      });
+      if (!response.ok) throw new Error(`証拠を購入に紐付けできませんでした (${response.status})`);
+      setSelectedMatches(new Set());
+      await refreshDocuments(true);
+      onAdded(true);
+    } catch (reason) {
+      setMessage((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
   const editItem = (documentId: string, index: number, patch: Partial<ExtractedItem>) =>
     setDocuments((current) =>
       current.map((document) =>
@@ -282,7 +420,7 @@ export function ImportsPage({
     setPending(true);
     setMessage("");
     try {
-      await readGraphql(createPurchaseMutation, {
+      const created = await readGraphql<{ createPurchase: Purchase }>(createPurchaseMutation, {
         input: {
           idempotencyKey: makeIdempotencyKey(),
           householdId: household.id,
@@ -303,6 +441,33 @@ export function ImportsPage({
           })),
         },
       });
+      await refreshPurchases();
+      const evidenceResponse = await fetch(
+        `/purchases/${encodeURIComponent(created.createPurchase.id)}/evidence`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sources: items.map((_, index) => ({
+              documentId: document.id,
+              sourceReference: "",
+              ...(created.createPurchase.items[index]?.id
+                ? { itemId: created.createPurchase.items[index].id }
+                : {}),
+              ...(document.jobId
+                ? { observationJobId: document.jobId, sourceItemIndex: index }
+                : {}),
+            })),
+          }),
+        },
+      );
+      if (!evidenceResponse.ok) {
+        setTargetPurchaseId(created.createPurchase.id);
+        onAdded(true);
+        setMessage("購入は登録済みです。証拠の紐付けを再試行してください");
+        return;
+      }
       onAdded();
     } catch (reason) {
       setMessage((reason as Error).message);
@@ -320,7 +485,7 @@ export function ImportsPage({
     setPending(true);
     setMessage("");
     try {
-      await readGraphql(createPurchaseMutation, {
+      const created = await readGraphql<{ createPurchase: Purchase }>(createPurchaseMutation, {
         input: {
           idempotencyKey: makeIdempotencyKey(),
           householdId: household.id,
@@ -338,7 +503,25 @@ export function ImportsPage({
           ],
         },
       });
+      await refreshPurchases();
+      const evidenceResponse = await fetch(
+        `/purchases/${encodeURIComponent(created.createPurchase.id)}/evidence`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sources: [{ documentId: document.id, sourceReference: reference }],
+          }),
+        },
+      );
       setConfirmedStatements((current) => new Set(current).add(key));
+      if (!evidenceResponse.ok) {
+        setTargetPurchaseId(created.createPurchase.id);
+        setMessage("購入は登録済みです。証拠の紐付けを再試行してください");
+        onAdded(true);
+        return;
+      }
       onAdded(true);
     } catch (reason) {
       setMessage((reason as Error).message);
@@ -481,15 +664,139 @@ export function ImportsPage({
             </button>
           )}
           {selectedDocument && (
-            <a
-              className="review-image"
-              href={`/documents/${encodeURIComponent(selectedDocument.id)}/content`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <FileImage size={23} />
-              <span>{selectedDocument.name ?? "原本を開く"}</span>
-            </a>
+            <div className="evidence-preview">
+              <a
+                className="review-image"
+                href={`/documents/${encodeURIComponent(selectedDocument.id)}/content`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <FileImage size={23} />
+                <span>{selectedDocument.name ?? "原本を開く"}</span>
+              </a>
+              {selectedDocument.mimeType?.startsWith("image/") ? (
+                <div className="evidence-image-stage">
+                  <img
+                    src={`/documents/${encodeURIComponent(selectedDocument.id)}/content`}
+                    alt="証拠原本"
+                  />
+                  {selectedDocument.result?.receipt?.items?.map((item, index) =>
+                    item.region ? (
+                      <button
+                        key={index}
+                        type="button"
+                        className={`evidence-region ${Number(receiptEvidenceIndex) === index ? "evidence-region-selected" : ""}`}
+                        style={{
+                          top: `${item.region.top * 100}%`,
+                          left: `${item.region.left * 100}%`,
+                          width: `${(item.region.right - item.region.left) * 100}%`,
+                          height: `${(item.region.bottom - item.region.top) * 100}%`,
+                        }}
+                        aria-label={`${item.name}の原本位置`}
+                        onClick={() => {
+                          setReceiptEvidenceIndex(String(index));
+                          setCropRegion(item.region ?? null);
+                        }}
+                      />
+                    ) : null,
+                  )}
+                </div>
+              ) : selectedDocument.mimeType === "application/pdf" ? (
+                <iframe
+                  className="evidence-pdf-preview"
+                  title="証拠原本"
+                  src={`/documents/${encodeURIComponent(selectedDocument.id)}/content`}
+                />
+              ) : null}
+            </div>
+          )}
+          {selectedDocument?.result?.receipt?.items && (
+            <section className="panel evidence-crop-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="eyebrow">原本座標</span>
+                  <h3>範囲の再抽出</h3>
+                </div>
+                <span>{cropRegion ? `ページ ${cropRegion.page + 1}` : "範囲未選択"}</span>
+              </div>
+              <div className="evidence-source-items">
+                {selectedDocument.result.receipt.items.map((item, index) => (
+                  <button
+                    type="button"
+                    key={index}
+                    className="text-button"
+                    disabled={!item.region}
+                    onClick={() => {
+                      setReceiptEvidenceIndex(String(index));
+                      setCropRegion(item.region ?? null);
+                    }}
+                  >
+                    {item.name} · {yen(item.grossAmount || item.printedAmount)}
+                  </button>
+                ))}
+              </div>
+              {!!selectedDocument.result.ocrLines?.length && (
+                <div className="evidence-ocr-lines">
+                  {selectedDocument.result.ocrLines
+                    .filter((line) => line.region)
+                    .slice(0, 80)
+                    .map((line, index) => (
+                      <button
+                        type="button"
+                        className="text-button"
+                        key={`${line.text}-${index}`}
+                        onClick={() => setCropRegion(line.region ?? null)}
+                      >
+                        {line.text}
+                      </button>
+                    ))}
+                </div>
+              )}
+              {cropRegion && (
+                <div className="crop-coordinate-fields">
+                  {(["top", "left", "bottom", "right"] as const).map((key) => (
+                    <label key={key}>
+                      {{ top: "上", left: "左", bottom: "下", right: "右" }[key]}
+                      <input
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={cropRegion[key]}
+                        onChange={(event) =>
+                          setCropRegion((current) =>
+                            current ? { ...current, [key]: Number(event.target.value) } : current,
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                  <label>
+                    ページ
+                    <input
+                      type="number"
+                      min="1"
+                      value={cropRegion.page + 1}
+                      onChange={(event) =>
+                        setCropRegion((current) =>
+                          current
+                            ? { ...current, page: Math.max(0, Number(event.target.value) - 1) }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                  <button
+                    className="button button-soft"
+                    type="button"
+                    disabled={pending || cropPending}
+                    onClick={() => void retryDocumentCrop(selectedDocument)}
+                  >
+                    {cropPending ? "抽出中" : "この範囲で再抽出"}
+                  </button>
+                </div>
+              )}
+            </section>
           )}
           {!!selectedDocument?.result?.receipt?.items?.length && (
             <div className="receipt-review">
@@ -661,6 +968,139 @@ export function ImportsPage({
                 </div>
               ))}
             </div>
+          )}
+          {selectedDocument?.result && observations.length > 0 && (
+            <section className="panel evidence-group-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="eyebrow">照合候補</span>
+                  <h3>購入へまとめる証拠</h3>
+                </div>
+                <Link2 size={18} />
+              </div>
+              <label className="select-filter">
+                <span>照合元</span>
+                <select
+                  value={activeObservationRef}
+                  onChange={(event) => setActiveObservationRef(event.target.value)}
+                >
+                  {selectedDocument.result.receipt?.items?.length ? (
+                    <option value="">レシート全体</option>
+                  ) : null}
+                  {observations.map((observation) => {
+                    const statement = selectedDocument.result?.statements?.find(
+                      (entry) =>
+                        (entry.transactionId
+                          ? `transaction:${entry.transactionId}`
+                          : `row:${entry.row}`) === observation.sourceReference,
+                    );
+                    return (
+                      <option key={observation.sourceReference} value={observation.sourceReference}>
+                        {statement?.merchant || observation.sourceReference || "レシート"}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              <div className="evidence-match-list">
+                {observations.map((observation) => (
+                  <div className="evidence-match-group" key={observation.sourceReference}>
+                    <small>{observation.sourceReference || "レシート全体"}</small>
+                    {observation.matches.map((candidate) => {
+                      const key = `${observation.sourceReference}\u0000${candidate.documentId}\u0000${candidate.sourceReference}`;
+                      const sourceDocument = documents.find(
+                        (document) => document.id === candidate.documentId,
+                      );
+                      return (
+                        <label className="evidence-match-row" key={key}>
+                          <input
+                            type="checkbox"
+                            checked={selectedMatches.has(key)}
+                            onChange={(event) =>
+                              setSelectedMatches((current) => {
+                                const next = new Set(current);
+                                if (event.target.checked) next.add(key);
+                                else next.delete(key);
+                                return next;
+                              })
+                            }
+                          />
+                          <span>
+                            <b>
+                              {sourceKindLabel(sourceDocument?.sourceKind)} ·{" "}
+                              {candidate.sourceReference ||
+                                sourceDocument?.result?.receipt?.merchant ||
+                                "レシート"}
+                            </b>
+                            <small>
+                              {candidate.state} · {candidate.reasons.join("、")}
+                            </small>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+              <label className="select-filter">
+                <span>購入先</span>
+                <select
+                  value={targetPurchaseId}
+                  onChange={(event) => {
+                    setTargetPurchaseId(event.target.value);
+                    setTargetItemId("");
+                  }}
+                >
+                  <option value="">購入を選択</option>
+                  {recentPurchases.map((purchase) => (
+                    <option key={purchase.id} value={purchase.id}>
+                      {purchase.occurredAt.slice(0, 10)} · {purchase.merchant} ·{" "}
+                      {yen(purchase.totalYen)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {targetPurchase && (
+                <label className="select-filter">
+                  <span>紐付ける品目</span>
+                  <select
+                    value={targetItemId}
+                    onChange={(event) => setTargetItemId(event.target.value)}
+                  >
+                    <option value="">購入全体</option>
+                    {targetPurchase.items.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} · {yen(item.amountYen)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {selectedDocument.result.receipt?.items?.length ? (
+                <label className="select-filter">
+                  <span>照合するレシート品目</span>
+                  <select
+                    value={receiptEvidenceIndex}
+                    onChange={(event) => setReceiptEvidenceIndex(event.target.value)}
+                  >
+                    {selectedDocument.result.receipt.items.map((item, index) => (
+                      <option key={index} value={index}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <button
+                className="button button-primary button-wide"
+                type="button"
+                disabled={pending || !targetPurchaseId}
+                onClick={() => void confirmEvidenceGroup()}
+              >
+                <Link2 size={15} />
+                選択した証拠を紐付け
+              </button>
+            </section>
           )}
           {message && <InlineError message={message} />}
         </section>
