@@ -29,18 +29,25 @@ import (
 
 // PurchaseItem is an object representing the database table.
 type PurchaseItem struct {
-	ID                 uuid.UUID                   `db:"id,pk" `
-	HouseholdID        uuid.UUID                   `db:"household_id" `
-	PurchaseID         uuid.UUID                   `db:"purchase_id" `
-	Name               string                      `db:"name" `
-	AmountYen          int64                       `db:"amount_yen" `
-	CategoryID         sql.Null[uuid.UUID]         `db:"category_id" `
-	Revision           int64                       `db:"revision" `
-	FieldRevisions     types.JSON[json.RawMessage] `db:"field_revisions" `
-	CreatedAt          time.Time                   `db:"created_at" `
-	UpdatedAt          time.Time                   `db:"updated_at" `
-	AllocationOverride bool                        `db:"allocation_override" `
-	ProductVariantID   sql.Null[uuid.UUID]         `db:"product_variant_id" `
+	ID                                  uuid.UUID                   `db:"id,pk" `
+	HouseholdID                         uuid.UUID                   `db:"household_id" `
+	PurchaseID                          uuid.UUID                   `db:"purchase_id" `
+	Name                                string                      `db:"name" `
+	AmountYen                           int64                       `db:"amount_yen" `
+	CategoryID                          sql.Null[uuid.UUID]         `db:"category_id" `
+	Revision                            int64                       `db:"revision" `
+	FieldRevisions                      types.JSON[json.RawMessage] `db:"field_revisions" `
+	CreatedAt                           time.Time                   `db:"created_at" `
+	UpdatedAt                           time.Time                   `db:"updated_at" `
+	AllocationOverride                  bool                        `db:"allocation_override" `
+	ProductVariantID                    sql.Null[uuid.UUID]         `db:"product_variant_id" `
+	QuantityNumerator                   sql.Null[int64]             `db:"quantity_numerator" `
+	QuantityDenominator                 sql.Null[int64]             `db:"quantity_denominator" `
+	QuantityUnit                        sql.Null[string]            `db:"quantity_unit" `
+	PrintedUnitPriceYen                 sql.Null[int64]             `db:"printed_unit_price_yen" `
+	PrintedUnitPriceQuantityNumerator   sql.Null[int64]             `db:"printed_unit_price_quantity_numerator" `
+	PrintedUnitPriceQuantityDenominator sql.Null[int64]             `db:"printed_unit_price_quantity_denominator" `
+	PrintedUnitPriceUnit                sql.Null[string]            `db:"printed_unit_price_unit" `
 
 	R purchaseItemR `db:"-" `
 
@@ -89,7 +96,7 @@ type purchaseItemRLoaded struct {
 
 func buildPurchaseItemColumns(tableName string) purchaseItemColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "purchase_id", "name", "amount_yen", "category_id", "revision", "field_revisions", "created_at", "updated_at", "allocation_override", "product_variant_id",
+		"id", "household_id", "purchase_id", "name", "amount_yen", "category_id", "revision", "field_revisions", "created_at", "updated_at", "allocation_override", "product_variant_id", "quantity_numerator", "quantity_denominator", "quantity_unit", "printed_unit_price_yen", "printed_unit_price_quantity_numerator", "printed_unit_price_quantity_denominator", "printed_unit_price_unit",
 	)
 
 	if tableName != "" {
@@ -97,38 +104,52 @@ func buildPurchaseItemColumns(tableName string) purchaseItemColumns {
 	}
 
 	return purchaseItemColumns{
-		ColumnsExpr:        columnsExpr,
-		tableAlias:         tableName,
-		ID:                 buildPurchaseItemColumn(tableName, "id"),
-		HouseholdID:        buildPurchaseItemColumn(tableName, "household_id"),
-		PurchaseID:         buildPurchaseItemColumn(tableName, "purchase_id"),
-		Name:               buildPurchaseItemColumn(tableName, "name"),
-		AmountYen:          buildPurchaseItemColumn(tableName, "amount_yen"),
-		CategoryID:         buildPurchaseItemColumn(tableName, "category_id"),
-		Revision:           buildPurchaseItemColumn(tableName, "revision"),
-		FieldRevisions:     buildPurchaseItemColumn(tableName, "field_revisions"),
-		CreatedAt:          buildPurchaseItemColumn(tableName, "created_at"),
-		UpdatedAt:          buildPurchaseItemColumn(tableName, "updated_at"),
-		AllocationOverride: buildPurchaseItemColumn(tableName, "allocation_override"),
-		ProductVariantID:   buildPurchaseItemColumn(tableName, "product_variant_id"),
+		ColumnsExpr:                         columnsExpr,
+		tableAlias:                          tableName,
+		ID:                                  buildPurchaseItemColumn(tableName, "id"),
+		HouseholdID:                         buildPurchaseItemColumn(tableName, "household_id"),
+		PurchaseID:                          buildPurchaseItemColumn(tableName, "purchase_id"),
+		Name:                                buildPurchaseItemColumn(tableName, "name"),
+		AmountYen:                           buildPurchaseItemColumn(tableName, "amount_yen"),
+		CategoryID:                          buildPurchaseItemColumn(tableName, "category_id"),
+		Revision:                            buildPurchaseItemColumn(tableName, "revision"),
+		FieldRevisions:                      buildPurchaseItemColumn(tableName, "field_revisions"),
+		CreatedAt:                           buildPurchaseItemColumn(tableName, "created_at"),
+		UpdatedAt:                           buildPurchaseItemColumn(tableName, "updated_at"),
+		AllocationOverride:                  buildPurchaseItemColumn(tableName, "allocation_override"),
+		ProductVariantID:                    buildPurchaseItemColumn(tableName, "product_variant_id"),
+		QuantityNumerator:                   buildPurchaseItemColumn(tableName, "quantity_numerator"),
+		QuantityDenominator:                 buildPurchaseItemColumn(tableName, "quantity_denominator"),
+		QuantityUnit:                        buildPurchaseItemColumn(tableName, "quantity_unit"),
+		PrintedUnitPriceYen:                 buildPurchaseItemColumn(tableName, "printed_unit_price_yen"),
+		PrintedUnitPriceQuantityNumerator:   buildPurchaseItemColumn(tableName, "printed_unit_price_quantity_numerator"),
+		PrintedUnitPriceQuantityDenominator: buildPurchaseItemColumn(tableName, "printed_unit_price_quantity_denominator"),
+		PrintedUnitPriceUnit:                buildPurchaseItemColumn(tableName, "printed_unit_price_unit"),
 	}
 }
 
 type purchaseItemColumns struct {
 	expr.ColumnsExpr
-	tableAlias         string
-	ID                 purchaseItemColumn
-	HouseholdID        purchaseItemColumn
-	PurchaseID         purchaseItemColumn
-	Name               purchaseItemColumn
-	AmountYen          purchaseItemColumn
-	CategoryID         purchaseItemColumn
-	Revision           purchaseItemColumn
-	FieldRevisions     purchaseItemColumn
-	CreatedAt          purchaseItemColumn
-	UpdatedAt          purchaseItemColumn
-	AllocationOverride purchaseItemColumn
-	ProductVariantID   purchaseItemColumn
+	tableAlias                          string
+	ID                                  purchaseItemColumn
+	HouseholdID                         purchaseItemColumn
+	PurchaseID                          purchaseItemColumn
+	Name                                purchaseItemColumn
+	AmountYen                           purchaseItemColumn
+	CategoryID                          purchaseItemColumn
+	Revision                            purchaseItemColumn
+	FieldRevisions                      purchaseItemColumn
+	CreatedAt                           purchaseItemColumn
+	UpdatedAt                           purchaseItemColumn
+	AllocationOverride                  purchaseItemColumn
+	ProductVariantID                    purchaseItemColumn
+	QuantityNumerator                   purchaseItemColumn
+	QuantityDenominator                 purchaseItemColumn
+	QuantityUnit                        purchaseItemColumn
+	PrintedUnitPriceYen                 purchaseItemColumn
+	PrintedUnitPriceQuantityNumerator   purchaseItemColumn
+	PrintedUnitPriceQuantityDenominator purchaseItemColumn
+	PrintedUnitPriceUnit                purchaseItemColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -174,22 +195,29 @@ func (c purchaseItemColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type PurchaseItemSetter struct {
-	ID                 *uuid.UUID                   `db:"id,pk" `
-	HouseholdID        *uuid.UUID                   `db:"household_id" `
-	PurchaseID         *uuid.UUID                   `db:"purchase_id" `
-	Name               *string                      `db:"name" `
-	AmountYen          *int64                       `db:"amount_yen" `
-	CategoryID         *sql.Null[uuid.UUID]         `db:"category_id" `
-	Revision           *int64                       `db:"revision" `
-	FieldRevisions     *types.JSON[json.RawMessage] `db:"field_revisions" `
-	CreatedAt          *time.Time                   `db:"created_at" `
-	UpdatedAt          *time.Time                   `db:"updated_at" `
-	AllocationOverride *bool                        `db:"allocation_override" `
-	ProductVariantID   *sql.Null[uuid.UUID]         `db:"product_variant_id" `
+	ID                                  *uuid.UUID                   `db:"id,pk" `
+	HouseholdID                         *uuid.UUID                   `db:"household_id" `
+	PurchaseID                          *uuid.UUID                   `db:"purchase_id" `
+	Name                                *string                      `db:"name" `
+	AmountYen                           *int64                       `db:"amount_yen" `
+	CategoryID                          *sql.Null[uuid.UUID]         `db:"category_id" `
+	Revision                            *int64                       `db:"revision" `
+	FieldRevisions                      *types.JSON[json.RawMessage] `db:"field_revisions" `
+	CreatedAt                           *time.Time                   `db:"created_at" `
+	UpdatedAt                           *time.Time                   `db:"updated_at" `
+	AllocationOverride                  *bool                        `db:"allocation_override" `
+	ProductVariantID                    *sql.Null[uuid.UUID]         `db:"product_variant_id" `
+	QuantityNumerator                   *sql.Null[int64]             `db:"quantity_numerator" `
+	QuantityDenominator                 *sql.Null[int64]             `db:"quantity_denominator" `
+	QuantityUnit                        *sql.Null[string]            `db:"quantity_unit" `
+	PrintedUnitPriceYen                 *sql.Null[int64]             `db:"printed_unit_price_yen" `
+	PrintedUnitPriceQuantityNumerator   *sql.Null[int64]             `db:"printed_unit_price_quantity_numerator" `
+	PrintedUnitPriceQuantityDenominator *sql.Null[int64]             `db:"printed_unit_price_quantity_denominator" `
+	PrintedUnitPriceUnit                *sql.Null[string]            `db:"printed_unit_price_unit" `
 }
 
 func (s PurchaseItemSetter) SetColumns() []string {
-	vals := make([]string, 0, 12)
+	vals := make([]string, 0, 19)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -225,6 +253,27 @@ func (s PurchaseItemSetter) SetColumns() []string {
 	}
 	if s.ProductVariantID != nil {
 		vals = append(vals, "product_variant_id")
+	}
+	if s.QuantityNumerator != nil {
+		vals = append(vals, "quantity_numerator")
+	}
+	if s.QuantityDenominator != nil {
+		vals = append(vals, "quantity_denominator")
+	}
+	if s.QuantityUnit != nil {
+		vals = append(vals, "quantity_unit")
+	}
+	if s.PrintedUnitPriceYen != nil {
+		vals = append(vals, "printed_unit_price_yen")
+	}
+	if s.PrintedUnitPriceQuantityNumerator != nil {
+		vals = append(vals, "printed_unit_price_quantity_numerator")
+	}
+	if s.PrintedUnitPriceQuantityDenominator != nil {
+		vals = append(vals, "printed_unit_price_quantity_denominator")
+	}
+	if s.PrintedUnitPriceUnit != nil {
+		vals = append(vals, "printed_unit_price_unit")
 	}
 	return vals
 }
@@ -325,6 +374,69 @@ func (s PurchaseItemSetter) Overwrite(t *PurchaseItem) {
 				return *new(sql.Null[uuid.UUID])
 			}
 			v := s.ProductVariantID
+			return *v
+		}()
+	}
+	if s.QuantityNumerator != nil {
+		t.QuantityNumerator = func() sql.Null[int64] {
+			if s.QuantityNumerator == nil {
+				return *new(sql.Null[int64])
+			}
+			v := s.QuantityNumerator
+			return *v
+		}()
+	}
+	if s.QuantityDenominator != nil {
+		t.QuantityDenominator = func() sql.Null[int64] {
+			if s.QuantityDenominator == nil {
+				return *new(sql.Null[int64])
+			}
+			v := s.QuantityDenominator
+			return *v
+		}()
+	}
+	if s.QuantityUnit != nil {
+		t.QuantityUnit = func() sql.Null[string] {
+			if s.QuantityUnit == nil {
+				return *new(sql.Null[string])
+			}
+			v := s.QuantityUnit
+			return *v
+		}()
+	}
+	if s.PrintedUnitPriceYen != nil {
+		t.PrintedUnitPriceYen = func() sql.Null[int64] {
+			if s.PrintedUnitPriceYen == nil {
+				return *new(sql.Null[int64])
+			}
+			v := s.PrintedUnitPriceYen
+			return *v
+		}()
+	}
+	if s.PrintedUnitPriceQuantityNumerator != nil {
+		t.PrintedUnitPriceQuantityNumerator = func() sql.Null[int64] {
+			if s.PrintedUnitPriceQuantityNumerator == nil {
+				return *new(sql.Null[int64])
+			}
+			v := s.PrintedUnitPriceQuantityNumerator
+			return *v
+		}()
+	}
+	if s.PrintedUnitPriceQuantityDenominator != nil {
+		t.PrintedUnitPriceQuantityDenominator = func() sql.Null[int64] {
+			if s.PrintedUnitPriceQuantityDenominator == nil {
+				return *new(sql.Null[int64])
+			}
+			v := s.PrintedUnitPriceQuantityDenominator
+			return *v
+		}()
+	}
+	if s.PrintedUnitPriceUnit != nil {
+		t.PrintedUnitPriceUnit = func() sql.Null[string] {
+			if s.PrintedUnitPriceUnit == nil {
+				return *new(sql.Null[string])
+			}
+			v := s.PrintedUnitPriceUnit
 			return *v
 		}()
 	}
@@ -458,6 +570,83 @@ func (s *PurchaseItemSetter) Apply(q *dialect.InsertQuery) {
 				v := s.ProductVariantID
 				return *v
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.QuantityNumerator == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[int64] {
+				if s.QuantityNumerator == nil {
+					return *new(sql.Null[int64])
+				}
+				v := s.QuantityNumerator
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.QuantityDenominator == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[int64] {
+				if s.QuantityDenominator == nil {
+					return *new(sql.Null[int64])
+				}
+				v := s.QuantityDenominator
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.QuantityUnit == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[string] {
+				if s.QuantityUnit == nil {
+					return *new(sql.Null[string])
+				}
+				v := s.QuantityUnit
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.PrintedUnitPriceYen == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[int64] {
+				if s.PrintedUnitPriceYen == nil {
+					return *new(sql.Null[int64])
+				}
+				v := s.PrintedUnitPriceYen
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.PrintedUnitPriceQuantityNumerator == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[int64] {
+				if s.PrintedUnitPriceQuantityNumerator == nil {
+					return *new(sql.Null[int64])
+				}
+				v := s.PrintedUnitPriceQuantityNumerator
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.PrintedUnitPriceQuantityDenominator == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[int64] {
+				if s.PrintedUnitPriceQuantityDenominator == nil {
+					return *new(sql.Null[int64])
+				}
+				v := s.PrintedUnitPriceQuantityDenominator
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.PrintedUnitPriceUnit == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[string] {
+				if s.PrintedUnitPriceUnit == nil {
+					return *new(sql.Null[string])
+				}
+				v := s.PrintedUnitPriceUnit
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -466,7 +655,7 @@ func (s PurchaseItemSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s PurchaseItemSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 12)
+	exprs := make([]bob.Expression, 0, 19)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -552,6 +741,55 @@ func (s PurchaseItemSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.QuantityNumerator != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "quantity_numerator")...),
+			psql.Arg(s.QuantityNumerator),
+		}})
+	}
+
+	if s.QuantityDenominator != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "quantity_denominator")...),
+			psql.Arg(s.QuantityDenominator),
+		}})
+	}
+
+	if s.QuantityUnit != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "quantity_unit")...),
+			psql.Arg(s.QuantityUnit),
+		}})
+	}
+
+	if s.PrintedUnitPriceYen != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "printed_unit_price_yen")...),
+			psql.Arg(s.PrintedUnitPriceYen),
+		}})
+	}
+
+	if s.PrintedUnitPriceQuantityNumerator != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "printed_unit_price_quantity_numerator")...),
+			psql.Arg(s.PrintedUnitPriceQuantityNumerator),
+		}})
+	}
+
+	if s.PrintedUnitPriceQuantityDenominator != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "printed_unit_price_quantity_denominator")...),
+			psql.Arg(s.PrintedUnitPriceQuantityDenominator),
+		}})
+	}
+
+	if s.PrintedUnitPriceUnit != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "printed_unit_price_unit")...),
+			psql.Arg(s.PrintedUnitPriceUnit),
+		}})
+	}
+
 	return exprs
 }
 
@@ -562,7 +800,7 @@ func purchaseItemScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc
 		idx int
 		dst func(o *PurchaseItem) any
 	}
-	targets := make([]target, 0, 12)
+	targets := make([]target, 0, 19)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -589,6 +827,20 @@ func purchaseItemScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc
 			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.AllocationOverride }})
 		case "product_variant_id":
 			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.ProductVariantID }})
+		case "quantity_numerator":
+			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.QuantityNumerator }})
+		case "quantity_denominator":
+			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.QuantityDenominator }})
+		case "quantity_unit":
+			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.QuantityUnit }})
+		case "printed_unit_price_yen":
+			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.PrintedUnitPriceYen }})
+		case "printed_unit_price_quantity_numerator":
+			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.PrintedUnitPriceQuantityNumerator }})
+		case "printed_unit_price_quantity_denominator":
+			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.PrintedUnitPriceQuantityDenominator }})
+		case "printed_unit_price_unit":
+			targets = append(targets, target{i, func(o *PurchaseItem) any { return &o.PrintedUnitPriceUnit }})
 		}
 	}
 
@@ -1659,20 +1911,27 @@ func (purchaseItem0 *PurchaseItem) AttachPurchaseMemberBurdens(ctx context.Conte
 }
 
 type purchaseItemWhere[Q psql.Filterable] struct {
-	cols               purchaseItemColumns
-	ID                 psql.WhereMod[Q, uuid.UUID]
-	HouseholdID        psql.WhereMod[Q, uuid.UUID]
-	PurchaseID         psql.WhereMod[Q, uuid.UUID]
-	Name               psql.WhereMod[Q, string]
-	AmountYen          psql.WhereMod[Q, int64]
-	CategoryID         psql.WhereNullMod[Q, uuid.UUID]
-	Revision           psql.WhereMod[Q, int64]
-	FieldRevisions     psql.WhereMod[Q, types.JSON[json.RawMessage]]
-	CreatedAt          psql.WhereMod[Q, time.Time]
-	UpdatedAt          psql.WhereMod[Q, time.Time]
-	AllocationOverride psql.WhereMod[Q, bool]
-	ProductVariantID   psql.WhereNullMod[Q, uuid.UUID]
-	R                  purchaseItemWhereR[Q]
+	cols                                purchaseItemColumns
+	ID                                  psql.WhereMod[Q, uuid.UUID]
+	HouseholdID                         psql.WhereMod[Q, uuid.UUID]
+	PurchaseID                          psql.WhereMod[Q, uuid.UUID]
+	Name                                psql.WhereMod[Q, string]
+	AmountYen                           psql.WhereMod[Q, int64]
+	CategoryID                          psql.WhereNullMod[Q, uuid.UUID]
+	Revision                            psql.WhereMod[Q, int64]
+	FieldRevisions                      psql.WhereMod[Q, types.JSON[json.RawMessage]]
+	CreatedAt                           psql.WhereMod[Q, time.Time]
+	UpdatedAt                           psql.WhereMod[Q, time.Time]
+	AllocationOverride                  psql.WhereMod[Q, bool]
+	ProductVariantID                    psql.WhereNullMod[Q, uuid.UUID]
+	QuantityNumerator                   psql.WhereNullMod[Q, int64]
+	QuantityDenominator                 psql.WhereNullMod[Q, int64]
+	QuantityUnit                        psql.WhereNullMod[Q, string]
+	PrintedUnitPriceYen                 psql.WhereNullMod[Q, int64]
+	PrintedUnitPriceQuantityNumerator   psql.WhereNullMod[Q, int64]
+	PrintedUnitPriceQuantityDenominator psql.WhereNullMod[Q, int64]
+	PrintedUnitPriceUnit                psql.WhereNullMod[Q, string]
+	R                                   purchaseItemWhereR[Q]
 }
 
 func (purchaseItemWhere[Q]) AliasedAs(alias string) purchaseItemWhere[Q] {
@@ -1681,20 +1940,27 @@ func (purchaseItemWhere[Q]) AliasedAs(alias string) purchaseItemWhere[Q] {
 
 func buildPurchaseItemWhere[Q psql.Filterable](cols purchaseItemColumns) purchaseItemWhere[Q] {
 	return purchaseItemWhere[Q]{
-		cols:               cols,
-		ID:                 psql.Where[Q, uuid.UUID](cols.ID.Expression),
-		HouseholdID:        psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
-		PurchaseID:         psql.Where[Q, uuid.UUID](cols.PurchaseID.Expression),
-		Name:               psql.Where[Q, string](cols.Name.Expression),
-		AmountYen:          psql.Where[Q, int64](cols.AmountYen.Expression),
-		CategoryID:         psql.WhereNull[Q, uuid.UUID](cols.CategoryID.Expression),
-		Revision:           psql.Where[Q, int64](cols.Revision.Expression),
-		FieldRevisions:     psql.Where[Q, types.JSON[json.RawMessage]](cols.FieldRevisions.Expression),
-		CreatedAt:          psql.Where[Q, time.Time](cols.CreatedAt.Expression),
-		UpdatedAt:          psql.Where[Q, time.Time](cols.UpdatedAt.Expression),
-		AllocationOverride: psql.Where[Q, bool](cols.AllocationOverride.Expression),
-		ProductVariantID:   psql.WhereNull[Q, uuid.UUID](cols.ProductVariantID.Expression),
-		R:                  purchaseItemWhereR[Q]{cols: cols},
+		cols:                                cols,
+		ID:                                  psql.Where[Q, uuid.UUID](cols.ID.Expression),
+		HouseholdID:                         psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		PurchaseID:                          psql.Where[Q, uuid.UUID](cols.PurchaseID.Expression),
+		Name:                                psql.Where[Q, string](cols.Name.Expression),
+		AmountYen:                           psql.Where[Q, int64](cols.AmountYen.Expression),
+		CategoryID:                          psql.WhereNull[Q, uuid.UUID](cols.CategoryID.Expression),
+		Revision:                            psql.Where[Q, int64](cols.Revision.Expression),
+		FieldRevisions:                      psql.Where[Q, types.JSON[json.RawMessage]](cols.FieldRevisions.Expression),
+		CreatedAt:                           psql.Where[Q, time.Time](cols.CreatedAt.Expression),
+		UpdatedAt:                           psql.Where[Q, time.Time](cols.UpdatedAt.Expression),
+		AllocationOverride:                  psql.Where[Q, bool](cols.AllocationOverride.Expression),
+		ProductVariantID:                    psql.WhereNull[Q, uuid.UUID](cols.ProductVariantID.Expression),
+		QuantityNumerator:                   psql.WhereNull[Q, int64](cols.QuantityNumerator.Expression),
+		QuantityDenominator:                 psql.WhereNull[Q, int64](cols.QuantityDenominator.Expression),
+		QuantityUnit:                        psql.WhereNull[Q, string](cols.QuantityUnit.Expression),
+		PrintedUnitPriceYen:                 psql.WhereNull[Q, int64](cols.PrintedUnitPriceYen.Expression),
+		PrintedUnitPriceQuantityNumerator:   psql.WhereNull[Q, int64](cols.PrintedUnitPriceQuantityNumerator.Expression),
+		PrintedUnitPriceQuantityDenominator: psql.WhereNull[Q, int64](cols.PrintedUnitPriceQuantityDenominator.Expression),
+		PrintedUnitPriceUnit:                psql.WhereNull[Q, string](cols.PrintedUnitPriceUnit.Expression),
+		R:                                   purchaseItemWhereR[Q]{cols: cols},
 	}
 }
 
@@ -1848,18 +2114,25 @@ func (w purchaseItemWhereR[Q]) HasPurchaseMemberBurdens(filters ...bob.Mod[*dial
 // on a LEFT JOIN miss every column comes back NULL, so each field uses the
 // nullable version of the column type even when the column itself is NOT NULL.
 type purchaseItemPreloadBuf struct {
-	ID                 sql.Null[uuid.UUID]
-	HouseholdID        sql.Null[uuid.UUID]
-	PurchaseID         sql.Null[uuid.UUID]
-	Name               sql.Null[string]
-	AmountYen          sql.Null[int64]
-	CategoryID         sql.Null[uuid.UUID]
-	Revision           sql.Null[int64]
-	FieldRevisions     sql.Null[types.JSON[json.RawMessage]]
-	CreatedAt          sql.Null[time.Time]
-	UpdatedAt          sql.Null[time.Time]
-	AllocationOverride sql.Null[bool]
-	ProductVariantID   sql.Null[uuid.UUID]
+	ID                                  sql.Null[uuid.UUID]
+	HouseholdID                         sql.Null[uuid.UUID]
+	PurchaseID                          sql.Null[uuid.UUID]
+	Name                                sql.Null[string]
+	AmountYen                           sql.Null[int64]
+	CategoryID                          sql.Null[uuid.UUID]
+	Revision                            sql.Null[int64]
+	FieldRevisions                      sql.Null[types.JSON[json.RawMessage]]
+	CreatedAt                           sql.Null[time.Time]
+	UpdatedAt                           sql.Null[time.Time]
+	AllocationOverride                  sql.Null[bool]
+	ProductVariantID                    sql.Null[uuid.UUID]
+	QuantityNumerator                   sql.Null[int64]
+	QuantityDenominator                 sql.Null[int64]
+	QuantityUnit                        sql.Null[string]
+	PrintedUnitPriceYen                 sql.Null[int64]
+	PrintedUnitPriceQuantityNumerator   sql.Null[int64]
+	PrintedUnitPriceQuantityDenominator sql.Null[int64]
+	PrintedUnitPriceUnit                sql.Null[string]
 }
 
 // purchaseItemScanMapperNullable maps the preloaded purchaseItem
@@ -1874,7 +2147,7 @@ func purchaseItemScanMapperNullable(prefix string) scan.Mapper[*PurchaseItem] {
 			idx int
 			dst func(b *purchaseItemPreloadBuf) any
 		}
-		targets := make([]target, 0, 12)
+		targets := make([]target, 0, 19)
 		for i, col := range cols {
 			name, ok := strings.CutPrefix(col, prefix)
 			if !ok {
@@ -1905,6 +2178,20 @@ func purchaseItemScanMapperNullable(prefix string) scan.Mapper[*PurchaseItem] {
 				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.AllocationOverride }})
 			case "product_variant_id":
 				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.ProductVariantID }})
+			case "quantity_numerator":
+				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.QuantityNumerator }})
+			case "quantity_denominator":
+				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.QuantityDenominator }})
+			case "quantity_unit":
+				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.QuantityUnit }})
+			case "printed_unit_price_yen":
+				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.PrintedUnitPriceYen }})
+			case "printed_unit_price_quantity_numerator":
+				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.PrintedUnitPriceQuantityNumerator }})
+			case "printed_unit_price_quantity_denominator":
+				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.PrintedUnitPriceQuantityDenominator }})
+			case "printed_unit_price_unit":
+				targets = append(targets, target{i, func(b *purchaseItemPreloadBuf) any { return &b.PrintedUnitPriceUnit }})
 			}
 		}
 
@@ -1938,7 +2225,14 @@ func purchaseItemScanMapperNullable(prefix string) scan.Mapper[*PurchaseItem] {
 					!(buf.CreatedAt.Valid) &&
 					!(buf.UpdatedAt.Valid) &&
 					!(buf.AllocationOverride.Valid) &&
-					!(buf.ProductVariantID.Valid) {
+					!(buf.ProductVariantID.Valid) &&
+					!(buf.QuantityNumerator.Valid) &&
+					!(buf.QuantityDenominator.Valid) &&
+					!(buf.QuantityUnit.Valid) &&
+					!(buf.PrintedUnitPriceYen.Valid) &&
+					!(buf.PrintedUnitPriceQuantityNumerator.Valid) &&
+					!(buf.PrintedUnitPriceQuantityDenominator.Valid) &&
+					!(buf.PrintedUnitPriceUnit.Valid) {
 					return nil, nil
 				}
 
@@ -1975,6 +2269,13 @@ func purchaseItemScanMapperNullable(prefix string) scan.Mapper[*PurchaseItem] {
 					o.AllocationOverride = buf.AllocationOverride.V
 				}
 				o.ProductVariantID = buf.ProductVariantID
+				o.QuantityNumerator = buf.QuantityNumerator
+				o.QuantityDenominator = buf.QuantityDenominator
+				o.QuantityUnit = buf.QuantityUnit
+				o.PrintedUnitPriceYen = buf.PrintedUnitPriceYen
+				o.PrintedUnitPriceQuantityNumerator = buf.PrintedUnitPriceQuantityNumerator
+				o.PrintedUnitPriceQuantityDenominator = buf.PrintedUnitPriceQuantityDenominator
+				o.PrintedUnitPriceUnit = buf.PrintedUnitPriceUnit
 				return o, nil
 			}
 	}

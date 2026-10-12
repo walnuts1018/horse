@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5b927272d8d55f2e8c46c90d5eec8916>>
+ * @generated SignedSource<<ea176ccf2ad6d6ceae92edcea0f82854>>
  * @lightSyntaxTransform
  */
 
@@ -55,9 +55,18 @@ export type PurchasesQuery$data = {
           }>;
           readonly amountYen: any;
           readonly categoryId: string | null | undefined;
+          readonly effectiveUnitPriceDenominator: string | null | undefined;
+          readonly effectiveUnitPriceNumeratorYen: string | null | undefined;
           readonly id: string;
           readonly name: string;
+          readonly printedUnitPriceQuantityDenominator: string | null | undefined;
+          readonly printedUnitPriceQuantityNumerator: string | null | undefined;
+          readonly printedUnitPriceUnit: string | null | undefined;
+          readonly printedUnitPriceYen: any | null | undefined;
           readonly productVariantId: string | null | undefined;
+          readonly quantityDenominator: string | null | undefined;
+          readonly quantityNumerator: string | null | undefined;
+          readonly quantityUnit: string | null | undefined;
           readonly revision: number;
           readonly tags: ReadonlyArray<{
             readonly archived: boolean;
@@ -355,6 +364,69 @@ v16 = [
                   (v7/*:: as any*/),
                   (v11/*:: as any*/),
                   (v13/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "quantityNumerator",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "quantityDenominator",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "quantityUnit",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "printedUnitPriceYen",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "printedUnitPriceQuantityNumerator",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "printedUnitPriceQuantityDenominator",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "printedUnitPriceUnit",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "effectiveUnitPriceNumeratorYen",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "effectiveUnitPriceDenominator",
+                    "storageKey": null
+                  },
                   (v15/*:: as any*/),
                   {
                     "alias": null,
@@ -569,16 +641,16 @@ return {
     "selections": (v16/*:: as any*/)
   },
   "params": {
-    "cacheID": "9206c81b465433ac75bf9c403df75ca3",
+    "cacheID": "d4255ee09952e32f997a00c670fe8a21",
     "id": null,
     "metadata": {},
     "name": "PurchasesQuery",
     "operationKind": "query",
-    "text": "query PurchasesQuery(\n  $householdId: ID!\n  $from: String\n  $to: String\n  $origin: PurchaseOrigin\n  $hasEvidence: Boolean\n  $after: String\n  $first: Int\n) {\n  purchases(householdId: $householdId, from: $from, to: $to, origin: $origin, hasEvidence: $hasEvidence, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAccountId\n        paymentAccount {\n          id\n          name\n          kind\n          poolId\n        }\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections {\n          id\n          itemId\n          amountDeltaYen\n          reason\n          occurredAt\n          settlementMonth\n          paymentAllocations {\n            paymentAccountId\n            amountYen\n            account {\n              id\n              name\n            }\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query PurchasesQuery(\n  $householdId: ID!\n  $from: String\n  $to: String\n  $origin: PurchaseOrigin\n  $hasEvidence: Boolean\n  $after: String\n  $first: Int\n) {\n  purchases(householdId: $householdId, from: $from, to: $to, origin: $origin, hasEvidence: $hasEvidence, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAccountId\n        paymentAccount {\n          id\n          name\n          kind\n          poolId\n        }\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          quantityNumerator\n          quantityDenominator\n          quantityUnit\n          printedUnitPriceYen\n          printedUnitPriceQuantityNumerator\n          printedUnitPriceQuantityDenominator\n          printedUnitPriceUnit\n          effectiveUnitPriceNumeratorYen\n          effectiveUnitPriceDenominator\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections {\n          id\n          itemId\n          amountDeltaYen\n          reason\n          occurredAt\n          settlementMonth\n          paymentAllocations {\n            paymentAccountId\n            amountYen\n            account {\n              id\n              name\n            }\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "1c2e73b96018b0777dd36dbc82fd3da9";
+(node as any).hash = "477a228a49fcfde8873ffc4e2db064e8";
 
 export default node;

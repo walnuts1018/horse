@@ -32,6 +32,20 @@ var PurchaseItemErrors = &purchaseItemErrors{
 		s:       "purchase_items_amount_yen_check",
 	},
 
+	ErrCheckPurchaseItemsPrintedUnitPricePresenceCheck: &CheckConstraintError{
+		schema:  "",
+		table:   "purchase_items",
+		columns: []string{"printed_unit_price_yen", "printed_unit_price_quantity_numerator", "printed_unit_price_quantity_denominator", "printed_unit_price_unit"},
+		s:       "purchase_items_printed_unit_price_presence_check",
+	},
+
+	ErrCheckPurchaseItemsQuantityPresenceCheck: &CheckConstraintError{
+		schema:  "",
+		table:   "purchase_items",
+		columns: []string{"quantity_numerator", "quantity_denominator", "quantity_unit"},
+		s:       "purchase_items_quantity_presence_check",
+	},
+
 	ErrCheckPurchaseItemsRevisionCheck: &CheckConstraintError{
 		schema:  "",
 		table:   "purchase_items",
@@ -48,6 +62,10 @@ type purchaseItemErrors struct {
 	ErrUniquePurchaseItemsPurchaseIdIdKey *UniqueConstraintError
 
 	ErrCheckPurchaseItemsAmountYenCheck *CheckConstraintError
+
+	ErrCheckPurchaseItemsPrintedUnitPricePresenceCheck *CheckConstraintError
+
+	ErrCheckPurchaseItemsQuantityPresenceCheck *CheckConstraintError
 
 	ErrCheckPurchaseItemsRevisionCheck *CheckConstraintError
 }

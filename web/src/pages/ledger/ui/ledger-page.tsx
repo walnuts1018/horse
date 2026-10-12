@@ -5,6 +5,7 @@ import {
   bulkUpdatePurchaseItemsMutation,
   correctPurchaseMutation,
   makeIdempotencyKey,
+  postPurchaseMutation,
   purchasesQuery,
   productCatalogQuery,
   readGraphql,
@@ -22,6 +23,7 @@ import {
   type UnmatchedObservationState,
 } from "../../../shared/api";
 import { EmptyState, InlineError } from "../../../shared/ui";
+import { formatQuantity, parseQuantity } from "../../../shared/lib";
 import { useHouseholdPurchases, useUnmatchedObservations } from "../../../shared/api";
 
 type PurchaseEvidence = {
@@ -137,6 +139,11 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       {
         name: string;
         amountYen: string;
+        quantity: string;
+        quantityUnit: string;
+        printedUnitPriceYen: string;
+        printedBasisQuantity: string;
+        printedUnitPriceUnit: string;
         categoryId: string;
         productVariantId: string;
         productLearning: "ITEM_ONLY" | "VARIANT_NAME" | "MERCHANT_ALIAS";
@@ -149,6 +156,24 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   const [evidenceError, setEvidenceError] = useState("");
   const [highlightedEvidenceItem, setHighlightedEvidenceItem] = useState<string | null>(null);
   const [editError, setEditError] = useState("");
+  const [postingPurchase, setPostingPurchase] = useState<string | null>(null);
+  const postDraftPurchase = async (purchase: Purchase) => {
+    setPostingPurchase(purchase.id);
+    setEditError("");
+    try {
+      await readGraphql(postPurchaseMutation, {
+        purchaseId: purchase.id,
+        expectedRevision: purchase.revision,
+        idempotencyKey: makeIdempotencyKey(),
+      });
+      await refresh();
+    } catch (reason) {
+      await refresh();
+      setEditError((reason as Error).message);
+    } finally {
+      setPostingPurchase(null);
+    }
+  };
   useEffect(() => {
     if (!expanded) {
       setPurchaseEvidence([]);
@@ -270,6 +295,15 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           {
             name: item.name,
             amountYen: String(item.amountYen),
+            quantity: formatQuantity(item.quantityNumerator, item.quantityDenominator),
+            quantityUnit: item.quantityUnit ?? "",
+            printedUnitPriceYen:
+              item.printedUnitPriceYen == null ? "" : String(item.printedUnitPriceYen),
+            printedBasisQuantity: formatQuantity(
+              item.printedUnitPriceQuantityNumerator,
+              item.printedUnitPriceQuantityDenominator,
+            ),
+            printedUnitPriceUnit: item.printedUnitPriceUnit ?? "",
             categoryId: item.categoryId ?? "",
             productVariantId: item.productVariantId ?? "",
             productLearning: "ITEM_ONLY",
@@ -374,13 +408,34 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   const saveItem = async (purchase: Purchase, item: PurchaseItem) => {
     const draft = itemDrafts[item.id];
     if (!draft || !draft.name.trim() || Number(draft.amountYen) < 1) return;
+    let quantity;
+    let printedBasis;
+    try {
+      quantity = parseQuantity(draft.quantity, draft.quantityUnit);
+      printedBasis = parseQuantity(draft.printedBasisQuantity, draft.printedUnitPriceUnit);
+    } catch (reason) {
+      setEditError((reason as Error).message);
+      return;
+    }
+    const printedPriceText = draft.printedUnitPriceYen.trim();
+    const hasPrintedPrice = Boolean(
+      printedPriceText || draft.printedBasisQuantity.trim() || draft.printedUnitPriceUnit.trim(),
+    );
+    const printedPrice = printedPriceText ? Number(printedPriceText.replace(/\D/g, "")) : null;
+    if (
+      hasPrintedPrice &&
+      (!printedBasis || printedPrice === null || !Number.isSafeInteger(printedPrice))
+    ) {
+      setEditError("印字単価、基準量、単位を確認してください");
+      return;
+    }
     const patch = {
       name: draft.name.trim(),
       amountYen: Number(draft.amountYen),
       categoryId: draft.categoryId || null,
       productVariantId: draft.productVariantId || null,
     };
-    const changedFields = [
+    const baseChangedFields = [
       ...(patch.name !== item.name ? ["name"] : []),
       ...(patch.amountYen !== item.amountYen ? ["amountYen"] : []),
       ...(!sameNullableString(patch.categoryId, item.categoryId) ? ["categoryId"] : []),
@@ -388,24 +443,56 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         ? ["productVariantId"]
         : []),
     ] as Array<keyof typeof patch>;
+    const quantityChanged =
+      !sameNullableString(quantity?.numerator, item.quantityNumerator) ||
+      !sameNullableString(quantity?.denominator, item.quantityDenominator) ||
+      !sameNullableString(quantity?.unit, item.quantityUnit);
+    const printedPriceChanged =
+      (printedPrice ?? null) !== (item.printedUnitPriceYen ?? null) ||
+      !sameNullableString(printedBasis?.numerator, item.printedUnitPriceQuantityNumerator) ||
+      !sameNullableString(printedBasis?.denominator, item.printedUnitPriceQuantityDenominator) ||
+      !sameNullableString(printedBasis?.unit, item.printedUnitPriceUnit);
+    const changedFields = [
+      ...baseChangedFields,
+      ...(quantityChanged ? ["quantity"] : []),
+      ...(printedPriceChanged ? ["printedUnitPrice"] : []),
+    ];
     if (!changedFields.length) return;
-    const changedPatch = Object.fromEntries(changedFields.map((field) => [field, patch[field]]));
+    const changedPatch = Object.fromEntries(
+      baseChangedFields.map((field) => [field, patch[field]]),
+    );
+    const inputForRevision = (baseRevision: number) => ({
+      itemId: item.id,
+      baseRevision,
+      ...changedPatch,
+      ...(quantityChanged
+        ? {
+            quantityNumerator: quantity?.numerator ?? null,
+            quantityDenominator: quantity?.denominator ?? null,
+            quantityUnit: quantity?.unit ?? null,
+          }
+        : {}),
+      ...(printedPriceChanged
+        ? {
+            printedUnitPriceYen: hasPrintedPrice ? printedPrice : null,
+            printedUnitPriceQuantityNumerator: printedBasis?.numerator ?? null,
+            printedUnitPriceQuantityDenominator: printedBasis?.denominator ?? null,
+            printedUnitPriceUnit: printedBasis?.unit ?? null,
+          }
+        : {}),
+      ...(baseChangedFields.includes("productVariantId") && patch.productVariantId
+        ? {
+            productLearning: draft.productLearning,
+            ...(draft.productLearning === "VARIANT_NAME"
+              ? { variantName: draft.variantName.trim() }
+              : {}),
+          }
+        : {}),
+      changedFields,
+    });
     try {
       await readGraphql(updatePurchaseItemMutation, {
-        input: {
-          itemId: item.id,
-          baseRevision: item.revision,
-          ...changedPatch,
-          ...(changedFields.includes("productVariantId") && patch.productVariantId
-            ? {
-                productLearning: draft.productLearning,
-                ...(draft.productLearning === "VARIANT_NAME"
-                  ? { variantName: draft.variantName.trim() }
-                  : {}),
-              }
-            : {}),
-          changedFields,
-        },
+        input: inputForRevision(item.revision),
       });
       await refresh();
       setEditError("");
@@ -426,20 +513,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             serverValue: `${current.name} · ${yen(current.amountYen)}`,
             retry: async () => {
               await readGraphql(updatePurchaseItemMutation, {
-                input: {
-                  itemId: current.id,
-                  baseRevision: current.revision,
-                  ...changedPatch,
-                  ...(changedFields.includes("productVariantId") && patch.productVariantId
-                    ? {
-                        productLearning: draft.productLearning,
-                        ...(draft.productLearning === "VARIANT_NAME"
-                          ? { variantName: draft.variantName.trim() }
-                          : {}),
-                      }
-                    : {}),
-                  changedFields,
-                },
+                input: inputForRevision(current.revision),
               });
               await refresh();
               setConflict(null);
@@ -1329,7 +1403,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                   <div className="purchase-meta">
                     <b>{yen(purchase.totalYen)}</b>
                     <span>
-                      {purchase.status === "CLOSED" ? "締め済み" : "記録済み"} ·{" "}
+                      {purchase.status === "CLOSED"
+                        ? "締め済み"
+                        : purchase.status === "DRAFT"
+                          ? "下書き"
+                          : "記録済み"}{" "}
+                      ·{" "}
                       {purchase.origin === "AI"
                         ? "AI入力"
                         : purchase.origin === "MANUAL"
@@ -1346,6 +1425,23 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                 </button>
                 {expanded === purchase.id && (
                   <div className="expanded-items">
+                    {purchase.status === "DRAFT" && (
+                      <section className="panel ledger-evidence-panel">
+                        <div className="panel-heading">
+                          <div>
+                            <span className="eyebrow">下書き</span>
+                          </div>
+                          <button
+                            className="button button-primary"
+                            type="button"
+                            disabled={postingPurchase === purchase.id}
+                            onClick={() => void postDraftPurchase(purchase)}
+                          >
+                            {postingPurchase === purchase.id ? "記録しています" : "支出に記録"}
+                          </button>
+                        </div>
+                      </section>
+                    )}
                     {(purchaseEvidence.length > 0 || evidenceError) && (
                       <section className="panel ledger-evidence-panel">
                         <div className="panel-heading">
@@ -1683,6 +1779,89 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                                 }))
                               }
                             />
+                            <details className="item-measure-details">
+                              <summary>数量・印字単価</summary>
+                              <label>
+                                数量
+                                <input
+                                  value={itemDrafts[item.id]?.quantity ?? ""}
+                                  onChange={(event) =>
+                                    setItemDrafts((current) => ({
+                                      ...current,
+                                      [item.id]: {
+                                        ...current[item.id],
+                                        quantity: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="1、1/2"
+                                />
+                              </label>
+                              <label>
+                                単位
+                                <input
+                                  value={itemDrafts[item.id]?.quantityUnit ?? ""}
+                                  onChange={(event) =>
+                                    setItemDrafts((current) => ({
+                                      ...current,
+                                      [item.id]: {
+                                        ...current[item.id],
+                                        quantityUnit: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  maxLength={32}
+                                />
+                              </label>
+                              <label>
+                                印字単価
+                                <input
+                                  inputMode="numeric"
+                                  value={itemDrafts[item.id]?.printedUnitPriceYen ?? ""}
+                                  onChange={(event) =>
+                                    setItemDrafts((current) => ({
+                                      ...current,
+                                      [item.id]: {
+                                        ...current[item.id],
+                                        printedUnitPriceYen: event.target.value.replace(/\D/g, ""),
+                                      },
+                                    }))
+                                  }
+                                />
+                              </label>
+                              <label>
+                                基準量
+                                <input
+                                  value={itemDrafts[item.id]?.printedBasisQuantity ?? ""}
+                                  onChange={(event) =>
+                                    setItemDrafts((current) => ({
+                                      ...current,
+                                      [item.id]: {
+                                        ...current[item.id],
+                                        printedBasisQuantity: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="1、100、1/2"
+                                />
+                              </label>
+                              <label>
+                                印字単位
+                                <input
+                                  value={itemDrafts[item.id]?.printedUnitPriceUnit ?? ""}
+                                  onChange={(event) =>
+                                    setItemDrafts((current) => ({
+                                      ...current,
+                                      [item.id]: {
+                                        ...current[item.id],
+                                        printedUnitPriceUnit: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  maxLength={32}
+                                />
+                              </label>
+                            </details>
                             <button
                               className="text-button"
                               type="button"

@@ -61,6 +61,36 @@ func TestVerifyReceipt(t *testing.T) {
 	}
 }
 
+func TestVerifyKeepsQuantityAndPrintedUnitPriceSeparate(t *testing.T) {
+	quantityNumerator, quantityDenominator := int64(2), int64(1)
+	printedPrice, printedBasisNumerator, printedBasisDenominator := int64(130), int64(1), int64(1)
+	verification, err := Verify(Receipt{Currency: "JPY", Total: 240, Items: []Item{{
+		PrintedName: "小麦粉", PrintedAmount: 240, PriceBasis: "TAX_INCLUDED",
+		QuantityNumerator: &quantityNumerator, QuantityDenominator: &quantityDenominator, QuantityUnit: "kg",
+		PrintedUnitPriceYen: &printedPrice, PrintedUnitPriceQuantityNumerator: &printedBasisNumerator,
+		PrintedUnitPriceQuantityDenominator: &printedBasisDenominator, PrintedUnitPriceUnit: "kg",
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := verification.Receipt.Items[0]
+	if item.QuantityNumerator == nil || *item.QuantityNumerator != 2 || item.QuantityUnit != "kg" || item.GrossAmount != 240 || item.PrintedUnitPriceYen == nil || *item.PrintedUnitPriceYen != 130 {
+		t.Fatalf("verification changed or conflated observed quantity and printed price: %#v", item)
+	}
+	if _, err := Verify(Receipt{Currency: "JPY", Total: 240, Items: []Item{{
+		PrintedName: "小麦粉", PrintedAmount: 240, PriceBasis: "TAX_INCLUDED", QuantityNumerator: &quantityNumerator, QuantityUnit: "kg",
+	}}}); err == nil {
+		t.Fatal("partial quantity observation was accepted")
+	}
+	unreducedNumerator, unreducedDenominator := int64(2), int64(2)
+	if _, err := Verify(Receipt{Currency: "JPY", Total: 240, Items: []Item{{
+		PrintedName: "小麦粉", PrintedAmount: 240, PriceBasis: "TAX_INCLUDED", QuantityNumerator: &unreducedNumerator,
+		QuantityDenominator: &unreducedDenominator, QuantityUnit: "kg",
+	}}}); err == nil {
+		t.Fatal("unreduced quantity rational was accepted")
+	}
+}
+
 func FuzzDistributeConservation(f *testing.F) {
 	f.Add(int64(101), uint32(3), uint32(2))
 	f.Fuzz(func(t *testing.T, amount int64, a, b uint32) {

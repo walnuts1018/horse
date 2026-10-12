@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4459dbd2f413d6ba3c4b8aa7d09a1dbe>>
+ * @generated SignedSource<<8748de747cae1b090941c3f3ccb1390b>>
  * @lightSyntaxTransform
  */
 
@@ -32,7 +32,14 @@ export type PurchaseItemInput = {
   amountYen: any;
   categoryId?: string | null | undefined;
   name: string;
+  printedUnitPriceQuantityDenominator?: string | null | undefined;
+  printedUnitPriceQuantityNumerator?: string | null | undefined;
+  printedUnitPriceUnit?: string | null | undefined;
+  printedUnitPriceYen?: any | null | undefined;
   productVariantId?: string | null | undefined;
+  quantityDenominator?: string | null | undefined;
+  quantityNumerator?: string | null | undefined;
+  quantityUnit?: string | null | undefined;
 };
 export type AllocationInput = {
   poolId: string;
@@ -53,9 +60,18 @@ export type CreatePurchaseMutation$data = {
       }>;
       readonly amountYen: any;
       readonly categoryId: string | null | undefined;
+      readonly effectiveUnitPriceDenominator: string | null | undefined;
+      readonly effectiveUnitPriceNumeratorYen: string | null | undefined;
       readonly id: string;
       readonly name: string;
+      readonly printedUnitPriceQuantityDenominator: string | null | undefined;
+      readonly printedUnitPriceQuantityNumerator: string | null | undefined;
+      readonly printedUnitPriceUnit: string | null | undefined;
+      readonly printedUnitPriceYen: any | null | undefined;
       readonly productVariantId: string | null | undefined;
+      readonly quantityDenominator: string | null | undefined;
+      readonly quantityNumerator: string | null | undefined;
+      readonly quantityUnit: string | null | undefined;
       readonly tags: ReadonlyArray<{
         readonly archived: boolean;
         readonly householdId: string;
@@ -188,6 +204,69 @@ v6 = [
             "alias": null,
             "args": null,
             "kind": "ScalarField",
+            "name": "quantityNumerator",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "quantityDenominator",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "quantityUnit",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "printedUnitPriceYen",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "printedUnitPriceQuantityNumerator",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "printedUnitPriceQuantityDenominator",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "printedUnitPriceUnit",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "effectiveUnitPriceNumeratorYen",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "effectiveUnitPriceDenominator",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
             "name": "categoryId",
             "storageKey": null
           },
@@ -271,16 +350,16 @@ return {
     "selections": (v6/*:: as any*/)
   },
   "params": {
-    "cacheID": "fc2c28360985933b7b6098178debc8a9",
+    "cacheID": "b20679ddd30654cf5e3f9b76583dfe15",
     "id": null,
     "metadata": {},
     "name": "CreatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    id\n    householdId\n    occurredAt\n    merchant\n    paymentAccountId\n    totalYen\n    revision\n    status\n    items {\n      id\n      name\n      amountYen\n      categoryId\n      productVariantId\n      tags {\n        id\n        name\n        archived\n        revision\n        householdId\n      }\n      allocations {\n        poolId\n        weight\n        amountYen\n      }\n    }\n  }\n}\n"
+    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    id\n    householdId\n    occurredAt\n    merchant\n    paymentAccountId\n    totalYen\n    revision\n    status\n    items {\n      id\n      name\n      amountYen\n      quantityNumerator\n      quantityDenominator\n      quantityUnit\n      printedUnitPriceYen\n      printedUnitPriceQuantityNumerator\n      printedUnitPriceQuantityDenominator\n      printedUnitPriceUnit\n      effectiveUnitPriceNumeratorYen\n      effectiveUnitPriceDenominator\n      categoryId\n      productVariantId\n      tags {\n        id\n        name\n        archived\n        revision\n        householdId\n      }\n      allocations {\n        poolId\n        weight\n        amountYen\n      }\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "5ac61e50d48aee7fecbd44fa6370dee0";
+(node as any).hash = "1947f8867a66dcedfc1ebaf88dd53fd7";
 
 export default node;

@@ -105,6 +105,15 @@ export type PurchaseItem = {
   name: string;
   amountYen: number;
   revision: number;
+  quantityNumerator?: string | null;
+  quantityDenominator?: string | null;
+  quantityUnit?: string | null;
+  printedUnitPriceYen?: number | null;
+  printedUnitPriceQuantityNumerator?: string | null;
+  printedUnitPriceQuantityDenominator?: string | null;
+  printedUnitPriceUnit?: string | null;
+  effectiveUnitPriceNumeratorYen?: string | null;
+  effectiveUnitPriceDenominator?: string | null;
   categoryId?: string | null;
   productVariantId?: string | null;
   allocations: Allocation[];
@@ -135,14 +144,23 @@ export type CreatePurchaseInput = {
   occurredAt: string;
   merchant: string;
   origin?: "AI" | "MANUAL" | "UNKNOWN";
+  sourceDocumentId?: string | null;
+  sourceReference?: string | null;
   paymentAccountId: string | null;
   paymentAllocations?: PurchasePaymentInput[];
   items: Array<{
     name: string;
     amountYen: number;
-    categoryId: string | null;
+    quantityNumerator?: string | null;
+    quantityDenominator?: string | null;
+    quantityUnit?: string | null;
+    printedUnitPriceYen?: number | null;
+    printedUnitPriceQuantityNumerator?: string | null;
+    printedUnitPriceQuantityDenominator?: string | null;
+    printedUnitPriceUnit?: string | null;
+    categoryId?: string | null;
     productVariantId?: string | null;
-    allocations: Array<{ poolId: string; weight: number }> | null;
+    allocations?: Array<{ poolId: string; weight: number }> | null;
   }>;
 };
 export type PurchasePaymentInput = { paymentAccountId: string; amountYen: number };
@@ -491,6 +509,15 @@ export const purchasesQuery = graphql`
             id
             name
             amountYen
+            quantityNumerator
+            quantityDenominator
+            quantityUnit
+            printedUnitPriceYen
+            printedUnitPriceQuantityNumerator
+            printedUnitPriceQuantityDenominator
+            printedUnitPriceUnit
+            effectiveUnitPriceNumeratorYen
+            effectiveUnitPriceDenominator
             revision
             categoryId
             productVariantId
@@ -712,6 +739,15 @@ export const createPurchaseMutation = graphql`
         id
         name
         amountYen
+        quantityNumerator
+        quantityDenominator
+        quantityUnit
+        printedUnitPriceYen
+        printedUnitPriceQuantityNumerator
+        printedUnitPriceQuantityDenominator
+        printedUnitPriceUnit
+        effectiveUnitPriceNumeratorYen
+        effectiveUnitPriceDenominator
         categoryId
         productVariantId
         tags {
@@ -730,6 +766,52 @@ export const createPurchaseMutation = graphql`
     }
   }
 `;
+
+export const postPurchaseMutation = graphql`
+  mutation PostPurchaseMutation(
+    $purchaseId: ID!
+    $expectedRevision: Int!
+    $idempotencyKey: String!
+  ) {
+    postPurchase(
+      purchaseId: $purchaseId
+      expectedRevision: $expectedRevision
+      idempotencyKey: $idempotencyKey
+    ) {
+      id
+      revision
+      status
+    }
+  }
+`;
+
+export async function createAndPostPurchase(input: CreatePurchaseInput) {
+  type PurchaseSubmission = {
+    createPurchase: { id: string; revision: number; status: string; items: Array<{ id: string }> };
+  };
+  const created = await readGraphql<PurchaseSubmission>(createPurchaseMutation, { input });
+  if (created.createPurchase.status !== "DRAFT") return created;
+  try {
+    const posted = await readGraphql<{
+      postPurchase: { id: string; revision: number; status: string };
+    }>(postPurchaseMutation, {
+      purchaseId: created.createPurchase.id,
+      expectedRevision: created.createPurchase.revision,
+      idempotencyKey: input.idempotencyKey,
+    });
+    return {
+      createPurchase: {
+        ...created.createPurchase,
+        revision: posted.postPurchase.revision,
+        status: posted.postPurchase.status,
+      },
+    };
+  } catch (reason) {
+    const latest = await readGraphql<PurchaseSubmission>(createPurchaseMutation, { input });
+    if (latest.createPurchase.status !== "DRAFT") return latest;
+    throw reason;
+  }
+}
 
 export const updatePurchaseMutation = graphql`
   mutation UpdatePurchaseMutation($input: UpdatePurchaseInput!) {
@@ -751,6 +833,15 @@ export const updatePurchaseItemMutation = graphql`
       name
       amountYen
       categoryId
+      quantityNumerator
+      quantityDenominator
+      quantityUnit
+      printedUnitPriceYen
+      printedUnitPriceQuantityNumerator
+      printedUnitPriceQuantityDenominator
+      printedUnitPriceUnit
+      effectiveUnitPriceNumeratorYen
+      effectiveUnitPriceDenominator
     }
   }
 `;

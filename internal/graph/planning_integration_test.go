@@ -68,10 +68,45 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if _, err := resolver.SetDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}, {PoolID: poolB.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
+	quantityNumerator, quantityDenominator := "3", "2"
+	quantityUnit := "kg"
+	printedUnitPrice := model.Long(130)
+	printedBasisNumerator, printedBasisDenominator := "1", "1"
+	printedUnit := "kg"
 	purchase, err := resolver.CreatePurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-04-12T11:59:00Z", Merchant: "Market",
-		Items: []*model.PurchaseItemInput{{Name: "Yogurt", AmountYen: 500}, {Name: "Milk", AmountYen: 300}},
+		Items: []*model.PurchaseItemInput{{
+			Name: "Yogurt", AmountYen: 500, QuantityNumerator: &quantityNumerator, QuantityDenominator: &quantityDenominator, QuantityUnit: &quantityUnit,
+			PrintedUnitPriceYen: &printedUnitPrice, PrintedUnitPriceQuantityNumerator: &printedBasisNumerator,
+			PrintedUnitPriceQuantityDenominator: &printedBasisDenominator, PrintedUnitPriceUnit: &printedUnit,
+		}, {Name: "Milk", AmountYen: 300}},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := purchase.Items[0]
+	if item.QuantityNumerator == nil || *item.QuantityNumerator != "3" || item.QuantityDenominator == nil || *item.QuantityDenominator != "2" || item.QuantityUnit == nil || *item.QuantityUnit != "kg" ||
+		item.EffectiveUnitPriceNumeratorYen == nil || *item.EffectiveUnitPriceNumeratorYen != "1000" || item.EffectiveUnitPriceDenominator == nil || *item.EffectiveUnitPriceDenominator != "3" ||
+		item.PrintedUnitPriceYen == nil || *item.PrintedUnitPriceYen != 130 {
+		t.Fatalf("purchase item must preserve quantity and distinct effective and printed prices: %#v", item)
+	}
+	unknownItem := purchase.Items[1]
+	if unknownItem.QuantityNumerator != nil || unknownItem.EffectiveUnitPriceNumeratorYen != nil || unknownItem.EffectiveUnitPriceDenominator != nil {
+		t.Fatalf("quantity-unknown item must not be reported as a unit price: %#v", unknownItem)
+	}
+	beforePoolA := amountForPool(item.Allocations, poolA.ID)
+	beforePoolB := amountForPool(item.Allocations, poolB.ID)
+	updatedNumerator, updatedDenominator := "4", "1"
+	updatedQuantity, err := resolver.UpdatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
+		ItemID: item.ID, BaseRevision: item.Revision, QuantityNumerator: &updatedNumerator,
+		QuantityDenominator: &updatedDenominator, QuantityUnit: &quantityUnit, ChangedFields: []string{"quantity"},
+	})
+	if err != nil || updatedQuantity.AmountYen != item.AmountYen || amountForPool(updatedQuantity.Allocations, poolA.ID) != beforePoolA || amountForPool(updatedQuantity.Allocations, poolB.ID) != beforePoolB ||
+		updatedQuantity.EffectiveUnitPriceNumeratorYen == nil || *updatedQuantity.EffectiveUnitPriceNumeratorYen != "125" || updatedQuantity.EffectiveUnitPriceDenominator == nil || *updatedQuantity.EffectiveUnitPriceDenominator != "1" ||
+		updatedQuantity.PrintedUnitPriceYen == nil || *updatedQuantity.PrintedUnitPriceYen != printedUnitPrice {
+		t.Fatalf("quantity-only edit changed financial amounts or allocations: item=%#v error=%v", updatedQuantity, err)
+	}
+	purchase, err = loadPurchase(ctx, db, purchase.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

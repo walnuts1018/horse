@@ -21,7 +21,7 @@ import {
 import {
   ApiError,
   createHouseholdMutation,
-  createPurchaseMutation,
+  createAndPostPurchase,
   acceptHouseholdInvitationMutation,
   executeGraphql,
   getViewer,
@@ -155,9 +155,7 @@ export function App() {
           leaseRenewal = window.setInterval(() => {
             void renewPurchaseOutboxLease(key, owner).catch(() => {});
           }, 10_000);
-          await read<{ createPurchase: { id: string } }>(createPurchaseMutation, {
-            input: request.input,
-          });
+          await createAndPostPurchase(request.input);
           await completePurchaseOutbox(key, owner);
           if (currentHouseholdId.current === request.input.householdId) {
             await refreshHouseholdRef.current(request.input.householdId);

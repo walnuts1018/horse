@@ -36,6 +36,7 @@ import {
   loadPurchaseDraft,
   savePurchaseDraft,
   usePurchaseOutbox,
+  parseQuantity,
   type PurchaseDraftItem,
 } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
@@ -410,15 +411,25 @@ export function PurchaseCreatePage({
           paymentAccountId: payment.paymentAccountId,
           amountYen: paymentAmount(payment),
         })),
-        items: items.map((item) => ({
-          name: item.name,
-          amountYen: Number(item.amount),
-          categoryId: item.categoryId || null,
-          allocations: item.allocations.length
-            ? item.allocations.filter((allocation) => allocation.weight > 0)
-            : null,
-          productVariantId: item.productVariantId || null,
-        })),
+        items: items.map((item) => {
+          const quantity = parseQuantity(item.quantity ?? "", item.quantityUnit ?? "");
+          return {
+            name: item.name,
+            amountYen: Number(item.amount),
+            categoryId: item.categoryId || null,
+            allocations: item.allocations.length
+              ? item.allocations.filter((allocation) => allocation.weight > 0)
+              : null,
+            productVariantId: item.productVariantId || null,
+            ...(quantity
+              ? {
+                  quantityNumerator: quantity.numerator,
+                  quantityDenominator: quantity.denominator,
+                  quantityUnit: quantity.unit,
+                }
+              : {}),
+          };
+        }),
       };
       await enqueuePurchase(input);
       skipDraftSave.current = true;
@@ -590,98 +601,122 @@ export function PurchaseCreatePage({
         </div>
         <div className="item-list">
           {items.map((item, index) => (
-            <div className="item-edit-row" key={item.key}>
-              <span className="item-index">{String(index + 1).padStart(2, "0")}</span>
-              <input
-                aria-label="品名"
-                value={item.name}
-                onChange={(e) => patchItem(item.key, { name: e.target.value })}
-              />
-              <div className="yen-input">
-                <span>¥</span>
+            <div className="item-entry" key={item.key}>
+              <div className="item-edit-row">
+                <span className="item-index">{String(index + 1).padStart(2, "0")}</span>
                 <input
-                  aria-label="金額"
-                  inputMode="numeric"
-                  value={item.amount}
-                  onChange={(e) =>
-                    patchItem(item.key, { amount: e.target.value.replace(/\D/g, "") })
-                  }
+                  aria-label="品名"
+                  value={item.name}
+                  onChange={(e) => patchItem(item.key, { name: e.target.value })}
                 />
+                <div className="yen-input">
+                  <span>¥</span>
+                  <input
+                    aria-label="金額"
+                    inputMode="numeric"
+                    value={item.amount}
+                    onChange={(e) =>
+                      patchItem(item.key, { amount: e.target.value.replace(/\D/g, "") })
+                    }
+                  />
+                </div>
+                <select
+                  aria-label="カテゴリ"
+                  value={item.categoryId}
+                  onChange={(e) => patchItem(item.key, { categoryId: e.target.value })}
+                >
+                  <option value="">未分類</option>
+                  {enabledCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                <Popover.Root>
+                  <Popover.Trigger className="allocation-chip">
+                    {allocationName(item)}
+                    <ChevronDown size={12} />
+                  </Popover.Trigger>
+                  <Popover.Portal>
+                    <Popover.Positioner sideOffset={6}>
+                      <Popover.Popup className="allocation-popup">
+                        <Popover.Title>負担割合</Popover.Title>
+                        {household.pools.map((pool) => {
+                          const weight =
+                            (item.allocations.length ? item.allocations : defaultAllocations).find(
+                              (allocation) => allocation.poolId === pool.id,
+                            )?.weight ?? 0;
+                          return (
+                            <label className="allocation-option" key={pool.id}>
+                              <span>{pool.name}</span>
+                              <span className="number-field">
+                                <input
+                                  aria-label={`${pool.name}の負担比率`}
+                                  inputMode="numeric"
+                                  value={weight || ""}
+                                  onChange={(event) => {
+                                    const nextWeight = Math.max(
+                                      0,
+                                      Number(event.target.value.replace(/\D/g, "")) || 0,
+                                    );
+                                    const base = item.allocations.length
+                                      ? item.allocations
+                                      : defaultAllocations;
+                                    const allocations = base.filter(
+                                      (allocation) => allocation.poolId !== pool.id,
+                                    );
+                                    if (nextWeight > 0)
+                                      allocations.push({ poolId: pool.id, weight: nextWeight });
+                                    patchItem(item.key, { allocations });
+                                  }}
+                                />
+                                <small>比</small>
+                              </span>
+                            </label>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => patchItem(item.key, { allocations: [] })}
+                        >
+                          標準に戻す
+                        </button>
+                      </Popover.Popup>
+                    </Popover.Positioner>
+                  </Popover.Portal>
+                </Popover.Root>
+                <button
+                  type="button"
+                  className="row-remove"
+                  aria-label="品目を削除"
+                  onClick={() => removeItem(item.key)}
+                >
+                  <X size={15} />
+                </button>
               </div>
-              <select
-                aria-label="カテゴリ"
-                value={item.categoryId}
-                onChange={(e) => patchItem(item.key, { categoryId: e.target.value })}
-              >
-                <option value="">未分類</option>
-                {enabledCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-              <Popover.Root>
-                <Popover.Trigger className="allocation-chip">
-                  {allocationName(item)}
-                  <ChevronDown size={12} />
-                </Popover.Trigger>
-                <Popover.Portal>
-                  <Popover.Positioner sideOffset={6}>
-                    <Popover.Popup className="allocation-popup">
-                      <Popover.Title>負担割合</Popover.Title>
-                      {household.pools.map((pool) => {
-                        const weight =
-                          (item.allocations.length ? item.allocations : defaultAllocations).find(
-                            (allocation) => allocation.poolId === pool.id,
-                          )?.weight ?? 0;
-                        return (
-                          <label className="allocation-option" key={pool.id}>
-                            <span>{pool.name}</span>
-                            <span className="number-field">
-                              <input
-                                aria-label={`${pool.name}の負担比率`}
-                                inputMode="numeric"
-                                value={weight || ""}
-                                onChange={(event) => {
-                                  const nextWeight = Math.max(
-                                    0,
-                                    Number(event.target.value.replace(/\D/g, "")) || 0,
-                                  );
-                                  const base = item.allocations.length
-                                    ? item.allocations
-                                    : defaultAllocations;
-                                  const allocations = base.filter(
-                                    (allocation) => allocation.poolId !== pool.id,
-                                  );
-                                  if (nextWeight > 0)
-                                    allocations.push({ poolId: pool.id, weight: nextWeight });
-                                  patchItem(item.key, { allocations });
-                                }}
-                              />
-                              <small>比</small>
-                            </span>
-                          </label>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => patchItem(item.key, { allocations: [] })}
-                      >
-                        標準に戻す
-                      </button>
-                    </Popover.Popup>
-                  </Popover.Positioner>
-                </Popover.Portal>
-              </Popover.Root>
-              <button
-                type="button"
-                className="row-remove"
-                aria-label="品目を削除"
-                onClick={() => removeItem(item.key)}
-              >
-                <X size={15} />
-              </button>
+              <details className="item-measure-details">
+                <summary>数量</summary>
+                <label>
+                  数量
+                  <input
+                    aria-label={`${item.name}の数量`}
+                    value={item.quantity ?? ""}
+                    onChange={(event) => patchItem(item.key, { quantity: event.target.value })}
+                    placeholder="1、1/2"
+                  />
+                </label>
+                <label>
+                  単位
+                  <input
+                    aria-label={`${item.name}の数量単位`}
+                    value={item.quantityUnit ?? ""}
+                    onChange={(event) => patchItem(item.key, { quantityUnit: event.target.value })}
+                    placeholder="個、g、ml"
+                    maxLength={32}
+                  />
+                </label>
+              </details>
             </div>
           ))}
           {items.length === 0 && (

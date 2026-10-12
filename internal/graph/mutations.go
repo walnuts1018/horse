@@ -824,6 +824,10 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 		if itemInput == nil || strings.TrimSpace(itemInput.Name) == "" || len(itemInput.Name) > 240 || itemInput.AmountYen < 0 || int64(itemInput.AmountYen) > maxMoney {
 			return nil, fmt.Errorf("%w: invalid purchase item", ErrBadInput)
 		}
+		measure, err := measureFromInput(itemInput)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrBadInput, err)
+		}
 		categoryID := itemInput.CategoryID
 		if itemInput.ProductVariantID != nil {
 			variantUUID, parseErr := gofrsuuid.FromString(*itemInput.ProductVariantID)
@@ -901,6 +905,9 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 		if _, err := models.PurchaseItems.Insert(&models.PurchaseItemSetter{
 			ID: &itemUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, Name: &itemName,
 			AmountYen: &itemAmount, CategoryID: &categoryValue, ProductVariantID: &variantValue, AllocationOverride: &allocationOverride,
+			QuantityNumerator: &measure.quantityNumerator, QuantityDenominator: &measure.quantityDenominator, QuantityUnit: &measure.quantityUnit,
+			PrintedUnitPriceYen: &measure.printedUnitPriceYen, PrintedUnitPriceQuantityNumerator: &measure.printedUnitPriceQuantityNumerator,
+			PrintedUnitPriceQuantityDenominator: &measure.printedUnitPriceQuantityDenominator, PrintedUnitPriceUnit: &measure.printedUnitPriceUnit,
 		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
@@ -1609,7 +1616,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if input.BaseRevision > int(item.Revision) {
 		return nil, ErrConflict
 	}
-	if err := validateChangedFields(input.ChangedFields, "name", "amountYen", "categoryId", "productVariantId", "allocations"); err != nil {
+	if err := validateChangedFields(input.ChangedFields, "name", "amountYen", "quantity", "printedUnitPrice", "categoryId", "productVariantId", "allocations"); err != nil {
 		return nil, err
 	}
 	for _, field := range input.ChangedFields {
@@ -1628,7 +1635,10 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			}
 		}
 	}
-	if input.Name != nil && !slices.Contains(input.ChangedFields, "name") || input.AmountYen != nil && !slices.Contains(input.ChangedFields, "amountYen") || input.CategoryID != nil && !slices.Contains(input.ChangedFields, "categoryId") || input.ProductVariantID != nil && !slices.Contains(input.ChangedFields, "productVariantId") || input.Allocations != nil && !slices.Contains(input.ChangedFields, "allocations") {
+	if input.Name != nil && !slices.Contains(input.ChangedFields, "name") || input.AmountYen != nil && !slices.Contains(input.ChangedFields, "amountYen") ||
+		(input.QuantityNumerator != nil || input.QuantityDenominator != nil || input.QuantityUnit != nil) && !slices.Contains(input.ChangedFields, "quantity") ||
+		(input.PrintedUnitPriceYen != nil || input.PrintedUnitPriceQuantityNumerator != nil || input.PrintedUnitPriceQuantityDenominator != nil || input.PrintedUnitPriceUnit != nil) && !slices.Contains(input.ChangedFields, "printedUnitPrice") ||
+		input.CategoryID != nil && !slices.Contains(input.ChangedFields, "categoryId") || input.ProductVariantID != nil && !slices.Contains(input.ChangedFields, "productVariantId") || input.Allocations != nil && !slices.Contains(input.ChangedFields, "allocations") {
 		return nil, fmt.Errorf("%w: patch contains fields missing from changedFields", ErrBadInput)
 	}
 	if input.ProductLearning != nil && !slices.Contains(input.ChangedFields, "productVariantId") {
@@ -1640,6 +1650,15 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	}
 	if conflict {
 		return nil, ErrConflict
+	}
+	currentMeasure := purchaseItemMeasure{
+		quantityNumerator: item.QuantityNumerator, quantityDenominator: item.QuantityDenominator, quantityUnit: item.QuantityUnit,
+		printedUnitPriceYen: item.PrintedUnitPriceYen, printedUnitPriceQuantityNumerator: item.PrintedUnitPriceQuantityNumerator,
+		printedUnitPriceQuantityDenominator: item.PrintedUnitPriceQuantityDenominator, printedUnitPriceUnit: item.PrintedUnitPriceUnit,
+	}
+	newMeasure, err := measureFromUpdate(input, currentMeasure)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
 	newName, newAmount, newCategory := name, amount, categoryID
 	if input.Name != nil {
@@ -1796,6 +1815,9 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 		Name: &itemName, AmountYen: &itemAmount, CategoryID: &categoryValue,
 		ProductVariantID: &variantValue, AllocationOverride: &newAllocationOverride,
 		Revision: &newRevision, FieldRevisions: &fieldRevisionValue,
+		QuantityNumerator: &newMeasure.quantityNumerator, QuantityDenominator: &newMeasure.quantityDenominator, QuantityUnit: &newMeasure.quantityUnit,
+		PrintedUnitPriceYen: &newMeasure.printedUnitPriceYen, PrintedUnitPriceQuantityNumerator: &newMeasure.printedUnitPriceQuantityNumerator,
+		PrintedUnitPriceQuantityDenominator: &newMeasure.printedUnitPriceQuantityDenominator, PrintedUnitPriceUnit: &newMeasure.printedUnitPriceUnit,
 	}).UpdateMod(),
 		um.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID))),
 		um.SetCol("updated_at").To(psql.F("now")),

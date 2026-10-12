@@ -322,7 +322,19 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 		item := &model.PurchaseItem{
 			ID: storedItem.ID.String(), Name: storedItem.Name, AmountYen: graphLong(storedItem.AmountYen),
 			Revision: int(storedItem.Revision), Currency: "JPY", Allocations: make([]*model.Allocation, 0), Tags: make([]*model.Tag, 0),
+			QuantityNumerator: measureIntegerString(storedItem.QuantityNumerator), QuantityDenominator: measureIntegerString(storedItem.QuantityDenominator), QuantityUnit: measureString(storedItem.QuantityUnit),
+			PrintedUnitPriceYen: measureLong(storedItem.PrintedUnitPriceYen), PrintedUnitPriceQuantityNumerator: measureIntegerString(storedItem.PrintedUnitPriceQuantityNumerator),
+			PrintedUnitPriceQuantityDenominator: measureIntegerString(storedItem.PrintedUnitPriceQuantityDenominator), PrintedUnitPriceUnit: measureString(storedItem.PrintedUnitPriceUnit),
 		}
+		measure := purchaseItemMeasure{
+			quantityNumerator: storedItem.QuantityNumerator, quantityDenominator: storedItem.QuantityDenominator,
+		}
+		effectiveNumerator, effectiveDenominator, ok := effectiveUnitPrice(storedItem.AmountYen, measure)
+		if !ok {
+			return nil, fmt.Errorf("purchase item %s effective unit price exceeds int64", storedItem.ID)
+		}
+		item.EffectiveUnitPriceNumeratorYen = effectiveNumerator
+		item.EffectiveUnitPriceDenominator = effectiveDenominator
 		if storedItem.CategoryID.Valid {
 			categoryID := storedItem.CategoryID.V.String()
 			item.CategoryID = &categoryID
@@ -331,7 +343,6 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 			variantID := storedItem.ProductVariantID.V.String()
 			item.ProductVariantID = &variantID
 		}
-		var ok bool
 		total, ok = checkedAdd(total, storedItem.AmountYen)
 		if !ok {
 			return nil, fmt.Errorf("purchase %s total exceeds int64", purchaseID)

@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"strings"
 	"time"
 )
 
 const MaxAmount int64 = 1_000_000_000_000
+const maxQuantityDenominator int64 = 1_000_000
 
 type Region struct {
 	Page   int     `json:"page"`
@@ -20,17 +22,24 @@ type Region struct {
 }
 
 type Item struct {
-	PrintedName   string  `json:"printedName"`
-	Name          string  `json:"name"`
-	PrintedAmount int64   `json:"printedAmount"`
-	Discount      int64   `json:"discount"`
-	PriceBasis    string  `json:"priceBasis"`
-	TaxGroup      string  `json:"taxGroup"`
-	GrossAmount   int64   `json:"grossAmount"`
-	CategoryHint  string  `json:"categoryHint"`
-	Confidence    float64 `json:"confidence"`
-	Region        *Region `json:"region,omitempty"`
-	Verification  string  `json:"verification"`
+	PrintedName                         string  `json:"printedName"`
+	Name                                string  `json:"name"`
+	PrintedAmount                       int64   `json:"printedAmount"`
+	Discount                            int64   `json:"discount"`
+	PriceBasis                          string  `json:"priceBasis"`
+	TaxGroup                            string  `json:"taxGroup"`
+	QuantityNumerator                   *int64  `json:"quantityNumerator,omitempty"`
+	QuantityDenominator                 *int64  `json:"quantityDenominator,omitempty"`
+	QuantityUnit                        string  `json:"quantityUnit,omitempty"`
+	PrintedUnitPriceYen                 *int64  `json:"printedUnitPriceYen,omitempty"`
+	PrintedUnitPriceQuantityNumerator   *int64  `json:"printedUnitPriceQuantityNumerator,omitempty"`
+	PrintedUnitPriceQuantityDenominator *int64  `json:"printedUnitPriceQuantityDenominator,omitempty"`
+	PrintedUnitPriceUnit                string  `json:"printedUnitPriceUnit,omitempty"`
+	GrossAmount                         int64   `json:"grossAmount"`
+	CategoryHint                        string  `json:"categoryHint"`
+	Confidence                          float64 `json:"confidence"`
+	Region                              *Region `json:"region,omitempty"`
+	Verification                        string  `json:"verification"`
 }
 
 type TaxGroup struct {
@@ -132,7 +141,7 @@ func Verify(receipt Receipt) (Verification, error) {
 	indices := map[string][]int{}
 	included := map[string][]int{}
 	for i, item := range r.Items {
-		if item.PrintedName == "" || len(item.PrintedName) > 1024 || len(item.Name) > 1024 || !validAmount(item.PrintedAmount) || !validAmount(item.Discount) || item.Discount > 0 || !validAmount(item.PrintedAmount+item.Discount) {
+		if item.PrintedName == "" || len(item.PrintedName) > 1024 || len(item.Name) > 1024 || !validAmount(item.PrintedAmount) || !validAmount(item.Discount) || item.Discount > 0 || !validAmount(item.PrintedAmount+item.Discount) || !validItemQuantity(item) || !validPrintedUnitPrice(item) {
 			return v, fmt.Errorf("invalid item at index %d", i)
 		}
 		if item.Region != nil && !validRegion(*item.Region) {
@@ -286,6 +295,31 @@ func Verify(receipt Receipt) (Verification, error) {
 	v.Balanced = len(v.Issues) == 0
 	v.Candidates = evaluateInterpretations(r)
 	return v, nil
+}
+
+func validItemQuantity(item Item) bool {
+	if item.QuantityNumerator == nil && item.QuantityDenominator == nil && item.QuantityUnit == "" {
+		return true
+	}
+	return validReceiptRational(item.QuantityNumerator, item.QuantityDenominator) &&
+		strings.TrimSpace(item.QuantityUnit) != "" && len(item.QuantityUnit) <= 32
+}
+
+func validPrintedUnitPrice(item Item) bool {
+	if item.PrintedUnitPriceYen == nil && item.PrintedUnitPriceQuantityNumerator == nil && item.PrintedUnitPriceQuantityDenominator == nil && item.PrintedUnitPriceUnit == "" {
+		return true
+	}
+	return item.PrintedUnitPriceYen != nil && *item.PrintedUnitPriceYen >= 0 && *item.PrintedUnitPriceYen <= MaxAmount &&
+		validReceiptRational(item.PrintedUnitPriceQuantityNumerator, item.PrintedUnitPriceQuantityDenominator) &&
+		strings.TrimSpace(item.PrintedUnitPriceUnit) != "" && len(item.PrintedUnitPriceUnit) <= 32
+}
+
+func validReceiptRational(numerator, denominator *int64) bool {
+	if numerator == nil || denominator == nil || *numerator <= 0 || *numerator > MaxAmount || *denominator <= 0 || *denominator > maxQuantityDenominator {
+		return false
+	}
+	gcd := new(big.Int).GCD(nil, nil, big.NewInt(*numerator), big.NewInt(*denominator))
+	return gcd.Int64() == 1
 }
 
 func validRegion(r Region) bool {

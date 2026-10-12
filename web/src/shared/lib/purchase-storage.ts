@@ -5,6 +5,8 @@ export type PurchaseDraftItem = {
   key: string;
   name: string;
   amount: string;
+  quantity?: string;
+  quantityUnit?: string;
   categoryId: string;
   productVariantId?: string;
   allocations: Array<{ poolId: string; weight: number }>;

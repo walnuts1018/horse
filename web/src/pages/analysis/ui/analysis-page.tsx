@@ -43,8 +43,11 @@ const nextMonth = (month: string) => {
 
 type Dimension = "category" | "merchant" | "item" | "pool" | "account" | "member";
 type PurchaseDimension = Exclude<Dimension, "category" | "member">;
+type ItemMetric = "amount" | "effective" | "printed";
 type AnalyticsRow = { id: string; name: string; amount: number; count: number };
 type MonthlyEntry = { month: string; id: string; amount: number; occurredAt: string };
+const itemAnalysisId = (item: Purchase["items"][number]) =>
+  `${item.productVariantId ?? item.name}\u0000${item.quantityUnit ?? ""}`;
 
 function purchaseDimensions(purchases: Purchase[], household: Household) {
   const rows: Record<PurchaseDimension, Map<string, AnalyticsRow>> = {
@@ -85,10 +88,11 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
       purchase.occurredAt,
     );
     for (const item of purchase.items) {
+      const itemId = itemAnalysisId(item);
       add(
         "item",
-        item.productVariantId ?? item.name,
-        item.name,
+        itemId,
+        `${item.name}${item.quantityUnit ? ` · ${item.quantityUnit}` : " · 単位不明"}`,
         item.amountYen,
         month,
         purchase.occurredAt,
@@ -133,11 +137,68 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
   return { rows, monthly };
 }
 
+function itemPriceSeries(
+  purchases: Purchase[],
+  itemId: string,
+  metric: Exclude<ItemMetric, "amount">,
+) {
+  const series = new Map<
+    string,
+    { label: string; points: Array<{ occurredAt: string; value: string }> }
+  >();
+  let unknownCount = 0;
+  for (const purchase of purchases) {
+    if (purchase.status !== "POSTED" && purchase.status !== "CLOSED") continue;
+    for (const item of purchase.items) {
+      if (itemAnalysisId(item) !== itemId) continue;
+      let key: string;
+      let label: string;
+      let value: string;
+      if (metric === "effective") {
+        if (!item.effectiveUnitPriceNumeratorYen || !item.effectiveUnitPriceDenominator) {
+          unknownCount += 1;
+          continue;
+        }
+        key = `effective:${item.quantityUnit}`;
+        label = `実効単価 · ${item.quantityUnit}`;
+        value = `${item.effectiveUnitPriceNumeratorYen}/${item.effectiveUnitPriceDenominator}`;
+      } else {
+        if (
+          item.printedUnitPriceYen == null ||
+          !item.printedUnitPriceQuantityNumerator ||
+          !item.printedUnitPriceQuantityDenominator ||
+          !item.printedUnitPriceUnit
+        ) {
+          unknownCount += 1;
+          continue;
+        }
+        key = `printed:${item.printedUnitPriceQuantityNumerator}/${item.printedUnitPriceQuantityDenominator}:${item.printedUnitPriceUnit}`;
+        label = `印字単価 · ${item.printedUnitPriceQuantityNumerator}/${item.printedUnitPriceQuantityDenominator}${item.printedUnitPriceUnit}`;
+        value = String(item.printedUnitPriceYen);
+      }
+      const current = series.get(key) ?? { label, points: [] };
+      current.points.push({ occurredAt: purchase.occurredAt, value });
+      series.set(key, current);
+    }
+  }
+  for (const current of series.values())
+    current.points.sort(
+      (left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt),
+    );
+  return { series: Array.from(series.values()), unknownCount };
+}
+
+const formatExactYen = (numerator: string, denominator: string) => {
+  const amount = new Intl.NumberFormat("ja-JP").format(BigInt(numerator));
+  return denominator === "1" ? `¥${amount}` : `¥${amount}/${denominator}`;
+};
+
 export function AnalysisPage({ household }: { household: Household }) {
   const [periodLength, setPeriodLength] = useState(6);
   const [annual, setAnnual] = useState(false);
   const [annualYear, setAnnualYear] = useState(Number(japanMonth(new Date()).slice(0, 4)));
   const [dimension, setDimension] = useState<Dimension>("category");
+  const [itemMetric, setItemMetric] = useState<ItemMetric>("amount");
   const currentMonth = japanMonth(new Date());
   const months = annual
     ? monthRange(`${annualYear}-12`, 12)
@@ -553,38 +614,73 @@ export function AnalysisPage({ household }: { household: Household }) {
         <section className="panel analysis-price-panel">
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">品目の購入額</span>
-              <h2>1回あたりの平均</h2>
+              <span className="eyebrow">品目の推移</span>
+              <h2>
+                {itemMetric === "amount"
+                  ? "購入額"
+                  : itemMetric === "effective"
+                    ? "実効単価"
+                    : "印字単価"}
+              </h2>
             </div>
+            <label className="select-filter">
+              <span>価格指標</span>
+              <select
+                aria-label="価格指標"
+                value={itemMetric}
+                onChange={(event) => setItemMetric(event.target.value as ItemMetric)}
+              >
+                <option value="amount">購入額</option>
+                <option value="effective">実効単価</option>
+                <option value="printed">印字単価</option>
+              </select>
+            </label>
           </div>
-          {rows.slice(0, 5).map((row) =>
-            (() => {
-              const prices = data.monthly.item
-                .filter((entry) => entry.id === row.id)
-                .sort(
-                  (left, right) =>
-                    new Date(left.occurredAt).getTime() - new Date(right.occurredAt).getTime(),
-                );
-              const firstPrice = prices[0]?.amount ?? 0;
-              const latestPrice = prices[prices.length - 1]?.amount ?? 0;
-              const change =
-                firstPrice > 0 ? Math.round(((latestPrice - firstPrice) / firstPrice) * 100) : 0;
-              return (
-                <div className="price-row" key={row.id}>
-                  <span>{row.name}</span>
-                  <strong>{yen(Math.round(row.amount / Math.max(1, row.count)))}</strong>
-                  <small>{row.count}件</small>
-                  {prices.length > 1 && (
-                    <small className="price-change">
-                      初回購入額 {yen(firstPrice)}、最新購入額 {yen(latestPrice)}（
-                      {change > 0 ? "+" : ""}
-                      {change}%）
-                    </small>
-                  )}
-                </div>
-              );
-            })(),
-          )}
+          {rows.slice(0, 5).map((row) => {
+            const prices = data.monthly.item
+              .filter((entry) => entry.id === row.id)
+              .sort((left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt));
+            const trend =
+              itemMetric === "amount" ? null : itemPriceSeries(purchases, row.id, itemMetric);
+            return (
+              <div className="price-row" key={row.id}>
+                <span>{row.name}</span>
+                {itemMetric === "amount" ? (
+                  <>
+                    <strong>{yen(Math.round(row.amount / Math.max(1, row.count)))}</strong>
+                    <small>{row.count}件</small>
+                    {prices.length > 1 && (
+                      <small className="price-change">
+                        初回購入額 {yen(prices[0].amount)}、最新購入額{" "}
+                        {yen(prices[prices.length - 1].amount)}
+                      </small>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {trend?.series.map((series) => {
+                      const first = series.points[0];
+                      const last = series.points[series.points.length - 1];
+                      const format = (value: string) => {
+                        const [numerator, denominator] = value.split("/");
+                        return denominator
+                          ? formatExactYen(numerator, denominator)
+                          : yen(Number(value));
+                      };
+                      return (
+                        <small className="price-change" key={series.label}>
+                          {series.label}: {format(first.value)} → {format(last.value)} ·{" "}
+                          {series.points.length}件
+                        </small>
+                      );
+                    })}
+                    {trend?.unknownCount ? <small>単価不明 {trend.unknownCount}件</small> : null}
+                    {!trend?.series.length && !trend?.unknownCount && <small>記録なし</small>}
+                  </>
+                )}
+              </div>
+            );
+          })}
         </section>
       )}
     </>

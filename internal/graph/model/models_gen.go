@@ -410,23 +410,39 @@ type PurchaseEdge struct {
 }
 
 type PurchaseItem struct {
-	ID               string        `json:"id"`
-	Name             string        `json:"name"`
-	AmountYen        Long          `json:"amountYen"`
-	Currency         string        `json:"currency"`
-	CategoryID       *string       `json:"categoryId,omitempty"`
-	ProductVariantID *string       `json:"productVariantId,omitempty"`
-	Allocations      []*Allocation `json:"allocations"`
-	Tags             []*Tag        `json:"tags"`
-	Revision         int           `json:"revision"`
+	ID                                  string        `json:"id"`
+	Name                                string        `json:"name"`
+	AmountYen                           Long          `json:"amountYen"`
+	Currency                            string        `json:"currency"`
+	QuantityNumerator                   *string       `json:"quantityNumerator,omitempty"`
+	QuantityDenominator                 *string       `json:"quantityDenominator,omitempty"`
+	QuantityUnit                        *string       `json:"quantityUnit,omitempty"`
+	PrintedUnitPriceYen                 *Long         `json:"printedUnitPriceYen,omitempty"`
+	PrintedUnitPriceQuantityNumerator   *string       `json:"printedUnitPriceQuantityNumerator,omitempty"`
+	PrintedUnitPriceQuantityDenominator *string       `json:"printedUnitPriceQuantityDenominator,omitempty"`
+	PrintedUnitPriceUnit                *string       `json:"printedUnitPriceUnit,omitempty"`
+	EffectiveUnitPriceNumeratorYen      *string       `json:"effectiveUnitPriceNumeratorYen,omitempty"`
+	EffectiveUnitPriceDenominator       *string       `json:"effectiveUnitPriceDenominator,omitempty"`
+	CategoryID                          *string       `json:"categoryId,omitempty"`
+	ProductVariantID                    *string       `json:"productVariantId,omitempty"`
+	Allocations                         []*Allocation `json:"allocations"`
+	Tags                                []*Tag        `json:"tags"`
+	Revision                            int           `json:"revision"`
 }
 
 type PurchaseItemInput struct {
-	Name             string             `json:"name"`
-	AmountYen        Long               `json:"amountYen"`
-	CategoryID       *string            `json:"categoryId,omitempty"`
-	ProductVariantID *string            `json:"productVariantId,omitempty"`
-	Allocations      []*AllocationInput `json:"allocations,omitempty"`
+	Name                                string             `json:"name"`
+	AmountYen                           Long               `json:"amountYen"`
+	QuantityNumerator                   *string            `json:"quantityNumerator,omitempty"`
+	QuantityDenominator                 *string            `json:"quantityDenominator,omitempty"`
+	QuantityUnit                        *string            `json:"quantityUnit,omitempty"`
+	PrintedUnitPriceYen                 *Long              `json:"printedUnitPriceYen,omitempty"`
+	PrintedUnitPriceQuantityNumerator   *string            `json:"printedUnitPriceQuantityNumerator,omitempty"`
+	PrintedUnitPriceQuantityDenominator *string            `json:"printedUnitPriceQuantityDenominator,omitempty"`
+	PrintedUnitPriceUnit                *string            `json:"printedUnitPriceUnit,omitempty"`
+	CategoryID                          *string            `json:"categoryId,omitempty"`
+	ProductVariantID                    *string            `json:"productVariantId,omitempty"`
+	Allocations                         []*AllocationInput `json:"allocations,omitempty"`
 }
 
 type PurchaseItemTargetInput struct {
@@ -643,16 +659,23 @@ type UpdatePurchaseInput struct {
 }
 
 type UpdatePurchaseItemInput struct {
-	ItemID           string                `json:"itemId"`
-	BaseRevision     int                   `json:"baseRevision"`
-	Name             *string               `json:"name,omitempty"`
-	AmountYen        *Long                 `json:"amountYen,omitempty"`
-	CategoryID       *string               `json:"categoryId,omitempty"`
-	ProductVariantID *string               `json:"productVariantId,omitempty"`
-	ProductLearning  *ProductLearningScope `json:"productLearning,omitempty"`
-	VariantName      *string               `json:"variantName,omitempty"`
-	Allocations      []*AllocationInput    `json:"allocations,omitempty"`
-	ChangedFields    []string              `json:"changedFields"`
+	ItemID                              string                `json:"itemId"`
+	BaseRevision                        int                   `json:"baseRevision"`
+	Name                                *string               `json:"name,omitempty"`
+	AmountYen                           *Long                 `json:"amountYen,omitempty"`
+	QuantityNumerator                   *string               `json:"quantityNumerator,omitempty"`
+	QuantityDenominator                 *string               `json:"quantityDenominator,omitempty"`
+	QuantityUnit                        *string               `json:"quantityUnit,omitempty"`
+	PrintedUnitPriceYen                 *Long                 `json:"printedUnitPriceYen,omitempty"`
+	PrintedUnitPriceQuantityNumerator   *string               `json:"printedUnitPriceQuantityNumerator,omitempty"`
+	PrintedUnitPriceQuantityDenominator *string               `json:"printedUnitPriceQuantityDenominator,omitempty"`
+	PrintedUnitPriceUnit                *string               `json:"printedUnitPriceUnit,omitempty"`
+	CategoryID                          *string               `json:"categoryId,omitempty"`
+	ProductVariantID                    *string               `json:"productVariantId,omitempty"`
+	ProductLearning                     *ProductLearningScope `json:"productLearning,omitempty"`
+	VariantName                         *string               `json:"variantName,omitempty"`
+	Allocations                         []*AllocationInput    `json:"allocations,omitempty"`
+	ChangedFields                       []string              `json:"changedFields"`
 }
 
 type UpdateTagInput struct {

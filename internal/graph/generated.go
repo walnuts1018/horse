@@ -365,15 +365,24 @@ type ComplexityRoot struct {
 	}
 
 	PurchaseItem struct {
-		Allocations      func(childComplexity int) int
-		AmountYen        func(childComplexity int) int
-		CategoryID       func(childComplexity int) int
-		Currency         func(childComplexity int) int
-		ID               func(childComplexity int) int
-		Name             func(childComplexity int) int
-		ProductVariantID func(childComplexity int) int
-		Revision         func(childComplexity int) int
-		Tags             func(childComplexity int) int
+		Allocations                         func(childComplexity int) int
+		AmountYen                           func(childComplexity int) int
+		CategoryID                          func(childComplexity int) int
+		Currency                            func(childComplexity int) int
+		EffectiveUnitPriceDenominator       func(childComplexity int) int
+		EffectiveUnitPriceNumeratorYen      func(childComplexity int) int
+		ID                                  func(childComplexity int) int
+		Name                                func(childComplexity int) int
+		PrintedUnitPriceQuantityDenominator func(childComplexity int) int
+		PrintedUnitPriceQuantityNumerator   func(childComplexity int) int
+		PrintedUnitPriceUnit                func(childComplexity int) int
+		PrintedUnitPriceYen                 func(childComplexity int) int
+		ProductVariantID                    func(childComplexity int) int
+		QuantityDenominator                 func(childComplexity int) int
+		QuantityNumerator                   func(childComplexity int) int
+		QuantityUnit                        func(childComplexity int) int
+		Revision                            func(childComplexity int) int
+		Tags                                func(childComplexity int) int
 	}
 
 	PurchasePayment struct {
@@ -2162,6 +2171,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.PurchaseItem.Currency(childComplexity), true
+	case "PurchaseItem.effectiveUnitPriceDenominator":
+		if e.ComplexityRoot.PurchaseItem.EffectiveUnitPriceDenominator == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseItem.EffectiveUnitPriceDenominator(childComplexity), true
+	case "PurchaseItem.effectiveUnitPriceNumeratorYen":
+		if e.ComplexityRoot.PurchaseItem.EffectiveUnitPriceNumeratorYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseItem.EffectiveUnitPriceNumeratorYen(childComplexity), true
 	case "PurchaseItem.id":
 		if e.ComplexityRoot.PurchaseItem.ID == nil {
 			break
@@ -2174,12 +2195,54 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.PurchaseItem.Name(childComplexity), true
+	case "PurchaseItem.printedUnitPriceQuantityDenominator":
+		if e.ComplexityRoot.PurchaseItem.PrintedUnitPriceQuantityDenominator == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseItem.PrintedUnitPriceQuantityDenominator(childComplexity), true
+	case "PurchaseItem.printedUnitPriceQuantityNumerator":
+		if e.ComplexityRoot.PurchaseItem.PrintedUnitPriceQuantityNumerator == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseItem.PrintedUnitPriceQuantityNumerator(childComplexity), true
+	case "PurchaseItem.printedUnitPriceUnit":
+		if e.ComplexityRoot.PurchaseItem.PrintedUnitPriceUnit == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseItem.PrintedUnitPriceUnit(childComplexity), true
+	case "PurchaseItem.printedUnitPriceYen":
+		if e.ComplexityRoot.PurchaseItem.PrintedUnitPriceYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseItem.PrintedUnitPriceYen(childComplexity), true
 	case "PurchaseItem.productVariantId":
 		if e.ComplexityRoot.PurchaseItem.ProductVariantID == nil {
 			break
 		}
 
 		return e.ComplexityRoot.PurchaseItem.ProductVariantID(childComplexity), true
+	case "PurchaseItem.quantityDenominator":
+		if e.ComplexityRoot.PurchaseItem.QuantityDenominator == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseItem.QuantityDenominator(childComplexity), true
+	case "PurchaseItem.quantityNumerator":
+		if e.ComplexityRoot.PurchaseItem.QuantityNumerator == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseItem.QuantityNumerator(childComplexity), true
+	case "PurchaseItem.quantityUnit":
+		if e.ComplexityRoot.PurchaseItem.QuantityUnit == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseItem.QuantityUnit(childComplexity), true
 	case "PurchaseItem.revision":
 		if e.ComplexityRoot.PurchaseItem.Revision == nil {
 			break
@@ -2919,7 +2982,7 @@ type ProductSuggestion { concept: ProductConcept!, variant: ProductVariant!, mat
 type Purchase { id: ID!, householdId: ID!, occurredAt: String!, merchant: String!, origin: PurchaseOrigin!, hasEvidence: Boolean!, sourceKinds: [SourceKind!]!, paymentAccountId: ID, paymentAccount: Account, paymentAllocations: [PurchasePayment!]!, items: [PurchaseItem!]!, corrections: [PurchaseCorrection!]!, totalYen: Long!, currency: String!, revision: Int!, status: PurchaseStatus!, createdAt: String!, updatedAt: String! }
 type PurchasePayment { paymentAccountId: ID!, account: Account, amountYen: Long! }
 type PurchaseCorrection { id: ID!, itemId: ID, amountDeltaYen: Long!, reason: String!, occurredAt: String!, settlementMonth: String!, paymentAllocations: [PurchasePayment!]! }
-type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, categoryId: ID, productVariantId: ID, allocations: [Allocation!]!, tags: [Tag!]!, revision: Int! }
+type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, quantityNumerator: String, quantityDenominator: String, quantityUnit: String, printedUnitPriceYen: Long, printedUnitPriceQuantityNumerator: String, printedUnitPriceQuantityDenominator: String, printedUnitPriceUnit: String, effectiveUnitPriceNumeratorYen: String, effectiveUnitPriceDenominator: String, categoryId: ID, productVariantId: ID, allocations: [Allocation!]!, tags: [Tag!]!, revision: Int! }
 type Tag { id: ID!, householdId: ID!, name: String!, archived: Boolean!, revision: Int! }
 type Budget { id: ID!, householdId: ID!, categoryId: ID, name: String!, amountYen: Long!, actualYen: Long!, remainingYen: Long!, startsOn: String!, endsOn: String, archived: Boolean!, revision: Int! }
 type RecurringExpense { id: ID!, householdId: ID!, name: String!, merchant: String!, amountYen: Long!, currency: String!, categoryId: ID, paymentAccountId: ID, cadence: String!, startsOn: String!, nextDueOn: String!, endsOn: String, archived: Boolean!, revision: Int! }
@@ -2940,12 +3003,12 @@ type MonthlyCategorySpending { period: String!, categoryId: ID, categoryName: St
 type MonthlyMemberSpending { period: String!, memberId: ID!, memberName: String!, amountYen: Long! }
 type MonthlyMemberSpendingReport { items: [MonthlyMemberSpending!]!, hasUnattributedPurchases: Boolean! }
 input AllocationInput { poolId: ID!, weight: Long! }
-input PurchaseItemInput { name: String!, amountYen: Long!, categoryId: ID, productVariantId: ID, allocations: [AllocationInput!] }
+input PurchaseItemInput { name: String!, amountYen: Long!, quantityNumerator: String, quantityDenominator: String, quantityUnit: String, printedUnitPriceYen: Long, printedUnitPriceQuantityNumerator: String, printedUnitPriceQuantityDenominator: String, printedUnitPriceUnit: String, categoryId: ID, productVariantId: ID, allocations: [AllocationInput!] }
 input PurchasePaymentInput { paymentAccountId: ID!, amountYen: Long! }
 input CreatePurchaseInput { idempotencyKey: String!, householdId: ID!, occurredAt: String!, merchant: String!, origin: PurchaseOrigin, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!], sourceDocumentId: ID, sourceReference: String, items: [PurchaseItemInput!]!, status: PurchaseStatus }
 input PurchasePatch { occurredAt: String, merchant: String, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!] }
 input UpdatePurchaseInput { purchaseId: ID!, baseRevision: Int!, patch: PurchasePatch!, changedFields: [String!]! }
-input UpdatePurchaseItemInput { itemId: ID!, baseRevision: Int!, name: String, amountYen: Long, categoryId: ID, productVariantId: ID, productLearning: ProductLearningScope = ITEM_ONLY, variantName: String, allocations: [AllocationInput!], changedFields: [String!]! }
+input UpdatePurchaseItemInput { itemId: ID!, baseRevision: Int!, name: String, amountYen: Long, quantityNumerator: String, quantityDenominator: String, quantityUnit: String, printedUnitPriceYen: Long, printedUnitPriceQuantityNumerator: String, printedUnitPriceQuantityDenominator: String, printedUnitPriceUnit: String, categoryId: ID, productVariantId: ID, productLearning: ProductLearningScope = ITEM_ONLY, variantName: String, allocations: [AllocationInput!], changedFields: [String!]! }
 input PurchaseItemTargetInput { itemId: ID!, baseRevision: Int! }
 input BulkPurchaseItemPatch { categoryId: ID, productVariantId: ID, allocations: [AllocationInput!], tagIds: [ID!] }
 input BulkUpdatePurchaseItemsInput { targets: [PurchaseItemTargetInput!]!, patch: BulkPurchaseItemPatch!, changedFields: [String!]! }
@@ -3634,6 +3697,24 @@ func (ec *executionContext) childFields_PurchaseItem(ctx context.Context, field 
 		return ec.fieldContext_PurchaseItem_amountYen(ctx, field)
 	case "currency":
 		return ec.fieldContext_PurchaseItem_currency(ctx, field)
+	case "quantityNumerator":
+		return ec.fieldContext_PurchaseItem_quantityNumerator(ctx, field)
+	case "quantityDenominator":
+		return ec.fieldContext_PurchaseItem_quantityDenominator(ctx, field)
+	case "quantityUnit":
+		return ec.fieldContext_PurchaseItem_quantityUnit(ctx, field)
+	case "printedUnitPriceYen":
+		return ec.fieldContext_PurchaseItem_printedUnitPriceYen(ctx, field)
+	case "printedUnitPriceQuantityNumerator":
+		return ec.fieldContext_PurchaseItem_printedUnitPriceQuantityNumerator(ctx, field)
+	case "printedUnitPriceQuantityDenominator":
+		return ec.fieldContext_PurchaseItem_printedUnitPriceQuantityDenominator(ctx, field)
+	case "printedUnitPriceUnit":
+		return ec.fieldContext_PurchaseItem_printedUnitPriceUnit(ctx, field)
+	case "effectiveUnitPriceNumeratorYen":
+		return ec.fieldContext_PurchaseItem_effectiveUnitPriceNumeratorYen(ctx, field)
+	case "effectiveUnitPriceDenominator":
+		return ec.fieldContext_PurchaseItem_effectiveUnitPriceDenominator(ctx, field)
 	case "categoryId":
 		return ec.fieldContext_PurchaseItem_categoryId(ctx, field)
 	case "productVariantId":
@@ -11341,6 +11422,213 @@ func (ec *executionContext) fieldContext_PurchaseItem_currency(_ context.Context
 	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _PurchaseItem_quantityNumerator(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseItem_quantityNumerator(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.QuantityNumerator, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseItem_quantityNumerator(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseItem_quantityDenominator(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseItem_quantityDenominator(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.QuantityDenominator, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseItem_quantityDenominator(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseItem_quantityUnit(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseItem_quantityUnit(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.QuantityUnit, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseItem_quantityUnit(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseItem_printedUnitPriceYen(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseItem_printedUnitPriceYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PrintedUnitPriceYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Long) graphql.Marshaler {
+			return ec.marshalOLong2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseItem_printedUnitPriceYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseItem_printedUnitPriceQuantityNumerator(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseItem_printedUnitPriceQuantityNumerator(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PrintedUnitPriceQuantityNumerator, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseItem_printedUnitPriceQuantityNumerator(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseItem_printedUnitPriceQuantityDenominator(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseItem_printedUnitPriceQuantityDenominator(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PrintedUnitPriceQuantityDenominator, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseItem_printedUnitPriceQuantityDenominator(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseItem_printedUnitPriceUnit(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseItem_printedUnitPriceUnit(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PrintedUnitPriceUnit, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseItem_printedUnitPriceUnit(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseItem_effectiveUnitPriceNumeratorYen(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseItem_effectiveUnitPriceNumeratorYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.EffectiveUnitPriceNumeratorYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseItem_effectiveUnitPriceNumeratorYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseItem_effectiveUnitPriceDenominator(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseItem_effectiveUnitPriceDenominator(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.EffectiveUnitPriceDenominator, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseItem_effectiveUnitPriceDenominator(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _PurchaseItem_categoryId(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -15648,7 +15936,7 @@ func (ec *executionContext) unmarshalInputPurchaseItemInput(ctx context.Context,
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"name", "amountYen", "categoryId", "productVariantId", "allocations"}
+	fieldsInOrder := [...]string{"name", "amountYen", "quantityNumerator", "quantityDenominator", "quantityUnit", "printedUnitPriceYen", "printedUnitPriceQuantityNumerator", "printedUnitPriceQuantityDenominator", "printedUnitPriceUnit", "categoryId", "productVariantId", "allocations"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -15669,6 +15957,55 @@ func (ec *executionContext) unmarshalInputPurchaseItemInput(ctx context.Context,
 				return it, err
 			}
 			it.AmountYen = data
+		case "quantityNumerator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("quantityNumerator"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.QuantityNumerator = data
+		case "quantityDenominator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("quantityDenominator"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.QuantityDenominator = data
+		case "quantityUnit":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("quantityUnit"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.QuantityUnit = data
+		case "printedUnitPriceYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("printedUnitPriceYen"))
+			data, err := ec.unmarshalOLong2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PrintedUnitPriceYen = data
+		case "printedUnitPriceQuantityNumerator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("printedUnitPriceQuantityNumerator"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PrintedUnitPriceQuantityNumerator = data
+		case "printedUnitPriceQuantityDenominator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("printedUnitPriceQuantityDenominator"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PrintedUnitPriceQuantityDenominator = data
+		case "printedUnitPriceUnit":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("printedUnitPriceUnit"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PrintedUnitPriceUnit = data
 		case "categoryId":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("categoryId"))
 			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
@@ -16685,7 +17022,7 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseItemInput(ctx context.Co
 		asMap["productLearning"] = "ITEM_ONLY"
 	}
 
-	fieldsInOrder := [...]string{"itemId", "baseRevision", "name", "amountYen", "categoryId", "productVariantId", "productLearning", "variantName", "allocations", "changedFields"}
+	fieldsInOrder := [...]string{"itemId", "baseRevision", "name", "amountYen", "quantityNumerator", "quantityDenominator", "quantityUnit", "printedUnitPriceYen", "printedUnitPriceQuantityNumerator", "printedUnitPriceQuantityDenominator", "printedUnitPriceUnit", "categoryId", "productVariantId", "productLearning", "variantName", "allocations", "changedFields"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -16720,6 +17057,55 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseItemInput(ctx context.Co
 				return it, err
 			}
 			it.AmountYen = data
+		case "quantityNumerator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("quantityNumerator"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.QuantityNumerator = data
+		case "quantityDenominator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("quantityDenominator"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.QuantityDenominator = data
+		case "quantityUnit":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("quantityUnit"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.QuantityUnit = data
+		case "printedUnitPriceYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("printedUnitPriceYen"))
+			data, err := ec.unmarshalOLong2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PrintedUnitPriceYen = data
+		case "printedUnitPriceQuantityNumerator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("printedUnitPriceQuantityNumerator"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PrintedUnitPriceQuantityNumerator = data
+		case "printedUnitPriceQuantityDenominator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("printedUnitPriceQuantityDenominator"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PrintedUnitPriceQuantityDenominator = data
+		case "printedUnitPriceUnit":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("printedUnitPriceUnit"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PrintedUnitPriceUnit = data
 		case "categoryId":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("categoryId"))
 			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
@@ -19157,6 +19543,51 @@ func (ec *executionContext) _PurchaseItem(ctx context.Context, sel ast.Selection
 		case "currency":
 			out.Values[i] = ec._PurchaseItem_currency(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "quantityNumerator":
+			out.Values[i] = ec._PurchaseItem_quantityNumerator(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "quantityDenominator":
+			out.Values[i] = ec._PurchaseItem_quantityDenominator(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "quantityUnit":
+			out.Values[i] = ec._PurchaseItem_quantityUnit(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "printedUnitPriceYen":
+			out.Values[i] = ec._PurchaseItem_printedUnitPriceYen(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "printedUnitPriceQuantityNumerator":
+			out.Values[i] = ec._PurchaseItem_printedUnitPriceQuantityNumerator(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "printedUnitPriceQuantityDenominator":
+			out.Values[i] = ec._PurchaseItem_printedUnitPriceQuantityDenominator(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "printedUnitPriceUnit":
+			out.Values[i] = ec._PurchaseItem_printedUnitPriceUnit(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "effectiveUnitPriceNumeratorYen":
+			out.Values[i] = ec._PurchaseItem_effectiveUnitPriceNumeratorYen(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "effectiveUnitPriceDenominator":
+			out.Values[i] = ec._PurchaseItem_effectiveUnitPriceDenominator(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
 				out.Invalids++
 			}
 		case "categoryId":

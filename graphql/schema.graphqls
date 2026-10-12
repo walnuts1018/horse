@@ -35,7 +35,7 @@ type ProductSuggestion { concept: ProductConcept!, variant: ProductVariant!, mat
 type Purchase { id: ID!, householdId: ID!, occurredAt: String!, merchant: String!, origin: PurchaseOrigin!, hasEvidence: Boolean!, sourceKinds: [SourceKind!]!, paymentAccountId: ID, paymentAccount: Account, paymentAllocations: [PurchasePayment!]!, items: [PurchaseItem!]!, corrections: [PurchaseCorrection!]!, totalYen: Long!, currency: String!, revision: Int!, status: PurchaseStatus!, createdAt: String!, updatedAt: String! }
 type PurchasePayment { paymentAccountId: ID!, account: Account, amountYen: Long! }
 type PurchaseCorrection { id: ID!, itemId: ID, amountDeltaYen: Long!, reason: String!, occurredAt: String!, settlementMonth: String!, paymentAllocations: [PurchasePayment!]! }
-type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, categoryId: ID, productVariantId: ID, allocations: [Allocation!]!, tags: [Tag!]!, revision: Int! }
+type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, quantityNumerator: String, quantityDenominator: String, quantityUnit: String, printedUnitPriceYen: Long, printedUnitPriceQuantityNumerator: String, printedUnitPriceQuantityDenominator: String, printedUnitPriceUnit: String, effectiveUnitPriceNumeratorYen: String, effectiveUnitPriceDenominator: String, categoryId: ID, productVariantId: ID, allocations: [Allocation!]!, tags: [Tag!]!, revision: Int! }
 type Tag { id: ID!, householdId: ID!, name: String!, archived: Boolean!, revision: Int! }
 type Budget { id: ID!, householdId: ID!, categoryId: ID, name: String!, amountYen: Long!, actualYen: Long!, remainingYen: Long!, startsOn: String!, endsOn: String, archived: Boolean!, revision: Int! }
 type RecurringExpense { id: ID!, householdId: ID!, name: String!, merchant: String!, amountYen: Long!, currency: String!, categoryId: ID, paymentAccountId: ID, cadence: String!, startsOn: String!, nextDueOn: String!, endsOn: String, archived: Boolean!, revision: Int! }
@@ -56,12 +56,12 @@ type MonthlyCategorySpending { period: String!, categoryId: ID, categoryName: St
 type MonthlyMemberSpending { period: String!, memberId: ID!, memberName: String!, amountYen: Long! }
 type MonthlyMemberSpendingReport { items: [MonthlyMemberSpending!]!, hasUnattributedPurchases: Boolean! }
 input AllocationInput { poolId: ID!, weight: Long! }
-input PurchaseItemInput { name: String!, amountYen: Long!, categoryId: ID, productVariantId: ID, allocations: [AllocationInput!] }
+input PurchaseItemInput { name: String!, amountYen: Long!, quantityNumerator: String, quantityDenominator: String, quantityUnit: String, printedUnitPriceYen: Long, printedUnitPriceQuantityNumerator: String, printedUnitPriceQuantityDenominator: String, printedUnitPriceUnit: String, categoryId: ID, productVariantId: ID, allocations: [AllocationInput!] }
 input PurchasePaymentInput { paymentAccountId: ID!, amountYen: Long! }
 input CreatePurchaseInput { idempotencyKey: String!, householdId: ID!, occurredAt: String!, merchant: String!, origin: PurchaseOrigin, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!], sourceDocumentId: ID, sourceReference: String, items: [PurchaseItemInput!]!, status: PurchaseStatus }
 input PurchasePatch { occurredAt: String, merchant: String, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!] }
 input UpdatePurchaseInput { purchaseId: ID!, baseRevision: Int!, patch: PurchasePatch!, changedFields: [String!]! }
-input UpdatePurchaseItemInput { itemId: ID!, baseRevision: Int!, name: String, amountYen: Long, categoryId: ID, productVariantId: ID, productLearning: ProductLearningScope = ITEM_ONLY, variantName: String, allocations: [AllocationInput!], changedFields: [String!]! }
+input UpdatePurchaseItemInput { itemId: ID!, baseRevision: Int!, name: String, amountYen: Long, quantityNumerator: String, quantityDenominator: String, quantityUnit: String, printedUnitPriceYen: Long, printedUnitPriceQuantityNumerator: String, printedUnitPriceQuantityDenominator: String, printedUnitPriceUnit: String, categoryId: ID, productVariantId: ID, productLearning: ProductLearningScope = ITEM_ONLY, variantName: String, allocations: [AllocationInput!], changedFields: [String!]! }
 input PurchaseItemTargetInput { itemId: ID!, baseRevision: Int! }
 input BulkPurchaseItemPatch { categoryId: ID, productVariantId: ID, allocations: [AllocationInput!], tagIds: [ID!] }
 input BulkUpdatePurchaseItemsInput { targets: [PurchaseItemTargetInput!]!, patch: BulkPurchaseItemPatch!, changedFields: [String!]! }

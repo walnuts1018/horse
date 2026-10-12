@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronRight, FileImage, Link2, ShieldCheck, Upload, X } from "lucide-react";
-import {
-  createPurchaseMutation,
-  makeIdempotencyKey,
-  readGraphql,
-  type Household,
-  type Purchase,
-} from "../../../shared/api";
+import { createAndPostPurchase, type Household } from "../../../shared/api";
 import { InlineError } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../shared/api";
 
@@ -16,13 +10,39 @@ const yen = (amount = 0) =>
     currency: "JPY",
     maximumFractionDigits: 0,
   }).format(amount);
+const isCsvFile = (file: File) => /\.csv$/i.test(file.name) || file.type === "text/csv";
 const sourceKind = (file: File, csvKind: "card" | "bank") =>
-  /\.csv$/i.test(file.name) ? csvKind : /\.eml$/i.test(file.name) ? "email" : "receipt";
+  isCsvFile(file) ? csvKind : /\.eml$/i.test(file.name) ? "email" : "receipt";
+const isSupportedFile = (file: File) =>
+  /\.(jpe?g|png|webp|pdf|csv|eml)$/i.test(file.name) ||
+  [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/pdf",
+    "text/csv",
+    "message/rfc822",
+  ].includes(file.type);
+const importIdempotencyKey = async (documentId: string, sourceReference: string) => {
+  const input = new TextEncoder().encode(`${documentId}\u0000${sourceReference}`);
+  const digest = await crypto.subtle.digest("SHA-256", input);
+  const hash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `import:${hash}`;
+};
 
 type ExtractedItem = {
   name: string;
   printedAmount: number;
   grossAmount: number;
+  quantityNumerator?: string | null;
+  quantityDenominator?: string | null;
+  quantityUnit?: string | null;
+  printedUnitPriceYen?: number | null;
+  printedUnitPriceQuantityNumerator?: string | null;
+  printedUnitPriceQuantityDenominator?: string | null;
+  printedUnitPriceUnit?: string | null;
   confidence: number;
   verification: string;
   categoryHint?: string;
@@ -330,24 +350,22 @@ export function ImportsPage({
   }, [selectedDocument?.id, selectedDocument?.jobId, selectedDocument?.status]);
   const addFiles = (selected: FileList | null) => {
     if (!selected) return;
-    setFiles((current) => [
-      ...current,
-      ...Array.from(selected).filter(
-        (file) =>
-          file.type.startsWith("image/") ||
-          file.type === "application/pdf" ||
-          file.type === "text/csv" ||
-          file.type === "application/vnd.ms-excel" ||
-          file.type === "message/rfc822" ||
-          /\.(csv|eml)$/i.test(file.name),
-      ),
-    ]);
+    const candidates = Array.from(selected);
+    const supported = candidates.filter(isSupportedFile);
+    const unsupported = candidates.filter((file) => !isSupportedFile(file));
+    setFiles((current) => [...current, ...supported]);
+    setMessage(
+      unsupported.length
+        ? `対応していない形式: ${unsupported.map((file) => file.name).join("、")}`
+        : "",
+    );
   };
   const uploadFiles = async () => {
     if (!files.length) return;
     setPending(true);
     setMessage("");
     const uploaded: DocumentReview[] = [];
+    const uploadedFiles: File[] = [];
     try {
       for (const file of files) {
         const body = new FormData();
@@ -390,12 +408,15 @@ export function ImportsPage({
           };
         }
         uploaded.push(documentReview);
+        uploadedFiles.push(file);
       }
       setDocuments((current) => [...uploaded, ...current]);
       setFiles([]);
       setSelected(uploaded.find((document) => document.result)?.id ?? uploaded[0]?.id ?? null);
       void refreshDocuments(true);
     } catch (reason) {
+      if (uploadedFiles.length)
+        setFiles((current) => current.filter((file) => !uploadedFiles.includes(file)));
       setMessage((reason as Error).message);
       setDocuments((current) => [...uploaded, ...current]);
     } finally {
@@ -546,27 +567,32 @@ export function ImportsPage({
     setPending(true);
     setMessage("");
     try {
-      const created = await readGraphql<{ createPurchase: Purchase }>(createPurchaseMutation, {
-        input: {
-          idempotencyKey: makeIdempotencyKey(),
-          householdId: household.id,
-          origin: "AI",
-          sourceDocumentId: document.id,
-          occurredAt: receipt?.purchasedAt
-            ? new Date(receipt.purchasedAt).toISOString()
-            : new Date().toISOString(),
-          merchant: receipt?.merchant ?? "",
-          paymentAccountId: paymentAccountId || null,
-          items: items.map((item, index) => ({
-            name: item.name,
-            amountYen:
-              document.result?.candidates?.find(
-                (candidate) => candidate.id === selectedCandidates[document.id],
-              )?.amounts[index] ??
-              (item.grossAmount || item.printedAmount),
-            allocations: null,
-          })),
-        },
+      const created = await createAndPostPurchase({
+        idempotencyKey: await importIdempotencyKey(document.id, "receipt"),
+        householdId: household.id,
+        origin: "AI",
+        sourceDocumentId: document.id,
+        occurredAt: receipt?.purchasedAt
+          ? new Date(receipt.purchasedAt).toISOString()
+          : new Date().toISOString(),
+        merchant: receipt?.merchant ?? "",
+        paymentAccountId: paymentAccountId || null,
+        items: items.map((item, index) => ({
+          name: item.name,
+          amountYen:
+            document.result?.candidates?.find(
+              (candidate) => candidate.id === selectedCandidates[document.id],
+            )?.amounts[index] ??
+            (item.grossAmount || item.printedAmount),
+          quantityNumerator: item.quantityNumerator,
+          quantityDenominator: item.quantityDenominator,
+          quantityUnit: item.quantityUnit,
+          printedUnitPriceYen: item.printedUnitPriceYen,
+          printedUnitPriceQuantityNumerator: item.printedUnitPriceQuantityNumerator,
+          printedUnitPriceQuantityDenominator: item.printedUnitPriceQuantityDenominator,
+          printedUnitPriceUnit: item.printedUnitPriceUnit,
+          allocations: null,
+        })),
       });
       await refreshPurchases();
       const evidenceResponse = await fetch(
@@ -612,24 +638,22 @@ export function ImportsPage({
     setPending(true);
     setMessage("");
     try {
-      const created = await readGraphql<{ createPurchase: Purchase }>(createPurchaseMutation, {
-        input: {
-          idempotencyKey: makeIdempotencyKey(),
-          householdId: household.id,
-          origin: "AI",
-          sourceDocumentId: document.id,
-          sourceReference: reference,
-          occurredAt: new Date(entry.occurredAt).toISOString(),
-          merchant: entry.merchant,
-          paymentAccountId: paymentAccountId || null,
-          items: [
-            {
-              name: entry.merchant || "カード利用",
-              amountYen: Math.abs(entry.amount),
-              allocations: null,
-            },
-          ],
-        },
+      const created = await createAndPostPurchase({
+        idempotencyKey: await importIdempotencyKey(document.id, reference),
+        householdId: household.id,
+        origin: "AI",
+        sourceDocumentId: document.id,
+        sourceReference: reference,
+        occurredAt: new Date(entry.occurredAt).toISOString(),
+        merchant: entry.merchant,
+        paymentAccountId: paymentAccountId || null,
+        items: [
+          {
+            name: entry.merchant || "カード利用",
+            amountYen: Math.abs(entry.amount),
+            allocations: null,
+          },
+        ],
       });
       await refreshPurchases();
       const evidenceResponse = await fetch(
@@ -673,11 +697,14 @@ export function ImportsPage({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*,application/pdf,.csv,.eml,text/csv,message/rfc822"
+        accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf,.csv,.eml,text/csv,message/rfc822"
         capture="environment"
         multiple
         hidden
-        onChange={(event) => addFiles(event.currentTarget.files)}
+        onChange={(event) => {
+          addFiles(event.currentTarget.files);
+          event.currentTarget.value = "";
+        }}
       />
       <div className="import-layout">
         <section
@@ -697,7 +724,7 @@ export function ImportsPage({
             <FileImage size={28} />
           </div>
           <h2>購入記録を追加</h2>
-          <p>画像、PDF、CSV、メール</p>
+          <p>JPEG、PNG、WebP、PDF、CSV、EML</p>
           <button className="button button-primary" onClick={() => inputRef.current?.click()}>
             <Upload size={16} />
             ファイルを選ぶ
@@ -721,7 +748,7 @@ export function ImportsPage({
                 <b>{file.name}</b>
                 <small>{(file.size / 1024).toFixed(0)} KB · 送信待ち</small>
               </div>
-              {/\.csv$/i.test(file.name) && (
+              {isCsvFile(file) && (
                 <select
                   aria-label={`${file.name}の明細種別`}
                   value={csvKinds[file.name] ?? "card"}
@@ -1032,6 +1059,93 @@ export function ImportsPage({
                         }
                       />
                     </label>
+                    <details className="receipt-measure-details">
+                      <summary>数量・印字単価</summary>
+                      <label>
+                        数量の分子
+                        <input
+                          inputMode="numeric"
+                          value={item.quantityNumerator ?? ""}
+                          onChange={(event) =>
+                            editItem(selectedDocument.id, index, {
+                              quantityNumerator: event.target.value || null,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        数量の分母
+                        <input
+                          inputMode="numeric"
+                          value={item.quantityDenominator ?? ""}
+                          onChange={(event) =>
+                            editItem(selectedDocument.id, index, {
+                              quantityDenominator: event.target.value || null,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        数量単位
+                        <input
+                          value={item.quantityUnit ?? ""}
+                          onChange={(event) =>
+                            editItem(selectedDocument.id, index, {
+                              quantityUnit: event.target.value || null,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        印字単価
+                        <input
+                          inputMode="numeric"
+                          value={item.printedUnitPriceYen ?? ""}
+                          onChange={(event) =>
+                            editItem(selectedDocument.id, index, {
+                              printedUnitPriceYen: event.target.value
+                                ? Number(event.target.value.replace(/\D/g, ""))
+                                : null,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        基準量の分子
+                        <input
+                          inputMode="numeric"
+                          value={item.printedUnitPriceQuantityNumerator ?? ""}
+                          onChange={(event) =>
+                            editItem(selectedDocument.id, index, {
+                              printedUnitPriceQuantityNumerator: event.target.value || null,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        基準量の分母
+                        <input
+                          inputMode="numeric"
+                          value={item.printedUnitPriceQuantityDenominator ?? ""}
+                          onChange={(event) =>
+                            editItem(selectedDocument.id, index, {
+                              printedUnitPriceQuantityDenominator: event.target.value || null,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        印字単位
+                        <input
+                          value={item.printedUnitPriceUnit ?? ""}
+                          onChange={(event) =>
+                            editItem(selectedDocument.id, index, {
+                              printedUnitPriceUnit: event.target.value || null,
+                            })
+                          }
+                        />
+                      </label>
+                    </details>
                   </div>
                 ))}
                 {!!selectedDocument.result.candidates?.length && (

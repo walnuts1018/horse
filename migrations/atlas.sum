@@ -1,4 +1,4 @@
-h1:wQw5xLHRE3LNQFZOh+KrgcHSPmT5F6CBlJpJVm6wCro=
+h1:a+y1rYtXyJL+K0AMS7z3u4SzdkYUCZsjVJ8WiLc26zA=
 20261012000000_core.sql h1:fhrtlGI4aJUsU4DlKaxbw2uUPZXkzidN/idXSLixYD8=
 20261012010000_session_storage.sql h1:FIUO1Do/qfe6PmmNH7AS0XM1vn2IEubqK0KADWJxFEw=
 20261012020000_nullable_evidence_item.sql h1:C/+MQLwDD70eIVikx3gSifaV0ULaR6jt04PY8RgWc88=
@@ -19,3 +19,4 @@ h1:wQw5xLHRE3LNQFZOh+KrgcHSPmT5F6CBlJpJVm6wCro=
 20261012130400_account_balances.sql h1:6cl5GcgO2Sza2XWZth+24autDD4lJwYlnvE9N+mrirA=
 20261012130500_account_balance_analysis.sql h1:ljlRMv66U48UZ9Cte+2ds1pYjsiHPrVJUO8CfctdaIY=
 20261012130600_purchase_origin_and_burden_snapshots.sql h1:cWm4ps7reICzUEiZMcw6inzQXprfP+0ViBVWWauTC9c=
+20261013000000_purchase_item_quantities.sql h1:lX6vXhKpJm9wGF1mIp3FXqfbSWSn86yUj+TriLbfRhg=

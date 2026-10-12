@@ -1359,6 +1359,49 @@ a {
   border-bottom: 1px solid #f1f3f0;
 }
 
+.item-measure-details,
+.receipt-measure-details {
+  color: #75847a;
+  font-size: 10px;
+}
+
+.item-entry > .item-measure-details {
+  margin: 0 10px 8px 42px;
+}
+
+.expanded-item > .item-measure-details {
+  grid-column: 2 / -1;
+  margin: 0 0 8px;
+}
+
+.item-measure-details summary,
+.receipt-measure-details summary {
+  width: fit-content;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.item-measure-details label,
+.receipt-measure-details label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 3px 8px 3px 0;
+}
+
+.item-measure-details input,
+.receipt-measure-details input {
+  width: 72px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid #e4eae4;
+  border-radius: 6px;
+  background: #fff;
+  color: #56655c;
+  font-size: 10px;
+}
+
 .item-index {
   color: #b2bbb5;
   font-size: 9px;

@@ -123,6 +123,69 @@ var PurchaseItems = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		QuantityNumerator: column{
+			Name:      "quantity_numerator",
+			DBType:    "bigint",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
+		QuantityDenominator: column{
+			Name:      "quantity_denominator",
+			DBType:    "bigint",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
+		QuantityUnit: column{
+			Name:      "quantity_unit",
+			DBType:    "text",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
+		PrintedUnitPriceYen: column{
+			Name:      "printed_unit_price_yen",
+			DBType:    "bigint",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
+		PrintedUnitPriceQuantityNumerator: column{
+			Name:      "printed_unit_price_quantity_numerator",
+			DBType:    "bigint",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
+		PrintedUnitPriceQuantityDenominator: column{
+			Name:      "printed_unit_price_quantity_denominator",
+			DBType:    "bigint",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
+		PrintedUnitPriceUnit: column{
+			Name:      "printed_unit_price_unit",
+			DBType:    "text",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: purchaseItemIndexes{
 		PurchaseItemsPkey: index{
@@ -269,6 +332,22 @@ var PurchaseItems = Table[
 			},
 			Expression: "(amount_yen >= 0)",
 		},
+		PurchaseItemsPrintedUnitPricePresenceCheck: check{
+			constraint: constraint{
+				Name:    "purchase_items_printed_unit_price_presence_check",
+				Columns: []string{"printed_unit_price_yen", "printed_unit_price_quantity_numerator", "printed_unit_price_quantity_denominator", "printed_unit_price_unit"},
+				Comment: "",
+			},
+			Expression: "(((printed_unit_price_yen IS NULL) AND (printed_unit_price_quantity_numerator IS NULL) AND (printed_unit_price_quantity_denominator IS NULL) AND (printed_unit_price_unit IS NULL)) OR ((printed_unit_price_yen IS NOT NULL) AND (printed_unit_price_yen >= 0) AND (printed_unit_price_yen <= '1000000000000'::bigint) AND (printed_unit_price_quantity_numerator IS NOT NULL) AND (printed_unit_price_quantity_numerator > 0) AND (printed_unit_price_quantity_numerator <= '1000000000000'::bigint) AND (printed_unit_price_quantity_denominator IS NOT NULL) AND (printed_unit_price_quantity_denominator > 0) AND (printed_unit_price_quantity_denominator <= 1000000) AND (printed_unit_price_unit IS NOT NULL) AND ((length(printed_unit_price_unit) >= 1) AND (length(printed_unit_price_unit) <= 32))))",
+		},
+		PurchaseItemsQuantityPresenceCheck: check{
+			constraint: constraint{
+				Name:    "purchase_items_quantity_presence_check",
+				Columns: []string{"quantity_numerator", "quantity_denominator", "quantity_unit"},
+				Comment: "",
+			},
+			Expression: "(((quantity_numerator IS NULL) AND (quantity_denominator IS NULL) AND (quantity_unit IS NULL)) OR ((quantity_numerator IS NOT NULL) AND (quantity_numerator > 0) AND (quantity_numerator <= '1000000000000'::bigint) AND (quantity_denominator IS NOT NULL) AND (quantity_denominator > 0) AND (quantity_denominator <= 1000000) AND (quantity_unit IS NOT NULL) AND ((length(quantity_unit) >= 1) AND (length(quantity_unit) <= 32))))",
+		},
 		PurchaseItemsRevisionCheck: check{
 			constraint: constraint{
 				Name:    "purchase_items_revision_check",
@@ -282,23 +361,30 @@ var PurchaseItems = Table[
 }
 
 type purchaseItemColumns struct {
-	ID                 column
-	HouseholdID        column
-	PurchaseID         column
-	Name               column
-	AmountYen          column
-	CategoryID         column
-	Revision           column
-	FieldRevisions     column
-	CreatedAt          column
-	UpdatedAt          column
-	AllocationOverride column
-	ProductVariantID   column
+	ID                                  column
+	HouseholdID                         column
+	PurchaseID                          column
+	Name                                column
+	AmountYen                           column
+	CategoryID                          column
+	Revision                            column
+	FieldRevisions                      column
+	CreatedAt                           column
+	UpdatedAt                           column
+	AllocationOverride                  column
+	ProductVariantID                    column
+	QuantityNumerator                   column
+	QuantityDenominator                 column
+	QuantityUnit                        column
+	PrintedUnitPriceYen                 column
+	PrintedUnitPriceQuantityNumerator   column
+	PrintedUnitPriceQuantityDenominator column
+	PrintedUnitPriceUnit                column
 }
 
 func (c purchaseItemColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.PurchaseID, c.Name, c.AmountYen, c.CategoryID, c.Revision, c.FieldRevisions, c.CreatedAt, c.UpdatedAt, c.AllocationOverride, c.ProductVariantID,
+		c.ID, c.HouseholdID, c.PurchaseID, c.Name, c.AmountYen, c.CategoryID, c.Revision, c.FieldRevisions, c.CreatedAt, c.UpdatedAt, c.AllocationOverride, c.ProductVariantID, c.QuantityNumerator, c.QuantityDenominator, c.QuantityUnit, c.PrintedUnitPriceYen, c.PrintedUnitPriceQuantityNumerator, c.PrintedUnitPriceQuantityDenominator, c.PrintedUnitPriceUnit,
 	}
 }
 
@@ -339,12 +425,14 @@ func (u purchaseItemUniques) AsSlice() []constraint {
 }
 
 type purchaseItemChecks struct {
-	PurchaseItemsAmountYenCheck check
-	PurchaseItemsRevisionCheck  check
+	PurchaseItemsAmountYenCheck                check
+	PurchaseItemsPrintedUnitPricePresenceCheck check
+	PurchaseItemsQuantityPresenceCheck         check
+	PurchaseItemsRevisionCheck                 check
 }
 
 func (c purchaseItemChecks) AsSlice() []check {
 	return []check{
-		c.PurchaseItemsAmountYenCheck, c.PurchaseItemsRevisionCheck,
+		c.PurchaseItemsAmountYenCheck, c.PurchaseItemsPrintedUnitPricePresenceCheck, c.PurchaseItemsQuantityPresenceCheck, c.PurchaseItemsRevisionCheck,
 	}
 }
