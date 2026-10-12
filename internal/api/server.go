@@ -14,11 +14,16 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
+	"github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/graph"
 	"github.com/walnuts1018/horse/internal/ingestion"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 type Config struct {
@@ -110,8 +115,21 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	householdID := r.URL.Query().Get("householdId")
-	var member bool
-	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM household_members WHERE household_id = $1 AND member_id = $2)`, householdID, principal.MemberID).Scan(&member); err != nil || !member {
+	householdUUID, err := uuid.FromString(householdID)
+	if err != nil {
+		http.Error(w, "household not found", http.StatusNotFound)
+		return
+	}
+	memberUUID, err := uuid.FromString(principal.MemberID)
+	if err != nil {
+		http.Error(w, "household not found", http.StatusNotFound)
+		return
+	}
+	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberUUID)),
+	))).Exists(r.Context(), bobpgx.NewPool(s.db))
+	if err != nil || !member {
 		http.Error(w, "household not found", http.StatusNotFound)
 		return
 	}
@@ -140,11 +158,18 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
-		rows, err := s.db.Query(r.Context(), `SELECT cursor, type, entity_id::text, revision, changed_fields, created_at FROM household_events WHERE household_id = $1 AND cursor > $2 ORDER BY cursor LIMIT 100`, householdID, cursor)
+		events, err := models.HouseholdEvents.Query(
+			sm.Where(psql.And(
+				models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+				models.HouseholdEvents.Columns.Cursor.GT(psql.Arg(cursor)),
+			)),
+			sm.OrderBy(models.HouseholdEvents.Columns.Cursor),
+			sm.Limit(100),
+		).All(r.Context(), bobpgx.NewPool(s.db))
 		if err != nil {
 			return
 		}
-		for rows.Next() {
+		for _, storedEvent := range events {
 			var event struct {
 				Cursor        int64     `json:"cursor"`
 				Type          string    `json:"type"`
@@ -153,8 +178,12 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 				ChangedFields []string  `json:"changedFields"`
 				OccurredAt    time.Time `json:"occurredAt"`
 			}
-			if err := rows.Scan(&event.Cursor, &event.Type, &event.EntityID, &event.Revision, &event.ChangedFields, &event.OccurredAt); err != nil {
-				rows.Close()
+			event.Cursor = storedEvent.Cursor
+			event.Type = storedEvent.Type
+			event.EntityID = storedEvent.EntityID.String()
+			event.Revision = storedEvent.Revision
+			event.OccurredAt = storedEvent.CreatedAt
+			if err := json.Unmarshal(storedEvent.ChangedFields.Val, &event.ChangedFields); err != nil {
 				return
 			}
 			data, err := json.Marshal(event)
@@ -162,12 +191,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", event.Cursor, event.Type, data); err != nil {
-				rows.Close()
 				return
 			}
 			cursor = event.Cursor
 		}
-		rows.Close()
 		flusher.Flush()
 		select {
 		case <-r.Context().Done():

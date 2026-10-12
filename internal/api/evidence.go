@@ -1,9 +1,14 @@
 package api
 
 import (
-	"encoding/json/v2"
 	"net/http"
 	"time"
+
+	"github.com/gofrs/uuid/v5"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
@@ -12,17 +17,43 @@ func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
 		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
 		return
 	}
-	var member bool
-	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM purchases p JOIN household_members hm ON hm.household_id=p.household_id AND hm.member_id=$2 WHERE p.id=$1)`, r.PathValue("id"), principal.MemberID).Scan(&member); err != nil || !member {
+	purchaseID, err := uuid.FromString(r.PathValue("id"))
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT e.source_document_id::text,e.item_id::text,d.source_kind,d.mime_type,d.sha256,e.evidence_region,e.observation,e.created_at FROM evidence_links e JOIN source_documents d ON d.id=e.source_document_id AND d.household_id=e.household_id WHERE e.purchase_id=$1 ORDER BY e.created_at,e.source_document_id,e.item_id`, r.PathValue("id"))
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(r.Context(), bobpgx.NewPool(s.db))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	memberID, err := uuid.FromString(principal.MemberID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+	))).Exists(r.Context(), bobpgx.NewPool(s.db))
+	if err != nil || !member {
+		http.NotFound(w, r)
+		return
+	}
+	evidenceLinks, err := models.EvidenceLinks.Query(
+		sm.Where(models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(purchaseID))),
+		sm.OrderBy(models.EvidenceLinks.Columns.CreatedAt),
+		sm.OrderBy(models.EvidenceLinks.Columns.SourceDocumentID),
+		sm.OrderBy(models.EvidenceLinks.Columns.ItemID),
+	).All(r.Context(), bobpgx.NewPool(s.db))
 	if err != nil {
 		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	if err := evidenceLinks.LoadSourceDocument(r.Context(), bobpgx.NewPool(s.db)); err != nil {
+		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
+		return
+	}
 	type evidence struct {
 		DocumentID  string    `json:"documentId"`
 		ItemID      *string   `json:"itemId"`
@@ -34,28 +65,25 @@ func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
 		CreatedAt   time.Time `json:"createdAt"`
 	}
 	result := make([]evidence, 0)
-	for rows.Next() {
-		var entry evidence
-		var region, observation []byte
-		if err := rows.Scan(&entry.DocumentID, &entry.ItemID, &entry.SourceKind, &entry.MIMEType, &entry.SHA256, &region, &observation, &entry.CreatedAt); err != nil {
+	for _, link := range evidenceLinks {
+		document := link.R.SourceDocument
+		if document == nil {
 			http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
 			return
 		}
-		if len(region) > 0 {
-			if err := json.Unmarshal(region, &entry.Region); err != nil {
-				http.Error(w, "invalid evidence region", http.StatusInternalServerError)
-				return
-			}
+		entry := evidence{
+			DocumentID: document.ID.String(), SourceKind: document.SourceKind,
+			MIMEType: document.MimeType, SHA256: document.Sha256,
+			Observation: link.Observation.Val, CreatedAt: link.CreatedAt,
 		}
-		if err := json.Unmarshal(observation, &entry.Observation); err != nil {
-			http.Error(w, "invalid evidence observation", http.StatusInternalServerError)
-			return
+		if link.ItemID.Valid {
+			id := link.ItemID.V.String()
+			entry.ItemID = &id
+		}
+		if link.EvidenceRegion.Valid {
+			entry.Region = link.EvidenceRegion.V.Val
 		}
 		result = append(result, entry)
-	}
-	if err := rows.Err(); err != nil {
-		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
-		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"evidence": result})
 }

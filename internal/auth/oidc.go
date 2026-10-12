@@ -17,6 +17,12 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/im"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 	"golang.org/x/oauth2"
 	"uuid"
 )
@@ -93,7 +99,11 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 	redirectTo := safeRedirect(r.URL.Query().Get("returnTo"))
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
-	_, err = s.db.Exec(ctx, `INSERT INTO oidc_states(state_hash, nonce, verifier, redirect_to, expires_at) VALUES ($1, $2, $3, $4, now() + interval '10 minutes')`, digest(state), nonce, verifier, redirectTo)
+	expiresAt := time.Now().Add(10 * time.Minute)
+	stateHash := digest(state)
+	_, err = models.OidcStates.Insert(&models.OidcStateSetter{
+		StateHash: &stateHash, Nonce: &nonce, Verifier: &verifier, RedirectTo: &redirectTo, ExpiresAt: &expiresAt,
+	}).Exec(ctx, bobpgx.NewPool(s.db))
 	if err != nil {
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
@@ -119,12 +129,16 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	var nonce, verifier, redirectTo string
-	err := s.db.QueryRow(ctx, `DELETE FROM oidc_states WHERE state_hash = $1 AND expires_at > now() RETURNING nonce, verifier, redirect_to`, digest(state)).Scan(&nonce, &verifier, &redirectTo)
+	stateHash := digest(state)
+	stateRecord, err := models.OidcStates.Delete(dm.Where(psql.And(
+		models.OidcStates.Columns.StateHash.EQ(psql.Arg(stateHash)),
+		models.OidcStates.Columns.ExpiresAt.GT(psql.Arg(time.Now())),
+	))).One(ctx, bobpgx.NewPool(s.db))
 	if err != nil {
 		http.Error(w, "invalid or expired authentication state", http.StatusBadRequest)
 		return
 	}
+	nonce, verifier, redirectTo := stateRecord.Nonce, stateRecord.Verifier, stateRecord.RedirectTo
 	token, err := s.oauth.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		http.Error(w, "authentication failed", http.StatusUnauthorized)
@@ -155,7 +169,12 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 	if displayName == "" {
 		displayName = identity.Subject
 	}
-	if _, err := s.db.Exec(ctx, `INSERT INTO members(id, oidc_subject, display_name) VALUES ($1, $2, $3) ON CONFLICT (oidc_subject) DO UPDATE SET display_name = EXCLUDED.display_name`, uuid.NewV7(), identity.Subject, displayName); err != nil {
+	_, err = models.Members.Insert(
+		im.Into(models.Members.NameAsExpr(), "id", "oidc_subject", "display_name"),
+		im.Values(psql.Arg(uuid.NewV7(), identity.Subject, displayName)),
+		im.OnConflict("oidc_subject").DoUpdate(im.SetCol("display_name").To(psql.Arg(displayName))),
+	).Exec(ctx, bobpgx.NewPool(s.db))
+	if err != nil {
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -164,8 +183,8 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
-	var memberID string
-	if err := s.db.QueryRow(ctx, `SELECT id::text FROM members WHERE oidc_subject = $1`, identity.Subject).Scan(&memberID); err != nil {
+	member, err := models.Members.Query(sm.Where(models.Members.Columns.OidcSubject.EQ(psql.Arg(identity.Subject)))).One(ctx, bobpgx.NewPool(s.db))
+	if err != nil {
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -180,7 +199,11 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "authentication session has expired", http.StatusUnauthorized)
 		return
 	}
-	if _, err := s.db.Exec(ctx, `INSERT INTO oidc_sessions(token_hash, member_id, expiry) VALUES ($1, $2, $3)`, digest(session), memberID, expiry); err != nil {
+	tokenHash := digest(session)
+	_, err = models.OidcSessions.Insert(&models.OidcSessionSetter{
+		TokenHash: &tokenHash, MemberID: &member.ID, Expiry: &expiry,
+	}).Exec(ctx, bobpgx.NewPool(s.db))
+	if err != nil {
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -200,7 +223,9 @@ func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookie); err == nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		defer cancel()
-		if _, err := s.db.Exec(ctx, `DELETE FROM oidc_sessions WHERE token_hash = $1`, digest(cookie.Value)); err != nil {
+		tokenHash := digest(cookie.Value)
+		_, err := models.OidcSessions.Delete(dm.Where(models.OidcSessions.Columns.TokenHash.EQ(psql.Arg(tokenHash)))).Exec(ctx, bobpgx.NewPool(s.db))
+		if err != nil {
 			http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 			return
 		}
@@ -220,12 +245,19 @@ func (s *Service) Resolve(r *http.Request) (Principal, error) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
-	var principal Principal
-	err = s.db.QueryRow(ctx, `SELECT m.id::text, m.oidc_subject, m.display_name FROM oidc_sessions s JOIN members m ON m.id = s.member_id WHERE s.token_hash = $1 AND s.expiry > now()`, digest(cookie.Value)).Scan(&principal.MemberID, &principal.Subject, &principal.DisplayName)
+	tokenHash := digest(cookie.Value)
+	session, err := models.OidcSessions.Query(sm.Where(psql.And(
+		models.OidcSessions.Columns.TokenHash.EQ(psql.Arg(tokenHash)),
+		models.OidcSessions.Columns.Expiry.GT(psql.Arg(time.Now())),
+	))).One(ctx, bobpgx.NewPool(s.db))
 	if err != nil {
 		return Principal{}, ErrUnauthenticated
 	}
-	return principal, nil
+	member, err := models.FindMember(ctx, bobpgx.NewPool(s.db), session.MemberID)
+	if err != nil {
+		return Principal{}, ErrUnauthenticated
+	}
+	return Principal{MemberID: member.ID.String(), Subject: member.OidcSubject, DisplayName: member.DisplayName}, nil
 }
 
 func (s *Service) Me(w http.ResponseWriter, r *http.Request) {
