@@ -486,9 +486,8 @@ func (r *queryResolver) productSuggestions(ctx context.Context, householdID, que
 	}
 	conceptsByID := make(map[gofrsuuid.UUID]*model.ProductConcept, len(selectedConceptIDs))
 	for _, item := range items {
-		concept, ok := conceptsByID[item.concept.ID]
-		if !ok {
-			concept = productConceptFromRow(item.concept)
+		if _, ok := conceptsByID[item.concept.ID]; !ok {
+			concept := productConceptFromRow(item.concept)
 			concept.Variants = variantsByConcept[item.concept.ID]
 			conceptsByID[item.concept.ID] = concept
 		}

@@ -73,14 +73,16 @@ func decodeGlobalNodeID(globalID string) (string, string, error) {
 
 func decodeUnmatchedNodeID(payload string) (string, string, error) {
 	documentID, rest, ok := bytes.Cut([]byte(payload), []byte{0})
-	if !ok || len(documentID) != 16 || len(rest) < 4 {
+	if !ok || len(documentID) != 16 {
 		return "", "", errors.New("invalid UnmatchedObservation node ID payload")
 	}
-	length := binary.BigEndian.Uint32(rest[:4])
-	if int(length) != len(rest[4:]) {
-		return "", "", errors.New("invalid UnmatchedObservation node ID payload")
+	if len(rest) >= 8 && binary.BigEndian.Uint64(rest[:8]) == uint64(len(rest[8:])) {
+		return uuid.UUID(documentID).String(), string(rest[8:]), nil
 	}
-	return uuid.UUID(documentID).String(), string(rest[4:]), nil
+	if len(rest) >= 4 && uint64(binary.BigEndian.Uint32(rest[:4])) == uint64(len(rest[4:])) {
+		return uuid.UUID(documentID).String(), string(rest[4:]), nil
+	}
+	return "", "", errors.New("invalid UnmatchedObservation node ID payload")
 }
 
 func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.Node, error) {

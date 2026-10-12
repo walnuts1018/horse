@@ -7,12 +7,11 @@ package graph
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
 // Ledger is the resolver for the ledger field.
 func (r *queryResolver) Ledger(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.LedgerConnection, error) {
-	panic(fmt.Errorf("not implemented: Ledger - ledger"))
+	return r.ledger(ctx, householdID, after, before, first, last)
 }
