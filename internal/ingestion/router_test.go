@@ -246,7 +246,9 @@ func TestEstimatedGeminiCostUsesProjectTierAndPriceChange(t *testing.T) {
 	before := estimateCostJPY(ProjectPaid, ModelReceipt, "standard", 1_000_000, 1_000_000, 100, cutover.Add(-time.Second))
 	flex := estimateCostJPY(ProjectPaid, ModelReceipt, "flex", 1_000_000, 1_000_000, 100, cutover.Add(-time.Second))
 	after := estimateCostJPY(ProjectPaid, ModelReceipt, "standard", 1_000_000, 1_000_000, 100, cutover)
-	if before != 450 || flex != 225 || after != 900 || estimateCostJPY(ProjectFree, ModelReceipt, "standard", 1_000_000, 1_000_000, 100, cutover) != 0 {
+	proUnderLimit := estimateCostJPY(ProjectPaid, ModelPro, "standard", 200_000, 1_000_000, 100, cutover)
+	proOverLimit := estimateCostJPY(ProjectPaid, ModelPro, "standard", 200_001, 1_000_000, 100, cutover)
+	if before != 450 || flex != 225 || after != 900 || proUnderLimit != 1240 || proOverLimit != 1880.0004 || estimateCostJPY(ProjectFree, ModelReceipt, "standard", 1_000_000, 1_000_000, 100, cutover) != 0 {
 		t.Fatalf("unexpected estimated prices: before=%f flex=%f after=%f", before, flex, after)
 	}
 }

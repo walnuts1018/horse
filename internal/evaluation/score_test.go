@@ -31,8 +31,23 @@ func TestScoreSeparatesExtractionQualityAndEstimatedCost(t *testing.T) {
 		Runs:                      []ingestion.ExtractionRun{{Model: "gemini-fixture", PriceEstimateStatus: "estimated_paid", EstimatedJPY: 2.5}},
 		HumanCorrectionOperations: &corrections,
 	}}})
-	if metrics.ItemDetectionPrecision != 2.0/3 || metrics.ItemDetectionRecall != 1 || metrics.PrintedAmountExactRate != 0.5 || metrics.TaxConsistentRate != 1 || metrics.ProductNormalizationAccuracy != 0.5 || metrics.EvidencePrecision != 0.5 || metrics.DuplicatePrecision != 0 || metrics.PredictedDuplicateItems != 1 || metrics.CorrectDuplicateItems != 0 || metrics.AverageHumanCorrectionOps != 3 || metrics.EstimatedCostJPY != 2.5 || metrics.EstimatedCostJPYPerPricedRun != 2.5 || metrics.UnpricedRuns != 0 {
+	if metrics.ItemDetectionPrecision != 2.0/3 || metrics.ItemDetectionRecall != 1 || metrics.PrintedAmountExactRate != 0.5 || metrics.TaxConsistentRate != 1 || metrics.ProductNormalizationAccuracy != 0 || metrics.EvidencePrecision != 0.5 || metrics.DuplicatePrecision != 0 || metrics.PredictedDuplicateItems != 1 || metrics.CorrectDuplicateItems != 0 || metrics.AutoConfirmableRate != 0 || metrics.AverageHumanCorrectionOps != 3 || metrics.EstimatedCostJPY != 2.5 || metrics.EstimatedCostJPYPerPricedRun != 2.5 || metrics.UnpricedRuns != 0 {
 		t.Fatalf("unexpected evaluation metrics: %+v", metrics)
+	}
+}
+
+func TestScoreAlignsMisreadNamesWithoutReducingAmountAccuracy(t *testing.T) {
+	expectedRegion := ingestion.Region{Page: 0, Top: 0.2, Left: 0.1, Bottom: 0.3, Right: 0.9}
+	actualRegion := expectedRegion
+	corrections := 0
+	metrics := Score(Dataset{Version: "synthetic-v1", Cases: []Case{{
+		ID:                        "ocr-name-error",
+		Expected:                  ingestion.Receipt{Items: []ingestion.Item{{PrintedName: "りんご", Name: "りんご", PrintedAmount: 120, Region: &expectedRegion}}},
+		Actual:                    ingestion.Receipt{Items: []ingestion.Item{{PrintedName: "りんこ", Name: "りんご", PrintedAmount: 120, Region: &actualRegion}}},
+		HumanCorrectionOperations: &corrections,
+	}}})
+	if metrics.MatchedItems != 1 || metrics.ItemDetectionRecall != 1 || metrics.PrintedAmountExactRate != 1 || metrics.ProductNormalizationAccuracy != 1 || metrics.EvidencePrecision != 1 || metrics.AutoConfirmableCases != 1 || metrics.AutoConfirmableRate != 1 {
+		t.Fatalf("OCR name error was confused with amount accuracy or auto-confirmability: %+v", metrics)
 	}
 }
 

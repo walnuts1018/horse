@@ -298,16 +298,16 @@ func estimateCostJPY(project, model, serviceTier string, inputTokens, outputToke
 	if project != ProjectPaid || usdJPY <= 0 || inputTokens < 0 || outputTokens < 0 {
 		return 0
 	}
-	inputPrice, outputPrice := modelPrices(model, at)
+	inputPrice, outputPrice := modelPrices(model, inputTokens, at)
 	if serviceTier == "flex" {
 		inputPrice, outputPrice = inputPrice/2, outputPrice/2
 	}
 	return (float64(inputTokens)*inputPrice + float64(outputTokens)*outputPrice) * usdJPY / 1_000_000
 }
 
-func modelPrices(model string, at time.Time) (float64, float64) {
+func modelPrices(model string, inputTokens int64, at time.Time) (float64, float64) {
 	switch model {
-	case ModelReceipt, "gemini-3.7-flash", "gemini-3.6-flash":
+	case ModelReceipt, "gemini-3.6-flash":
 		if at.Before(time.Date(2027, time.January, 1, 0, 0, 0, 0, time.UTC)) {
 			return 0.75, 3.75
 		}
@@ -315,6 +315,9 @@ func modelPrices(model string, at time.Time) (float64, float64) {
 	case ModelEmail:
 		return 0.3, 2.5
 	case ModelPro:
+		if inputTokens > 200_000 {
+			return 4, 18
+		}
 		return 2, 12
 	default:
 		return 0, 0

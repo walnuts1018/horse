@@ -1,6 +1,8 @@
 package evaluation
 
 import (
+	"cmp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -36,6 +38,8 @@ type Metrics struct {
 	DuplicatePrecision           float64 `json:"duplicatePrecision"`
 	PredictedDuplicateItems      int     `json:"predictedDuplicateItems"`
 	CorrectDuplicateItems        int     `json:"correctDuplicateItems"`
+	AutoConfirmableCases         int     `json:"autoConfirmableCases"`
+	AutoConfirmableRate          float64 `json:"autoConfirmableRate"`
 	HumanCorrectionCases         int     `json:"humanCorrectionCases"`
 	AverageHumanCorrectionOps    float64 `json:"averageHumanCorrectionOperations"`
 	PricedRuns                   int     `json:"pricedRuns"`
@@ -47,37 +51,33 @@ type Metrics struct {
 // Scoreは実行済みの抽出結果を固定された正解データと照合し、課金実績ではなく推定費用を集計する。
 func Score(dataset Dataset) Metrics {
 	metrics := Metrics{DatasetVersion: dataset.Version, Documents: len(dataset.Cases)}
-	var correctAmounts, correctNames, predictedRegions, correctRegions, taxConsistent int
+	var correctAmounts, correctNames, amountComparisons, nameComparisons, predictedRegions, correctRegions, taxConsistent int
 	var correctionOperations int
 	for _, testCase := range dataset.Cases {
 		expected := testCase.Expected.Items
 		actual := testCase.Actual.Items
 		metrics.ExpectedItems += len(expected)
 		metrics.PredictedItems += len(actual)
-		available := make(map[string][]int, len(expected))
-		for index, item := range expected {
-			available[normalizeName(item.PrintedName)] = append(available[normalizeName(item.PrintedName)], index)
-		}
-		matches := make(map[int]int, min(len(actual), len(expected)))
-		for actualIndex, item := range actual {
-			name := normalizeName(item.PrintedName)
-			indexes := available[name]
-			if name == "" || len(indexes) == 0 {
-				continue
-			}
-			expectedIndex := indexes[0]
-			available[name] = indexes[1:]
-			matches[actualIndex] = expectedIndex
-		}
+		matches := matchItems(expected, actual, true, true)
 		metrics.MatchedItems += len(matches)
-		for actualIndex, expectedIndex := range matches {
+		amountMatches := matchItems(expected, actual, true, false)
+		amountComparisons += len(amountMatches)
+		for actualIndex, expectedIndex := range amountMatches {
 			actualItem, expectedItem := actual[actualIndex], expected[expectedIndex]
 			if actualItem.PrintedAmount == expectedItem.PrintedAmount {
 				correctAmounts++
 			}
+		}
+		nameMatches := matchItems(expected, actual, false, true)
+		nameComparisons += len(nameMatches)
+		for actualIndex, expectedIndex := range nameMatches {
+			actualItem, expectedItem := actual[actualIndex], expected[expectedIndex]
 			if normalizeName(actualItem.Name) == normalizeName(expectedItem.Name) && normalizeName(expectedItem.Name) != "" {
 				correctNames++
 			}
+		}
+		for actualIndex, expectedIndex := range matches {
+			actualItem, expectedItem := actual[actualIndex], expected[expectedIndex]
 			if actualItem.Region != nil {
 				if expectedItem.Region != nil && actualItem.Region.Page == expectedItem.Region.Page && regionIoU(*actualItem.Region, *expectedItem.Region) >= 0.5 {
 					correctRegions++
@@ -97,6 +97,9 @@ func Score(dataset Dataset) Metrics {
 		if testCase.HumanCorrectionOperations != nil && *testCase.HumanCorrectionOperations >= 0 {
 			metrics.HumanCorrectionCases++
 			correctionOperations += *testCase.HumanCorrectionOperations
+			if *testCase.HumanCorrectionOperations == 0 {
+				metrics.AutoConfirmableCases++
+			}
 		}
 		for _, run := range testCase.Runs {
 			if run.PriceEstimateStatus == "estimated_paid" || run.PriceEstimateStatus == "free_tier" {
@@ -109,11 +112,12 @@ func Score(dataset Dataset) Metrics {
 	}
 	metrics.ItemDetectionPrecision = ratio(metrics.MatchedItems, metrics.PredictedItems)
 	metrics.ItemDetectionRecall = ratio(metrics.MatchedItems, metrics.ExpectedItems)
-	metrics.PrintedAmountExactRate = ratio(correctAmounts, metrics.ExpectedItems)
+	metrics.PrintedAmountExactRate = ratio(correctAmounts, amountComparisons)
 	metrics.TaxConsistentRate = ratio(taxConsistent, metrics.Documents)
-	metrics.ProductNormalizationAccuracy = ratio(correctNames, metrics.ExpectedItems)
+	metrics.ProductNormalizationAccuracy = ratio(correctNames, nameComparisons)
 	metrics.EvidencePrecision = ratio(correctRegions, predictedRegions)
 	metrics.DuplicatePrecision = ratio(metrics.CorrectDuplicateItems, metrics.PredictedDuplicateItems)
+	metrics.AutoConfirmableRate = ratio(metrics.AutoConfirmableCases, metrics.HumanCorrectionCases)
 	if metrics.HumanCorrectionCases > 0 {
 		metrics.AverageHumanCorrectionOps = float64(correctionOperations) / float64(metrics.HumanCorrectionCases)
 	}
@@ -121,6 +125,58 @@ func Score(dataset Dataset) Metrics {
 		metrics.EstimatedCostJPYPerPricedRun = metrics.EstimatedCostJPY / float64(metrics.PricedRuns)
 	}
 	return metrics
+}
+
+type itemMatch struct {
+	actual   int
+	expected int
+	score    float64
+}
+
+func matchItems(expected, actual []ingestion.Item, includePrintedName, includePrintedAmount bool) map[int]int {
+	candidates := make([]itemMatch, 0, len(expected)*len(actual))
+	for actualIndex, actualItem := range actual {
+		for expectedIndex, expectedItem := range expected {
+			score := 0.0
+			if actualItem.Region != nil && expectedItem.Region != nil && actualItem.Region.Page == expectedItem.Region.Page {
+				iou := regionIoU(*actualItem.Region, *expectedItem.Region)
+				if iou >= 0.5 {
+					score += 100 + iou
+				}
+			}
+			if includePrintedAmount && actualItem.PrintedAmount == expectedItem.PrintedAmount {
+				score += 20
+			}
+			if includePrintedName && normalizeName(actualItem.PrintedName) != "" && normalizeName(actualItem.PrintedName) == normalizeName(expectedItem.PrintedName) {
+				score += 10
+			}
+			if score > 0 {
+				candidates = append(candidates, itemMatch{actual: actualIndex, expected: expectedIndex, score: score})
+			}
+		}
+	}
+	slices.SortFunc(candidates, func(a, b itemMatch) int {
+		if a.score != b.score {
+			return cmp.Compare(b.score, a.score)
+		}
+		if a.actual != b.actual {
+			return cmp.Compare(a.actual, b.actual)
+		}
+		return cmp.Compare(a.expected, b.expected)
+	})
+	matches := make(map[int]int, min(len(actual), len(expected)))
+	usedExpected := make(map[int]struct{}, min(len(actual), len(expected)))
+	for _, candidate := range candidates {
+		if _, used := matches[candidate.actual]; used {
+			continue
+		}
+		if _, used := usedExpected[candidate.expected]; used {
+			continue
+		}
+		matches[candidate.actual] = candidate.expected
+		usedExpected[candidate.expected] = struct{}{}
+	}
+	return matches
 }
 
 func ratio(numerator, denominator int) float64 {

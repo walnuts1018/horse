@@ -97,7 +97,7 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		case ProjectFree:
 			run.PriceEstimateStatus = "free_tier"
 		default:
-			inputPrice, outputPrice := modelPrices(run.Model, run.PricedAt)
+			inputPrice, outputPrice := modelPrices(run.Model, run.InputTokens, run.PricedAt)
 			if inputPrice == 0 && outputPrice == 0 {
 				run.PriceEstimateStatus = "unknown_model_price"
 			} else {

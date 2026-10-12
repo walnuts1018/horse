@@ -68,7 +68,7 @@ func (s *ObjectStore) Put(ctx context.Context, householdID, mimeType string, dat
 	}
 	hash := DocumentHash(data)
 	key := householdID + "/originals/" + StorageEncryptionVersion + "/" + hash
-	_, err := s.Client.PutObject(ctx, &s3.PutObjectInput{
+	output, err := s.Client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: new(s.Bucket), Key: new(key), Body: bytes.NewReader(data), ContentLength: new(int64(len(data))),
 		ContentType: new(mimeType), ServerSideEncryption: types.ServerSideEncryptionAes256, IfNoneMatch: new("*"),
 		Metadata: map[string]string{"sha256": hash},
@@ -81,6 +81,9 @@ func (s *ObjectStore) Put(ctx context.Context, householdID, mimeType string, dat
 			}
 		}
 		return "", "", errors.New("store original document failed")
+	}
+	if output.ServerSideEncryption != types.ServerSideEncryptionAes256 {
+		return "", "", errors.New("object storage did not confirm required SSE-S3 encryption")
 	}
 	return key, hash, nil
 }

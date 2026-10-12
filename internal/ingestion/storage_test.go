@@ -36,6 +36,7 @@ func TestObjectStorePutRequestsSSEAndProtectsOriginalObjects(t *testing.T) {
 					t.Errorf("PutObject changed original bytes: %q, %v", body, err)
 				}
 				w.Header().Set("ETag", `"stored"`)
+				w.Header().Set("X-Amz-Server-Side-Encryption", "AES256")
 				return
 			}
 			w.WriteHeader(http.StatusPreconditionFailed)
@@ -79,6 +80,26 @@ func TestObjectStorePutRequestsSSEAndProtectsOriginalObjects(t *testing.T) {
 	storedData = []byte("different object")
 	if _, _, err := store.Put(context.Background(), "household", "image/jpeg", original); err == nil {
 		t.Fatal("existing object with different bytes was accepted")
+	}
+}
+
+func TestObjectStorePutRejectsMissingSSEConfirmation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("unexpected S3 method: %s", r.Method)
+		}
+		w.Header().Set("ETag", `"stored-without-encryption"`)
+	}))
+	defer server.Close()
+	client := s3.NewFromConfig(aws.Config{
+		Region: "us-east-1", Credentials: credentials.NewStaticCredentialsProvider("test-access", "test-secret", ""),
+	}, func(options *s3.Options) {
+		options.BaseEndpoint = aws.String(server.URL)
+		options.UsePathStyle = true
+	})
+	store := &ObjectStore{Client: client, Bucket: "horse"}
+	if _, _, err := store.Put(context.Background(), "household", "image/jpeg", []byte("receipt")); err == nil {
+		t.Fatal("PutObject without SSE-S3 response was accepted")
 	}
 }
 
