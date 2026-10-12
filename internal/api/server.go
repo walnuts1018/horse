@@ -256,7 +256,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				continue
 			}
-			if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", event.Cursor, event.Type, data); err != nil {
+			if _, err := fmt.Fprintf(w, "id: %d\ndata: %s\n\n", event.Cursor, data); err != nil {
 				return
 			}
 			cursor = event.Cursor

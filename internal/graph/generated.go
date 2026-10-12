@@ -37,6 +37,8 @@ type ResolverRoot interface {
 	AllocationRule() AllocationRuleResolver
 	Budget() BudgetResolver
 	Category() CategoryResolver
+	CorrectionLedgerEntry() CorrectionLedgerEntryResolver
+	FundingLedgerEntry() FundingLedgerEntryResolver
 	Household() HouseholdResolver
 	HouseholdInvitation() HouseholdInvitationResolver
 	Member() MemberResolver
@@ -51,11 +53,13 @@ type ResolverRoot interface {
 	Purchase() PurchaseResolver
 	PurchaseCorrection() PurchaseCorrectionResolver
 	PurchaseItem() PurchaseItemResolver
+	PurchaseLedgerEntry() PurchaseLedgerEntryResolver
 	PurchasePayment() PurchasePaymentResolver
 	Query() QueryResolver
 	RecurringExpense() RecurringExpenseResolver
 	SettlementLine() SettlementLineResolver
 	Tag() TagResolver
+	TransferLedgerEntry() TransferLedgerEntryResolver
 	UnmatchedObservation() UnmatchedObservationResolver
 }
 
@@ -791,6 +795,12 @@ type CategoryResolver interface {
 
 	ParentID(ctx context.Context, obj *model.Category) (*string, error)
 }
+type CorrectionLedgerEntryResolver interface {
+	ID(ctx context.Context, obj *model.CorrectionLedgerEntry) (string, error)
+}
+type FundingLedgerEntryResolver interface {
+	ID(ctx context.Context, obj *model.FundingLedgerEntry) (string, error)
+}
 type HouseholdResolver interface {
 	ID(ctx context.Context, obj *model.Household) (string, error)
 }
@@ -882,6 +892,9 @@ type PurchaseItemResolver interface {
 	CategoryID(ctx context.Context, obj *model.PurchaseItem) (*string, error)
 	ProductVariantID(ctx context.Context, obj *model.PurchaseItem) (*string, error)
 }
+type PurchaseLedgerEntryResolver interface {
+	ID(ctx context.Context, obj *model.PurchaseLedgerEntry) (string, error)
+}
 type PurchasePaymentResolver interface {
 	PaymentAccountID(ctx context.Context, obj *model.PurchasePayment) (string, error)
 }
@@ -923,6 +936,9 @@ type SettlementLineResolver interface {
 }
 type TagResolver interface {
 	ID(ctx context.Context, obj *model.Tag) (string, error)
+}
+type TransferLedgerEntryResolver interface {
+	ID(ctx context.Context, obj *model.TransferLedgerEntry) (string, error)
 }
 type UnmatchedObservationResolver interface {
 	ID(ctx context.Context, obj *model.UnmatchedObservation) (string, error)
@@ -4368,8 +4384,8 @@ extend type Query {
   householdInvitations(householdId: ID! @nodeID(of: "Household")): [HouseholdInvitation!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/ledger_entry.graphql", Input: `interface LedgerEntry {
-  id: ID!
+	{Name: "../../graphql/ledger_entry.graphql", Input: `interface LedgerEntry implements Node {
+  id: ID! @goField(forceResolver: true)
   occurredAt: String!
   description: String!
   amountYen: Long!
@@ -4388,8 +4404,8 @@ type LedgerConnection {
   totalCount: Int!
 }
 
-type PurchaseLedgerEntry implements LedgerEntry {
-  id: ID!
+type PurchaseLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
   occurredAt: String!
   description: String!
   amountYen: Long!
@@ -4398,8 +4414,8 @@ type PurchaseLedgerEntry implements LedgerEntry {
   purchase: Purchase!
 }
 
-type FundingLedgerEntry implements LedgerEntry {
-  id: ID!
+type FundingLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
   occurredAt: String!
   description: String!
   amountYen: Long!
@@ -4409,8 +4425,8 @@ type FundingLedgerEntry implements LedgerEntry {
   pool: Pool!
 }
 
-type TransferLedgerEntry implements LedgerEntry {
-  id: ID!
+type TransferLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
   occurredAt: String!
   description: String!
   amountYen: Long!
@@ -4429,8 +4445,8 @@ enum TransferKind {
   GIFT
 }
 
-type CorrectionLedgerEntry implements LedgerEntry {
-  id: ID!
+type CorrectionLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
   occurredAt: String!
   description: String!
   amountYen: Long!
@@ -4488,6 +4504,17 @@ type MonthlyMemberSpendingReport {
 
 extend type Query {
   monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): MonthlyMemberSpendingReport!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/mutation_error.graphql", Input: `enum MutationErrorCode {
+  BAD_INPUT
+  CONFLICT
+  NOT_FOUND
+}
+
+type MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/pool.graphql", Input: `type Pool implements Node {
@@ -4620,7 +4647,7 @@ enum PurchaseOrigin {
 
 type PurchasePayment {
   paymentAccountId: ID! @goField(forceResolver: true)
-  account: Account
+  account: Account!
   amountYen: Long!
 }
 
@@ -4859,17 +4886,6 @@ type Query {
 }
 
 type Mutation
-
-enum MutationErrorCode {
-  BAD_INPUT
-  CONFLICT
-  NOT_FOUND
-}
-
-type MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
 
 type PageInfo {
   hasNextPage: Boolean!
@@ -10737,7 +10753,7 @@ func (ec *executionContext) _CorrectionLedgerEntry_id(ctx context.Context, field
 			return ec.fieldContext_CorrectionLedgerEntry_id(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
-			return obj.ID, nil
+			return ec.Resolvers.CorrectionLedgerEntry().ID(ctx, obj)
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
@@ -10748,7 +10764,7 @@ func (ec *executionContext) _CorrectionLedgerEntry_id(ctx context.Context, field
 	)
 }
 func (ec *executionContext) fieldContext_CorrectionLedgerEntry_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("CorrectionLedgerEntry", field, false, false, errors.New("field of type ID does not have child fields"))
+	return graphql.NewScalarFieldContext("CorrectionLedgerEntry", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
 func (ec *executionContext) _CorrectionLedgerEntry_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.CorrectionLedgerEntry) (ret graphql.Marshaler) {
@@ -11296,7 +11312,7 @@ func (ec *executionContext) _FundingLedgerEntry_id(ctx context.Context, field gr
 			return ec.fieldContext_FundingLedgerEntry_id(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
-			return obj.ID, nil
+			return ec.Resolvers.FundingLedgerEntry().ID(ctx, obj)
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
@@ -11307,7 +11323,7 @@ func (ec *executionContext) _FundingLedgerEntry_id(ctx context.Context, field gr
 	)
 }
 func (ec *executionContext) fieldContext_FundingLedgerEntry_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("FundingLedgerEntry", field, false, false, errors.New("field of type ID does not have child fields"))
+	return graphql.NewScalarFieldContext("FundingLedgerEntry", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
 func (ec *executionContext) _FundingLedgerEntry_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.FundingLedgerEntry) (ret graphql.Marshaler) {
@@ -16468,7 +16484,7 @@ func (ec *executionContext) _PurchaseLedgerEntry_id(ctx context.Context, field g
 			return ec.fieldContext_PurchaseLedgerEntry_id(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
-			return obj.ID, nil
+			return ec.Resolvers.PurchaseLedgerEntry().ID(ctx, obj)
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
@@ -16479,7 +16495,7 @@ func (ec *executionContext) _PurchaseLedgerEntry_id(ctx context.Context, field g
 	)
 }
 func (ec *executionContext) fieldContext_PurchaseLedgerEntry_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("PurchaseLedgerEntry", field, false, false, errors.New("field of type ID does not have child fields"))
+	return graphql.NewScalarFieldContext("PurchaseLedgerEntry", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
 func (ec *executionContext) _PurchaseLedgerEntry_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseLedgerEntry) (ret graphql.Marshaler) {
@@ -16665,10 +16681,10 @@ func (ec *executionContext) _PurchasePayment_account(ctx context.Context, field 
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.Account) graphql.Marshaler {
-			return ec.marshalOAccount2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccount(ctx, selections, v)
+			return ec.marshalNAccount2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccount(ctx, selections, v)
 		},
 		true,
-		false,
+		true,
 	)
 }
 func (ec *executionContext) fieldContext_PurchasePayment_account(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -19100,7 +19116,7 @@ func (ec *executionContext) _TransferLedgerEntry_id(ctx context.Context, field g
 			return ec.fieldContext_TransferLedgerEntry_id(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
-			return obj.ID, nil
+			return ec.Resolvers.TransferLedgerEntry().ID(ctx, obj)
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
@@ -19111,7 +19127,7 @@ func (ec *executionContext) _TransferLedgerEntry_id(ctx context.Context, field g
 	)
 }
 func (ec *executionContext) fieldContext_TransferLedgerEntry_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("TransferLedgerEntry", field, false, false, errors.New("field of type ID does not have child fields"))
+	return graphql.NewScalarFieldContext("TransferLedgerEntry", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
 func (ec *executionContext) _TransferLedgerEntry_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.TransferLedgerEntry) (ret graphql.Marshaler) {
@@ -25288,6 +25304,34 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.TransferLedgerEntry:
+		return ec._TransferLedgerEntry(ctx, sel, &obj)
+	case *model.TransferLedgerEntry:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._TransferLedgerEntry(ctx, sel, obj)
+	case model.PurchaseLedgerEntry:
+		return ec._PurchaseLedgerEntry(ctx, sel, &obj)
+	case *model.PurchaseLedgerEntry:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._PurchaseLedgerEntry(ctx, sel, obj)
+	case model.FundingLedgerEntry:
+		return ec._FundingLedgerEntry(ctx, sel, &obj)
+	case *model.FundingLedgerEntry:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._FundingLedgerEntry(ctx, sel, obj)
+	case model.CorrectionLedgerEntry:
+		return ec._CorrectionLedgerEntry(ctx, sel, &obj)
+	case *model.CorrectionLedgerEntry:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CorrectionLedgerEntry(ctx, sel, obj)
 	case model.UnmatchedObservation:
 		return ec._UnmatchedObservation(ctx, sel, &obj)
 	case *model.UnmatchedObservation:
@@ -25372,6 +25416,11 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 			return graphql.Null
 		}
 		return ec._LoanBalance(ctx, sel, obj)
+	case model.LedgerEntry:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LedgerEntry(ctx, sel, obj)
 	case model.HouseholdInvitation:
 		return ec._HouseholdInvitation(ctx, sel, &obj)
 	case *model.HouseholdInvitation:
@@ -27799,7 +27848,7 @@ func (ec *executionContext) _CorrectPurchaseSuccess(ctx context.Context, sel ast
 	return out
 }
 
-var correctionLedgerEntryImplementors = []string{"CorrectionLedgerEntry", "LedgerEntry"}
+var correctionLedgerEntryImplementors = []string{"CorrectionLedgerEntry", "LedgerEntry", "Node"}
 
 func (ec *executionContext) _CorrectionLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.CorrectionLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, correctionLedgerEntryImplementors)
@@ -27812,39 +27861,72 @@ func (ec *executionContext) _CorrectionLedgerEntry(ctx context.Context, sel ast.
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("CorrectionLedgerEntry")
 		case "id":
-			out.Values[i] = ec._CorrectionLedgerEntry_id(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._CorrectionLedgerEntry_id(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "occurredAt":
 			out.Values[i] = ec._CorrectionLedgerEntry_occurredAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "description":
 			out.Values[i] = ec._CorrectionLedgerEntry_description(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "amountYen":
 			out.Values[i] = ec._CorrectionLedgerEntry_amountYen(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "currency":
 			out.Values[i] = ec._CorrectionLedgerEntry_currency(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "createdAt":
 			out.Values[i] = ec._CorrectionLedgerEntry_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "purchase":
 			out.Values[i] = ec._CorrectionLedgerEntry_purchase(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -28295,7 +28377,7 @@ func (ec *executionContext) _EffectiveUnitPrice(ctx context.Context, sel ast.Sel
 	return out
 }
 
-var fundingLedgerEntryImplementors = []string{"FundingLedgerEntry", "LedgerEntry"}
+var fundingLedgerEntryImplementors = []string{"FundingLedgerEntry", "LedgerEntry", "Node"}
 
 func (ec *executionContext) _FundingLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.FundingLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, fundingLedgerEntryImplementors)
@@ -28308,44 +28390,77 @@ func (ec *executionContext) _FundingLedgerEntry(ctx context.Context, sel ast.Sel
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("FundingLedgerEntry")
 		case "id":
-			out.Values[i] = ec._FundingLedgerEntry_id(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._FundingLedgerEntry_id(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "occurredAt":
 			out.Values[i] = ec._FundingLedgerEntry_occurredAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "description":
 			out.Values[i] = ec._FundingLedgerEntry_description(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "amountYen":
 			out.Values[i] = ec._FundingLedgerEntry_amountYen(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "currency":
 			out.Values[i] = ec._FundingLedgerEntry_currency(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "createdAt":
 			out.Values[i] = ec._FundingLedgerEntry_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "member":
 			out.Values[i] = ec._FundingLedgerEntry_member(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "pool":
 			out.Values[i] = ec._FundingLedgerEntry_pool(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -31022,7 +31137,7 @@ func (ec *executionContext) _PurchaseItem(ctx context.Context, sel ast.Selection
 	return out
 }
 
-var purchaseLedgerEntryImplementors = []string{"PurchaseLedgerEntry", "LedgerEntry"}
+var purchaseLedgerEntryImplementors = []string{"PurchaseLedgerEntry", "LedgerEntry", "Node"}
 
 func (ec *executionContext) _PurchaseLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.PurchaseLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, purchaseLedgerEntryImplementors)
@@ -31035,39 +31150,72 @@ func (ec *executionContext) _PurchaseLedgerEntry(ctx context.Context, sel ast.Se
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("PurchaseLedgerEntry")
 		case "id":
-			out.Values[i] = ec._PurchaseLedgerEntry_id(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._PurchaseLedgerEntry_id(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "occurredAt":
 			out.Values[i] = ec._PurchaseLedgerEntry_occurredAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "description":
 			out.Values[i] = ec._PurchaseLedgerEntry_description(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "amountYen":
 			out.Values[i] = ec._PurchaseLedgerEntry_amountYen(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "currency":
 			out.Values[i] = ec._PurchaseLedgerEntry_currency(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "createdAt":
 			out.Values[i] = ec._PurchaseLedgerEntry_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "purchase":
 			out.Values[i] = ec._PurchaseLedgerEntry_purchase(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -31142,7 +31290,7 @@ func (ec *executionContext) _PurchasePayment(ctx context.Context, sel ast.Select
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "account":
 			out.Values[i] = ec._PurchasePayment_account(ctx, field, obj)
-			if out.Values[i] == graphql.RequiredNull {
+			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "amountYen":
@@ -32829,7 +32977,7 @@ func (ec *executionContext) _Tag(ctx context.Context, sel ast.SelectionSet, obj 
 	return out
 }
 
-var transferLedgerEntryImplementors = []string{"TransferLedgerEntry", "LedgerEntry"}
+var transferLedgerEntryImplementors = []string{"TransferLedgerEntry", "LedgerEntry", "Node"}
 
 func (ec *executionContext) _TransferLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.TransferLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, transferLedgerEntryImplementors)
@@ -32842,54 +32990,87 @@ func (ec *executionContext) _TransferLedgerEntry(ctx context.Context, sel ast.Se
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("TransferLedgerEntry")
 		case "id":
-			out.Values[i] = ec._TransferLedgerEntry_id(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._TransferLedgerEntry_id(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "occurredAt":
 			out.Values[i] = ec._TransferLedgerEntry_occurredAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "description":
 			out.Values[i] = ec._TransferLedgerEntry_description(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "amountYen":
 			out.Values[i] = ec._TransferLedgerEntry_amountYen(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "currency":
 			out.Values[i] = ec._TransferLedgerEntry_currency(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "createdAt":
 			out.Values[i] = ec._TransferLedgerEntry_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "fromMember":
 			out.Values[i] = ec._TransferLedgerEntry_fromMember(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "toMember":
 			out.Values[i] = ec._TransferLedgerEntry_toMember(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "transferKind":
 			out.Values[i] = ec._TransferLedgerEntry_transferKind(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "loan":
 			out.Values[i] = ec._TransferLedgerEntry_loan(ctx, field, obj)
 			if out.Values[i] == graphql.RequiredNull {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -35752,13 +35933,6 @@ func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel a
 		}
 	}
 	return res
-}
-
-func (ec *executionContext) marshalOAccount2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccount(ctx context.Context, sel ast.SelectionSet, v *model.Account) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._Account(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOAccountOpeningBalanceInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountOpeningBalanceInput(ctx context.Context, v any) (*model.AccountOpeningBalanceInput, error) {

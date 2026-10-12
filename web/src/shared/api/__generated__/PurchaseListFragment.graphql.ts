@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8c397608478f46c612bf29836ebfe617>>
+ * @generated SignedSource<<b65acab87c0c012650530cf75d5df2c2>>
  * @lightSyntaxTransform
  */
 
@@ -26,7 +26,7 @@ export type PurchaseListFragment$data = {
             readonly account: {
               readonly id: string;
               readonly name: string;
-            } | null | undefined;
+            };
             readonly amountYen: any;
             readonly paymentAccountId: string;
           }>;
@@ -83,7 +83,7 @@ export type PurchaseListFragment$data = {
           readonly account: {
             readonly id: string;
             readonly name: string;
-          } | null | undefined;
+          };
           readonly amountYen: any;
           readonly paymentAccountId: string;
         }>;

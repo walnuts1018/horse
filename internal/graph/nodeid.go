@@ -11,7 +11,7 @@ import (
 var nodeTypes = map[string]struct{}{
 	"Account": {}, "AccountIncome": {}, "AccountMovement": {}, "AllocationRule": {},
 	"Budget": {}, "Category": {}, "Household": {}, "HouseholdInvitation": {}, "LoanBalance": {}, "Member": {},
-	"Pool": {}, "ProductAlias": {}, "ProductConcept": {}, "ProductVariant": {}, "Purchase": {},
+	"LedgerEntry": {}, "Pool": {}, "ProductAlias": {}, "ProductConcept": {}, "ProductVariant": {}, "Purchase": {},
 	"PurchaseCorrection": {}, "PurchaseItem": {}, "RecurringExpense": {}, "Tag": {}, "UnmatchedObservation": {},
 }
 

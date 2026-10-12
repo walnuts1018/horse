@@ -80,6 +80,7 @@ type CreateTagResult interface {
 }
 
 type LedgerEntry interface {
+	IsNode()
 	IsLedgerEntry()
 	GetID() string
 	GetOccurredAt() string
@@ -408,6 +409,8 @@ func (this CorrectionLedgerEntry) GetAmountYen() Long     { return this.AmountYe
 func (this CorrectionLedgerEntry) GetCurrency() string    { return this.Currency }
 func (this CorrectionLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
 
+func (CorrectionLedgerEntry) IsNode() {}
+
 type CreateAccountInput struct {
 	HouseholdID    string                      `json:"householdId"`
 	Name           string                      `json:"name"`
@@ -555,6 +558,8 @@ func (this FundingLedgerEntry) GetDescription() string { return this.Description
 func (this FundingLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
 func (this FundingLedgerEntry) GetCurrency() string    { return this.Currency }
 func (this FundingLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
+
+func (FundingLedgerEntry) IsNode() {}
 
 type Household struct {
 	ID                string        `json:"id"`
@@ -911,6 +916,8 @@ func (this PurchaseLedgerEntry) GetAmountYen() Long     { return this.AmountYen 
 func (this PurchaseLedgerEntry) GetCurrency() string    { return this.Currency }
 func (this PurchaseLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
 
+func (PurchaseLedgerEntry) IsNode() {}
+
 type PurchasePatch struct {
 	OccurredAt         *string                 `json:"occurredAt,omitempty"`
 	Merchant           *string                 `json:"merchant,omitempty"`
@@ -919,7 +926,7 @@ type PurchasePatch struct {
 
 type PurchasePayment struct {
 	PaymentAccountID string   `json:"paymentAccountId"`
-	Account          *Account `json:"account,omitempty"`
+	Account          *Account `json:"account"`
 	AmountYen        Long     `json:"amountYen"`
 }
 
@@ -1225,6 +1232,8 @@ func (this TransferLedgerEntry) GetDescription() string { return this.Descriptio
 func (this TransferLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
 func (this TransferLedgerEntry) GetCurrency() string    { return this.Currency }
 func (this TransferLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
+
+func (TransferLedgerEntry) IsNode() {}
 
 type UnmatchedObservation struct {
 	ID              string                    `json:"id"`

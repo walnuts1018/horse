@@ -806,6 +806,17 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil || repayment.TransferID == nil {
 		t.Fatalf("shared-pool repayment failed: transfer=%#v error=%v", repayment, err)
 	}
+	ledgerNodeID, err := encodeNodeID("LedgerEntry", loan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledgerNode, err := (&Resolver{DB: db}).Query().Node(ctx, ledgerNodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ledgerNode.(model.LedgerEntry); !ok {
+		t.Fatalf("ledger node returned an unexpected value: %#v", ledgerNode)
+	}
 	loanBalances, err := (&Resolver{DB: db}).Query().LoanBalances(ctx, household.ID)
 	loanNodeID, nodeIDErr := encodeNodeID("LoanBalance", *loan.TransferID)
 	if err != nil || nodeIDErr != nil || len(loanBalances) != 1 || loanBalances[0].ID != loanNodeID || loanBalances[0].BalanceYen != 0 || loanBalances[0].PrincipalYen != 5000 || loanBalances[0].RepaidYen != 5000 {

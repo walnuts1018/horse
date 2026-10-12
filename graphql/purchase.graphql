@@ -31,7 +31,7 @@ enum PurchaseOrigin {
 
 type PurchasePayment {
   paymentAccountId: ID! @goField(forceResolver: true)
-  account: Account
+  account: Account!
   amountYen: Long!
 }
 

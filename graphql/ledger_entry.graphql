@@ -1,5 +1,5 @@
-interface LedgerEntry {
-  id: ID!
+interface LedgerEntry implements Node {
+  id: ID! @goField(forceResolver: true)
   occurredAt: String!
   description: String!
   amountYen: Long!
@@ -18,8 +18,8 @@ type LedgerConnection {
   totalCount: Int!
 }
 
-type PurchaseLedgerEntry implements LedgerEntry {
-  id: ID!
+type PurchaseLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
   occurredAt: String!
   description: String!
   amountYen: Long!
@@ -28,8 +28,8 @@ type PurchaseLedgerEntry implements LedgerEntry {
   purchase: Purchase!
 }
 
-type FundingLedgerEntry implements LedgerEntry {
-  id: ID!
+type FundingLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
   occurredAt: String!
   description: String!
   amountYen: Long!
@@ -39,8 +39,8 @@ type FundingLedgerEntry implements LedgerEntry {
   pool: Pool!
 }
 
-type TransferLedgerEntry implements LedgerEntry {
-  id: ID!
+type TransferLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
   occurredAt: String!
   description: String!
   amountYen: Long!
@@ -59,8 +59,8 @@ enum TransferKind {
   GIFT
 }
 
-type CorrectionLedgerEntry implements LedgerEntry {
-  id: ID!
+type CorrectionLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
   occurredAt: String!
   description: String!
   amountYen: Long!

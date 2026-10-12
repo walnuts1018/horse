@@ -1,0 +1,10 @@
+enum MutationErrorCode {
+  BAD_INPUT
+  CONFLICT
+  NOT_FOUND
+}
+
+type MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

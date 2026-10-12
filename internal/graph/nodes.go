@@ -223,6 +223,18 @@ func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.No
 			}
 			return accountMovementModel(row), nil
 		}
+		if kind == "LedgerEntry" {
+			parsedID, _ := uuid.FromString(id)
+			row, err := models.LedgerEntries.Query(sm.Where(psql.And(models.LedgerEntries.Columns.ID.EQ(psql.Arg(parsedID)), models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID)))))).One(ctx, queryExecutor(r.DB))
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			entry := &model.LedgerEntryData{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, Currency: "JPY", OccurredAt: timeString(row.OccurredAt), Description: row.Description, AmountYen: graphLong(row.AmountYen), CreatedAt: timeString(row.CreatedAt)}
+			return ledgerEntryVariant(ctx, r.DB, entry)
+		}
 		if kind == "AccountIncome" {
 			parsedID, _ := uuid.FromString(id)
 			row, err := models.AccountIncomes.Query(sm.Where(psql.And(models.AccountIncomes.Columns.ID.EQ(psql.Arg(parsedID)), models.AccountIncomes.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID)))))).One(ctx, queryExecutor(r.DB))
