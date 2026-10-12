@@ -29,6 +29,7 @@ type ExtractedItem = {
   region?: Region;
 };
 type Region = { page: number; top: number; left: number; bottom: number; right: number };
+type PreviewTransform = [number, number, number, number, number, number, number, number, number];
 type MatchCandidate = {
   documentId: string;
   sourceReference: string;
@@ -75,6 +76,45 @@ type DocumentReview = {
     ocrLines?: Array<{ text: string; confidence: number; region?: Region }>;
     statements?: StatementEntry[];
   };
+};
+const identityTransform: PreviewTransform = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+const invertTransform = (matrix: PreviewTransform): PreviewTransform | null => {
+  const [a, b, c, d, e, f, g, h, i] = matrix;
+  const A = e * i - f * h;
+  const B = f * g - d * i;
+  const C = d * h - e * g;
+  const determinant = a * A + b * B + c * C;
+  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) return null;
+  return [
+    A / determinant,
+    (c * h - b * i) / determinant,
+    (b * f - c * e) / determinant,
+    B / determinant,
+    (a * i - c * g) / determinant,
+    (c * d - a * f) / determinant,
+    C / determinant,
+    (b * g - a * h) / determinant,
+    (a * e - b * d) / determinant,
+  ];
+};
+const transformPoint = (matrix: PreviewTransform, x: number, y: number) => {
+  const divisor = matrix[6] * x + matrix[7] * y + matrix[8];
+  if (!Number.isFinite(divisor) || Math.abs(divisor) < 1e-12) return [x, y] as const;
+  return [
+    (matrix[0] * x + matrix[1] * y + matrix[2]) / divisor,
+    (matrix[3] * x + matrix[4] * y + matrix[5]) / divisor,
+  ] as const;
+};
+const regionPolygon = (region: Region, previewToOriginal: PreviewTransform) => {
+  const originalToPreview = invertTransform(previewToOriginal) ?? identityTransform;
+  return [
+    transformPoint(originalToPreview, region.left, region.top),
+    transformPoint(originalToPreview, region.right, region.top),
+    transformPoint(originalToPreview, region.right, region.bottom),
+    transformPoint(originalToPreview, region.left, region.bottom),
+  ]
+    .map(([x, y]) => `${Math.max(0, Math.min(1, x)) * 100}% ${Math.max(0, Math.min(1, y)) * 100}%`)
+    .join(", ");
 };
 const terminalStatuses = new Set([
   "READY",
@@ -127,6 +167,16 @@ export function ImportsPage({
   const [paymentAccountId, setPaymentAccountId] = useState(household.accounts[0]?.id ?? "");
   const [cropRegion, setCropRegion] = useState<Region | null>(null);
   const [cropPending, setCropPending] = useState(false);
+  const [previewPage, setPreviewPage] = useState(0);
+  const [previewPageDraft, setPreviewPageDraft] = useState("1");
+  const [preview, setPreview] = useState<{
+    documentId: string;
+    page: number;
+    src: string;
+    transform: PreviewTransform;
+  } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
   const [observations, setObservations] = useState<ObservationCandidates[]>([]);
   const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
   const [targetPurchaseId, setTargetPurchaseId] = useState("");
@@ -139,6 +189,70 @@ export function ImportsPage({
   );
   const selectedDocument = documents.find((document) => document.id === selected);
   const targetPurchase = recentPurchases.find((purchase) => purchase.id === targetPurchaseId);
+  useEffect(() => {
+    setPreviewPage(0);
+    setPreviewPageDraft("1");
+    setCropRegion(null);
+  }, [selectedDocument?.id]);
+  useEffect(() => {
+    if (
+      !selectedDocument ||
+      !selectedDocument.mimeType ||
+      (!selectedDocument.mimeType.startsWith("image/") &&
+        selectedDocument.mimeType !== "application/pdf")
+    ) {
+      setPreview(null);
+      setPreviewError("");
+      setPreviewLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    let active = true;
+    let objectUrl = "";
+    setPreview(null);
+    setPreviewLoading(true);
+    setPreviewError("");
+    void fetch(
+      `/documents/${encodeURIComponent(selectedDocument.id)}/preview?page=${previewPage}`,
+      { credentials: "include", signal: controller.signal },
+    )
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`原本ページを表示できませんでした (${response.status})`);
+        const sourcePage = Number(response.headers.get("X-Source-Page"));
+        if (sourcePage !== previewPage) throw new Error("原本ページが一致しません");
+        const encodedTransform = response.headers.get("X-Coordinate-Transform");
+        let transform = identityTransform;
+        if (encodedTransform) {
+          const parsed = JSON.parse(encodedTransform) as number[];
+          if (parsed.length === 9 && parsed.every(Number.isFinite)) {
+            transform = parsed as PreviewTransform;
+          }
+        }
+        if (!invertTransform(transform)) throw new Error("原本の座標を読み取れません");
+        const blob = await response.blob();
+        if (blob.type !== "image/png") throw new Error("原本ページを表示できませんでした");
+        objectUrl = URL.createObjectURL(blob);
+        if (active) {
+          setPreview({
+            documentId: selectedDocument.id,
+            page: previewPage,
+            src: objectUrl,
+            transform,
+          });
+        }
+      })
+      .catch((reason) => {
+        if (active && (reason as Error).name !== "AbortError") {
+          setPreviewError((reason as Error).message);
+        }
+      })
+      .finally(() => active && setPreviewLoading(false));
+    return () => {
+      active = false;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedDocument?.id, selectedDocument?.mimeType, previewPage]);
   const refreshDocuments = useCallback(
     async (silent = false) => {
       try {
@@ -333,6 +447,19 @@ export function ImportsPage({
     } finally {
       setCropPending(false);
     }
+  };
+  const selectCropRegion = (region: Region) => {
+    setCropRegion(region);
+    setPreviewPage(region.page);
+    setPreviewPageDraft(String(region.page + 1));
+  };
+  const showPreviewPage = () => {
+    const page = Number(previewPageDraft);
+    if (!Number.isInteger(page) || page < 1) {
+      setPreviewError("ページ番号を入力してください");
+      return;
+    }
+    setPreviewPage(page - 1);
   };
   const confirmEvidenceGroup = async () => {
     if (
@@ -672,45 +799,76 @@ export function ImportsPage({
                 rel="noreferrer"
               >
                 <FileImage size={23} />
-                <span>{selectedDocument.name ?? "原本を開く"}</span>
+                <span>原本ファイルを開く</span>
               </a>
-              {selectedDocument.mimeType?.startsWith("image/") ? (
-                <div className="evidence-image-stage">
-                  <img
-                    src={`/documents/${encodeURIComponent(selectedDocument.id)}/content`}
-                    alt="証拠原本"
-                  />
-                  {selectedDocument.result?.receipt?.items?.map((item, index) =>
-                    item.region ? (
-                      <button
-                        key={index}
-                        type="button"
-                        className={`evidence-region ${Number(receiptEvidenceIndex) === index ? "evidence-region-selected" : ""}`}
-                        style={{
-                          top: `${item.region.top * 100}%`,
-                          left: `${item.region.left * 100}%`,
-                          width: `${(item.region.right - item.region.left) * 100}%`,
-                          height: `${(item.region.bottom - item.region.top) * 100}%`,
-                        }}
-                        aria-label={`${item.name}の原本位置`}
-                        onClick={() => {
-                          setReceiptEvidenceIndex(String(index));
-                          setCropRegion(item.region ?? null);
-                        }}
-                      />
-                    ) : null,
+              {selectedDocument.mimeType?.startsWith("image/") ||
+              selectedDocument.mimeType === "application/pdf" ? (
+                <>
+                  {selectedDocument.mimeType === "application/pdf" && (
+                    <div className="evidence-preview-page-controls">
+                      <label>
+                        PDFページ
+                        <input
+                          aria-label="PDFページ"
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={previewPageDraft}
+                          onChange={(event) => setPreviewPageDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") showPreviewPage();
+                          }}
+                        />
+                      </label>
+                      <button className="text-button" type="button" onClick={showPreviewPage}>
+                        ページを表示
+                      </button>
+                    </div>
                   )}
-                </div>
-              ) : selectedDocument.mimeType === "application/pdf" ? (
-                <iframe
-                  className="evidence-pdf-preview"
-                  title="証拠原本"
-                  src={`/documents/${encodeURIComponent(selectedDocument.id)}/content`}
-                />
+                  {previewLoading && <p>ページを読み込んでいます</p>}
+                  {previewError && <InlineError message={previewError} />}
+                  {preview?.documentId === selectedDocument.id && preview.page === previewPage && (
+                    <div className="evidence-image-stage">
+                      <img src={preview.src} alt={`${previewPage + 1}ページ目の原本`} />
+                      {selectedDocument.result?.receipt?.items?.map((item, index) =>
+                        item.region?.page === previewPage ? (
+                          <button
+                            key={`item-${index}`}
+                            type="button"
+                            className={`evidence-region ${Number(receiptEvidenceIndex) === index ? "evidence-region-selected" : ""}`}
+                            style={{
+                              clipPath: `polygon(${regionPolygon(item.region, preview.transform)})`,
+                            }}
+                            aria-label={`${item.name}の原本位置`}
+                            onClick={() => {
+                              setReceiptEvidenceIndex(String(index));
+                              selectCropRegion(item.region!);
+                            }}
+                          />
+                        ) : null,
+                      )}
+                      {selectedDocument.result?.ocrLines?.map((line, index) =>
+                        line.region?.page === previewPage ? (
+                          <button
+                            key={`line-${index}`}
+                            type="button"
+                            className="evidence-region evidence-region-ocr"
+                            style={{
+                              clipPath: `polygon(${regionPolygon(line.region, preview.transform)})`,
+                            }}
+                            aria-label={`${line.text}の原本位置`}
+                            onClick={() => selectCropRegion(line.region!)}
+                          />
+                        ) : null,
+                      )}
+                    </div>
+                  )}
+                </>
               ) : null}
             </div>
           )}
-          {selectedDocument?.result?.receipt?.items && (
+          {(selectedDocument?.result?.receipt?.items?.length ||
+            selectedDocument?.result?.ocrLines?.some((line) => line.region)) && (
             <section className="panel evidence-crop-panel">
               <div className="panel-heading">
                 <div>
@@ -720,22 +878,23 @@ export function ImportsPage({
                 <span>{cropRegion ? `ページ ${cropRegion.page + 1}` : "範囲未選択"}</span>
               </div>
               <div className="evidence-source-items">
-                {selectedDocument.result.receipt.items.map((item, index) => (
+                {selectedDocument?.result?.receipt?.items?.map((item, index) => (
                   <button
                     type="button"
                     key={index}
-                    className="text-button"
+                    className={`text-button ${Number(receiptEvidenceIndex) === index ? "evidence-item-selected" : ""}`}
+                    aria-pressed={Number(receiptEvidenceIndex) === index}
                     disabled={!item.region}
                     onClick={() => {
                       setReceiptEvidenceIndex(String(index));
-                      setCropRegion(item.region ?? null);
+                      if (item.region) selectCropRegion(item.region);
                     }}
                   >
                     {item.name} · {yen(item.grossAmount || item.printedAmount)}
                   </button>
                 ))}
               </div>
-              {!!selectedDocument.result.ocrLines?.length && (
+              {!!selectedDocument?.result?.ocrLines?.length && (
                 <div className="evidence-ocr-lines">
                   {selectedDocument.result.ocrLines
                     .filter((line) => line.region)
@@ -745,9 +904,9 @@ export function ImportsPage({
                         type="button"
                         className="text-button"
                         key={`${line.text}-${index}`}
-                        onClick={() => setCropRegion(line.region ?? null)}
+                        onClick={() => selectCropRegion(line.region!)}
                       >
-                        {line.text}
+                        {line.text} · ページ {line.region!.page + 1}
                       </button>
                     ))}
                 </div>
@@ -776,21 +935,26 @@ export function ImportsPage({
                     <input
                       type="number"
                       min="1"
+                      step="1"
                       value={cropRegion.page + 1}
-                      onChange={(event) =>
-                        setCropRegion((current) =>
-                          current
-                            ? { ...current, page: Math.max(0, Number(event.target.value) - 1) }
-                            : current,
-                        )
-                      }
+                      onChange={(event) => {
+                        const page = Math.max(0, Math.trunc(Number(event.target.value) - 1));
+                        setCropRegion((current) => (current ? { ...current, page } : current));
+                        setPreviewPage(page);
+                        setPreviewPageDraft(String(page + 1));
+                      }}
                     />
                   </label>
                   <button
                     className="button button-soft"
                     type="button"
-                    disabled={pending || cropPending}
-                    onClick={() => void retryDocumentCrop(selectedDocument)}
+                    disabled={
+                      pending ||
+                      cropPending ||
+                      cropRegion.bottom <= cropRegion.top ||
+                      cropRegion.right <= cropRegion.left
+                    }
+                    onClick={() => void retryDocumentCrop(selectedDocument!)}
                   >
                     {cropPending ? "抽出中" : "この範囲で再抽出"}
                   </button>

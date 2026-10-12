@@ -73,6 +73,23 @@ export type AccountMovement = {
   createdAt: string;
 };
 export type AccountBalance = { accountId: string; balanceYen: number; currency: string };
+export type AccountBalanceChange = {
+  occurredAt: string;
+  sourceKind: string;
+  sourceId: string;
+  description: string;
+  changeYen: number;
+  balanceYen: number;
+};
+export type AccountBalanceAnalysis = {
+  accountId: string;
+  currency: string;
+  from: string;
+  to: string;
+  openingBalanceYen: number;
+  closingBalanceYen: number;
+  changes: AccountBalanceChange[];
+};
 export type AccountIncome = {
   id: string;
   householdId: string;
@@ -1080,6 +1097,32 @@ export const accountBalancesQuery = graphql`
       accountId
       balanceYen
       currency
+    }
+  }
+`;
+
+export const accountBalanceAnalysisQuery = graphql`
+  query AccountBalanceAnalysisQuery(
+    $householdId: ID!
+    $accountId: ID!
+    $from: String!
+    $to: String!
+  ) {
+    accountBalanceAnalysis(householdId: $householdId, accountId: $accountId, from: $from, to: $to) {
+      accountId
+      currency
+      from
+      to
+      openingBalanceYen
+      closingBalanceYen
+      changes {
+        occurredAt
+        sourceKind
+        sourceId
+        description
+        changeYen
+        balanceYen
+      }
     }
   }
 `;

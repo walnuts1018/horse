@@ -3,6 +3,7 @@ import { Activity, ArrowLeftRight, Check, ChevronRight, Plus, Wallet } from "luc
 import {
   accountMovementsQuery,
   accountBalancesQuery,
+  accountBalanceAnalysisQuery,
   accountIncomesQuery,
   archiveBudgetMutation,
   archiveRecurringExpenseMutation,
@@ -39,11 +40,13 @@ import {
   type Household,
   type AccountMovement,
   type AccountBalance,
+  type AccountBalanceAnalysis,
   type AccountIncome,
   type Budget,
   type RecurringExpense,
   type Tag,
 } from "../../../shared/api";
+import { InlineError } from "../../../shared/ui";
 
 const currentMonth = () =>
   new Intl.DateTimeFormat("en-CA", {
@@ -61,6 +64,24 @@ const yen = (amount: number) =>
     currency: "JPY",
     maximumFractionDigits: 0,
   }).format(amount);
+const monthIndex = (month: string) => {
+  const [year, number] = month.split("-").map(Number);
+  return year * 12 + number - 1;
+};
+const shiftMonth = (month: string, offset: number) => {
+  const shifted = monthIndex(month) + offset;
+  return `${Math.floor(shifted / 12)}-${String((shifted % 12) + 1).padStart(2, "0")}`;
+};
+const balanceChangeSource = (sourceKind: string) =>
+  ({
+    PURCHASE: "購入",
+    CORRECTION: "訂正",
+    FUNDING: "資金拠出",
+    TRANSFER: "送金",
+    ACCOUNT_MOVEMENT: "口座振替",
+    ACCOUNT_INCOME: "外部入金",
+    ACCOUNT_OPENING_BALANCE: "初期残高",
+  })[sourceKind] ?? sourceKind;
 
 export function SettingsPage({
   household,
@@ -149,6 +170,17 @@ export function SettingsPage({
   const [movements, setMovements] = useState<AccountMovement[]>([]);
   const [incomes, setIncomes] = useState<AccountIncome[]>([]);
   const [balances, setBalances] = useState<AccountBalance[]>([]);
+  const [balanceHistoryAccountId, setBalanceHistoryAccountId] = useState(
+    household.accounts[0]?.id ?? "",
+  );
+  const [balanceHistoryFrom, setBalanceHistoryFrom] = useState(() =>
+    shiftMonth(currentMonth(), -5),
+  );
+  const [balanceHistoryTo, setBalanceHistoryTo] = useState(currentMonth);
+  const [balanceHistory, setBalanceHistory] = useState<AccountBalanceAnalysis | null>(null);
+  const [balanceHistoryLimit, setBalanceHistoryLimit] = useState(100);
+  const [balanceHistoryLoading, setBalanceHistoryLoading] = useState(false);
+  const [balanceHistoryError, setBalanceHistoryError] = useState("");
   const [incomeAccountId, setIncomeAccountId] = useState("");
   const [incomeAmount, setIncomeAmount] = useState("");
   const [incomeDescription, setIncomeDescription] = useState("");
@@ -234,6 +266,50 @@ export function SettingsPage({
       ),
     );
   }, [household.id, household.pools, household.members]);
+  useEffect(() => {
+    if (!household.accounts.some((account) => account.id === balanceHistoryAccountId)) {
+      setBalanceHistoryAccountId(household.accounts[0]?.id ?? "");
+    }
+  }, [household.accounts, balanceHistoryAccountId]);
+  useEffect(() => {
+    if (!balanceHistoryAccountId) {
+      setBalanceHistory(null);
+      setBalanceHistoryError("");
+      setBalanceHistoryLoading(false);
+      return;
+    }
+    if (
+      !/^\d{4}-\d{2}$/.test(balanceHistoryFrom) ||
+      !/^\d{4}-\d{2}$/.test(balanceHistoryTo) ||
+      monthIndex(balanceHistoryTo) < monthIndex(balanceHistoryFrom) ||
+      monthIndex(balanceHistoryTo) - monthIndex(balanceHistoryFrom) > 120
+    ) {
+      setBalanceHistory(null);
+      setBalanceHistoryLimit(100);
+      setBalanceHistoryError("期間は前後関係を確認し、10年以内で指定してください");
+      setBalanceHistoryLoading(false);
+      return;
+    }
+    let active = true;
+    setBalanceHistoryLimit(100);
+    setBalanceHistoryLoading(true);
+    setBalanceHistoryError("");
+    void readGraphql<{ accountBalanceAnalysis: AccountBalanceAnalysis }>(
+      accountBalanceAnalysisQuery,
+      {
+        householdId: household.id,
+        accountId: balanceHistoryAccountId,
+        from: balanceHistoryFrom,
+        to: balanceHistoryTo,
+      },
+    )
+      .then((result) => active && setBalanceHistory(result.accountBalanceAnalysis))
+      .catch((reason) => active && setBalanceHistoryError((reason as Error).message))
+      .finally(() => active && setBalanceHistoryLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [household.id, balanceHistoryAccountId, balanceHistoryFrom, balanceHistoryTo]);
   useEffect(() => {
     setInvitationLink("");
     setIssuedInvitationId("");
@@ -756,6 +832,12 @@ export function SettingsPage({
       setPending(false);
     }
   };
+  const visibleBalanceChanges = balanceHistory?.changes.slice(-balanceHistoryLimit).reverse() ?? [];
+  const maxBalanceChange =
+    balanceHistory?.changes.reduce(
+      (maximum, entry) => Math.max(maximum, Math.abs(entry.changeYen)),
+      1,
+    ) ?? 1;
   return (
     <>
       <div className="page-heading">
@@ -890,6 +972,114 @@ export function SettingsPage({
               追加
             </button>
           </form>
+        </section>
+        <section className="panel settings-section account-balance-analysis">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">口座別の仕訳</span>
+              <h2>残高の増減</h2>
+            </div>
+            {balanceHistory?.currency && <span>{balanceHistory.currency}</span>}
+          </div>
+          <div className="analysis-controls">
+            <label className="select-filter">
+              <span>口座</span>
+              <select
+                value={balanceHistoryAccountId}
+                disabled={!household.accounts.length}
+                onChange={(event) => setBalanceHistoryAccountId(event.target.value)}
+              >
+                {household.accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="select-filter">
+              <span>開始月</span>
+              <input
+                aria-label="残高分析の開始月"
+                type="month"
+                value={balanceHistoryFrom}
+                onChange={(event) => setBalanceHistoryFrom(event.target.value)}
+              />
+            </label>
+            <label className="select-filter">
+              <span>終了月</span>
+              <input
+                aria-label="残高分析の終了月"
+                type="month"
+                value={balanceHistoryTo}
+                onChange={(event) => setBalanceHistoryTo(event.target.value)}
+              />
+            </label>
+          </div>
+          {balanceHistoryError && <InlineError message={balanceHistoryError} />}
+          {balanceHistoryLoading ? (
+            <p>残高を集計しています</p>
+          ) : balanceHistory ? (
+            <>
+              <div className="account-balance-summary">
+                <div>
+                  <small>期首残高</small>
+                  <b>{yen(balanceHistory.openingBalanceYen)}</b>
+                </div>
+                <div>
+                  <small>期末残高</small>
+                  <b>{yen(balanceHistory.closingBalanceYen)}</b>
+                </div>
+              </div>
+              {household.accounts.find((account) => account.id === balanceHistoryAccountId)
+                ?.kind === "CARD" && (
+                <small className="account-balance-sign">カード債務の増加はプラス</small>
+              )}
+              <div className="account-balance-changes">
+                {visibleBalanceChanges.map((change, index) => (
+                  <div
+                    className="account-balance-change"
+                    key={`${change.sourceId}-${change.occurredAt}-${index}`}
+                  >
+                    <div className="account-balance-change-copy">
+                      <b>{change.description || balanceChangeSource(change.sourceKind)}</b>
+                      <small>
+                        {new Date(change.occurredAt).toLocaleString("ja-JP", {
+                          month: "numeric",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}{" "}
+                        · {balanceChangeSource(change.sourceKind)}
+                      </small>
+                    </div>
+                    <div className="account-balance-change-bar">
+                      <i
+                        className={change.changeYen < 0 ? "account-balance-negative" : ""}
+                        style={{
+                          width: `${Math.max(2, Math.min(100, (Math.abs(change.changeYen) / maxBalanceChange) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                    <b className={change.changeYen < 0 ? "account-balance-negative-text" : ""}>
+                      {change.changeYen > 0 ? "+" : ""}
+                      {yen(change.changeYen)}
+                    </b>
+                    <small>残高 {yen(change.balanceYen)}</small>
+                  </div>
+                ))}
+                {!balanceHistory.changes.length && <p>この期間に仕訳はありません</p>}
+                {balanceHistory.changes.length > visibleBalanceChanges.length && (
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={() => setBalanceHistoryLimit((limit) => limit + 100)}
+                  >
+                    過去の仕訳を表示
+                  </button>
+                )}
+              </div>
+            </>
+          ) : null}
         </section>
         <section className="panel settings-section">
           <div className="panel-heading">
