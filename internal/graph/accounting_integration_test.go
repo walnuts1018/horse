@@ -2,6 +2,8 @@ package graph
 
 import (
 	"context"
+	"database/sql"
+	stdjson "encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -14,8 +16,10 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/graph/model"
+	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -263,20 +267,76 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberAUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	fromSource := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &documentID, OccurredAt: "2026-04-20T12:00:00Z", Merchant: "source", Items: []*model.PurchaseItemInput{{Name: "milk", AmountYen: 250}}}
+	jobID := uuid.NewV7().String()
+	jobUUID, _ := gofrsuuid.FromString(jobID)
+	jobVersion, jobStatus := int32(1), "succeeded"
+	verified := ingestion.Verification{
+		Receipt: ingestion.Receipt{Items: []ingestion.Item{
+			{Name: "milk", PrintedName: "milk original", PrintedAmount: 150, Region: &ingestion.Region{Page: 1, Top: 0.1, Left: 0.2, Bottom: 0.3, Right: 0.4}},
+			{Name: "bread", PrintedName: "bread original", PrintedAmount: 100},
+		}},
+		Transform: [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}, TransformPage: 1,
+	}
+	jobResult, err := stdjson.Marshal(verified)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobResultValue := sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: jobResult}, Valid: true}
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &jobUUID, HouseholdID: &householdUUID, SourceDocumentID: &documentUUID, Version: &jobVersion, Status: &jobStatus, Result: &jobResultValue}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	fromSource := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &documentID, OccurredAt: "2026-04-20T12:00:00Z", Merchant: "source", Items: []*model.PurchaseItemInput{{Name: "milk", AmountYen: 150}, {Name: "bread", AmountYen: 100}}}
+	mismatchedSource := fromSource
+	mismatchedSource.Items = fromSource.Items[:1]
+	if _, err := resolver.CreatePurchase(ctx, mismatchedSource); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("receipt import should reject an unmatched item count, got %v", err)
+	}
 	confirmed, err := resolver.CreatePurchase(ctx, fromSource)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if confirmed.Items[0].Allocations[0].AmountYen == nil || *confirmed.Items[0].Allocations[0].AmountYen != 150 || confirmed.Items[0].Allocations[1].AmountYen == nil || *confirmed.Items[0].Allocations[1].AmountYen != 100 {
-		t.Fatalf("global default allocation was not snapshotted: %#v", confirmed.Items[0].Allocations)
+	if confirmed.Items[0].Allocations[0].AmountYen == nil || *confirmed.Items[0].Allocations[0].AmountYen != 90 || confirmed.Items[0].Allocations[1].AmountYen == nil || *confirmed.Items[0].Allocations[1].AmountYen != 60 || confirmed.Items[1].Allocations[0].AmountYen == nil || *confirmed.Items[1].Allocations[0].AmountYen != 60 || confirmed.Items[1].Allocations[1].AmountYen == nil || *confirmed.Items[1].Allocations[1].AmountYen != 40 {
+		t.Fatalf("global default allocation was not snapshotted: %#v", confirmed.Items)
+	}
+	evidenceLinks, err := models.EvidenceLinks.Query(sm.Where(models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(generatedUUID(confirmed.ID))))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(evidenceLinks) != 3 {
+		t.Fatalf("source purchase should persist document and item evidence in the create transaction: links=%d error=%v", len(evidenceLinks), err)
+	}
+	itemEvidence := 0
+	seenItemIndexes := make(map[int]struct{}, len(fromSource.Items))
+	for _, link := range evidenceLinks {
+		if !link.ItemID.Valid {
+			continue
+		}
+		itemEvidence++
+		var observation struct {
+			JobID     string         `json:"jobId"`
+			ItemIndex int            `json:"itemIndex"`
+			Item      ingestion.Item `json:"item"`
+		}
+		if err := stdjson.Unmarshal(link.Observation.Val, &observation); err != nil {
+			t.Fatal(err)
+		}
+		if observation.JobID != jobID || observation.ItemIndex < 0 || observation.ItemIndex >= len(verified.Receipt.Items) || observation.Item.PrintedName == "" {
+			t.Fatalf("item evidence did not retain its extraction observation: %#v", observation)
+		}
+		if _, exists := seenItemIndexes[observation.ItemIndex]; exists {
+			t.Fatalf("multiple purchase items reference extraction item %d", observation.ItemIndex)
+		}
+		seenItemIndexes[observation.ItemIndex] = struct{}{}
+		if link.EvidenceRegion.Valid != (verified.Receipt.Items[observation.ItemIndex].Region != nil) {
+			t.Fatalf("item evidence region does not match extraction item %d", observation.ItemIndex)
+		}
+	}
+	if itemEvidence != len(fromSource.Items) {
+		t.Fatalf("source purchase should link each extracted item: got %d links", itemEvidence)
 	}
 	if _, err := resolver.SetDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: householdID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 2}, {PoolID: poolB.ID, Weight: 3}}}); err != nil {
 		t.Fatal(err)
 	}
 	confirmed, err = loadPurchase(ctx, db, confirmed.ID)
-	if err != nil || confirmed.Items[0].Allocations[0].AmountYen == nil || *confirmed.Items[0].Allocations[0].AmountYen != 150 || confirmed.Items[0].Allocations[1].AmountYen == nil || *confirmed.Items[0].Allocations[1].AmountYen != 100 {
-		t.Fatalf("changing the global rule changed a prior purchase snapshot: purchase=%#v error=%v", confirmed, err)
+	if err != nil || confirmed.Items[0].Allocations[0].AmountYen == nil || *confirmed.Items[0].Allocations[0].AmountYen != 90 || confirmed.Items[0].Allocations[1].AmountYen == nil || *confirmed.Items[0].Allocations[1].AmountYen != 60 || confirmed.Items[1].Allocations[0].AmountYen == nil || *confirmed.Items[1].Allocations[0].AmountYen != 60 || confirmed.Items[1].Allocations[1].AmountYen == nil || *confirmed.Items[1].Allocations[1].AmountYen != 40 {
+		t.Fatalf("changing the global rule changed a prior purchase snapshot: purchase=%#v error=%v", confirmed.Items, err)
 	}
 	fromSource.IdempotencyKey = uuid.NewV7().String()
 	fromSource.Items = []*model.PurchaseItemInput{{Name: "duplicate", AmountYen: 999}}

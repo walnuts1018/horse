@@ -25,6 +25,7 @@ import (
 	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/graph/model"
+	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -820,6 +821,7 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
+	purchaseItemUUIDs := make([]gofrsuuid.UUID, 0, len(input.Items))
 	for _, itemInput := range input.Items {
 		if itemInput == nil || strings.TrimSpace(itemInput.Name) == "" || len(itemInput.Name) > 240 || itemInput.AmountYen < 0 || int64(itemInput.AmountYen) > maxMoney {
 			return nil, fmt.Errorf("%w: invalid purchase item", ErrBadInput)
@@ -911,6 +913,7 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
+		purchaseItemUUIDs = append(purchaseItemUUIDs, itemUUID)
 		for _, allocation := range allocated {
 			poolUUID := generatedUUID(allocation.PoolID)
 			var ruleUUID sql.Null[gofrsuuid.UUID]
@@ -953,11 +956,16 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 			return nil, err
 		}
 		if _, err := psql.Insert(
-			im.Into(psql.Quote("evidence_links"), "household_id", "source_document_id", "purchase_id"),
+			im.Into(models.EvidenceLinks.NameExpr(), "household_id", "source_document_id", "purchase_id"),
 			im.Values(psql.Arg(householdUUID, documentUUID, purchaseUUID)),
 			im.OnConflict().DoNothing(),
 		).Exec(ctx, executor); err != nil {
 			return nil, err
+		}
+		if sourceReference == "" {
+			if err := linkImportedReceiptItems(ctx, executor, householdUUID, documentUUID, purchaseUUID, purchaseItemUUIDs); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "purchase.created", purchaseID, 1, []string{}, user.MemberID); err != nil {
@@ -967,6 +975,64 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 		return nil, err
 	}
 	return loadPurchase(ctx, r.DB, purchaseID)
+}
+
+func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, householdID, documentID, purchaseID gofrsuuid.UUID, itemIDs []gofrsuuid.UUID) error {
+	job, err := models.ExtractionJobs.Query(
+		sm.Where(psql.And(
+			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(documentID)),
+			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
+		)),
+		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
+		sm.Limit(1),
+	).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !job.Result.Valid {
+		return nil
+	}
+	var verified ingestion.Verification
+	if err := json.Unmarshal(job.Result.V.Val, &verified); err != nil {
+		return err
+	}
+	if len(verified.Receipt.Items) == 0 {
+		return nil
+	}
+	if len(verified.Receipt.Items) != len(itemIDs) {
+		return fmt.Errorf("%w: receipt item count does not match the imported purchase", ErrBadInput)
+	}
+	for index, item := range verified.Receipt.Items {
+		observation, err := stdjson.Marshal(map[string]any{
+			"jobId": job.ID.String(), "itemIndex": index, "item": item,
+			"transform": verified.Transform, "transformPage": verified.TransformPage,
+		})
+		if err != nil {
+			return err
+		}
+		observationJSON := types.JSON[stdjson.RawMessage]{Val: observation}
+		var region sql.Null[types.JSON[stdjson.RawMessage]]
+		if item.Region != nil {
+			encoded, err := stdjson.Marshal(item.Region)
+			if err != nil {
+				return err
+			}
+			region = sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: encoded}, Valid: true}
+		}
+		itemID := sql.Null[gofrsuuid.UUID]{V: itemIDs[index], Valid: true}
+		if _, err := psql.Insert(
+			im.Into(models.EvidenceLinks.NameExpr(), "household_id", "source_document_id", "purchase_id", "item_id", "evidence_region", "observation"),
+			im.Values(psql.Arg(householdID, documentID, purchaseID, itemID, region, observationJSON)),
+			im.OnConflict().DoNothing(),
+		).Exec(ctx, executor); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func allocationWeights(inputs []*model.AllocationInput) ([]domain.Weight, error) {

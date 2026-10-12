@@ -273,6 +273,18 @@ export function PurchaseCreatePage({
       )
       .slice(0, 4);
   }, [history, itemName]);
+  const recentPurchases = useMemo(
+    () => history.filter((purchase) => purchase.status !== "DRAFT" && purchase.items.length > 0),
+    [history],
+  );
+  const recentMerchants = useMemo(() => {
+    const seen = new Set<string>();
+    return recentPurchases
+      .map((purchase) => purchase.merchant.trim())
+      .filter((name) => name && !seen.has(name) && Boolean(seen.add(name)))
+      .slice(0, 5);
+  }, [recentPurchases]);
+  const [copiedPurchase, setCopiedPurchase] = useState<Purchase | null>(null);
   const paymentAmount = (payment: PaymentDraft) =>
     Number(paymentAutoTotal && paymentRows.length === 1 ? itemTotal : payment.amountYen) || 0;
   const paymentTotal = sum(paymentRows.map(paymentAmount));
@@ -376,6 +388,28 @@ export function PurchaseCreatePage({
   };
   const patchItem = (key: string, patch: Partial<DraftItem>) =>
     setItems((current) => current.map((item) => (item.key === key ? { ...item, ...patch } : item)));
+  const copyPurchaseItems = (purchase: Purchase) => {
+    setUndoItems(items);
+    setItems(
+      purchase.items.map((item) => ({
+        key: crypto.randomUUID(),
+        name: item.name,
+        amount: String(item.amountYen),
+        categoryId: item.categoryId ?? "",
+        productVariantId: item.productVariantId ?? undefined,
+        allocations: item.allocations.map(({ poolId, weight }) => ({ poolId, weight })),
+        ...(item.quantityNumerator && item.quantityDenominator
+          ? {
+              quantity: `${item.quantityNumerator}/${item.quantityDenominator}`,
+              quantityUnit: item.quantityUnit ?? "",
+            }
+          : {}),
+      })),
+    );
+    setMerchant(purchase.merchant);
+    setCopiedPurchase(purchase);
+    setMessage("");
+  };
   const save = async (event: FormEvent) => {
     event.preventDefault();
     if (saving.current) return;
@@ -582,6 +616,55 @@ export function PurchaseCreatePage({
           </div>
         </div>
       </section>
+      {(recentMerchants.length > 0 || recentPurchases.length > 0) && (
+        <section className="panel" aria-label="購入履歴から入力">
+          {recentMerchants.length > 0 && (
+            <div className="field-group">
+              <span>同じ店でもう一度入力</span>
+              <div className="purchase-history-actions">
+                {recentMerchants.map((name) => (
+                  <button
+                    className="text-button"
+                    type="button"
+                    key={name}
+                    onClick={() => {
+                      setMerchant(name);
+                      setCopiedPurchase(null);
+                    }}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {recentPurchases.length > 0 && (
+            <div className="field-group">
+              <span>前回の購入をコピー</span>
+              <div className="purchase-history-actions">
+                {recentPurchases.slice(0, 5).map((purchase) => (
+                  <button
+                    className="text-button"
+                    type="button"
+                    key={purchase.id}
+                    onClick={() => copyPurchaseItems(purchase)}
+                  >
+                    {purchase.merchant || "店名未入力"} ·{" "}
+                    {new Date(purchase.occurredAt).toLocaleDateString("ja-JP")} ·{" "}
+                    {yen(purchase.totalYen)}
+                  </button>
+                ))}
+              </div>
+              {copiedPurchase && (
+                <small role="status">
+                  {copiedPurchase.merchant || "店名未入力"}
+                  の品目と前回価格をコピーしました。価格、日時、決済元を確認してください。
+                </small>
+              )}
+            </div>
+          )}
+        </section>
+      )}
       <section className="panel item-entry-panel">
         <div className="panel-heading entry-heading">
           <div>
