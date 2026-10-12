@@ -17,6 +17,7 @@ import {
 } from "../../../shared/api";
 import {
   bulkUpdatePurchaseItemsMutation,
+  bulkUpdatePurchasesMutation,
   correctPurchaseMutation,
   postPurchaseMutation,
   purchasesQuery,
@@ -65,6 +66,9 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   const { mutate: mutateCorrectPurchase } = useGraphqlMutation(correctPurchaseMutation);
   const { mutate: mutateUpdatePurchaseItem } = useGraphqlMutation(updatePurchaseItemMutation);
   const { mutate: mutateUpdatePurchase } = useGraphqlMutation(updatePurchaseMutation);
+  const { mutate: mutateBulkUpdatePurchases } = useGraphqlMutation<{
+    bulkUpdatePurchases: { purchases: Array<{ id: string; revision: number }> };
+  }>(bulkUpdatePurchasesMutation);
   const { mutate: mutateBulkUpdatePurchaseItems } = useGraphqlMutation<{
     bulkUpdatePurchaseItems: Array<{ id: string; revision: number }>;
   }>(bulkUpdatePurchaseItemsMutation);
@@ -863,12 +867,32 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     setPurchaseBulkUndo(null);
     const undoEntries: NonNullable<typeof purchaseBulkUndo> = [];
     try {
+      const result = await mutateBulkUpdatePurchases({
+        input: {
+          targets: targets.map((purchase) => ({
+            purchaseId: purchase.id,
+            baseRevision: purchase.revision,
+            patch: {
+              ...(bulkMerchantActive ? { merchant: bulkMerchant.trim() } : {}),
+              ...(occurredAt ? { occurredAt } : {}),
+              ...(bulkPaymentAccountId
+                ? {
+                    paymentAllocations: [
+                      { paymentAccountId: bulkPaymentAccountId, amountYen: purchase.totalYen },
+                    ],
+                  }
+                : {}),
+            },
+          })),
+          changedFields,
+        },
+      });
       for (const purchase of targets) {
-        const purchasePatch: Record<string, unknown> = {};
-        if (bulkMerchantActive) purchasePatch.merchant = purchase.merchant;
-        if (bulkOccurredAtActive) purchasePatch.occurredAt = purchase.occurredAt;
+        const patch: Record<string, unknown> = {};
+        if (bulkMerchantActive) patch.merchant = purchase.merchant;
+        if (bulkOccurredAtActive) patch.occurredAt = purchase.occurredAt;
         if (bulkPaymentAccountId)
-          purchasePatch.paymentAllocations = purchase.paymentAllocations?.length
+          patch.paymentAllocations = purchase.paymentAllocations?.length
             ? purchase.paymentAllocations.map(({ paymentAccountId, amountYen }) => ({
                 paymentAccountId,
                 amountYen,
@@ -876,31 +900,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             : purchase.paymentAccountId
               ? [{ paymentAccountId: purchase.paymentAccountId, amountYen: purchase.totalYen }]
               : [];
-        const result = await readGraphql<{ updatePurchase: { id: string; revision: number } }>(
-          updatePurchaseMutation,
-          {
-            input: {
-              purchaseId: purchase.id,
-              baseRevision: purchase.revision,
-              patch: {
-                ...(bulkMerchantActive ? { merchant: bulkMerchant.trim() } : {}),
-                ...(occurredAt ? { occurredAt } : {}),
-                ...(bulkPaymentAccountId
-                  ? {
-                      paymentAllocations: [
-                        { paymentAccountId: bulkPaymentAccountId, amountYen: purchase.totalYen },
-                      ],
-                    }
-                  : {}),
-              },
-              changedFields,
-            },
-          },
-        );
         undoEntries.push({
           purchaseId: purchase.id,
-          baseRevision: result.updatePurchase.revision,
-          patch: purchasePatch,
+          baseRevision:
+            result.bulkUpdatePurchases.purchases.find((updated) => updated.id === purchase.id)
+              ?.revision ?? purchase.revision + 1,
+          patch,
           changedFields,
         });
       }
@@ -927,25 +932,21 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     if (!purchaseBulkUndo?.length) return;
     setBulkPending(true);
     setBulkError("");
-    const remaining = [...purchaseBulkUndo];
     try {
-      while (remaining.length) {
-        const entry = remaining[0];
-        await mutateUpdatePurchase({
-          input: {
+      await mutateBulkUpdatePurchases({
+        input: {
+          targets: purchaseBulkUndo.map((entry) => ({
             purchaseId: entry.purchaseId,
             baseRevision: entry.baseRevision,
             patch: entry.patch,
-            changedFields: entry.changedFields,
-          },
-        });
-        remaining.shift();
-      }
+          })),
+          changedFields: purchaseBulkUndo[0].changedFields,
+        },
+      });
       setPurchaseBulkUndo(null);
       await refresh();
     } catch (reason) {
       setBulkError((reason as Error).message);
-      setPurchaseBulkUndo(remaining.length ? remaining : null);
       await refresh();
     } finally {
       setBulkPending(false);

@@ -532,6 +532,46 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 			t.Fatalf("payment account change altered purchase pool attribution: before=%v after=%v", debitPools, updatedDebitPools)
 		}
 	}
+	bulkUpdatedPurchases, err := resolver.bulkUpdatePurchases(ctx, model.BulkUpdatePurchasesInput{
+		Targets: []*model.PurchaseUpdateTargetInput{{
+			PurchaseID:   accountSwitchPurchase.ID,
+			BaseRevision: accountSwitchPurchase.Revision,
+			Patch: &model.BulkPurchasePatch{PaymentAllocations: []*model.PurchasePaymentInput{
+				{PaymentAccountID: paymentAccount.ID, AmountYen: 200},
+				{PaymentAccountID: alternatePaymentAccount.ID, AmountYen: 300},
+			}},
+		}},
+		ChangedFields: []string{"paymentAllocations"},
+	})
+	if err != nil || len(bulkUpdatedPurchases) != 1 {
+		t.Fatalf("posted purchase payment allocations should update in bulk: %v", err)
+	}
+	accountSwitchPurchase = bulkUpdatedPurchases[0]
+	purchasePaymentRows, err := models.PurchasePayments.Query(
+		sm.Where(models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(accountSwitchUUID))),
+		sm.OrderBy(models.PurchasePayments.Columns.LineNo),
+	).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(purchasePaymentRows) != 2 {
+		t.Fatalf("posted purchase payment rows were not replaced: rows=%#v error=%v", purchasePaymentRows, err)
+	}
+	if purchasePaymentRows[0].AccountID != generatedUUID(paymentAccount.ID) || purchasePaymentRows[0].AmountYen != 200 ||
+		purchasePaymentRows[1].AccountID != generatedUUID(alternatePaymentAccount.ID) || purchasePaymentRows[1].AmountYen != 300 {
+		t.Fatalf("posted purchase payment rows do not match the bulk allocation: rows=%#v", purchasePaymentRows)
+	}
+	accountSwitchEntries, err = models.JournalEntries.Query(sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(accountSwitchJournal.ID)))).All(ctx, bobpgx.NewPool(db))
+	creditByAccount := make(map[string]int64)
+	var allocationDebits, allocationCredits int64
+	for _, entry := range accountSwitchEntries {
+		allocationDebits += entry.DebitYen
+		allocationCredits += entry.CreditYen
+		if entry.CreditYen > 0 && entry.AccountID.Valid {
+			creditByAccount[entry.AccountID.V.String()] += entry.CreditYen
+		}
+	}
+	if err != nil || allocationDebits != 500 || allocationCredits != 500 ||
+		creditByAccount[paymentAccount.ID] != 200 || creditByAccount[alternatePaymentAccount.ID] != 300 || len(creditByAccount) != 2 {
+		t.Fatalf("posted purchase journal does not match the bulk allocation: credits=%v debits=%d totalCredits=%d error=%v", creditByAccount, allocationDebits, allocationCredits, err)
+	}
 	byMember := map[string]*model.SettlementLine{}
 	for _, line := range settlement.Lines {
 		byMember[line.MemberID] = line

@@ -195,6 +195,10 @@ type ComplexityRoot struct {
 		Items func(childComplexity int) int
 	}
 
+	BulkUpdatePurchasesSuccess struct {
+		Purchases func(childComplexity int) int
+	}
+
 	Category struct {
 		Archived func(childComplexity int) int
 		ID       func(childComplexity int) int
@@ -352,6 +356,7 @@ type ComplexityRoot struct {
 		ArchiveRecurringExpense   func(childComplexity int, expenseID string, baseRevision int, archived bool) int
 		ArchiveTag                func(childComplexity int, tagID string, baseRevision int, archived bool) int
 		BulkUpdatePurchaseItems   func(childComplexity int, input model.BulkUpdatePurchaseItemsInput) int
+		BulkUpdatePurchases       func(childComplexity int, input model.BulkUpdatePurchasesInput) int
 		ClosePeriod               func(childComplexity int, input model.ClosePeriodInput) int
 		CorrectPurchase           func(childComplexity int, input model.CorrectPurchaseInput) int
 		CreateAccount             func(childComplexity int, input model.CreateAccountInput) int
@@ -794,6 +799,7 @@ type MutationResolver interface {
 	ArchiveRecurringExpense(ctx context.Context, expenseID string, baseRevision int, archived bool) (model.ArchiveRecurringExpenseResult, error)
 	ArchiveTag(ctx context.Context, tagID string, baseRevision int, archived bool) (model.ArchiveTagResult, error)
 	BulkUpdatePurchaseItems(ctx context.Context, input model.BulkUpdatePurchaseItemsInput) (model.BulkUpdatePurchaseItemsResult, error)
+	BulkUpdatePurchases(ctx context.Context, input model.BulkUpdatePurchasesInput) (model.BulkUpdatePurchasesResult, error)
 	ClosePeriod(ctx context.Context, input model.ClosePeriodInput) (model.ClosePeriodResult, error)
 	CorrectPurchase(ctx context.Context, input model.CorrectPurchaseInput) (model.CorrectPurchaseResult, error)
 	CreateAccount(ctx context.Context, input model.CreateAccountInput) (model.CreateAccountResult, error)
@@ -1409,6 +1415,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.BulkUpdatePurchaseItemsSuccess.Items(childComplexity), true
 
+	case "BulkUpdatePurchasesSuccess.purchases":
+		if e.ComplexityRoot.BulkUpdatePurchasesSuccess.Purchases == nil {
+			break
+		}
+
+		return e.ComplexityRoot.BulkUpdatePurchasesSuccess.Purchases(childComplexity), true
+
 	case "Category.archived":
 		if e.ComplexityRoot.Category.Archived == nil {
 			break
@@ -1945,6 +1958,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.BulkUpdatePurchaseItems(childComplexity, args["input"].(model.BulkUpdatePurchaseItemsInput)), true
+	case "Mutation.bulkUpdatePurchases":
+		if e.ComplexityRoot.Mutation.BulkUpdatePurchases == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_bulkUpdatePurchases_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.BulkUpdatePurchases(childComplexity, args["input"].(model.BulkUpdatePurchasesInput)), true
 	case "Mutation.closePeriod":
 		if e.ComplexityRoot.Mutation.ClosePeriod == nil {
 			break
@@ -3667,7 +3691,9 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
 		ec.unmarshalInputAllocationInput,
 		ec.unmarshalInputBulkPurchaseItemPatch,
+		ec.unmarshalInputBulkPurchasePatch,
 		ec.unmarshalInputBulkUpdatePurchaseItemsInput,
+		ec.unmarshalInputBulkUpdatePurchasesInput,
 		ec.unmarshalInputClosePeriodInput,
 		ec.unmarshalInputCorrectPurchaseInput,
 		ec.unmarshalInputCreateAccountInput,
@@ -3686,6 +3712,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputPurchasePatch,
 		ec.unmarshalInputPurchasePaymentInput,
 		ec.unmarshalInputPurchaseQuantityInput,
+		ec.unmarshalInputPurchaseUpdateTargetInput,
 		ec.unmarshalInputRecordAccountMovementInput,
 		ec.unmarshalInputRecordExternalIncomeInput,
 		ec.unmarshalInputRecordFundingInput,
@@ -4000,6 +4027,33 @@ input BulkPurchaseItemPatch {
 input PurchaseItemTargetInput {
   itemId: ID! @nodeID(of: "PurchaseItem")
   baseRevision: Int!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/bulk_update_purchases_mutation.graphqls", Input: `extend type Mutation {
+  bulkUpdatePurchases(input: BulkUpdatePurchasesInput!): BulkUpdatePurchasesResult!
+}
+
+union BulkUpdatePurchasesResult = BulkUpdatePurchasesSuccess | MutationError
+
+type BulkUpdatePurchasesSuccess {
+  purchases: [Purchase!]!
+}
+
+input BulkUpdatePurchasesInput {
+  targets: [PurchaseUpdateTargetInput!]!
+  changedFields: [String!]!
+}
+
+input BulkPurchasePatch {
+  occurredAt: String
+  merchant: String
+  paymentAllocations: [PurchasePaymentInput!]
+}
+
+input PurchaseUpdateTargetInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+  baseRevision: Int!
+  patch: BulkPurchasePatch!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/category.graphqls", Input: `type Category implements Node {
@@ -4573,6 +4627,13 @@ type EffectiveUnitPrice {
   purchase: Purchase!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/purchase_patch.graphqls", Input: `input PurchasePatch {
+  occurredAt: String
+  merchant: String
+  paymentAccountId: ID @nodeID(of: "Account")
+  paymentAllocations: [PurchasePaymentInput!]
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/purchase_payment.graphqls", Input: `type PurchasePayment {
   paymentAccountId: ID! @goField(forceResolver: true)
   account: Account
@@ -5001,13 +5062,6 @@ input UpdatePurchaseInput {
   baseRevision: Int!
   patch: PurchasePatch!
   changedFields: [String!]!
-}
-
-input PurchasePatch {
-  occurredAt: String
-  merchant: String
-  paymentAccountId: ID @nodeID(of: "Account")
-  paymentAllocations: [PurchasePaymentInput!]
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/update_tag_mutation.graphqls", Input: `extend type Mutation {
@@ -6241,6 +6295,20 @@ func (ec *executionContext) field_Mutation_bulkUpdatePurchaseItems_args(ctx cont
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.BulkUpdatePurchaseItemsInput, error) {
 			return ec.unmarshalNBulkUpdatePurchaseItemsInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchaseItemsInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_bulkUpdatePurchases_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.BulkUpdatePurchasesInput, error) {
+			return ec.unmarshalNBulkUpdatePurchasesInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -10322,6 +10390,38 @@ func (ec *executionContext) fieldContext_BulkUpdatePurchaseItemsSuccess_items(_ 
 	return fc, nil
 }
 
+func (ec *executionContext) _BulkUpdatePurchasesSuccess_purchases(ctx context.Context, field graphql.CollectedField, obj *model.BulkUpdatePurchasesSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_BulkUpdatePurchasesSuccess_purchases(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Purchases, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.Purchase) graphql.Marshaler {
+			return ec.marshalNPurchase2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_BulkUpdatePurchasesSuccess_purchases(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "BulkUpdatePurchasesSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Purchase(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Category_id(ctx context.Context, field graphql.CollectedField, obj *model.Category) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -12500,6 +12600,50 @@ func (ec *executionContext) fieldContext_Mutation_bulkUpdatePurchaseItems(ctx co
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_bulkUpdatePurchaseItems_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_bulkUpdatePurchases(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_bulkUpdatePurchases(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().BulkUpdatePurchases(ctx, fc.Args["input"].(model.BulkUpdatePurchasesInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.BulkUpdatePurchasesResult) graphql.Marshaler {
+			return ec.marshalNBulkUpdatePurchasesResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_bulkUpdatePurchases(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type BulkUpdatePurchasesResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_bulkUpdatePurchases_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -20716,6 +20860,50 @@ func (ec *executionContext) unmarshalInputBulkPurchaseItemPatch(ctx context.Cont
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputBulkPurchasePatch(ctx context.Context, obj any) (model.BulkPurchasePatch, error) {
+	var it model.BulkPurchasePatch
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"occurredAt", "merchant", "paymentAllocations"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "occurredAt":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.OccurredAt = data
+		case "merchant":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("merchant"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Merchant = data
+		case "paymentAllocations":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAllocations"))
+			data, err := ec.unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PaymentAllocations = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputBulkUpdatePurchaseItemsInput(ctx context.Context, obj any) (model.BulkUpdatePurchaseItemsInput, error) {
 	var it model.BulkUpdatePurchaseItemsInput
 	if obj == nil {
@@ -20748,6 +20936,43 @@ func (ec *executionContext) unmarshalInputBulkUpdatePurchaseItemsInput(ctx conte
 				return it, err
 			}
 			it.Patch = data
+		case "changedFields":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("changedFields"))
+			data, err := ec.unmarshalNString2ᚕstringᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ChangedFields = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputBulkUpdatePurchasesInput(ctx context.Context, obj any) (model.BulkUpdatePurchasesInput, error) {
+	var it model.BulkUpdatePurchasesInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"targets", "changedFields"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "targets":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("targets"))
+			data, err := ec.unmarshalNPurchaseUpdateTargetInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseUpdateTargetInputᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Targets = data
 		case "changedFields":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("changedFields"))
 			data, err := ec.unmarshalNString2ᚕstringᚄ(ctx, v)
@@ -22156,6 +22381,70 @@ func (ec *executionContext) unmarshalInputPurchaseQuantityInput(ctx context.Cont
 				return it, err
 			}
 			it.Unit = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputPurchaseUpdateTargetInput(ctx context.Context, obj any) (model.PurchaseUpdateTargetInput, error) {
+	var it model.PurchaseUpdateTargetInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"purchaseId", "baseRevision", "patch"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "purchaseId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("purchaseId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Purchase")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PurchaseID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "baseRevision":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("baseRevision"))
+			data, err := ec.unmarshalNInt2int(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.BaseRevision = data
+		case "patch":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("patch"))
+			data, err := ec.unmarshalNBulkPurchasePatch2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchasePatch(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Patch = data
 		}
 	}
 	return it, nil
@@ -24131,6 +24420,33 @@ func (ec *executionContext) _BulkUpdatePurchaseItemsResult(ctx context.Context, 
 			return typedObj
 		} else {
 			panic(fmt.Errorf("unexpected type %T; non-generated variants of BulkUpdatePurchaseItemsResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _BulkUpdatePurchasesResult(ctx context.Context, sel ast.SelectionSet, obj model.BulkUpdatePurchasesResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.MutationError:
+		return ec._MutationError(ctx, sel, &obj)
+	case *model.MutationError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._MutationError(ctx, sel, obj)
+	case model.BulkUpdatePurchasesSuccess:
+		return ec._BulkUpdatePurchasesSuccess(ctx, sel, &obj)
+	case *model.BulkUpdatePurchasesSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._BulkUpdatePurchasesSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of BulkUpdatePurchasesResult must implement graphql.Marshaler", obj))
 		}
 	}
 }
@@ -26721,6 +27037,44 @@ func (ec *executionContext) _BulkUpdatePurchaseItemsSuccess(ctx context.Context,
 	return out
 }
 
+var bulkUpdatePurchasesSuccessImplementors = []string{"BulkUpdatePurchasesSuccess", "BulkUpdatePurchasesResult"}
+
+func (ec *executionContext) _BulkUpdatePurchasesSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.BulkUpdatePurchasesSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, bulkUpdatePurchasesSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("BulkUpdatePurchasesSuccess")
+		case "purchases":
+			out.Values[i] = ec._BulkUpdatePurchasesSuccess_purchases(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var categoryImplementors = []string{"Category", "Node"}
 
 func (ec *executionContext) _Category(ctx context.Context, sel ast.SelectionSet, obj *model.Category) graphql.Marshaler {
@@ -28245,6 +28599,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "bulkUpdatePurchases":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_bulkUpdatePurchases(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "closePeriod":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_closePeriod(ctx, field)
@@ -28462,7 +28823,7 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 	return out
 }
 
-var mutationErrorImplementors = []string{"MutationError", "AcceptHouseholdInvitationResult", "ArchiveBudgetResult", "ArchiveRecurringExpenseResult", "ArchiveTagResult", "BulkUpdatePurchaseItemsResult", "ClosePeriodResult", "CorrectPurchaseResult", "CreateAccountResult", "CreateCategoryResult", "CreateHouseholdInvitationResult", "CreateHouseholdResult", "CreatePoolResult", "CreateProductConceptResult", "CreateProductVariantResult", "CreatePurchaseResult", "CreateTagResult", "PostPurchaseResult", "RecordAccountMovementResult", "RecordExternalIncomeResult", "RecordFundingResult", "RecordTransferResult", "RevokeHouseholdInvitationResult", "SetAllocationRuleResult", "SetBudgetResult", "SetCategoryArchivedResult", "SetDefaultAllocationResult", "SetFundingScheduleResult", "SetPoolFundingRuleResult", "SetProductAliasResult", "SetRecurringExpenseResult", "UpdatePurchaseItemResult", "UpdatePurchaseResult", "UpdateTagResult"}
+var mutationErrorImplementors = []string{"MutationError", "AcceptHouseholdInvitationResult", "ArchiveBudgetResult", "ArchiveRecurringExpenseResult", "ArchiveTagResult", "BulkUpdatePurchaseItemsResult", "BulkUpdatePurchasesResult", "ClosePeriodResult", "CorrectPurchaseResult", "CreateAccountResult", "CreateCategoryResult", "CreateHouseholdInvitationResult", "CreateHouseholdResult", "CreatePoolResult", "CreateProductConceptResult", "CreateProductVariantResult", "CreatePurchaseResult", "CreateTagResult", "PostPurchaseResult", "RecordAccountMovementResult", "RecordExternalIncomeResult", "RecordFundingResult", "RecordTransferResult", "RevokeHouseholdInvitationResult", "SetAllocationRuleResult", "SetBudgetResult", "SetCategoryArchivedResult", "SetDefaultAllocationResult", "SetFundingScheduleResult", "SetPoolFundingRuleResult", "SetProductAliasResult", "SetRecurringExpenseResult", "UpdatePurchaseItemResult", "UpdatePurchaseResult", "UpdateTagResult"}
 
 func (ec *executionContext) _MutationError(ctx context.Context, sel ast.SelectionSet, obj *model.MutationError) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mutationErrorImplementors)
@@ -33101,6 +33462,11 @@ func (ec *executionContext) unmarshalNBulkPurchaseItemPatch2ᚖgithubᚗcomᚋwa
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNBulkPurchasePatch2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchasePatch(ctx context.Context, v any) (*model.BulkPurchasePatch, error) {
+	res, err := ec.unmarshalInputBulkPurchasePatch(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNBulkUpdatePurchaseItemsInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchaseItemsInput(ctx context.Context, v any) (model.BulkUpdatePurchaseItemsInput, error) {
 	res, err := ec.unmarshalInputBulkUpdatePurchaseItemsInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -33114,6 +33480,21 @@ func (ec *executionContext) marshalNBulkUpdatePurchaseItemsResult2githubᚗcom�
 		return graphql.Null
 	}
 	return ec._BulkUpdatePurchaseItemsResult(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNBulkUpdatePurchasesInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesInput(ctx context.Context, v any) (model.BulkUpdatePurchasesInput, error) {
+	res, err := ec.unmarshalInputBulkUpdatePurchasesInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNBulkUpdatePurchasesResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesResult(ctx context.Context, sel ast.SelectionSet, v model.BulkUpdatePurchasesResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._BulkUpdatePurchasesResult(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNCategory2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCategoryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Category) graphql.Marshaler {
@@ -33825,6 +34206,22 @@ func (ec *executionContext) marshalNProductVariant2ᚖgithubᚗcomᚋwalnuts1018
 	return ec._ProductVariant(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNPurchase2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Purchase) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNPurchase2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchase(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) marshalNPurchase2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchase(ctx context.Context, sel ast.SelectionSet, v *model.Purchase) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -34030,6 +34427,25 @@ func (ec *executionContext) unmarshalNPurchaseStatus2githubᚗcomᚋwalnuts1018�
 
 func (ec *executionContext) marshalNPurchaseStatus2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseStatus(ctx context.Context, sel ast.SelectionSet, v model.PurchaseStatus) graphql.Marshaler {
 	return v
+}
+
+func (ec *executionContext) unmarshalNPurchaseUpdateTargetInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseUpdateTargetInputᚄ(ctx context.Context, v any) ([]*model.PurchaseUpdateTargetInput, error) {
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.PurchaseUpdateTargetInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNPurchaseUpdateTargetInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseUpdateTargetInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalNPurchaseUpdateTargetInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseUpdateTargetInput(ctx context.Context, v any) (*model.PurchaseUpdateTargetInput, error) {
+	res, err := ec.unmarshalInputPurchaseUpdateTargetInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalNRecordAccountMovementInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordAccountMovementInput(ctx context.Context, v any) (model.RecordAccountMovementInput, error) {

@@ -31,6 +31,10 @@ type BulkUpdatePurchaseItemsResult interface {
 	IsBulkUpdatePurchaseItemsResult()
 }
 
+type BulkUpdatePurchasesResult interface {
+	IsBulkUpdatePurchasesResult()
+}
+
 type ClosePeriodResult interface {
 	IsClosePeriodResult()
 }
@@ -310,6 +314,12 @@ type BulkPurchaseItemPatch struct {
 	TagIds           []string           `json:"tagIds,omitempty"`
 }
 
+type BulkPurchasePatch struct {
+	OccurredAt         *string                 `json:"occurredAt,omitempty"`
+	Merchant           *string                 `json:"merchant,omitempty"`
+	PaymentAllocations []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
+}
+
 type BulkUpdatePurchaseItemsInput struct {
 	Targets       []*PurchaseItemTargetInput `json:"targets"`
 	Patch         *BulkPurchaseItemPatch     `json:"patch"`
@@ -321,6 +331,17 @@ type BulkUpdatePurchaseItemsSuccess struct {
 }
 
 func (BulkUpdatePurchaseItemsSuccess) IsBulkUpdatePurchaseItemsResult() {}
+
+type BulkUpdatePurchasesInput struct {
+	Targets       []*PurchaseUpdateTargetInput `json:"targets"`
+	ChangedFields []string                     `json:"changedFields"`
+}
+
+type BulkUpdatePurchasesSuccess struct {
+	Purchases []*Purchase `json:"purchases"`
+}
+
+func (BulkUpdatePurchasesSuccess) IsBulkUpdatePurchasesResult() {}
 
 type Category struct {
 	ID       string  `json:"id"`
@@ -621,6 +642,8 @@ func (MutationError) IsArchiveTagResult() {}
 
 func (MutationError) IsBulkUpdatePurchaseItemsResult() {}
 
+func (MutationError) IsBulkUpdatePurchasesResult() {}
+
 func (MutationError) IsClosePeriodResult() {}
 
 func (MutationError) IsCorrectPurchaseResult() {}
@@ -896,6 +919,12 @@ type PurchaseQuantityInput struct {
 	Numerator   string `json:"numerator"`
 	Denominator string `json:"denominator"`
 	Unit        string `json:"unit"`
+}
+
+type PurchaseUpdateTargetInput struct {
+	PurchaseID   string             `json:"purchaseId"`
+	BaseRevision int                `json:"baseRevision"`
+	Patch        *BulkPurchasePatch `json:"patch"`
 }
 
 type Query struct {

@@ -2,7 +2,7 @@
 
 対象：[walnuts1018/horse](https://github.com/walnuts1018/horse)
 
-初回確認対象：`main`、commit `5399fecc15b26c9d24a5aba0c057d8bc0e464d5f`。解決状況は`fef0466c932555abd4397a5542df9b676d1066fd`で再確認。
+初回確認対象：`main`、commit `5399fecc15b26c9d24a5aba0c057d8bc0e464d5f`。解決状況は`74c4b46f78262000bd8d765ab553bb9fc7eea3a2`で再確認。
 
 リポジトリの実装を確認しました。すでに会計台帳、複数決済、負担ルール、精算、AI取り込み、オフライン送信、OIDC認証など、かなり広い範囲まで実装されています。
 

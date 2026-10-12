@@ -7,7 +7,7 @@ HorseのPostgreSQLデータは共有クラスタ`postgresql-default`に保存さ
 同時点では`Backup`リソースが残っていなかったため、復旧時刻の判断にはObjectStoreの`status.serverRecoveryWindow`も確認します。
 これはバックアップ状態の確認であり、復元試験の成功を示すものではありません。
 
-Horseのアップロード原本はSeaweedFSの非公開`horse`バケットに保存されます。バケットではS3 versioningを有効にします。誤上書きや削除後の復元に利用できますが、古いオブジェクトversionを期限削除するlifecycle policyは設定していないため、保存量と費用を定期的に確認してください。versioningは誤削除対策であり、SeaweedFS障害やクラスタ全損に備える独立したオフサイトコピーではありません。
+Horseのアップロード原本はSeaweedFSの非公開`horse`バケットに保存します。Horse専用のバックアップやオブジェクトversioningは設定せず、SeaweedFS全体の復旧はinfra側のバックアップに従います。
 
 ## PostgreSQLからの復元
 
@@ -19,9 +19,9 @@ Horseのアップロード原本はSeaweedFSの非公開`horse`バケットに�
 4. Horseデータを本番へ戻す場合は、復旧クラスタから`pg_dump -Fc`形式で`horse`データベースを出力します。出力ファイルをアクセス制限された作業環境へ保管し、まず別の検証用データベースへ`pg_restore`して内容を確認します。
 5. 本番データベースへの復元は、Horseの書き込みを止め、現行データの退避、復元対象時刻、復旧後の整合性確認方法を決めてから実行します。既存データベースの上書きや削除を含む操作は、別途レビューされた変更手順に従ってください。
 
-## S3原本の復元
+## SeaweedFS原本の復元
 
-削除または上書きしたオブジェクトは、SeaweedFS S3 APIからversioningのversion一覧を確認し、対象キーの復元可能なversionを選んでください。アプリケーションが参照するキーへ戻す前に、別キーへコピーして内容とmetadataを検証します。versioningによる復元操作は本番データを変えるため、対象キーとversion IDを二人で確認してから実行してください。
+Horseの原本だけを復元する必要がある場合は、infra側のSeaweedFSバックアップから隔離先へ復元し、対象キーと内容を確認してから本番へ戻します。
 
 ## 公開probe
 

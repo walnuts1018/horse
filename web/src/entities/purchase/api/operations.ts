@@ -183,6 +183,24 @@ export const updatePurchaseMutation = graphql`
   }
 `;
 
+export const bulkUpdatePurchasesMutation = graphql`
+  mutation BulkUpdatePurchasesMutation($input: BulkUpdatePurchasesInput!) {
+    bulkUpdatePurchases(input: $input) {
+      __typename
+      ... on BulkUpdatePurchasesSuccess {
+        purchases {
+          id
+          revision
+        }
+      }
+      ... on MutationError {
+        code
+        message
+      }
+    }
+  }
+`;
+
 export const updatePurchaseItemMutation = graphql`
   mutation UpdatePurchaseItemMutation($input: UpdatePurchaseItemInput!) {
     updatePurchaseItem(input: $input) {

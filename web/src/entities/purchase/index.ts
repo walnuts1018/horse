@@ -4,6 +4,7 @@ export type { PurchasesQuery } from "../../shared/api/__generated__/PurchasesQue
 export type { PurchaseListFragment$key } from "../../shared/api/__generated__/PurchaseListFragment.graphql";
 export {
   bulkUpdatePurchaseItemsMutation,
+  bulkUpdatePurchasesMutation,
   correctPurchaseMutation,
   createPurchaseMutation,
   postPurchaseMutation,
