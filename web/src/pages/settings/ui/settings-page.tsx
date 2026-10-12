@@ -178,6 +178,7 @@ export function SettingsPage({
   );
   const [balanceHistoryTo, setBalanceHistoryTo] = useState(currentMonth);
   const [balanceHistory, setBalanceHistory] = useState<AccountBalanceAnalysis | null>(null);
+  const [balanceHistoryRevision, setBalanceHistoryRevision] = useState(0);
   const [balanceHistoryLimit, setBalanceHistoryLimit] = useState(100);
   const [balanceHistoryLoading, setBalanceHistoryLoading] = useState(false);
   const [balanceHistoryError, setBalanceHistoryError] = useState("");
@@ -310,7 +311,13 @@ export function SettingsPage({
     return () => {
       active = false;
     };
-  }, [household.id, balanceHistoryAccountId, balanceHistoryFrom, balanceHistoryTo]);
+  }, [
+    household.id,
+    balanceHistoryAccountId,
+    balanceHistoryFrom,
+    balanceHistoryTo,
+    balanceHistoryRevision,
+  ]);
   useEffect(() => {
     setInvitationLink("");
     setIssuedInvitationId("");
@@ -552,6 +559,7 @@ export function SettingsPage({
       setMovementDescription("");
       setMovementDate(localDateTime());
       await refreshPlanning();
+      setBalanceHistoryRevision((revision) => revision + 1);
       onNotice(
         movementKind === "TRANSFER" ? "口座移動を記録しました" : "カード請求の支払いを記録しました",
       );
@@ -580,6 +588,7 @@ export function SettingsPage({
       setIncomeDescription("");
       setIncomeDate(localDateTime());
       await refreshPlanning();
+      setBalanceHistoryRevision((revision) => revision + 1);
       onNotice("入金を記録しました");
     } catch (reason) {
       onNotice((reason as Error).message);

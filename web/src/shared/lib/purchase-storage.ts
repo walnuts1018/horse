@@ -100,6 +100,13 @@ function migrateOutbox(value: unknown, key: IDBValidKey): PurchaseOutboxEntry | 
   } as PurchaseOutboxEntry;
 }
 
+function normalizePurchaseInput(input: CreatePurchaseInput): CreatePurchaseInput {
+  if (input.paymentAllocations?.length && input.paymentAccountId) {
+    return { ...input, paymentAccountId: null };
+  }
+  return input;
+}
+
 function openDatabase() {
   if (typeof indexedDB === "undefined")
     return Promise.reject(new Error("このブラウザでは下書きを保存できません"));
@@ -296,6 +303,7 @@ export async function listPurchaseOutbox() {
 }
 
 export async function enqueuePurchase(input: CreatePurchaseInput) {
+  input = normalizePurchaseInput(input);
   const now = Date.now();
   const database = await openDatabase();
   try {
@@ -341,6 +349,7 @@ export async function claimPurchaseOutbox(
       if (!entry || entry.status !== "PENDING" || (entry.leaseUntil ?? 0) > Date.now()) return;
       claimed = {
         ...entry,
+        input: normalizePurchaseInput(entry.input),
         leaseOwner: owner,
         leaseUntil: Date.now() + leaseMilliseconds,
         updatedAt: Date.now(),

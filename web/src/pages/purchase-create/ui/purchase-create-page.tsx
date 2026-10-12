@@ -404,7 +404,7 @@ export function PurchaseCreatePage({
         householdId: household.id,
         occurredAt: new Date(occurredAt).toISOString(),
         merchant: merchant.trim(),
-        paymentAccountId: paymentRows.length === 1 ? paymentRows[0].paymentAccountId : null,
+        paymentAccountId: null,
         paymentAllocations: paymentRows.map((payment) => ({
           paymentAccountId: payment.paymentAccountId,
           amountYen: paymentAmount(payment),
