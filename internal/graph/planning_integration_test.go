@@ -69,6 +69,10 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if _, err := resolver.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}, {PoolID: poolB.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
+	account, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Purchase card", Kind: model.AccountKindCard, PoolID: &poolA.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
 	quantityNumerator, quantityDenominator := "3", "2"
 	quantityUnit := "kg"
 	printedUnitPrice := model.Long(130)
@@ -76,6 +80,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	printedUnit := "kg"
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-04-12T11:59:00Z", Merchant: "Market",
+		PaymentAccountID: &account.ID,
 		Items: []*model.PurchaseItemInput{{
 			Name: "Yogurt", AmountYen: 500,
 			Quantity:         &model.PurchaseQuantityInput{Numerator: quantityNumerator, Denominator: quantityDenominator, Unit: quantityUnit},

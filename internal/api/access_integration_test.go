@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	stdjson "encoding/json"
 	"encoding/json/v2"
 	"image"
@@ -149,13 +150,14 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	defer ocrServer.Close()
 	server := New(db, authService, slog.New(slog.NewTextHandler(io.Discard, nil)), Config{PublicOrigin: "http://horse.test", Store: store, OCR: ingestion.OCR{Endpoint: ocrServer.URL}}).Handler()
 
-	graphqlRequest := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader(`{"query":"query($id: ID!) { household(id: $id) { id name } }","variables":{"id":"`+householdID+`"}}`))
+	householdNodeID := base64.RawURLEncoding.EncodeToString(append([]byte("Household:"), householdUUID[:]...))
+	graphqlRequest := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader(`{"query":"query($id: ID!) { household(id: $id) { id name } }","variables":{"id":"`+householdNodeID+`"}}`))
 	graphqlRequest.Header.Set("Origin", "http://horse.test")
 	graphqlRequest.Header.Set("Content-Type", "application/json")
 	graphqlRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: cookieValue, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	graphqlResponse := httptest.NewRecorder()
 	server.ServeHTTP(graphqlResponse, graphqlRequest)
-	if graphqlResponse.Code != http.StatusOK || !strings.Contains(graphqlResponse.Body.String(), `"code":"NOT_FOUND"`) {
+	if graphqlResponse.Code != http.StatusOK || !strings.Contains(graphqlResponse.Body.String(), `"household":null`) {
 		t.Fatalf("non-member GraphQL request was not rejected: status=%d body=%s", graphqlResponse.Code, graphqlResponse.Body.String())
 	}
 

@@ -4131,6 +4131,8 @@ input CreateTagInput {
   pool: Pool!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/go_field_directive.graphqls", Input: `directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
+`, BuiltIn: false},
 	{Name: "../../graphql/household.graphqls", Input: `type Household implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
@@ -4203,6 +4205,8 @@ extend type Query {
   loanBalances(householdId: ID! @nodeID(of: "Household")): [LoanBalance!]!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/long.graphqls", Input: `scalar Long
+`, BuiltIn: false},
 	{Name: "../../graphql/member.graphqls", Input: `type Member implements Node {
   id: ID! @goField(forceResolver: true)
   displayName: String!
@@ -4236,6 +4240,8 @@ extend type Query {
   monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): MonthlyMemberSpendingReport!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/mutation.graphqls", Input: `type Mutation
+`, BuiltIn: false},
 	{Name: "../../graphql/mutation_error.graphqls", Input: `enum MutationErrorCode {
   BAD_INPUT
   CONFLICT
@@ -4250,6 +4256,8 @@ type MutationError {
 	{Name: "../../graphql/node.graphqls", Input: `interface Node {
   id: ID!
 }
+`, BuiltIn: false},
+	{Name: "../../graphql/node_id_directive.graphqls", Input: `directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
 `, BuiltIn: false},
 	{Name: "../../graphql/page_info.graphqls", Input: `type PageInfo {
   hasNextPage: Boolean!
@@ -4470,6 +4478,11 @@ type EffectiveUnitPrice {
   amountYen: Long!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/query.graphqls", Input: `type Query {
+  node(id: ID!): Node
+  nodes(ids: [ID!]!): [Node]!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/record_account_movement_mutation.graphqls", Input: `extend type Mutation {
   recordAccountMovement(input: RecordAccountMovementInput!): RecordAccountMovementResult!
 }
@@ -4586,18 +4599,6 @@ union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | Mutat
 type RevokeHouseholdInvitationSuccess {
   result: HouseholdInvitation!
 }
-`, BuiltIn: false},
-	{Name: "../../graphql/schema.graphqls", Input: `scalar Long
-
-type Query {
-  node(id: ID!): Node
-  nodes(ids: [ID!]!): [Node]!
-}
-
-type Mutation
-
-directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
-directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
 `, BuiltIn: false},
 	{Name: "../../graphql/set_allocation_rule_mutation.graphqls", Input: `extend type Mutation {
   setAllocationRule(input: SetAllocationRuleInput!): SetAllocationRuleResult!

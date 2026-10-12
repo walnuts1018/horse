@@ -67,14 +67,19 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 	if _, err := resolver.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
+	account, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Card", Kind: model.AccountKindCard, PoolID: &pool.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	key := uuid.NewV7().String()
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
-		IdempotencyKey: key,
-		HouseholdID:    household.ID,
-		OccurredAt:     "2026-10-13T10:00:00+09:00",
-		Merchant:       "Idempotency test",
-		Items:          []*model.PurchaseItemInput{{Name: "test item", AmountYen: 100}},
+		IdempotencyKey:   key,
+		HouseholdID:      household.ID,
+		OccurredAt:       "2026-10-13T10:00:00+09:00",
+		Merchant:         "Idempotency test",
+		PaymentAccountID: &account.ID,
+		Items:            []*model.PurchaseItemInput{{Name: "test item", AmountYen: 100}},
 	})
 	if err != nil {
 		t.Fatal(err)

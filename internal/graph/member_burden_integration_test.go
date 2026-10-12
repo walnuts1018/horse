@@ -97,6 +97,14 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if purchase.Origin != model.PurchaseOriginManual || purchase.HasEvidence {
 		t.Fatalf("manual purchase origin was conflated with evidence state: %#v", purchase)
 	}
+	updatedAmount := model.Long(1200)
+	if _, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: &updatedAmount, ChangedFields: []string{"amountYen"}}); err != nil {
+		t.Fatal(err)
+	}
+	purchase, err = loadPurchase(ctx, db, purchase.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := resolver.postPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String()); err != nil {
 		t.Fatal(err)
 	}
@@ -147,10 +155,6 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	observations, err = query.UnmatchedObservations(ctx, household.ID, &queryFrom, &queryTo, &kind, &candidateState, nil, nil, nil, nil)
 	if err != nil || observations.TotalCount != 1 || observations.Edges[0].Node.PurchaseID == nil || *observations.Edges[0].Node.PurchaseID != purchase.ID {
 		t.Fatalf("confirmed observation did not retain its purchase link: connection=%#v error=%v", observations, err)
-	}
-	updatedAmount := model.Long(1200)
-	if _, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: &updatedAmount, ChangedFields: []string{"amountYen"}}); err != nil {
-		t.Fatal(err)
 	}
 	if _, err := resolver.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: period, ExpectedRevision: 0}); err != nil {
 		t.Fatal(err)
