@@ -291,6 +291,7 @@ export function SettingsPage({
       return;
     }
     let active = true;
+    setBalanceHistory(null);
     setBalanceHistoryLimit(100);
     setBalanceHistoryLoading(true);
     setBalanceHistoryError("");
