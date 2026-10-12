@@ -1821,6 +1821,57 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
+	var adjustedPayments []model.PurchasePaymentInput
+	updatePayments := false
+	if newAmount != item.AmountYen {
+		purchaseItems, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		var currentTotal int64
+		for _, purchaseItem := range purchaseItems {
+			var ok bool
+			currentTotal, ok = checkedAdd(currentTotal, purchaseItem.AmountYen)
+			if !ok || currentTotal > maxMoney {
+				return nil, fmt.Errorf("%w: purchase total is too large", ErrBadInput)
+			}
+		}
+		remainingTotal := currentTotal - item.AmountYen
+		newTotal, ok := checkedAdd(remainingTotal, newAmount)
+		if !ok || newTotal > maxMoney {
+			return nil, fmt.Errorf("%w: purchase total is too large", ErrBadInput)
+		}
+		var legacyAccountID *string
+		if purchase.PaymentAccountID.Valid {
+			id := purchase.PaymentAccountID.V.String()
+			legacyAccountID = &id
+		}
+		payments, err := purchasePayments(ctx, tx, householdID, purchaseID, legacyAccountID, currentTotal)
+		if err != nil {
+			return nil, err
+		}
+		if len(payments) > 0 {
+			paymentWeights := make([]domain.Weight, 0, len(payments))
+			for _, payment := range payments {
+				paymentWeights = append(paymentWeights, domain.Weight{PoolID: payment.PaymentAccountID, Value: int64(payment.AmountYen)})
+			}
+			paymentAmounts, err := domain.Allocate(newTotal, paymentWeights)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %w", ErrBadInput, err)
+			}
+			paymentAmountByAccount := make(map[string]int64, len(paymentAmounts))
+			for _, paymentAmount := range paymentAmounts {
+				paymentAmountByAccount[paymentAmount.PoolID] = paymentAmount.Amount
+			}
+			adjustedPayments = make([]model.PurchasePaymentInput, 0, len(payments))
+			for _, payment := range payments {
+				if amount := paymentAmountByAccount[payment.PaymentAccountID]; amount > 0 {
+					adjustedPayments = append(adjustedPayments, model.PurchasePaymentInput{PaymentAccountID: payment.PaymentAccountID, AmountYen: graphLong(amount)})
+				}
+			}
+			updatePayments = true
+		}
+	}
 	newRevision := revision + 1
 	updatedFields, err := setFieldRevisions(fieldRevisions, input.ChangedFields, newRevision)
 	if err != nil {
@@ -1950,6 +2001,11 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			PoolID: &poolUUID, Weight: &allocation.Weight, AmountYen: &allocation.Amount,
 			RuleVersion: &appliedRuleVersion, RuleID: &ruleUUID,
 		}).Exec(ctx, executor); err != nil {
+			return nil, err
+		}
+	}
+	if updatePayments {
+		if err := replacePurchasePaymentRows(ctx, tx, householdID, purchaseID, adjustedPayments); err != nil {
 			return nil, err
 		}
 	}
