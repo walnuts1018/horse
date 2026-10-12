@@ -32,6 +32,7 @@ import { EmptyState, InlineError } from "../../../shared/ui";
 import { formatQuantity, parseQuantity } from "../../../shared/lib";
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
+import { ObservationLinker } from "./observation-linker";
 
 type PurchaseEvidence = {
   documentId: string;
@@ -1488,6 +1489,13 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                 >
                   原本を開く
                 </a>
+                {observation.state === "UNMATCHED" && (
+                  <ObservationLinker
+                    household={household}
+                    observation={observation}
+                    onConfirmed={() => void unmatched.refresh()}
+                  />
+                )}
               </div>
             ))
           )}
