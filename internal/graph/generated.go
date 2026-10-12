@@ -49,6 +49,25 @@ type ComplexityRoot struct {
 		Currency   func(childComplexity int) int
 	}
 
+	AccountBalanceAnalysis struct {
+		AccountID         func(childComplexity int) int
+		Changes           func(childComplexity int) int
+		ClosingBalanceYen func(childComplexity int) int
+		Currency          func(childComplexity int) int
+		From              func(childComplexity int) int
+		OpeningBalanceYen func(childComplexity int) int
+		To                func(childComplexity int) int
+	}
+
+	AccountBalanceChange struct {
+		BalanceYen  func(childComplexity int) int
+		ChangeYen   func(childComplexity int) int
+		Description func(childComplexity int) int
+		OccurredAt  func(childComplexity int) int
+		SourceID    func(childComplexity int) int
+		SourceKind  func(childComplexity int) int
+	}
+
 	AccountIncome struct {
 		AccountID   func(childComplexity int) int
 		AmountYen   func(childComplexity int) int
@@ -349,6 +368,7 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
+		AccountBalanceAnalysis  func(childComplexity int, householdID string, accountID string, from string, to string) int
 		AccountBalances         func(childComplexity int, householdID string) int
 		AccountIncomes          func(childComplexity int, householdID string, first *int) int
 		AccountMovements        func(childComplexity int, householdID string, first *int) int
@@ -481,6 +501,7 @@ type QueryResolver interface {
 	RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool) ([]*model.RecurringExpense, error)
 	AccountMovements(ctx context.Context, householdID string, first *int) ([]*model.AccountMovement, error)
 	AccountBalances(ctx context.Context, householdID string) ([]*model.AccountBalance, error)
+	AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from string, to string) (*model.AccountBalanceAnalysis, error)
 	AccountIncomes(ctx context.Context, householdID string, first *int) ([]*model.AccountIncome, error)
 }
 
@@ -545,6 +566,86 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AccountBalance.Currency(childComplexity), true
+
+	case "AccountBalanceAnalysis.accountId":
+		if e.ComplexityRoot.AccountBalanceAnalysis.AccountID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceAnalysis.AccountID(childComplexity), true
+	case "AccountBalanceAnalysis.changes":
+		if e.ComplexityRoot.AccountBalanceAnalysis.Changes == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceAnalysis.Changes(childComplexity), true
+	case "AccountBalanceAnalysis.closingBalanceYen":
+		if e.ComplexityRoot.AccountBalanceAnalysis.ClosingBalanceYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceAnalysis.ClosingBalanceYen(childComplexity), true
+	case "AccountBalanceAnalysis.currency":
+		if e.ComplexityRoot.AccountBalanceAnalysis.Currency == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceAnalysis.Currency(childComplexity), true
+	case "AccountBalanceAnalysis.from":
+		if e.ComplexityRoot.AccountBalanceAnalysis.From == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceAnalysis.From(childComplexity), true
+	case "AccountBalanceAnalysis.openingBalanceYen":
+		if e.ComplexityRoot.AccountBalanceAnalysis.OpeningBalanceYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceAnalysis.OpeningBalanceYen(childComplexity), true
+	case "AccountBalanceAnalysis.to":
+		if e.ComplexityRoot.AccountBalanceAnalysis.To == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceAnalysis.To(childComplexity), true
+
+	case "AccountBalanceChange.balanceYen":
+		if e.ComplexityRoot.AccountBalanceChange.BalanceYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChange.BalanceYen(childComplexity), true
+	case "AccountBalanceChange.changeYen":
+		if e.ComplexityRoot.AccountBalanceChange.ChangeYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChange.ChangeYen(childComplexity), true
+	case "AccountBalanceChange.description":
+		if e.ComplexityRoot.AccountBalanceChange.Description == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChange.Description(childComplexity), true
+	case "AccountBalanceChange.occurredAt":
+		if e.ComplexityRoot.AccountBalanceChange.OccurredAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChange.OccurredAt(childComplexity), true
+	case "AccountBalanceChange.sourceId":
+		if e.ComplexityRoot.AccountBalanceChange.SourceID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChange.SourceID(childComplexity), true
+	case "AccountBalanceChange.sourceKind":
+		if e.ComplexityRoot.AccountBalanceChange.SourceKind == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChange.SourceKind(childComplexity), true
 
 	case "AccountIncome.accountId":
 		if e.ComplexityRoot.AccountIncome.AccountID == nil {
@@ -2012,6 +2113,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.PurchasePayment.PaymentAccountID(childComplexity), true
 
+	case "Query.accountBalanceAnalysis":
+		if e.ComplexityRoot.Query.AccountBalanceAnalysis == nil {
+			break
+		}
+
+		args, err := ec.field_Query_accountBalanceAnalysis_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.AccountBalanceAnalysis(childComplexity, args["householdId"].(string), args["accountId"].(string), args["from"].(string), args["to"].(string)), true
 	case "Query.accountBalances":
 		if e.ComplexityRoot.Query.AccountBalances == nil {
 			break
@@ -2577,6 +2689,8 @@ type Pool { id: ID!, name: String!, kind: PoolKind!, defaultShareWeight: Long!, 
 type PoolFundingShare { memberId: ID!, memberName: String!, weight: Long! }
 type Account { id: ID!, name: String!, kind: AccountKind!, poolId: ID }
 type AccountBalance { accountId: ID!, balanceYen: Long!, currency: String! }
+type AccountBalanceAnalysis { accountId: ID!, currency: String!, from: String!, to: String!, openingBalanceYen: Long!, closingBalanceYen: Long!, changes: [AccountBalanceChange!]! }
+type AccountBalanceChange { occurredAt: String!, sourceKind: String!, sourceId: ID!, description: String!, changeYen: Long!, balanceYen: Long! }
 type AccountIncome { id: ID!, householdId: ID!, accountId: ID!, amountYen: Long!, currency: String!, occurredAt: String!, description: String!, createdAt: String! }
 type Category { id: ID!, name: String!, parentId: ID, archived: Boolean! }
 type Allocation { poolId: ID!, poolName: String, weight: Long!, amountYen: Long }
@@ -2656,6 +2770,7 @@ type Query {
   recurringExpenses(householdId: ID!, includeArchived: Boolean = false): [RecurringExpense!]!
   accountMovements(householdId: ID!, first: Int = 50): [AccountMovement!]!
   accountBalances(householdId: ID!): [AccountBalance!]!
+  accountBalanceAnalysis(householdId: ID!, accountId: ID!, from: String!, to: String!): AccountBalanceAnalysis!
   accountIncomes(householdId: ID!, first: Int = 50): [AccountIncome!]!
 }
 type Mutation {
@@ -2725,6 +2840,44 @@ func (ec *executionContext) childFields_AccountBalance(ctx context.Context, fiel
 		return ec.fieldContext_AccountBalance_currency(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type AccountBalance", field.Name)
+}
+
+func (ec *executionContext) childFields_AccountBalanceAnalysis(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "accountId":
+		return ec.fieldContext_AccountBalanceAnalysis_accountId(ctx, field)
+	case "currency":
+		return ec.fieldContext_AccountBalanceAnalysis_currency(ctx, field)
+	case "from":
+		return ec.fieldContext_AccountBalanceAnalysis_from(ctx, field)
+	case "to":
+		return ec.fieldContext_AccountBalanceAnalysis_to(ctx, field)
+	case "openingBalanceYen":
+		return ec.fieldContext_AccountBalanceAnalysis_openingBalanceYen(ctx, field)
+	case "closingBalanceYen":
+		return ec.fieldContext_AccountBalanceAnalysis_closingBalanceYen(ctx, field)
+	case "changes":
+		return ec.fieldContext_AccountBalanceAnalysis_changes(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AccountBalanceAnalysis", field.Name)
+}
+
+func (ec *executionContext) childFields_AccountBalanceChange(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "occurredAt":
+		return ec.fieldContext_AccountBalanceChange_occurredAt(ctx, field)
+	case "sourceKind":
+		return ec.fieldContext_AccountBalanceChange_sourceKind(ctx, field)
+	case "sourceId":
+		return ec.fieldContext_AccountBalanceChange_sourceId(ctx, field)
+	case "description":
+		return ec.fieldContext_AccountBalanceChange_description(ctx, field)
+	case "changeYen":
+		return ec.fieldContext_AccountBalanceChange_changeYen(ctx, field)
+	case "balanceYen":
+		return ec.fieldContext_AccountBalanceChange_balanceYen(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AccountBalanceChange", field.Name)
 }
 
 func (ec *executionContext) childFields_AccountIncome(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -4029,6 +4182,44 @@ func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_accountBalanceAnalysis_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "householdId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "accountId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["accountId"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "from",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["from"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "to",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["to"] = arg3
+	return args, nil
+}
+
 func (ec *executionContext) field_Query_accountBalances_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -4622,6 +4813,314 @@ func (ec *executionContext) _AccountBalance_currency(ctx context.Context, field 
 }
 func (ec *executionContext) fieldContext_AccountBalance_currency(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("AccountBalance", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceAnalysis_accountId(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceAnalysis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceAnalysis_accountId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AccountID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceAnalysis_accountId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceAnalysis", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceAnalysis_currency(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceAnalysis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceAnalysis_currency(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Currency, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceAnalysis_currency(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceAnalysis", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceAnalysis_from(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceAnalysis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceAnalysis_from(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.From, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceAnalysis_from(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceAnalysis", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceAnalysis_to(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceAnalysis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceAnalysis_to(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.To, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceAnalysis_to(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceAnalysis", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceAnalysis_openingBalanceYen(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceAnalysis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceAnalysis_openingBalanceYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.OpeningBalanceYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceAnalysis_openingBalanceYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceAnalysis", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceAnalysis_closingBalanceYen(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceAnalysis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceAnalysis_closingBalanceYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ClosingBalanceYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceAnalysis_closingBalanceYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceAnalysis", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceAnalysis_changes(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceAnalysis) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceAnalysis_changes(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Changes, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.AccountBalanceChange) graphql.Marshaler {
+			return ec.marshalNAccountBalanceChange2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChangeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceAnalysis_changes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountBalanceAnalysis",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountBalanceChange(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AccountBalanceChange_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChange_occurredAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.OccurredAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChange_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceChange_sourceKind(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChange_sourceKind(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceKind, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChange_sourceKind(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceChange_sourceId(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChange_sourceId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChange_sourceId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceChange_description(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChange_description(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Description, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChange_description(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceChange_changeYen(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChange_changeYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ChangeYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChange_changeYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceChange_balanceYen(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChange_balanceYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.BalanceYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChange_balanceYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type Long does not have child fields"))
 }
 
 func (ec *executionContext) _AccountIncome_id(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
@@ -11195,6 +11694,50 @@ func (ec *executionContext) fieldContext_Query_accountBalances(ctx context.Conte
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_accountBalanceAnalysis(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_accountBalanceAnalysis(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().AccountBalanceAnalysis(ctx, fc.Args["householdId"].(string), fc.Args["accountId"].(string), fc.Args["from"].(string), fc.Args["to"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountBalanceAnalysis) graphql.Marshaler {
+			return ec.marshalNAccountBalanceAnalysis2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceAnalysis(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_accountBalanceAnalysis(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountBalanceAnalysis(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_accountBalanceAnalysis_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_accountIncomes(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -15284,6 +15827,137 @@ func (ec *executionContext) _AccountBalance(ctx context.Context, sel ast.Selecti
 	return out
 }
 
+var accountBalanceAnalysisImplementors = []string{"AccountBalanceAnalysis"}
+
+func (ec *executionContext) _AccountBalanceAnalysis(ctx context.Context, sel ast.SelectionSet, obj *model.AccountBalanceAnalysis) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountBalanceAnalysisImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountBalanceAnalysis")
+		case "accountId":
+			out.Values[i] = ec._AccountBalanceAnalysis_accountId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "currency":
+			out.Values[i] = ec._AccountBalanceAnalysis_currency(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "from":
+			out.Values[i] = ec._AccountBalanceAnalysis_from(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "to":
+			out.Values[i] = ec._AccountBalanceAnalysis_to(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "openingBalanceYen":
+			out.Values[i] = ec._AccountBalanceAnalysis_openingBalanceYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "closingBalanceYen":
+			out.Values[i] = ec._AccountBalanceAnalysis_closingBalanceYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "changes":
+			out.Values[i] = ec._AccountBalanceAnalysis_changes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var accountBalanceChangeImplementors = []string{"AccountBalanceChange"}
+
+func (ec *executionContext) _AccountBalanceChange(ctx context.Context, sel ast.SelectionSet, obj *model.AccountBalanceChange) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountBalanceChangeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountBalanceChange")
+		case "occurredAt":
+			out.Values[i] = ec._AccountBalanceChange_occurredAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sourceKind":
+			out.Values[i] = ec._AccountBalanceChange_sourceKind(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sourceId":
+			out.Values[i] = ec._AccountBalanceChange_sourceId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "description":
+			out.Values[i] = ec._AccountBalanceChange_description(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "changeYen":
+			out.Values[i] = ec._AccountBalanceChange_changeYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "balanceYen":
+			out.Values[i] = ec._AccountBalanceChange_balanceYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var accountIncomeImplementors = []string{"AccountIncome"}
 
 func (ec *executionContext) _AccountIncome(ctx context.Context, sel ast.SelectionSet, obj *model.AccountIncome) graphql.Marshaler {
@@ -17791,6 +18465,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "accountBalanceAnalysis":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_accountBalanceAnalysis(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "accountIncomes":
 			field := field
 
@@ -18640,6 +19336,42 @@ func (ec *executionContext) marshalNAccountBalance2ᚖgithubᚗcomᚋwalnuts1018
 		return graphql.Null
 	}
 	return ec._AccountBalance(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAccountBalanceAnalysis2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceAnalysis(ctx context.Context, sel ast.SelectionSet, v *model.AccountBalanceAnalysis) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountBalanceAnalysis(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAccountBalanceChange2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChangeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AccountBalanceChange) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNAccountBalanceChange2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChange(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNAccountBalanceChange2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChange(ctx context.Context, sel ast.SelectionSet, v *model.AccountBalanceChange) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountBalanceChange(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNAccountIncome2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AccountIncome) graphql.Marshaler {

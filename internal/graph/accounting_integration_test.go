@@ -596,7 +596,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	openingAt := "2026-06-01T00:00:00Z"
+	openingAt := "2026-05-01T00:00:00Z"
 	lenderAccount, err := resolver.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Lender bank", Kind: model.AccountKindBank, PoolID: &lenderPool.ID, OpeningBalanceYen: new(model.Long(5000)), OpeningBalanceAt: &openingAt})
 	if err != nil {
 		t.Fatal(err)
@@ -627,7 +627,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	repayment, err := resolver.RecordTransfer(ctx, model.RecordTransferInput{
 		HouseholdID: household.ID, FromMemberID: memberB, ToMemberID: memberA, Kind: model.TransferKindRepayment,
 		LoanID: loan.TransferID, PaymentAccountID: &sharedAccount.ID, DestinationAccountID: &lenderAccount.ID, AmountYen: 5000,
-		OccurredAt: "2026-06-11T12:00:00Z", Description: "Shared repayment", IdempotencyKey: uuid.NewV7().String(),
+		OccurredAt: "2026-06-13T12:00:00Z", Description: "Shared repayment", IdempotencyKey: uuid.NewV7().String(),
 	})
 	if err != nil || repayment.TransferID == nil {
 		t.Fatalf("shared-pool repayment failed: transfer=%#v error=%v", repayment, err)
@@ -710,6 +710,58 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if balancesByAccount[sharedAccount.ID] != 4250 || balancesByAccount[cardAccount.ID] != 0 {
 		t.Fatalf("card clearing and external income produced incorrect balances: %#v", balancesByAccount)
 	}
+	analysis, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, sharedAccount.ID, "2026-06", "2026-06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.OpeningBalanceYen != 5000 || analysis.ClosingBalanceYen != 4250 || len(analysis.Changes) != 4 {
+		t.Fatalf("shared account history did not include the prior-period baseline and every in-period movement: %#v", analysis)
+	}
+	wantKinds := []string{"FUNDING", "TRANSFER", "ACCOUNT_MOVEMENT", "ACCOUNT_INCOME"}
+	for index, wantKind := range wantKinds {
+		if analysis.Changes[index].SourceKind != wantKind {
+			t.Fatalf("account history is not chronological or omitted a source type: got %#v want source kinds %v", analysis.Changes, wantKinds)
+		}
+	}
+	borrowerHistory, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, borrowerAccount.ID, "2026-06", "2026-06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if borrowerHistory.OpeningBalanceYen != 5000 || borrowerHistory.ClosingBalanceYen != 5000 || len(borrowerHistory.Changes) != 2 || borrowerHistory.Changes[0].SourceKind != "TRANSFER" || borrowerHistory.Changes[0].ChangeYen != 5000 || borrowerHistory.Changes[1].SourceKind != "FUNDING" || borrowerHistory.Changes[1].ChangeYen != -5000 {
+		t.Fatalf("borrower account history did not track loan proceeds and attributed funding outflow: %#v", borrowerHistory)
+	}
+	lenderHistory, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, "2026-06", "2026-06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lenderHistory.OpeningBalanceYen != 5000 || lenderHistory.ClosingBalanceYen != 5000 || len(lenderHistory.Changes) != 2 || lenderHistory.Changes[0].SourceKind != "TRANSFER" || lenderHistory.Changes[0].ChangeYen != -5000 || lenderHistory.Changes[1].SourceKind != "TRANSFER" || lenderHistory.Changes[1].ChangeYen != 5000 {
+		t.Fatalf("lender account history did not track outgoing loan and repayment receipt: %#v", lenderHistory)
+	}
+	beforeOpening, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, "2026-04", "2026-04")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if beforeOpening.OpeningBalanceYen != 0 || beforeOpening.ClosingBalanceYen != 0 || len(beforeOpening.Changes) != 0 {
+		t.Fatalf("an account opening balance was applied before its effective date: %#v", beforeOpening)
+	}
+	openingMonth, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, "2026-05", "2026-05")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if openingMonth.OpeningBalanceYen != 0 || openingMonth.ClosingBalanceYen != 5000 || len(openingMonth.Changes) != 1 || openingMonth.Changes[0].SourceKind != "ACCOUNT_OPENING_BALANCE" {
+		t.Fatalf("the opening balance did not appear at its effective date: %#v", openingMonth)
+	}
+	cardAnalysis, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, cardAccount.ID, "2026-06", "2026-06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cardAnalysis.OpeningBalanceYen != 0 || cardAnalysis.ClosingBalanceYen != 0 || len(cardAnalysis.Changes) != 2 || cardAnalysis.Changes[0].ChangeYen != 1000 || cardAnalysis.Changes[1].ChangeYen != -1000 {
+		t.Fatalf("card history did not show purchase liability increase and bill-payment decrease: %#v", cardAnalysis)
+	}
+	outsiderCtx := auth.WithPrincipal(ctx, auth.Principal{MemberID: uuid.NewV7().String(), Subject: "outsider"})
+	if _, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(outsiderCtx, household.ID, sharedAccount.ID, "2026-06", "2026-06"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("account history should be household-authorized: %v", err)
+	}
 	spending, err := (&Resolver{DB: db}).Query().MonthlyCategorySpending(ctx, household.ID, "2026-06", "2026-07")
 	if err != nil || len(spending) != 1 || spending[0].AmountYen != 1000 {
 		t.Fatalf("income, funding, and account transfers changed household spending: spending=%#v error=%v", spending, err)
@@ -720,11 +772,20 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	}
 	correctionKey := uuid.NewV7().String()
 	correctionInput := model.CorrectPurchaseInput{HouseholdID: household.ID, PurchaseID: purchase.ID, AmountDeltaYen: -1000, Reason: "Full return", IdempotencyKey: correctionKey}
-	if _, err := resolver.CorrectPurchase(ctx, correctionInput); err != nil {
+	correctedPurchase, err := resolver.CorrectPurchase(ctx, correctionInput)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolver.CorrectPurchase(ctx, correctionInput); err != nil {
 		t.Fatalf("retrying a full refund with the same request should succeed: %v", err)
+	}
+	correctionMonth := correctedPurchase.Corrections[0].OccurredAt[:7]
+	correctionAnalysis, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, cardAccount.ID, correctionMonth, correctionMonth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(correctionAnalysis.Changes) != 1 || correctionAnalysis.Changes[0].SourceKind != "CORRECTION" || correctionAnalysis.Changes[0].Description != "Full return" || correctionAnalysis.Changes[0].ChangeYen != -1000 || correctionAnalysis.ClosingBalanceYen != -1000 {
+		t.Fatalf("account history omitted the card refund correction: %#v", correctionAnalysis)
 	}
 	correctionInput.AmountDeltaYen = -500
 	if _, err := resolver.CorrectPurchase(ctx, correctionInput); !errors.Is(err, ErrConflict) {

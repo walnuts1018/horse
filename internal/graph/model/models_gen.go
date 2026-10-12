@@ -22,6 +22,25 @@ type AccountBalance struct {
 	Currency   string `json:"currency"`
 }
 
+type AccountBalanceAnalysis struct {
+	AccountID         string                  `json:"accountId"`
+	Currency          string                  `json:"currency"`
+	From              string                  `json:"from"`
+	To                string                  `json:"to"`
+	OpeningBalanceYen Long                    `json:"openingBalanceYen"`
+	ClosingBalanceYen Long                    `json:"closingBalanceYen"`
+	Changes           []*AccountBalanceChange `json:"changes"`
+}
+
+type AccountBalanceChange struct {
+	OccurredAt  string `json:"occurredAt"`
+	SourceKind  string `json:"sourceKind"`
+	SourceID    string `json:"sourceId"`
+	Description string `json:"description"`
+	ChangeYen   Long   `json:"changeYen"`
+	BalanceYen  Long   `json:"balanceYen"`
+}
+
 type AccountIncome struct {
 	ID          string `json:"id"`
 	HouseholdID string `json:"householdId"`

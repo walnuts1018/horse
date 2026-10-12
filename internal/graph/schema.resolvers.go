@@ -266,6 +266,11 @@ func (r *queryResolver) AccountBalances(ctx context.Context, householdID string)
 	return r.accountBalances(ctx, householdID)
 }
 
+// AccountBalanceAnalysis is the resolver for the accountBalanceAnalysis field.
+func (r *queryResolver) AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from string, to string) (*model.AccountBalanceAnalysis, error) {
+	return r.accountBalanceAnalysis(ctx, householdID, accountID, from, to)
+}
+
 // AccountIncomes is the resolver for the accountIncomes field.
 func (r *queryResolver) AccountIncomes(ctx context.Context, householdID string, first *int) ([]*model.AccountIncome, error) {
 	return r.accountIncomes(ctx, householdID, first)

@@ -111,6 +111,28 @@ var JournalEntries = Table[
 			Where:         "",
 			Include:       []string{},
 		},
+		JournalEntriesAccountJournalIdx: index{
+			Type: "btree",
+			Name: "journal_entries_account_journal_idx",
+			Columns: []indexColumn{
+				{
+					Name:         "account_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "journal_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        false,
+			Comment:       "",
+			NullsFirst:    []bool{false, false},
+			NullsDistinct: false,
+			Where:         "(account_id IS NOT NULL)",
+			Include:       []string{},
+		},
 	},
 	PrimaryKey: &constraint{
 		Name:    "journal_entries_pkey",
@@ -176,12 +198,13 @@ func (c journalEntryColumns) AsSlice() []column {
 }
 
 type journalEntryIndexes struct {
-	JournalEntriesPkey index
+	JournalEntriesPkey              index
+	JournalEntriesAccountJournalIdx index
 }
 
 func (i journalEntryIndexes) AsSlice() []index {
 	return []index{
-		i.JournalEntriesPkey,
+		i.JournalEntriesPkey, i.JournalEntriesAccountJournalIdx,
 	}
 }
 
