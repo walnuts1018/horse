@@ -6,6 +6,7 @@ golangci-lint = "2.14.0"
 atlas = "1.3.0"
 uv = "0.12.20"
 python = "3.12.14"
+jactionlint = "1.8.2"
 
 [tasks.test]
 description = "Goのテスト"
@@ -80,8 +81,8 @@ description = "Bobのモデル生成"
 run = "go tool bobgen-sql -c bobgen.yaml"
 
 [tasks."generate:graphql"]
-description = "GraphQLサーバーの生成"
-run = "go tool gqlgen generate"
+description = "GraphQLコードとRelayアーティファクトの生成"
+run = ["mise run web:relay", "go tool gqlgen generate"]
 
 [tasks."ocr:lock"]
 description = "OCRサービスの依存関係固定"
