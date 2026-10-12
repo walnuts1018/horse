@@ -66,18 +66,27 @@ export const recordTransferMutation = graphql`
 `;
 
 export const accountMovementsQuery = graphql`
-  query AccountMovementsQuery($householdId: ID!, $first: Int) {
-    accountMovements(householdId: $householdId, first: $first) {
-      id
-      householdId
-      kind
-      occurredAt
-      fromAccountId
-      toAccountId
-      amountYen
-      currency
-      description
-      createdAt
+  query AccountMovementsQuery($householdId: ID!, $first: Int, $after: String) {
+    accountMovements(householdId: $householdId, first: $first, after: $after) {
+      edges {
+        cursor
+        node {
+          id
+          householdId
+          kind
+          occurredAt
+          fromAccountId
+          toAccountId
+          amountYen
+          currency
+          description
+          createdAt
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
     }
   }
 `;
@@ -119,16 +128,25 @@ export const accountBalanceAnalysisQuery = graphql`
 `;
 
 export const accountIncomesQuery = graphql`
-  query AccountIncomesQuery($householdId: ID!, $first: Int) {
-    accountIncomes(householdId: $householdId, first: $first) {
-      id
-      householdId
-      accountId
-      amountYen
-      currency
-      occurredAt
-      description
-      createdAt
+  query AccountIncomesQuery($householdId: ID!, $first: Int, $after: String) {
+    accountIncomes(householdId: $householdId, first: $first, after: $after) {
+      edges {
+        cursor
+        node {
+          id
+          householdId
+          accountId
+          amountYen
+          currency
+          occurredAt
+          description
+          createdAt
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
     }
   }
 `;

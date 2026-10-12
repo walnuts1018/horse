@@ -179,6 +179,14 @@ export function SettingsPage({
   const [editingRecurring, setEditingRecurring] = useState<RecurringExpense | null>(null);
   const [movements, setMovements] = useState<AccountMovement[]>([]);
   const [incomes, setIncomes] = useState<AccountIncome[]>([]);
+  const [movementCursor, setMovementCursor] = useState<string | null>(null);
+  const [incomeCursor, setIncomeCursor] = useState<string | null>(null);
+  const [movementHasNextPage, setMovementHasNextPage] = useState(false);
+  const [incomeHasNextPage, setIncomeHasNextPage] = useState(false);
+  const [movementPageLoading, setMovementPageLoading] = useState(false);
+  const [incomePageLoading, setIncomePageLoading] = useState(false);
+  const [movementPageError, setMovementPageError] = useState("");
+  const [incomePageError, setIncomePageError] = useState("");
   const [balances, setBalances] = useState<AccountBalance[]>([]);
   const [balanceHistoryAccountId, setBalanceHistoryAccountId] = useState(
     household.accounts[0]?.id ?? "",
@@ -237,11 +245,21 @@ export function SettingsPage({
           householdId: household.id,
           includeArchived: true,
         }),
-        readGraphql<{ accountMovements: AccountMovement[] }>(accountMovementsQuery, {
+        readGraphql<{
+          accountMovements: {
+            edges: { node: AccountMovement }[];
+            pageInfo: { endCursor: string | null; hasNextPage: boolean };
+          };
+        }>(accountMovementsQuery, {
           householdId: household.id,
           first: 50,
         }),
-        readGraphql<{ accountIncomes: AccountIncome[] }>(accountIncomesQuery, {
+        readGraphql<{
+          accountIncomes: {
+            edges: { node: AccountIncome }[];
+            pageInfo: { endCursor: string | null; hasNextPage: boolean };
+          };
+        }>(accountIncomesQuery, {
           householdId: household.id,
           first: 50,
         }),
@@ -252,9 +270,59 @@ export function SettingsPage({
     setTags(tagResult.tags);
     setBudgets(budgetResult.budgets);
     setRecurring(recurringResult.recurringExpenses);
-    setMovements(movementResult.accountMovements);
-    setIncomes(incomeResult.accountIncomes);
+    setMovements(movementResult.accountMovements.edges.map((edge) => edge.node));
+    setMovementCursor(movementResult.accountMovements.pageInfo.endCursor);
+    setMovementHasNextPage(movementResult.accountMovements.pageInfo.hasNextPage);
+    setIncomes(incomeResult.accountIncomes.edges.map((edge) => edge.node));
+    setIncomeCursor(incomeResult.accountIncomes.pageInfo.endCursor);
+    setIncomeHasNextPage(incomeResult.accountIncomes.pageInfo.hasNextPage);
     setBalances(balanceResult.accountBalances);
+  };
+  const loadMoreMovements = async () => {
+    if (!movementCursor || movementPageLoading) return;
+    setMovementPageLoading(true);
+    setMovementPageError("");
+    try {
+      const result = await readGraphql<{
+        accountMovements: {
+          edges: { node: AccountMovement }[];
+          pageInfo: { endCursor: string | null; hasNextPage: boolean };
+        };
+      }>(accountMovementsQuery, { householdId: household.id, first: 50, after: movementCursor });
+      setMovements((current) => [
+        ...current,
+        ...result.accountMovements.edges.map((edge) => edge.node),
+      ]);
+      setMovementCursor(result.accountMovements.pageInfo.endCursor);
+      setMovementHasNextPage(result.accountMovements.pageInfo.hasNextPage);
+    } catch {
+      setMovementPageError("口座移動履歴を読み込めませんでした。");
+    } finally {
+      setMovementPageLoading(false);
+    }
+  };
+  const loadMoreIncomes = async () => {
+    if (!incomeCursor || incomePageLoading) return;
+    setIncomePageLoading(true);
+    setIncomePageError("");
+    try {
+      const result = await readGraphql<{
+        accountIncomes: {
+          edges: { node: AccountIncome }[];
+          pageInfo: { endCursor: string | null; hasNextPage: boolean };
+        };
+      }>(accountIncomesQuery, { householdId: household.id, first: 50, after: incomeCursor });
+      setIncomes((current) => [
+        ...current,
+        ...result.accountIncomes.edges.map((edge) => edge.node),
+      ]);
+      setIncomeCursor(result.accountIncomes.pageInfo.endCursor);
+      setIncomeHasNextPage(result.accountIncomes.pageInfo.hasNextPage);
+    } catch {
+      setIncomePageError("入金履歴を読み込めませんでした。");
+    } finally {
+      setIncomePageLoading(false);
+    }
   };
   useEffect(() => {
     setFundingDrafts(
@@ -2037,6 +2105,16 @@ export function SettingsPage({
                 <strong>{yen(income.amountYen)}</strong>
               </div>
             ))}
+            {incomePageError && <InlineError message={incomePageError} />}
+            {incomeHasNextPage && (
+              <button
+                className="button button-soft"
+                disabled={incomePageLoading}
+                onClick={() => void loadMoreIncomes()}
+              >
+                {incomePageLoading ? "読み込み中" : "入金履歴をさらに表示"}
+              </button>
+            )}
             {movements.map((movement) => (
               <div className="setting-row" key={movement.id}>
                 <div>
@@ -2058,6 +2136,16 @@ export function SettingsPage({
                 <strong>{yen(movement.amountYen)}</strong>
               </div>
             ))}
+            {movementPageError && <InlineError message={movementPageError} />}
+            {movementHasNextPage && (
+              <button
+                className="button button-soft"
+                disabled={movementPageLoading}
+                onClick={() => void loadMoreMovements()}
+              >
+                {movementPageLoading ? "読み込み中" : "口座移動履歴をさらに表示"}
+              </button>
+            )}
           </div>
         </section>
         <section className="panel settings-section member-section">

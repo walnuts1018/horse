@@ -43,6 +43,7 @@ import { InlineError } from "../../../shared/ui";
 
 type DraftItem = PurchaseDraftItem;
 type PaymentDraft = { key: string; paymentAccountId: string; amountYen: string };
+type CategorySource = "default" | "history" | "product" | "manual" | "restored";
 const purchaseItemSchema = z.object({
   name: z.string().trim().min(1),
   amount: z.string().regex(/^[1-9]\d*$/),
@@ -67,6 +68,7 @@ export function PurchaseCreatePage({
   household: Household;
   onQueued: (idempotencyKey: string) => void;
 }) {
+  const defaultCategoryId = household.categories.find((item) => !item.archived)?.id ?? "";
   const [merchant, setMerchant] = useState("");
   const [occurredAt, setOccurredAt] = useState(localDateTime);
   const [paymentRows, setPaymentRows] = useState<PaymentDraft[]>(() => [
@@ -82,9 +84,8 @@ export function PurchaseCreatePage({
   const [itemAmount, setItemAmount] = useState("");
   const [selectedProductVariantId, setSelectedProductVariantId] = useState("");
   const [productSuggestions, setProductSuggestions] = useState<ProductSuggestion[]>([]);
-  const [categoryId, setCategoryId] = useState(
-    household.categories.find((item) => !item.archived)?.id ?? "",
-  );
+  const [categoryId, setCategoryId] = useState(defaultCategoryId);
+  const categorySource = useRef<CategorySource>("default");
   const [storageReady, setStorageReady] = useState(false);
   const [draftHouseholdId, setDraftHouseholdId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -99,6 +100,16 @@ export function PurchaseCreatePage({
   const draftTimer = useRef<number | null>(null);
   const skipDraftSave = useRef(false);
   const composing = useRef(false);
+  const updateCategory = (id: string, source: CategorySource) => {
+    categorySource.current = source;
+    setCategoryId(id);
+  };
+  const changeItemName = (name: string) => {
+    setItemName(name);
+    setSelectedProductVariantId("");
+    if (categorySource.current === "history" || categorySource.current === "product")
+      updateCategory(defaultCategoryId, "default");
+  };
   const outbox = usePurchaseOutbox();
   const householdOutbox = outbox.entries.filter(
     (entry) => entry.input.householdId === household.id,
@@ -157,9 +168,7 @@ export function PurchaseCreatePage({
           }
           setItemName(loaded.itemName);
           setItemAmount(loaded.itemAmount);
-          setCategoryId(
-            loaded.categoryId || household.categories.find((item) => !item.archived)?.id || "",
-          );
+          updateCategory(loaded.categoryId || defaultCategoryId, "restored");
           setItems(loaded.items);
           setSavedAt(new Date());
         }
@@ -255,12 +264,24 @@ export function PurchaseCreatePage({
     };
   }, [household.id, itemName, merchant]);
   useEffect(() => {
-    if (!itemName.trim()) return;
+    if (
+      !itemName.trim() ||
+      categorySource.current === "manual" ||
+      categorySource.current === "restored" ||
+      categorySource.current === "product"
+    )
+      return;
     const match = history
       .flatMap((purchase) => purchase.items)
       .find((item) => item.name.toLocaleLowerCase() === itemName.trim().toLocaleLowerCase());
-    if (match?.categoryId) setCategoryId(match.categoryId);
-  }, [itemName, history]);
+    if (match?.categoryId) {
+      categorySource.current = "history";
+      setCategoryId(match.categoryId);
+    } else if (categorySource.current === "history") {
+      categorySource.current = "default";
+      setCategoryId(defaultCategoryId);
+    }
+  }, [itemName, history, defaultCategoryId]);
   const suggestions = useMemo(() => {
     const seen = new Set<string>();
     return history
@@ -324,6 +345,7 @@ export function PurchaseCreatePage({
     setItems((current) => [...current, item]);
     setItemName("");
     setItemAmount("");
+    updateCategory(defaultCategoryId, "default");
     setSelectedProductVariantId("");
     setProductSuggestions([]);
     setFocused("name");
@@ -358,11 +380,6 @@ export function PurchaseCreatePage({
       .map((line) => line.split(/\t|,(?=\s*\d)/).map((cell) => cell.trim()))
       .filter((cells) => cells[0] && cells[1] && /^¥?[\d,]+$/.test(cells[1]));
     if (!parsed.length) return;
-    const categoryByName = new Map(
-      history.flatMap((purchase) =>
-        purchase.items.map((item) => [item.name, item.categoryId] as const),
-      ),
-    );
     setUndoItems(items);
     setItems((current) => [
       ...current,
@@ -370,7 +387,7 @@ export function PurchaseCreatePage({
         key: crypto.randomUUID(),
         name,
         amount: amount.replace(/[¥,]/g, ""),
-        categoryId: categoryByName.get(name) || categoryId,
+        categoryId: categorySource.current === "manual" ? categoryId : defaultCategoryId,
         allocations: [],
       })),
     ]);
@@ -479,7 +496,7 @@ export function PurchaseCreatePage({
       setPaymentAutoTotal(true);
       setItemName("");
       setItemAmount("");
-      setCategoryId(enabledCategories[0]?.id ?? "");
+      updateCategory(defaultCategoryId, "default");
       setItems([]);
       setSavedAt(null);
       onQueued(input.idempotencyKey);
@@ -815,8 +832,7 @@ export function PurchaseCreatePage({
               ref={nameRef}
               value={itemName}
               onChange={(e) => {
-                setItemName(e.target.value);
-                setSelectedProductVariantId("");
+                changeItemName(e.target.value);
               }}
               onFocus={() => setFocused("name")}
               onBlur={() => window.setTimeout(() => setFocused(null), 160)}
@@ -841,8 +857,7 @@ export function PurchaseCreatePage({
                     key={name}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
-                      setItemName(name);
-                      setSelectedProductVariantId("");
+                      changeItemName(name);
                       amountRef.current?.focus();
                       setFocused("amount");
                     }}
@@ -863,8 +878,13 @@ export function PurchaseCreatePage({
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
                       setSelectedProductVariantId(candidate.variant.id);
-                      setItemName(candidate.matchedName || itemName.trim());
-                      if (candidate.concept.categoryId) setCategoryId(candidate.concept.categoryId);
+                      changeItemName(candidate.matchedName || itemName.trim());
+                      if (
+                        candidate.concept.categoryId &&
+                        categorySource.current !== "manual" &&
+                        categorySource.current !== "restored"
+                      )
+                        updateCategory(candidate.concept.categoryId, "product");
                       setProductSuggestions([]);
                       amountRef.current?.focus();
                       setFocused("amount");
@@ -907,7 +927,7 @@ export function PurchaseCreatePage({
           <select
             aria-label="新しい品目のカテゴリ"
             value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
+            onChange={(e) => updateCategory(e.target.value, "manual")}
           >
             <option value="">未分類</option>
             {enabledCategories.map((category) => (

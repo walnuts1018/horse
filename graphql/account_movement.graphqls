@@ -11,11 +11,22 @@ type AccountMovement implements Node {
   createdAt: String!
 }
 
+type AccountMovementEdge {
+  cursor: String!
+  node: AccountMovement!
+}
+
+type AccountMovementConnection {
+  edges: [AccountMovementEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 enum AccountMovementKind {
   TRANSFER
   CARD_BILL_PAYMENT
 }
 
 extend type Query {
-  accountMovements(householdId: ID! @nodeID(of: "Household"), first: Int = 50): [AccountMovement!]!
+  accountMovements(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AccountMovementConnection!
 }

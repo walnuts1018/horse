@@ -206,6 +206,17 @@ type AccountIncome struct {
 
 func (AccountIncome) IsNode() {}
 
+type AccountIncomeConnection struct {
+	Edges      []*AccountIncomeEdge `json:"edges"`
+	PageInfo   *PageInfo            `json:"pageInfo"`
+	TotalCount int                  `json:"totalCount"`
+}
+
+type AccountIncomeEdge struct {
+	Cursor string         `json:"cursor"`
+	Node   *AccountIncome `json:"node"`
+}
+
 type AccountMovement struct {
 	ID            string              `json:"id"`
 	HouseholdID   string              `json:"householdId"`
@@ -220,6 +231,17 @@ type AccountMovement struct {
 }
 
 func (AccountMovement) IsNode() {}
+
+type AccountMovementConnection struct {
+	Edges      []*AccountMovementEdge `json:"edges"`
+	PageInfo   *PageInfo              `json:"pageInfo"`
+	TotalCount int                    `json:"totalCount"`
+}
+
+type AccountMovementEdge struct {
+	Cursor string           `json:"cursor"`
+	Node   *AccountMovement `json:"node"`
+}
 
 type Allocation struct {
 	PoolID    string  `json:"poolId"`

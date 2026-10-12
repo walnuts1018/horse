@@ -225,9 +225,26 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if err != nil || replayed.ID != movement.ID {
 		t.Fatalf("idempotent account movement replay created a second record: movement=%#v replay=%#v err=%v", movement, replayed, err)
 	}
-	listed, err := (&Resolver{DB: db}).Query().AccountMovements(ctx, household.ID, nil)
-	if err != nil || len(listed) != 1 || listed[0].ID != movement.ID {
-		t.Fatalf("account movement query failed: rows=%#v error=%v", listed, err)
+	savings, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Savings", Kind: model.AccountKindBank})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.recordAccountMovement(ctx, model.RecordAccountMovementInput{
+		HouseholdID: household.ID, Kind: model.AccountMovementKindTransfer,
+		FromAccountID: bank.ID, ToAccountID: savings.ID, AmountYen: 100,
+		OccurredAt: "2026-04-30T09:00:00Z", Description: "Savings transfer", IdempotencyKey: uuid.NewV7().String(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	query := (&Resolver{DB: db}).Query()
+	pageSize := 1
+	firstPage, err := query.AccountMovements(ctx, household.ID, nil, &pageSize)
+	if err != nil || len(firstPage.Edges) != 1 || firstPage.Edges[0].Node.ID != movement.ID || !firstPage.PageInfo.HasNextPage || firstPage.TotalCount != 2 || firstPage.PageInfo.EndCursor == nil {
+		t.Fatalf("first account movement page failed: connection=%#v error=%v", firstPage, err)
+	}
+	secondPage, err := query.AccountMovements(ctx, household.ID, firstPage.PageInfo.EndCursor, &pageSize)
+	if err != nil || len(secondPage.Edges) != 1 || secondPage.Edges[0].Node.ID == movement.ID || secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage {
+		t.Fatalf("next account movement page failed: connection=%#v error=%v", secondPage, err)
 	}
 	storedMovement, err := models.AccountMovements.Query(sm.Where(models.AccountMovements.Columns.ID.EQ(psql.Arg(generatedUUID(movement.ID))))).One(ctx, bobpgx.NewPool(db))
 	if err != nil {

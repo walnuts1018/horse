@@ -32,8 +32,8 @@ func (r *accountMovementResolver) ToAccountID(ctx context.Context, obj *model.Ac
 }
 
 // AccountMovements is the resolver for the accountMovements field.
-func (r *queryResolver) AccountMovements(ctx context.Context, householdID string, first *int) ([]*model.AccountMovement, error) {
-	return r.accountMovements(ctx, householdID, first)
+func (r *queryResolver) AccountMovements(ctx context.Context, householdID string, after *string, first *int) (*model.AccountMovementConnection, error) {
+	return r.accountMovements(ctx, householdID, after, first)
 }
 
 // AccountMovement returns AccountMovementResolver implementation.

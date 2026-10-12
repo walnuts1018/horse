@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
@@ -304,64 +305,132 @@ func accountMovementModel(row *models.AccountMovement) *model.AccountMovement {
 	}
 }
 
-func (r *queryResolver) accountMovements(ctx context.Context, householdID string, first *int) ([]*model.AccountMovement, error) {
+func (r *queryResolver) accountMovements(ctx context.Context, householdID string, after *string, first *int) (*model.AccountMovementConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	limit := 50
-	if first != nil {
-		limit = *first
-	}
-	if limit < 1 || limit > 100 {
-		return nil, fmt.Errorf("%w: first must be between one and one hundred", ErrBadInput)
+	limit, _, err := pageDirection(after, nil, first, nil)
+	if err != nil {
+		return nil, err
 	}
 	hhID, err := gofrsuuid.FromString(householdID)
 	if err != nil {
 		return nil, ErrNotFound
+	}
+	executor := bobpgx.NewPool(r.DB)
+	baseFilter := models.AccountMovements.Columns.HouseholdID.EQ(psql.Arg(hhID))
+	totalCount, err := models.AccountMovements.Query(sm.Where(baseFilter)).Count(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	filters := []bob.Expression{baseFilter}
+	if id, err := cursorID(after, "AccountMovement"); err != nil {
+		return nil, err
+	} else if id != nil {
+		parsedID, err := gofrsuuid.FromString(*id)
+		if err != nil {
+			return nil, fmt.Errorf("parse account movement cursor: %w", err)
+		}
+		cursor, err := models.AccountMovements.Query(sm.Where(psql.And(models.AccountMovements.Columns.ID.EQ(psql.Arg(parsedID)), baseFilter))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, psql.Or(models.AccountMovements.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.AccountMovements.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.AccountMovements.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
 	rows, err := models.AccountMovements.Query(
-		sm.Where(models.AccountMovements.Columns.HouseholdID.EQ(psql.Arg(hhID))),
+		sm.Where(psql.And(filters...)),
 		sm.OrderBy(models.AccountMovements.Columns.OccurredAt).Desc(),
 		sm.OrderBy(models.AccountMovements.Columns.ID).Desc(),
-		sm.Limit(limit),
-	).All(ctx, bobpgx.NewPool(r.DB))
+		sm.Limit(limit+1),
+	).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*model.AccountMovement, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, accountMovementModel(row))
+	hasNextPage := len(rows) > limit
+	if hasNextPage {
+		rows = rows[:limit]
 	}
-	return result, nil
+	connection := &model.AccountMovementConnection{
+		Edges:      make([]*model.AccountMovementEdge, 0, len(rows)),
+		PageInfo:   &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: after != nil && *after != ""},
+		TotalCount: int(totalCount),
+	}
+	for _, row := range rows {
+		connection.Edges = append(connection.Edges, &model.AccountMovementEdge{Cursor: encodeCursor("AccountMovement", row.ID.String()), Node: accountMovementModel(row)})
+	}
+	if len(rows) > 0 {
+		start := encodeCursor("AccountMovement", rows[0].ID.String())
+		end := encodeCursor("AccountMovement", rows[len(rows)-1].ID.String())
+		connection.PageInfo.StartCursor = &start
+		connection.PageInfo.EndCursor = &end
+	}
+	return connection, nil
 }
 
-func (r *queryResolver) accountIncomes(ctx context.Context, householdID string, first *int) ([]*model.AccountIncome, error) {
+func (r *queryResolver) accountIncomes(ctx context.Context, householdID string, after *string, first *int) (*model.AccountIncomeConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	limit := 50
-	if first != nil {
-		limit = *first
-	}
-	if limit < 1 || limit > 100 {
-		return nil, fmt.Errorf("%w: first must be between one and one hundred", ErrBadInput)
+	limit, _, err := pageDirection(after, nil, first, nil)
+	if err != nil {
+		return nil, err
 	}
 	hhID, err := gofrsuuid.FromString(householdID)
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	rows, err := models.AccountIncomes.Query(
-		sm.Where(models.AccountIncomes.Columns.HouseholdID.EQ(psql.Arg(hhID))),
-		sm.OrderBy(models.AccountIncomes.Columns.OccurredAt).Desc(),
-		sm.OrderBy(models.AccountIncomes.Columns.ID).Desc(),
-		sm.Limit(limit),
-	).All(ctx, bobpgx.NewPool(r.DB))
+	executor := bobpgx.NewPool(r.DB)
+	baseFilter := models.AccountIncomes.Columns.HouseholdID.EQ(psql.Arg(hhID))
+	totalCount, err := models.AccountIncomes.Query(sm.Where(baseFilter)).Count(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*model.AccountIncome, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, accountIncomeModel(row))
+	filters := []bob.Expression{baseFilter}
+	if id, err := cursorID(after, "AccountIncome"); err != nil {
+		return nil, err
+	} else if id != nil {
+		parsedID, err := gofrsuuid.FromString(*id)
+		if err != nil {
+			return nil, fmt.Errorf("parse account income cursor: %w", err)
+		}
+		cursor, err := models.AccountIncomes.Query(sm.Where(psql.And(models.AccountIncomes.Columns.ID.EQ(psql.Arg(parsedID)), baseFilter))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, psql.Or(models.AccountIncomes.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.AccountIncomes.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.AccountIncomes.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
-	return result, nil
+	rows, err := models.AccountIncomes.Query(
+		sm.Where(psql.And(filters...)),
+		sm.OrderBy(models.AccountIncomes.Columns.OccurredAt).Desc(),
+		sm.OrderBy(models.AccountIncomes.Columns.ID).Desc(),
+		sm.Limit(limit+1),
+	).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	hasNextPage := len(rows) > limit
+	if hasNextPage {
+		rows = rows[:limit]
+	}
+	connection := &model.AccountIncomeConnection{
+		Edges:      make([]*model.AccountIncomeEdge, 0, len(rows)),
+		PageInfo:   &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: after != nil && *after != ""},
+		TotalCount: int(totalCount),
+	}
+	for _, row := range rows {
+		connection.Edges = append(connection.Edges, &model.AccountIncomeEdge{Cursor: encodeCursor("AccountIncome", row.ID.String()), Node: accountIncomeModel(row)})
+	}
+	if len(rows) > 0 {
+		start := encodeCursor("AccountIncome", rows[0].ID.String())
+		end := encodeCursor("AccountIncome", rows[len(rows)-1].ID.String())
+		connection.PageInfo.StartCursor = &start
+		connection.PageInfo.EndCursor = &end
+	}
+	return connection, nil
 }

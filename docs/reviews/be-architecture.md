@@ -10,9 +10,8 @@
 
 1. GraphQL Resolverに業務ロジック・DB操作・トランザクション管理・レスポンス変換が混在している。
 2. Bobのリレーションロード機能を十分使わず、N+1クエリを発生させている。
-3. gqlgenのサーバー初期化をリクエストごとに繰り返している。
-4. Gemini APIのHTTPクライアントを独自実装しており、公式SDKに任せられる処理を多数抱えている。
-5. 会計処理に似たコードが複数存在し、今後の修正時に整合性を崩しやすい。
+3. Gemini APIのHTTPクライアントを独自実装しており、公式SDKに任せられる処理を多数抱えている。
+4. 会計処理に似たコードが複数存在し、今後の修正時に整合性を崩しやすい。
 
 ただし、何でも新しいライブラリに置き換えればよいわけではありません。
 
@@ -201,11 +200,9 @@ gqlgenでDataLoaderを導入する方法もありますが、現在の実装で�
 
 `monthlyMemberSpending`では、購入ごとに配賦、負担スナップショット、訂正を取得し、さらに訂正ごとにメンバー負担を取得しています。
 
-この種の集計はSQLの`GROUP BY`、`SUM`、`JOIN`などで実装したほうが明快です。
+この種の集計はBob DSLの集計式とJOINでDB上に構築し、Goでは会計ルールと結果の整形を扱うべきです。
 
-Goで実装する必要がある複雑な会計ロジックは残し、DBが得意な検索・集計はDBに任せるべきです。
-
-## 3. BobのSQLクエリ生成機能を活用する
+## 3. Bob DSLで集計と検索を型安全に実装する
 
 優先度：高 / ライブラリ活用
 
@@ -218,99 +215,21 @@ queries:
   disabled: true
 ```
 
-Bobには、手書きのSQLから型付きGoコードを生成する機能があります。`sqlc`に近い方式です。
-
-[image](https://www.google.com/s2/favicons?domain=https://bob.stephenafamo.com\&sz=32)
-
-Bob
-
-+1
-
-これを積極的に使うべきです。
-
-ただし、Bobのモデル生成を捨ててSQLクエリ生成に全面移行するという意味ではありません。
+このプロジェクトでは、文字列としてSQLを書く方法を採用せず、Bob DSLで型安全な検索・集計を組み立てます。
 
 | 用途 | 推奨 |
 | --------- | ------------------------- |
 | 単純なCRUD | Bob生成Model |
 | 動的な検索条件 | Bob Query Builder |
 | リレーション取得 | Bob ThenLoad / Preload |
-| 購入一覧の集約取得 | Bob Query Generator |
-| 月次支出分析 | SQL + Bob Query Generator |
-| 口座残高集計 | SQL + Bob Query Generator |
+| 購入一覧の集約取得 | Bob Query BuilderとThenLoad |
+| 月次支出分析 | Bob DSLによる集計 |
+| 口座残高集計 | Bob DSLによる集計 |
 | 複雑な会計計算 | Goのdomain関数 |
 
-例えば、カテゴリ別月間支出の基礎データなら、
+現行の月次集計や口座分析は会計仕様を反映したBob DSLに置き換え、追加の集計も同じ型安全な構成にそろえます。DB固有の実行計画を確認するときは、Bobが生成するクエリと引数を使って検証します。
 
-```
--- MonthlyCategoryTotals
-SELECT
-    date_trunc('month', p.occurred_at) AS month,
-    pi.category_id,
-    sum(pi.amount_yen) AS total_yen
-FROM purchases p
-JOIN purchase_items pi
-    ON pi.purchase_id = p.id
-WHERE p.household_id = $1
-  AND p.status IN ('POSTED', 'CLOSED')
-  AND p.occurred_at >= $2
-  AND p.occurred_at < $3
-GROUP BY month, pi.category_id;
-```
-
-のようなSQLで表現できます。
-
-これは基本集計部分だけの概念例です。実際には締め後訂正や期間・タイムゾーンの扱いを現在の会計仕様に合わせて組み込む必要があります。
-
-こうすると、複雑なBob Query Builderの式をGoで大量に組み立てる必要がなくなります。
-
-また、SQLファイルが独立するため、`EXPLAIN (ANALYZE, BUFFERS)`での性能検証も容易です。
-
-このプロジェクトではすでにBobを使っているので、わざわざ`sqlc`を別途導入するより、まずBobのQuery Generatorを有効活用するのが自然です。
-
-## 4. GraphQLサーバーを毎リクエスト構築している
-
-優先度：高 / 明確な不要処理
-
-該当：[server.go: graphql](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/api/server.go#L79-L121)
-
-現在のコードでは、GraphQLリクエストが届くたびに以下を実行しています。
-
-```
-resolver := &graph.Resolver{
-    DB: s.db,
-    Auth: s.auth,
-}
-executor := handler.New(
-    graph.NewExecutableSchema(
-        graph.Config{Resolvers: resolver},
-    ),
-)
-
-executor.AddTransport(transport.POST{})
-executor.Use(extension.Introspection{})
-executor.SetErrorPresenter(...)
-executor.SetRecoverFunc(...)
-executor.ServeHTTP(w, r.WithContext(ctx))
-```
-
-これは不要です。
-
-gqlgenのExecutableSchemaやServerは、原則としてアプリケーション起動時に一度生成し、複数のリクエスト間で再利用できます。
-
-Resolverが保持する依存関係もDBプールなどの共有可能なものです。
-
-修正方針
-
-`api.New()`または`Server.Handler()`の初期化時にGraphQL Handlerを構築し、`Server`内に保持してください。
-
-認証情報は現在と同様、リクエスト単位の`context.Context`に設定します。
-
-これにより不要なオブジェクト生成をなくせるうえ、GraphQLのTransport、Extension、Complexity制限、エラーハンドリングなどを起動時にまとめて設定できます。
-
-なお、これは明確な構造上の改善ですが、実際の処理時間が何％短縮されるかはベンチマークして判断するべきです。
-
-## 5. 会計仕訳の構築ロジックが重複している
+## 4. 会計仕訳の構築ロジックが重複している
 
 優先度：高 / 会計の正確性
 
@@ -357,7 +276,7 @@ func BuildPurchaseJournal(
 
 配賦・金額の保存則・仕訳構築は自前の純粋関数、DBアクセスとトランザクションはBob/pgxという役割分担が最適だと思います。
 
-## 6. Gemini APIの独自HTTP実装を公式SDKへ置き換える
+## 5. Gemini APIの独自HTTP実装を公式SDKへ置き換える
 
 優先度：高 / ライブラリ活用
 
@@ -436,7 +355,7 @@ type VisionExtractor interface {
 
 JSON Schema生成ライブラリの使用を検討し、Geminiが受け付けるSchemaの制約に合わせて変換するか、少なくともGoの型とSchemaの整合性を検証するContract Testを設けるべきです。
 
-## 7. pgxのトランザクションAPIをもっと活用する
+## 6. pgxのトランザクションAPIをもっと活用する
 
 優先度：中〜高 / 保守性
 
@@ -504,7 +423,7 @@ Application Serviceがトランザクションを開始し、複数のRepository
 
 DBロックを保持したまま外部APIを待つ構成にはしないでください。
 
-## 8. 読み取り専用APIを専用Query層に分離する
+## 7. 読み取り専用APIを専用Query層に分離する
 
 優先度：中〜高 / 設計・性能
 
@@ -514,16 +433,16 @@ DBロックを保持したまま外部APIを待つ構成にはしないでくだ
 
 | 処理 | 現状の問題 | 推奨 |
 | ------------------------- | ---------------------- | ------------ |
-| `accountBalances` | 全仕訳をGoへ読み込んで集計 | SQL集計 |
-| `monthlyCategorySpending` | 購入ごとの品目検索 | SQL集計 |
+| `accountBalances` | 全仕訳をGoへ読み込んで集計 | Bob DSLによるDB集計 |
+| `monthlyCategorySpending` | 購入ごとの品目検索 | Bob DSLによるDB集計 |
 | `monthlyMemberSpending` | 購入・訂正ごとの繰り返し検索 | 集計専用Query |
 | `productSuggestions` | 全商品の取得・Go側検索 | DB側絞り込み |
 | `purchases` | `loadPurchase`を件数分実行 | バッチロード |
-| `hasEvidence`フィルタ | 証拠リンクを全取得し巨大な`IN`条件を構築 | SQLの`EXISTS` |
+| `hasEvidence`フィルタ | 証拠リンクを全取得し巨大な`IN`条件を構築 | Bob DSLの存在条件 |
 
 特に`hasEvidence`は、[queries.go](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/graph/queries.go#L178-L206)で、家庭内のEvidenceLinkとDocumentConfirmationを全部取得し、購入IDの集合をGoで構築しています。
 
-これはDB側の相関`EXISTS`で表現したほうが自然です。
+これはBob DSLの相関存在条件で表現したほうが自然です。
 
 これらの処理には、CQRSのような大掛かりなフレームワークは不要です。
 
@@ -539,9 +458,9 @@ postgres/
 
 のようなQuery層を作り、Bob生成Queryとモデル変換をまとめれば十分です。
 
-これによってGraphQLの変更とSQLの最適化を独立して進められます。
+これによってGraphQLの変更とBob DSLの最適化を独立して進められます。
 
-## 9. OpenTelemetryとテスト基盤
+## 8. OpenTelemetryとテスト基盤
 
 ### PostgreSQLのトレースを取得する
 
@@ -584,7 +503,7 @@ Factoryであらゆる値を暗黙に補完するより、家庭・メンバー�
 
 現状のCIではPostgreSQL 18を起動してDBマイグレーションと統合テストを実行しているので、テストのために別のデータベースやTestcontainersへ切り替える必要はありません。
 
-## 10. 追加ライブラリなしで改善できるところ
+## 9. 追加ライブラリなしで改善できるところ
 
 すべてをライブラリで解決する必要はありません。
 
@@ -605,7 +524,7 @@ Factoryであらゆる値を暗黙に補完するより、家庭・メンバー�
 | ライブラリ・機能 | 判断・理由 |
 | ------------------------- | ------------------ |
 | Bob ThenLoad / Preload | 積極活用 — N+1削減 |
-| Bob Query Generator | 採用 — SQL集計の型安全化 |
+| Bob Query Builder | 採用 — 型安全なDB検索・集計 |
 | `google.golang.org/genai` | 採用 — 独自REST実装の削減 |
 | `pgx.BeginFunc` | 積極活用 — Tx管理の簡素化 |
 | `otelpgx` | 採用 — DBトレーシング |
@@ -619,14 +538,13 @@ Factoryであらゆる値を暗黙に補完するより、家庭・メンバー�
 
 | 順位 | 変更 | 効果 |
 | -- | --------------------------------- | -------------- |
-| 1 | GraphQL Handlerを起動時に1回だけ生成 | 不要処理の削減 |
-| 2 | BobのバッチロードとQuery Generatorを活用 | N+1解消、読み取り性能改善 |
-| 3 | 購入・入金・精算などをApplication Serviceへ分離 | 保守性・再利用性 |
-| 4 | 仕訳生成ロジックを純粋関数へ集約 | 重複削減、会計バグ防止 |
-| 5 | Gemini通信を公式Go SDKへ移行 | API変更への追従性 |
-| 6 | pgxのTransaction管理を統一 | 実装の簡潔さと一貫性 |
-| 7 | otelpgxによるSQL計測 | 性能問題の発見 |
-| 8 | テストデータ生成の共通化 | テストの読みやすさ |
+| 1 | Bobのバッチロードと型安全DSLを活用 | N+1解消、読み取り性能改善 |
+| 2 | 購入・入金・精算などをApplication Serviceへ分離 | 保守性・再利用性 |
+| 3 | 仕訳生成ロジックを純粋関数へ集約 | 重複削減、会計バグ防止 |
+| 4 | Gemini通信を公式Go SDKへ移行 | API変更への追従性 |
+| 5 | pgxのTransaction管理を統一 | 実装の簡潔さと一貫性 |
+| 6 | otelpgxによるSQL計測 | 性能問題の発見 |
+| 7 | テストデータ生成の共通化 | テストの読みやすさ |
 
 ### 最終的な評価
 
@@ -640,4 +558,4 @@ Horseのバックエンドで最も問題なのは、特定のライブラリが
 
 そのため、業務ロジックの再利用性は単なるコードの綺麗さではなく、すべての入力経路で同一の会計ルールを保証するための重要な設計要件です。
 
-以上は確認したコミットに対する静的レビューです。性能改善の実測やリファクタリング後の動作確認は未実施ですが、まず着手する価値が高いのは、GraphQL Handlerの再利用、Bobのバッチ取得、Service層への責務分離の3つです。
+以上は確認したコミットに対する静的レビューです。性能改善の実測やリファクタリング後の動作確認は未実施ですが、まず着手する価値が高いのは、Bobのバッチ取得、Service層への責務分離、仕訳生成ロジックの集約です。

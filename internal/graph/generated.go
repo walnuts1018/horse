@@ -111,6 +111,17 @@ type ComplexityRoot struct {
 		OccurredAt  func(childComplexity int) int
 	}
 
+	AccountIncomeConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	AccountIncomeEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
+
 	AccountMovement struct {
 		AmountYen     func(childComplexity int) int
 		CreatedAt     func(childComplexity int) int
@@ -122,6 +133,17 @@ type ComplexityRoot struct {
 		Kind          func(childComplexity int) int
 		OccurredAt    func(childComplexity int) int
 		ToAccountID   func(childComplexity int) int
+	}
+
+	AccountMovementConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	AccountMovementEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
 	}
 
 	Allocation struct {
@@ -522,8 +544,8 @@ type ComplexityRoot struct {
 	Query struct {
 		AccountBalanceAnalysis  func(childComplexity int, householdID string, accountID string, from string, to string) int
 		AccountBalances         func(childComplexity int, householdID string) int
-		AccountIncomes          func(childComplexity int, householdID string, first *int) int
-		AccountMovements        func(childComplexity int, householdID string, first *int) int
+		AccountIncomes          func(childComplexity int, householdID string, after *string, first *int) int
+		AccountMovements        func(childComplexity int, householdID string, after *string, first *int) int
 		AllocationRules         func(childComplexity int, householdID string) int
 		Budgets                 func(childComplexity int, householdID string, period string) int
 		Household               func(childComplexity int, id string) int
@@ -849,8 +871,8 @@ type QueryResolver interface {
 	Nodes(ctx context.Context, ids []string) ([]model.Node, error)
 	AccountBalances(ctx context.Context, householdID string) ([]*model.AccountBalance, error)
 	AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from string, to string) (*model.AccountBalanceAnalysis, error)
-	AccountIncomes(ctx context.Context, householdID string, first *int) ([]*model.AccountIncome, error)
-	AccountMovements(ctx context.Context, householdID string, first *int) ([]*model.AccountMovement, error)
+	AccountIncomes(ctx context.Context, householdID string, after *string, first *int) (*model.AccountIncomeConnection, error)
+	AccountMovements(ctx context.Context, householdID string, after *string, first *int) (*model.AccountMovementConnection, error)
 	AllocationRules(ctx context.Context, householdID string) ([]*model.AllocationRule, error)
 	Budgets(ctx context.Context, householdID string, period string) ([]*model.Budget, error)
 	Households(ctx context.Context) ([]*model.Household, error)
@@ -1087,6 +1109,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.AccountIncome.OccurredAt(childComplexity), true
 
+	case "AccountIncomeConnection.edges":
+		if e.ComplexityRoot.AccountIncomeConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncomeConnection.Edges(childComplexity), true
+	case "AccountIncomeConnection.pageInfo":
+		if e.ComplexityRoot.AccountIncomeConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncomeConnection.PageInfo(childComplexity), true
+	case "AccountIncomeConnection.totalCount":
+		if e.ComplexityRoot.AccountIncomeConnection.TotalCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncomeConnection.TotalCount(childComplexity), true
+
+	case "AccountIncomeEdge.cursor":
+		if e.ComplexityRoot.AccountIncomeEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncomeEdge.Cursor(childComplexity), true
+	case "AccountIncomeEdge.node":
+		if e.ComplexityRoot.AccountIncomeEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncomeEdge.Node(childComplexity), true
+
 	case "AccountMovement.amountYen":
 		if e.ComplexityRoot.AccountMovement.AmountYen == nil {
 			break
@@ -1147,6 +1201,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AccountMovement.ToAccountID(childComplexity), true
+
+	case "AccountMovementConnection.edges":
+		if e.ComplexityRoot.AccountMovementConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountMovementConnection.Edges(childComplexity), true
+	case "AccountMovementConnection.pageInfo":
+		if e.ComplexityRoot.AccountMovementConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountMovementConnection.PageInfo(childComplexity), true
+	case "AccountMovementConnection.totalCount":
+		if e.ComplexityRoot.AccountMovementConnection.TotalCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountMovementConnection.TotalCount(childComplexity), true
+
+	case "AccountMovementEdge.cursor":
+		if e.ComplexityRoot.AccountMovementEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountMovementEdge.Cursor(childComplexity), true
+	case "AccountMovementEdge.node":
+		if e.ComplexityRoot.AccountMovementEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountMovementEdge.Node(childComplexity), true
 
 	case "Allocation.amountYen":
 		if e.ComplexityRoot.Allocation.AmountYen == nil {
@@ -2848,7 +2934,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.AccountIncomes(childComplexity, args["householdId"].(string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.AccountIncomes(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
 	case "Query.accountMovements":
 		if e.ComplexityRoot.Query.AccountMovements == nil {
 			break
@@ -2859,7 +2945,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.AccountMovements(childComplexity, args["householdId"].(string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.AccountMovements(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
 	case "Query.allocationRules":
 		if e.ComplexityRoot.Query.AllocationRules == nil {
 			break
@@ -3757,8 +3843,19 @@ extend type Query {
   createdAt: String!
 }
 
+type AccountIncomeEdge {
+  cursor: String!
+  node: AccountIncome!
+}
+
+type AccountIncomeConnection {
+  edges: [AccountIncomeEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  accountIncomes(householdId: ID! @nodeID(of: "Household"), first: Int = 50): [AccountIncome!]!
+  accountIncomes(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AccountIncomeConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/account_movement.graphqls", Input: `type AccountMovement implements Node {
@@ -3774,13 +3871,24 @@ extend type Query {
   createdAt: String!
 }
 
+type AccountMovementEdge {
+  cursor: String!
+  node: AccountMovement!
+}
+
+type AccountMovementConnection {
+  edges: [AccountMovementEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 enum AccountMovementKind {
   TRANSFER
   CARD_BILL_PAYMENT
 }
 
 extend type Query {
-  accountMovements(householdId: ID! @nodeID(of: "Household"), first: Int = 50): [AccountMovement!]!
+  accountMovements(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AccountMovementConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/allocation.graphqls", Input: `type Allocation {
@@ -5022,6 +5130,28 @@ func (ec *executionContext) childFields_AccountIncome(ctx context.Context, field
 	return nil, fmt.Errorf("no field named %q was found under type AccountIncome", field.Name)
 }
 
+func (ec *executionContext) childFields_AccountIncomeConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_AccountIncomeConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_AccountIncomeConnection_pageInfo(ctx, field)
+	case "totalCount":
+		return ec.fieldContext_AccountIncomeConnection_totalCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AccountIncomeConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_AccountIncomeEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_AccountIncomeEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_AccountIncomeEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AccountIncomeEdge", field.Name)
+}
+
 func (ec *executionContext) childFields_AccountMovement(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "id":
@@ -5046,6 +5176,28 @@ func (ec *executionContext) childFields_AccountMovement(ctx context.Context, fie
 		return ec.fieldContext_AccountMovement_createdAt(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type AccountMovement", field.Name)
+}
+
+func (ec *executionContext) childFields_AccountMovementConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_AccountMovementConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_AccountMovementConnection_pageInfo(ctx, field)
+	case "totalCount":
+		return ec.fieldContext_AccountMovementConnection_totalCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AccountMovementConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_AccountMovementEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_AccountMovementEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_AccountMovementEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AccountMovementEdge", field.Name)
 }
 
 func (ec *executionContext) childFields_Allocation(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -6897,14 +7049,22 @@ func (ec *executionContext) field_Query_accountIncomes_args(ctx context.Context,
 		return nil, err
 	}
 	args["householdId"] = arg0
-	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg1
+	args["first"] = arg2
 	return args, nil
 }
 
@@ -6962,14 +7122,22 @@ func (ec *executionContext) field_Query_accountMovements_args(ctx context.Contex
 		return nil, err
 	}
 	args["householdId"] = arg0
-	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg1
+	args["first"] = arg2
 	return args, nil
 }
 
@@ -8951,6 +9119,148 @@ func (ec *executionContext) fieldContext_AccountIncome_createdAt(_ context.Conte
 	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _AccountIncomeConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncomeConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncomeConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.AccountIncomeEdge) graphql.Marshaler {
+			return ec.marshalNAccountIncomeEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncomeConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountIncomeConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountIncomeEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AccountIncomeConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncomeConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncomeConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncomeConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountIncomeConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AccountIncomeConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncomeConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncomeConnection_totalCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncomeConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountIncomeConnection", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _AccountIncomeEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncomeEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncomeEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncomeEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountIncomeEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountIncomeEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncomeEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncomeEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountIncome) graphql.Marshaler {
+			return ec.marshalNAccountIncome2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncome(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncomeEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountIncomeEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountIncome(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _AccountMovement_id(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovement) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -9179,6 +9489,148 @@ func (ec *executionContext) _AccountMovement_createdAt(ctx context.Context, fiel
 }
 func (ec *executionContext) fieldContext_AccountMovement_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("AccountMovement", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountMovementConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovementConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountMovementConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.AccountMovementEdge) graphql.Marshaler {
+			return ec.marshalNAccountMovementEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovementEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountMovementConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountMovementConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountMovementEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AccountMovementConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovementConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountMovementConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountMovementConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountMovementConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AccountMovementConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovementConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountMovementConnection_totalCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountMovementConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountMovementConnection", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _AccountMovementEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovementEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountMovementEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountMovementEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountMovementEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountMovementEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovementEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountMovementEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountMovement) graphql.Marshaler {
+			return ec.marshalNAccountMovement2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovement(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountMovementEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountMovementEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountMovement(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _Allocation_poolId(ctx context.Context, field graphql.CollectedField, obj *model.Allocation) (ret graphql.Marshaler) {
@@ -16085,11 +16537,11 @@ func (ec *executionContext) _Query_accountIncomes(ctx context.Context, field gra
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().AccountIncomes(ctx, fc.Args["householdId"].(string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().AccountIncomes(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []*model.AccountIncome) graphql.Marshaler {
-			return ec.marshalNAccountIncome2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountIncomeConnection) graphql.Marshaler {
+			return ec.marshalNAccountIncomeConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeConnection(ctx, selections, v)
 		},
 		true,
 		true,
@@ -16102,7 +16554,7 @@ func (ec *executionContext) fieldContext_Query_accountIncomes(ctx context.Contex
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_AccountIncome(ctx, field)
+			return ec.childFields_AccountIncomeConnection(ctx, field)
 		},
 	}
 	defer func() {
@@ -16129,11 +16581,11 @@ func (ec *executionContext) _Query_accountMovements(ctx context.Context, field g
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().AccountMovements(ctx, fc.Args["householdId"].(string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().AccountMovements(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []*model.AccountMovement) graphql.Marshaler {
-			return ec.marshalNAccountMovement2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovementᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountMovementConnection) graphql.Marshaler {
+			return ec.marshalNAccountMovementConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovementConnection(ctx, selections, v)
 		},
 		true,
 		true,
@@ -16146,7 +16598,7 @@ func (ec *executionContext) fieldContext_Query_accountMovements(ctx context.Cont
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_AccountMovement(ctx, field)
+			return ec.childFields_AccountMovementConnection(ctx, field)
 		},
 	}
 	defer func() {
@@ -25204,6 +25656,97 @@ func (ec *executionContext) _AccountIncome(ctx context.Context, sel ast.Selectio
 	return out
 }
 
+var accountIncomeConnectionImplementors = []string{"AccountIncomeConnection"}
+
+func (ec *executionContext) _AccountIncomeConnection(ctx context.Context, sel ast.SelectionSet, obj *model.AccountIncomeConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountIncomeConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountIncomeConnection")
+		case "edges":
+			out.Values[i] = ec._AccountIncomeConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._AccountIncomeConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._AccountIncomeConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var accountIncomeEdgeImplementors = []string{"AccountIncomeEdge"}
+
+func (ec *executionContext) _AccountIncomeEdge(ctx context.Context, sel ast.SelectionSet, obj *model.AccountIncomeEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountIncomeEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountIncomeEdge")
+		case "cursor":
+			out.Values[i] = ec._AccountIncomeEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._AccountIncomeEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var accountMovementImplementors = []string{"AccountMovement", "Node"}
 
 func (ec *executionContext) _AccountMovement(ctx context.Context, sel ast.SelectionSet, obj *model.AccountMovement) graphql.Marshaler {
@@ -25397,6 +25940,97 @@ func (ec *executionContext) _AccountMovement(ctx context.Context, sel ast.Select
 			out.Values[i] = ec._AccountMovement_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var accountMovementConnectionImplementors = []string{"AccountMovementConnection"}
+
+func (ec *executionContext) _AccountMovementConnection(ctx context.Context, sel ast.SelectionSet, obj *model.AccountMovementConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountMovementConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountMovementConnection")
+		case "edges":
+			out.Values[i] = ec._AccountMovementConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._AccountMovementConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._AccountMovementConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var accountMovementEdgeImplementors = []string{"AccountMovementEdge"}
+
+func (ec *executionContext) _AccountMovementEdge(ctx context.Context, sel ast.SelectionSet, obj *model.AccountMovementEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountMovementEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountMovementEdge")
+		case "cursor":
+			out.Values[i] = ec._AccountMovementEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._AccountMovementEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -32197,11 +32831,31 @@ func (ec *executionContext) marshalNAccountBalanceChange2ᚖgithubᚗcomᚋwalnu
 	return ec._AccountBalanceChange(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNAccountIncome2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AccountIncome) graphql.Marshaler {
+func (ec *executionContext) marshalNAccountIncome2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncome(ctx context.Context, sel ast.SelectionSet, v *model.AccountIncome) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountIncome(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAccountIncomeConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeConnection(ctx context.Context, sel ast.SelectionSet, v *model.AccountIncomeConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountIncomeConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAccountIncomeEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AccountIncomeEdge) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNAccountIncome2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncome(ctx, sel, v[i])
+		return ec.marshalNAccountIncomeEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeEdge(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -32213,14 +32867,14 @@ func (ec *executionContext) marshalNAccountIncome2ᚕᚖgithubᚗcomᚋwalnuts10
 	return ret
 }
 
-func (ec *executionContext) marshalNAccountIncome2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncome(ctx context.Context, sel ast.SelectionSet, v *model.AccountIncome) graphql.Marshaler {
+func (ec *executionContext) marshalNAccountIncomeEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeEdge(ctx context.Context, sel ast.SelectionSet, v *model.AccountIncomeEdge) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
-	return ec._AccountIncome(ctx, sel, v)
+	return ec._AccountIncomeEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNAccountKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountKind(ctx context.Context, v any) (model.AccountKind, error) {
@@ -32233,11 +32887,31 @@ func (ec *executionContext) marshalNAccountKind2githubᚗcomᚋwalnuts1018ᚋhor
 	return v
 }
 
-func (ec *executionContext) marshalNAccountMovement2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovementᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AccountMovement) graphql.Marshaler {
+func (ec *executionContext) marshalNAccountMovement2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovement(ctx context.Context, sel ast.SelectionSet, v *model.AccountMovement) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountMovement(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAccountMovementConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovementConnection(ctx context.Context, sel ast.SelectionSet, v *model.AccountMovementConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountMovementConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAccountMovementEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovementEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AccountMovementEdge) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNAccountMovement2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovement(ctx, sel, v[i])
+		return ec.marshalNAccountMovementEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovementEdge(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -32249,14 +32923,14 @@ func (ec *executionContext) marshalNAccountMovement2ᚕᚖgithubᚗcomᚋwalnuts
 	return ret
 }
 
-func (ec *executionContext) marshalNAccountMovement2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovement(ctx context.Context, sel ast.SelectionSet, v *model.AccountMovement) graphql.Marshaler {
+func (ec *executionContext) marshalNAccountMovementEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovementEdge(ctx context.Context, sel ast.SelectionSet, v *model.AccountMovementEdge) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
-	return ec._AccountMovement(ctx, sel, v)
+	return ec._AccountMovementEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNAccountMovementKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountMovementKind(ctx context.Context, v any) (model.AccountMovementKind, error) {

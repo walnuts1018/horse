@@ -27,8 +27,8 @@ func (r *accountIncomeResolver) AccountID(ctx context.Context, obj *model.Accoun
 }
 
 // AccountIncomes is the resolver for the accountIncomes field.
-func (r *queryResolver) AccountIncomes(ctx context.Context, householdID string, first *int) ([]*model.AccountIncome, error) {
-	return r.accountIncomes(ctx, householdID, first)
+func (r *queryResolver) AccountIncomes(ctx context.Context, householdID string, after *string, first *int) (*model.AccountIncomeConnection, error) {
+	return r.accountIncomes(ctx, householdID, after, first)
 }
 
 // AccountIncome returns AccountIncomeResolver implementation.

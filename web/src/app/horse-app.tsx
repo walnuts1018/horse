@@ -183,7 +183,15 @@ export function App() {
         }
       })();
     }
-  }, [viewer, households, outbox.entries, outbox.ready, outbox.online, outbox.refresh, createAndPostPurchase]);
+  }, [
+    viewer,
+    households,
+    outbox.entries,
+    outbox.ready,
+    outbox.online,
+    outbox.refresh,
+    createAndPostPurchase,
+  ]);
   const currentOutbox = outbox.entries.filter((entry) => entry.input.householdId === household?.id);
   const failedOutboxCount = currentOutbox.filter((entry) => entry.status === "FAILED").length;
   const pendingOutboxCount = currentOutbox.filter((entry) => entry.status === "PENDING").length;

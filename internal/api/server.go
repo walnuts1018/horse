@@ -43,14 +43,17 @@ type DocumentStore interface {
 }
 
 type Server struct {
-	db     *pgxpool.Pool
-	auth   *auth.Service
-	logger *slog.Logger
-	cfg    Config
+	db             *pgxpool.Pool
+	auth           *auth.Service
+	logger         *slog.Logger
+	cfg            Config
+	graphqlHandler *handler.Server
 }
 
 func New(db *pgxpool.Pool, authService *auth.Service, logger *slog.Logger, cfg Config) *Server {
-	return &Server{db: db, auth: authService, logger: logger, cfg: cfg}
+	server := &Server{db: db, auth: authService, logger: logger, cfg: cfg}
+	server.graphqlHandler = server.newGraphQLHandler()
+	return server
 }
 
 func (s *Server) Handler() http.Handler {
@@ -85,6 +88,13 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
 		return
 	}
+	request := http.MaxBytesReader(w, r.Body, 2<<20)
+	r.Body = request
+	ctx := auth.WithPrincipal(r.Context(), principal)
+	s.graphqlHandler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func (s *Server) newGraphQLHandler() *handler.Server {
 	resolver := &graph.Resolver{DB: s.db, Auth: s.auth}
 	executor := handler.New(graph.NewExecutableSchema(graph.Config{
 		Resolvers: resolver,
@@ -119,10 +129,7 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 		s.logger.ErrorContext(ctx, "GraphQL resolver panic", "graphql_path", graphQLFieldPath(ctx), "panic_type", fmt.Sprintf("%T", recovered))
 		return errors.New("internal server error")
 	})
-	request := http.MaxBytesReader(w, r.Body, 2<<20)
-	r.Body = request
-	ctx := auth.WithPrincipal(r.Context(), principal)
-	executor.ServeHTTP(w, r.WithContext(ctx))
+	return executor
 }
 
 func (s *Server) logGraphQLResolverFailure(ctx context.Context, err error) {

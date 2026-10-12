@@ -9,6 +9,17 @@ type AccountIncome implements Node {
   createdAt: String!
 }
 
+type AccountIncomeEdge {
+  cursor: String!
+  node: AccountIncome!
+}
+
+type AccountIncomeConnection {
+  edges: [AccountIncomeEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  accountIncomes(householdId: ID! @nodeID(of: "Household"), first: Int = 50): [AccountIncome!]!
+  accountIncomes(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AccountIncomeConnection!
 }

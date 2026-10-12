@@ -1,5 +1,7 @@
 ~/ghq/github.com/walnuts1018/piccaのGraphQL Schemaを真似して改善を行って。
 
+- GraphQL Schemaの適切なファイル分離（1mutation or 1 type(+それに関連する定義)）で1ファイルにする
+  - 例えばmutation+input+result+errorは1ファイルにまとめてOK。ある型に強く関連がある（そこでしか使わない型とかenumとか）も同じファイルにまとめてOK
 - Relay/gqlgenを前提としてもっと良いGraphQL Schemaにして。良いGraphQL Schemaとは以下のようなものです。
   - Frontendでの複雑な条件分岐が少ない
   - 適切に抽象化されており、nullableなフィールドが最低限に抑えられている
