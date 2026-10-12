@@ -39,7 +39,7 @@ SpendCapは請求の見積り遅延を伴い、適用は即時ではありませ
 
 ## Google CloudのTerraform認証
 
-専用Projectは`walnuts-horse-gemini-free`と`walnuts-horse-gemini-paid`を使用します。組織に属さないProjectをサービスアカウントから新規作成できないため、初回はGoogle ConsoleでProjectを作成し、infraの`google_cloud` moduleでProjectの名前、請求、API、IAM、WIFを定義して取り込みます。既存の`walnuts-dev` Projectも現在の設定を同じmoduleで管理し、Gemini用には使用しません。Googleが変更を許可しない`_Required`のログ設定は管理対象外です。
+専用Projectは`walnuts-horse-gemini-free`と`walnuts-horse-gemini-paid`を使用します。組織に属さないProjectをサービスアカウントから新規作成できないため、初回はGoogle ConsoleでProjectを作成し、infraの`google_cloud` moduleでProjectの名前、請求、API、IAM、WIFを定義して取り込みます。既存の`walnuts-dev` Projectも現在の設定を同じmoduleで管理し、Gemini用には使用しません。Googleが変更を許可しない`_Required`のログ設定は管理対象外です。Google provider7.46.1にはGoogleログイン用Web OAuthクライアントの管理リソースがないため、既存の`auth.walnuts.dev`クライアントはConsoleで管理します。登録済みのredirect URIは`https://auth.walnuts.dev/idps/callback`と`https://auth.walnuts.dev/ui/login/login/externalidp/callback`です。
 
 HCP Terraformの`walnuts-dev`組織、`Default Project`、`infra` workspaceだけをWorkload Identity Federationの信頼対象とします。workspace IDとOIDC audienceも照合し、planとapplyのphaseごとに別のサービスアカウントへ短期認証を発行します。長期サービスアカウントキーは作成しません。
 
