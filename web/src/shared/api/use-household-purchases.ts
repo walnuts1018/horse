@@ -167,14 +167,16 @@ export function useHouseholdPurchases(
     if (options.loadAll && hasNextPage && !loadingMore && !moreError) void loadMore();
   }, [hasNextPage, loadMore, loadingMore, moreError, options.loadAll]);
 
+  const queryMatches = dataQueryKey === currentQueryKey;
+
   return {
-    purchases: dataQueryKey === currentQueryKey ? purchases : [],
-    loading,
-    loadingMore,
-    error,
-    moreError,
-    hasNextPage,
-    totalCount: dataQueryKey === currentQueryKey ? totalCount : 0,
+    purchases: queryMatches ? purchases : [],
+    loading: loading || !queryMatches,
+    loadingMore: queryMatches && loadingMore,
+    error: queryMatches ? error : "",
+    moreError: queryMatches ? moreError : "",
+    hasNextPage: queryMatches && hasNextPage,
+    totalCount: queryMatches ? totalCount : 0,
     loadMore,
     refresh,
   };
