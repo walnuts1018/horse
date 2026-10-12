@@ -212,8 +212,18 @@ func (r *queryResolver) ProductCatalog(ctx context.Context, householdID string) 
 }
 
 // Purchases is the resolver for the purchases field.
-func (r *queryResolver) Purchases(ctx context.Context, householdID string, from *string, to *string, after *string, first *int) (*model.PurchaseConnection, error) {
-	return r.purchases(ctx, householdID, from, to, after, first)
+func (r *queryResolver) Purchases(ctx context.Context, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, first *int) (*model.PurchaseConnection, error) {
+	return r.purchases(ctx, householdID, from, to, origin, hasEvidence, after, first)
+}
+
+// UnmatchedObservations is the resolver for the unmatchedObservations field.
+func (r *queryResolver) UnmatchedObservations(ctx context.Context, householdID string, from *string, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, first *int) (*model.UnmatchedObservationConnection, error) {
+	return r.unmatchedObservations(ctx, householdID, from, to, sourceKind, state, after, first)
+}
+
+// MonthlyMemberSpending is the resolver for the monthlyMemberSpending field.
+func (r *queryResolver) MonthlyMemberSpending(ctx context.Context, householdID string, from string, to string) (*model.MonthlyMemberSpendingReport, error) {
+	return r.monthlyMemberSpending(ctx, householdID, from, to)
 }
 
 // PurchaseCorrections is the resolver for the purchaseCorrections field.

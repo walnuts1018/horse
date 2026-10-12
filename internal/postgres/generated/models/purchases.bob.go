@@ -41,6 +41,7 @@ type Purchase struct {
 	CreatedBy             uuid.UUID                   `db:"created_by" `
 	CreatedAt             time.Time                   `db:"created_at" `
 	UpdatedAt             time.Time                   `db:"updated_at" `
+	Origin                string                      `db:"origin" `
 
 	R purchaseR `db:"-" `
 
@@ -89,7 +90,7 @@ type purchaseRLoaded struct {
 
 func buildPurchaseColumns(tableName string) purchaseColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "occurred_at", "merchant", "payment_account_id", "status", "revision", "field_revisions", "allocation_rule_version", "created_by", "created_at", "updated_at",
+		"id", "household_id", "occurred_at", "merchant", "payment_account_id", "status", "revision", "field_revisions", "allocation_rule_version", "created_by", "created_at", "updated_at", "origin",
 	)
 
 	if tableName != "" {
@@ -111,6 +112,7 @@ func buildPurchaseColumns(tableName string) purchaseColumns {
 		CreatedBy:             buildPurchaseColumn(tableName, "created_by"),
 		CreatedAt:             buildPurchaseColumn(tableName, "created_at"),
 		UpdatedAt:             buildPurchaseColumn(tableName, "updated_at"),
+		Origin:                buildPurchaseColumn(tableName, "origin"),
 	}
 }
 
@@ -129,6 +131,7 @@ type purchaseColumns struct {
 	CreatedBy             purchaseColumn
 	CreatedAt             purchaseColumn
 	UpdatedAt             purchaseColumn
+	Origin                purchaseColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -186,10 +189,11 @@ type PurchaseSetter struct {
 	CreatedBy             *uuid.UUID                   `db:"created_by" `
 	CreatedAt             *time.Time                   `db:"created_at" `
 	UpdatedAt             *time.Time                   `db:"updated_at" `
+	Origin                *string                      `db:"origin" `
 }
 
 func (s PurchaseSetter) SetColumns() []string {
-	vals := make([]string, 0, 12)
+	vals := make([]string, 0, 13)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -225,6 +229,9 @@ func (s PurchaseSetter) SetColumns() []string {
 	}
 	if s.UpdatedAt != nil {
 		vals = append(vals, "updated_at")
+	}
+	if s.Origin != nil {
+		vals = append(vals, "origin")
 	}
 	return vals
 }
@@ -325,6 +332,14 @@ func (s PurchaseSetter) Overwrite(t *Purchase) {
 				return *new(time.Time)
 			}
 			return *s.UpdatedAt
+		}()
+	}
+	if s.Origin != nil {
+		t.Origin = func() string {
+			if s.Origin == nil {
+				return *new(string)
+			}
+			return *s.Origin
 		}()
 	}
 }
@@ -456,6 +471,16 @@ func (s *PurchaseSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.UpdatedAt
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.Origin == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() string {
+				if s.Origin == nil {
+					return *new(string)
+				}
+				return *s.Origin
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -464,7 +489,7 @@ func (s PurchaseSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s PurchaseSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 12)
+	exprs := make([]bob.Expression, 0, 13)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -550,6 +575,13 @@ func (s PurchaseSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.Origin != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "origin")...),
+			psql.Arg(s.Origin),
+		}})
+	}
+
 	return exprs
 }
 
@@ -560,7 +592,7 @@ func purchaseScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc, fu
 		idx int
 		dst func(o *Purchase) any
 	}
-	targets := make([]target, 0, 12)
+	targets := make([]target, 0, 13)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -587,6 +619,8 @@ func purchaseScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc, fu
 			targets = append(targets, target{i, func(o *Purchase) any { return &o.CreatedAt }})
 		case "updated_at":
 			targets = append(targets, target{i, func(o *Purchase) any { return &o.UpdatedAt }})
+		case "origin":
+			targets = append(targets, target{i, func(o *Purchase) any { return &o.Origin }})
 		}
 	}
 
@@ -1650,6 +1684,7 @@ type purchaseWhere[Q psql.Filterable] struct {
 	CreatedBy             psql.WhereMod[Q, uuid.UUID]
 	CreatedAt             psql.WhereMod[Q, time.Time]
 	UpdatedAt             psql.WhereMod[Q, time.Time]
+	Origin                psql.WhereMod[Q, string]
 	R                     purchaseWhereR[Q]
 }
 
@@ -1672,6 +1707,7 @@ func buildPurchaseWhere[Q psql.Filterable](cols purchaseColumns) purchaseWhere[Q
 		CreatedBy:             psql.Where[Q, uuid.UUID](cols.CreatedBy.Expression),
 		CreatedAt:             psql.Where[Q, time.Time](cols.CreatedAt.Expression),
 		UpdatedAt:             psql.Where[Q, time.Time](cols.UpdatedAt.Expression),
+		Origin:                psql.Where[Q, string](cols.Origin.Expression),
 		R:                     purchaseWhereR[Q]{cols: cols},
 	}
 }
@@ -1832,6 +1868,7 @@ type purchasePreloadBuf struct {
 	CreatedBy             sql.Null[uuid.UUID]
 	CreatedAt             sql.Null[time.Time]
 	UpdatedAt             sql.Null[time.Time]
+	Origin                sql.Null[string]
 }
 
 // purchaseScanMapperNullable maps the preloaded purchase
@@ -1846,7 +1883,7 @@ func purchaseScanMapperNullable(prefix string) scan.Mapper[*Purchase] {
 			idx int
 			dst func(b *purchasePreloadBuf) any
 		}
-		targets := make([]target, 0, 12)
+		targets := make([]target, 0, 13)
 		for i, col := range cols {
 			name, ok := strings.CutPrefix(col, prefix)
 			if !ok {
@@ -1877,6 +1914,8 @@ func purchaseScanMapperNullable(prefix string) scan.Mapper[*Purchase] {
 				targets = append(targets, target{i, func(b *purchasePreloadBuf) any { return &b.CreatedAt }})
 			case "updated_at":
 				targets = append(targets, target{i, func(b *purchasePreloadBuf) any { return &b.UpdatedAt }})
+			case "origin":
+				targets = append(targets, target{i, func(b *purchasePreloadBuf) any { return &b.Origin }})
 			}
 		}
 
@@ -1910,7 +1949,8 @@ func purchaseScanMapperNullable(prefix string) scan.Mapper[*Purchase] {
 					!(buf.AllocationRuleVersion.Valid) &&
 					!(buf.CreatedBy.Valid) &&
 					!(buf.CreatedAt.Valid) &&
-					!(buf.UpdatedAt.Valid) {
+					!(buf.UpdatedAt.Valid) &&
+					!(buf.Origin.Valid) {
 					return nil, nil
 				}
 
@@ -1948,6 +1988,9 @@ func purchaseScanMapperNullable(prefix string) scan.Mapper[*Purchase] {
 				}
 				if buf.UpdatedAt.Valid {
 					o.UpdatedAt = buf.UpdatedAt.V
+				}
+				if buf.Origin.Valid {
+					o.Origin = buf.Origin.V
 				}
 				return o, nil
 			}

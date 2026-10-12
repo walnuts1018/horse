@@ -191,6 +191,7 @@ type CreatePurchaseInput struct {
 	HouseholdID        string                  `json:"householdId"`
 	OccurredAt         string                  `json:"occurredAt"`
 	Merchant           string                  `json:"merchant"`
+	Origin             *PurchaseOrigin         `json:"origin,omitempty"`
 	PaymentAccountID   *string                 `json:"paymentAccountId,omitempty"`
 	PaymentAllocations []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
 	SourceDocumentID   *string                 `json:"sourceDocumentId,omitempty"`
@@ -282,6 +283,18 @@ type MonthlyCategorySpending struct {
 	AmountYen    Long    `json:"amountYen"`
 }
 
+type MonthlyMemberSpending struct {
+	Period     string `json:"period"`
+	MemberID   string `json:"memberId"`
+	MemberName string `json:"memberName"`
+	AmountYen  Long   `json:"amountYen"`
+}
+
+type MonthlyMemberSpendingReport struct {
+	Items                    []*MonthlyMemberSpending `json:"items"`
+	HasUnattributedPurchases bool                     `json:"hasUnattributedPurchases"`
+}
+
 type Mutation struct {
 }
 
@@ -359,6 +372,9 @@ type Purchase struct {
 	HouseholdID        string                `json:"householdId"`
 	OccurredAt         string                `json:"occurredAt"`
 	Merchant           string                `json:"merchant"`
+	Origin             PurchaseOrigin        `json:"origin"`
+	HasEvidence        bool                  `json:"hasEvidence"`
+	SourceKinds        []SourceKind          `json:"sourceKinds"`
 	PaymentAccountID   *string               `json:"paymentAccountId,omitempty"`
 	PaymentAccount     *Account              `json:"paymentAccount,omitempty"`
 	PaymentAllocations []*PurchasePayment    `json:"paymentAllocations"`
@@ -593,6 +609,30 @@ type Tag struct {
 	Name        string `json:"name"`
 	Archived    bool   `json:"archived"`
 	Revision    int    `json:"revision"`
+}
+
+type UnmatchedObservation struct {
+	DocumentID      string                    `json:"documentId"`
+	SourceReference string                    `json:"sourceReference"`
+	PurchaseID      *string                   `json:"purchaseId,omitempty"`
+	SourceKind      SourceKind                `json:"sourceKind"`
+	State           UnmatchedObservationState `json:"state"`
+	Merchant        string                    `json:"merchant"`
+	OccurredAt      *string                   `json:"occurredAt,omitempty"`
+	AmountYen       Long                      `json:"amountYen"`
+	OrderID         string                    `json:"orderId"`
+	TransactionID   string                    `json:"transactionId"`
+}
+
+type UnmatchedObservationConnection struct {
+	Edges      []*UnmatchedObservationEdge `json:"edges"`
+	PageInfo   *PageInfo                   `json:"pageInfo"`
+	TotalCount int                         `json:"totalCount"`
+}
+
+type UnmatchedObservationEdge struct {
+	Cursor string                `json:"cursor"`
+	Node   *UnmatchedObservation `json:"node"`
 }
 
 type UpdatePurchaseInput struct {
@@ -972,6 +1012,63 @@ func (e ProductLearningScope) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+type PurchaseOrigin string
+
+const (
+	PurchaseOriginAi      PurchaseOrigin = "AI"
+	PurchaseOriginManual  PurchaseOrigin = "MANUAL"
+	PurchaseOriginUnknown PurchaseOrigin = "UNKNOWN"
+)
+
+var AllPurchaseOrigin = []PurchaseOrigin{
+	PurchaseOriginAi,
+	PurchaseOriginManual,
+	PurchaseOriginUnknown,
+}
+
+func (e PurchaseOrigin) IsValid() bool {
+	switch e {
+	case PurchaseOriginAi, PurchaseOriginManual, PurchaseOriginUnknown:
+		return true
+	}
+	return false
+}
+
+func (e PurchaseOrigin) String() string {
+	return string(e)
+}
+
+func (e *PurchaseOrigin) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = PurchaseOrigin(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid PurchaseOrigin", str)
+	}
+	return nil
+}
+
+func (e PurchaseOrigin) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *PurchaseOrigin) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e PurchaseOrigin) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
 type PurchaseStatus string
 
 const (
@@ -1084,6 +1181,67 @@ func (e SharedPoolSettlementPolicy) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+type SourceKind string
+
+const (
+	SourceKindReceipt SourceKind = "RECEIPT"
+	SourceKindOrder   SourceKind = "ORDER"
+	SourceKindEmail   SourceKind = "EMAIL"
+	SourceKindCard    SourceKind = "CARD"
+	SourceKindBank    SourceKind = "BANK"
+)
+
+var AllSourceKind = []SourceKind{
+	SourceKindReceipt,
+	SourceKindOrder,
+	SourceKindEmail,
+	SourceKindCard,
+	SourceKindBank,
+}
+
+func (e SourceKind) IsValid() bool {
+	switch e {
+	case SourceKindReceipt, SourceKindOrder, SourceKindEmail, SourceKindCard, SourceKindBank:
+		return true
+	}
+	return false
+}
+
+func (e SourceKind) String() string {
+	return string(e)
+}
+
+func (e *SourceKind) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SourceKind(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SourceKind", str)
+	}
+	return nil
+}
+
+func (e SourceKind) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SourceKind) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SourceKind) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
 type TransferKind string
 
 const (
@@ -1138,6 +1296,61 @@ func (e *TransferKind) UnmarshalJSON(b []byte) error {
 }
 
 func (e TransferKind) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type UnmatchedObservationState string
+
+const (
+	UnmatchedObservationStateUnmatched UnmatchedObservationState = "UNMATCHED"
+	UnmatchedObservationStateConfirmed UnmatchedObservationState = "CONFIRMED"
+)
+
+var AllUnmatchedObservationState = []UnmatchedObservationState{
+	UnmatchedObservationStateUnmatched,
+	UnmatchedObservationStateConfirmed,
+}
+
+func (e UnmatchedObservationState) IsValid() bool {
+	switch e {
+	case UnmatchedObservationStateUnmatched, UnmatchedObservationStateConfirmed:
+		return true
+	}
+	return false
+}
+
+func (e UnmatchedObservationState) String() string {
+	return string(e)
+}
+
+func (e *UnmatchedObservationState) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = UnmatchedObservationState(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid UnmatchedObservationState", str)
+	}
+	return nil
+}
+
+func (e UnmatchedObservationState) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *UnmatchedObservationState) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e UnmatchedObservationState) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

@@ -52,10 +52,12 @@ type PoolFundingRulesQuery = *psql.ViewQuery[*PoolFundingRule, PoolFundingRuleSl
 
 // poolFundingRuleR is where relationships are stored.
 type poolFundingRuleR struct {
-	CreatedByMember   *Member               // pool_funding_rules.pool_funding_rules_created_by_fkey
-	HouseholdMember   *HouseholdMember      // pool_funding_rules.pool_funding_rules_household_id_owner_member_id_fkey
-	Pool              *Pool                 // pool_funding_rules.pool_funding_rules_household_id_pool_id_fkey
-	PoolFundingShares PoolFundingShareSlice // pool_funding_shares.pool_funding_shares_household_id_pool_id_version_fkey
+	CorrectionMemberBurdens CorrectionMemberBurdenSlice // correction_member_burdens.correction_member_burdens_household_id_pool_id_funding_rul_fkey
+	CreatedByMember         *Member                     // pool_funding_rules.pool_funding_rules_created_by_fkey
+	HouseholdMember         *HouseholdMember            // pool_funding_rules.pool_funding_rules_household_id_owner_member_id_fkey
+	Pool                    *Pool                       // pool_funding_rules.pool_funding_rules_household_id_pool_id_fkey
+	PoolFundingShares       PoolFundingShareSlice       // pool_funding_shares.pool_funding_shares_household_id_pool_id_version_fkey
+	PurchaseMemberBurdens   PurchaseMemberBurdenSlice   // purchase_member_burdens.purchase_member_burdens_household_id_pool_id_funding_rule__fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -64,10 +66,12 @@ type poolFundingRuleR struct {
 
 // poolFundingRuleRLoaded tracks which relationships on PoolFundingRule have been loaded.
 type poolFundingRuleRLoaded struct {
-	CreatedByMember   bool // pool_funding_rules.pool_funding_rules_created_by_fkey
-	HouseholdMember   bool // pool_funding_rules.pool_funding_rules_household_id_owner_member_id_fkey
-	Pool              bool // pool_funding_rules.pool_funding_rules_household_id_pool_id_fkey
-	PoolFundingShares bool // pool_funding_shares.pool_funding_shares_household_id_pool_id_version_fkey
+	CorrectionMemberBurdens bool // correction_member_burdens.correction_member_burdens_household_id_pool_id_funding_rul_fkey
+	CreatedByMember         bool // pool_funding_rules.pool_funding_rules_created_by_fkey
+	HouseholdMember         bool // pool_funding_rules.pool_funding_rules_household_id_owner_member_id_fkey
+	Pool                    bool // pool_funding_rules.pool_funding_rules_household_id_pool_id_fkey
+	PoolFundingShares       bool // pool_funding_shares.pool_funding_shares_household_id_pool_id_version_fkey
+	PurchaseMemberBurdens   bool // purchase_member_burdens.purchase_member_burdens_household_id_pool_id_funding_rule__fkey
 }
 
 func buildPoolFundingRuleColumns(tableName string) poolFundingRuleColumns {
@@ -694,6 +698,38 @@ func (o PoolFundingRuleSlice) ReloadAll(ctx context.Context, exec bob.Executor) 
 	return nil
 }
 
+// CorrectionMemberBurdens starts a query for related objects on correction_member_burdens
+func (o *PoolFundingRule) CorrectionMemberBurdens(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionMemberBurdensQuery {
+	return CorrectionMemberBurdens.Query(append(mods,
+		sm.Where(CorrectionMemberBurdens.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(CorrectionMemberBurdens.Columns.PoolID.EQ(psql.Arg(o.PoolID))), sm.Where(CorrectionMemberBurdens.Columns.FundingRuleVersion.EQ(psql.Arg(o.Version))),
+	)...)
+}
+
+func (os PoolFundingRuleSlice) CorrectionMemberBurdens(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionMemberBurdensQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkPoolID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkVersion := make(pgtypes.Array[int32], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPoolID = append(pkPoolID, o.PoolID)
+		pkVersion = append(pkVersion, o.Version)
+	}
+
+	return CorrectionMemberBurdens.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "PoolID"), psql.Quote("bob_rel_keys_src", "FundingRuleVersion")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkPoolID), "uuid[]"), psql.Cast(psql.Arg(pkVersion), "integer[]"))).As("bob_rel_keys_src", "HouseholdID", "PoolID", "FundingRuleVersion"),
+		)).As("bob_rel_keys").On(CorrectionMemberBurdens.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), CorrectionMemberBurdens.Columns.PoolID.EQ(psql.Quote("bob_rel_keys", "PoolID")), CorrectionMemberBurdens.Columns.FundingRuleVersion.EQ(psql.Quote("bob_rel_keys", "FundingRuleVersion"))),
+	)...)
+}
+
 // CreatedByMember starts a query for related objects on members
 func (o *PoolFundingRule) CreatedByMember(mods ...bob.Mod[*dialect.SelectQuery]) MembersQuery {
 	return Members.Query(append(mods,
@@ -812,6 +848,112 @@ func (os PoolFundingRuleSlice) PoolFundingShares(mods ...bob.Mod[*dialect.Select
 			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkPoolID), "uuid[]"), psql.Cast(psql.Arg(pkVersion), "integer[]"))).As("bob_rel_keys_src", "HouseholdID", "PoolID", "Version"),
 		)).As("bob_rel_keys").On(PoolFundingShares.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), PoolFundingShares.Columns.PoolID.EQ(psql.Quote("bob_rel_keys", "PoolID")), PoolFundingShares.Columns.Version.EQ(psql.Quote("bob_rel_keys", "Version"))),
 	)...)
+}
+
+// PurchaseMemberBurdens starts a query for related objects on purchase_member_burdens
+func (o *PoolFundingRule) PurchaseMemberBurdens(mods ...bob.Mod[*dialect.SelectQuery]) PurchaseMemberBurdensQuery {
+	return PurchaseMemberBurdens.Query(append(mods,
+		sm.Where(PurchaseMemberBurdens.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(PurchaseMemberBurdens.Columns.PoolID.EQ(psql.Arg(o.PoolID))), sm.Where(PurchaseMemberBurdens.Columns.FundingRuleVersion.EQ(psql.Arg(o.Version))),
+	)...)
+}
+
+func (os PoolFundingRuleSlice) PurchaseMemberBurdens(mods ...bob.Mod[*dialect.SelectQuery]) PurchaseMemberBurdensQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkPoolID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkVersion := make(pgtypes.Array[int32], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPoolID = append(pkPoolID, o.PoolID)
+		pkVersion = append(pkVersion, o.Version)
+	}
+
+	return PurchaseMemberBurdens.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "PoolID"), psql.Quote("bob_rel_keys_src", "FundingRuleVersion")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkPoolID), "uuid[]"), psql.Cast(psql.Arg(pkVersion), "integer[]"))).As("bob_rel_keys_src", "HouseholdID", "PoolID", "FundingRuleVersion"),
+		)).As("bob_rel_keys").On(PurchaseMemberBurdens.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), PurchaseMemberBurdens.Columns.PoolID.EQ(psql.Quote("bob_rel_keys", "PoolID")), PurchaseMemberBurdens.Columns.FundingRuleVersion.EQ(psql.Quote("bob_rel_keys", "FundingRuleVersion"))),
+	)...)
+}
+
+func insertPoolFundingRuleCorrectionMemberBurdens0(ctx context.Context, exec bob.Executor, correctionMemberBurdens1 []*CorrectionMemberBurdenSetter, poolFundingRule0 *PoolFundingRule) (CorrectionMemberBurdenSlice, error) {
+	for i := range correctionMemberBurdens1 {
+		correctionMemberBurdens1[i].HouseholdID = func() *uuid.UUID { return &poolFundingRule0.HouseholdID }()
+		correctionMemberBurdens1[i].PoolID = func() *uuid.UUID { return &poolFundingRule0.PoolID }()
+		correctionMemberBurdens1[i].FundingRuleVersion = func() *int32 { return &poolFundingRule0.Version }()
+	}
+
+	ret, err := CorrectionMemberBurdens.Insert(bob.ToMods(correctionMemberBurdens1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertPoolFundingRuleCorrectionMemberBurdens0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachPoolFundingRuleCorrectionMemberBurdens0(ctx context.Context, exec bob.Executor, count int, correctionMemberBurdens1 CorrectionMemberBurdenSlice, poolFundingRule0 *PoolFundingRule) (CorrectionMemberBurdenSlice, error) {
+	setter := &CorrectionMemberBurdenSetter{
+		HouseholdID:        func() *uuid.UUID { return &poolFundingRule0.HouseholdID }(),
+		PoolID:             func() *uuid.UUID { return &poolFundingRule0.PoolID }(),
+		FundingRuleVersion: func() *int32 { return &poolFundingRule0.Version }(),
+	}
+
+	err := correctionMemberBurdens1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachPoolFundingRuleCorrectionMemberBurdens0: %w", err)
+	}
+
+	return correctionMemberBurdens1, nil
+}
+
+func (poolFundingRule0 *PoolFundingRule) InsertCorrectionMemberBurdens(ctx context.Context, exec bob.Executor, related ...*CorrectionMemberBurdenSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	correctionMemberBurdens1, err := insertPoolFundingRuleCorrectionMemberBurdens0(ctx, exec, related, poolFundingRule0)
+	if err != nil {
+		return err
+	}
+
+	poolFundingRule0.R.CorrectionMemberBurdens = append(poolFundingRule0.R.CorrectionMemberBurdens, correctionMemberBurdens1...)
+
+	for _, rel := range correctionMemberBurdens1 {
+		rel.R.PoolFundingRule = poolFundingRule0
+		rel.R.Loaded.PoolFundingRule = true
+	}
+	return nil
+}
+
+func (poolFundingRule0 *PoolFundingRule) AttachCorrectionMemberBurdens(ctx context.Context, exec bob.Executor, related ...*CorrectionMemberBurden) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	correctionMemberBurdens1 := CorrectionMemberBurdenSlice(related)
+
+	_, err = attachPoolFundingRuleCorrectionMemberBurdens0(ctx, exec, len(related), correctionMemberBurdens1, poolFundingRule0)
+	if err != nil {
+		return err
+	}
+
+	poolFundingRule0.R.CorrectionMemberBurdens = append(poolFundingRule0.R.CorrectionMemberBurdens, correctionMemberBurdens1...)
+
+	for _, rel := range related {
+		rel.R.PoolFundingRule = poolFundingRule0
+		rel.R.Loaded.PoolFundingRule = true
+	}
+
+	return nil
 }
 
 func attachPoolFundingRuleCreatedByMember0(ctx context.Context, exec bob.Executor, count int, poolFundingRule0 *PoolFundingRule, member1 *Member) (*PoolFundingRule, error) {
@@ -1043,6 +1185,80 @@ func (poolFundingRule0 *PoolFundingRule) AttachPoolFundingShares(ctx context.Con
 	return nil
 }
 
+func insertPoolFundingRulePurchaseMemberBurdens0(ctx context.Context, exec bob.Executor, purchaseMemberBurdens1 []*PurchaseMemberBurdenSetter, poolFundingRule0 *PoolFundingRule) (PurchaseMemberBurdenSlice, error) {
+	for i := range purchaseMemberBurdens1 {
+		purchaseMemberBurdens1[i].HouseholdID = func() *uuid.UUID { return &poolFundingRule0.HouseholdID }()
+		purchaseMemberBurdens1[i].PoolID = func() *uuid.UUID { return &poolFundingRule0.PoolID }()
+		purchaseMemberBurdens1[i].FundingRuleVersion = func() *int32 { return &poolFundingRule0.Version }()
+	}
+
+	ret, err := PurchaseMemberBurdens.Insert(bob.ToMods(purchaseMemberBurdens1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertPoolFundingRulePurchaseMemberBurdens0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachPoolFundingRulePurchaseMemberBurdens0(ctx context.Context, exec bob.Executor, count int, purchaseMemberBurdens1 PurchaseMemberBurdenSlice, poolFundingRule0 *PoolFundingRule) (PurchaseMemberBurdenSlice, error) {
+	setter := &PurchaseMemberBurdenSetter{
+		HouseholdID:        func() *uuid.UUID { return &poolFundingRule0.HouseholdID }(),
+		PoolID:             func() *uuid.UUID { return &poolFundingRule0.PoolID }(),
+		FundingRuleVersion: func() *int32 { return &poolFundingRule0.Version }(),
+	}
+
+	err := purchaseMemberBurdens1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachPoolFundingRulePurchaseMemberBurdens0: %w", err)
+	}
+
+	return purchaseMemberBurdens1, nil
+}
+
+func (poolFundingRule0 *PoolFundingRule) InsertPurchaseMemberBurdens(ctx context.Context, exec bob.Executor, related ...*PurchaseMemberBurdenSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	purchaseMemberBurdens1, err := insertPoolFundingRulePurchaseMemberBurdens0(ctx, exec, related, poolFundingRule0)
+	if err != nil {
+		return err
+	}
+
+	poolFundingRule0.R.PurchaseMemberBurdens = append(poolFundingRule0.R.PurchaseMemberBurdens, purchaseMemberBurdens1...)
+
+	for _, rel := range purchaseMemberBurdens1 {
+		rel.R.PoolFundingRule = poolFundingRule0
+		rel.R.Loaded.PoolFundingRule = true
+	}
+	return nil
+}
+
+func (poolFundingRule0 *PoolFundingRule) AttachPurchaseMemberBurdens(ctx context.Context, exec bob.Executor, related ...*PurchaseMemberBurden) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	purchaseMemberBurdens1 := PurchaseMemberBurdenSlice(related)
+
+	_, err = attachPoolFundingRulePurchaseMemberBurdens0(ctx, exec, len(related), purchaseMemberBurdens1, poolFundingRule0)
+	if err != nil {
+		return err
+	}
+
+	poolFundingRule0.R.PurchaseMemberBurdens = append(poolFundingRule0.R.PurchaseMemberBurdens, purchaseMemberBurdens1...)
+
+	for _, rel := range related {
+		rel.R.PoolFundingRule = poolFundingRule0
+		rel.R.Loaded.PoolFundingRule = true
+	}
+
+	return nil
+}
+
 type poolFundingRuleWhere[Q psql.Filterable] struct {
 	cols             poolFundingRuleColumns
 	HouseholdID      psql.WhereMod[Q, uuid.UUID]
@@ -1078,6 +1294,22 @@ func buildPoolFundingRuleWhere[Q psql.Filterable](cols poolFundingRuleColumns) p
 // R struct — so they cannot collide with column-based filter fields.
 type poolFundingRuleWhereR[Q psql.Filterable] struct {
 	cols poolFundingRuleColumns
+}
+
+// HasCorrectionMemberBurdens filters parents that have a matching CorrectionMemberBurdens using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to CorrectionMemberBurdens).
+func (w poolFundingRuleWhereR[Q]) HasCorrectionMemberBurdens(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(CorrectionMemberBurdens.NameExpr()),
+		sm.Where(CorrectionMemberBurdens.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(CorrectionMemberBurdens.Columns.PoolID.EQ(w.cols.PoolID)),
+		sm.Where(CorrectionMemberBurdens.Columns.FundingRuleVersion.EQ(w.cols.Version)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
 // HasCreatedByMember filters parents that have a matching CreatedByMember using a
@@ -1135,6 +1367,22 @@ func (w poolFundingRuleWhereR[Q]) HasPoolFundingShares(filters ...bob.Mod[*diale
 		sm.Where(PoolFundingShares.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(PoolFundingShares.Columns.PoolID.EQ(w.cols.PoolID)),
 		sm.Where(PoolFundingShares.Columns.Version.EQ(w.cols.Version)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasPurchaseMemberBurdens filters parents that have a matching PurchaseMemberBurdens using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to PurchaseMemberBurdens).
+func (w poolFundingRuleWhereR[Q]) HasPurchaseMemberBurdens(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(PurchaseMemberBurdens.NameExpr()),
+		sm.Where(PurchaseMemberBurdens.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(PurchaseMemberBurdens.Columns.PoolID.EQ(w.cols.PoolID)),
+		sm.Where(PurchaseMemberBurdens.Columns.FundingRuleVersion.EQ(w.cols.Version)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -1247,6 +1495,22 @@ func (o *PoolFundingRule) Preload(name string, retrieved any) error {
 	}
 
 	switch name {
+	case "CorrectionMemberBurdens":
+		rels, ok := retrieved.(CorrectionMemberBurdenSlice)
+		if !ok {
+			return fmt.Errorf("poolFundingRule cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.CorrectionMemberBurdens = rels
+		o.R.Loaded.CorrectionMemberBurdens = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.PoolFundingRule = o
+				rel.R.Loaded.PoolFundingRule = true
+			}
+		}
+		return nil
 	case "CreatedByMember":
 		rel, ok := retrieved.(*Member)
 		if !ok {
@@ -1294,6 +1558,22 @@ func (o *PoolFundingRule) Preload(name string, retrieved any) error {
 
 		o.R.PoolFundingShares = rels
 		o.R.Loaded.PoolFundingShares = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.PoolFundingRule = o
+				rel.R.Loaded.PoolFundingRule = true
+			}
+		}
+		return nil
+	case "PurchaseMemberBurdens":
+		rels, ok := retrieved.(PurchaseMemberBurdenSlice)
+		if !ok {
+			return fmt.Errorf("poolFundingRule cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.PurchaseMemberBurdens = rels
+		o.R.Loaded.PurchaseMemberBurdens = true
 
 		for _, rel := range rels {
 			if rel != nil {
@@ -1358,13 +1638,18 @@ func buildPoolFundingRulePreloader() poolFundingRulePreloader {
 }
 
 type poolFundingRuleThenLoader[Q orm.Loadable] struct {
-	CreatedByMember   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	HouseholdMember   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Pool              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	PoolFundingShares func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CorrectionMemberBurdens func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByMember         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdMember         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Pool                    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PoolFundingShares       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PurchaseMemberBurdens   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildPoolFundingRuleThenLoader[Q orm.Loadable]() poolFundingRuleThenLoader[Q] {
+	type CorrectionMemberBurdensLoadInterface interface {
+		LoadCorrectionMemberBurdens(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type CreatedByMemberLoadInterface interface {
 		LoadCreatedByMember(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
@@ -1377,8 +1662,17 @@ func buildPoolFundingRuleThenLoader[Q orm.Loadable]() poolFundingRuleThenLoader[
 	type PoolFundingSharesLoadInterface interface {
 		LoadPoolFundingShares(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
+	type PurchaseMemberBurdensLoadInterface interface {
+		LoadPurchaseMemberBurdens(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 
 	return poolFundingRuleThenLoader[Q]{
+		CorrectionMemberBurdens: thenLoadBuilder[Q](
+			"CorrectionMemberBurdens",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionMemberBurdensLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCorrectionMemberBurdens(ctx, exec, mods...)
+			},
+		),
 		CreatedByMember: thenLoadBuilder[Q](
 			"CreatedByMember",
 			func(ctx context.Context, exec bob.Executor, retrieved CreatedByMemberLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -1403,7 +1697,86 @@ func buildPoolFundingRuleThenLoader[Q orm.Loadable]() poolFundingRuleThenLoader[
 				return retrieved.LoadPoolFundingShares(ctx, exec, mods...)
 			},
 		),
+		PurchaseMemberBurdens: thenLoadBuilder[Q](
+			"PurchaseMemberBurdens",
+			func(ctx context.Context, exec bob.Executor, retrieved PurchaseMemberBurdensLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadPurchaseMemberBurdens(ctx, exec, mods...)
+			},
+		),
 	}
+}
+
+// LoadCorrectionMemberBurdens loads the poolFundingRule's CorrectionMemberBurdens into the .R struct
+func (o *PoolFundingRule) LoadCorrectionMemberBurdens(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.CorrectionMemberBurdens = nil
+	o.R.Loaded.CorrectionMemberBurdens = false
+
+	related, err := o.CorrectionMemberBurdens(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.PoolFundingRule = o
+		rel.R.Loaded.PoolFundingRule = true
+	}
+
+	o.R.CorrectionMemberBurdens = related
+	o.R.Loaded.CorrectionMemberBurdens = true
+	return nil
+}
+
+// LoadCorrectionMemberBurdens loads the poolFundingRule's CorrectionMemberBurdens into the .R struct
+func (os PoolFundingRuleSlice) LoadCorrectionMemberBurdens(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	correctionMemberBurdens, err := os.CorrectionMemberBurdens(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.CorrectionMemberBurdens = nil
+		o.R.Loaded.CorrectionMemberBurdens = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range correctionMemberBurdens {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.PoolID == rel.PoolID) {
+				continue
+			}
+
+			if !(o.Version == rel.FundingRuleVersion) {
+				continue
+			}
+
+			rel.R.PoolFundingRule = o
+			rel.R.Loaded.PoolFundingRule = true
+
+			o.R.CorrectionMemberBurdens = append(o.R.CorrectionMemberBurdens, rel)
+		}
+	}
+
+	return nil
 }
 
 // LoadCreatedByMember loads the poolFundingRule's CreatedByMember into the .R struct
@@ -1689,9 +2062,84 @@ func (os PoolFundingRuleSlice) LoadPoolFundingShares(ctx context.Context, exec b
 	return nil
 }
 
+// LoadPurchaseMemberBurdens loads the poolFundingRule's PurchaseMemberBurdens into the .R struct
+func (o *PoolFundingRule) LoadPurchaseMemberBurdens(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.PurchaseMemberBurdens = nil
+	o.R.Loaded.PurchaseMemberBurdens = false
+
+	related, err := o.PurchaseMemberBurdens(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.PoolFundingRule = o
+		rel.R.Loaded.PoolFundingRule = true
+	}
+
+	o.R.PurchaseMemberBurdens = related
+	o.R.Loaded.PurchaseMemberBurdens = true
+	return nil
+}
+
+// LoadPurchaseMemberBurdens loads the poolFundingRule's PurchaseMemberBurdens into the .R struct
+func (os PoolFundingRuleSlice) LoadPurchaseMemberBurdens(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	purchaseMemberBurdens, err := os.PurchaseMemberBurdens(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.PurchaseMemberBurdens = nil
+		o.R.Loaded.PurchaseMemberBurdens = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range purchaseMemberBurdens {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.PoolID == rel.PoolID) {
+				continue
+			}
+
+			if !(o.Version == rel.FundingRuleVersion) {
+				continue
+			}
+
+			rel.R.PoolFundingRule = o
+			rel.R.Loaded.PoolFundingRule = true
+
+			o.R.PurchaseMemberBurdens = append(o.R.PurchaseMemberBurdens, rel)
+		}
+	}
+
+	return nil
+}
+
 // poolFundingRuleC is where relationship counts are stored.
 type poolFundingRuleC struct {
-	PoolFundingShares *int64
+	CorrectionMemberBurdens *int64
+	PoolFundingShares       *int64
+	PurchaseMemberBurdens   *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -1701,18 +2149,43 @@ func (o *PoolFundingRule) PreloadCount(name string, count int64) error {
 	}
 
 	switch name {
+	case "CorrectionMemberBurdens":
+		o.C.CorrectionMemberBurdens = &count
 	case "PoolFundingShares":
 		o.C.PoolFundingShares = &count
+	case "PurchaseMemberBurdens":
+		o.C.PurchaseMemberBurdens = &count
 	}
 	return nil
 }
 
 type poolFundingRuleCountPreloader struct {
-	PoolFundingShares func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CorrectionMemberBurdens func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	PoolFundingShares       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	PurchaseMemberBurdens   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildPoolFundingRuleCountPreloader() poolFundingRuleCountPreloader {
 	return poolFundingRuleCountPreloader{
+		CorrectionMemberBurdens: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*PoolFundingRule]("CorrectionMemberBurdens", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = PoolFundingRules.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(CorrectionMemberBurdens.NameAsExpr()),
+					sm.Where(psql.Quote(CorrectionMemberBurdens.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(CorrectionMemberBurdens.Alias(), "pool_id").EQ(psql.Quote(parent, "pool_id"))),
+					sm.Where(psql.Quote(CorrectionMemberBurdens.Alias(), "funding_rule_version").EQ(psql.Quote(parent, "version"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		PoolFundingShares: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*PoolFundingRule]("PoolFundingShares", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -1732,26 +2205,190 @@ func buildPoolFundingRuleCountPreloader() poolFundingRuleCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		PurchaseMemberBurdens: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*PoolFundingRule]("PurchaseMemberBurdens", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = PoolFundingRules.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(PurchaseMemberBurdens.NameAsExpr()),
+					sm.Where(psql.Quote(PurchaseMemberBurdens.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(PurchaseMemberBurdens.Alias(), "pool_id").EQ(psql.Quote(parent, "pool_id"))),
+					sm.Where(psql.Quote(PurchaseMemberBurdens.Alias(), "funding_rule_version").EQ(psql.Quote(parent, "version"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 	}
 }
 
 type poolFundingRuleCountThenLoader[Q orm.Loadable] struct {
-	PoolFundingShares func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CorrectionMemberBurdens func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PoolFundingShares       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PurchaseMemberBurdens   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildPoolFundingRuleCountThenLoader[Q orm.Loadable]() poolFundingRuleCountThenLoader[Q] {
+	type CorrectionMemberBurdensCountInterface interface {
+		LoadCountCorrectionMemberBurdens(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type PoolFundingSharesCountInterface interface {
 		LoadCountPoolFundingShares(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
+	type PurchaseMemberBurdensCountInterface interface {
+		LoadCountPurchaseMemberBurdens(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 
 	return poolFundingRuleCountThenLoader[Q]{
+		CorrectionMemberBurdens: countThenLoadBuilder[Q](
+			"CorrectionMemberBurdens",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionMemberBurdensCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountCorrectionMemberBurdens(ctx, exec, mods...)
+			},
+		),
 		PoolFundingShares: countThenLoadBuilder[Q](
 			"PoolFundingShares",
 			func(ctx context.Context, exec bob.Executor, retrieved PoolFundingSharesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountPoolFundingShares(ctx, exec, mods...)
 			},
 		),
+		PurchaseMemberBurdens: countThenLoadBuilder[Q](
+			"PurchaseMemberBurdens",
+			func(ctx context.Context, exec bob.Executor, retrieved PurchaseMemberBurdensCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountPurchaseMemberBurdens(ctx, exec, mods...)
+			},
+		),
 	}
+}
+
+// LoadCountCorrectionMemberBurdens loads the count of CorrectionMemberBurdens into the C struct
+func (o *PoolFundingRule) LoadCountCorrectionMemberBurdens(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.CorrectionMemberBurdens(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.CorrectionMemberBurdens = &count
+	return nil
+}
+
+// LoadCountCorrectionMemberBurdens loads the count of CorrectionMemberBurdens for a slice in a single batch query
+func (os PoolFundingRuleSlice) LoadCountCorrectionMemberBurdens(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkPoolID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkVersion := make(pgtypes.Array[int32], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPoolID = append(pkPoolID, o.PoolID)
+		pkVersion = append(pkVersion, o.Version)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		PoolID uuid.UUID
+
+		Version int32
+		Count   int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			CorrectionMemberBurdens.Columns.HouseholdID.As("household_id"),
+			CorrectionMemberBurdens.Columns.PoolID.As("pool_id"),
+			CorrectionMemberBurdens.Columns.FundingRuleVersion.As("version"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(CorrectionMemberBurdens.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "PoolID"),
+				psql.Quote("bob_rel_keys_src", "FundingRuleVersion"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkPoolID), "uuid[]"),
+				psql.Cast(psql.Arg(pkVersion), "integer[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "PoolID", "FundingRuleVersion"),
+		)).As("bob_rel_keys").On(
+			CorrectionMemberBurdens.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			CorrectionMemberBurdens.Columns.PoolID.EQ(psql.Quote("bob_rel_keys", "PoolID")),
+			CorrectionMemberBurdens.Columns.FundingRuleVersion.EQ(psql.Quote("bob_rel_keys", "FundingRuleVersion")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(CorrectionMemberBurdens.Columns.HouseholdID),
+		sm.GroupBy(CorrectionMemberBurdens.Columns.PoolID),
+		sm.GroupBy(CorrectionMemberBurdens.Columns.FundingRuleVersion),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		PoolID uuid.UUID
+
+		Version int32
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			PoolID: r.PoolID,
+
+			Version: r.Version,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			PoolID: o.PoolID,
+
+			Version: o.Version,
+		}]
+		o.C.CorrectionMemberBurdens = &count
+	}
+
+	return nil
 }
 
 // LoadCountPoolFundingShares loads the count of PoolFundingShares into the C struct
@@ -1879,12 +2516,139 @@ func (os PoolFundingRuleSlice) LoadCountPoolFundingShares(ctx context.Context, e
 	return nil
 }
 
+// LoadCountPurchaseMemberBurdens loads the count of PurchaseMemberBurdens into the C struct
+func (o *PoolFundingRule) LoadCountPurchaseMemberBurdens(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.PurchaseMemberBurdens(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.PurchaseMemberBurdens = &count
+	return nil
+}
+
+// LoadCountPurchaseMemberBurdens loads the count of PurchaseMemberBurdens for a slice in a single batch query
+func (os PoolFundingRuleSlice) LoadCountPurchaseMemberBurdens(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkPoolID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkVersion := make(pgtypes.Array[int32], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPoolID = append(pkPoolID, o.PoolID)
+		pkVersion = append(pkVersion, o.Version)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		PoolID uuid.UUID
+
+		Version int32
+		Count   int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			PurchaseMemberBurdens.Columns.HouseholdID.As("household_id"),
+			PurchaseMemberBurdens.Columns.PoolID.As("pool_id"),
+			PurchaseMemberBurdens.Columns.FundingRuleVersion.As("version"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(PurchaseMemberBurdens.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "PoolID"),
+				psql.Quote("bob_rel_keys_src", "FundingRuleVersion"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkPoolID), "uuid[]"),
+				psql.Cast(psql.Arg(pkVersion), "integer[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "PoolID", "FundingRuleVersion"),
+		)).As("bob_rel_keys").On(
+			PurchaseMemberBurdens.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			PurchaseMemberBurdens.Columns.PoolID.EQ(psql.Quote("bob_rel_keys", "PoolID")),
+			PurchaseMemberBurdens.Columns.FundingRuleVersion.EQ(psql.Quote("bob_rel_keys", "FundingRuleVersion")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(PurchaseMemberBurdens.Columns.HouseholdID),
+		sm.GroupBy(PurchaseMemberBurdens.Columns.PoolID),
+		sm.GroupBy(PurchaseMemberBurdens.Columns.FundingRuleVersion),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		PoolID uuid.UUID
+
+		Version int32
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			PoolID: r.PoolID,
+
+			Version: r.Version,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			PoolID: o.PoolID,
+
+			Version: o.Version,
+		}]
+		o.C.PurchaseMemberBurdens = &count
+	}
+
+	return nil
+}
+
 type poolFundingRuleJoins[Q dialect.Joinable] struct {
-	typ               string
-	CreatedByMember   modAs[Q, memberColumns]
-	HouseholdMember   modAs[Q, householdMemberColumns]
-	Pool              modAs[Q, poolColumns]
-	PoolFundingShares modAs[Q, poolFundingShareColumns]
+	typ                     string
+	CorrectionMemberBurdens modAs[Q, correctionMemberBurdenColumns]
+	CreatedByMember         modAs[Q, memberColumns]
+	HouseholdMember         modAs[Q, householdMemberColumns]
+	Pool                    modAs[Q, poolColumns]
+	PoolFundingShares       modAs[Q, poolFundingShareColumns]
+	PurchaseMemberBurdens   modAs[Q, purchaseMemberBurdenColumns]
 }
 
 func (j poolFundingRuleJoins[Q]) aliasedAs(alias string) poolFundingRuleJoins[Q] {
@@ -1894,6 +2658,20 @@ func (j poolFundingRuleJoins[Q]) aliasedAs(alias string) poolFundingRuleJoins[Q]
 func buildPoolFundingRuleJoins[Q dialect.Joinable](cols poolFundingRuleColumns, typ string) poolFundingRuleJoins[Q] {
 	return poolFundingRuleJoins[Q]{
 		typ: typ,
+		CorrectionMemberBurdens: modAs[Q, correctionMemberBurdenColumns]{
+			c: CorrectionMemberBurdens.Columns,
+			f: func(to correctionMemberBurdenColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, CorrectionMemberBurdens.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.PoolID.EQ(cols.PoolID), to.FundingRuleVersion.EQ(cols.Version),
+					))
+				}
+
+				return mods
+			},
+		},
 		CreatedByMember: modAs[Q, memberColumns]{
 			c: Members.Columns,
 			f: func(to memberColumns) bob.Mod[Q] {
@@ -1944,6 +2722,20 @@ func buildPoolFundingRuleJoins[Q dialect.Joinable](cols poolFundingRuleColumns, 
 				{
 					mods = append(mods, dialect.Join[Q](typ, PoolFundingShares.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.HouseholdID), to.PoolID.EQ(cols.PoolID), to.Version.EQ(cols.Version),
+					))
+				}
+
+				return mods
+			},
+		},
+		PurchaseMemberBurdens: modAs[Q, purchaseMemberBurdenColumns]{
+			c: PurchaseMemberBurdens.Columns,
+			f: func(to purchaseMemberBurdenColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, PurchaseMemberBurdens.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.PoolID.EQ(cols.PoolID), to.FundingRuleVersion.EQ(cols.Version),
 					))
 				}
 

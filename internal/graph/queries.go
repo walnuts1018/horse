@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -155,7 +156,7 @@ func loadAllocationRule(ctx context.Context, db *pgxpool.Pool, ruleID string) (*
 	return result, nil
 }
 
-func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to, after *string, first *int) (*model.PurchaseConnection, error) {
+func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, first *int) (*model.PurchaseConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
@@ -171,6 +172,39 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		return nil, fmt.Errorf("parse household id: %w", err)
 	}
 	filters := []bob.Expression{models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID))}
+	if origin != nil {
+		filters = append(filters, models.Purchases.Columns.Origin.EQ(psql.Arg(string(*origin))))
+	}
+	if hasEvidence != nil {
+		links, err := models.EvidenceLinks.Query(sm.Where(models.EvidenceLinks.Columns.HouseholdID.EQ(psql.Arg(hhID)))).All(ctx, queryExecutor(r.DB))
+		if err != nil {
+			return nil, err
+		}
+		confirmations, err := models.DocumentConfirmations.Query(sm.Where(models.DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(hhID)))).All(ctx, queryExecutor(r.DB))
+		if err != nil {
+			return nil, err
+		}
+		purchaseIDSet := make(map[gofrsuuid.UUID]struct{}, len(links)+len(confirmations))
+		for _, link := range links {
+			purchaseIDSet[link.PurchaseID] = struct{}{}
+		}
+		for _, confirmation := range confirmations {
+			purchaseIDSet[confirmation.PurchaseID] = struct{}{}
+		}
+		purchaseIDs := make([]bob.Expression, 0, len(purchaseIDSet))
+		for purchaseID := range purchaseIDSet {
+			purchaseIDs = append(purchaseIDs, psql.Arg(purchaseID))
+		}
+		if len(purchaseIDs) == 0 {
+			if *hasEvidence {
+				return &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0), PageInfo: &model.PageInfo{}, TotalCount: 0}, nil
+			}
+		} else if *hasEvidence {
+			filters = append(filters, models.Purchases.Columns.ID.In(purchaseIDs...))
+		} else {
+			filters = append(filters, psql.Not(models.Purchases.Columns.ID.In(purchaseIDs...)))
+		}
+	}
 	if from != nil {
 		value, err := parseTime(*from)
 		if err != nil {
@@ -453,6 +487,138 @@ func (r *queryResolver) monthlyCategorySpending(ctx context.Context, householdID
 			entry.CategoryName = &name
 		}
 		result = append(result, entry)
+	}
+	return result, nil
+}
+
+func (r *queryResolver) monthlyMemberSpending(ctx context.Context, householdID, from, to string) (*model.MonthlyMemberSpendingReport, error) {
+	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
+		return nil, err
+	}
+	fromMonth, err := parseAccountingPeriod(from)
+	if err != nil {
+		return nil, fmt.Errorf("%w: from must use YYYY-MM", ErrBadInput)
+	}
+	toMonth, err := parseAccountingPeriod(to)
+	if err != nil || toMonth.Before(fromMonth) || toMonth.After(fromMonth.AddDate(10, 0, 0)) {
+		return nil, fmt.Errorf("%w: to must be within ten years after from", ErrBadInput)
+	}
+	hhID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	start := fromMonth.UTC()
+	end := toMonth.AddDate(0, 1, 0).UTC()
+	executor := queryExecutor(r.DB)
+	purchases, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID)),
+		models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)),
+		models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)),
+	))).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	amounts := make(map[string]int64)
+	memberNames := make(map[string]string)
+	result := &model.MonthlyMemberSpendingReport{Items: make([]*model.MonthlyMemberSpending, 0)}
+	for _, purchase := range purchases {
+		if purchase.Status != string(model.PurchaseStatusPosted) && purchase.Status != string(model.PurchaseStatusClosed) {
+			continue
+		}
+		period := accountingPeriod(purchase.OccurredAt)
+		allocations, err := models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		snapshots, err := models.PurchaseMemberBurdens.Query(sm.Where(psql.And(
+			models.PurchaseMemberBurdens.Columns.HouseholdID.EQ(psql.Arg(hhID)),
+			models.PurchaseMemberBurdens.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
+		))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		covered := make(map[[2]gofrsuuid.UUID]struct{}, len(snapshots))
+		coveredAmounts := make(map[[2]gofrsuuid.UUID]int64, len(snapshots))
+		for _, snapshot := range snapshots {
+			snapshotKey := [2]gofrsuuid.UUID{snapshot.ItemID, snapshot.PoolID}
+			covered[snapshotKey] = struct{}{}
+			nextCoverage, ok := checkedAdd(coveredAmounts[snapshotKey], snapshot.AmountYen)
+			if !ok {
+				return nil, fmt.Errorf("%w: purchase burden snapshot total is too large", ErrBadInput)
+			}
+			coveredAmounts[snapshotKey] = nextCoverage
+			key := period + ":" + snapshot.MemberID.String()
+			next, ok := checkedAdd(amounts[key], snapshot.AmountYen)
+			if !ok {
+				return nil, fmt.Errorf("%w: monthly member spending total is too large", ErrBadInput)
+			}
+			amounts[key] = next
+		}
+		for _, allocation := range allocations {
+			if allocation.AmountYen == 0 {
+				continue
+			}
+			allocationKey := [2]gofrsuuid.UUID{allocation.ItemID, allocation.PoolID}
+			if _, ok := covered[allocationKey]; !ok || coveredAmounts[allocationKey] != allocation.AmountYen {
+				result.HasUnattributedPurchases = true
+			}
+		}
+		corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		for _, correction := range corrections {
+			correctionRows, err := models.CorrectionMemberBurdens.Query(sm.Where(psql.And(
+				models.CorrectionMemberBurdens.Columns.HouseholdID.EQ(psql.Arg(hhID)),
+				models.CorrectionMemberBurdens.Columns.CorrectionID.EQ(psql.Arg(correction.ID)),
+			))).All(ctx, executor)
+			if err != nil {
+				return nil, err
+			}
+			var correctionSnapshotTotal int64
+			for _, row := range correctionRows {
+				var ok bool
+				correctionSnapshotTotal, ok = checkedAdd(correctionSnapshotTotal, row.AmountDeltaYen)
+				if !ok {
+					return nil, fmt.Errorf("%w: monthly correction total is too large", ErrBadInput)
+				}
+				key := period + ":" + row.MemberID.String()
+				next, ok := checkedAdd(amounts[key], row.AmountDeltaYen)
+				if !ok {
+					return nil, fmt.Errorf("%w: monthly member spending total is too large", ErrBadInput)
+				}
+				amounts[key] = next
+			}
+			if correctionSnapshotTotal != correction.AmountDeltaYen {
+				result.HasUnattributedPurchases = true
+			}
+		}
+	}
+	members, err := models.HouseholdMembers.Query(sm.Where(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(hhID)))).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if err := members.LoadMember(ctx, executor); err != nil {
+		return nil, err
+	}
+	for _, member := range members {
+		memberNames[member.MemberID.String()] = member.R.Member.DisplayName
+	}
+	keys := make([]string, 0, len(amounts))
+	for key := range amounts {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, value := range keys {
+		period, memberID, ok := strings.Cut(value, ":")
+		if !ok {
+			return nil, fmt.Errorf("invalid member spending key")
+		}
+		name, exists := memberNames[memberID]
+		if !exists {
+			continue
+		}
+		result.Items = append(result.Items, &model.MonthlyMemberSpending{Period: period, MemberID: memberID, MemberName: name, AmountYen: graphLong(amounts[value])})
 	}
 	return result, nil
 }

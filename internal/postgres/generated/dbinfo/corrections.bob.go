@@ -124,6 +124,28 @@ var Corrections = Table[
 			Where:         "",
 			Include:       []string{},
 		},
+		CorrectionsHouseholdIDIDKey: index{
+			Type: "btree",
+			Name: "corrections_household_id_id_key",
+			Columns: []indexColumn{
+				{
+					Name:         "household_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        true,
+			Comment:       "",
+			NullsFirst:    []bool{false, false},
+			NullsDistinct: false,
+			Where:         "",
+			Include:       []string{},
+		},
 	},
 	PrimaryKey: &constraint{
 		Name:    "corrections_pkey",
@@ -186,6 +208,13 @@ var Corrections = Table[
 			ForeignColumns: []string{"purchase_id", "id"},
 		},
 	},
+	Uniques: correctionUniques{
+		CorrectionsHouseholdIDIDKey: constraint{
+			Name:    "corrections_household_id_id_key",
+			Columns: []string{"household_id", "id"},
+			Comment: "",
+		},
+	},
 
 	Comment: "",
 }
@@ -210,12 +239,13 @@ func (c correctionColumns) AsSlice() []column {
 }
 
 type correctionIndexes struct {
-	CorrectionsPkey index
+	CorrectionsPkey             index
+	CorrectionsHouseholdIDIDKey index
 }
 
 func (i correctionIndexes) AsSlice() []index {
 	return []index{
-		i.CorrectionsPkey,
+		i.CorrectionsPkey, i.CorrectionsHouseholdIDIDKey,
 	}
 }
 
@@ -234,10 +264,14 @@ func (f correctionForeignKeys) AsSlice() []foreignKey {
 	}
 }
 
-type correctionUniques struct{}
+type correctionUniques struct {
+	CorrectionsHouseholdIDIDKey constraint
+}
 
 func (u correctionUniques) AsSlice() []constraint {
-	return []constraint{}
+	return []constraint{
+		u.CorrectionsHouseholdIDIDKey,
+	}
 }
 
 type correctionChecks struct{}

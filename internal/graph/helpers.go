@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"uuid"
@@ -241,11 +242,52 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 	result := &model.Purchase{
 		ID: purchase.ID.String(), HouseholdID: purchase.HouseholdID.String(),
 		OccurredAt: timeString(purchase.OccurredAt), Merchant: purchase.Merchant,
+		Origin: model.PurchaseOrigin(purchase.Origin), SourceKinds: make([]model.SourceKind, 0),
 		Revision: int(purchase.Revision), Status: model.PurchaseStatus(purchase.Status), Currency: "JPY",
 		CreatedAt: timeString(purchase.CreatedAt), UpdatedAt: timeString(purchase.UpdatedAt),
 		Items: make([]*model.PurchaseItem, 0), PaymentAllocations: make([]*model.PurchasePayment, 0),
 		Corrections: make([]*model.PurchaseCorrection, 0),
 	}
+	evidence, err := models.EvidenceLinks.Query(sm.Where(psql.And(
+		models.EvidenceLinks.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+		models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
+	))).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if err := evidence.LoadSourceDocument(ctx, executor); err != nil {
+		return nil, err
+	}
+	confirmations, err := models.DocumentConfirmations.Query(sm.Where(psql.And(
+		models.DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+		models.DocumentConfirmations.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
+	))).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if err := confirmations.LoadSourceDocument(ctx, executor); err != nil {
+		return nil, err
+	}
+	result.HasEvidence = len(evidence)+len(confirmations) > 0
+	sourceKinds := make(map[model.SourceKind]struct{}, len(evidence))
+	for _, link := range evidence {
+		if link.R.SourceDocument == nil {
+			continue
+		}
+		kind := model.SourceKind(strings.ToUpper(link.R.SourceDocument.SourceKind))
+		sourceKinds[kind] = struct{}{}
+	}
+	for _, confirmation := range confirmations {
+		if confirmation.R.SourceDocument == nil {
+			continue
+		}
+		kind := model.SourceKind(strings.ToUpper(confirmation.R.SourceDocument.SourceKind))
+		sourceKinds[kind] = struct{}{}
+	}
+	for kind := range sourceKinds {
+		result.SourceKinds = append(result.SourceKinds, kind)
+	}
+	slices.Sort(result.SourceKinds)
 	if purchase.PaymentAccountID.Valid {
 		paymentAccountID := purchase.PaymentAccountID.V.String()
 		result.PaymentAccountID = &paymentAccountID

@@ -686,6 +686,16 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	if input.SourceReference != nil && (input.SourceDocumentID == nil || len(*input.SourceReference) > 256 || strings.ContainsAny(*input.SourceReference, "\r\n")) {
 		return nil, fmt.Errorf("%w: source reference requires a document and must be valid", ErrBadInput)
 	}
+	origin := model.PurchaseOriginManual
+	if input.SourceDocumentID != nil {
+		origin = model.PurchaseOriginAi
+	}
+	if input.Origin != nil {
+		origin = *input.Origin
+	}
+	if origin != model.PurchaseOriginAi && origin != model.PurchaseOriginManual && origin != model.PurchaseOriginUnknown {
+		return nil, fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
+	}
 	status := model.PurchaseStatusDraft
 	if input.Status != nil {
 		if *input.Status != model.PurchaseStatusDraft {
@@ -803,9 +813,10 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 		legacyAccount = sql.Null[gofrsuuid.UUID]{V: accountUUID, Valid: true}
 	}
 	purchaseStatus := string(status)
+	purchaseOrigin := string(origin)
 	if _, err := models.Purchases.Insert(&models.PurchaseSetter{
 		ID: &purchaseUUID, HouseholdID: &householdUUID, OccurredAt: &occurredAt, Merchant: &merchant,
-		PaymentAccountID: &legacyAccount, Status: &purchaseStatus, AllocationRuleVersion: &ruleVersion, CreatedBy: &createdBy,
+		PaymentAccountID: &legacyAccount, Status: &purchaseStatus, AllocationRuleVersion: &ruleVersion, CreatedBy: &createdBy, Origin: &purchaseOrigin,
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
@@ -1220,6 +1231,9 @@ func syncPostedPurchaseAccounting(ctx context.Context, tx pgx.Tx, purchaseID str
 	}
 	allocations, err := models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
 	if err != nil {
+		return err
+	}
+	if err := refreshPurchaseMemberBurden(ctx, executor, householdID, purchaseUUID, allocations); err != nil {
 		return err
 	}
 	type purchaseShare struct {
@@ -1994,6 +2008,9 @@ func (r *mutationResolver) postPurchase(ctx context.Context, purchaseID string, 
 	}
 	allocations, err := models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
 	if err != nil {
+		return nil, err
+	}
+	if err := snapshotPurchaseMemberBurden(ctx, executor, householdID, purchaseID, allocations); err != nil {
 		return nil, err
 	}
 	type purchaseShare struct {
@@ -3344,6 +3361,9 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		AmountDeltaYen: &delta, Reason: &input.Reason, JournalID: &journalUUID, CreatedBy: &userUUID,
 		EffectivePeriod: &sql.Null[string]{V: effectivePeriod, Valid: true},
 	}).Exec(ctx, executor); err != nil {
+		return nil, err
+	}
+	if err := snapshotCorrectionMemberBurden(ctx, executor, input.HouseholdID, correctionUUID, purchaseUUID, itemUUIDValue, shares, delta); err != nil {
 		return nil, err
 	}
 	for index, payment := range payments {

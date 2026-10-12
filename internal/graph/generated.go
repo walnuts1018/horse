@@ -210,6 +210,18 @@ type ComplexityRoot struct {
 		Period       func(childComplexity int) int
 	}
 
+	MonthlyMemberSpending struct {
+		AmountYen  func(childComplexity int) int
+		MemberID   func(childComplexity int) int
+		MemberName func(childComplexity int) int
+		Period     func(childComplexity int) int
+	}
+
+	MonthlyMemberSpendingReport struct {
+		HasUnattributedPurchases func(childComplexity int) int
+		Items                    func(childComplexity int) int
+	}
+
 	Mutation struct {
 		AcceptHouseholdInvitation func(childComplexity int, token string) int
 		ArchiveBudget             func(childComplexity int, budgetID string, baseRevision int, archived bool) int
@@ -314,15 +326,18 @@ type ComplexityRoot struct {
 		Corrections        func(childComplexity int) int
 		CreatedAt          func(childComplexity int) int
 		Currency           func(childComplexity int) int
+		HasEvidence        func(childComplexity int) int
 		HouseholdID        func(childComplexity int) int
 		ID                 func(childComplexity int) int
 		Items              func(childComplexity int) int
 		Merchant           func(childComplexity int) int
 		OccurredAt         func(childComplexity int) int
+		Origin             func(childComplexity int) int
 		PaymentAccount     func(childComplexity int) int
 		PaymentAccountID   func(childComplexity int) int
 		PaymentAllocations func(childComplexity int) int
 		Revision           func(childComplexity int) int
+		SourceKinds        func(childComplexity int) int
 		Status             func(childComplexity int) int
 		TotalYen           func(childComplexity int) int
 		UpdatedAt          func(childComplexity int) int
@@ -380,13 +395,15 @@ type ComplexityRoot struct {
 		Ledger                  func(childComplexity int, householdID string, after *string, first *int) int
 		LoanBalances            func(childComplexity int, householdID string) int
 		MonthlyCategorySpending func(childComplexity int, householdID string, from string, to string) int
+		MonthlyMemberSpending   func(childComplexity int, householdID string, from string, to string) int
 		ProductCatalog          func(childComplexity int, householdID string) int
 		ProductSuggestions      func(childComplexity int, householdID string, query string, merchant *string, first *int) int
 		PurchaseCorrections     func(childComplexity int, purchaseID string) int
-		Purchases               func(childComplexity int, householdID string, from *string, to *string, after *string, first *int) int
+		Purchases               func(childComplexity int, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, first *int) int
 		RecurringExpenses       func(childComplexity int, householdID string, includeArchived *bool) int
 		Settlement              func(childComplexity int, householdID string, period string) int
 		Tags                    func(childComplexity int, householdID string, includeArchived *bool) int
+		UnmatchedObservations   func(childComplexity int, householdID string, from *string, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, first *int) int
 		Viewer                  func(childComplexity int) int
 	}
 
@@ -433,6 +450,30 @@ type ComplexityRoot struct {
 		ID          func(childComplexity int) int
 		Name        func(childComplexity int) int
 		Revision    func(childComplexity int) int
+	}
+
+	UnmatchedObservation struct {
+		AmountYen       func(childComplexity int) int
+		DocumentID      func(childComplexity int) int
+		Merchant        func(childComplexity int) int
+		OccurredAt      func(childComplexity int) int
+		OrderID         func(childComplexity int) int
+		PurchaseID      func(childComplexity int) int
+		SourceKind      func(childComplexity int) int
+		SourceReference func(childComplexity int) int
+		State           func(childComplexity int) int
+		TransactionID   func(childComplexity int) int
+	}
+
+	UnmatchedObservationConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	UnmatchedObservationEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
 	}
 
 	Viewer struct {
@@ -490,7 +531,9 @@ type QueryResolver interface {
 	AllocationRules(ctx context.Context, householdID string) ([]*model.AllocationRule, error)
 	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first *int) ([]*model.ProductSuggestion, error)
 	ProductCatalog(ctx context.Context, householdID string) ([]*model.ProductConcept, error)
-	Purchases(ctx context.Context, householdID string, from *string, to *string, after *string, first *int) (*model.PurchaseConnection, error)
+	Purchases(ctx context.Context, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, first *int) (*model.PurchaseConnection, error)
+	UnmatchedObservations(ctx context.Context, householdID string, from *string, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, first *int) (*model.UnmatchedObservationConnection, error)
+	MonthlyMemberSpending(ctx context.Context, householdID string, from string, to string) (*model.MonthlyMemberSpendingReport, error)
 	PurchaseCorrections(ctx context.Context, purchaseID string) ([]*model.PurchaseCorrection, error)
 	LoanBalances(ctx context.Context, householdID string) ([]*model.LoanBalance, error)
 	Ledger(ctx context.Context, householdID string, after *string, first *int) (*model.LedgerConnection, error)
@@ -1244,6 +1287,44 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.MonthlyCategorySpending.Period(childComplexity), true
 
+	case "MonthlyMemberSpending.amountYen":
+		if e.ComplexityRoot.MonthlyMemberSpending.AmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.MonthlyMemberSpending.AmountYen(childComplexity), true
+	case "MonthlyMemberSpending.memberId":
+		if e.ComplexityRoot.MonthlyMemberSpending.MemberID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.MonthlyMemberSpending.MemberID(childComplexity), true
+	case "MonthlyMemberSpending.memberName":
+		if e.ComplexityRoot.MonthlyMemberSpending.MemberName == nil {
+			break
+		}
+
+		return e.ComplexityRoot.MonthlyMemberSpending.MemberName(childComplexity), true
+	case "MonthlyMemberSpending.period":
+		if e.ComplexityRoot.MonthlyMemberSpending.Period == nil {
+			break
+		}
+
+		return e.ComplexityRoot.MonthlyMemberSpending.Period(childComplexity), true
+
+	case "MonthlyMemberSpendingReport.hasUnattributedPurchases":
+		if e.ComplexityRoot.MonthlyMemberSpendingReport.HasUnattributedPurchases == nil {
+			break
+		}
+
+		return e.ComplexityRoot.MonthlyMemberSpendingReport.HasUnattributedPurchases(childComplexity), true
+	case "MonthlyMemberSpendingReport.items":
+		if e.ComplexityRoot.MonthlyMemberSpendingReport.Items == nil {
+			break
+		}
+
+		return e.ComplexityRoot.MonthlyMemberSpendingReport.Items(childComplexity), true
+
 	case "Mutation.acceptHouseholdInvitation":
 		if e.ComplexityRoot.Mutation.AcceptHouseholdInvitation == nil {
 			break
@@ -1891,6 +1972,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Purchase.Currency(childComplexity), true
+	case "Purchase.hasEvidence":
+		if e.ComplexityRoot.Purchase.HasEvidence == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Purchase.HasEvidence(childComplexity), true
 	case "Purchase.householdId":
 		if e.ComplexityRoot.Purchase.HouseholdID == nil {
 			break
@@ -1921,6 +2008,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Purchase.OccurredAt(childComplexity), true
+	case "Purchase.origin":
+		if e.ComplexityRoot.Purchase.Origin == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Purchase.Origin(childComplexity), true
 	case "Purchase.paymentAccount":
 		if e.ComplexityRoot.Purchase.PaymentAccount == nil {
 			break
@@ -1945,6 +2038,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Purchase.Revision(childComplexity), true
+	case "Purchase.sourceKinds":
+		if e.ComplexityRoot.Purchase.SourceKinds == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Purchase.SourceKinds(childComplexity), true
 	case "Purchase.status":
 		if e.ComplexityRoot.Purchase.Status == nil {
 			break
@@ -2241,6 +2340,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.MonthlyCategorySpending(childComplexity, args["householdId"].(string), args["from"].(string), args["to"].(string)), true
+	case "Query.monthlyMemberSpending":
+		if e.ComplexityRoot.Query.MonthlyMemberSpending == nil {
+			break
+		}
+
+		args, err := ec.field_Query_monthlyMemberSpending_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.MonthlyMemberSpending(childComplexity, args["householdId"].(string), args["from"].(string), args["to"].(string)), true
 	case "Query.productCatalog":
 		if e.ComplexityRoot.Query.ProductCatalog == nil {
 			break
@@ -2284,7 +2394,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Purchases(childComplexity, args["householdId"].(string), args["from"].(*string), args["to"].(*string), args["after"].(*string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.Purchases(childComplexity, args["householdId"].(string), args["from"].(*string), args["to"].(*string), args["origin"].(*model.PurchaseOrigin), args["hasEvidence"].(*bool), args["after"].(*string), args["first"].(*int)), true
 	case "Query.recurringExpenses":
 		if e.ComplexityRoot.Query.RecurringExpenses == nil {
 			break
@@ -2318,6 +2428,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Tags(childComplexity, args["householdId"].(string), args["includeArchived"].(*bool)), true
+	case "Query.unmatchedObservations":
+		if e.ComplexityRoot.Query.UnmatchedObservations == nil {
+			break
+		}
+
+		args, err := ec.field_Query_unmatchedObservations_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.UnmatchedObservations(childComplexity, args["householdId"].(string), args["from"].(*string), args["to"].(*string), args["sourceKind"].(*model.SourceKind), args["state"].(*model.UnmatchedObservationState), args["after"].(*string), args["first"].(*int)), true
 	case "Query.viewer":
 		if e.ComplexityRoot.Query.Viewer == nil {
 			break
@@ -2527,6 +2648,99 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Tag.Revision(childComplexity), true
 
+	case "UnmatchedObservation.amountYen":
+		if e.ComplexityRoot.UnmatchedObservation.AmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservation.AmountYen(childComplexity), true
+	case "UnmatchedObservation.documentId":
+		if e.ComplexityRoot.UnmatchedObservation.DocumentID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservation.DocumentID(childComplexity), true
+	case "UnmatchedObservation.merchant":
+		if e.ComplexityRoot.UnmatchedObservation.Merchant == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservation.Merchant(childComplexity), true
+	case "UnmatchedObservation.occurredAt":
+		if e.ComplexityRoot.UnmatchedObservation.OccurredAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservation.OccurredAt(childComplexity), true
+	case "UnmatchedObservation.orderId":
+		if e.ComplexityRoot.UnmatchedObservation.OrderID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservation.OrderID(childComplexity), true
+	case "UnmatchedObservation.purchaseId":
+		if e.ComplexityRoot.UnmatchedObservation.PurchaseID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservation.PurchaseID(childComplexity), true
+	case "UnmatchedObservation.sourceKind":
+		if e.ComplexityRoot.UnmatchedObservation.SourceKind == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservation.SourceKind(childComplexity), true
+	case "UnmatchedObservation.sourceReference":
+		if e.ComplexityRoot.UnmatchedObservation.SourceReference == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservation.SourceReference(childComplexity), true
+	case "UnmatchedObservation.state":
+		if e.ComplexityRoot.UnmatchedObservation.State == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservation.State(childComplexity), true
+	case "UnmatchedObservation.transactionId":
+		if e.ComplexityRoot.UnmatchedObservation.TransactionID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservation.TransactionID(childComplexity), true
+
+	case "UnmatchedObservationConnection.edges":
+		if e.ComplexityRoot.UnmatchedObservationConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservationConnection.Edges(childComplexity), true
+	case "UnmatchedObservationConnection.pageInfo":
+		if e.ComplexityRoot.UnmatchedObservationConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservationConnection.PageInfo(childComplexity), true
+	case "UnmatchedObservationConnection.totalCount":
+		if e.ComplexityRoot.UnmatchedObservationConnection.TotalCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservationConnection.TotalCount(childComplexity), true
+
+	case "UnmatchedObservationEdge.cursor":
+		if e.ComplexityRoot.UnmatchedObservationEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservationEdge.Cursor(childComplexity), true
+	case "UnmatchedObservationEdge.node":
+		if e.ComplexityRoot.UnmatchedObservationEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnmatchedObservationEdge.Node(childComplexity), true
+
 	case "Viewer.displayName":
 		if e.ComplexityRoot.Viewer.DisplayName == nil {
 			break
@@ -2673,6 +2887,9 @@ var sources = []*ast.Source{
 enum PoolKind { PERSONAL SHARED }
 enum AccountKind { BANK CASH CARD OTHER }
 enum PurchaseStatus { DRAFT POSTED CLOSED }
+enum PurchaseOrigin { AI MANUAL UNKNOWN }
+enum SourceKind { RECEIPT ORDER EMAIL CARD BANK }
+enum UnmatchedObservationState { UNMATCHED CONFIRMED }
 enum TransferKind { ADVANCE LOAN REPAYMENT GIFT }
 enum AccountMovementKind { TRANSFER CARD_BILL_PAYMENT }
 enum LedgerKind { PURCHASE FUNDING TRANSFER CORRECTION }
@@ -2699,7 +2916,7 @@ type ProductConcept { id: ID!, householdId: ID!, name: String!, normalizedName: 
 type ProductVariant { id: ID!, householdId: ID!, conceptId: ID!, name: String!, normalizedName: String!, brand: String!, packageSize: String!, barcode: String, archived: Boolean!, revision: Int!, aliases: [ProductAlias!]! }
 type ProductAlias { id: ID!, householdId: ID!, variantId: ID!, merchantKey: String!, alias: String!, normalizedAlias: String!, revision: Int! }
 type ProductSuggestion { concept: ProductConcept!, variant: ProductVariant!, matchedName: String!, score: Int! }
-type Purchase { id: ID!, householdId: ID!, occurredAt: String!, merchant: String!, paymentAccountId: ID, paymentAccount: Account, paymentAllocations: [PurchasePayment!]!, items: [PurchaseItem!]!, corrections: [PurchaseCorrection!]!, totalYen: Long!, currency: String!, revision: Int!, status: PurchaseStatus!, createdAt: String!, updatedAt: String! }
+type Purchase { id: ID!, householdId: ID!, occurredAt: String!, merchant: String!, origin: PurchaseOrigin!, hasEvidence: Boolean!, sourceKinds: [SourceKind!]!, paymentAccountId: ID, paymentAccount: Account, paymentAllocations: [PurchasePayment!]!, items: [PurchaseItem!]!, corrections: [PurchaseCorrection!]!, totalYen: Long!, currency: String!, revision: Int!, status: PurchaseStatus!, createdAt: String!, updatedAt: String! }
 type PurchasePayment { paymentAccountId: ID!, account: Account, amountYen: Long! }
 type PurchaseCorrection { id: ID!, itemId: ID, amountDeltaYen: Long!, reason: String!, occurredAt: String!, settlementMonth: String!, paymentAllocations: [PurchasePayment!]! }
 type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, categoryId: ID, productVariantId: ID, allocations: [Allocation!]!, tags: [Tag!]!, revision: Int! }
@@ -2710,6 +2927,9 @@ type AccountMovement { id: ID!, householdId: ID!, kind: AccountMovementKind!, oc
 type PageInfo { endCursor: String, hasNextPage: Boolean! }
 type PurchaseEdge { cursor: String!, node: Purchase! }
 type PurchaseConnection { edges: [PurchaseEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
+type UnmatchedObservation { documentId: ID!, sourceReference: String!, purchaseId: ID, sourceKind: SourceKind!, state: UnmatchedObservationState!, merchant: String!, occurredAt: String, amountYen: Long!, orderId: String!, transactionId: String! }
+type UnmatchedObservationEdge { cursor: String!, node: UnmatchedObservation! }
+type UnmatchedObservationConnection { edges: [UnmatchedObservationEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
 type LedgerEntry { id: ID!, kind: LedgerKind!, occurredAt: String!, description: String!, amountYen: Long!, currency: String!, fromMemberId: ID, toMemberId: ID, poolId: ID, sourcePurchaseId: ID, transferId: ID, loanId: ID, createdAt: String! }
 type LoanBalance { loanId: ID!, lenderMemberId: ID!, borrowerMemberId: ID!, principalYen: Long!, repaidYen: Long!, balanceYen: Long!, createdAt: String! }
 type LedgerEdge { cursor: String!, node: LedgerEntry! }
@@ -2717,10 +2937,12 @@ type LedgerConnection { edges: [LedgerEdge!]!, pageInfo: PageInfo!, totalCount: 
 type SettlementLine { memberId: ID!, memberName: String!, scheduledYen: Long!, paidYen: Long!, carryYen: Long!, priorBalanceYen: Long!, monthlyAdjustmentYen: Long!, advanceCreditYen: Long!, amountDueYen: Long! }
 type Settlement { period: String!, status: String!, revision: Int!, lines: [SettlementLine!]!, createdAt: String }
 type MonthlyCategorySpending { period: String!, categoryId: ID, categoryName: String, amountYen: Long! }
+type MonthlyMemberSpending { period: String!, memberId: ID!, memberName: String!, amountYen: Long! }
+type MonthlyMemberSpendingReport { items: [MonthlyMemberSpending!]!, hasUnattributedPurchases: Boolean! }
 input AllocationInput { poolId: ID!, weight: Long! }
 input PurchaseItemInput { name: String!, amountYen: Long!, categoryId: ID, productVariantId: ID, allocations: [AllocationInput!] }
 input PurchasePaymentInput { paymentAccountId: ID!, amountYen: Long! }
-input CreatePurchaseInput { idempotencyKey: String!, householdId: ID!, occurredAt: String!, merchant: String!, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!], sourceDocumentId: ID, sourceReference: String, items: [PurchaseItemInput!]!, status: PurchaseStatus }
+input CreatePurchaseInput { idempotencyKey: String!, householdId: ID!, occurredAt: String!, merchant: String!, origin: PurchaseOrigin, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!], sourceDocumentId: ID, sourceReference: String, items: [PurchaseItemInput!]!, status: PurchaseStatus }
 input PurchasePatch { occurredAt: String, merchant: String, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!] }
 input UpdatePurchaseInput { purchaseId: ID!, baseRevision: Int!, patch: PurchasePatch!, changedFields: [String!]! }
 input UpdatePurchaseItemInput { itemId: ID!, baseRevision: Int!, name: String, amountYen: Long, categoryId: ID, productVariantId: ID, productLearning: ProductLearningScope = ITEM_ONLY, variantName: String, allocations: [AllocationInput!], changedFields: [String!]! }
@@ -2759,7 +2981,9 @@ type Query {
   allocationRules(householdId: ID!): [AllocationRule!]!
   productSuggestions(householdId: ID!, query: String!, merchant: String, first: Int = 8): [ProductSuggestion!]!
   productCatalog(householdId: ID!): [ProductConcept!]!
-  purchases(householdId: ID!, from: String, to: String, after: String, first: Int = 50): PurchaseConnection!
+  purchases(householdId: ID!, from: String, to: String, origin: PurchaseOrigin, hasEvidence: Boolean, after: String, first: Int = 50): PurchaseConnection!
+  unmatchedObservations(householdId: ID!, from: String, to: String, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, first: Int = 50): UnmatchedObservationConnection!
+  monthlyMemberSpending(householdId: ID!, from: String!, to: String!): MonthlyMemberSpendingReport!
   purchaseCorrections(purchaseId: ID!): [PurchaseCorrection!]!
   loanBalances(householdId: ID!): [LoanBalance!]!
   ledger(householdId: ID!, after: String, first: Int = 50): LedgerConnection!
@@ -3164,6 +3388,30 @@ func (ec *executionContext) childFields_MonthlyCategorySpending(ctx context.Cont
 	return nil, fmt.Errorf("no field named %q was found under type MonthlyCategorySpending", field.Name)
 }
 
+func (ec *executionContext) childFields_MonthlyMemberSpending(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "period":
+		return ec.fieldContext_MonthlyMemberSpending_period(ctx, field)
+	case "memberId":
+		return ec.fieldContext_MonthlyMemberSpending_memberId(ctx, field)
+	case "memberName":
+		return ec.fieldContext_MonthlyMemberSpending_memberName(ctx, field)
+	case "amountYen":
+		return ec.fieldContext_MonthlyMemberSpending_amountYen(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type MonthlyMemberSpending", field.Name)
+}
+
+func (ec *executionContext) childFields_MonthlyMemberSpendingReport(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "items":
+		return ec.fieldContext_MonthlyMemberSpendingReport_items(ctx, field)
+	case "hasUnattributedPurchases":
+		return ec.fieldContext_MonthlyMemberSpendingReport_hasUnattributedPurchases(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type MonthlyMemberSpendingReport", field.Name)
+}
+
 func (ec *executionContext) childFields_PageInfo(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "endCursor":
@@ -3302,6 +3550,12 @@ func (ec *executionContext) childFields_Purchase(ctx context.Context, field grap
 		return ec.fieldContext_Purchase_occurredAt(ctx, field)
 	case "merchant":
 		return ec.fieldContext_Purchase_merchant(ctx, field)
+	case "origin":
+		return ec.fieldContext_Purchase_origin(ctx, field)
+	case "hasEvidence":
+		return ec.fieldContext_Purchase_hasEvidence(ctx, field)
+	case "sourceKinds":
+		return ec.fieldContext_Purchase_sourceKinds(ctx, field)
 	case "paymentAccountId":
 		return ec.fieldContext_Purchase_paymentAccountId(ctx, field)
 	case "paymentAccount":
@@ -3494,6 +3748,54 @@ func (ec *executionContext) childFields_Tag(ctx context.Context, field graphql.C
 		return ec.fieldContext_Tag_revision(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Tag", field.Name)
+}
+
+func (ec *executionContext) childFields_UnmatchedObservation(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "documentId":
+		return ec.fieldContext_UnmatchedObservation_documentId(ctx, field)
+	case "sourceReference":
+		return ec.fieldContext_UnmatchedObservation_sourceReference(ctx, field)
+	case "purchaseId":
+		return ec.fieldContext_UnmatchedObservation_purchaseId(ctx, field)
+	case "sourceKind":
+		return ec.fieldContext_UnmatchedObservation_sourceKind(ctx, field)
+	case "state":
+		return ec.fieldContext_UnmatchedObservation_state(ctx, field)
+	case "merchant":
+		return ec.fieldContext_UnmatchedObservation_merchant(ctx, field)
+	case "occurredAt":
+		return ec.fieldContext_UnmatchedObservation_occurredAt(ctx, field)
+	case "amountYen":
+		return ec.fieldContext_UnmatchedObservation_amountYen(ctx, field)
+	case "orderId":
+		return ec.fieldContext_UnmatchedObservation_orderId(ctx, field)
+	case "transactionId":
+		return ec.fieldContext_UnmatchedObservation_transactionId(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type UnmatchedObservation", field.Name)
+}
+
+func (ec *executionContext) childFields_UnmatchedObservationConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_UnmatchedObservationConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_UnmatchedObservationConnection_pageInfo(ctx, field)
+	case "totalCount":
+		return ec.fieldContext_UnmatchedObservationConnection_totalCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type UnmatchedObservationConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_UnmatchedObservationEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_UnmatchedObservationEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_UnmatchedObservationEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type UnmatchedObservationEdge", field.Name)
 }
 
 func (ec *executionContext) childFields_Viewer(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -4416,6 +4718,36 @@ func (ec *executionContext) field_Query_monthlyCategorySpending_args(ctx context
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_monthlyMemberSpending_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "householdId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "from",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["from"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "to",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["to"] = arg2
+	return args, nil
+}
+
 func (ec *executionContext) field_Query_productCatalog_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -4509,22 +4841,38 @@ func (ec *executionContext) field_Query_purchases_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["to"] = arg2
-	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "origin",
+		func(ctx context.Context, v any) (*model.PurchaseOrigin, error) {
+			return ec.unmarshalOPurchaseOrigin2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseOrigin(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["origin"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "hasEvidence",
+		func(ctx context.Context, v any) (*bool, error) {
+			return ec.unmarshalOBoolean2ᚖbool(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["hasEvidence"] = arg4
+	arg5, err := graphql.ProcessArgField(ctx, rawArgs, "after",
 		func(ctx context.Context, v any) (*string, error) {
 			return ec.unmarshalOString2ᚖstring(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["after"] = arg3
-	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	args["after"] = arg5
+	arg6, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg4
+	args["first"] = arg6
 	return args, nil
 }
 
@@ -4591,6 +4939,68 @@ func (ec *executionContext) field_Query_tags_args(ctx context.Context, rawArgs m
 		return nil, err
 	}
 	args["includeArchived"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_unmatchedObservations_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "householdId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "from",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["from"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "to",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["to"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "sourceKind",
+		func(ctx context.Context, v any) (*model.SourceKind, error) {
+			return ec.unmarshalOSourceKind2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["sourceKind"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "state",
+		func(ctx context.Context, v any) (*model.UnmatchedObservationState, error) {
+			return ec.unmarshalOUnmatchedObservationState2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationState(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["state"] = arg4
+	arg5, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg5
+	arg6, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg6
 	return args, nil
 }
 
@@ -7444,6 +7854,153 @@ func (ec *executionContext) fieldContext_MonthlyCategorySpending_amountYen(_ con
 	return graphql.NewScalarFieldContext("MonthlyCategorySpending", field, false, false, errors.New("field of type Long does not have child fields"))
 }
 
+func (ec *executionContext) _MonthlyMemberSpending_period(ctx context.Context, field graphql.CollectedField, obj *model.MonthlyMemberSpending) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_MonthlyMemberSpending_period(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Period, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_MonthlyMemberSpending_period(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("MonthlyMemberSpending", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _MonthlyMemberSpending_memberId(ctx context.Context, field graphql.CollectedField, obj *model.MonthlyMemberSpending) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_MonthlyMemberSpending_memberId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MemberID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_MonthlyMemberSpending_memberId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("MonthlyMemberSpending", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _MonthlyMemberSpending_memberName(ctx context.Context, field graphql.CollectedField, obj *model.MonthlyMemberSpending) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_MonthlyMemberSpending_memberName(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MemberName, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_MonthlyMemberSpending_memberName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("MonthlyMemberSpending", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _MonthlyMemberSpending_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.MonthlyMemberSpending) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_MonthlyMemberSpending_amountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_MonthlyMemberSpending_amountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("MonthlyMemberSpending", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _MonthlyMemberSpendingReport_items(ctx context.Context, field graphql.CollectedField, obj *model.MonthlyMemberSpendingReport) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_MonthlyMemberSpendingReport_items(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Items, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.MonthlyMemberSpending) graphql.Marshaler {
+			return ec.marshalNMonthlyMemberSpending2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMonthlyMemberSpendingᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_MonthlyMemberSpendingReport_items(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "MonthlyMemberSpendingReport",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_MonthlyMemberSpending(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _MonthlyMemberSpendingReport_hasUnattributedPurchases(ctx context.Context, field graphql.CollectedField, obj *model.MonthlyMemberSpendingReport) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_MonthlyMemberSpendingReport_hasUnattributedPurchases(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.HasUnattributedPurchases, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_MonthlyMemberSpendingReport_hasUnattributedPurchases(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("MonthlyMemberSpendingReport", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
 func (ec *executionContext) _Mutation_createHousehold(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10022,6 +10579,75 @@ func (ec *executionContext) fieldContext_Purchase_merchant(_ context.Context, fi
 	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _Purchase_origin(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Purchase_origin(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Origin, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.PurchaseOrigin) graphql.Marshaler {
+			return ec.marshalNPurchaseOrigin2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseOrigin(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Purchase_origin(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type PurchaseOrigin does not have child fields"))
+}
+
+func (ec *executionContext) _Purchase_hasEvidence(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Purchase_hasEvidence(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.HasEvidence, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Purchase_hasEvidence(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _Purchase_sourceKinds(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Purchase_sourceKinds(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceKinds, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []model.SourceKind) graphql.Marshaler {
+			return ec.marshalNSourceKind2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKindᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Purchase_sourceKinds(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type SourceKind does not have child fields"))
+}
+
 func (ec *executionContext) _Purchase_paymentAccountId(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -11220,7 +11846,7 @@ func (ec *executionContext) _Query_purchases(ctx context.Context, field graphql.
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Purchases(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*string), fc.Args["to"].(*string), fc.Args["after"].(*string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().Purchases(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*string), fc.Args["to"].(*string), fc.Args["origin"].(*model.PurchaseOrigin), fc.Args["hasEvidence"].(*bool), fc.Args["after"].(*string), fc.Args["first"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.PurchaseConnection) graphql.Marshaler {
@@ -11248,6 +11874,94 @@ func (ec *executionContext) fieldContext_Query_purchases(ctx context.Context, fi
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_purchases_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_unmatchedObservations(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_unmatchedObservations(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().UnmatchedObservations(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*string), fc.Args["to"].(*string), fc.Args["sourceKind"].(*model.SourceKind), fc.Args["state"].(*model.UnmatchedObservationState), fc.Args["after"].(*string), fc.Args["first"].(*int))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.UnmatchedObservationConnection) graphql.Marshaler {
+			return ec.marshalNUnmatchedObservationConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationConnection(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_unmatchedObservations(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_UnmatchedObservationConnection(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_unmatchedObservations_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_monthlyMemberSpending(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_monthlyMemberSpending(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().MonthlyMemberSpending(ctx, fc.Args["householdId"].(string), fc.Args["from"].(string), fc.Args["to"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.MonthlyMemberSpendingReport) graphql.Marshaler {
+			return ec.marshalNMonthlyMemberSpendingReport2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMonthlyMemberSpendingReport(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_monthlyMemberSpending(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_MonthlyMemberSpendingReport(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_monthlyMemberSpending_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -12624,6 +13338,378 @@ func (ec *executionContext) _Tag_revision(ctx context.Context, field graphql.Col
 }
 func (ec *executionContext) fieldContext_Tag_revision(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Tag", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservation_documentId(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservation_documentId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.DocumentID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservation_documentId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservation_sourceReference(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservation_sourceReference(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceReference, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservation_sourceReference(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservation_purchaseId(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservation_purchaseId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PurchaseID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOID2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservation_purchaseId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservation_sourceKind(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservation_sourceKind(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceKind, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.SourceKind) graphql.Marshaler {
+			return ec.marshalNSourceKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservation_sourceKind(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type SourceKind does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservation_state(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservation_state(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.State, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.UnmatchedObservationState) graphql.Marshaler {
+			return ec.marshalNUnmatchedObservationState2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationState(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservation_state(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type UnmatchedObservationState does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservation_merchant(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservation_merchant(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Merchant, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservation_merchant(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservation_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservation_occurredAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.OccurredAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservation_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservation_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservation_amountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservation_amountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservation_orderId(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservation_orderId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.OrderID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservation_orderId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservation_transactionId(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservation_transactionId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TransactionID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservation_transactionId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservationConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservationConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservationConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.UnmatchedObservationEdge) graphql.Marshaler {
+			return ec.marshalNUnmatchedObservationEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservationConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UnmatchedObservationConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_UnmatchedObservationEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UnmatchedObservationConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservationConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservationConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservationConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UnmatchedObservationConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UnmatchedObservationConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservationConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservationConnection_totalCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservationConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservationConnection", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservationEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservationEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservationEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservationEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnmatchedObservationEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _UnmatchedObservationEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservationEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnmatchedObservationEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.UnmatchedObservation) graphql.Marshaler {
+			return ec.marshalNUnmatchedObservation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservation(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnmatchedObservationEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UnmatchedObservationEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_UnmatchedObservation(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _Viewer_id(ctx context.Context, field graphql.CollectedField, obj *model.Viewer) (ret graphql.Marshaler) {
@@ -14388,7 +15474,7 @@ func (ec *executionContext) unmarshalInputCreatePurchaseInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"idempotencyKey", "householdId", "occurredAt", "merchant", "paymentAccountId", "paymentAllocations", "sourceDocumentId", "sourceReference", "items", "status"}
+	fieldsInOrder := [...]string{"idempotencyKey", "householdId", "occurredAt", "merchant", "origin", "paymentAccountId", "paymentAllocations", "sourceDocumentId", "sourceReference", "items", "status"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -14423,6 +15509,13 @@ func (ec *executionContext) unmarshalInputCreatePurchaseInput(ctx context.Contex
 				return it, err
 			}
 			it.Merchant = data
+		case "origin":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("origin"))
+			data, err := ec.unmarshalOPurchaseOrigin2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseOrigin(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Origin = data
 		case "paymentAccountId":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
 			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
@@ -16938,6 +18031,102 @@ func (ec *executionContext) _MonthlyCategorySpending(ctx context.Context, sel as
 	return out
 }
 
+var monthlyMemberSpendingImplementors = []string{"MonthlyMemberSpending"}
+
+func (ec *executionContext) _MonthlyMemberSpending(ctx context.Context, sel ast.SelectionSet, obj *model.MonthlyMemberSpending) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, monthlyMemberSpendingImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("MonthlyMemberSpending")
+		case "period":
+			out.Values[i] = ec._MonthlyMemberSpending_period(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "memberId":
+			out.Values[i] = ec._MonthlyMemberSpending_memberId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "memberName":
+			out.Values[i] = ec._MonthlyMemberSpending_memberName(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "amountYen":
+			out.Values[i] = ec._MonthlyMemberSpending_amountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var monthlyMemberSpendingReportImplementors = []string{"MonthlyMemberSpendingReport"}
+
+func (ec *executionContext) _MonthlyMemberSpendingReport(ctx context.Context, sel ast.SelectionSet, obj *model.MonthlyMemberSpendingReport) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, monthlyMemberSpendingReportImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("MonthlyMemberSpendingReport")
+		case "items":
+			out.Values[i] = ec._MonthlyMemberSpendingReport_items(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "hasUnattributedPurchases":
+			out.Values[i] = ec._MonthlyMemberSpendingReport_hasUnattributedPurchases(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var mutationImplementors = []string{"Mutation"}
 
 func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
@@ -17688,6 +18877,21 @@ func (ec *executionContext) _Purchase(ctx context.Context, sel ast.SelectionSet,
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "origin":
+			out.Values[i] = ec._Purchase_origin(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "hasEvidence":
+			out.Values[i] = ec._Purchase_hasEvidence(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sourceKinds":
+			out.Values[i] = ec._Purchase_sourceKinds(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "paymentAccountId":
 			out.Values[i] = ec._Purchase_paymentAccountId(ctx, field, obj)
 			if out.Values[i] == graphql.RequiredNull {
@@ -18233,6 +19437,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_purchases(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "unmatchedObservations":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_unmatchedObservations(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "monthlyMemberSpending":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_monthlyMemberSpending(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -18817,6 +20065,180 @@ func (ec *executionContext) _Tag(ctx context.Context, sel ast.SelectionSet, obj 
 			}
 		case "revision":
 			out.Values[i] = ec._Tag_revision(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var unmatchedObservationImplementors = []string{"UnmatchedObservation"}
+
+func (ec *executionContext) _UnmatchedObservation(ctx context.Context, sel ast.SelectionSet, obj *model.UnmatchedObservation) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, unmatchedObservationImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("UnmatchedObservation")
+		case "documentId":
+			out.Values[i] = ec._UnmatchedObservation_documentId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sourceReference":
+			out.Values[i] = ec._UnmatchedObservation_sourceReference(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "purchaseId":
+			out.Values[i] = ec._UnmatchedObservation_purchaseId(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "sourceKind":
+			out.Values[i] = ec._UnmatchedObservation_sourceKind(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "state":
+			out.Values[i] = ec._UnmatchedObservation_state(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "merchant":
+			out.Values[i] = ec._UnmatchedObservation_merchant(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "occurredAt":
+			out.Values[i] = ec._UnmatchedObservation_occurredAt(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "amountYen":
+			out.Values[i] = ec._UnmatchedObservation_amountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "orderId":
+			out.Values[i] = ec._UnmatchedObservation_orderId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "transactionId":
+			out.Values[i] = ec._UnmatchedObservation_transactionId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var unmatchedObservationConnectionImplementors = []string{"UnmatchedObservationConnection"}
+
+func (ec *executionContext) _UnmatchedObservationConnection(ctx context.Context, sel ast.SelectionSet, obj *model.UnmatchedObservationConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, unmatchedObservationConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("UnmatchedObservationConnection")
+		case "edges":
+			out.Values[i] = ec._UnmatchedObservationConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._UnmatchedObservationConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._UnmatchedObservationConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var unmatchedObservationEdgeImplementors = []string{"UnmatchedObservationEdge"}
+
+func (ec *executionContext) _UnmatchedObservationEdge(ctx context.Context, sel ast.SelectionSet, obj *model.UnmatchedObservationEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, unmatchedObservationEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("UnmatchedObservationEdge")
+		case "cursor":
+			out.Values[i] = ec._UnmatchedObservationEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._UnmatchedObservationEdge_node(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -19898,6 +21320,42 @@ func (ec *executionContext) marshalNMonthlyCategorySpending2ᚖgithubᚗcomᚋwa
 	return ec._MonthlyCategorySpending(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNMonthlyMemberSpending2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMonthlyMemberSpendingᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.MonthlyMemberSpending) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNMonthlyMemberSpending2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMonthlyMemberSpending(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNMonthlyMemberSpending2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMonthlyMemberSpending(ctx context.Context, sel ast.SelectionSet, v *model.MonthlyMemberSpending) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._MonthlyMemberSpending(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNMonthlyMemberSpendingReport2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMonthlyMemberSpendingReport(ctx context.Context, sel ast.SelectionSet, v *model.MonthlyMemberSpendingReport) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._MonthlyMemberSpendingReport(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx context.Context, sel ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -20229,6 +21687,16 @@ func (ec *executionContext) unmarshalNPurchaseItemTargetInput2ᚖgithubᚗcomᚋ
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNPurchaseOrigin2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseOrigin(ctx context.Context, v any) (model.PurchaseOrigin, error) {
+	var res model.PurchaseOrigin
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNPurchaseOrigin2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseOrigin(ctx context.Context, sel ast.SelectionSet, v model.PurchaseOrigin) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) unmarshalNPurchasePatch2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePatch(ctx context.Context, v any) (*model.PurchasePatch, error) {
 	res, err := ec.unmarshalInputPurchasePatch(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
@@ -20392,6 +21860,46 @@ func (ec *executionContext) marshalNSettlementLine2ᚖgithubᚗcomᚋwalnuts1018
 	return ec._SettlementLine(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNSourceKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx context.Context, v any) (model.SourceKind, error) {
+	var res model.SourceKind
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSourceKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx context.Context, sel ast.SelectionSet, v model.SourceKind) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) unmarshalNSourceKind2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKindᚄ(ctx context.Context, v any) ([]model.SourceKind, error) {
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]model.SourceKind, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNSourceKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNSourceKind2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKindᚄ(ctx context.Context, sel ast.SelectionSet, v []model.SourceKind) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNSourceKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v any) (string, error) {
 	res, err := graphql.UnmarshalString(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -20470,6 +21978,62 @@ func (ec *executionContext) unmarshalNTransferKind2githubᚗcomᚋwalnuts1018ᚋ
 }
 
 func (ec *executionContext) marshalNTransferKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferKind(ctx context.Context, sel ast.SelectionSet, v model.TransferKind) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) marshalNUnmatchedObservation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservation(ctx context.Context, sel ast.SelectionSet, v *model.UnmatchedObservation) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._UnmatchedObservation(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNUnmatchedObservationConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationConnection(ctx context.Context, sel ast.SelectionSet, v *model.UnmatchedObservationConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._UnmatchedObservationConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNUnmatchedObservationEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.UnmatchedObservationEdge) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNUnmatchedObservationEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationEdge(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNUnmatchedObservationEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationEdge(ctx context.Context, sel ast.SelectionSet, v *model.UnmatchedObservationEdge) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._UnmatchedObservationEdge(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNUnmatchedObservationState2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationState(ctx context.Context, v any) (model.UnmatchedObservationState, error) {
+	var res model.UnmatchedObservationState
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNUnmatchedObservationState2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationState(ctx context.Context, sel ast.SelectionSet, v model.UnmatchedObservationState) graphql.Marshaler {
 	return v
 }
 
@@ -20795,6 +22359,22 @@ func (ec *executionContext) marshalOProductLearningScope2ᚖgithubᚗcomᚋwalnu
 	return v
 }
 
+func (ec *executionContext) unmarshalOPurchaseOrigin2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseOrigin(ctx context.Context, v any) (*model.PurchaseOrigin, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.PurchaseOrigin)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOPurchaseOrigin2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseOrigin(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseOrigin) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
 func (ec *executionContext) unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx context.Context, v any) ([]*model.PurchasePaymentInput, error) {
 	if v == nil {
 		return nil, nil
@@ -20844,6 +22424,22 @@ func (ec *executionContext) marshalOSharedPoolSettlementPolicy2ᚖgithubᚗcom�
 	return v
 }
 
+func (ec *executionContext) unmarshalOSourceKind2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx context.Context, v any) (*model.SourceKind, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.SourceKind)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOSourceKind2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx context.Context, sel ast.SelectionSet, v *model.SourceKind) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
 func (ec *executionContext) unmarshalOString2ᚖstring(ctx context.Context, v any) (*string, error) {
 	if v == nil {
 		return nil, nil
@@ -20860,6 +22456,22 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	_ = ctx
 	res := graphql.MarshalString(*v)
 	return res
+}
+
+func (ec *executionContext) unmarshalOUnmatchedObservationState2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationState(ctx context.Context, v any) (*model.UnmatchedObservationState, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.UnmatchedObservationState)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOUnmatchedObservationState2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationState(ctx context.Context, sel ast.SelectionSet, v *model.UnmatchedObservationState) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
 }
 
 func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐEnumValueᚄ(ctx context.Context, sel ast.SelectionSet, v []introspection.EnumValue) graphql.Marshaler {

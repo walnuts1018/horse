@@ -123,6 +123,15 @@ var Purchases = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		Origin: column{
+			Name:      "origin",
+			DBType:    "text",
+			Default:   "'UNKNOWN'::text",
+			Comment:   "",
+			Nullable:  false,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: purchaseIndexes{
 		PurchasesPkey: index{
@@ -191,6 +200,38 @@ var Purchases = Table[
 			Where:         "",
 			Include:       []string{},
 		},
+		PurchasesHouseholdOriginOccurredIdx: index{
+			Type: "btree",
+			Name: "purchases_household_origin_occurred_idx",
+			Columns: []indexColumn{
+				{
+					Name:         "household_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "origin",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "occurred_at",
+					Desc:         null.FromCond(true, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "id",
+					Desc:         null.FromCond(true, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        false,
+			Comment:       "",
+			NullsFirst:    []bool{false, false, true, true},
+			NullsDistinct: false,
+			Where:         "",
+			Include:       []string{},
+		},
 	},
 	PrimaryKey: &constraint{
 		Name:    "purchases_pkey",
@@ -234,6 +275,14 @@ var Purchases = Table[
 		},
 	},
 	Checks: purchaseChecks{
+		PurchasesOriginCheck: check{
+			constraint: constraint{
+				Name:    "purchases_origin_check",
+				Columns: []string{"origin"},
+				Comment: "",
+			},
+			Expression: "(origin = ANY (ARRAY['AI'::text, 'MANUAL'::text, 'UNKNOWN'::text]))",
+		},
 		PurchasesRevisionCheck: check{
 			constraint: constraint{
 				Name:    "purchases_revision_check",
@@ -267,23 +316,25 @@ type purchaseColumns struct {
 	CreatedBy             column
 	CreatedAt             column
 	UpdatedAt             column
+	Origin                column
 }
 
 func (c purchaseColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.OccurredAt, c.Merchant, c.PaymentAccountID, c.Status, c.Revision, c.FieldRevisions, c.AllocationRuleVersion, c.CreatedBy, c.CreatedAt, c.UpdatedAt,
+		c.ID, c.HouseholdID, c.OccurredAt, c.Merchant, c.PaymentAccountID, c.Status, c.Revision, c.FieldRevisions, c.AllocationRuleVersion, c.CreatedBy, c.CreatedAt, c.UpdatedAt, c.Origin,
 	}
 }
 
 type purchaseIndexes struct {
-	PurchasesPkey                 index
-	PurchasesHouseholdIDIDKey     index
-	PurchasesHouseholdOccurredIdx index
+	PurchasesPkey                       index
+	PurchasesHouseholdIDIDKey           index
+	PurchasesHouseholdOccurredIdx       index
+	PurchasesHouseholdOriginOccurredIdx index
 }
 
 func (i purchaseIndexes) AsSlice() []index {
 	return []index{
-		i.PurchasesPkey, i.PurchasesHouseholdIDIDKey, i.PurchasesHouseholdOccurredIdx,
+		i.PurchasesPkey, i.PurchasesHouseholdIDIDKey, i.PurchasesHouseholdOccurredIdx, i.PurchasesHouseholdOriginOccurredIdx,
 	}
 }
 
@@ -310,12 +361,13 @@ func (u purchaseUniques) AsSlice() []constraint {
 }
 
 type purchaseChecks struct {
+	PurchasesOriginCheck   check
 	PurchasesRevisionCheck check
 	PurchasesStatusCheck   check
 }
 
 func (c purchaseChecks) AsSlice() []check {
 	return []check{
-		c.PurchasesRevisionCheck, c.PurchasesStatusCheck,
+		c.PurchasesOriginCheck, c.PurchasesRevisionCheck, c.PurchasesStatusCheck,
 	}
 }

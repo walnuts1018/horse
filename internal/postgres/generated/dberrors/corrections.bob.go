@@ -10,8 +10,17 @@ var CorrectionErrors = &correctionErrors{
 		columns: []string{"id"},
 		s:       "corrections_pkey",
 	},
+
+	ErrUniqueCorrectionsHouseholdIdIdKey: &UniqueConstraintError{
+		schema:  "",
+		table:   "corrections",
+		columns: []string{"household_id", "id"},
+		s:       "corrections_household_id_id_key",
+	},
 }
 
 type correctionErrors struct {
 	ErrUniqueCorrectionsPkey *UniqueConstraintError
+
+	ErrUniqueCorrectionsHouseholdIdIdKey *UniqueConstraintError
 }

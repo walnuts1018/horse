@@ -18,6 +18,13 @@ var PurchaseErrors = &purchaseErrors{
 		s:       "purchases_household_id_id_key",
 	},
 
+	ErrCheckPurchasesOriginCheck: &CheckConstraintError{
+		schema:  "",
+		table:   "purchases",
+		columns: []string{"origin"},
+		s:       "purchases_origin_check",
+	},
+
 	ErrCheckPurchasesRevisionCheck: &CheckConstraintError{
 		schema:  "",
 		table:   "purchases",
@@ -37,6 +44,8 @@ type purchaseErrors struct {
 	ErrUniquePurchasesPkey *UniqueConstraintError
 
 	ErrUniquePurchasesHouseholdIdIdKey *UniqueConstraintError
+
+	ErrCheckPurchasesOriginCheck *CheckConstraintError
 
 	ErrCheckPurchasesRevisionCheck *CheckConstraintError
 

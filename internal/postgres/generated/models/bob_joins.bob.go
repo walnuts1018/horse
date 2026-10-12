@@ -30,51 +30,53 @@ func (j joinSet[Q]) AliasedAs(alias string) joinSet[Q] {
 }
 
 type joins[Q dialect.Joinable] struct {
-	AccountIncomes        joinSet[accountIncomeJoins[Q]]
-	AccountMovements      joinSet[accountMovementJoins[Q]]
-	AccountingPeriods     joinSet[accountingPeriodJoins[Q]]
-	Accounts              joinSet[accountJoins[Q]]
-	AllocationDefaults    joinSet[allocationDefaultJoins[Q]]
-	AllocationRuleWeights joinSet[allocationRuleWeightJoins[Q]]
-	AllocationRules       joinSet[allocationRuleJoins[Q]]
-	Budgets               joinSet[budgetJoins[Q]]
-	Categories            joinSet[categoryJoins[Q]]
-	CorrectionPayments    joinSet[correctionPaymentJoins[Q]]
-	Corrections           joinSet[correctionJoins[Q]]
-	DocumentConfirmations joinSet[documentConfirmationJoins[Q]]
-	EvidenceLinks         joinSet[evidenceLinkJoins[Q]]
-	ExtractionJobs        joinSet[extractionJobJoins[Q]]
-	FundingObligations    joinSet[fundingObligationJoins[Q]]
-	FundingSchedules      joinSet[fundingScheduleJoins[Q]]
-	HouseholdEvents       joinSet[householdEventJoins[Q]]
-	HouseholdInvitations  joinSet[householdInvitationJoins[Q]]
-	HouseholdMembers      joinSet[householdMemberJoins[Q]]
-	Households            joinSet[householdJoins[Q]]
-	IdempotencyKeys       joinSet[idempotencyKeyJoins[Q]]
-	ItemAllocations       joinSet[itemAllocationJoins[Q]]
-	JournalEntries        joinSet[journalEntryJoins[Q]]
-	Journals              joinSet[journalJoins[Q]]
-	LedgerEntries         joinSet[ledgerEntryJoins[Q]]
-	Members               joinSet[memberJoins[Q]]
-	OidcSessions          joinSet[oidcSessionJoins[Q]]
-	PoolFundingRules      joinSet[poolFundingRuleJoins[Q]]
-	PoolFundingShares     joinSet[poolFundingShareJoins[Q]]
-	Pools                 joinSet[poolJoins[Q]]
-	ProductAliases        joinSet[productAliasJoins[Q]]
-	ProductConcepts       joinSet[productConceptJoins[Q]]
-	ProductCorrections    joinSet[productCorrectionJoins[Q]]
-	ProductVariants       joinSet[productVariantJoins[Q]]
-	PurchaseItemTags      joinSet[purchaseItemTagJoins[Q]]
-	PurchaseItems         joinSet[purchaseItemJoins[Q]]
-	PurchasePayments      joinSet[purchasePaymentJoins[Q]]
-	Purchases             joinSet[purchaseJoins[Q]]
-	RecurringExpenses     joinSet[recurringExpenseJoins[Q]]
-	SettlementAdjustments joinSet[settlementAdjustmentJoins[Q]]
-	SettlementLines       joinSet[settlementLineJoins[Q]]
-	SettlementRuns        joinSet[settlementRunJoins[Q]]
-	SourceDocuments       joinSet[sourceDocumentJoins[Q]]
-	Tags                  joinSet[tagJoins[Q]]
-	Transfers             joinSet[transferJoins[Q]]
+	AccountIncomes          joinSet[accountIncomeJoins[Q]]
+	AccountMovements        joinSet[accountMovementJoins[Q]]
+	AccountingPeriods       joinSet[accountingPeriodJoins[Q]]
+	Accounts                joinSet[accountJoins[Q]]
+	AllocationDefaults      joinSet[allocationDefaultJoins[Q]]
+	AllocationRuleWeights   joinSet[allocationRuleWeightJoins[Q]]
+	AllocationRules         joinSet[allocationRuleJoins[Q]]
+	Budgets                 joinSet[budgetJoins[Q]]
+	Categories              joinSet[categoryJoins[Q]]
+	CorrectionMemberBurdens joinSet[correctionMemberBurdenJoins[Q]]
+	CorrectionPayments      joinSet[correctionPaymentJoins[Q]]
+	Corrections             joinSet[correctionJoins[Q]]
+	DocumentConfirmations   joinSet[documentConfirmationJoins[Q]]
+	EvidenceLinks           joinSet[evidenceLinkJoins[Q]]
+	ExtractionJobs          joinSet[extractionJobJoins[Q]]
+	FundingObligations      joinSet[fundingObligationJoins[Q]]
+	FundingSchedules        joinSet[fundingScheduleJoins[Q]]
+	HouseholdEvents         joinSet[householdEventJoins[Q]]
+	HouseholdInvitations    joinSet[householdInvitationJoins[Q]]
+	HouseholdMembers        joinSet[householdMemberJoins[Q]]
+	Households              joinSet[householdJoins[Q]]
+	IdempotencyKeys         joinSet[idempotencyKeyJoins[Q]]
+	ItemAllocations         joinSet[itemAllocationJoins[Q]]
+	JournalEntries          joinSet[journalEntryJoins[Q]]
+	Journals                joinSet[journalJoins[Q]]
+	LedgerEntries           joinSet[ledgerEntryJoins[Q]]
+	Members                 joinSet[memberJoins[Q]]
+	OidcSessions            joinSet[oidcSessionJoins[Q]]
+	PoolFundingRules        joinSet[poolFundingRuleJoins[Q]]
+	PoolFundingShares       joinSet[poolFundingShareJoins[Q]]
+	Pools                   joinSet[poolJoins[Q]]
+	ProductAliases          joinSet[productAliasJoins[Q]]
+	ProductConcepts         joinSet[productConceptJoins[Q]]
+	ProductCorrections      joinSet[productCorrectionJoins[Q]]
+	ProductVariants         joinSet[productVariantJoins[Q]]
+	PurchaseItemTags        joinSet[purchaseItemTagJoins[Q]]
+	PurchaseItems           joinSet[purchaseItemJoins[Q]]
+	PurchaseMemberBurdens   joinSet[purchaseMemberBurdenJoins[Q]]
+	PurchasePayments        joinSet[purchasePaymentJoins[Q]]
+	Purchases               joinSet[purchaseJoins[Q]]
+	RecurringExpenses       joinSet[recurringExpenseJoins[Q]]
+	SettlementAdjustments   joinSet[settlementAdjustmentJoins[Q]]
+	SettlementLines         joinSet[settlementLineJoins[Q]]
+	SettlementRuns          joinSet[settlementRunJoins[Q]]
+	SourceDocuments         joinSet[sourceDocumentJoins[Q]]
+	Tags                    joinSet[tagJoins[Q]]
+	Transfers               joinSet[transferJoins[Q]]
 }
 
 func buildJoinSet[Q interface{ aliasedAs(string) Q }, C any, F func(C, string) Q](c C, f F) joinSet[Q] {
@@ -87,51 +89,53 @@ func buildJoinSet[Q interface{ aliasedAs(string) Q }, C any, F func(C, string) Q
 
 func getJoins[Q dialect.Joinable]() joins[Q] {
 	return joins[Q]{
-		AccountIncomes:        buildJoinSet[accountIncomeJoins[Q]](AccountIncomes.Columns, buildAccountIncomeJoins),
-		AccountMovements:      buildJoinSet[accountMovementJoins[Q]](AccountMovements.Columns, buildAccountMovementJoins),
-		AccountingPeriods:     buildJoinSet[accountingPeriodJoins[Q]](AccountingPeriods.Columns, buildAccountingPeriodJoins),
-		Accounts:              buildJoinSet[accountJoins[Q]](Accounts.Columns, buildAccountJoins),
-		AllocationDefaults:    buildJoinSet[allocationDefaultJoins[Q]](AllocationDefaults.Columns, buildAllocationDefaultJoins),
-		AllocationRuleWeights: buildJoinSet[allocationRuleWeightJoins[Q]](AllocationRuleWeights.Columns, buildAllocationRuleWeightJoins),
-		AllocationRules:       buildJoinSet[allocationRuleJoins[Q]](AllocationRules.Columns, buildAllocationRuleJoins),
-		Budgets:               buildJoinSet[budgetJoins[Q]](Budgets.Columns, buildBudgetJoins),
-		Categories:            buildJoinSet[categoryJoins[Q]](Categories.Columns, buildCategoryJoins),
-		CorrectionPayments:    buildJoinSet[correctionPaymentJoins[Q]](CorrectionPayments.Columns, buildCorrectionPaymentJoins),
-		Corrections:           buildJoinSet[correctionJoins[Q]](Corrections.Columns, buildCorrectionJoins),
-		DocumentConfirmations: buildJoinSet[documentConfirmationJoins[Q]](DocumentConfirmations.Columns, buildDocumentConfirmationJoins),
-		EvidenceLinks:         buildJoinSet[evidenceLinkJoins[Q]](EvidenceLinks.Columns, buildEvidenceLinkJoins),
-		ExtractionJobs:        buildJoinSet[extractionJobJoins[Q]](ExtractionJobs.Columns, buildExtractionJobJoins),
-		FundingObligations:    buildJoinSet[fundingObligationJoins[Q]](FundingObligations.Columns, buildFundingObligationJoins),
-		FundingSchedules:      buildJoinSet[fundingScheduleJoins[Q]](FundingSchedules.Columns, buildFundingScheduleJoins),
-		HouseholdEvents:       buildJoinSet[householdEventJoins[Q]](HouseholdEvents.Columns, buildHouseholdEventJoins),
-		HouseholdInvitations:  buildJoinSet[householdInvitationJoins[Q]](HouseholdInvitations.Columns, buildHouseholdInvitationJoins),
-		HouseholdMembers:      buildJoinSet[householdMemberJoins[Q]](HouseholdMembers.Columns, buildHouseholdMemberJoins),
-		Households:            buildJoinSet[householdJoins[Q]](Households.Columns, buildHouseholdJoins),
-		IdempotencyKeys:       buildJoinSet[idempotencyKeyJoins[Q]](IdempotencyKeys.Columns, buildIdempotencyKeyJoins),
-		ItemAllocations:       buildJoinSet[itemAllocationJoins[Q]](ItemAllocations.Columns, buildItemAllocationJoins),
-		JournalEntries:        buildJoinSet[journalEntryJoins[Q]](JournalEntries.Columns, buildJournalEntryJoins),
-		Journals:              buildJoinSet[journalJoins[Q]](Journals.Columns, buildJournalJoins),
-		LedgerEntries:         buildJoinSet[ledgerEntryJoins[Q]](LedgerEntries.Columns, buildLedgerEntryJoins),
-		Members:               buildJoinSet[memberJoins[Q]](Members.Columns, buildMemberJoins),
-		OidcSessions:          buildJoinSet[oidcSessionJoins[Q]](OidcSessions.Columns, buildOidcSessionJoins),
-		PoolFundingRules:      buildJoinSet[poolFundingRuleJoins[Q]](PoolFundingRules.Columns, buildPoolFundingRuleJoins),
-		PoolFundingShares:     buildJoinSet[poolFundingShareJoins[Q]](PoolFundingShares.Columns, buildPoolFundingShareJoins),
-		Pools:                 buildJoinSet[poolJoins[Q]](Pools.Columns, buildPoolJoins),
-		ProductAliases:        buildJoinSet[productAliasJoins[Q]](ProductAliases.Columns, buildProductAliasJoins),
-		ProductConcepts:       buildJoinSet[productConceptJoins[Q]](ProductConcepts.Columns, buildProductConceptJoins),
-		ProductCorrections:    buildJoinSet[productCorrectionJoins[Q]](ProductCorrections.Columns, buildProductCorrectionJoins),
-		ProductVariants:       buildJoinSet[productVariantJoins[Q]](ProductVariants.Columns, buildProductVariantJoins),
-		PurchaseItemTags:      buildJoinSet[purchaseItemTagJoins[Q]](PurchaseItemTags.Columns, buildPurchaseItemTagJoins),
-		PurchaseItems:         buildJoinSet[purchaseItemJoins[Q]](PurchaseItems.Columns, buildPurchaseItemJoins),
-		PurchasePayments:      buildJoinSet[purchasePaymentJoins[Q]](PurchasePayments.Columns, buildPurchasePaymentJoins),
-		Purchases:             buildJoinSet[purchaseJoins[Q]](Purchases.Columns, buildPurchaseJoins),
-		RecurringExpenses:     buildJoinSet[recurringExpenseJoins[Q]](RecurringExpenses.Columns, buildRecurringExpenseJoins),
-		SettlementAdjustments: buildJoinSet[settlementAdjustmentJoins[Q]](SettlementAdjustments.Columns, buildSettlementAdjustmentJoins),
-		SettlementLines:       buildJoinSet[settlementLineJoins[Q]](SettlementLines.Columns, buildSettlementLineJoins),
-		SettlementRuns:        buildJoinSet[settlementRunJoins[Q]](SettlementRuns.Columns, buildSettlementRunJoins),
-		SourceDocuments:       buildJoinSet[sourceDocumentJoins[Q]](SourceDocuments.Columns, buildSourceDocumentJoins),
-		Tags:                  buildJoinSet[tagJoins[Q]](Tags.Columns, buildTagJoins),
-		Transfers:             buildJoinSet[transferJoins[Q]](Transfers.Columns, buildTransferJoins),
+		AccountIncomes:          buildJoinSet[accountIncomeJoins[Q]](AccountIncomes.Columns, buildAccountIncomeJoins),
+		AccountMovements:        buildJoinSet[accountMovementJoins[Q]](AccountMovements.Columns, buildAccountMovementJoins),
+		AccountingPeriods:       buildJoinSet[accountingPeriodJoins[Q]](AccountingPeriods.Columns, buildAccountingPeriodJoins),
+		Accounts:                buildJoinSet[accountJoins[Q]](Accounts.Columns, buildAccountJoins),
+		AllocationDefaults:      buildJoinSet[allocationDefaultJoins[Q]](AllocationDefaults.Columns, buildAllocationDefaultJoins),
+		AllocationRuleWeights:   buildJoinSet[allocationRuleWeightJoins[Q]](AllocationRuleWeights.Columns, buildAllocationRuleWeightJoins),
+		AllocationRules:         buildJoinSet[allocationRuleJoins[Q]](AllocationRules.Columns, buildAllocationRuleJoins),
+		Budgets:                 buildJoinSet[budgetJoins[Q]](Budgets.Columns, buildBudgetJoins),
+		Categories:              buildJoinSet[categoryJoins[Q]](Categories.Columns, buildCategoryJoins),
+		CorrectionMemberBurdens: buildJoinSet[correctionMemberBurdenJoins[Q]](CorrectionMemberBurdens.Columns, buildCorrectionMemberBurdenJoins),
+		CorrectionPayments:      buildJoinSet[correctionPaymentJoins[Q]](CorrectionPayments.Columns, buildCorrectionPaymentJoins),
+		Corrections:             buildJoinSet[correctionJoins[Q]](Corrections.Columns, buildCorrectionJoins),
+		DocumentConfirmations:   buildJoinSet[documentConfirmationJoins[Q]](DocumentConfirmations.Columns, buildDocumentConfirmationJoins),
+		EvidenceLinks:           buildJoinSet[evidenceLinkJoins[Q]](EvidenceLinks.Columns, buildEvidenceLinkJoins),
+		ExtractionJobs:          buildJoinSet[extractionJobJoins[Q]](ExtractionJobs.Columns, buildExtractionJobJoins),
+		FundingObligations:      buildJoinSet[fundingObligationJoins[Q]](FundingObligations.Columns, buildFundingObligationJoins),
+		FundingSchedules:        buildJoinSet[fundingScheduleJoins[Q]](FundingSchedules.Columns, buildFundingScheduleJoins),
+		HouseholdEvents:         buildJoinSet[householdEventJoins[Q]](HouseholdEvents.Columns, buildHouseholdEventJoins),
+		HouseholdInvitations:    buildJoinSet[householdInvitationJoins[Q]](HouseholdInvitations.Columns, buildHouseholdInvitationJoins),
+		HouseholdMembers:        buildJoinSet[householdMemberJoins[Q]](HouseholdMembers.Columns, buildHouseholdMemberJoins),
+		Households:              buildJoinSet[householdJoins[Q]](Households.Columns, buildHouseholdJoins),
+		IdempotencyKeys:         buildJoinSet[idempotencyKeyJoins[Q]](IdempotencyKeys.Columns, buildIdempotencyKeyJoins),
+		ItemAllocations:         buildJoinSet[itemAllocationJoins[Q]](ItemAllocations.Columns, buildItemAllocationJoins),
+		JournalEntries:          buildJoinSet[journalEntryJoins[Q]](JournalEntries.Columns, buildJournalEntryJoins),
+		Journals:                buildJoinSet[journalJoins[Q]](Journals.Columns, buildJournalJoins),
+		LedgerEntries:           buildJoinSet[ledgerEntryJoins[Q]](LedgerEntries.Columns, buildLedgerEntryJoins),
+		Members:                 buildJoinSet[memberJoins[Q]](Members.Columns, buildMemberJoins),
+		OidcSessions:            buildJoinSet[oidcSessionJoins[Q]](OidcSessions.Columns, buildOidcSessionJoins),
+		PoolFundingRules:        buildJoinSet[poolFundingRuleJoins[Q]](PoolFundingRules.Columns, buildPoolFundingRuleJoins),
+		PoolFundingShares:       buildJoinSet[poolFundingShareJoins[Q]](PoolFundingShares.Columns, buildPoolFundingShareJoins),
+		Pools:                   buildJoinSet[poolJoins[Q]](Pools.Columns, buildPoolJoins),
+		ProductAliases:          buildJoinSet[productAliasJoins[Q]](ProductAliases.Columns, buildProductAliasJoins),
+		ProductConcepts:         buildJoinSet[productConceptJoins[Q]](ProductConcepts.Columns, buildProductConceptJoins),
+		ProductCorrections:      buildJoinSet[productCorrectionJoins[Q]](ProductCorrections.Columns, buildProductCorrectionJoins),
+		ProductVariants:         buildJoinSet[productVariantJoins[Q]](ProductVariants.Columns, buildProductVariantJoins),
+		PurchaseItemTags:        buildJoinSet[purchaseItemTagJoins[Q]](PurchaseItemTags.Columns, buildPurchaseItemTagJoins),
+		PurchaseItems:           buildJoinSet[purchaseItemJoins[Q]](PurchaseItems.Columns, buildPurchaseItemJoins),
+		PurchaseMemberBurdens:   buildJoinSet[purchaseMemberBurdenJoins[Q]](PurchaseMemberBurdens.Columns, buildPurchaseMemberBurdenJoins),
+		PurchasePayments:        buildJoinSet[purchasePaymentJoins[Q]](PurchasePayments.Columns, buildPurchasePaymentJoins),
+		Purchases:               buildJoinSet[purchaseJoins[Q]](Purchases.Columns, buildPurchaseJoins),
+		RecurringExpenses:       buildJoinSet[recurringExpenseJoins[Q]](RecurringExpenses.Columns, buildRecurringExpenseJoins),
+		SettlementAdjustments:   buildJoinSet[settlementAdjustmentJoins[Q]](SettlementAdjustments.Columns, buildSettlementAdjustmentJoins),
+		SettlementLines:         buildJoinSet[settlementLineJoins[Q]](SettlementLines.Columns, buildSettlementLineJoins),
+		SettlementRuns:          buildJoinSet[settlementRunJoins[Q]](SettlementRuns.Columns, buildSettlementRunJoins),
+		SourceDocuments:         buildJoinSet[sourceDocumentJoins[Q]](SourceDocuments.Columns, buildSourceDocumentJoins),
+		Tags:                    buildJoinSet[tagJoins[Q]](Tags.Columns, buildTagJoins),
+		Transfers:               buildJoinSet[transferJoins[Q]](Transfers.Columns, buildTransferJoins),
 	}
 }
 

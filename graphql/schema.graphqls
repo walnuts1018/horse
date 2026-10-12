@@ -3,6 +3,9 @@ scalar Long
 enum PoolKind { PERSONAL SHARED }
 enum AccountKind { BANK CASH CARD OTHER }
 enum PurchaseStatus { DRAFT POSTED CLOSED }
+enum PurchaseOrigin { AI MANUAL UNKNOWN }
+enum SourceKind { RECEIPT ORDER EMAIL CARD BANK }
+enum UnmatchedObservationState { UNMATCHED CONFIRMED }
 enum TransferKind { ADVANCE LOAN REPAYMENT GIFT }
 enum AccountMovementKind { TRANSFER CARD_BILL_PAYMENT }
 enum LedgerKind { PURCHASE FUNDING TRANSFER CORRECTION }
@@ -29,7 +32,7 @@ type ProductConcept { id: ID!, householdId: ID!, name: String!, normalizedName: 
 type ProductVariant { id: ID!, householdId: ID!, conceptId: ID!, name: String!, normalizedName: String!, brand: String!, packageSize: String!, barcode: String, archived: Boolean!, revision: Int!, aliases: [ProductAlias!]! }
 type ProductAlias { id: ID!, householdId: ID!, variantId: ID!, merchantKey: String!, alias: String!, normalizedAlias: String!, revision: Int! }
 type ProductSuggestion { concept: ProductConcept!, variant: ProductVariant!, matchedName: String!, score: Int! }
-type Purchase { id: ID!, householdId: ID!, occurredAt: String!, merchant: String!, paymentAccountId: ID, paymentAccount: Account, paymentAllocations: [PurchasePayment!]!, items: [PurchaseItem!]!, corrections: [PurchaseCorrection!]!, totalYen: Long!, currency: String!, revision: Int!, status: PurchaseStatus!, createdAt: String!, updatedAt: String! }
+type Purchase { id: ID!, householdId: ID!, occurredAt: String!, merchant: String!, origin: PurchaseOrigin!, hasEvidence: Boolean!, sourceKinds: [SourceKind!]!, paymentAccountId: ID, paymentAccount: Account, paymentAllocations: [PurchasePayment!]!, items: [PurchaseItem!]!, corrections: [PurchaseCorrection!]!, totalYen: Long!, currency: String!, revision: Int!, status: PurchaseStatus!, createdAt: String!, updatedAt: String! }
 type PurchasePayment { paymentAccountId: ID!, account: Account, amountYen: Long! }
 type PurchaseCorrection { id: ID!, itemId: ID, amountDeltaYen: Long!, reason: String!, occurredAt: String!, settlementMonth: String!, paymentAllocations: [PurchasePayment!]! }
 type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, categoryId: ID, productVariantId: ID, allocations: [Allocation!]!, tags: [Tag!]!, revision: Int! }
@@ -40,6 +43,9 @@ type AccountMovement { id: ID!, householdId: ID!, kind: AccountMovementKind!, oc
 type PageInfo { endCursor: String, hasNextPage: Boolean! }
 type PurchaseEdge { cursor: String!, node: Purchase! }
 type PurchaseConnection { edges: [PurchaseEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
+type UnmatchedObservation { documentId: ID!, sourceReference: String!, purchaseId: ID, sourceKind: SourceKind!, state: UnmatchedObservationState!, merchant: String!, occurredAt: String, amountYen: Long!, orderId: String!, transactionId: String! }
+type UnmatchedObservationEdge { cursor: String!, node: UnmatchedObservation! }
+type UnmatchedObservationConnection { edges: [UnmatchedObservationEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
 type LedgerEntry { id: ID!, kind: LedgerKind!, occurredAt: String!, description: String!, amountYen: Long!, currency: String!, fromMemberId: ID, toMemberId: ID, poolId: ID, sourcePurchaseId: ID, transferId: ID, loanId: ID, createdAt: String! }
 type LoanBalance { loanId: ID!, lenderMemberId: ID!, borrowerMemberId: ID!, principalYen: Long!, repaidYen: Long!, balanceYen: Long!, createdAt: String! }
 type LedgerEdge { cursor: String!, node: LedgerEntry! }
@@ -47,10 +53,12 @@ type LedgerConnection { edges: [LedgerEdge!]!, pageInfo: PageInfo!, totalCount: 
 type SettlementLine { memberId: ID!, memberName: String!, scheduledYen: Long!, paidYen: Long!, carryYen: Long!, priorBalanceYen: Long!, monthlyAdjustmentYen: Long!, advanceCreditYen: Long!, amountDueYen: Long! }
 type Settlement { period: String!, status: String!, revision: Int!, lines: [SettlementLine!]!, createdAt: String }
 type MonthlyCategorySpending { period: String!, categoryId: ID, categoryName: String, amountYen: Long! }
+type MonthlyMemberSpending { period: String!, memberId: ID!, memberName: String!, amountYen: Long! }
+type MonthlyMemberSpendingReport { items: [MonthlyMemberSpending!]!, hasUnattributedPurchases: Boolean! }
 input AllocationInput { poolId: ID!, weight: Long! }
 input PurchaseItemInput { name: String!, amountYen: Long!, categoryId: ID, productVariantId: ID, allocations: [AllocationInput!] }
 input PurchasePaymentInput { paymentAccountId: ID!, amountYen: Long! }
-input CreatePurchaseInput { idempotencyKey: String!, householdId: ID!, occurredAt: String!, merchant: String!, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!], sourceDocumentId: ID, sourceReference: String, items: [PurchaseItemInput!]!, status: PurchaseStatus }
+input CreatePurchaseInput { idempotencyKey: String!, householdId: ID!, occurredAt: String!, merchant: String!, origin: PurchaseOrigin, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!], sourceDocumentId: ID, sourceReference: String, items: [PurchaseItemInput!]!, status: PurchaseStatus }
 input PurchasePatch { occurredAt: String, merchant: String, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!] }
 input UpdatePurchaseInput { purchaseId: ID!, baseRevision: Int!, patch: PurchasePatch!, changedFields: [String!]! }
 input UpdatePurchaseItemInput { itemId: ID!, baseRevision: Int!, name: String, amountYen: Long, categoryId: ID, productVariantId: ID, productLearning: ProductLearningScope = ITEM_ONLY, variantName: String, allocations: [AllocationInput!], changedFields: [String!]! }
@@ -89,7 +97,9 @@ type Query {
   allocationRules(householdId: ID!): [AllocationRule!]!
   productSuggestions(householdId: ID!, query: String!, merchant: String, first: Int = 8): [ProductSuggestion!]!
   productCatalog(householdId: ID!): [ProductConcept!]!
-  purchases(householdId: ID!, from: String, to: String, after: String, first: Int = 50): PurchaseConnection!
+  purchases(householdId: ID!, from: String, to: String, origin: PurchaseOrigin, hasEvidence: Boolean, after: String, first: Int = 50): PurchaseConnection!
+  unmatchedObservations(householdId: ID!, from: String, to: String, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, first: Int = 50): UnmatchedObservationConnection!
+  monthlyMemberSpending(householdId: ID!, from: String!, to: String!): MonthlyMemberSpendingReport!
   purchaseCorrections(purchaseId: ID!): [PurchaseCorrection!]!
   loanBalances(householdId: ID!): [LoanBalance!]!
   ledger(householdId: ID!, after: String, first: Int = 50): LedgerConnection!
