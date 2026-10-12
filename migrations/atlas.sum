@@ -1,4 +1,4 @@
-h1:ig3nDv2eUsSkjNMWbMJl9i6cHsPfpEGe7dEYLW5d8mA=
+h1:i+4yIWQJJ++FEkGluS54YN9XhWtYKzP3fd47943Zs7s=
 20261012000000_core.sql h1:fhrtlGI4aJUsU4DlKaxbw2uUPZXkzidN/idXSLixYD8=
 20261012010000_session_storage.sql h1:FIUO1Do/qfe6PmmNH7AS0XM1vn2IEubqK0KADWJxFEw=
 20261012020000_nullable_evidence_item.sql h1:C/+MQLwDD70eIVikx3gSifaV0ULaR6jt04PY8RgWc88=
@@ -12,3 +12,7 @@ h1:ig3nDv2eUsSkjNMWbMJl9i6cHsPfpEGe7dEYLW5d8mA=
 20261012100000_ai_routing.sql h1:ohn95H4TnJsF3k1taxArAWNAUUEJKO6LowMVYqQGcV8=
 20261012110000_pool_funding_rules.sql h1:n88rzqloJRfm38z/+47JywsGedCJDkqYUOq1QOdwHok=
 20261012120000_transfers_and_multi_payments.sql h1:IbKMGG2uQFsJDNpGVcl4maZ3W7ne9+rIkGC/CCxmrdU=
+20261012130000_tags_budgets_recurring_expenses.sql h1:V0Bee+49TI+ViciqEJjMg4gwoFCerf6U4d7PtRIgww8=
+20261012130100_account_movements.sql h1:MNbMu9/Pzl4Q/iPvGBbyN+PL+VOfonzMfBQDWNSjYMg=
+20261012130200_account_movement_lock_accounts.sql h1:SvVjtcvi5YaoMlxugSYWfFnhV+70t4WSqFD8UytBIqw=
+20261012130300_financial_invariants.sql h1:nbme0Tkhmvqq2rbb1HwElsVAFttkR1zc7mTPPthPVvI=

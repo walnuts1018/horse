@@ -17,11 +17,13 @@ var (
 )
 
 func Where[Q psql.Filterable]() struct {
+	AccountMovements      accountMovementWhere[Q]
 	AccountingPeriods     accountingPeriodWhere[Q]
 	Accounts              accountWhere[Q]
 	AllocationDefaults    allocationDefaultWhere[Q]
 	AllocationRuleWeights allocationRuleWeightWhere[Q]
 	AllocationRules       allocationRuleWhere[Q]
+	Budgets               budgetWhere[Q]
 	Categories            categoryWhere[Q]
 	CorrectionPayments    correctionPaymentWhere[Q]
 	Corrections           correctionWhere[Q]
@@ -49,21 +51,26 @@ func Where[Q psql.Filterable]() struct {
 	ProductConcepts       productConceptWhere[Q]
 	ProductCorrections    productCorrectionWhere[Q]
 	ProductVariants       productVariantWhere[Q]
+	PurchaseItemTags      purchaseItemTagWhere[Q]
 	PurchaseItems         purchaseItemWhere[Q]
 	PurchasePayments      purchasePaymentWhere[Q]
 	Purchases             purchaseWhere[Q]
+	RecurringExpenses     recurringExpenseWhere[Q]
 	SettlementAdjustments settlementAdjustmentWhere[Q]
 	SettlementLines       settlementLineWhere[Q]
 	SettlementRuns        settlementRunWhere[Q]
 	SourceDocuments       sourceDocumentWhere[Q]
+	Tags                  tagWhere[Q]
 	Transfers             transferWhere[Q]
 } {
 	return struct {
+		AccountMovements      accountMovementWhere[Q]
 		AccountingPeriods     accountingPeriodWhere[Q]
 		Accounts              accountWhere[Q]
 		AllocationDefaults    allocationDefaultWhere[Q]
 		AllocationRuleWeights allocationRuleWeightWhere[Q]
 		AllocationRules       allocationRuleWhere[Q]
+		Budgets               budgetWhere[Q]
 		Categories            categoryWhere[Q]
 		CorrectionPayments    correctionPaymentWhere[Q]
 		Corrections           correctionWhere[Q]
@@ -91,20 +98,25 @@ func Where[Q psql.Filterable]() struct {
 		ProductConcepts       productConceptWhere[Q]
 		ProductCorrections    productCorrectionWhere[Q]
 		ProductVariants       productVariantWhere[Q]
+		PurchaseItemTags      purchaseItemTagWhere[Q]
 		PurchaseItems         purchaseItemWhere[Q]
 		PurchasePayments      purchasePaymentWhere[Q]
 		Purchases             purchaseWhere[Q]
+		RecurringExpenses     recurringExpenseWhere[Q]
 		SettlementAdjustments settlementAdjustmentWhere[Q]
 		SettlementLines       settlementLineWhere[Q]
 		SettlementRuns        settlementRunWhere[Q]
 		SourceDocuments       sourceDocumentWhere[Q]
+		Tags                  tagWhere[Q]
 		Transfers             transferWhere[Q]
 	}{
+		AccountMovements:      buildAccountMovementWhere[Q](AccountMovements.Columns),
 		AccountingPeriods:     buildAccountingPeriodWhere[Q](AccountingPeriods.Columns),
 		Accounts:              buildAccountWhere[Q](Accounts.Columns),
 		AllocationDefaults:    buildAllocationDefaultWhere[Q](AllocationDefaults.Columns),
 		AllocationRuleWeights: buildAllocationRuleWeightWhere[Q](AllocationRuleWeights.Columns),
 		AllocationRules:       buildAllocationRuleWhere[Q](AllocationRules.Columns),
+		Budgets:               buildBudgetWhere[Q](Budgets.Columns),
 		Categories:            buildCategoryWhere[Q](Categories.Columns),
 		CorrectionPayments:    buildCorrectionPaymentWhere[Q](CorrectionPayments.Columns),
 		Corrections:           buildCorrectionWhere[Q](Corrections.Columns),
@@ -132,13 +144,16 @@ func Where[Q psql.Filterable]() struct {
 		ProductConcepts:       buildProductConceptWhere[Q](ProductConcepts.Columns),
 		ProductCorrections:    buildProductCorrectionWhere[Q](ProductCorrections.Columns),
 		ProductVariants:       buildProductVariantWhere[Q](ProductVariants.Columns),
+		PurchaseItemTags:      buildPurchaseItemTagWhere[Q](PurchaseItemTags.Columns),
 		PurchaseItems:         buildPurchaseItemWhere[Q](PurchaseItems.Columns),
 		PurchasePayments:      buildPurchasePaymentWhere[Q](PurchasePayments.Columns),
 		Purchases:             buildPurchaseWhere[Q](Purchases.Columns),
+		RecurringExpenses:     buildRecurringExpenseWhere[Q](RecurringExpenses.Columns),
 		SettlementAdjustments: buildSettlementAdjustmentWhere[Q](SettlementAdjustments.Columns),
 		SettlementLines:       buildSettlementLineWhere[Q](SettlementLines.Columns),
 		SettlementRuns:        buildSettlementRunWhere[Q](SettlementRuns.Columns),
 		SourceDocuments:       buildSourceDocumentWhere[Q](SourceDocuments.Columns),
+		Tags:                  buildTagWhere[Q](Tags.Columns),
 		Transfers:             buildTransferWhere[Q](Transfers.Columns),
 	}
 }

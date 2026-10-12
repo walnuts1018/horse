@@ -39,6 +39,7 @@ type preloadCounts struct {
 	Purchase         purchaseCountPreloader
 	SettlementRun    settlementRunCountPreloader
 	SourceDocument   sourceDocumentCountPreloader
+	Tag              tagCountPreloader
 	Transfer         transferCountPreloader
 }
 
@@ -62,6 +63,7 @@ func getPreloadCount() preloadCounts {
 		Purchase:         buildPurchaseCountPreloader(),
 		SettlementRun:    buildSettlementRunCountPreloader(),
 		SourceDocument:   buildSourceDocumentCountPreloader(),
+		Tag:              buildTagCountPreloader(),
 		Transfer:         buildTransferCountPreloader(),
 	}
 }
@@ -85,6 +87,7 @@ type thenLoadCounts[Q orm.Loadable] struct {
 	Purchase         purchaseCountThenLoader[Q]
 	SettlementRun    settlementRunCountThenLoader[Q]
 	SourceDocument   sourceDocumentCountThenLoader[Q]
+	Tag              tagCountThenLoader[Q]
 	Transfer         transferCountThenLoader[Q]
 }
 
@@ -108,6 +111,7 @@ func getThenLoadCount[Q orm.Loadable]() thenLoadCounts[Q] {
 		Purchase:         buildPurchaseCountThenLoader[Q](),
 		SettlementRun:    buildSettlementRunCountThenLoader[Q](),
 		SourceDocument:   buildSourceDocumentCountThenLoader[Q](),
+		Tag:              buildTagCountThenLoader[Q](),
 		Transfer:         buildTransferCountThenLoader[Q](),
 	}
 }

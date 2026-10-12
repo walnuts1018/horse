@@ -56,6 +56,7 @@ type accountR struct {
 	CorrectionPayments CorrectionPaymentSlice // correction_payments.correction_payments_account_id_fkey
 	PurchasePayments   PurchasePaymentSlice   // purchase_payments.purchase_payments_household_id_account_id_fkey
 	Purchases          PurchaseSlice          // purchases.purchases_household_id_payment_account_id_fkey
+	RecurringExpenses  RecurringExpenseSlice  // recurring_expenses.recurring_expenses_household_id_payment_account_id_fkey
 	Transfers          TransferSlice          // transfers.transfers_payment_account_fk
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
@@ -70,6 +71,7 @@ type accountRLoaded struct {
 	CorrectionPayments bool // correction_payments.correction_payments_account_id_fkey
 	PurchasePayments   bool // purchase_payments.purchase_payments_household_id_account_id_fkey
 	Purchases          bool // purchases.purchases_household_id_payment_account_id_fkey
+	RecurringExpenses  bool // recurring_expenses.recurring_expenses_household_id_payment_account_id_fkey
 	Transfers          bool // transfers.transfers_payment_account_fk
 }
 
@@ -790,6 +792,35 @@ func (os AccountSlice) Purchases(mods ...bob.Mod[*dialect.SelectQuery]) Purchase
 	)...)
 }
 
+// RecurringExpenses starts a query for related objects on recurring_expenses
+func (o *Account) RecurringExpenses(mods ...bob.Mod[*dialect.SelectQuery]) RecurringExpensesQuery {
+	return RecurringExpenses.Query(append(mods,
+		sm.Where(RecurringExpenses.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(RecurringExpenses.Columns.PaymentAccountID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os AccountSlice) RecurringExpenses(mods ...bob.Mod[*dialect.SelectQuery]) RecurringExpensesQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return RecurringExpenses.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "PaymentAccountID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "PaymentAccountID"),
+		)).As("bob_rel_keys").On(RecurringExpenses.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), RecurringExpenses.Columns.PaymentAccountID.EQ(psql.Quote("bob_rel_keys", "PaymentAccountID"))),
+	)...)
+}
+
 // Transfers starts a query for related objects on transfers
 func (o *Account) Transfers(mods ...bob.Mod[*dialect.SelectQuery]) TransfersQuery {
 	return Transfers.Query(append(mods,
@@ -1134,6 +1165,78 @@ func (account0 *Account) AttachPurchases(ctx context.Context, exec bob.Executor,
 	return nil
 }
 
+func insertAccountRecurringExpenses0(ctx context.Context, exec bob.Executor, recurringExpenses1 []*RecurringExpenseSetter, account0 *Account) (RecurringExpenseSlice, error) {
+	for i := range recurringExpenses1 {
+		recurringExpenses1[i].HouseholdID = func() *uuid.UUID { return &account0.HouseholdID }()
+		recurringExpenses1[i].PaymentAccountID = func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: account0.ID, Valid: true}; return &v }()
+	}
+
+	ret, err := RecurringExpenses.Insert(bob.ToMods(recurringExpenses1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertAccountRecurringExpenses0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachAccountRecurringExpenses0(ctx context.Context, exec bob.Executor, count int, recurringExpenses1 RecurringExpenseSlice, account0 *Account) (RecurringExpenseSlice, error) {
+	setter := &RecurringExpenseSetter{
+		HouseholdID:      func() *uuid.UUID { return &account0.HouseholdID }(),
+		PaymentAccountID: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: account0.ID, Valid: true}; return &v }(),
+	}
+
+	err := recurringExpenses1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachAccountRecurringExpenses0: %w", err)
+	}
+
+	return recurringExpenses1, nil
+}
+
+func (account0 *Account) InsertRecurringExpenses(ctx context.Context, exec bob.Executor, related ...*RecurringExpenseSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	recurringExpenses1, err := insertAccountRecurringExpenses0(ctx, exec, related, account0)
+	if err != nil {
+		return err
+	}
+
+	account0.R.RecurringExpenses = append(account0.R.RecurringExpenses, recurringExpenses1...)
+
+	for _, rel := range recurringExpenses1 {
+		rel.R.Account = account0
+		rel.R.Loaded.Account = true
+	}
+	return nil
+}
+
+func (account0 *Account) AttachRecurringExpenses(ctx context.Context, exec bob.Executor, related ...*RecurringExpense) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	recurringExpenses1 := RecurringExpenseSlice(related)
+
+	_, err = attachAccountRecurringExpenses0(ctx, exec, len(related), recurringExpenses1, account0)
+	if err != nil {
+		return err
+	}
+
+	account0.R.RecurringExpenses = append(account0.R.RecurringExpenses, recurringExpenses1...)
+
+	for _, rel := range related {
+		rel.R.Account = account0
+		rel.R.Loaded.Account = true
+	}
+
+	return nil
+}
+
 func insertAccountTransfers0(ctx context.Context, exec bob.Executor, transfers1 []*TransferSetter, account0 *Account) (TransferSlice, error) {
 	for i := range transfers1 {
 		transfers1[i].HouseholdID = func() *uuid.UUID { return &account0.HouseholdID }()
@@ -1309,6 +1412,21 @@ func (w accountWhereR[Q]) HasPurchases(filters ...bob.Mod[*dialect.SelectQuery])
 		sm.From(Purchases.NameExpr()),
 		sm.Where(Purchases.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(Purchases.Columns.PaymentAccountID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasRecurringExpenses filters parents that have a matching RecurringExpenses using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to RecurringExpenses).
+func (w accountWhereR[Q]) HasRecurringExpenses(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(RecurringExpenses.NameExpr()),
+		sm.Where(RecurringExpenses.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(RecurringExpenses.Columns.PaymentAccountID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -1505,6 +1623,22 @@ func (o *Account) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "RecurringExpenses":
+		rels, ok := retrieved.(RecurringExpenseSlice)
+		if !ok {
+			return fmt.Errorf("account cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.RecurringExpenses = rels
+		o.R.Loaded.RecurringExpenses = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Account = o
+				rel.R.Loaded.Account = true
+			}
+		}
+		return nil
 	case "Transfers":
 		rels, ok := retrieved.(TransferSlice)
 		if !ok {
@@ -1568,6 +1702,7 @@ type accountThenLoader[Q orm.Loadable] struct {
 	CorrectionPayments func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	PurchasePayments   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Purchases          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	RecurringExpenses  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Transfers          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
@@ -1586,6 +1721,9 @@ func buildAccountThenLoader[Q orm.Loadable]() accountThenLoader[Q] {
 	}
 	type PurchasesLoadInterface interface {
 		LoadPurchases(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type RecurringExpensesLoadInterface interface {
+		LoadRecurringExpenses(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type TransfersLoadInterface interface {
 		LoadTransfers(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -1620,6 +1758,12 @@ func buildAccountThenLoader[Q orm.Loadable]() accountThenLoader[Q] {
 			"Purchases",
 			func(ctx context.Context, exec bob.Executor, retrieved PurchasesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadPurchases(ctx, exec, mods...)
+			},
+		),
+		RecurringExpenses: thenLoadBuilder[Q](
+			"RecurringExpenses",
+			func(ctx context.Context, exec bob.Executor, retrieved RecurringExpensesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadRecurringExpenses(ctx, exec, mods...)
 			},
 		),
 		Transfers: thenLoadBuilder[Q](
@@ -1990,6 +2134,78 @@ func (os AccountSlice) LoadPurchases(ctx context.Context, exec bob.Executor, mod
 	return nil
 }
 
+// LoadRecurringExpenses loads the account's RecurringExpenses into the .R struct
+func (o *Account) LoadRecurringExpenses(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.RecurringExpenses = nil
+	o.R.Loaded.RecurringExpenses = false
+
+	related, err := o.RecurringExpenses(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Account = o
+		rel.R.Loaded.Account = true
+	}
+
+	o.R.RecurringExpenses = related
+	o.R.Loaded.RecurringExpenses = true
+	return nil
+}
+
+// LoadRecurringExpenses loads the account's RecurringExpenses into the .R struct
+func (os AccountSlice) LoadRecurringExpenses(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	recurringExpenses, err := os.RecurringExpenses(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.RecurringExpenses = nil
+		o.R.Loaded.RecurringExpenses = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range recurringExpenses {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !rel.PaymentAccountID.Valid {
+				continue
+			}
+			if !(rel.PaymentAccountID.Valid && o.ID == rel.PaymentAccountID.V) {
+				continue
+			}
+
+			rel.R.Account = o
+			rel.R.Loaded.Account = true
+
+			o.R.RecurringExpenses = append(o.R.RecurringExpenses, rel)
+		}
+	}
+
+	return nil
+}
+
 // LoadTransfers loads the account's Transfers into the .R struct
 func (o *Account) LoadTransfers(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -2067,6 +2283,7 @@ type accountC struct {
 	CorrectionPayments *int64
 	PurchasePayments   *int64
 	Purchases          *int64
+	RecurringExpenses  *int64
 	Transfers          *int64
 }
 
@@ -2083,6 +2300,8 @@ func (o *Account) PreloadCount(name string, count int64) error {
 		o.C.PurchasePayments = &count
 	case "Purchases":
 		o.C.Purchases = &count
+	case "RecurringExpenses":
+		o.C.RecurringExpenses = &count
 	case "Transfers":
 		o.C.Transfers = &count
 	}
@@ -2093,6 +2312,7 @@ type accountCountPreloader struct {
 	CorrectionPayments func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	PurchasePayments   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	Purchases          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	RecurringExpenses  func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	Transfers          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
@@ -2151,6 +2371,24 @@ func buildAccountCountPreloader() accountCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		RecurringExpenses: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Account]("RecurringExpenses", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Accounts.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(RecurringExpenses.NameAsExpr()),
+					sm.Where(psql.Quote(RecurringExpenses.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(RecurringExpenses.Alias(), "payment_account_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		Transfers: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*Account]("Transfers", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -2176,6 +2414,7 @@ type accountCountThenLoader[Q orm.Loadable] struct {
 	CorrectionPayments func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	PurchasePayments   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Purchases          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	RecurringExpenses  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Transfers          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
@@ -2188,6 +2427,9 @@ func buildAccountCountThenLoader[Q orm.Loadable]() accountCountThenLoader[Q] {
 	}
 	type PurchasesCountInterface interface {
 		LoadCountPurchases(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type RecurringExpensesCountInterface interface {
+		LoadCountRecurringExpenses(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type TransfersCountInterface interface {
 		LoadCountTransfers(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -2210,6 +2452,12 @@ func buildAccountCountThenLoader[Q orm.Loadable]() accountCountThenLoader[Q] {
 			"Purchases",
 			func(ctx context.Context, exec bob.Executor, retrieved PurchasesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountPurchases(ctx, exec, mods...)
+			},
+		),
+		RecurringExpenses: countThenLoadBuilder[Q](
+			"RecurringExpenses",
+			func(ctx context.Context, exec bob.Executor, retrieved RecurringExpensesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountRecurringExpenses(ctx, exec, mods...)
 			},
 		),
 		Transfers: countThenLoadBuilder[Q](
@@ -2520,6 +2768,116 @@ func (os AccountSlice) LoadCountPurchases(ctx context.Context, exec bob.Executor
 	return nil
 }
 
+// LoadCountRecurringExpenses loads the count of RecurringExpenses into the C struct
+func (o *Account) LoadCountRecurringExpenses(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.RecurringExpenses(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.RecurringExpenses = &count
+	return nil
+}
+
+// LoadCountRecurringExpenses loads the count of RecurringExpenses for a slice in a single batch query
+func (os AccountSlice) LoadCountRecurringExpenses(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			RecurringExpenses.Columns.HouseholdID.As("household_id"),
+			RecurringExpenses.Columns.PaymentAccountID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(RecurringExpenses.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "PaymentAccountID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "PaymentAccountID"),
+		)).As("bob_rel_keys").On(
+			RecurringExpenses.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			RecurringExpenses.Columns.PaymentAccountID.EQ(psql.Quote("bob_rel_keys", "PaymentAccountID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(RecurringExpenses.Columns.HouseholdID),
+		sm.GroupBy(RecurringExpenses.Columns.PaymentAccountID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.RecurringExpenses = &count
+	}
+
+	return nil
+}
+
 // LoadCountTransfers loads the count of Transfers into the C struct
 func (o *Account) LoadCountTransfers(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -2637,6 +2995,7 @@ type accountJoins[Q dialect.Joinable] struct {
 	CorrectionPayments modAs[Q, correctionPaymentColumns]
 	PurchasePayments   modAs[Q, purchasePaymentColumns]
 	Purchases          modAs[Q, purchaseColumns]
+	RecurringExpenses  modAs[Q, recurringExpenseColumns]
 	Transfers          modAs[Q, transferColumns]
 }
 
@@ -2710,6 +3069,20 @@ func buildAccountJoins[Q dialect.Joinable](cols accountColumns, typ string) acco
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, Purchases.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.PaymentAccountID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		RecurringExpenses: modAs[Q, recurringExpenseColumns]{
+			c: RecurringExpenses.Columns,
+			f: func(to recurringExpenseColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, RecurringExpenses.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.HouseholdID), to.PaymentAccountID.EQ(cols.ID),
 					))
 				}

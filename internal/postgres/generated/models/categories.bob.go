@@ -51,12 +51,14 @@ type CategoriesQuery = *psql.ViewQuery[*Category, CategorySlice]
 
 // categoryR is where relationships are stored.
 type categoryR struct {
-	AllocationRules   AllocationRuleSlice // allocation_rules.allocation_rules_household_id_category_id_fkey
-	Household         *Household          // categories.categories_household_id_fkey
-	Category          *Category           // categories.categories_household_id_parent_id_fkey
-	ReverseCategories CategorySlice       // categories.categories_household_id_parent_id_fkey__self_join_reverse
-	ProductConcepts   ProductConceptSlice // product_concepts.product_concepts_household_id_category_id_fkey
-	PurchaseItems     PurchaseItemSlice   // purchase_items.purchase_items_household_id_category_id_fkey
+	AllocationRules   AllocationRuleSlice   // allocation_rules.allocation_rules_household_id_category_id_fkey
+	Budgets           BudgetSlice           // budgets.budgets_household_id_category_id_fkey
+	Household         *Household            // categories.categories_household_id_fkey
+	Category          *Category             // categories.categories_household_id_parent_id_fkey
+	ReverseCategories CategorySlice         // categories.categories_household_id_parent_id_fkey__self_join_reverse
+	ProductConcepts   ProductConceptSlice   // product_concepts.product_concepts_household_id_category_id_fkey
+	PurchaseItems     PurchaseItemSlice     // purchase_items.purchase_items_household_id_category_id_fkey
+	RecurringExpenses RecurringExpenseSlice // recurring_expenses.recurring_expenses_household_id_category_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -66,11 +68,13 @@ type categoryR struct {
 // categoryRLoaded tracks which relationships on Category have been loaded.
 type categoryRLoaded struct {
 	AllocationRules   bool // allocation_rules.allocation_rules_household_id_category_id_fkey
+	Budgets           bool // budgets.budgets_household_id_category_id_fkey
 	Household         bool // categories.categories_household_id_fkey
 	Category          bool // categories.categories_household_id_parent_id_fkey
 	ReverseCategories bool // categories.categories_household_id_parent_id_fkey__self_join_reverse
 	ProductConcepts   bool // product_concepts.product_concepts_household_id_category_id_fkey
 	PurchaseItems     bool // purchase_items.purchase_items_household_id_category_id_fkey
+	RecurringExpenses bool // recurring_expenses.recurring_expenses_household_id_category_id_fkey
 }
 
 func buildCategoryColumns(tableName string) categoryColumns {
@@ -679,6 +683,35 @@ func (os CategorySlice) AllocationRules(mods ...bob.Mod[*dialect.SelectQuery]) A
 	)...)
 }
 
+// Budgets starts a query for related objects on budgets
+func (o *Category) Budgets(mods ...bob.Mod[*dialect.SelectQuery]) BudgetsQuery {
+	return Budgets.Query(append(mods,
+		sm.Where(Budgets.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(Budgets.Columns.CategoryID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os CategorySlice) Budgets(mods ...bob.Mod[*dialect.SelectQuery]) BudgetsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return Budgets.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "CategoryID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "CategoryID"),
+		)).As("bob_rel_keys").On(Budgets.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Budgets.Columns.CategoryID.EQ(psql.Quote("bob_rel_keys", "CategoryID"))),
+	)...)
+}
+
 // Household starts a query for related objects on households
 func (o *Category) Household(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdsQuery {
 	return Households.Query(append(mods,
@@ -825,6 +858,35 @@ func (os CategorySlice) PurchaseItems(mods ...bob.Mod[*dialect.SelectQuery]) Pur
 	)...)
 }
 
+// RecurringExpenses starts a query for related objects on recurring_expenses
+func (o *Category) RecurringExpenses(mods ...bob.Mod[*dialect.SelectQuery]) RecurringExpensesQuery {
+	return RecurringExpenses.Query(append(mods,
+		sm.Where(RecurringExpenses.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(RecurringExpenses.Columns.CategoryID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os CategorySlice) RecurringExpenses(mods ...bob.Mod[*dialect.SelectQuery]) RecurringExpensesQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return RecurringExpenses.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "CategoryID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "CategoryID"),
+		)).As("bob_rel_keys").On(RecurringExpenses.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), RecurringExpenses.Columns.CategoryID.EQ(psql.Quote("bob_rel_keys", "CategoryID"))),
+	)...)
+}
+
 func insertCategoryAllocationRules0(ctx context.Context, exec bob.Executor, allocationRules1 []*AllocationRuleSetter, category0 *Category) (AllocationRuleSlice, error) {
 	for i := range allocationRules1 {
 		allocationRules1[i].HouseholdID = func() *uuid.UUID { return &category0.HouseholdID }()
@@ -888,6 +950,78 @@ func (category0 *Category) AttachAllocationRules(ctx context.Context, exec bob.E
 	}
 
 	category0.R.AllocationRules = append(category0.R.AllocationRules, allocationRules1...)
+
+	for _, rel := range related {
+		rel.R.Category = category0
+		rel.R.Loaded.Category = true
+	}
+
+	return nil
+}
+
+func insertCategoryBudgets0(ctx context.Context, exec bob.Executor, budgets1 []*BudgetSetter, category0 *Category) (BudgetSlice, error) {
+	for i := range budgets1 {
+		budgets1[i].HouseholdID = func() *uuid.UUID { return &category0.HouseholdID }()
+		budgets1[i].CategoryID = func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: category0.ID, Valid: true}; return &v }()
+	}
+
+	ret, err := Budgets.Insert(bob.ToMods(budgets1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertCategoryBudgets0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachCategoryBudgets0(ctx context.Context, exec bob.Executor, count int, budgets1 BudgetSlice, category0 *Category) (BudgetSlice, error) {
+	setter := &BudgetSetter{
+		HouseholdID: func() *uuid.UUID { return &category0.HouseholdID }(),
+		CategoryID:  func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: category0.ID, Valid: true}; return &v }(),
+	}
+
+	err := budgets1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachCategoryBudgets0: %w", err)
+	}
+
+	return budgets1, nil
+}
+
+func (category0 *Category) InsertBudgets(ctx context.Context, exec bob.Executor, related ...*BudgetSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	budgets1, err := insertCategoryBudgets0(ctx, exec, related, category0)
+	if err != nil {
+		return err
+	}
+
+	category0.R.Budgets = append(category0.R.Budgets, budgets1...)
+
+	for _, rel := range budgets1 {
+		rel.R.Category = category0
+		rel.R.Loaded.Category = true
+	}
+	return nil
+}
+
+func (category0 *Category) AttachBudgets(ctx context.Context, exec bob.Executor, related ...*Budget) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	budgets1 := BudgetSlice(related)
+
+	_, err = attachCategoryBudgets0(ctx, exec, len(related), budgets1, category0)
+	if err != nil {
+		return err
+	}
+
+	category0.R.Budgets = append(category0.R.Budgets, budgets1...)
 
 	for _, rel := range related {
 		rel.R.Category = category0
@@ -1214,6 +1348,78 @@ func (category0 *Category) AttachPurchaseItems(ctx context.Context, exec bob.Exe
 	return nil
 }
 
+func insertCategoryRecurringExpenses0(ctx context.Context, exec bob.Executor, recurringExpenses1 []*RecurringExpenseSetter, category0 *Category) (RecurringExpenseSlice, error) {
+	for i := range recurringExpenses1 {
+		recurringExpenses1[i].HouseholdID = func() *uuid.UUID { return &category0.HouseholdID }()
+		recurringExpenses1[i].CategoryID = func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: category0.ID, Valid: true}; return &v }()
+	}
+
+	ret, err := RecurringExpenses.Insert(bob.ToMods(recurringExpenses1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertCategoryRecurringExpenses0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachCategoryRecurringExpenses0(ctx context.Context, exec bob.Executor, count int, recurringExpenses1 RecurringExpenseSlice, category0 *Category) (RecurringExpenseSlice, error) {
+	setter := &RecurringExpenseSetter{
+		HouseholdID: func() *uuid.UUID { return &category0.HouseholdID }(),
+		CategoryID:  func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: category0.ID, Valid: true}; return &v }(),
+	}
+
+	err := recurringExpenses1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachCategoryRecurringExpenses0: %w", err)
+	}
+
+	return recurringExpenses1, nil
+}
+
+func (category0 *Category) InsertRecurringExpenses(ctx context.Context, exec bob.Executor, related ...*RecurringExpenseSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	recurringExpenses1, err := insertCategoryRecurringExpenses0(ctx, exec, related, category0)
+	if err != nil {
+		return err
+	}
+
+	category0.R.RecurringExpenses = append(category0.R.RecurringExpenses, recurringExpenses1...)
+
+	for _, rel := range recurringExpenses1 {
+		rel.R.Category = category0
+		rel.R.Loaded.Category = true
+	}
+	return nil
+}
+
+func (category0 *Category) AttachRecurringExpenses(ctx context.Context, exec bob.Executor, related ...*RecurringExpense) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	recurringExpenses1 := RecurringExpenseSlice(related)
+
+	_, err = attachCategoryRecurringExpenses0(ctx, exec, len(related), recurringExpenses1, category0)
+	if err != nil {
+		return err
+	}
+
+	category0.R.RecurringExpenses = append(category0.R.RecurringExpenses, recurringExpenses1...)
+
+	for _, rel := range related {
+		rel.R.Category = category0
+		rel.R.Loaded.Category = true
+	}
+
+	return nil
+}
+
 type categoryWhere[Q psql.Filterable] struct {
 	cols        categoryColumns
 	ID          psql.WhereMod[Q, uuid.UUID]
@@ -1259,6 +1465,21 @@ func (w categoryWhereR[Q]) HasAllocationRules(filters ...bob.Mod[*dialect.Select
 		sm.From(AllocationRules.NameExpr()),
 		sm.Where(AllocationRules.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(AllocationRules.Columns.CategoryID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasBudgets filters parents that have a matching Budgets using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to Budgets).
+func (w categoryWhereR[Q]) HasBudgets(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(Budgets.NameExpr()),
+		sm.Where(Budgets.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(Budgets.Columns.CategoryID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -1339,6 +1560,21 @@ func (w categoryWhereR[Q]) HasPurchaseItems(filters ...bob.Mod[*dialect.SelectQu
 		sm.From(PurchaseItems.NameExpr()),
 		sm.Where(PurchaseItems.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(PurchaseItems.Columns.CategoryID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasRecurringExpenses filters parents that have a matching RecurringExpenses using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to RecurringExpenses).
+func (w categoryWhereR[Q]) HasRecurringExpenses(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(RecurringExpenses.NameExpr()),
+		sm.Where(RecurringExpenses.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(RecurringExpenses.Columns.CategoryID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -1462,6 +1698,22 @@ func (o *Category) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "Budgets":
+		rels, ok := retrieved.(BudgetSlice)
+		if !ok {
+			return fmt.Errorf("category cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.Budgets = rels
+		o.R.Loaded.Budgets = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Category = o
+				rel.R.Loaded.Category = true
+			}
+		}
+		return nil
 	case "Household":
 		rel, ok := retrieved.(*Household)
 		if !ok {
@@ -1536,6 +1788,22 @@ func (o *Category) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "RecurringExpenses":
+		rels, ok := retrieved.(RecurringExpenseSlice)
+		if !ok {
+			return fmt.Errorf("category cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.RecurringExpenses = rels
+		o.R.Loaded.RecurringExpenses = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Category = o
+				rel.R.Loaded.Category = true
+			}
+		}
+		return nil
 	default:
 		return fmt.Errorf("category has no relationship %q", name)
 	}
@@ -1579,16 +1847,21 @@ func buildCategoryPreloader() categoryPreloader {
 
 type categoryThenLoader[Q orm.Loadable] struct {
 	AllocationRules   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Budgets           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Household         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Category          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ReverseCategories func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ProductConcepts   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	PurchaseItems     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	RecurringExpenses func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildCategoryThenLoader[Q orm.Loadable]() categoryThenLoader[Q] {
 	type AllocationRulesLoadInterface interface {
 		LoadAllocationRules(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type BudgetsLoadInterface interface {
+		LoadBudgets(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type HouseholdLoadInterface interface {
 		LoadHousehold(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -1605,12 +1878,21 @@ func buildCategoryThenLoader[Q orm.Loadable]() categoryThenLoader[Q] {
 	type PurchaseItemsLoadInterface interface {
 		LoadPurchaseItems(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
+	type RecurringExpensesLoadInterface interface {
+		LoadRecurringExpenses(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 
 	return categoryThenLoader[Q]{
 		AllocationRules: thenLoadBuilder[Q](
 			"AllocationRules",
 			func(ctx context.Context, exec bob.Executor, retrieved AllocationRulesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadAllocationRules(ctx, exec, mods...)
+			},
+		),
+		Budgets: thenLoadBuilder[Q](
+			"Budgets",
+			func(ctx context.Context, exec bob.Executor, retrieved BudgetsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadBudgets(ctx, exec, mods...)
 			},
 		),
 		Household: thenLoadBuilder[Q](
@@ -1641,6 +1923,12 @@ func buildCategoryThenLoader[Q orm.Loadable]() categoryThenLoader[Q] {
 			"PurchaseItems",
 			func(ctx context.Context, exec bob.Executor, retrieved PurchaseItemsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadPurchaseItems(ctx, exec, mods...)
+			},
+		),
+		RecurringExpenses: thenLoadBuilder[Q](
+			"RecurringExpenses",
+			func(ctx context.Context, exec bob.Executor, retrieved RecurringExpensesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadRecurringExpenses(ctx, exec, mods...)
 			},
 		),
 	}
@@ -1712,6 +2000,78 @@ func (os CategorySlice) LoadAllocationRules(ctx context.Context, exec bob.Execut
 			rel.R.Loaded.Category = true
 
 			o.R.AllocationRules = append(o.R.AllocationRules, rel)
+		}
+	}
+
+	return nil
+}
+
+// LoadBudgets loads the category's Budgets into the .R struct
+func (o *Category) LoadBudgets(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.Budgets = nil
+	o.R.Loaded.Budgets = false
+
+	related, err := o.Budgets(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Category = o
+		rel.R.Loaded.Category = true
+	}
+
+	o.R.Budgets = related
+	o.R.Loaded.Budgets = true
+	return nil
+}
+
+// LoadBudgets loads the category's Budgets into the .R struct
+func (os CategorySlice) LoadBudgets(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	budgets, err := os.Budgets(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.Budgets = nil
+		o.R.Loaded.Budgets = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range budgets {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !rel.CategoryID.Valid {
+				continue
+			}
+			if !(rel.CategoryID.Valid && o.ID == rel.CategoryID.V) {
+				continue
+			}
+
+			rel.R.Category = o
+			rel.R.Loaded.Category = true
+
+			o.R.Budgets = append(o.R.Budgets, rel)
 		}
 	}
 
@@ -2078,12 +2438,86 @@ func (os CategorySlice) LoadPurchaseItems(ctx context.Context, exec bob.Executor
 	return nil
 }
 
+// LoadRecurringExpenses loads the category's RecurringExpenses into the .R struct
+func (o *Category) LoadRecurringExpenses(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.RecurringExpenses = nil
+	o.R.Loaded.RecurringExpenses = false
+
+	related, err := o.RecurringExpenses(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Category = o
+		rel.R.Loaded.Category = true
+	}
+
+	o.R.RecurringExpenses = related
+	o.R.Loaded.RecurringExpenses = true
+	return nil
+}
+
+// LoadRecurringExpenses loads the category's RecurringExpenses into the .R struct
+func (os CategorySlice) LoadRecurringExpenses(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	recurringExpenses, err := os.RecurringExpenses(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.RecurringExpenses = nil
+		o.R.Loaded.RecurringExpenses = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range recurringExpenses {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !rel.CategoryID.Valid {
+				continue
+			}
+			if !(rel.CategoryID.Valid && o.ID == rel.CategoryID.V) {
+				continue
+			}
+
+			rel.R.Category = o
+			rel.R.Loaded.Category = true
+
+			o.R.RecurringExpenses = append(o.R.RecurringExpenses, rel)
+		}
+	}
+
+	return nil
+}
+
 // categoryC is where relationship counts are stored.
 type categoryC struct {
 	AllocationRules   *int64
+	Budgets           *int64
 	ReverseCategories *int64
 	ProductConcepts   *int64
 	PurchaseItems     *int64
+	RecurringExpenses *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -2095,21 +2529,27 @@ func (o *Category) PreloadCount(name string, count int64) error {
 	switch name {
 	case "AllocationRules":
 		o.C.AllocationRules = &count
+	case "Budgets":
+		o.C.Budgets = &count
 	case "ReverseCategories":
 		o.C.ReverseCategories = &count
 	case "ProductConcepts":
 		o.C.ProductConcepts = &count
 	case "PurchaseItems":
 		o.C.PurchaseItems = &count
+	case "RecurringExpenses":
+		o.C.RecurringExpenses = &count
 	}
 	return nil
 }
 
 type categoryCountPreloader struct {
 	AllocationRules   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Budgets           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	ReverseCategories func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	ProductConcepts   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	PurchaseItems     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	RecurringExpenses func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildCategoryCountPreloader() categoryCountPreloader {
@@ -2127,6 +2567,24 @@ func buildCategoryCountPreloader() categoryCountPreloader {
 					sm.From(AllocationRules.NameAsExpr()),
 					sm.Where(psql.Quote(AllocationRules.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
 					sm.Where(psql.Quote(AllocationRules.Alias(), "category_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+		Budgets: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Category]("Budgets", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Categories.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(Budgets.NameAsExpr()),
+					sm.Where(psql.Quote(Budgets.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(Budgets.Alias(), "category_id").EQ(psql.Quote(parent, "id"))),
 				}
 				subqueryMods = append(subqueryMods, mods...)
 				return psql.Group(psql.Select(subqueryMods...).Expression)
@@ -2186,19 +2644,42 @@ func buildCategoryCountPreloader() categoryCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		RecurringExpenses: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Category]("RecurringExpenses", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Categories.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(RecurringExpenses.NameAsExpr()),
+					sm.Where(psql.Quote(RecurringExpenses.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(RecurringExpenses.Alias(), "category_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 	}
 }
 
 type categoryCountThenLoader[Q orm.Loadable] struct {
 	AllocationRules   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Budgets           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ReverseCategories func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ProductConcepts   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	PurchaseItems     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	RecurringExpenses func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildCategoryCountThenLoader[Q orm.Loadable]() categoryCountThenLoader[Q] {
 	type AllocationRulesCountInterface interface {
 		LoadCountAllocationRules(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type BudgetsCountInterface interface {
+		LoadCountBudgets(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type ReverseCategoriesCountInterface interface {
 		LoadCountReverseCategories(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -2209,12 +2690,21 @@ func buildCategoryCountThenLoader[Q orm.Loadable]() categoryCountThenLoader[Q] {
 	type PurchaseItemsCountInterface interface {
 		LoadCountPurchaseItems(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
+	type RecurringExpensesCountInterface interface {
+		LoadCountRecurringExpenses(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 
 	return categoryCountThenLoader[Q]{
 		AllocationRules: countThenLoadBuilder[Q](
 			"AllocationRules",
 			func(ctx context.Context, exec bob.Executor, retrieved AllocationRulesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountAllocationRules(ctx, exec, mods...)
+			},
+		),
+		Budgets: countThenLoadBuilder[Q](
+			"Budgets",
+			func(ctx context.Context, exec bob.Executor, retrieved BudgetsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountBudgets(ctx, exec, mods...)
 			},
 		),
 		ReverseCategories: countThenLoadBuilder[Q](
@@ -2233,6 +2723,12 @@ func buildCategoryCountThenLoader[Q orm.Loadable]() categoryCountThenLoader[Q] {
 			"PurchaseItems",
 			func(ctx context.Context, exec bob.Executor, retrieved PurchaseItemsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountPurchaseItems(ctx, exec, mods...)
+			},
+		),
+		RecurringExpenses: countThenLoadBuilder[Q](
+			"RecurringExpenses",
+			func(ctx context.Context, exec bob.Executor, retrieved RecurringExpensesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountRecurringExpenses(ctx, exec, mods...)
 			},
 		),
 	}
@@ -2343,6 +2839,116 @@ func (os CategorySlice) LoadCountAllocationRules(ctx context.Context, exec bob.E
 			ID: o.ID,
 		}]
 		o.C.AllocationRules = &count
+	}
+
+	return nil
+}
+
+// LoadCountBudgets loads the count of Budgets into the C struct
+func (o *Category) LoadCountBudgets(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.Budgets(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.Budgets = &count
+	return nil
+}
+
+// LoadCountBudgets loads the count of Budgets for a slice in a single batch query
+func (os CategorySlice) LoadCountBudgets(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			Budgets.Columns.HouseholdID.As("household_id"),
+			Budgets.Columns.CategoryID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(Budgets.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "CategoryID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "CategoryID"),
+		)).As("bob_rel_keys").On(
+			Budgets.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			Budgets.Columns.CategoryID.EQ(psql.Quote("bob_rel_keys", "CategoryID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(Budgets.Columns.HouseholdID),
+		sm.GroupBy(Budgets.Columns.CategoryID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.Budgets = &count
 	}
 
 	return nil
@@ -2678,14 +3284,126 @@ func (os CategorySlice) LoadCountPurchaseItems(ctx context.Context, exec bob.Exe
 	return nil
 }
 
+// LoadCountRecurringExpenses loads the count of RecurringExpenses into the C struct
+func (o *Category) LoadCountRecurringExpenses(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.RecurringExpenses(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.RecurringExpenses = &count
+	return nil
+}
+
+// LoadCountRecurringExpenses loads the count of RecurringExpenses for a slice in a single batch query
+func (os CategorySlice) LoadCountRecurringExpenses(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			RecurringExpenses.Columns.HouseholdID.As("household_id"),
+			RecurringExpenses.Columns.CategoryID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(RecurringExpenses.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "CategoryID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "CategoryID"),
+		)).As("bob_rel_keys").On(
+			RecurringExpenses.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			RecurringExpenses.Columns.CategoryID.EQ(psql.Quote("bob_rel_keys", "CategoryID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(RecurringExpenses.Columns.HouseholdID),
+		sm.GroupBy(RecurringExpenses.Columns.CategoryID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.RecurringExpenses = &count
+	}
+
+	return nil
+}
+
 type categoryJoins[Q dialect.Joinable] struct {
 	typ               string
 	AllocationRules   modAs[Q, allocationRuleColumns]
+	Budgets           modAs[Q, budgetColumns]
 	Household         modAs[Q, householdColumns]
 	Category          modAs[Q, categoryColumns]
 	ReverseCategories modAs[Q, categoryColumns]
 	ProductConcepts   modAs[Q, productConceptColumns]
 	PurchaseItems     modAs[Q, purchaseItemColumns]
+	RecurringExpenses modAs[Q, recurringExpenseColumns]
 }
 
 func (j categoryJoins[Q]) aliasedAs(alias string) categoryJoins[Q] {
@@ -2702,6 +3420,20 @@ func buildCategoryJoins[Q dialect.Joinable](cols categoryColumns, typ string) ca
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, AllocationRules.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.CategoryID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		Budgets: modAs[Q, budgetColumns]{
+			c: Budgets.Columns,
+			f: func(to budgetColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, Budgets.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.HouseholdID), to.CategoryID.EQ(cols.ID),
 					))
 				}
@@ -2772,6 +3504,20 @@ func buildCategoryJoins[Q dialect.Joinable](cols categoryColumns, typ string) ca
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, PurchaseItems.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.CategoryID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		RecurringExpenses: modAs[Q, recurringExpenseColumns]{
+			c: RecurringExpenses.Columns,
+			f: func(to recurringExpenseColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, RecurringExpenses.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.HouseholdID), to.CategoryID.EQ(cols.ID),
 					))
 				}

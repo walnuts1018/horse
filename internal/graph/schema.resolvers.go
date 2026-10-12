@@ -126,6 +126,51 @@ func (r *mutationResolver) SetFundingSchedule(ctx context.Context, input model.S
 	return r.setFundingSchedule(ctx, input)
 }
 
+// CreateTag is the resolver for the createTag field.
+func (r *mutationResolver) CreateTag(ctx context.Context, input model.CreateTagInput) (*model.Tag, error) {
+	return r.createTag(ctx, input)
+}
+
+// UpdateTag is the resolver for the updateTag field.
+func (r *mutationResolver) UpdateTag(ctx context.Context, input model.UpdateTagInput) (*model.Tag, error) {
+	return r.updateTag(ctx, input)
+}
+
+// ArchiveTag is the resolver for the archiveTag field.
+func (r *mutationResolver) ArchiveTag(ctx context.Context, tagID string, baseRevision int, archived bool) (*model.Tag, error) {
+	return r.archiveTag(ctx, tagID, baseRevision, archived)
+}
+
+// BulkUpdatePurchaseItems is the resolver for the bulkUpdatePurchaseItems field.
+func (r *mutationResolver) BulkUpdatePurchaseItems(ctx context.Context, input model.BulkUpdatePurchaseItemsInput) ([]*model.PurchaseItem, error) {
+	return r.bulkUpdatePurchaseItems(ctx, input)
+}
+
+// SetBudget is the resolver for the setBudget field.
+func (r *mutationResolver) SetBudget(ctx context.Context, input model.SetBudgetInput) (*model.Budget, error) {
+	return r.setBudget(ctx, input)
+}
+
+// ArchiveBudget is the resolver for the archiveBudget field.
+func (r *mutationResolver) ArchiveBudget(ctx context.Context, budgetID string, baseRevision int, archived bool) (*model.Budget, error) {
+	return r.archiveBudget(ctx, budgetID, baseRevision, archived)
+}
+
+// SetRecurringExpense is the resolver for the setRecurringExpense field.
+func (r *mutationResolver) SetRecurringExpense(ctx context.Context, input model.SetRecurringExpenseInput) (*model.RecurringExpense, error) {
+	return r.setRecurringExpense(ctx, input)
+}
+
+// ArchiveRecurringExpense is the resolver for the archiveRecurringExpense field.
+func (r *mutationResolver) ArchiveRecurringExpense(ctx context.Context, expenseID string, baseRevision int, archived bool) (*model.RecurringExpense, error) {
+	return r.archiveRecurringExpense(ctx, expenseID, baseRevision, archived)
+}
+
+// RecordAccountMovement is the resolver for the recordAccountMovement field.
+func (r *mutationResolver) RecordAccountMovement(ctx context.Context, input model.RecordAccountMovementInput) (*model.AccountMovement, error) {
+	return r.recordAccountMovement(ctx, input)
+}
+
 // Viewer is the resolver for the viewer field.
 func (r *queryResolver) Viewer(ctx context.Context) (*model.Viewer, error) {
 	return r.viewer(ctx)
@@ -189,6 +234,26 @@ func (r *queryResolver) Settlement(ctx context.Context, householdID string, peri
 // MonthlyCategorySpending is the resolver for the monthlyCategorySpending field.
 func (r *queryResolver) MonthlyCategorySpending(ctx context.Context, householdID string, from string, to string) ([]*model.MonthlyCategorySpending, error) {
 	return r.monthlyCategorySpending(ctx, householdID, from, to)
+}
+
+// Tags is the resolver for the tags field.
+func (r *queryResolver) Tags(ctx context.Context, householdID string, includeArchived *bool) ([]*model.Tag, error) {
+	return r.tags(ctx, householdID, includeArchived != nil && *includeArchived)
+}
+
+// Budgets is the resolver for the budgets field.
+func (r *queryResolver) Budgets(ctx context.Context, householdID string, period string) ([]*model.Budget, error) {
+	return r.budgets(ctx, householdID, period)
+}
+
+// RecurringExpenses is the resolver for the recurringExpenses field.
+func (r *queryResolver) RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool) ([]*model.RecurringExpense, error) {
+	return r.recurringExpenses(ctx, householdID, includeArchived != nil && *includeArchived)
+}
+
+// AccountMovements is the resolver for the accountMovements field.
+func (r *queryResolver) AccountMovements(ctx context.Context, householdID string, first *int) ([]*model.AccountMovement, error) {
+	return r.accountMovements(ctx, householdID, first)
 }
 
 // Mutation returns MutationResolver implementation.

@@ -53,6 +53,7 @@ type JournalsQuery = *psql.ViewQuery[*Journal, JournalSlice]
 
 // journalR is where relationships are stored.
 type journalR struct {
+	AccountMovement *AccountMovement  // account_movements.account_movements_journal_id_fkey
 	Corrections     CorrectionSlice   // corrections.corrections_journal_id_fkey
 	JournalEntries  JournalEntrySlice // journal_entries.journal_entries_journal_id_fkey
 	CreatedByMember *Member           // journals.journals_created_by_fkey
@@ -66,6 +67,7 @@ type journalR struct {
 
 // journalRLoaded tracks which relationships on Journal have been loaded.
 type journalRLoaded struct {
+	AccountMovement bool // account_movements.account_movements_journal_id_fkey
 	Corrections     bool // corrections.corrections_journal_id_fkey
 	JournalEntries  bool // journal_entries.journal_entries_journal_id_fkey
 	CreatedByMember bool // journals.journals_created_by_fkey
@@ -714,6 +716,29 @@ func (o JournalSlice) ReloadAll(ctx context.Context, exec bob.Executor) error {
 	return nil
 }
 
+// AccountMovement starts a query for related objects on account_movements
+func (o *Journal) AccountMovement(mods ...bob.Mod[*dialect.SelectQuery]) AccountMovementsQuery {
+	return AccountMovements.Query(append(mods,
+		sm.Where(AccountMovements.Columns.JournalID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os JournalSlice) AccountMovement(mods ...bob.Mod[*dialect.SelectQuery]) AccountMovementsQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return AccountMovements.Query(append(mods,
+		sm.Where(AccountMovements.Columns.JournalID.EQ(PKArgExpr)),
+	)...)
+}
+
 // Corrections starts a query for related objects on corrections
 func (o *Journal) Corrections(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionsQuery {
 	return Corrections.Query(append(mods,
@@ -841,6 +866,64 @@ func (os JournalSlice) LedgerEntry(mods ...bob.Mod[*dialect.SelectQuery]) Ledger
 	return LedgerEntries.Query(append(mods,
 		sm.Where(LedgerEntries.Columns.JournalID.EQ(PKArgExpr)),
 	)...)
+}
+
+func insertJournalAccountMovement0(ctx context.Context, exec bob.Executor, accountMovement1 *AccountMovementSetter, journal0 *Journal) (*AccountMovement, error) {
+	accountMovement1.JournalID = func() *uuid.UUID { return &journal0.ID }()
+
+	ret, err := AccountMovements.Insert(accountMovement1).One(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertJournalAccountMovement0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachJournalAccountMovement0(ctx context.Context, exec bob.Executor, count int, accountMovement1 *AccountMovement, journal0 *Journal) (*AccountMovement, error) {
+	setter := &AccountMovementSetter{
+		JournalID: func() *uuid.UUID { return &journal0.ID }(),
+	}
+
+	err := accountMovement1.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachJournalAccountMovement0: %w", err)
+	}
+
+	return accountMovement1, nil
+}
+
+func (journal0 *Journal) InsertAccountMovement(ctx context.Context, exec bob.Executor, related *AccountMovementSetter) error {
+	var err error
+
+	accountMovement1, err := insertJournalAccountMovement0(ctx, exec, related, journal0)
+	if err != nil {
+		return err
+	}
+
+	journal0.R.AccountMovement = accountMovement1
+	journal0.R.Loaded.AccountMovement = true
+
+	accountMovement1.R.Journal = journal0
+	accountMovement1.R.Loaded.Journal = true
+
+	return nil
+}
+
+func (journal0 *Journal) AttachAccountMovement(ctx context.Context, exec bob.Executor, accountMovement1 *AccountMovement) error {
+	var err error
+
+	_, err = attachJournalAccountMovement0(ctx, exec, 1, accountMovement1, journal0)
+	if err != nil {
+		return err
+	}
+
+	journal0.R.AccountMovement = accountMovement1
+	journal0.R.Loaded.AccountMovement = true
+
+	accountMovement1.R.Journal = journal0
+	accountMovement1.R.Loaded.Journal = true
+
+	return nil
 }
 
 func insertJournalCorrections0(ctx context.Context, exec bob.Executor, corrections1 []*CorrectionSetter, journal0 *Journal) (CorrectionSlice, error) {
@@ -1180,6 +1263,20 @@ type journalWhereR[Q psql.Filterable] struct {
 	cols journalColumns
 }
 
+// HasAccountMovement filters parents that have a matching AccountMovement using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to AccountMovements).
+func (w journalWhereR[Q]) HasAccountMovement(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(AccountMovements.NameExpr()),
+		sm.Where(AccountMovements.Columns.JournalID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasCorrections filters parents that have a matching Corrections using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -1368,6 +1465,20 @@ func (o *Journal) Preload(name string, retrieved any) error {
 	}
 
 	switch name {
+	case "AccountMovement":
+		rel, ok := retrieved.(*AccountMovement)
+		if !ok {
+			return fmt.Errorf("journal cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.AccountMovement = rel
+		o.R.Loaded.AccountMovement = true
+
+		if rel != nil {
+			rel.R.Journal = o
+			rel.R.Loaded.Journal = true
+		}
+		return nil
 	case "Corrections":
 		rels, ok := retrieved.(CorrectionSlice)
 		if !ok {
@@ -1446,6 +1557,7 @@ func (o *Journal) Preload(name string, retrieved any) error {
 }
 
 type journalPreloader struct {
+	AccountMovement func(...psql.PreloadOption) psql.Preloader
 	CreatedByMember func(...psql.PreloadOption) psql.Preloader
 	Household       func(...psql.PreloadOption) psql.Preloader
 	LedgerEntry     func(...psql.PreloadOption) psql.Preloader
@@ -1453,6 +1565,19 @@ type journalPreloader struct {
 
 func buildJournalPreloader() journalPreloader {
 	return journalPreloader{
+		AccountMovement: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*AccountMovement, AccountMovementSlice](psql.PreloadRel{
+				Name: "AccountMovement",
+				Sides: []psql.PreloadSide{
+					{
+						From:        Journals,
+						To:          AccountMovements,
+						FromColumns: []string{"id"},
+						ToColumns:   []string{"journal_id"},
+					},
+				},
+			}, AccountMovements.Columns.Names(), accountMovementScanMapperNullable, opts...)
+		},
 		CreatedByMember: func(opts ...psql.PreloadOption) psql.Preloader {
 			return psql.Preload[*Member, MemberSlice](psql.PreloadRel{
 				Name: "CreatedByMember",
@@ -1496,6 +1621,7 @@ func buildJournalPreloader() journalPreloader {
 }
 
 type journalThenLoader[Q orm.Loadable] struct {
+	AccountMovement func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Corrections     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	JournalEntries  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByMember func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -1504,6 +1630,9 @@ type journalThenLoader[Q orm.Loadable] struct {
 }
 
 func buildJournalThenLoader[Q orm.Loadable]() journalThenLoader[Q] {
+	type AccountMovementLoadInterface interface {
+		LoadAccountMovement(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type CorrectionsLoadInterface interface {
 		LoadCorrections(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
@@ -1521,6 +1650,12 @@ func buildJournalThenLoader[Q orm.Loadable]() journalThenLoader[Q] {
 	}
 
 	return journalThenLoader[Q]{
+		AccountMovement: thenLoadBuilder[Q](
+			"AccountMovement",
+			func(ctx context.Context, exec bob.Executor, retrieved AccountMovementLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadAccountMovement(ctx, exec, mods...)
+			},
+		),
 		Corrections: thenLoadBuilder[Q](
 			"Corrections",
 			func(ctx context.Context, exec bob.Executor, retrieved CorrectionsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -1552,6 +1687,83 @@ func buildJournalThenLoader[Q orm.Loadable]() journalThenLoader[Q] {
 			},
 		),
 	}
+}
+
+// LoadAccountMovement loads the journal's AccountMovement into the .R struct
+func (o *Journal) LoadAccountMovement(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.AccountMovement = nil
+	o.R.Loaded.AccountMovement = false
+
+	related, err := o.AccountMovement(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.Journal = o
+	related.R.Loaded.Journal = true
+
+	o.R.AccountMovement = related
+	o.R.Loaded.AccountMovement = true
+	return nil
+}
+
+// LoadAccountMovement loads the journal's AccountMovement into the .R struct
+func (os JournalSlice) LoadAccountMovement(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	accountMovements, err := os.AccountMovement(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.AccountMovement = nil
+		o.R.Loaded.AccountMovement = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	journalByKey := make(map[uuid.UUID][]*Journal, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		journalByKey[o.ID] = append(journalByKey[o.ID], o)
+	}
+
+	for _, rel := range accountMovements {
+
+		owners, ok := journalByKey[rel.JournalID]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			// to-one: keep only the first matching child (matches the previous break)
+			if o.R.AccountMovement != nil {
+				continue
+			}
+
+			rel.R.Journal = o
+			rel.R.Loaded.Journal = true
+
+			o.R.AccountMovement = rel
+
+		}
+	}
+
+	return nil
 }
 
 // LoadCorrections loads the journal's Corrections into the .R struct
@@ -2183,6 +2395,7 @@ func (os JournalSlice) LoadCountJournalEntries(ctx context.Context, exec bob.Exe
 
 type journalJoins[Q dialect.Joinable] struct {
 	typ             string
+	AccountMovement modAs[Q, accountMovementColumns]
 	Corrections     modAs[Q, correctionColumns]
 	JournalEntries  modAs[Q, journalEntryColumns]
 	CreatedByMember modAs[Q, memberColumns]
@@ -2197,6 +2410,20 @@ func (j journalJoins[Q]) aliasedAs(alias string) journalJoins[Q] {
 func buildJournalJoins[Q dialect.Joinable](cols journalColumns, typ string) journalJoins[Q] {
 	return journalJoins[Q]{
 		typ: typ,
+		AccountMovement: modAs[Q, accountMovementColumns]{
+			c: AccountMovements.Columns,
+			f: func(to accountMovementColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, AccountMovements.NameExpr().As(to.Alias())).On(
+						to.JournalID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
 		Corrections: modAs[Q, correctionColumns]{
 			c: Corrections.Columns,
 			f: func(to correctionColumns) bob.Mod[Q] {

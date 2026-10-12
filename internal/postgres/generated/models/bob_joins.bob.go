@@ -30,11 +30,13 @@ func (j joinSet[Q]) AliasedAs(alias string) joinSet[Q] {
 }
 
 type joins[Q dialect.Joinable] struct {
+	AccountMovements      joinSet[accountMovementJoins[Q]]
 	AccountingPeriods     joinSet[accountingPeriodJoins[Q]]
 	Accounts              joinSet[accountJoins[Q]]
 	AllocationDefaults    joinSet[allocationDefaultJoins[Q]]
 	AllocationRuleWeights joinSet[allocationRuleWeightJoins[Q]]
 	AllocationRules       joinSet[allocationRuleJoins[Q]]
+	Budgets               joinSet[budgetJoins[Q]]
 	Categories            joinSet[categoryJoins[Q]]
 	CorrectionPayments    joinSet[correctionPaymentJoins[Q]]
 	Corrections           joinSet[correctionJoins[Q]]
@@ -61,13 +63,16 @@ type joins[Q dialect.Joinable] struct {
 	ProductConcepts       joinSet[productConceptJoins[Q]]
 	ProductCorrections    joinSet[productCorrectionJoins[Q]]
 	ProductVariants       joinSet[productVariantJoins[Q]]
+	PurchaseItemTags      joinSet[purchaseItemTagJoins[Q]]
 	PurchaseItems         joinSet[purchaseItemJoins[Q]]
 	PurchasePayments      joinSet[purchasePaymentJoins[Q]]
 	Purchases             joinSet[purchaseJoins[Q]]
+	RecurringExpenses     joinSet[recurringExpenseJoins[Q]]
 	SettlementAdjustments joinSet[settlementAdjustmentJoins[Q]]
 	SettlementLines       joinSet[settlementLineJoins[Q]]
 	SettlementRuns        joinSet[settlementRunJoins[Q]]
 	SourceDocuments       joinSet[sourceDocumentJoins[Q]]
+	Tags                  joinSet[tagJoins[Q]]
 	Transfers             joinSet[transferJoins[Q]]
 }
 
@@ -81,11 +86,13 @@ func buildJoinSet[Q interface{ aliasedAs(string) Q }, C any, F func(C, string) Q
 
 func getJoins[Q dialect.Joinable]() joins[Q] {
 	return joins[Q]{
+		AccountMovements:      buildJoinSet[accountMovementJoins[Q]](AccountMovements.Columns, buildAccountMovementJoins),
 		AccountingPeriods:     buildJoinSet[accountingPeriodJoins[Q]](AccountingPeriods.Columns, buildAccountingPeriodJoins),
 		Accounts:              buildJoinSet[accountJoins[Q]](Accounts.Columns, buildAccountJoins),
 		AllocationDefaults:    buildJoinSet[allocationDefaultJoins[Q]](AllocationDefaults.Columns, buildAllocationDefaultJoins),
 		AllocationRuleWeights: buildJoinSet[allocationRuleWeightJoins[Q]](AllocationRuleWeights.Columns, buildAllocationRuleWeightJoins),
 		AllocationRules:       buildJoinSet[allocationRuleJoins[Q]](AllocationRules.Columns, buildAllocationRuleJoins),
+		Budgets:               buildJoinSet[budgetJoins[Q]](Budgets.Columns, buildBudgetJoins),
 		Categories:            buildJoinSet[categoryJoins[Q]](Categories.Columns, buildCategoryJoins),
 		CorrectionPayments:    buildJoinSet[correctionPaymentJoins[Q]](CorrectionPayments.Columns, buildCorrectionPaymentJoins),
 		Corrections:           buildJoinSet[correctionJoins[Q]](Corrections.Columns, buildCorrectionJoins),
@@ -112,13 +119,16 @@ func getJoins[Q dialect.Joinable]() joins[Q] {
 		ProductConcepts:       buildJoinSet[productConceptJoins[Q]](ProductConcepts.Columns, buildProductConceptJoins),
 		ProductCorrections:    buildJoinSet[productCorrectionJoins[Q]](ProductCorrections.Columns, buildProductCorrectionJoins),
 		ProductVariants:       buildJoinSet[productVariantJoins[Q]](ProductVariants.Columns, buildProductVariantJoins),
+		PurchaseItemTags:      buildJoinSet[purchaseItemTagJoins[Q]](PurchaseItemTags.Columns, buildPurchaseItemTagJoins),
 		PurchaseItems:         buildJoinSet[purchaseItemJoins[Q]](PurchaseItems.Columns, buildPurchaseItemJoins),
 		PurchasePayments:      buildJoinSet[purchasePaymentJoins[Q]](PurchasePayments.Columns, buildPurchasePaymentJoins),
 		Purchases:             buildJoinSet[purchaseJoins[Q]](Purchases.Columns, buildPurchaseJoins),
+		RecurringExpenses:     buildJoinSet[recurringExpenseJoins[Q]](RecurringExpenses.Columns, buildRecurringExpenseJoins),
 		SettlementAdjustments: buildJoinSet[settlementAdjustmentJoins[Q]](SettlementAdjustments.Columns, buildSettlementAdjustmentJoins),
 		SettlementLines:       buildJoinSet[settlementLineJoins[Q]](SettlementLines.Columns, buildSettlementLineJoins),
 		SettlementRuns:        buildJoinSet[settlementRunJoins[Q]](SettlementRuns.Columns, buildSettlementRunJoins),
 		SourceDocuments:       buildJoinSet[sourceDocumentJoins[Q]](SourceDocuments.Columns, buildSourceDocumentJoins),
+		Tags:                  buildJoinSet[tagJoins[Q]](Tags.Columns, buildTagJoins),
 		Transfers:             buildJoinSet[transferJoins[Q]](Transfers.Columns, buildTransferJoins),
 	}
 }

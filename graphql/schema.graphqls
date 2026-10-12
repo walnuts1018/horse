@@ -4,6 +4,7 @@ enum PoolKind { PERSONAL SHARED }
 enum AccountKind { BANK CASH CARD OTHER }
 enum PurchaseStatus { DRAFT POSTED CLOSED }
 enum TransferKind { ADVANCE LOAN REPAYMENT GIFT }
+enum AccountMovementKind { TRANSFER CARD_BILL_PAYMENT }
 enum LedgerKind { PURCHASE FUNDING TRANSFER CORRECTION }
 enum AllocationRuleScope { PRODUCT_VARIANT PRODUCT CATEGORY MERCHANT }
 enum ProductLearningScope { ITEM_ONLY VARIANT_NAME MERCHANT_ALIAS }
@@ -27,7 +28,11 @@ type ProductSuggestion { concept: ProductConcept!, variant: ProductVariant!, mat
 type Purchase { id: ID!, householdId: ID!, occurredAt: String!, merchant: String!, paymentAccountId: ID, paymentAccount: Account, paymentAllocations: [PurchasePayment!]!, items: [PurchaseItem!]!, corrections: [PurchaseCorrection!]!, totalYen: Long!, currency: String!, revision: Int!, status: PurchaseStatus!, createdAt: String!, updatedAt: String! }
 type PurchasePayment { paymentAccountId: ID!, account: Account, amountYen: Long! }
 type PurchaseCorrection { id: ID!, itemId: ID, amountDeltaYen: Long!, reason: String!, occurredAt: String!, settlementMonth: String!, paymentAllocations: [PurchasePayment!]! }
-type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, categoryId: ID, productVariantId: ID, allocations: [Allocation!]!, revision: Int! }
+type PurchaseItem { id: ID!, name: String!, amountYen: Long!, currency: String!, categoryId: ID, productVariantId: ID, allocations: [Allocation!]!, tags: [Tag!]!, revision: Int! }
+type Tag { id: ID!, householdId: ID!, name: String!, archived: Boolean!, revision: Int! }
+type Budget { id: ID!, householdId: ID!, categoryId: ID, name: String!, amountYen: Long!, actualYen: Long!, remainingYen: Long!, startsOn: String!, endsOn: String, archived: Boolean!, revision: Int! }
+type RecurringExpense { id: ID!, householdId: ID!, name: String!, merchant: String!, amountYen: Long!, currency: String!, categoryId: ID, paymentAccountId: ID, cadence: String!, startsOn: String!, nextDueOn: String!, endsOn: String, archived: Boolean!, revision: Int! }
+type AccountMovement { id: ID!, householdId: ID!, kind: AccountMovementKind!, occurredAt: String!, fromAccountId: ID!, toAccountId: ID!, amountYen: Long!, currency: String!, description: String!, createdAt: String! }
 type PageInfo { endCursor: String, hasNextPage: Boolean! }
 type PurchaseEdge { cursor: String!, node: Purchase! }
 type PurchaseConnection { edges: [PurchaseEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
@@ -45,6 +50,14 @@ input CreatePurchaseInput { idempotencyKey: String!, householdId: ID!, occurredA
 input PurchasePatch { occurredAt: String, merchant: String, paymentAccountId: ID, paymentAllocations: [PurchasePaymentInput!] }
 input UpdatePurchaseInput { purchaseId: ID!, baseRevision: Int!, patch: PurchasePatch!, changedFields: [String!]! }
 input UpdatePurchaseItemInput { itemId: ID!, baseRevision: Int!, name: String, amountYen: Long, categoryId: ID, productVariantId: ID, productLearning: ProductLearningScope = ITEM_ONLY, variantName: String, allocations: [AllocationInput!], changedFields: [String!]! }
+input PurchaseItemTargetInput { itemId: ID!, baseRevision: Int! }
+input BulkPurchaseItemPatch { categoryId: ID, productVariantId: ID, allocations: [AllocationInput!], tagIds: [ID!] }
+input BulkUpdatePurchaseItemsInput { targets: [PurchaseItemTargetInput!]!, patch: BulkPurchaseItemPatch!, changedFields: [String!]! }
+input CreateTagInput { householdId: ID!, name: String! }
+input UpdateTagInput { tagId: ID!, baseRevision: Int!, name: String! }
+input SetBudgetInput { householdId: ID!, budgetId: ID, baseRevision: Int, categoryId: ID, name: String!, amountYen: Long!, startsOn: String!, endsOn: String }
+input SetRecurringExpenseInput { householdId: ID!, expenseId: ID, baseRevision: Int, name: String!, merchant: String!, amountYen: Long!, categoryId: ID, paymentAccountId: ID, cadence: String!, startsOn: String!, nextDueOn: String!, endsOn: String }
+input RecordAccountMovementInput { householdId: ID!, kind: AccountMovementKind!, fromAccountId: ID!, toAccountId: ID!, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
 input CreateProductConceptInput { householdId: ID!, name: String!, categoryId: ID }
 input CreateProductVariantInput { householdId: ID!, conceptId: ID!, name: String!, brand: String, packageSize: String, barcode: String }
 input SetProductAliasInput { householdId: ID!, variantId: ID!, merchant: String!, alias: String! }
@@ -77,6 +90,10 @@ type Query {
   ledger(householdId: ID!, after: String, first: Int = 50): LedgerConnection!
   settlement(householdId: ID!, period: String!): Settlement!
   monthlyCategorySpending(householdId: ID!, from: String!, to: String!): [MonthlyCategorySpending!]!
+  tags(householdId: ID!, includeArchived: Boolean = false): [Tag!]!
+  budgets(householdId: ID!, period: String!): [Budget!]!
+  recurringExpenses(householdId: ID!, includeArchived: Boolean = false): [RecurringExpense!]!
+  accountMovements(householdId: ID!, first: Int = 50): [AccountMovement!]!
 }
 type Mutation {
   createHousehold(input: CreateHouseholdInput!): Household!
@@ -102,4 +119,13 @@ type Mutation {
   recordFunding(input: RecordFundingInput!): LedgerEntry!
   recordTransfer(input: RecordTransferInput!): LedgerEntry!
   setFundingSchedule(input: SetFundingScheduleInput!): Boolean!
+  createTag(input: CreateTagInput!): Tag!
+  updateTag(input: UpdateTagInput!): Tag!
+  archiveTag(tagId: ID!, baseRevision: Int!, archived: Boolean!): Tag!
+  bulkUpdatePurchaseItems(input: BulkUpdatePurchaseItemsInput!): [PurchaseItem!]!
+  setBudget(input: SetBudgetInput!): Budget!
+  archiveBudget(budgetId: ID!, baseRevision: Int!, archived: Boolean!): Budget!
+  setRecurringExpense(input: SetRecurringExpenseInput!): RecurringExpense!
+  archiveRecurringExpense(expenseId: ID!, baseRevision: Int!, archived: Boolean!): RecurringExpense!
+  recordAccountMovement(input: RecordAccountMovementInput!): AccountMovement!
 }

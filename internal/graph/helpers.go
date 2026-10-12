@@ -279,7 +279,7 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 	for _, storedItem := range items {
 		item := &model.PurchaseItem{
 			ID: storedItem.ID.String(), Name: storedItem.Name, AmountYen: graphLong(storedItem.AmountYen),
-			Revision: int(storedItem.Revision), Currency: "JPY", Allocations: make([]*model.Allocation, 0),
+			Revision: int(storedItem.Revision), Currency: "JPY", Allocations: make([]*model.Allocation, 0), Tags: make([]*model.Tag, 0),
 		}
 		if storedItem.CategoryID.Valid {
 			categoryID := storedItem.CategoryID.V.String()
@@ -303,6 +303,16 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 			amount := graphLong(storedAllocation.AmountYen)
 			allocation.AmountYen = &amount
 			item.Allocations = append(item.Allocations, allocation)
+		}
+		tagLinks, err := models.PurchaseItemTags.Query(sm.Where(models.PurchaseItemTags.Columns.ItemID.EQ(psql.Arg(storedItem.ID)))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		if err := tagLinks.LoadTag(ctx, executor); err != nil {
+			return nil, err
+		}
+		for _, tagLink := range tagLinks {
+			item.Tags = append(item.Tags, tagModel(tagLink.R.Tag))
 		}
 		result.Items = append(result.Items, item)
 	}

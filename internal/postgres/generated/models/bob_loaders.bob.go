@@ -17,11 +17,13 @@ import (
 var Preload = getPreloaders()
 
 type preloaders struct {
+	AccountMovement      accountMovementPreloader
 	AccountingPeriod     accountingPeriodPreloader
 	Account              accountPreloader
 	AllocationDefault    allocationDefaultPreloader
 	AllocationRuleWeight allocationRuleWeightPreloader
 	AllocationRule       allocationRulePreloader
+	Budget               budgetPreloader
 	Category             categoryPreloader
 	CorrectionPayment    correctionPaymentPreloader
 	Correction           correctionPreloader
@@ -48,23 +50,28 @@ type preloaders struct {
 	ProductConcept       productConceptPreloader
 	ProductCorrection    productCorrectionPreloader
 	ProductVariant       productVariantPreloader
+	PurchaseItemTag      purchaseItemTagPreloader
 	PurchaseItem         purchaseItemPreloader
 	PurchasePayment      purchasePaymentPreloader
 	Purchase             purchasePreloader
+	RecurringExpense     recurringExpensePreloader
 	SettlementAdjustment settlementAdjustmentPreloader
 	SettlementLine       settlementLinePreloader
 	SettlementRun        settlementRunPreloader
 	SourceDocument       sourceDocumentPreloader
+	Tag                  tagPreloader
 	Transfer             transferPreloader
 }
 
 func getPreloaders() preloaders {
 	return preloaders{
+		AccountMovement:      buildAccountMovementPreloader(),
 		AccountingPeriod:     buildAccountingPeriodPreloader(),
 		Account:              buildAccountPreloader(),
 		AllocationDefault:    buildAllocationDefaultPreloader(),
 		AllocationRuleWeight: buildAllocationRuleWeightPreloader(),
 		AllocationRule:       buildAllocationRulePreloader(),
+		Budget:               buildBudgetPreloader(),
 		Category:             buildCategoryPreloader(),
 		CorrectionPayment:    buildCorrectionPaymentPreloader(),
 		Correction:           buildCorrectionPreloader(),
@@ -91,13 +98,16 @@ func getPreloaders() preloaders {
 		ProductConcept:       buildProductConceptPreloader(),
 		ProductCorrection:    buildProductCorrectionPreloader(),
 		ProductVariant:       buildProductVariantPreloader(),
+		PurchaseItemTag:      buildPurchaseItemTagPreloader(),
 		PurchaseItem:         buildPurchaseItemPreloader(),
 		PurchasePayment:      buildPurchasePaymentPreloader(),
 		Purchase:             buildPurchasePreloader(),
+		RecurringExpense:     buildRecurringExpensePreloader(),
 		SettlementAdjustment: buildSettlementAdjustmentPreloader(),
 		SettlementLine:       buildSettlementLinePreloader(),
 		SettlementRun:        buildSettlementRunPreloader(),
 		SourceDocument:       buildSourceDocumentPreloader(),
+		Tag:                  buildTagPreloader(),
 		Transfer:             buildTransferPreloader(),
 	}
 }
@@ -109,11 +119,13 @@ var (
 )
 
 type thenLoaders[Q orm.Loadable] struct {
+	AccountMovement      accountMovementThenLoader[Q]
 	AccountingPeriod     accountingPeriodThenLoader[Q]
 	Account              accountThenLoader[Q]
 	AllocationDefault    allocationDefaultThenLoader[Q]
 	AllocationRuleWeight allocationRuleWeightThenLoader[Q]
 	AllocationRule       allocationRuleThenLoader[Q]
+	Budget               budgetThenLoader[Q]
 	Category             categoryThenLoader[Q]
 	CorrectionPayment    correctionPaymentThenLoader[Q]
 	Correction           correctionThenLoader[Q]
@@ -140,23 +152,28 @@ type thenLoaders[Q orm.Loadable] struct {
 	ProductConcept       productConceptThenLoader[Q]
 	ProductCorrection    productCorrectionThenLoader[Q]
 	ProductVariant       productVariantThenLoader[Q]
+	PurchaseItemTag      purchaseItemTagThenLoader[Q]
 	PurchaseItem         purchaseItemThenLoader[Q]
 	PurchasePayment      purchasePaymentThenLoader[Q]
 	Purchase             purchaseThenLoader[Q]
+	RecurringExpense     recurringExpenseThenLoader[Q]
 	SettlementAdjustment settlementAdjustmentThenLoader[Q]
 	SettlementLine       settlementLineThenLoader[Q]
 	SettlementRun        settlementRunThenLoader[Q]
 	SourceDocument       sourceDocumentThenLoader[Q]
+	Tag                  tagThenLoader[Q]
 	Transfer             transferThenLoader[Q]
 }
 
 func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 	return thenLoaders[Q]{
+		AccountMovement:      buildAccountMovementThenLoader[Q](),
 		AccountingPeriod:     buildAccountingPeriodThenLoader[Q](),
 		Account:              buildAccountThenLoader[Q](),
 		AllocationDefault:    buildAllocationDefaultThenLoader[Q](),
 		AllocationRuleWeight: buildAllocationRuleWeightThenLoader[Q](),
 		AllocationRule:       buildAllocationRuleThenLoader[Q](),
+		Budget:               buildBudgetThenLoader[Q](),
 		Category:             buildCategoryThenLoader[Q](),
 		CorrectionPayment:    buildCorrectionPaymentThenLoader[Q](),
 		Correction:           buildCorrectionThenLoader[Q](),
@@ -183,13 +200,16 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		ProductConcept:       buildProductConceptThenLoader[Q](),
 		ProductCorrection:    buildProductCorrectionThenLoader[Q](),
 		ProductVariant:       buildProductVariantThenLoader[Q](),
+		PurchaseItemTag:      buildPurchaseItemTagThenLoader[Q](),
 		PurchaseItem:         buildPurchaseItemThenLoader[Q](),
 		PurchasePayment:      buildPurchasePaymentThenLoader[Q](),
 		Purchase:             buildPurchaseThenLoader[Q](),
+		RecurringExpense:     buildRecurringExpenseThenLoader[Q](),
 		SettlementAdjustment: buildSettlementAdjustmentThenLoader[Q](),
 		SettlementLine:       buildSettlementLineThenLoader[Q](),
 		SettlementRun:        buildSettlementRunThenLoader[Q](),
 		SourceDocument:       buildSourceDocumentThenLoader[Q](),
+		Tag:                  buildTagThenLoader[Q](),
 		Transfer:             buildTransferThenLoader[Q](),
 	}
 }

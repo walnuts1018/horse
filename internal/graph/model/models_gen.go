@@ -16,6 +16,19 @@ type Account struct {
 	PoolID *string     `json:"poolId,omitempty"`
 }
 
+type AccountMovement struct {
+	ID            string              `json:"id"`
+	HouseholdID   string              `json:"householdId"`
+	Kind          AccountMovementKind `json:"kind"`
+	OccurredAt    string              `json:"occurredAt"`
+	FromAccountID string              `json:"fromAccountId"`
+	ToAccountID   string              `json:"toAccountId"`
+	AmountYen     Long                `json:"amountYen"`
+	Currency      string              `json:"currency"`
+	Description   string              `json:"description"`
+	CreatedAt     string              `json:"createdAt"`
+}
+
 type Allocation struct {
 	PoolID    string  `json:"poolId"`
 	PoolName  *string `json:"poolName,omitempty"`
@@ -38,6 +51,33 @@ type AllocationRule struct {
 	ProductVariantID *string             `json:"productVariantId,omitempty"`
 	Revision         int                 `json:"revision"`
 	Allocations      []*Allocation       `json:"allocations"`
+}
+
+type Budget struct {
+	ID           string  `json:"id"`
+	HouseholdID  string  `json:"householdId"`
+	CategoryID   *string `json:"categoryId,omitempty"`
+	Name         string  `json:"name"`
+	AmountYen    Long    `json:"amountYen"`
+	ActualYen    Long    `json:"actualYen"`
+	RemainingYen Long    `json:"remainingYen"`
+	StartsOn     string  `json:"startsOn"`
+	EndsOn       *string `json:"endsOn,omitempty"`
+	Archived     bool    `json:"archived"`
+	Revision     int     `json:"revision"`
+}
+
+type BulkPurchaseItemPatch struct {
+	CategoryID       *string            `json:"categoryId,omitempty"`
+	ProductVariantID *string            `json:"productVariantId,omitempty"`
+	Allocations      []*AllocationInput `json:"allocations,omitempty"`
+	TagIds           []string           `json:"tagIds,omitempty"`
+}
+
+type BulkUpdatePurchaseItemsInput struct {
+	Targets       []*PurchaseItemTargetInput `json:"targets"`
+	Patch         *BulkPurchaseItemPatch     `json:"patch"`
+	ChangedFields []string                   `json:"changedFields"`
 }
 
 type Category struct {
@@ -119,6 +159,11 @@ type CreatePurchaseInput struct {
 	SourceReference    *string                 `json:"sourceReference,omitempty"`
 	Items              []*PurchaseItemInput    `json:"items"`
 	Status             *PurchaseStatus         `json:"status,omitempty"`
+}
+
+type CreateTagInput struct {
+	HouseholdID string `json:"householdId"`
+	Name        string `json:"name"`
 }
 
 type CreatedHouseholdInvitation struct {
@@ -318,6 +363,7 @@ type PurchaseItem struct {
 	CategoryID       *string       `json:"categoryId,omitempty"`
 	ProductVariantID *string       `json:"productVariantId,omitempty"`
 	Allocations      []*Allocation `json:"allocations"`
+	Tags             []*Tag        `json:"tags"`
 	Revision         int           `json:"revision"`
 }
 
@@ -327,6 +373,11 @@ type PurchaseItemInput struct {
 	CategoryID       *string            `json:"categoryId,omitempty"`
 	ProductVariantID *string            `json:"productVariantId,omitempty"`
 	Allocations      []*AllocationInput `json:"allocations,omitempty"`
+}
+
+type PurchaseItemTargetInput struct {
+	ItemID       string `json:"itemId"`
+	BaseRevision int    `json:"baseRevision"`
 }
 
 type PurchasePatch struct {
@@ -348,6 +399,17 @@ type PurchasePaymentInput struct {
 }
 
 type Query struct {
+}
+
+type RecordAccountMovementInput struct {
+	HouseholdID    string              `json:"householdId"`
+	Kind           AccountMovementKind `json:"kind"`
+	FromAccountID  string              `json:"fromAccountId"`
+	ToAccountID    string              `json:"toAccountId"`
+	AmountYen      Long                `json:"amountYen"`
+	OccurredAt     string              `json:"occurredAt"`
+	Description    string              `json:"description"`
+	IdempotencyKey string              `json:"idempotencyKey"`
 }
 
 type RecordFundingInput struct {
@@ -372,6 +434,23 @@ type RecordTransferInput struct {
 	IdempotencyKey   string       `json:"idempotencyKey"`
 }
 
+type RecurringExpense struct {
+	ID               string  `json:"id"`
+	HouseholdID      string  `json:"householdId"`
+	Name             string  `json:"name"`
+	Merchant         string  `json:"merchant"`
+	AmountYen        Long    `json:"amountYen"`
+	Currency         string  `json:"currency"`
+	CategoryID       *string `json:"categoryId,omitempty"`
+	PaymentAccountID *string `json:"paymentAccountId,omitempty"`
+	Cadence          string  `json:"cadence"`
+	StartsOn         string  `json:"startsOn"`
+	NextDueOn        string  `json:"nextDueOn"`
+	EndsOn           *string `json:"endsOn,omitempty"`
+	Archived         bool    `json:"archived"`
+	Revision         int     `json:"revision"`
+}
+
 type SetAllocationRuleInput struct {
 	HouseholdID      string             `json:"householdId"`
 	CategoryID       *string            `json:"categoryId,omitempty"`
@@ -379,6 +458,17 @@ type SetAllocationRuleInput struct {
 	ProductConceptID *string            `json:"productConceptId,omitempty"`
 	ProductVariantID *string            `json:"productVariantId,omitempty"`
 	Allocations      []*AllocationInput `json:"allocations"`
+}
+
+type SetBudgetInput struct {
+	HouseholdID  string  `json:"householdId"`
+	BudgetID     *string `json:"budgetId,omitempty"`
+	BaseRevision *int    `json:"baseRevision,omitempty"`
+	CategoryID   *string `json:"categoryId,omitempty"`
+	Name         string  `json:"name"`
+	AmountYen    Long    `json:"amountYen"`
+	StartsOn     string  `json:"startsOn"`
+	EndsOn       *string `json:"endsOn,omitempty"`
 }
 
 type SetDefaultAllocationInput struct {
@@ -412,6 +502,21 @@ type SetProductAliasInput struct {
 	Alias       string `json:"alias"`
 }
 
+type SetRecurringExpenseInput struct {
+	HouseholdID      string  `json:"householdId"`
+	ExpenseID        *string `json:"expenseId,omitempty"`
+	BaseRevision     *int    `json:"baseRevision,omitempty"`
+	Name             string  `json:"name"`
+	Merchant         string  `json:"merchant"`
+	AmountYen        Long    `json:"amountYen"`
+	CategoryID       *string `json:"categoryId,omitempty"`
+	PaymentAccountID *string `json:"paymentAccountId,omitempty"`
+	Cadence          string  `json:"cadence"`
+	StartsOn         string  `json:"startsOn"`
+	NextDueOn        string  `json:"nextDueOn"`
+	EndsOn           *string `json:"endsOn,omitempty"`
+}
+
 type Settlement struct {
 	Period    string            `json:"period"`
 	Status    string            `json:"status"`
@@ -432,6 +537,14 @@ type SettlementLine struct {
 	AmountDueYen         Long   `json:"amountDueYen"`
 }
 
+type Tag struct {
+	ID          string `json:"id"`
+	HouseholdID string `json:"householdId"`
+	Name        string `json:"name"`
+	Archived    bool   `json:"archived"`
+	Revision    int    `json:"revision"`
+}
+
 type UpdatePurchaseInput struct {
 	PurchaseID    string         `json:"purchaseId"`
 	BaseRevision  int            `json:"baseRevision"`
@@ -450,6 +563,12 @@ type UpdatePurchaseItemInput struct {
 	VariantName      *string               `json:"variantName,omitempty"`
 	Allocations      []*AllocationInput    `json:"allocations,omitempty"`
 	ChangedFields    []string              `json:"changedFields"`
+}
+
+type UpdateTagInput struct {
+	TagID        string `json:"tagId"`
+	BaseRevision int    `json:"baseRevision"`
+	Name         string `json:"name"`
 }
 
 type Viewer struct {
@@ -513,6 +632,61 @@ func (e *AccountKind) UnmarshalJSON(b []byte) error {
 }
 
 func (e AccountKind) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type AccountMovementKind string
+
+const (
+	AccountMovementKindTransfer        AccountMovementKind = "TRANSFER"
+	AccountMovementKindCardBillPayment AccountMovementKind = "CARD_BILL_PAYMENT"
+)
+
+var AllAccountMovementKind = []AccountMovementKind{
+	AccountMovementKindTransfer,
+	AccountMovementKindCardBillPayment,
+}
+
+func (e AccountMovementKind) IsValid() bool {
+	switch e {
+	case AccountMovementKindTransfer, AccountMovementKindCardBillPayment:
+		return true
+	}
+	return false
+}
+
+func (e AccountMovementKind) String() string {
+	return string(e)
+}
+
+func (e *AccountMovementKind) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = AccountMovementKind(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid AccountMovementKind", str)
+	}
+	return nil
+}
+
+func (e AccountMovementKind) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *AccountMovementKind) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e AccountMovementKind) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil
