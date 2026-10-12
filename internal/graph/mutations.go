@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	stdjson "encoding/json"
 	"encoding/json/v2"
@@ -176,6 +177,20 @@ func (r *mutationResolver) createAccount(ctx context.Context, input model.Create
 	if name == "" || len(name) > 120 || !input.Kind.IsValid() {
 		return nil, fmt.Errorf("%w: invalid account", ErrBadInput)
 	}
+	openingBalance := int64(0)
+	if input.OpeningBalanceYen != nil {
+		openingBalance = int64(*input.OpeningBalanceYen)
+	}
+	if openingBalance < 0 || openingBalance > maxMoney || (openingBalance > 0) != (input.OpeningBalanceAt != nil) {
+		return nil, fmt.Errorf("%w: opening balance and date must be provided together", ErrBadInput)
+	}
+	var openingAt time.Time
+	if input.OpeningBalanceAt != nil {
+		openingAt, err = parseTime(*input.OpeningBalanceAt)
+		if err != nil {
+			return nil, err
+		}
+	}
 	id := newID()
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
@@ -196,8 +211,42 @@ func (r *mutationResolver) createAccount(ctx context.Context, input model.Create
 		poolValue = sql.Null[gofrsuuid.UUID]{V: poolUUID, Valid: true}
 	}
 	accountKind := string(input.Kind)
-	if _, err := models.Accounts.Insert(&models.AccountSetter{ID: &idUUID, HouseholdID: &householdUUID, PoolID: &poolValue, Name: &name, Kind: &accountKind}).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
+	executor := bobpgx.NewTx(tx, nil)
+	if _, err := models.Accounts.Insert(&models.AccountSetter{ID: &idUUID, HouseholdID: &householdUUID, PoolID: &poolValue, Name: &name, Kind: &accountKind}).Exec(ctx, executor); err != nil {
 		return nil, err
+	}
+	if openingBalance > 0 {
+		journalID := generatedUUID(newID())
+		sourceKind, idempotencyKey := "ACCOUNT_OPENING_BALANCE", "account-opening:"+idUUID.String()
+		createdBy := generatedUUID(user.MemberID)
+		if _, err := models.Journals.Insert(&models.JournalSetter{
+			ID: &journalID, HouseholdID: &householdUUID, SourceKind: &sourceKind, SourceID: &idUUID,
+			IdempotencyKey: &idempotencyKey, OccurredAt: &openingAt, CreatedBy: &createdBy,
+		}).Exec(ctx, executor); err != nil {
+			return nil, err
+		}
+		accountReference := sql.Null[gofrsuuid.UUID]{V: idUUID, Valid: true}
+		noPool, noMember := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
+		zero := int64(0)
+		accountDebit, accountCredit := openingBalance, zero
+		contraDebit, contraCredit := zero, openingBalance
+		if input.Kind == model.AccountKindCard {
+			accountDebit, accountCredit = zero, openingBalance
+			contraDebit, contraCredit = openingBalance, zero
+		}
+		lineOne, lineTwo := int32(1), int32(2)
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journalID, LineNo: &lineOne, AccountID: &accountReference, PoolID: &noPool, MemberID: &noMember,
+			DebitYen: &accountDebit, CreditYen: &accountCredit, Memo: new("Opening balance"),
+		}).Exec(ctx, executor); err != nil {
+			return nil, err
+		}
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journalID, LineNo: &lineTwo, AccountID: &noMember, PoolID: &noPool, MemberID: &noPool,
+			DebitYen: &contraDebit, CreditYen: &contraCredit, Memo: new("Opening balance offset"),
+		}).Exec(ctx, executor); err != nil {
+			return nil, err
+		}
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "account.created", id, 1, []string{"name", "kind", "poolId"}, user.MemberID); err != nil {
 		return nil, err
@@ -2117,6 +2166,72 @@ func (r *mutationResolver) recordFunding(ctx context.Context, input model.Record
 	if periodRow.Status == "CLOSED" {
 		return nil, fmt.Errorf("%w: accounting period is closed", ErrConflict)
 	}
+	var sourceAccountID, destinationAccountID *gofrsuuid.UUID
+	if input.SourceAccountID != nil {
+		id, parseErr := gofrsuuid.FromString(*input.SourceAccountID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid source account id", ErrBadInput)
+		}
+		account, accountErr := models.Accounts.Query(sm.Where(psql.And(
+			models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.Accounts.Columns.ID.EQ(psql.Arg(id)),
+		))).One(ctx, transactionExecutor)
+		if errors.Is(accountErr, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if accountErr != nil {
+			return nil, accountErr
+		}
+		if account.Kind == string(model.AccountKindCard) {
+			return nil, fmt.Errorf("%w: funding source must be a non-card account", ErrBadInput)
+		}
+		if account.PoolID.Valid {
+			pool, poolErr := models.Pools.Query(sm.Where(psql.And(
+				models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+				models.Pools.Columns.ID.EQ(psql.Arg(account.PoolID.V)),
+			))).One(ctx, transactionExecutor)
+			if poolErr != nil {
+				return nil, poolErr
+			}
+			if pool.Kind == string(model.PoolKindPersonal) {
+				fundingRule, ruleErr := models.PoolFundingRules.Query(sm.Where(psql.And(
+					models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+					models.PoolFundingRules.Columns.PoolID.EQ(psql.Arg(pool.ID)),
+					models.PoolFundingRules.Columns.Version.EQ(psql.Arg(pool.FundingRuleVersion)),
+				))).One(ctx, transactionExecutor)
+				if ruleErr != nil {
+					return nil, ruleErr
+				}
+				if !fundingRule.OwnerMemberID.Valid || fundingRule.OwnerMemberID.V != memberID {
+					return nil, fmt.Errorf("%w: personal source account must belong to the funding member", ErrBadInput)
+				}
+			}
+		}
+		sourceAccountID = &id
+	}
+	if input.DestinationAccountID != nil {
+		id, parseErr := gofrsuuid.FromString(*input.DestinationAccountID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid destination account id", ErrBadInput)
+		}
+		account, accountErr := models.Accounts.Query(sm.Where(psql.And(
+			models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.Accounts.Columns.ID.EQ(psql.Arg(id)),
+		))).One(ctx, transactionExecutor)
+		if errors.Is(accountErr, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if accountErr != nil {
+			return nil, accountErr
+		}
+		if !account.PoolID.Valid || account.PoolID.V != poolID || account.Kind == string(model.AccountKindCard) {
+			return nil, fmt.Errorf("%w: funding destination must be a non-card account in the funded pool", ErrBadInput)
+		}
+		destinationAccountID = &id
+	}
+	if sourceAccountID != nil && destinationAccountID != nil && *sourceAccountID == *destinationAccountID {
+		return nil, fmt.Errorf("%w: funding source and destination accounts must differ", ErrBadInput)
+	}
 	schedules, err := models.FundingSchedules.Query(sm.Where(psql.And(
 		models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.FundingSchedules.Columns.MemberID.EQ(psql.Arg(memberID)),
@@ -2158,6 +2273,44 @@ func (r *mutationResolver) recordFunding(ctx context.Context, input model.Record
 		JournalID: &journalUUID, LineNo: new(int32(2)), PoolID: &poolReference, DebitYen: new(int64(0)), CreditYen: &amount, Memo: new("Member contribution"),
 	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
+	}
+	if sourceAccountID != nil || destinationAccountID != nil {
+		noAccount, noPool, noMember := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
+		lineThree, lineFour := int32(3), int32(4)
+		sourceDebit, sourceCredit := int64(0), amount
+		destinationDebit, destinationCredit := amount, int64(0)
+		sourceAccount := noAccount
+		destinationAccount := noAccount
+		if sourceAccountID == nil {
+			sourceCredit = 0
+		} else {
+			sourceAccount = sql.Null[gofrsuuid.UUID]{V: *sourceAccountID, Valid: true}
+		}
+		if destinationAccountID == nil {
+			destinationDebit = 0
+		} else {
+			destinationAccount = sql.Null[gofrsuuid.UUID]{V: *destinationAccountID, Valid: true}
+		}
+		if sourceAccountID == nil && destinationAccountID != nil {
+			sourceDebit = 0
+			sourceCredit = amount
+		}
+		if sourceAccountID != nil && destinationAccountID == nil {
+			destinationDebit = 0
+			destinationCredit = amount
+		}
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journalUUID, LineNo: &lineThree, AccountID: &destinationAccount, PoolID: &noPool, MemberID: &noMember,
+			DebitYen: &destinationDebit, CreditYen: &destinationCredit, Memo: new("Funding destination"),
+		}).Exec(ctx, transactionExecutor); err != nil {
+			return nil, err
+		}
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journalUUID, LineNo: &lineFour, AccountID: &sourceAccount, PoolID: &noPool, MemberID: &noMember,
+			DebitYen: &sourceDebit, CreditYen: &sourceCredit, Memo: new("Funding source"),
+		}).Exec(ctx, transactionExecutor); err != nil {
+			return nil, err
+		}
 	}
 	memberReference := sql.Null[gofrsuuid.UUID]{V: memberID, Valid: true}
 	if _, err := models.LedgerEntries.Insert(&models.LedgerEntrySetter{
@@ -2288,6 +2441,7 @@ func (r *mutationResolver) recordTransfer(ctx context.Context, input model.Recor
 	var paymentPoolID *gofrsuuid.UUID
 	var paymentPoolKind string
 	var paymentAccountUUID *gofrsuuid.UUID
+	var destinationAccountUUID *gofrsuuid.UUID
 	if input.PaymentAccountID != nil {
 		accountID, err := gofrsuuid.FromString(*input.PaymentAccountID)
 		if err != nil {
@@ -2308,6 +2462,9 @@ func (r *mutationResolver) recordTransfer(ctx context.Context, input model.Recor
 		}
 		if err != nil {
 			return nil, err
+		}
+		if account.Kind == string(model.AccountKindCard) {
+			return nil, fmt.Errorf("%w: transfer source must be a non-card account", ErrBadInput)
 		}
 		if !account.PoolID.Valid {
 			return nil, fmt.Errorf("%w: payment account is not assigned to a pool", ErrBadInput)
@@ -2338,6 +2495,55 @@ func (r *mutationResolver) recordTransfer(ctx context.Context, input model.Recor
 				return nil, fmt.Errorf("%w: personal payment account must belong to the source member", ErrBadInput)
 			}
 		}
+	}
+	if input.DestinationAccountID != nil {
+		destinationID, parseErr := gofrsuuid.FromString(*input.DestinationAccountID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid destination account id", ErrBadInput)
+		}
+		householdID, parseErr := gofrsuuid.FromString(input.HouseholdID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
+		}
+		executor := bobpgx.NewPool(r.DB)
+		account, accountErr := models.Accounts.Query(sm.Where(psql.And(
+			models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.Accounts.Columns.ID.EQ(psql.Arg(destinationID)),
+		))).One(ctx, executor)
+		if errors.Is(accountErr, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if accountErr != nil {
+			return nil, accountErr
+		}
+		if !account.PoolID.Valid || account.Kind == string(model.AccountKindCard) {
+			return nil, fmt.Errorf("%w: transfer destination must be a non-card account assigned to a pool", ErrBadInput)
+		}
+		pool, poolErr := models.Pools.Query(sm.Where(psql.And(
+			models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.Pools.Columns.ID.EQ(psql.Arg(account.PoolID.V)),
+		))).One(ctx, executor)
+		if poolErr != nil {
+			return nil, poolErr
+		}
+		if pool.Kind == string(model.PoolKindPersonal) {
+			fundingRule, ruleErr := models.PoolFundingRules.Query(sm.Where(psql.And(
+				models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+				models.PoolFundingRules.Columns.PoolID.EQ(psql.Arg(pool.ID)),
+				models.PoolFundingRules.Columns.Version.EQ(psql.Arg(pool.FundingRuleVersion)),
+			))).One(ctx, executor)
+			if ruleErr != nil {
+				return nil, ruleErr
+			}
+			toMemberID, parseErr := gofrsuuid.FromString(input.ToMemberID)
+			if parseErr != nil || !fundingRule.OwnerMemberID.Valid || fundingRule.OwnerMemberID.V != toMemberID {
+				return nil, fmt.Errorf("%w: personal destination account must belong to the receiving member", ErrBadInput)
+			}
+		}
+		destinationAccountUUID = &destinationID
+	}
+	if paymentAccountUUID != nil && destinationAccountUUID != nil && *paymentAccountUUID == *destinationAccountUUID {
+		return nil, fmt.Errorf("%w: transfer source and destination accounts must differ", ErrBadInput)
 	}
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
@@ -2466,25 +2672,61 @@ func (r *mutationResolver) recordTransfer(ctx context.Context, input model.Recor
 	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	if input.PaymentAccountID != nil {
-		accountUUID, parseErr := gofrsuuid.FromString(*input.PaymentAccountID)
-		if parseErr != nil || paymentPoolID == nil {
+	if input.PaymentAccountID != nil || input.DestinationAccountID != nil {
+		if input.PaymentAccountID != nil && paymentPoolID == nil {
 			return nil, fmt.Errorf("%w: invalid payment account", ErrBadInput)
 		}
-		lineThree, lineFour := int32(3), int32(4)
-		settlementMemo, paymentMemo := "Transfer settlement", "Transfer payment"
-		poolValue, accountValue := sql.Null[gofrsuuid.UUID]{V: *paymentPoolID, Valid: true}, sql.Null[gofrsuuid.UUID]{V: accountUUID, Valid: true}
-		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-			JournalID: &journalUUID, LineNo: &lineThree, AccountID: &noAccount, PoolID: &poolValue, MemberID: &noPool,
-			DebitYen: &zero, CreditYen: &amount, Memo: &settlementMemo,
-		}).Exec(ctx, transactionExecutor); err != nil {
-			return nil, err
+		line := int32(3)
+		if input.PaymentAccountID != nil {
+			poolValue := sql.Null[gofrsuuid.UUID]{V: *paymentPoolID, Valid: true}
+			debitMemo := "Transfer settlement offset"
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &line, AccountID: &noAccount, PoolID: &poolValue, MemberID: &noPool,
+				DebitYen: &zero, CreditYen: &amount, Memo: new("Transfer settlement"),
+			}).Exec(ctx, transactionExecutor); err != nil {
+				return nil, err
+			}
+			line++
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &line, AccountID: &noAccount, PoolID: &noPool, MemberID: &noPool,
+				DebitYen: &amount, CreditYen: &zero, Memo: &debitMemo,
+			}).Exec(ctx, transactionExecutor); err != nil {
+				return nil, err
+			}
+			line++
 		}
-		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-			JournalID: &journalUUID, LineNo: &lineFour, AccountID: &accountValue, PoolID: &noPool, MemberID: &noPool,
-			DebitYen: &amount, CreditYen: &zero, Memo: &paymentMemo,
-		}).Exec(ctx, transactionExecutor); err != nil {
-			return nil, err
+		if paymentAccountUUID != nil {
+			accountValue := sql.Null[gofrsuuid.UUID]{V: *paymentAccountUUID, Valid: true}
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &line, AccountID: &accountValue, PoolID: &noPool, MemberID: &noPool,
+				DebitYen: &zero, CreditYen: &amount, Memo: new("Transfer source account"),
+			}).Exec(ctx, transactionExecutor); err != nil {
+				return nil, err
+			}
+			line++
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &line, AccountID: &noAccount, PoolID: &noPool, MemberID: &noPool,
+				DebitYen: &amount, CreditYen: &zero, Memo: new("Transfer source account offset"),
+			}).Exec(ctx, transactionExecutor); err != nil {
+				return nil, err
+			}
+			line++
+		}
+		if destinationAccountUUID != nil {
+			accountValue := sql.Null[gofrsuuid.UUID]{V: *destinationAccountUUID, Valid: true}
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &line, AccountID: &accountValue, PoolID: &noPool, MemberID: &noPool,
+				DebitYen: &amount, CreditYen: &zero, Memo: new("Transfer destination account"),
+			}).Exec(ctx, transactionExecutor); err != nil {
+				return nil, err
+			}
+			line++
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &line, AccountID: &noAccount, PoolID: &noPool, MemberID: &noPool,
+				DebitYen: &zero, CreditYen: &amount, Memo: new("Transfer destination account offset"),
+			}).Exec(ctx, transactionExecutor); err != nil {
+				return nil, err
+			}
 		}
 	}
 	description := strings.TrimSpace(input.Description)
@@ -2834,6 +3076,28 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	if err != nil {
 		return nil, err
 	}
+	operation := "correctPurchase"
+	fingerprint, err := correctionRequestFingerprint(input)
+	if err != nil {
+		return nil, err
+	}
+	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
+		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(input.IdempotencyKey)),
+		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
+	))).One(ctx, executor)
+	if err == nil && existing.ResourceID.Valid {
+		if existing.RequestFingerprint.Valid && !slices.Equal(existing.RequestFingerprint.V, fingerprint[:]) {
+			return nil, fmt.Errorf("%w: idempotency key was used with a different correction", ErrConflict)
+		}
+		if err := tx.Rollback(ctx); err != nil {
+			return nil, err
+		}
+		return loadPurchase(ctx, r.DB, input.PurchaseID)
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
 	if purchaseRow.Status == string(model.PurchaseStatusDraft) {
 		return nil, fmt.Errorf("%w: corrections require a posted purchase", ErrBadInput)
 	}
@@ -2927,21 +3191,6 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		if -delta > refundable {
 			return nil, fmt.Errorf("%w: refund exceeds the remaining purchase amount", ErrBadInput)
 		}
-	}
-	operation := "correctPurchase"
-	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
-		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(input.IdempotencyKey)),
-		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
-	))).One(ctx, executor)
-	if err == nil && existing.ResourceID.Valid {
-		if err := tx.Rollback(ctx); err != nil {
-			return nil, err
-		}
-		return loadPurchase(ctx, r.DB, input.PurchaseID)
-	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
 	}
 	shares, err := domain.Allocate(abs(delta), weights)
 	if err != nil {
@@ -3161,8 +3410,9 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		}
 	}
 	ledgerResource := sql.Null[gofrsuuid.UUID]{V: ledgerUUID, Valid: true}
+	requestFingerprint := sql.Null[[]byte]{V: fingerprint[:], Valid: true}
 	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
-		HouseholdID: &householdUUID, Key: &input.IdempotencyKey, Operation: &operation, ResourceID: &ledgerResource,
+		HouseholdID: &householdUUID, Key: &input.IdempotencyKey, Operation: &operation, ResourceID: &ledgerResource, RequestFingerprint: &requestFingerprint,
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
@@ -3180,6 +3430,14 @@ func abs(value int64) int64 {
 		return -value
 	}
 	return value
+}
+
+func correctionRequestFingerprint(input model.CorrectPurchaseInput) ([sha256.Size]byte, error) {
+	encoded, err := stdjson.Marshal(input)
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	return sha256.Sum256(encoded), nil
 }
 
 func writeEvent(ctx context.Context, tx pgx.Tx, householdID, eventType, entityID string, revision int64, fields []string, actorID string) error {

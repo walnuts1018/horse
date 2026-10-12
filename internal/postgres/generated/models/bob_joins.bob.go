@@ -30,6 +30,7 @@ func (j joinSet[Q]) AliasedAs(alias string) joinSet[Q] {
 }
 
 type joins[Q dialect.Joinable] struct {
+	AccountIncomes        joinSet[accountIncomeJoins[Q]]
 	AccountMovements      joinSet[accountMovementJoins[Q]]
 	AccountingPeriods     joinSet[accountingPeriodJoins[Q]]
 	Accounts              joinSet[accountJoins[Q]]
@@ -86,6 +87,7 @@ func buildJoinSet[Q interface{ aliasedAs(string) Q }, C any, F func(C, string) Q
 
 func getJoins[Q dialect.Joinable]() joins[Q] {
 	return joins[Q]{
+		AccountIncomes:        buildJoinSet[accountIncomeJoins[Q]](AccountIncomes.Columns, buildAccountIncomeJoins),
 		AccountMovements:      buildJoinSet[accountMovementJoins[Q]](AccountMovements.Columns, buildAccountMovementJoins),
 		AccountingPeriods:     buildJoinSet[accountingPeriodJoins[Q]](AccountingPeriods.Columns, buildAccountingPeriodJoins),
 		Accounts:              buildJoinSet[accountJoins[Q]](Accounts.Columns, buildAccountJoins),

@@ -43,6 +43,23 @@ type ComplexityRoot struct {
 		PoolID func(childComplexity int) int
 	}
 
+	AccountBalance struct {
+		AccountID  func(childComplexity int) int
+		BalanceYen func(childComplexity int) int
+		Currency   func(childComplexity int) int
+	}
+
+	AccountIncome struct {
+		AccountID   func(childComplexity int) int
+		AmountYen   func(childComplexity int) int
+		CreatedAt   func(childComplexity int) int
+		Currency    func(childComplexity int) int
+		Description func(childComplexity int) int
+		HouseholdID func(childComplexity int) int
+		ID          func(childComplexity int) int
+		OccurredAt  func(childComplexity int) int
+	}
+
 	AccountMovement struct {
 		AmountYen     func(childComplexity int) int
 		CreatedAt     func(childComplexity int) int
@@ -193,6 +210,7 @@ type ComplexityRoot struct {
 		CreateTag                 func(childComplexity int, input model.CreateTagInput) int
 		PostPurchase              func(childComplexity int, purchaseID string, expectedRevision int, idempotencyKey string) int
 		RecordAccountMovement     func(childComplexity int, input model.RecordAccountMovementInput) int
+		RecordExternalIncome      func(childComplexity int, input model.RecordExternalIncomeInput) int
 		RecordFunding             func(childComplexity int, input model.RecordFundingInput) int
 		RecordTransfer            func(childComplexity int, input model.RecordTransferInput) int
 		RevokeHouseholdInvitation func(childComplexity int, householdID string, invitationID string) int
@@ -331,6 +349,8 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
+		AccountBalances         func(childComplexity int, householdID string) int
+		AccountIncomes          func(childComplexity int, householdID string, first *int) int
 		AccountMovements        func(childComplexity int, householdID string, first *int) int
 		AllocationRules         func(childComplexity int, householdID string) int
 		Budgets                 func(childComplexity int, householdID string, period string) int
@@ -440,6 +460,7 @@ type MutationResolver interface {
 	SetRecurringExpense(ctx context.Context, input model.SetRecurringExpenseInput) (*model.RecurringExpense, error)
 	ArchiveRecurringExpense(ctx context.Context, expenseID string, baseRevision int, archived bool) (*model.RecurringExpense, error)
 	RecordAccountMovement(ctx context.Context, input model.RecordAccountMovementInput) (*model.AccountMovement, error)
+	RecordExternalIncome(ctx context.Context, input model.RecordExternalIncomeInput) (*model.AccountIncome, error)
 }
 type QueryResolver interface {
 	Viewer(ctx context.Context) (*model.Viewer, error)
@@ -459,6 +480,8 @@ type QueryResolver interface {
 	Budgets(ctx context.Context, householdID string, period string) ([]*model.Budget, error)
 	RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool) ([]*model.RecurringExpense, error)
 	AccountMovements(ctx context.Context, householdID string, first *int) ([]*model.AccountMovement, error)
+	AccountBalances(ctx context.Context, householdID string) ([]*model.AccountBalance, error)
+	AccountIncomes(ctx context.Context, householdID string, first *int) ([]*model.AccountIncome, error)
 }
 
 // endregion ************************** generated!.gotpl **************************
@@ -503,6 +526,74 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Account.PoolID(childComplexity), true
+
+	case "AccountBalance.accountId":
+		if e.ComplexityRoot.AccountBalance.AccountID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalance.AccountID(childComplexity), true
+	case "AccountBalance.balanceYen":
+		if e.ComplexityRoot.AccountBalance.BalanceYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalance.BalanceYen(childComplexity), true
+	case "AccountBalance.currency":
+		if e.ComplexityRoot.AccountBalance.Currency == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalance.Currency(childComplexity), true
+
+	case "AccountIncome.accountId":
+		if e.ComplexityRoot.AccountIncome.AccountID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncome.AccountID(childComplexity), true
+	case "AccountIncome.amountYen":
+		if e.ComplexityRoot.AccountIncome.AmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncome.AmountYen(childComplexity), true
+	case "AccountIncome.createdAt":
+		if e.ComplexityRoot.AccountIncome.CreatedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncome.CreatedAt(childComplexity), true
+	case "AccountIncome.currency":
+		if e.ComplexityRoot.AccountIncome.Currency == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncome.Currency(childComplexity), true
+	case "AccountIncome.description":
+		if e.ComplexityRoot.AccountIncome.Description == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncome.Description(childComplexity), true
+	case "AccountIncome.householdId":
+		if e.ComplexityRoot.AccountIncome.HouseholdID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncome.HouseholdID(childComplexity), true
+	case "AccountIncome.id":
+		if e.ComplexityRoot.AccountIncome.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncome.ID(childComplexity), true
+	case "AccountIncome.occurredAt":
+		if e.ComplexityRoot.AccountIncome.OccurredAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountIncome.OccurredAt(childComplexity), true
 
 	case "AccountMovement.amountYen":
 		if e.ComplexityRoot.AccountMovement.AmountYen == nil {
@@ -1250,6 +1341,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RecordAccountMovement(childComplexity, args["input"].(model.RecordAccountMovementInput)), true
+	case "Mutation.recordExternalIncome":
+		if e.ComplexityRoot.Mutation.RecordExternalIncome == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_recordExternalIncome_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.RecordExternalIncome(childComplexity, args["input"].(model.RecordExternalIncomeInput)), true
 	case "Mutation.recordFunding":
 		if e.ComplexityRoot.Mutation.RecordFunding == nil {
 			break
@@ -1910,6 +2012,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.PurchasePayment.PaymentAccountID(childComplexity), true
 
+	case "Query.accountBalances":
+		if e.ComplexityRoot.Query.AccountBalances == nil {
+			break
+		}
+
+		args, err := ec.field_Query_accountBalances_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.AccountBalances(childComplexity, args["householdId"].(string)), true
+	case "Query.accountIncomes":
+		if e.ComplexityRoot.Query.AccountIncomes == nil {
+			break
+		}
+
+		args, err := ec.field_Query_accountIncomes_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.AccountIncomes(childComplexity, args["householdId"].(string), args["first"].(*int)), true
 	case "Query.accountMovements":
 		if e.ComplexityRoot.Query.AccountMovements == nil {
 			break
@@ -2344,6 +2468,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputPurchasePatch,
 		ec.unmarshalInputPurchasePaymentInput,
 		ec.unmarshalInputRecordAccountMovementInput,
+		ec.unmarshalInputRecordExternalIncomeInput,
 		ec.unmarshalInputRecordFundingInput,
 		ec.unmarshalInputRecordTransferInput,
 		ec.unmarshalInputSetAllocationRuleInput,
@@ -2451,6 +2576,8 @@ type CreatedHouseholdInvitation { invitation: HouseholdInvitation!, token: Strin
 type Pool { id: ID!, name: String!, kind: PoolKind!, defaultShareWeight: Long!, ownerMemberId: ID, fundingShares: [PoolFundingShare!]!, settlementPolicy: SharedPoolSettlementPolicy, fundingRuleVersion: Int! }
 type PoolFundingShare { memberId: ID!, memberName: String!, weight: Long! }
 type Account { id: ID!, name: String!, kind: AccountKind!, poolId: ID }
+type AccountBalance { accountId: ID!, balanceYen: Long!, currency: String! }
+type AccountIncome { id: ID!, householdId: ID!, accountId: ID!, amountYen: Long!, currency: String!, occurredAt: String!, description: String!, createdAt: String! }
 type Category { id: ID!, name: String!, parentId: ID, archived: Boolean! }
 type Allocation { poolId: ID!, poolName: String, weight: Long!, amountYen: Long }
 type AllocationRule { id: ID!, householdId: ID!, scope: AllocationRuleScope!, categoryId: ID, merchant: String, productConceptId: ID, productVariantId: ID, revision: Int!, allocations: [Allocation!]! }
@@ -2491,6 +2618,7 @@ input UpdateTagInput { tagId: ID!, baseRevision: Int!, name: String! }
 input SetBudgetInput { householdId: ID!, budgetId: ID, baseRevision: Int, categoryId: ID, name: String!, amountYen: Long!, startsOn: String!, endsOn: String }
 input SetRecurringExpenseInput { householdId: ID!, expenseId: ID, baseRevision: Int, name: String!, merchant: String!, amountYen: Long!, categoryId: ID, paymentAccountId: ID, cadence: String!, startsOn: String!, nextDueOn: String!, endsOn: String }
 input RecordAccountMovementInput { householdId: ID!, kind: AccountMovementKind!, fromAccountId: ID!, toAccountId: ID!, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
+input RecordExternalIncomeInput { householdId: ID!, accountId: ID!, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
 input CreateProductConceptInput { householdId: ID!, name: String!, categoryId: ID }
 input CreateProductVariantInput { householdId: ID!, conceptId: ID!, name: String!, brand: String, packageSize: String, barcode: String }
 input SetProductAliasInput { householdId: ID!, variantId: ID!, merchant: String!, alias: String! }
@@ -2499,12 +2627,12 @@ input CreateHouseholdInvitationInput { householdId: ID!, expiresAt: String! }
 input CreatePoolInput { householdId: ID!, name: String!, kind: PoolKind! }
 input PoolFundingShareInput { memberId: ID!, weight: Long! }
 input SetPoolFundingRuleInput { householdId: ID!, poolId: ID!, ownerMemberId: ID, fundingShares: [PoolFundingShareInput!]!, settlementPolicy: SharedPoolSettlementPolicy, expectedVersion: Int! }
-input CreateAccountInput { householdId: ID!, name: String!, kind: AccountKind!, poolId: ID }
+input CreateAccountInput { householdId: ID!, name: String!, kind: AccountKind!, poolId: ID, openingBalanceYen: Long, openingBalanceAt: String }
 input CreateCategoryInput { householdId: ID!, name: String!, parentId: ID }
 input SetDefaultAllocationInput { householdId: ID!, allocations: [AllocationInput!]! }
 input SetAllocationRuleInput { householdId: ID!, categoryId: ID, merchant: String, productConceptId: ID, productVariantId: ID, allocations: [AllocationInput!]! }
-input RecordFundingInput { householdId: ID!, memberId: ID!, poolId: ID!, amountYen: Long!, occurredAt: String!, idempotencyKey: String! }
-input RecordTransferInput { householdId: ID!, fromMemberId: ID!, toMemberId: ID!, kind: TransferKind!, loanId: ID, paymentAccountId: ID, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
+input RecordFundingInput { householdId: ID!, memberId: ID!, poolId: ID!, amountYen: Long!, occurredAt: String!, idempotencyKey: String!, sourceAccountId: ID, destinationAccountId: ID }
+input RecordTransferInput { householdId: ID!, fromMemberId: ID!, toMemberId: ID!, kind: TransferKind!, loanId: ID, paymentAccountId: ID, destinationAccountId: ID, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
 input SetFundingScheduleInput { householdId: ID!, memberId: ID!, poolId: ID!, amountYen: Long!, cadence: String!, startsOn: String!, endsOn: String }
 input ClosePeriodInput { householdId: ID!, period: String!, expectedRevision: Int! }
 input CorrectPurchaseInput { householdId: ID!, purchaseId: ID!, itemId: ID, amountDeltaYen: Long!, reason: String!, allocations: [AllocationInput!], paymentAllocations: [PurchasePaymentInput!], idempotencyKey: String! }
@@ -2527,6 +2655,8 @@ type Query {
   budgets(householdId: ID!, period: String!): [Budget!]!
   recurringExpenses(householdId: ID!, includeArchived: Boolean = false): [RecurringExpense!]!
   accountMovements(householdId: ID!, first: Int = 50): [AccountMovement!]!
+  accountBalances(householdId: ID!): [AccountBalance!]!
+  accountIncomes(householdId: ID!, first: Int = 50): [AccountIncome!]!
 }
 type Mutation {
   createHousehold(input: CreateHouseholdInput!): Household!
@@ -2561,6 +2691,7 @@ type Mutation {
   setRecurringExpense(input: SetRecurringExpenseInput!): RecurringExpense!
   archiveRecurringExpense(expenseId: ID!, baseRevision: Int!, archived: Boolean!): RecurringExpense!
   recordAccountMovement(input: RecordAccountMovementInput!): AccountMovement!
+  recordExternalIncome(input: RecordExternalIncomeInput!): AccountIncome!
 }
 `, BuiltIn: false},
 }
@@ -2582,6 +2713,40 @@ func (ec *executionContext) childFields_Account(ctx context.Context, field graph
 		return ec.fieldContext_Account_poolId(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Account", field.Name)
+}
+
+func (ec *executionContext) childFields_AccountBalance(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "accountId":
+		return ec.fieldContext_AccountBalance_accountId(ctx, field)
+	case "balanceYen":
+		return ec.fieldContext_AccountBalance_balanceYen(ctx, field)
+	case "currency":
+		return ec.fieldContext_AccountBalance_currency(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AccountBalance", field.Name)
+}
+
+func (ec *executionContext) childFields_AccountIncome(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "id":
+		return ec.fieldContext_AccountIncome_id(ctx, field)
+	case "householdId":
+		return ec.fieldContext_AccountIncome_householdId(ctx, field)
+	case "accountId":
+		return ec.fieldContext_AccountIncome_accountId(ctx, field)
+	case "amountYen":
+		return ec.fieldContext_AccountIncome_amountYen(ctx, field)
+	case "currency":
+		return ec.fieldContext_AccountIncome_currency(ctx, field)
+	case "occurredAt":
+		return ec.fieldContext_AccountIncome_occurredAt(ctx, field)
+	case "description":
+		return ec.fieldContext_AccountIncome_description(ctx, field)
+	case "createdAt":
+		return ec.fieldContext_AccountIncome_createdAt(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AccountIncome", field.Name)
 }
 
 func (ec *executionContext) childFields_AccountMovement(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -3624,6 +3789,20 @@ func (ec *executionContext) field_Mutation_recordAccountMovement_args(ctx contex
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_recordExternalIncome_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.RecordExternalIncomeInput, error) {
+			return ec.unmarshalNRecordExternalIncomeInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordExternalIncomeInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_recordFunding_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -3847,6 +4026,42 @@ func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs
 		return nil, err
 	}
 	args["name"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_accountBalances_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "householdId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_accountIncomes_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "householdId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg1
 	return args, nil
 }
 
@@ -4338,6 +4553,259 @@ func (ec *executionContext) _Account_poolId(ctx context.Context, field graphql.C
 }
 func (ec *executionContext) fieldContext_Account_poolId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Account", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalance_accountId(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalance) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalance_accountId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AccountID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalance_accountId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalance", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalance_balanceYen(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalance) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalance_balanceYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.BalanceYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalance_balanceYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalance", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalance_currency(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalance) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalance_currency(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Currency, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalance_currency(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalance", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountIncome_id(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncome_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncome_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _AccountIncome_householdId(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncome_householdId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.HouseholdID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncome_householdId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _AccountIncome_accountId(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncome_accountId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AccountID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncome_accountId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _AccountIncome_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncome_amountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncome_amountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _AccountIncome_currency(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncome_currency(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Currency, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncome_currency(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountIncome_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncome_occurredAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.OccurredAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncome_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountIncome_description(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncome_description(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Description, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncome_description(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountIncome_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountIncome_createdAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountIncome_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _AccountMovement_id(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovement) (ret graphql.Marshaler) {
@@ -7885,6 +8353,50 @@ func (ec *executionContext) fieldContext_Mutation_recordAccountMovement(ctx cont
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_recordExternalIncome(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_recordExternalIncome(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().RecordExternalIncome(ctx, fc.Args["input"].(model.RecordExternalIncomeInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountIncome) graphql.Marshaler {
+			return ec.marshalNAccountIncome2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncome(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_recordExternalIncome(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountIncome(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_recordExternalIncome_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _PageInfo_endCursor(ctx context.Context, field graphql.CollectedField, obj *model.PageInfo) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10639,6 +11151,94 @@ func (ec *executionContext) fieldContext_Query_accountMovements(ctx context.Cont
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_accountBalances(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_accountBalances(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().AccountBalances(ctx, fc.Args["householdId"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.AccountBalance) graphql.Marshaler {
+			return ec.marshalNAccountBalance2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_accountBalances(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountBalance(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_accountBalances_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_accountIncomes(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_accountIncomes(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().AccountIncomes(ctx, fc.Args["householdId"].(string), fc.Args["first"].(*int))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.AccountIncome) graphql.Marshaler {
+			return ec.marshalNAccountIncome2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_accountIncomes(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountIncome(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_accountIncomes_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -12909,7 +13509,7 @@ func (ec *executionContext) unmarshalInputCreateAccountInput(ctx context.Context
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "name", "kind", "poolId"}
+	fieldsInOrder := [...]string{"householdId", "name", "kind", "poolId", "openingBalanceYen", "openingBalanceAt"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -12944,6 +13544,20 @@ func (ec *executionContext) unmarshalInputCreateAccountInput(ctx context.Context
 				return it, err
 			}
 			it.PoolID = data
+		case "openingBalanceYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("openingBalanceYen"))
+			data, err := ec.unmarshalOLong2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.OpeningBalanceYen = data
+		case "openingBalanceAt":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("openingBalanceAt"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.OpeningBalanceAt = data
 		}
 	}
 	return it, nil
@@ -13649,6 +14263,71 @@ func (ec *executionContext) unmarshalInputRecordAccountMovementInput(ctx context
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputRecordExternalIncomeInput(ctx context.Context, obj any) (model.RecordExternalIncomeInput, error) {
+	var it model.RecordExternalIncomeInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId", "accountId", "amountYen", "occurredAt", "description", "idempotencyKey"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.HouseholdID = data
+		case "accountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("accountId"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AccountID = data
+		case "amountYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AmountYen = data
+		case "occurredAt":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.OccurredAt = data
+		case "description":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("description"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Description = data
+		case "idempotencyKey":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("idempotencyKey"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.IdempotencyKey = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputRecordFundingInput(ctx context.Context, obj any) (model.RecordFundingInput, error) {
 	var it model.RecordFundingInput
 	if obj == nil {
@@ -13660,7 +14339,7 @@ func (ec *executionContext) unmarshalInputRecordFundingInput(ctx context.Context
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "memberId", "poolId", "amountYen", "occurredAt", "idempotencyKey"}
+	fieldsInOrder := [...]string{"householdId", "memberId", "poolId", "amountYen", "occurredAt", "idempotencyKey", "sourceAccountId", "destinationAccountId"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -13709,6 +14388,20 @@ func (ec *executionContext) unmarshalInputRecordFundingInput(ctx context.Context
 				return it, err
 			}
 			it.IdempotencyKey = data
+		case "sourceAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceAccountId"))
+			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceAccountID = data
+		case "destinationAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("destinationAccountId"))
+			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DestinationAccountID = data
 		}
 	}
 	return it, nil
@@ -13725,7 +14418,7 @@ func (ec *executionContext) unmarshalInputRecordTransferInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "fromMemberId", "toMemberId", "kind", "loanId", "paymentAccountId", "amountYen", "occurredAt", "description", "idempotencyKey"}
+	fieldsInOrder := [...]string{"householdId", "fromMemberId", "toMemberId", "kind", "loanId", "paymentAccountId", "destinationAccountId", "amountYen", "occurredAt", "description", "idempotencyKey"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -13774,6 +14467,13 @@ func (ec *executionContext) unmarshalInputRecordTransferInput(ctx context.Contex
 				return it, err
 			}
 			it.PaymentAccountID = data
+		case "destinationAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("destinationAccountId"))
+			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DestinationAccountID = data
 		case "amountYen":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
 			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
@@ -14513,6 +15213,127 @@ func (ec *executionContext) _Account(ctx context.Context, sel ast.SelectionSet, 
 		case "poolId":
 			out.Values[i] = ec._Account_poolId(ctx, field, obj)
 			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var accountBalanceImplementors = []string{"AccountBalance"}
+
+func (ec *executionContext) _AccountBalance(ctx context.Context, sel ast.SelectionSet, obj *model.AccountBalance) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountBalanceImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountBalance")
+		case "accountId":
+			out.Values[i] = ec._AccountBalance_accountId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "balanceYen":
+			out.Values[i] = ec._AccountBalance_balanceYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "currency":
+			out.Values[i] = ec._AccountBalance_currency(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var accountIncomeImplementors = []string{"AccountIncome"}
+
+func (ec *executionContext) _AccountIncome(ctx context.Context, sel ast.SelectionSet, obj *model.AccountIncome) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountIncomeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountIncome")
+		case "id":
+			out.Values[i] = ec._AccountIncome_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "householdId":
+			out.Values[i] = ec._AccountIncome_householdId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "accountId":
+			out.Values[i] = ec._AccountIncome_accountId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "amountYen":
+			out.Values[i] = ec._AccountIncome_amountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "currency":
+			out.Values[i] = ec._AccountIncome_currency(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "occurredAt":
+			out.Values[i] = ec._AccountIncome_occurredAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "description":
+			out.Values[i] = ec._AccountIncome_description(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createdAt":
+			out.Values[i] = ec._AccountIncome_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
 		default:
@@ -15683,6 +16504,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "recordAccountMovement":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_recordAccountMovement(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "recordExternalIncome":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_recordExternalIncome(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -16941,6 +17769,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "accountBalances":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_accountBalances(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "accountIncomes":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_accountIncomes(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
@@ -17742,6 +18614,58 @@ func (ec *executionContext) marshalNAccount2ᚖgithubᚗcomᚋwalnuts1018ᚋhors
 		return graphql.Null
 	}
 	return ec._Account(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAccountBalance2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AccountBalance) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNAccountBalance2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalance(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNAccountBalance2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalance(ctx context.Context, sel ast.SelectionSet, v *model.AccountBalance) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountBalance(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAccountIncome2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncomeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AccountIncome) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNAccountIncome2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncome(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNAccountIncome2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncome(ctx context.Context, sel ast.SelectionSet, v *model.AccountIncome) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountIncome(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNAccountKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountKind(ctx context.Context, v any) (model.AccountKind, error) {
@@ -18621,6 +19545,11 @@ func (ec *executionContext) marshalNPurchaseStatus2githubᚗcomᚋwalnuts1018ᚋ
 
 func (ec *executionContext) unmarshalNRecordAccountMovementInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordAccountMovementInput(ctx context.Context, v any) (model.RecordAccountMovementInput, error) {
 	res, err := ec.unmarshalInputRecordAccountMovementInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNRecordExternalIncomeInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordExternalIncomeInput(ctx context.Context, v any) (model.RecordExternalIncomeInput, error) {
+	res, err := ec.unmarshalInputRecordExternalIncomeInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 

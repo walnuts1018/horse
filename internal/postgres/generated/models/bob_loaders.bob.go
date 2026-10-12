@@ -17,6 +17,7 @@ import (
 var Preload = getPreloaders()
 
 type preloaders struct {
+	AccountIncome        accountIncomePreloader
 	AccountMovement      accountMovementPreloader
 	AccountingPeriod     accountingPeriodPreloader
 	Account              accountPreloader
@@ -65,6 +66,7 @@ type preloaders struct {
 
 func getPreloaders() preloaders {
 	return preloaders{
+		AccountIncome:        buildAccountIncomePreloader(),
 		AccountMovement:      buildAccountMovementPreloader(),
 		AccountingPeriod:     buildAccountingPeriodPreloader(),
 		Account:              buildAccountPreloader(),
@@ -119,6 +121,7 @@ var (
 )
 
 type thenLoaders[Q orm.Loadable] struct {
+	AccountIncome        accountIncomeThenLoader[Q]
 	AccountMovement      accountMovementThenLoader[Q]
 	AccountingPeriod     accountingPeriodThenLoader[Q]
 	Account              accountThenLoader[Q]
@@ -167,6 +170,7 @@ type thenLoaders[Q orm.Loadable] struct {
 
 func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 	return thenLoaders[Q]{
+		AccountIncome:        buildAccountIncomeThenLoader[Q](),
 		AccountMovement:      buildAccountMovementThenLoader[Q](),
 		AccountingPeriod:     buildAccountingPeriodThenLoader[Q](),
 		Account:              buildAccountThenLoader[Q](),

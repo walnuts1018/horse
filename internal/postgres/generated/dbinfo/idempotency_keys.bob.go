@@ -69,6 +69,15 @@ var IdempotencyKeys = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		RequestFingerprint: column{
+			Name:      "request_fingerprint",
+			DBType:    "bytea",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: idempotencyKeyIndexes{
 		IdempotencyKeysPkey: index{
@@ -115,17 +124,18 @@ var IdempotencyKeys = Table[
 }
 
 type idempotencyKeyColumns struct {
-	HouseholdID column
-	Key         column
-	Operation   column
-	ResourceID  column
-	Response    column
-	CreatedAt   column
+	HouseholdID        column
+	Key                column
+	Operation          column
+	ResourceID         column
+	Response           column
+	CreatedAt          column
+	RequestFingerprint column
 }
 
 func (c idempotencyKeyColumns) AsSlice() []column {
 	return []column{
-		c.HouseholdID, c.Key, c.Operation, c.ResourceID, c.Response, c.CreatedAt,
+		c.HouseholdID, c.Key, c.Operation, c.ResourceID, c.Response, c.CreatedAt, c.RequestFingerprint,
 	}
 }
 

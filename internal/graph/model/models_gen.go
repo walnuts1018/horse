@@ -16,6 +16,23 @@ type Account struct {
 	PoolID *string     `json:"poolId,omitempty"`
 }
 
+type AccountBalance struct {
+	AccountID  string `json:"accountId"`
+	BalanceYen Long   `json:"balanceYen"`
+	Currency   string `json:"currency"`
+}
+
+type AccountIncome struct {
+	ID          string `json:"id"`
+	HouseholdID string `json:"householdId"`
+	AccountID   string `json:"accountId"`
+	AmountYen   Long   `json:"amountYen"`
+	Currency    string `json:"currency"`
+	OccurredAt  string `json:"occurredAt"`
+	Description string `json:"description"`
+	CreatedAt   string `json:"createdAt"`
+}
+
 type AccountMovement struct {
 	ID            string              `json:"id"`
 	HouseholdID   string              `json:"householdId"`
@@ -105,10 +122,12 @@ type CorrectPurchaseInput struct {
 }
 
 type CreateAccountInput struct {
-	HouseholdID string      `json:"householdId"`
-	Name        string      `json:"name"`
-	Kind        AccountKind `json:"kind"`
-	PoolID      *string     `json:"poolId,omitempty"`
+	HouseholdID       string      `json:"householdId"`
+	Name              string      `json:"name"`
+	Kind              AccountKind `json:"kind"`
+	PoolID            *string     `json:"poolId,omitempty"`
+	OpeningBalanceYen *Long       `json:"openingBalanceYen,omitempty"`
+	OpeningBalanceAt  *string     `json:"openingBalanceAt,omitempty"`
 }
 
 type CreateCategoryInput struct {
@@ -412,26 +431,38 @@ type RecordAccountMovementInput struct {
 	IdempotencyKey string              `json:"idempotencyKey"`
 }
 
-type RecordFundingInput struct {
+type RecordExternalIncomeInput struct {
 	HouseholdID    string `json:"householdId"`
-	MemberID       string `json:"memberId"`
-	PoolID         string `json:"poolId"`
+	AccountID      string `json:"accountId"`
 	AmountYen      Long   `json:"amountYen"`
 	OccurredAt     string `json:"occurredAt"`
+	Description    string `json:"description"`
 	IdempotencyKey string `json:"idempotencyKey"`
 }
 
+type RecordFundingInput struct {
+	HouseholdID          string  `json:"householdId"`
+	MemberID             string  `json:"memberId"`
+	PoolID               string  `json:"poolId"`
+	AmountYen            Long    `json:"amountYen"`
+	OccurredAt           string  `json:"occurredAt"`
+	IdempotencyKey       string  `json:"idempotencyKey"`
+	SourceAccountID      *string `json:"sourceAccountId,omitempty"`
+	DestinationAccountID *string `json:"destinationAccountId,omitempty"`
+}
+
 type RecordTransferInput struct {
-	HouseholdID      string       `json:"householdId"`
-	FromMemberID     string       `json:"fromMemberId"`
-	ToMemberID       string       `json:"toMemberId"`
-	Kind             TransferKind `json:"kind"`
-	LoanID           *string      `json:"loanId,omitempty"`
-	PaymentAccountID *string      `json:"paymentAccountId,omitempty"`
-	AmountYen        Long         `json:"amountYen"`
-	OccurredAt       string       `json:"occurredAt"`
-	Description      string       `json:"description"`
-	IdempotencyKey   string       `json:"idempotencyKey"`
+	HouseholdID          string       `json:"householdId"`
+	FromMemberID         string       `json:"fromMemberId"`
+	ToMemberID           string       `json:"toMemberId"`
+	Kind                 TransferKind `json:"kind"`
+	LoanID               *string      `json:"loanId,omitempty"`
+	PaymentAccountID     *string      `json:"paymentAccountId,omitempty"`
+	DestinationAccountID *string      `json:"destinationAccountId,omitempty"`
+	AmountYen            Long         `json:"amountYen"`
+	OccurredAt           string       `json:"occurredAt"`
+	Description          string       `json:"description"`
+	IdempotencyKey       string       `json:"idempotencyKey"`
 }
 
 type RecurringExpense struct {

@@ -28,12 +28,13 @@ import (
 
 // IdempotencyKey is an object representing the database table.
 type IdempotencyKey struct {
-	HouseholdID uuid.UUID                   `db:"household_id,pk" `
-	Key         string                      `db:"key,pk" `
-	Operation   string                      `db:"operation" `
-	ResourceID  sql.Null[uuid.UUID]         `db:"resource_id" `
-	Response    types.JSON[json.RawMessage] `db:"response" `
-	CreatedAt   time.Time                   `db:"created_at" `
+	HouseholdID        uuid.UUID                   `db:"household_id,pk" `
+	Key                string                      `db:"key,pk" `
+	Operation          string                      `db:"operation" `
+	ResourceID         sql.Null[uuid.UUID]         `db:"resource_id" `
+	Response           types.JSON[json.RawMessage] `db:"response" `
+	CreatedAt          time.Time                   `db:"created_at" `
+	RequestFingerprint sql.Null[[]byte]            `db:"request_fingerprint" `
 
 	R idempotencyKeyR `db:"-" `
 }
@@ -64,7 +65,7 @@ type idempotencyKeyRLoaded struct {
 
 func buildIdempotencyKeyColumns(tableName string) idempotencyKeyColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"household_id", "key", "operation", "resource_id", "response", "created_at",
+		"household_id", "key", "operation", "resource_id", "response", "created_at", "request_fingerprint",
 	)
 
 	if tableName != "" {
@@ -72,26 +73,28 @@ func buildIdempotencyKeyColumns(tableName string) idempotencyKeyColumns {
 	}
 
 	return idempotencyKeyColumns{
-		ColumnsExpr: columnsExpr,
-		tableAlias:  tableName,
-		HouseholdID: buildIdempotencyKeyColumn(tableName, "household_id"),
-		Key:         buildIdempotencyKeyColumn(tableName, "key"),
-		Operation:   buildIdempotencyKeyColumn(tableName, "operation"),
-		ResourceID:  buildIdempotencyKeyColumn(tableName, "resource_id"),
-		Response:    buildIdempotencyKeyColumn(tableName, "response"),
-		CreatedAt:   buildIdempotencyKeyColumn(tableName, "created_at"),
+		ColumnsExpr:        columnsExpr,
+		tableAlias:         tableName,
+		HouseholdID:        buildIdempotencyKeyColumn(tableName, "household_id"),
+		Key:                buildIdempotencyKeyColumn(tableName, "key"),
+		Operation:          buildIdempotencyKeyColumn(tableName, "operation"),
+		ResourceID:         buildIdempotencyKeyColumn(tableName, "resource_id"),
+		Response:           buildIdempotencyKeyColumn(tableName, "response"),
+		CreatedAt:          buildIdempotencyKeyColumn(tableName, "created_at"),
+		RequestFingerprint: buildIdempotencyKeyColumn(tableName, "request_fingerprint"),
 	}
 }
 
 type idempotencyKeyColumns struct {
 	expr.ColumnsExpr
-	tableAlias  string
-	HouseholdID idempotencyKeyColumn
-	Key         idempotencyKeyColumn
-	Operation   idempotencyKeyColumn
-	ResourceID  idempotencyKeyColumn
-	Response    idempotencyKeyColumn
-	CreatedAt   idempotencyKeyColumn
+	tableAlias         string
+	HouseholdID        idempotencyKeyColumn
+	Key                idempotencyKeyColumn
+	Operation          idempotencyKeyColumn
+	ResourceID         idempotencyKeyColumn
+	Response           idempotencyKeyColumn
+	CreatedAt          idempotencyKeyColumn
+	RequestFingerprint idempotencyKeyColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -137,16 +140,17 @@ func (c idempotencyKeyColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type IdempotencyKeySetter struct {
-	HouseholdID *uuid.UUID                   `db:"household_id,pk" `
-	Key         *string                      `db:"key,pk" `
-	Operation   *string                      `db:"operation" `
-	ResourceID  *sql.Null[uuid.UUID]         `db:"resource_id" `
-	Response    *types.JSON[json.RawMessage] `db:"response" `
-	CreatedAt   *time.Time                   `db:"created_at" `
+	HouseholdID        *uuid.UUID                   `db:"household_id,pk" `
+	Key                *string                      `db:"key,pk" `
+	Operation          *string                      `db:"operation" `
+	ResourceID         *sql.Null[uuid.UUID]         `db:"resource_id" `
+	Response           *types.JSON[json.RawMessage] `db:"response" `
+	CreatedAt          *time.Time                   `db:"created_at" `
+	RequestFingerprint *sql.Null[[]byte]            `db:"request_fingerprint" `
 }
 
 func (s IdempotencyKeySetter) SetColumns() []string {
-	vals := make([]string, 0, 6)
+	vals := make([]string, 0, 7)
 	if s.HouseholdID != nil {
 		vals = append(vals, "household_id")
 	}
@@ -164,6 +168,9 @@ func (s IdempotencyKeySetter) SetColumns() []string {
 	}
 	if s.CreatedAt != nil {
 		vals = append(vals, "created_at")
+	}
+	if s.RequestFingerprint != nil {
+		vals = append(vals, "request_fingerprint")
 	}
 	return vals
 }
@@ -216,6 +223,15 @@ func (s IdempotencyKeySetter) Overwrite(t *IdempotencyKey) {
 				return *new(time.Time)
 			}
 			return *s.CreatedAt
+		}()
+	}
+	if s.RequestFingerprint != nil {
+		t.RequestFingerprint = func() sql.Null[[]byte] {
+			if s.RequestFingerprint == nil {
+				return *new(sql.Null[[]byte])
+			}
+			v := s.RequestFingerprint
+			return *v
 		}()
 	}
 }
@@ -287,6 +303,17 @@ func (s *IdempotencyKeySetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.CreatedAt
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.RequestFingerprint == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[[]byte] {
+				if s.RequestFingerprint == nil {
+					return *new(sql.Null[[]byte])
+				}
+				v := s.RequestFingerprint
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -295,7 +322,7 @@ func (s IdempotencyKeySetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s IdempotencyKeySetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 6)
+	exprs := make([]bob.Expression, 0, 7)
 
 	if s.HouseholdID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -339,6 +366,13 @@ func (s IdempotencyKeySetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.RequestFingerprint != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "request_fingerprint")...),
+			psql.Arg(s.RequestFingerprint),
+		}})
+	}
+
 	return exprs
 }
 
@@ -349,7 +383,7 @@ func idempotencyKeyScanMapper(ctx context.Context, cols []string) (scan.BeforeFu
 		idx int
 		dst func(o *IdempotencyKey) any
 	}
-	targets := make([]target, 0, 6)
+	targets := make([]target, 0, 7)
 	for i, col := range cols {
 		switch col {
 		case "household_id":
@@ -364,6 +398,8 @@ func idempotencyKeyScanMapper(ctx context.Context, cols []string) (scan.BeforeFu
 			targets = append(targets, target{i, func(o *IdempotencyKey) any { return &o.Response }})
 		case "created_at":
 			targets = append(targets, target{i, func(o *IdempotencyKey) any { return &o.CreatedAt }})
+		case "request_fingerprint":
+			targets = append(targets, target{i, func(o *IdempotencyKey) any { return &o.RequestFingerprint }})
 		}
 	}
 
@@ -724,14 +760,15 @@ func (idempotencyKey0 *IdempotencyKey) AttachHousehold(ctx context.Context, exec
 }
 
 type idempotencyKeyWhere[Q psql.Filterable] struct {
-	cols        idempotencyKeyColumns
-	HouseholdID psql.WhereMod[Q, uuid.UUID]
-	Key         psql.WhereMod[Q, string]
-	Operation   psql.WhereMod[Q, string]
-	ResourceID  psql.WhereNullMod[Q, uuid.UUID]
-	Response    psql.WhereMod[Q, types.JSON[json.RawMessage]]
-	CreatedAt   psql.WhereMod[Q, time.Time]
-	R           idempotencyKeyWhereR[Q]
+	cols               idempotencyKeyColumns
+	HouseholdID        psql.WhereMod[Q, uuid.UUID]
+	Key                psql.WhereMod[Q, string]
+	Operation          psql.WhereMod[Q, string]
+	ResourceID         psql.WhereNullMod[Q, uuid.UUID]
+	Response           psql.WhereMod[Q, types.JSON[json.RawMessage]]
+	CreatedAt          psql.WhereMod[Q, time.Time]
+	RequestFingerprint psql.WhereNullMod[Q, []byte]
+	R                  idempotencyKeyWhereR[Q]
 }
 
 func (idempotencyKeyWhere[Q]) AliasedAs(alias string) idempotencyKeyWhere[Q] {
@@ -740,14 +777,15 @@ func (idempotencyKeyWhere[Q]) AliasedAs(alias string) idempotencyKeyWhere[Q] {
 
 func buildIdempotencyKeyWhere[Q psql.Filterable](cols idempotencyKeyColumns) idempotencyKeyWhere[Q] {
 	return idempotencyKeyWhere[Q]{
-		cols:        cols,
-		HouseholdID: psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
-		Key:         psql.Where[Q, string](cols.Key.Expression),
-		Operation:   psql.Where[Q, string](cols.Operation.Expression),
-		ResourceID:  psql.WhereNull[Q, uuid.UUID](cols.ResourceID.Expression),
-		Response:    psql.Where[Q, types.JSON[json.RawMessage]](cols.Response.Expression),
-		CreatedAt:   psql.Where[Q, time.Time](cols.CreatedAt.Expression),
-		R:           idempotencyKeyWhereR[Q]{cols: cols},
+		cols:               cols,
+		HouseholdID:        psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		Key:                psql.Where[Q, string](cols.Key.Expression),
+		Operation:          psql.Where[Q, string](cols.Operation.Expression),
+		ResourceID:         psql.WhereNull[Q, uuid.UUID](cols.ResourceID.Expression),
+		Response:           psql.Where[Q, types.JSON[json.RawMessage]](cols.Response.Expression),
+		CreatedAt:          psql.Where[Q, time.Time](cols.CreatedAt.Expression),
+		RequestFingerprint: psql.WhereNull[Q, []byte](cols.RequestFingerprint.Expression),
+		R:                  idempotencyKeyWhereR[Q]{cols: cols},
 	}
 }
 

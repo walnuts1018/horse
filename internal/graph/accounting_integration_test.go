@@ -583,12 +583,35 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	sharedAccount, err := resolver.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Shared account", Kind: model.AccountKindCard, PoolID: &sharedPool.ID})
+	lenderPool, err := resolver.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Lender", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	borrowerPool, err := resolver.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Borrower", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, personalPool := range []struct{ poolID, ownerID string }{{lenderPool.ID, memberA}, {borrowerPool.ID, memberB}} {
+		if _, err := resolver.SetPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: personalPool.poolID, OwnerMemberID: &personalPool.ownerID, ExpectedVersion: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	openingAt := "2026-06-01T00:00:00Z"
+	lenderAccount, err := resolver.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Lender bank", Kind: model.AccountKindBank, PoolID: &lenderPool.ID, OpeningBalanceYen: new(model.Long(5000)), OpeningBalanceAt: &openingAt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	borrowerAccount, err := resolver.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Borrower bank", Kind: model.AccountKindBank, PoolID: &borrowerPool.ID, OpeningBalanceYen: new(model.Long(5000)), OpeningBalanceAt: &openingAt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sharedAccount, err := resolver.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Shared bank", Kind: model.AccountKindBank, PoolID: &sharedPool.ID, OpeningBalanceYen: new(model.Long(5000)), OpeningBalanceAt: &openingAt})
 	if err != nil {
 		t.Fatal(err)
 	}
 	loan, err := resolver.RecordTransfer(ctx, model.RecordTransferInput{
 		HouseholdID: household.ID, FromMemberID: memberA, ToMemberID: memberB, Kind: model.TransferKindLoan,
+		PaymentAccountID: &lenderAccount.ID, DestinationAccountID: &borrowerAccount.ID,
 		AmountYen: 5000, OccurredAt: "2026-06-10T12:00:00Z", Description: "Loan", IdempotencyKey: uuid.NewV7().String(),
 	})
 	if err != nil || loan.TransferID == nil {
@@ -596,13 +619,14 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	}
 	if _, err := resolver.RecordFunding(ctx, model.RecordFundingInput{
 		HouseholdID: household.ID, MemberID: memberB, PoolID: sharedPool.ID, AmountYen: 5000,
+		SourceAccountID: &borrowerAccount.ID, DestinationAccountID: &sharedAccount.ID,
 		OccurredAt: "2026-06-12T12:00:00Z", IdempotencyKey: uuid.NewV7().String(),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	repayment, err := resolver.RecordTransfer(ctx, model.RecordTransferInput{
 		HouseholdID: household.ID, FromMemberID: memberB, ToMemberID: memberA, Kind: model.TransferKindRepayment,
-		LoanID: loan.TransferID, PaymentAccountID: &sharedAccount.ID, AmountYen: 5000,
+		LoanID: loan.TransferID, PaymentAccountID: &sharedAccount.ID, DestinationAccountID: &lenderAccount.ID, AmountYen: 5000,
 		OccurredAt: "2026-06-11T12:00:00Z", Description: "Shared repayment", IdempotencyKey: uuid.NewV7().String(),
 	})
 	if err != nil || repayment.TransferID == nil {
@@ -628,23 +652,108 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if lenderLine == nil || lenderLine.MonthlyAdjustmentYen != 0 || lenderLine.AmountDueYen != 0 {
 		t.Fatalf("shared repayment should settle the lender adjustment: %#v", lenderLine)
 	}
+	balances, err := (&Resolver{DB: db}).Query().AccountBalances(ctx, household.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	balancesByAccount := make(map[string]int64, len(balances))
+	for _, balance := range balances {
+		balancesByAccount[balance.AccountID] = int64(balance.BalanceYen)
+	}
+	if balancesByAccount[sharedAccount.ID] != 5000 || balancesByAccount[lenderAccount.ID] != 5000 || balancesByAccount[borrowerAccount.ID] != 5000 {
+		t.Fatalf("bank balances do not reflect opening balances, loan, funding, and repayment: %#v", balancesByAccount)
+	}
+	category, err := resolver.CreateCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: "groceries"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.SetDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: sharedPool.ID, Weight: 1}}}); err != nil {
+		t.Fatal(err)
+	}
+	budget, err := resolver.SetBudget(ctx, model.SetBudgetInput{HouseholdID: household.ID, CategoryID: &category.ID, Name: "June groceries", AmountYen: 2000, StartsOn: "2026-06-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cardAccount, err := resolver.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Shared card", Kind: model.AccountKindCard, PoolID: &sharedPool.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchase, err := resolver.CreatePurchase(ctx, model.CreatePurchaseInput{
+		HouseholdID: household.ID, IdempotencyKey: uuid.NewV7().String(), OccurredAt: "2026-06-15T12:00:00Z", Merchant: "market", PaymentAccountID: &cardAccount.ID,
+		Items: []*model.PurchaseItemInput{{Name: "groceries", AmountYen: 1000, CategoryID: &category.ID}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.PostPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.RecordAccountMovement(ctx, model.RecordAccountMovementInput{
+		HouseholdID: household.ID, Kind: model.AccountMovementKindCardBillPayment, FromAccountID: sharedAccount.ID, ToAccountID: cardAccount.ID,
+		AmountYen: 1000, OccurredAt: "2026-06-20T12:00:00Z", IdempotencyKey: uuid.NewV7().String(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.RecordExternalIncome(ctx, model.RecordExternalIncomeInput{
+		HouseholdID: household.ID, AccountID: sharedAccount.ID, AmountYen: 250, OccurredAt: "2026-06-21T12:00:00Z", IdempotencyKey: uuid.NewV7().String(), Description: "Interest",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	balances, err = (&Resolver{DB: db}).Query().AccountBalances(ctx, household.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	balancesByAccount = make(map[string]int64, len(balances))
+	for _, balance := range balances {
+		balancesByAccount[balance.AccountID] = int64(balance.BalanceYen)
+	}
+	if balancesByAccount[sharedAccount.ID] != 4250 || balancesByAccount[cardAccount.ID] != 0 {
+		t.Fatalf("card clearing and external income produced incorrect balances: %#v", balancesByAccount)
+	}
+	spending, err := (&Resolver{DB: db}).Query().MonthlyCategorySpending(ctx, household.ID, "2026-06", "2026-07")
+	if err != nil || len(spending) != 1 || spending[0].AmountYen != 1000 {
+		t.Fatalf("income, funding, and account transfers changed household spending: spending=%#v error=%v", spending, err)
+	}
+	budgets, err := (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, "2026-06")
+	if err != nil || len(budgets) != 1 || budgets[0].ID != budget.ID || budgets[0].ActualYen != 1000 {
+		t.Fatalf("account activity changed budget actuals: budgets=%#v error=%v", budgets, err)
+	}
+	correctionKey := uuid.NewV7().String()
+	correctionInput := model.CorrectPurchaseInput{HouseholdID: household.ID, PurchaseID: purchase.ID, AmountDeltaYen: -1000, Reason: "Full return", IdempotencyKey: correctionKey}
+	if _, err := resolver.CorrectPurchase(ctx, correctionInput); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.CorrectPurchase(ctx, correctionInput); err != nil {
+		t.Fatalf("retrying a full refund with the same request should succeed: %v", err)
+	}
+	correctionInput.AmountDeltaYen = -500
+	if _, err := resolver.CorrectPurchase(ctx, correctionInput); !errors.Is(err, ErrConflict) {
+		t.Fatalf("reusing a correction idempotency key with a different payload should conflict: %v", err)
+	}
 	repaymentUUID, _ := gofrsuuid.FromString(*repayment.TransferID)
 	journals, err := models.Journals.Query(sm.Where(models.Journals.Columns.SourceID.EQ(psql.Arg(repaymentUUID)))).All(ctx, bobpgx.NewPool(db))
 	if err != nil || len(journals) != 1 {
 		t.Fatalf("repayment journal was not created: journals=%#v error=%v", journals, err)
 	}
 	entries, err := models.JournalEntries.Query(sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(journals[0].ID))), sm.OrderBy(models.JournalEntries.Columns.LineNo)).All(ctx, bobpgx.NewPool(db))
-	if err != nil || len(entries) != 4 {
+	if err != nil || len(entries) != 8 {
 		t.Fatalf("repayment journal has unexpected entries: entries=%#v error=%v", entries, err)
 	}
-	sharedPoolUUID, _ := gofrsuuid.FromString(sharedPool.ID)
 	sharedAccountUUID, _ := gofrsuuid.FromString(sharedAccount.ID)
-	poolCredit, accountDebit := entries[2], entries[3]
-	if poolCredit.LineNo != 3 || poolCredit.DebitYen != 0 || poolCredit.CreditYen != 5000 || !poolCredit.PoolID.Valid || poolCredit.PoolID.V != sharedPoolUUID || poolCredit.AccountID.Valid {
-		t.Fatalf("repayment journal pool credit columns mismatch: %#v", poolCredit)
+	var sourceAccountCredit, destinationAccountDebit int64
+	for _, entry := range entries {
+		if !entry.AccountID.Valid {
+			continue
+		}
+		if entry.AccountID.V == sharedAccountUUID {
+			sourceAccountCredit += entry.CreditYen
+		}
+		if entry.AccountID.V.String() == lenderAccount.ID {
+			destinationAccountDebit += entry.DebitYen
+		}
 	}
-	if accountDebit.LineNo != 4 || accountDebit.DebitYen != 5000 || accountDebit.CreditYen != 0 || !accountDebit.AccountID.Valid || accountDebit.AccountID.V != sharedAccountUUID || accountDebit.PoolID.Valid {
-		t.Fatalf("repayment journal account debit columns mismatch: %#v", accountDebit)
+	if sourceAccountCredit != 5000 || destinationAccountDebit != 5000 {
+		t.Fatalf("repayment journal did not reduce the shared bank and increase the lender bank: source credit=%d destination debit=%d", sourceAccountCredit, destinationAccountDebit)
 	}
 }
 

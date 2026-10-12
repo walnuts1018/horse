@@ -51,6 +51,7 @@ type AccountsQuery = *psql.ViewQuery[*Account, AccountSlice]
 
 // accountR is where relationships are stored.
 type accountR struct {
+	AccountIncomes     AccountIncomeSlice     // account_incomes.account_incomes_household_id_account_id_fkey
 	Household          *Household             // accounts.accounts_household_id_fkey
 	Pool               *Pool                  // accounts.accounts_household_id_pool_id_fkey
 	CorrectionPayments CorrectionPaymentSlice // correction_payments.correction_payments_account_id_fkey
@@ -66,6 +67,7 @@ type accountR struct {
 
 // accountRLoaded tracks which relationships on Account have been loaded.
 type accountRLoaded struct {
+	AccountIncomes     bool // account_incomes.account_incomes_household_id_account_id_fkey
 	Household          bool // accounts.accounts_household_id_fkey
 	Pool               bool // accounts.accounts_household_id_pool_id_fkey
 	CorrectionPayments bool // correction_payments.correction_payments_account_id_fkey
@@ -652,6 +654,35 @@ func (o AccountSlice) ReloadAll(ctx context.Context, exec bob.Executor) error {
 	return nil
 }
 
+// AccountIncomes starts a query for related objects on account_incomes
+func (o *Account) AccountIncomes(mods ...bob.Mod[*dialect.SelectQuery]) AccountIncomesQuery {
+	return AccountIncomes.Query(append(mods,
+		sm.Where(AccountIncomes.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(AccountIncomes.Columns.AccountID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os AccountSlice) AccountIncomes(mods ...bob.Mod[*dialect.SelectQuery]) AccountIncomesQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return AccountIncomes.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "AccountID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "AccountID"),
+		)).As("bob_rel_keys").On(AccountIncomes.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), AccountIncomes.Columns.AccountID.EQ(psql.Quote("bob_rel_keys", "AccountID"))),
+	)...)
+}
+
 // Household starts a query for related objects on households
 func (o *Account) Household(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdsQuery {
 	return Households.Query(append(mods,
@@ -848,6 +879,78 @@ func (os AccountSlice) Transfers(mods ...bob.Mod[*dialect.SelectQuery]) Transfer
 			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "PaymentAccountID"),
 		)).As("bob_rel_keys").On(Transfers.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Transfers.Columns.PaymentAccountID.EQ(psql.Quote("bob_rel_keys", "PaymentAccountID"))),
 	)...)
+}
+
+func insertAccountAccountIncomes0(ctx context.Context, exec bob.Executor, accountIncomes1 []*AccountIncomeSetter, account0 *Account) (AccountIncomeSlice, error) {
+	for i := range accountIncomes1 {
+		accountIncomes1[i].HouseholdID = func() *uuid.UUID { return &account0.HouseholdID }()
+		accountIncomes1[i].AccountID = func() *uuid.UUID { return &account0.ID }()
+	}
+
+	ret, err := AccountIncomes.Insert(bob.ToMods(accountIncomes1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertAccountAccountIncomes0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachAccountAccountIncomes0(ctx context.Context, exec bob.Executor, count int, accountIncomes1 AccountIncomeSlice, account0 *Account) (AccountIncomeSlice, error) {
+	setter := &AccountIncomeSetter{
+		HouseholdID: func() *uuid.UUID { return &account0.HouseholdID }(),
+		AccountID:   func() *uuid.UUID { return &account0.ID }(),
+	}
+
+	err := accountIncomes1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachAccountAccountIncomes0: %w", err)
+	}
+
+	return accountIncomes1, nil
+}
+
+func (account0 *Account) InsertAccountIncomes(ctx context.Context, exec bob.Executor, related ...*AccountIncomeSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	accountIncomes1, err := insertAccountAccountIncomes0(ctx, exec, related, account0)
+	if err != nil {
+		return err
+	}
+
+	account0.R.AccountIncomes = append(account0.R.AccountIncomes, accountIncomes1...)
+
+	for _, rel := range accountIncomes1 {
+		rel.R.Account = account0
+		rel.R.Loaded.Account = true
+	}
+	return nil
+}
+
+func (account0 *Account) AttachAccountIncomes(ctx context.Context, exec bob.Executor, related ...*AccountIncome) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	accountIncomes1 := AccountIncomeSlice(related)
+
+	_, err = attachAccountAccountIncomes0(ctx, exec, len(related), accountIncomes1, account0)
+	if err != nil {
+		return err
+	}
+
+	account0.R.AccountIncomes = append(account0.R.AccountIncomes, accountIncomes1...)
+
+	for _, rel := range related {
+		rel.R.Account = account0
+		rel.R.Loaded.Account = true
+	}
+
+	return nil
 }
 
 func attachAccountHousehold0(ctx context.Context, exec bob.Executor, count int, account0 *Account, household1 *Household) (*Account, error) {
@@ -1344,6 +1447,21 @@ type accountWhereR[Q psql.Filterable] struct {
 	cols accountColumns
 }
 
+// HasAccountIncomes filters parents that have a matching AccountIncomes using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to AccountIncomes).
+func (w accountWhereR[Q]) HasAccountIncomes(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(AccountIncomes.NameExpr()),
+		sm.Where(AccountIncomes.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(AccountIncomes.Columns.AccountID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasHousehold filters parents that have a matching Household using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -1549,6 +1667,22 @@ func (o *Account) Preload(name string, retrieved any) error {
 	}
 
 	switch name {
+	case "AccountIncomes":
+		rels, ok := retrieved.(AccountIncomeSlice)
+		if !ok {
+			return fmt.Errorf("account cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.AccountIncomes = rels
+		o.R.Loaded.AccountIncomes = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Account = o
+				rel.R.Loaded.Account = true
+			}
+		}
+		return nil
 	case "Household":
 		rel, ok := retrieved.(*Household)
 		if !ok {
@@ -1697,6 +1831,7 @@ func buildAccountPreloader() accountPreloader {
 }
 
 type accountThenLoader[Q orm.Loadable] struct {
+	AccountIncomes     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Household          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Pool               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CorrectionPayments func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -1707,6 +1842,9 @@ type accountThenLoader[Q orm.Loadable] struct {
 }
 
 func buildAccountThenLoader[Q orm.Loadable]() accountThenLoader[Q] {
+	type AccountIncomesLoadInterface interface {
+		LoadAccountIncomes(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type HouseholdLoadInterface interface {
 		LoadHousehold(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
@@ -1730,6 +1868,12 @@ func buildAccountThenLoader[Q orm.Loadable]() accountThenLoader[Q] {
 	}
 
 	return accountThenLoader[Q]{
+		AccountIncomes: thenLoadBuilder[Q](
+			"AccountIncomes",
+			func(ctx context.Context, exec bob.Executor, retrieved AccountIncomesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadAccountIncomes(ctx, exec, mods...)
+			},
+		),
 		Household: thenLoadBuilder[Q](
 			"Household",
 			func(ctx context.Context, exec bob.Executor, retrieved HouseholdLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -1773,6 +1917,75 @@ func buildAccountThenLoader[Q orm.Loadable]() accountThenLoader[Q] {
 			},
 		),
 	}
+}
+
+// LoadAccountIncomes loads the account's AccountIncomes into the .R struct
+func (o *Account) LoadAccountIncomes(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.AccountIncomes = nil
+	o.R.Loaded.AccountIncomes = false
+
+	related, err := o.AccountIncomes(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Account = o
+		rel.R.Loaded.Account = true
+	}
+
+	o.R.AccountIncomes = related
+	o.R.Loaded.AccountIncomes = true
+	return nil
+}
+
+// LoadAccountIncomes loads the account's AccountIncomes into the .R struct
+func (os AccountSlice) LoadAccountIncomes(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	accountIncomes, err := os.AccountIncomes(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.AccountIncomes = nil
+		o.R.Loaded.AccountIncomes = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range accountIncomes {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.ID == rel.AccountID) {
+				continue
+			}
+
+			rel.R.Account = o
+			rel.R.Loaded.Account = true
+
+			o.R.AccountIncomes = append(o.R.AccountIncomes, rel)
+		}
+	}
+
+	return nil
 }
 
 // LoadHousehold loads the account's Household into the .R struct
@@ -2280,6 +2493,7 @@ func (os AccountSlice) LoadTransfers(ctx context.Context, exec bob.Executor, mod
 
 // accountC is where relationship counts are stored.
 type accountC struct {
+	AccountIncomes     *int64
 	CorrectionPayments *int64
 	PurchasePayments   *int64
 	Purchases          *int64
@@ -2294,6 +2508,8 @@ func (o *Account) PreloadCount(name string, count int64) error {
 	}
 
 	switch name {
+	case "AccountIncomes":
+		o.C.AccountIncomes = &count
 	case "CorrectionPayments":
 		o.C.CorrectionPayments = &count
 	case "PurchasePayments":
@@ -2309,6 +2525,7 @@ func (o *Account) PreloadCount(name string, count int64) error {
 }
 
 type accountCountPreloader struct {
+	AccountIncomes     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	CorrectionPayments func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	PurchasePayments   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	Purchases          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
@@ -2318,6 +2535,24 @@ type accountCountPreloader struct {
 
 func buildAccountCountPreloader() accountCountPreloader {
 	return accountCountPreloader{
+		AccountIncomes: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Account]("AccountIncomes", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Accounts.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(AccountIncomes.NameAsExpr()),
+					sm.Where(psql.Quote(AccountIncomes.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(AccountIncomes.Alias(), "account_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		CorrectionPayments: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*Account]("CorrectionPayments", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -2411,6 +2646,7 @@ func buildAccountCountPreloader() accountCountPreloader {
 }
 
 type accountCountThenLoader[Q orm.Loadable] struct {
+	AccountIncomes     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CorrectionPayments func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	PurchasePayments   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Purchases          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -2419,6 +2655,9 @@ type accountCountThenLoader[Q orm.Loadable] struct {
 }
 
 func buildAccountCountThenLoader[Q orm.Loadable]() accountCountThenLoader[Q] {
+	type AccountIncomesCountInterface interface {
+		LoadCountAccountIncomes(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type CorrectionPaymentsCountInterface interface {
 		LoadCountCorrectionPayments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
@@ -2436,6 +2675,12 @@ func buildAccountCountThenLoader[Q orm.Loadable]() accountCountThenLoader[Q] {
 	}
 
 	return accountCountThenLoader[Q]{
+		AccountIncomes: countThenLoadBuilder[Q](
+			"AccountIncomes",
+			func(ctx context.Context, exec bob.Executor, retrieved AccountIncomesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountAccountIncomes(ctx, exec, mods...)
+			},
+		),
 		CorrectionPayments: countThenLoadBuilder[Q](
 			"CorrectionPayments",
 			func(ctx context.Context, exec bob.Executor, retrieved CorrectionPaymentsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -2467,6 +2712,116 @@ func buildAccountCountThenLoader[Q orm.Loadable]() accountCountThenLoader[Q] {
 			},
 		),
 	}
+}
+
+// LoadCountAccountIncomes loads the count of AccountIncomes into the C struct
+func (o *Account) LoadCountAccountIncomes(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.AccountIncomes(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.AccountIncomes = &count
+	return nil
+}
+
+// LoadCountAccountIncomes loads the count of AccountIncomes for a slice in a single batch query
+func (os AccountSlice) LoadCountAccountIncomes(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			AccountIncomes.Columns.HouseholdID.As("household_id"),
+			AccountIncomes.Columns.AccountID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(AccountIncomes.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "AccountID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "AccountID"),
+		)).As("bob_rel_keys").On(
+			AccountIncomes.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			AccountIncomes.Columns.AccountID.EQ(psql.Quote("bob_rel_keys", "AccountID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(AccountIncomes.Columns.HouseholdID),
+		sm.GroupBy(AccountIncomes.Columns.AccountID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.AccountIncomes = &count
+	}
+
+	return nil
 }
 
 // LoadCountCorrectionPayments loads the count of CorrectionPayments into the C struct
@@ -2990,6 +3345,7 @@ func (os AccountSlice) LoadCountTransfers(ctx context.Context, exec bob.Executor
 
 type accountJoins[Q dialect.Joinable] struct {
 	typ                string
+	AccountIncomes     modAs[Q, accountIncomeColumns]
 	Household          modAs[Q, householdColumns]
 	Pool               modAs[Q, poolColumns]
 	CorrectionPayments modAs[Q, correctionPaymentColumns]
@@ -3006,6 +3362,20 @@ func (j accountJoins[Q]) aliasedAs(alias string) accountJoins[Q] {
 func buildAccountJoins[Q dialect.Joinable](cols accountColumns, typ string) accountJoins[Q] {
 	return accountJoins[Q]{
 		typ: typ,
+		AccountIncomes: modAs[Q, accountIncomeColumns]{
+			c: AccountIncomes.Columns,
+			f: func(to accountIncomeColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, AccountIncomes.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.AccountID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
 		Household: modAs[Q, householdColumns]{
 			c: Households.Columns,
 			f: func(to householdColumns) bob.Mod[Q] {

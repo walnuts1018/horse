@@ -171,6 +171,11 @@ func (r *mutationResolver) RecordAccountMovement(ctx context.Context, input mode
 	return r.recordAccountMovement(ctx, input)
 }
 
+// RecordExternalIncome is the resolver for the recordExternalIncome field.
+func (r *mutationResolver) RecordExternalIncome(ctx context.Context, input model.RecordExternalIncomeInput) (*model.AccountIncome, error) {
+	return r.recordExternalIncome(ctx, input)
+}
+
 // Viewer is the resolver for the viewer field.
 func (r *queryResolver) Viewer(ctx context.Context) (*model.Viewer, error) {
 	return r.viewer(ctx)
@@ -254,6 +259,16 @@ func (r *queryResolver) RecurringExpenses(ctx context.Context, householdID strin
 // AccountMovements is the resolver for the accountMovements field.
 func (r *queryResolver) AccountMovements(ctx context.Context, householdID string, first *int) ([]*model.AccountMovement, error) {
 	return r.accountMovements(ctx, householdID, first)
+}
+
+// AccountBalances is the resolver for the accountBalances field.
+func (r *queryResolver) AccountBalances(ctx context.Context, householdID string) ([]*model.AccountBalance, error) {
+	return r.accountBalances(ctx, householdID)
+}
+
+// AccountIncomes is the resolver for the accountIncomes field.
+func (r *queryResolver) AccountIncomes(ctx context.Context, householdID string, first *int) ([]*model.AccountIncome, error) {
+	return r.accountIncomes(ctx, householdID, first)
 }
 
 // Mutation returns MutationResolver implementation.

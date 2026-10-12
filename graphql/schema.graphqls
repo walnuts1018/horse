@@ -18,6 +18,8 @@ type CreatedHouseholdInvitation { invitation: HouseholdInvitation!, token: Strin
 type Pool { id: ID!, name: String!, kind: PoolKind!, defaultShareWeight: Long!, ownerMemberId: ID, fundingShares: [PoolFundingShare!]!, settlementPolicy: SharedPoolSettlementPolicy, fundingRuleVersion: Int! }
 type PoolFundingShare { memberId: ID!, memberName: String!, weight: Long! }
 type Account { id: ID!, name: String!, kind: AccountKind!, poolId: ID }
+type AccountBalance { accountId: ID!, balanceYen: Long!, currency: String! }
+type AccountIncome { id: ID!, householdId: ID!, accountId: ID!, amountYen: Long!, currency: String!, occurredAt: String!, description: String!, createdAt: String! }
 type Category { id: ID!, name: String!, parentId: ID, archived: Boolean! }
 type Allocation { poolId: ID!, poolName: String, weight: Long!, amountYen: Long }
 type AllocationRule { id: ID!, householdId: ID!, scope: AllocationRuleScope!, categoryId: ID, merchant: String, productConceptId: ID, productVariantId: ID, revision: Int!, allocations: [Allocation!]! }
@@ -58,6 +60,7 @@ input UpdateTagInput { tagId: ID!, baseRevision: Int!, name: String! }
 input SetBudgetInput { householdId: ID!, budgetId: ID, baseRevision: Int, categoryId: ID, name: String!, amountYen: Long!, startsOn: String!, endsOn: String }
 input SetRecurringExpenseInput { householdId: ID!, expenseId: ID, baseRevision: Int, name: String!, merchant: String!, amountYen: Long!, categoryId: ID, paymentAccountId: ID, cadence: String!, startsOn: String!, nextDueOn: String!, endsOn: String }
 input RecordAccountMovementInput { householdId: ID!, kind: AccountMovementKind!, fromAccountId: ID!, toAccountId: ID!, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
+input RecordExternalIncomeInput { householdId: ID!, accountId: ID!, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
 input CreateProductConceptInput { householdId: ID!, name: String!, categoryId: ID }
 input CreateProductVariantInput { householdId: ID!, conceptId: ID!, name: String!, brand: String, packageSize: String, barcode: String }
 input SetProductAliasInput { householdId: ID!, variantId: ID!, merchant: String!, alias: String! }
@@ -66,12 +69,12 @@ input CreateHouseholdInvitationInput { householdId: ID!, expiresAt: String! }
 input CreatePoolInput { householdId: ID!, name: String!, kind: PoolKind! }
 input PoolFundingShareInput { memberId: ID!, weight: Long! }
 input SetPoolFundingRuleInput { householdId: ID!, poolId: ID!, ownerMemberId: ID, fundingShares: [PoolFundingShareInput!]!, settlementPolicy: SharedPoolSettlementPolicy, expectedVersion: Int! }
-input CreateAccountInput { householdId: ID!, name: String!, kind: AccountKind!, poolId: ID }
+input CreateAccountInput { householdId: ID!, name: String!, kind: AccountKind!, poolId: ID, openingBalanceYen: Long, openingBalanceAt: String }
 input CreateCategoryInput { householdId: ID!, name: String!, parentId: ID }
 input SetDefaultAllocationInput { householdId: ID!, allocations: [AllocationInput!]! }
 input SetAllocationRuleInput { householdId: ID!, categoryId: ID, merchant: String, productConceptId: ID, productVariantId: ID, allocations: [AllocationInput!]! }
-input RecordFundingInput { householdId: ID!, memberId: ID!, poolId: ID!, amountYen: Long!, occurredAt: String!, idempotencyKey: String! }
-input RecordTransferInput { householdId: ID!, fromMemberId: ID!, toMemberId: ID!, kind: TransferKind!, loanId: ID, paymentAccountId: ID, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
+input RecordFundingInput { householdId: ID!, memberId: ID!, poolId: ID!, amountYen: Long!, occurredAt: String!, idempotencyKey: String!, sourceAccountId: ID, destinationAccountId: ID }
+input RecordTransferInput { householdId: ID!, fromMemberId: ID!, toMemberId: ID!, kind: TransferKind!, loanId: ID, paymentAccountId: ID, destinationAccountId: ID, amountYen: Long!, occurredAt: String!, description: String!, idempotencyKey: String! }
 input SetFundingScheduleInput { householdId: ID!, memberId: ID!, poolId: ID!, amountYen: Long!, cadence: String!, startsOn: String!, endsOn: String }
 input ClosePeriodInput { householdId: ID!, period: String!, expectedRevision: Int! }
 input CorrectPurchaseInput { householdId: ID!, purchaseId: ID!, itemId: ID, amountDeltaYen: Long!, reason: String!, allocations: [AllocationInput!], paymentAllocations: [PurchasePaymentInput!], idempotencyKey: String! }
@@ -94,6 +97,8 @@ type Query {
   budgets(householdId: ID!, period: String!): [Budget!]!
   recurringExpenses(householdId: ID!, includeArchived: Boolean = false): [RecurringExpense!]!
   accountMovements(householdId: ID!, first: Int = 50): [AccountMovement!]!
+  accountBalances(householdId: ID!): [AccountBalance!]!
+  accountIncomes(householdId: ID!, first: Int = 50): [AccountIncome!]!
 }
 type Mutation {
   createHousehold(input: CreateHouseholdInput!): Household!
@@ -128,4 +133,5 @@ type Mutation {
   setRecurringExpense(input: SetRecurringExpenseInput!): RecurringExpense!
   archiveRecurringExpense(expenseId: ID!, baseRevision: Int!, archived: Boolean!): RecurringExpense!
   recordAccountMovement(input: RecordAccountMovementInput!): AccountMovement!
+  recordExternalIncome(input: RecordExternalIncomeInput!): AccountIncome!
 }

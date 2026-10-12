@@ -17,6 +17,7 @@ var (
 )
 
 func Where[Q psql.Filterable]() struct {
+	AccountIncomes        accountIncomeWhere[Q]
 	AccountMovements      accountMovementWhere[Q]
 	AccountingPeriods     accountingPeriodWhere[Q]
 	Accounts              accountWhere[Q]
@@ -64,6 +65,7 @@ func Where[Q psql.Filterable]() struct {
 	Transfers             transferWhere[Q]
 } {
 	return struct {
+		AccountIncomes        accountIncomeWhere[Q]
 		AccountMovements      accountMovementWhere[Q]
 		AccountingPeriods     accountingPeriodWhere[Q]
 		Accounts              accountWhere[Q]
@@ -110,6 +112,7 @@ func Where[Q psql.Filterable]() struct {
 		Tags                  tagWhere[Q]
 		Transfers             transferWhere[Q]
 	}{
+		AccountIncomes:        buildAccountIncomeWhere[Q](AccountIncomes.Columns),
 		AccountMovements:      buildAccountMovementWhere[Q](AccountMovements.Columns),
 		AccountingPeriods:     buildAccountingPeriodWhere[Q](AccountingPeriods.Columns),
 		Accounts:              buildAccountWhere[Q](Accounts.Columns),
