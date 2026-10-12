@@ -22,8 +22,8 @@ func (r *queryResolver) UnmatchedObservations(ctx context.Context, householdID s
 func (r *unmatchedObservationResolver) ID(ctx context.Context, obj *model.UnmatchedObservation) (string, error) {
 	payload := append([]byte("UnmatchedObservation:"), obj.DocumentID...)
 	payload = append(payload, 0)
-	var size [4]byte
-	binary.BigEndian.PutUint32(size[:], uint32(len(obj.SourceReference)))
+	var size [8]byte
+	binary.BigEndian.PutUint64(size[:], uint64(len(obj.SourceReference)))
 	payload = append(payload, size[:]...)
 	payload = append(payload, obj.SourceReference...)
 	return base64.RawURLEncoding.EncodeToString(payload), nil
