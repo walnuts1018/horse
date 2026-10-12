@@ -5058,13 +5058,6 @@ extend type Query {
   tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/transfer_kind.graphqls", Input: `enum TransferKind {
-  ADVANCE
-  LOAN
-  REPAYMENT
-  GIFT
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/transfer_ledger_entry.graphqls", Input: `type TransferLedgerEntry implements LedgerEntry {
   id: ID!
   occurredAt: String!
@@ -5076,6 +5069,13 @@ extend type Query {
   toMember: Member!
   transferKind: TransferKind!
   loan: LoanBalance
+}
+
+enum TransferKind {
+  ADVANCE
+  LOAN
+  REPAYMENT
+  GIFT
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/unmatched_observation.graphqls", Input: `type UnmatchedObservation implements Node {

@@ -1,6 +1,0 @@
-enum TransferKind {
-  ADVANCE
-  LOAN
-  REPAYMENT
-  GIFT
-}

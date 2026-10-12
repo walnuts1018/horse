@@ -10,3 +10,10 @@ type TransferLedgerEntry implements LedgerEntry {
   transferKind: TransferKind!
   loan: LoanBalance
 }
+
+enum TransferKind {
+  ADVANCE
+  LOAN
+  REPAYMENT
+  GIFT
+}
