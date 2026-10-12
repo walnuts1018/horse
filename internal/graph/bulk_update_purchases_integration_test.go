@@ -106,7 +106,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 	conflictingDate := "2026-05-13T12:00:00Z"
 	_, err = resolver.bulkUpdatePurchases(ctx, model.BulkUpdatePurchasesInput{
 		Targets: []*model.PurchaseUpdateTargetInput{
-			{PurchaseID: first.ID, BaseRevision: first.Revision, Patch: &model.BulkPurchasePatch{Merchant: &atomicMerchant, OccurredAt: &newDate}},
+			{PurchaseID: first.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{Merchant: &atomicMerchant, OccurredAt: &newDate}},
 			{PurchaseID: second.ID, BaseRevision: second.Revision, Patch: &model.BulkPurchasePatch{Merchant: &atomicMerchant, OccurredAt: &conflictingDate}},
 		},
 		ChangedFields: []string{"merchant", "occurredAt"},
