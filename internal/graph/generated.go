@@ -3855,7 +3855,7 @@ func newExecutionContext(
 }
 
 var sources = []*ast.Source{
-	{Name: "../../graphql/accept_household_invitation_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/accept_household_invitation_mutation.graphql", Input: `extend type Mutation {
   acceptHouseholdInvitation(token: String!): AcceptHouseholdInvitationResult!
 }
 
@@ -3865,7 +3865,7 @@ type AcceptHouseholdInvitationSuccess {
   result: Household!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/account.graphqls", Input: `type Account implements Node {
+	{Name: "../../graphql/account.graphql", Input: `type Account implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
   kind: AccountKind!
@@ -3879,7 +3879,7 @@ enum AccountKind {
   OTHER
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/account_balance.graphqls", Input: `type AccountBalance {
+	{Name: "../../graphql/account_balance.graphql", Input: `type AccountBalance {
   accountId: ID! @goField(forceResolver: true)
   balanceYen: Long!
   currency: String!
@@ -3889,7 +3889,7 @@ extend type Query {
   accountBalances(householdId: ID! @nodeID(of: "Household")): [AccountBalance!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/account_balance_analysis.graphqls", Input: `type AccountBalanceAnalysis {
+	{Name: "../../graphql/account_balance_analysis.graphql", Input: `type AccountBalanceAnalysis {
   accountId: ID! @goField(forceResolver: true)
   currency: String!
   from: String!
@@ -3912,7 +3912,7 @@ extend type Query {
   accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: String!, to: String!): AccountBalanceAnalysis!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/account_income.graphqls", Input: `type AccountIncome implements Node {
+	{Name: "../../graphql/account_income.graphql", Input: `type AccountIncome implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   accountId: ID! @goField(forceResolver: true)
@@ -3938,7 +3938,7 @@ extend type Query {
   accountIncomes(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AccountIncomeConnection!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/account_movement.graphqls", Input: `type AccountMovement implements Node {
+	{Name: "../../graphql/account_movement.graphql", Input: `type AccountMovement implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   kind: AccountMovementKind!
@@ -3971,7 +3971,7 @@ extend type Query {
   accountMovements(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AccountMovementConnection!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/allocation.graphqls", Input: `type Allocation {
+	{Name: "../../graphql/allocation.graphql", Input: `type Allocation {
   poolId: ID! @goField(forceResolver: true)
   poolName: String
   weight: Long!
@@ -3983,7 +3983,7 @@ input AllocationInput {
   weight: Long!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/allocation_rule.graphqls", Input: `type AllocationRule implements Node {
+	{Name: "../../graphql/allocation_rule.graphql", Input: `type AllocationRule implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   scope: AllocationRuleScope!
@@ -4006,7 +4006,7 @@ extend type Query {
   allocationRules(householdId: ID! @nodeID(of: "Household")): [AllocationRule!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/archive_budget_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/archive_budget_mutation.graphql", Input: `extend type Mutation {
   archiveBudget(budgetId: ID! @nodeID(of: "Budget"), baseRevision: Int!, archived: Boolean!): ArchiveBudgetResult!
 }
 
@@ -4016,7 +4016,7 @@ type ArchiveBudgetSuccess {
   result: Budget!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/archive_recurring_expense_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/archive_recurring_expense_mutation.graphql", Input: `extend type Mutation {
   archiveRecurringExpense(expenseId: ID! @nodeID(of: "RecurringExpense"), baseRevision: Int!, archived: Boolean!): ArchiveRecurringExpenseResult!
 }
 
@@ -4026,7 +4026,7 @@ type ArchiveRecurringExpenseSuccess {
   result: RecurringExpense!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/archive_tag_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/archive_tag_mutation.graphql", Input: `extend type Mutation {
   archiveTag(tagId: ID! @nodeID(of: "Tag"), baseRevision: Int!, archived: Boolean!): ArchiveTagResult!
 }
 
@@ -4036,7 +4036,7 @@ type ArchiveTagSuccess {
   result: Tag!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/budget.graphqls", Input: `type Budget implements Node {
+	{Name: "../../graphql/budget.graphql", Input: `type Budget implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   categoryId: ID @goField(forceResolver: true)
@@ -4054,7 +4054,7 @@ extend type Query {
   budgets(householdId: ID! @nodeID(of: "Household"), period: String!): [Budget!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/bulk_update_purchase_items_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/bulk_update_purchase_items_mutation.graphql", Input: `extend type Mutation {
   bulkUpdatePurchaseItems(input: BulkUpdatePurchaseItemsInput!): BulkUpdatePurchaseItemsResult!
 }
 
@@ -4082,7 +4082,7 @@ input PurchaseItemTargetInput {
   baseRevision: Int!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/bulk_update_purchases_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/bulk_update_purchases_mutation.graphql", Input: `extend type Mutation {
   bulkUpdatePurchases(input: BulkUpdatePurchasesInput!): BulkUpdatePurchasesResult!
 }
 
@@ -4109,14 +4109,14 @@ input PurchaseUpdateTargetInput {
   patch: BulkPurchasePatch!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/category.graphqls", Input: `type Category implements Node {
+	{Name: "../../graphql/category.graphql", Input: `type Category implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
   parentId: ID @goField(forceResolver: true)
   archived: Boolean!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/close_period_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/close_period_mutation.graphql", Input: `extend type Mutation {
   closePeriod(input: ClosePeriodInput!): ClosePeriodResult!
 }
 
@@ -4132,7 +4132,7 @@ input ClosePeriodInput {
   expectedRevision: Int!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/correct_purchase_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/correct_purchase_mutation.graphql", Input: `extend type Mutation {
   correctPurchase(input: CorrectPurchaseInput!): CorrectPurchaseResult!
 }
 
@@ -4153,17 +4153,7 @@ input CorrectPurchaseInput {
   idempotencyKey: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/correction_ledger_entry.graphqls", Input: `type CorrectionLedgerEntry implements LedgerEntry {
-  id: ID!
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  purchase: Purchase!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/create_account_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/create_account_mutation.graphql", Input: `extend type Mutation {
   createAccount(input: CreateAccountInput!): CreateAccountResult!
 }
 
@@ -4186,7 +4176,7 @@ input AccountOpeningBalanceInput {
   at: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/create_category_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/create_category_mutation.graphql", Input: `extend type Mutation {
   createCategory(input: CreateCategoryInput!): CreateCategoryResult!
 }
 
@@ -4202,7 +4192,7 @@ input CreateCategoryInput {
   parentId: ID @nodeID(of: "Category")
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/create_household_invitation_mutation.graphqls", Input: `type CreatedHouseholdInvitation {
+	{Name: "../../graphql/create_household_invitation_mutation.graphql", Input: `type CreatedHouseholdInvitation {
   invitation: HouseholdInvitation!
   token: String!
 }
@@ -4222,7 +4212,7 @@ input CreateHouseholdInvitationInput {
   expiresAt: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/create_household_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/create_household_mutation.graphql", Input: `extend type Mutation {
   createHousehold(input: CreateHouseholdInput!): CreateHouseholdResult!
 }
 
@@ -4237,7 +4227,7 @@ input CreateHouseholdInput {
   memberNames: [String!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/create_pool_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/create_pool_mutation.graphql", Input: `extend type Mutation {
   createPool(input: CreatePoolInput!): CreatePoolResult!
 }
 
@@ -4253,7 +4243,7 @@ input CreatePoolInput {
   kind: PoolKind!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/create_product_concept_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/create_product_concept_mutation.graphql", Input: `extend type Mutation {
   createProductConcept(input: CreateProductConceptInput!): CreateProductConceptResult!
 }
 
@@ -4269,7 +4259,7 @@ input CreateProductConceptInput {
   categoryId: ID @nodeID(of: "Category")
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/create_product_variant_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/create_product_variant_mutation.graphql", Input: `extend type Mutation {
   createProductVariant(input: CreateProductVariantInput!): CreateProductVariantResult!
 }
 
@@ -4288,7 +4278,7 @@ input CreateProductVariantInput {
   barcode: String
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/create_purchase_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/create_purchase_mutation.graphql", Input: `extend type Mutation {
   createPurchase(input: CreatePurchaseInput!): CreatePurchaseResult!
 }
 
@@ -4323,7 +4313,7 @@ input PurchaseItemInput {
   allocations: [AllocationInput!]
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/create_tag_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/create_tag_mutation.graphql", Input: `extend type Mutation {
   createTag(input: CreateTagInput!): CreateTagResult!
 }
 
@@ -4338,18 +4328,7 @@ input CreateTagInput {
   name: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/funding_ledger_entry.graphqls", Input: `type FundingLedgerEntry implements LedgerEntry {
-  id: ID!
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  member: Member!
-  pool: Pool!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/household.graphqls", Input: `type Household implements Node {
+	{Name: "../../graphql/household.graphql", Input: `type Household implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
   revision: Int!
@@ -4367,7 +4346,7 @@ extend type Query {
   household(id: ID! @nodeID(of: "Household")): Household
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/household_invitation.graphqls", Input: `enum HouseholdInvitationStatus {
+	{Name: "../../graphql/household_invitation.graphql", Input: `enum HouseholdInvitationStatus {
   PENDING
   ACCEPTED
   REVOKED
@@ -4389,7 +4368,7 @@ extend type Query {
   householdInvitations(householdId: ID! @nodeID(of: "Household")): [HouseholdInvitation!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/ledger_entry.graphqls", Input: `interface LedgerEntry {
+	{Name: "../../graphql/ledger_entry.graphql", Input: `interface LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!
@@ -4409,11 +4388,62 @@ type LedgerConnection {
   totalCount: Int!
 }
 
+type PurchaseLedgerEntry implements LedgerEntry {
+  id: ID!
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  purchase: Purchase!
+}
+
+type FundingLedgerEntry implements LedgerEntry {
+  id: ID!
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  member: Member!
+  pool: Pool!
+}
+
+type TransferLedgerEntry implements LedgerEntry {
+  id: ID!
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  fromMember: Member!
+  toMember: Member!
+  transferKind: TransferKind!
+  loan: LoanBalance
+}
+
+enum TransferKind {
+  ADVANCE
+  LOAN
+  REPAYMENT
+  GIFT
+}
+
+type CorrectionLedgerEntry implements LedgerEntry {
+  id: ID!
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  purchase: Purchase!
+}
+
 extend type Query {
   ledger(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): LedgerConnection!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/loan_balance.graphqls", Input: `type LoanBalance implements Node {
+	{Name: "../../graphql/loan_balance.graphql", Input: `type LoanBalance implements Node {
   id: ID!
   lenderMemberId: ID!
   borrowerMemberId: ID!
@@ -4427,13 +4457,13 @@ extend type Query {
   loanBalances(householdId: ID! @nodeID(of: "Household")): [LoanBalance!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/member.graphqls", Input: `type Member implements Node {
+	{Name: "../../graphql/member.graphql", Input: `type Member implements Node {
   id: ID! @goField(forceResolver: true)
   displayName: String!
   role: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/monthly_category_spending.graphqls", Input: `type MonthlyCategorySpending {
+	{Name: "../../graphql/monthly_category_spending.graphql", Input: `type MonthlyCategorySpending {
   period: String!
   categoryId: ID @goField(forceResolver: true)
   categoryName: String
@@ -4444,7 +4474,7 @@ extend type Query {
   monthlyCategorySpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): [MonthlyCategorySpending!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/monthly_member_spending.graphqls", Input: `type MonthlyMemberSpending {
+	{Name: "../../graphql/monthly_member_spending.graphql", Input: `type MonthlyMemberSpending {
   period: String!
   memberId: ID! @goField(forceResolver: true)
   memberName: String!
@@ -4460,18 +4490,7 @@ extend type Query {
   monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): MonthlyMemberSpendingReport!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/mutation_error.graphqls", Input: `enum MutationErrorCode {
-  BAD_INPUT
-  CONFLICT
-  NOT_FOUND
-}
-
-type MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/pool.graphqls", Input: `type Pool implements Node {
+	{Name: "../../graphql/pool.graphql", Input: `type Pool implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
   kind: PoolKind!
@@ -4498,7 +4517,7 @@ enum SharedPoolSettlementPolicy {
   REIMBURSE_PERSONAL
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/post_purchase_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/post_purchase_mutation.graphql", Input: `extend type Mutation {
   postPurchase(purchaseId: ID! @nodeID(of: "Purchase"), expectedRevision: Int!, idempotencyKey: String!): PostPurchaseResult!
 }
 
@@ -4508,7 +4527,7 @@ type PostPurchaseSuccess {
   result: Purchase!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/product_alias.graphqls", Input: `type ProductAlias implements Node {
+	{Name: "../../graphql/product_alias.graphql", Input: `type ProductAlias implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   variantId: ID! @goField(forceResolver: true)
@@ -4518,7 +4537,7 @@ type PostPurchaseSuccess {
   revision: Int!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/product_concept.graphqls", Input: `type ProductConcept implements Node {
+	{Name: "../../graphql/product_concept.graphql", Input: `type ProductConcept implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   name: String!
@@ -4543,7 +4562,7 @@ extend type Query {
   productCatalog(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): ProductConceptConnection!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/product_suggestion.graphqls", Input: `type ProductSuggestion {
+	{Name: "../../graphql/product_suggestion.graphql", Input: `type ProductSuggestion {
   concept: ProductConcept!
   variant: ProductVariant!
   matchedName: String!
@@ -4554,7 +4573,7 @@ extend type Query {
   productSuggestions(householdId: ID! @nodeID(of: "Household"), query: String!, merchant: String, first: Int = 8): [ProductSuggestion!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/product_variant.graphqls", Input: `type ProductVariant implements Node {
+	{Name: "../../graphql/product_variant.graphql", Input: `type ProductVariant implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   conceptId: ID! @goField(forceResolver: true)
@@ -4568,7 +4587,7 @@ extend type Query {
   aliases: [ProductAlias!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/purchase.graphqls", Input: `type Purchase implements Node {
+	{Name: "../../graphql/purchase.graphql", Input: `type Purchase implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   occurredAt: String!
@@ -4599,6 +4618,17 @@ enum PurchaseOrigin {
   UNKNOWN
 }
 
+type PurchasePayment {
+  paymentAccountId: ID! @goField(forceResolver: true)
+  account: Account
+  amountYen: Long!
+}
+
+input PurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
+}
+
 type PurchaseEdge {
   cursor: String!
   node: Purchase!
@@ -4614,7 +4644,7 @@ extend type Query {
   purchases(householdId: ID! @nodeID(of: "Household"), from: String, to: String, origin: PurchaseOrigin, hasEvidence: Boolean, after: String, before: String, first: Int, last: Int): PurchaseConnection!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/purchase_correction.graphqls", Input: `type PurchaseCorrection implements Node {
+	{Name: "../../graphql/purchase_correction.graphql", Input: `type PurchaseCorrection implements Node {
   id: ID! @goField(forceResolver: true)
   itemId: ID @goField(forceResolver: true)
   amountDeltaYen: Long!
@@ -4628,7 +4658,7 @@ extend type Query {
   purchaseCorrections(purchaseId: ID! @nodeID(of: "Purchase")): [PurchaseCorrection!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/purchase_item.graphqls", Input: `type PurchaseItem implements Node {
+	{Name: "../../graphql/purchase_item.graphql", Input: `type PurchaseItem implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
   amountYen: Long!
@@ -4670,28 +4700,7 @@ type EffectiveUnitPrice {
   denominator: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/purchase_ledger_entry.graphqls", Input: `type PurchaseLedgerEntry implements LedgerEntry {
-  id: ID!
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  purchase: Purchase!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/purchase_payment.graphqls", Input: `type PurchasePayment {
-  paymentAccountId: ID! @goField(forceResolver: true)
-  account: Account
-  amountYen: Long!
-}
-
-input PurchasePaymentInput {
-  paymentAccountId: ID! @nodeID(of: "Account")
-  amountYen: Long!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/record_account_movement_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/record_account_movement_mutation.graphql", Input: `extend type Mutation {
   recordAccountMovement(input: RecordAccountMovementInput!): RecordAccountMovementResult!
 }
 
@@ -4712,7 +4721,7 @@ input RecordAccountMovementInput {
   idempotencyKey: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/record_external_income_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/record_external_income_mutation.graphql", Input: `extend type Mutation {
   recordExternalIncome(input: RecordExternalIncomeInput!): RecordExternalIncomeResult!
 }
 
@@ -4731,7 +4740,7 @@ input RecordExternalIncomeInput {
   idempotencyKey: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/record_funding_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/record_funding_mutation.graphql", Input: `extend type Mutation {
   recordFunding(input: RecordFundingInput!): RecordFundingResult!
 }
 
@@ -4752,7 +4761,7 @@ input RecordFundingInput {
   destinationAccountId: ID @nodeID(of: "Account")
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/record_repayment_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/record_repayment_mutation.graphql", Input: `extend type Mutation {
   recordRepayment(input: RecordRepaymentInput!): RecordRepaymentResult!
 }
 
@@ -4775,7 +4784,7 @@ input RecordRepaymentInput {
   idempotencyKey: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/record_transfer_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/record_transfer_mutation.graphql", Input: `extend type Mutation {
   recordTransfer(input: RecordTransferInput!): RecordTransferResult!
 }
 
@@ -4804,7 +4813,7 @@ enum TransferInputKind {
   GIFT
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/recurring_expense.graphqls", Input: `type RecurringExpense implements Node {
+	{Name: "../../graphql/recurring_expense.graphql", Input: `type RecurringExpense implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   name: String!
@@ -4825,7 +4834,7 @@ extend type Query {
   recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [RecurringExpense!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/revoke_household_invitation_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/revoke_household_invitation_mutation.graphql", Input: `extend type Mutation {
   revokeHouseholdInvitation(householdId: ID! @nodeID(of: "Household"), invitationId: ID! @nodeID(of: "HouseholdInvitation")): RevokeHouseholdInvitationResult!
 }
 
@@ -4835,7 +4844,7 @@ type RevokeHouseholdInvitationSuccess {
   result: HouseholdInvitation!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/schema.graphqls", Input: `scalar Long
+	{Name: "../../graphql/schema.graphql", Input: `scalar Long
 
 directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
 directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
@@ -4851,6 +4860,17 @@ type Query {
 
 type Mutation
 
+enum MutationErrorCode {
+  BAD_INPUT
+  CONFLICT
+  NOT_FOUND
+}
+
+type MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
 type PageInfo {
   hasNextPage: Boolean!
   hasPreviousPage: Boolean!
@@ -4858,7 +4878,7 @@ type PageInfo {
   endCursor: String
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/set_allocation_rule_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/set_allocation_rule_mutation.graphql", Input: `extend type Mutation {
   setAllocationRule(input: SetAllocationRuleInput!): SetAllocationRuleResult!
 }
 
@@ -4877,7 +4897,7 @@ input SetAllocationRuleInput {
   allocations: [AllocationInput!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/set_budget_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/set_budget_mutation.graphql", Input: `extend type Mutation {
   setBudget(input: SetBudgetInput!): SetBudgetResult!
 }
 
@@ -4898,7 +4918,7 @@ input SetBudgetInput {
   endsOn: String
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/set_category_archived_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/set_category_archived_mutation.graphql", Input: `extend type Mutation {
   setCategoryArchived(categoryId: ID! @nodeID(of: "Category"), archived: Boolean!): SetCategoryArchivedResult!
 }
 
@@ -4908,7 +4928,7 @@ type SetCategoryArchivedSuccess {
   result: Category!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/set_default_allocation_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/set_default_allocation_mutation.graphql", Input: `extend type Mutation {
   setDefaultAllocation(input: SetDefaultAllocationInput!): SetDefaultAllocationResult!
 }
 
@@ -4923,7 +4943,7 @@ input SetDefaultAllocationInput {
   allocations: [AllocationInput!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/set_funding_schedule_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/set_funding_schedule_mutation.graphql", Input: `extend type Mutation {
   setFundingSchedule(input: SetFundingScheduleInput!): SetFundingScheduleResult!
 }
 
@@ -4943,7 +4963,7 @@ input SetFundingScheduleInput {
   endsOn: String
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/set_pool_funding_rule_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/set_pool_funding_rule_mutation.graphql", Input: `extend type Mutation {
   setPoolFundingRule(input: SetPoolFundingRuleInput!): SetPoolFundingRuleResult!
 }
 
@@ -4967,7 +4987,7 @@ input PoolFundingShareInput {
   weight: Long!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/set_product_alias_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/set_product_alias_mutation.graphql", Input: `extend type Mutation {
   setProductAlias(input: SetProductAliasInput!): SetProductAliasResult!
 }
 
@@ -4984,7 +5004,7 @@ input SetProductAliasInput {
   alias: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/set_recurring_expense_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/set_recurring_expense_mutation.graphql", Input: `extend type Mutation {
   setRecurringExpense(input: SetRecurringExpenseInput!): SetRecurringExpenseResult!
 }
 
@@ -5009,7 +5029,7 @@ input SetRecurringExpenseInput {
   endsOn: String
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/settlement.graphqls", Input: `enum SettlementStatus {
+	{Name: "../../graphql/settlement.graphql", Input: `enum SettlementStatus {
   OPEN
   CLOSED
 }
@@ -5038,7 +5058,7 @@ extend type Query {
   settlement(householdId: ID! @nodeID(of: "Household"), period: String!): Settlement!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/source_kind.graphqls", Input: `enum SourceKind {
+	{Name: "../../graphql/source_kind.graphql", Input: `enum SourceKind {
   RECEIPT
   ORDER
   EMAIL
@@ -5046,7 +5066,7 @@ extend type Query {
   BANK
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/tag.graphqls", Input: `type Tag implements Node {
+	{Name: "../../graphql/tag.graphql", Input: `type Tag implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID!
   name: String!
@@ -5058,27 +5078,7 @@ extend type Query {
   tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/transfer_ledger_entry.graphqls", Input: `type TransferLedgerEntry implements LedgerEntry {
-  id: ID!
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  fromMember: Member!
-  toMember: Member!
-  transferKind: TransferKind!
-  loan: LoanBalance
-}
-
-enum TransferKind {
-  ADVANCE
-  LOAN
-  REPAYMENT
-  GIFT
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/unmatched_observation.graphqls", Input: `type UnmatchedObservation implements Node {
+	{Name: "../../graphql/unmatched_observation.graphql", Input: `type UnmatchedObservation implements Node {
   id: ID! @goField(forceResolver: true)
   documentId: ID!
   sourceReference: String!
@@ -5112,7 +5112,7 @@ extend type Query {
   unmatchedObservations(householdId: ID! @nodeID(of: "Household"), from: String, to: String, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, before: String, first: Int, last: Int): UnmatchedObservationConnection!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/update_purchase_item_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/update_purchase_item_mutation.graphql", Input: `extend type Mutation {
   updatePurchaseItem(input: UpdatePurchaseItemInput!): UpdatePurchaseItemResult!
 }
 
@@ -5143,7 +5143,7 @@ enum ProductLearningScope {
   MERCHANT_ALIAS
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/update_purchase_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/update_purchase_mutation.graphql", Input: `extend type Mutation {
   updatePurchase(input: UpdatePurchaseInput!): UpdatePurchaseResult!
 }
 
@@ -5166,7 +5166,7 @@ input PurchasePatch {
   paymentAllocations: [PurchasePaymentInput!]
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/update_tag_mutation.graphqls", Input: `extend type Mutation {
+	{Name: "../../graphql/update_tag_mutation.graphql", Input: `extend type Mutation {
   updateTag(input: UpdateTagInput!): UpdateTagResult!
 }
 
@@ -5182,7 +5182,7 @@ input UpdateTagInput {
   name: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/viewer.graphqls", Input: `type Viewer {
+	{Name: "../../graphql/viewer.graphql", Input: `type Viewer {
   id: ID!
   subject: String!
   displayName: String!

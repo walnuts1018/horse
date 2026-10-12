@@ -1,9 +1,0 @@
-type CorrectionLedgerEntry implements LedgerEntry {
-  id: ID!
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  purchase: Purchase!
-}

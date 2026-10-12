@@ -7,7 +7,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const schemaDirectory = join(scriptDirectory, "../../graphql");
 const schemaPath = join(scriptDirectory, "../.relay/schema.graphql");
 const documents = readdirSync(schemaDirectory)
-  .filter((filename) => filename.endsWith(".graphqls"))
+  .filter((filename) => filename.endsWith(".graphql"))
   .toSorted()
   .map((filename) => parse(readFileSync(join(schemaDirectory, filename), "utf8")));
 const schema = buildASTSchema(concatAST(documents));
