@@ -240,14 +240,23 @@ func workerErrorCode(err error) string {
 func retryDelay(err error, attempt int) time.Duration {
 	if apiErr, ok := errors.AsType[*GeminiAPIError](err); ok {
 		if apiErr.Kind == GeminiFailureSpendCap {
-			now := time.Now().UTC()
-			return time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC).Sub(now)
+			return spendCapRetryDelay(time.Now())
 		}
 		if apiErr.RetryAfter > 0 {
 			return min(apiErr.RetryAfter, 6*time.Hour)
 		}
 	}
 	return time.Duration(min(5*(1<<min(attempt, 10)), 3600)) * time.Second
+}
+
+func spendCapRetryDelay(now time.Time) time.Duration {
+	// Cloud Billingの予算期間はUTC-8の月初に切り替わる。月初日は解除反映の遅延に備えて再確認する。
+	billingTime := now.In(time.FixedZone("Cloud Billing", -8*60*60))
+	periodStart := time.Date(billingTime.Year(), billingTime.Month(), 1, 0, 0, 0, 0, billingTime.Location())
+	if now.Sub(periodStart) < 24*time.Hour {
+		return time.Hour
+	}
+	return time.Date(billingTime.Year(), billingTime.Month()+1, 1, 1, 0, 0, 0, billingTime.Location()).Sub(now)
 }
 
 func needsProReview(issues []string) bool {

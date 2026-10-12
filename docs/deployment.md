@@ -30,6 +30,8 @@ Blackbox exporterは`https://horse.walnuts.dev/healthz`を30秒間隔で確認�
 ## Gemini APIの課金
 
 Gemini APIは無料用と有料用のGoogle Cloud Projectを分け、無料ProjectにはBilling Accountをリンクしません。有料ProjectにはTerraform管理のSpendCapを設定し、Gemini API serviceだけを月500円に制限します。SpendCapは50%、80%、100%でBilling Account administratorsとProject Ownersへ通知します。追加の300円到達通知は別のalerts-only Budgetで管理します。
+予算期間は[Cloud BillingのUTC-8の暦月](https://docs.cloud.google.com/billing/docs/reference/budget/rest/v1/billingAccounts.budgets)を基準にし、SpendCapで保留したジョブは翌月初の切替後に再試行します。
+月初日は解除の反映が遅れた場合に1時間後へ保留し直します。
 
 Google Cloud Free TrialのWelcome creditはGemini APIとAI Studioの利用料に適用されません。Gemini APIのPaid Tierを有効にするにはAI Studioで有料Projectの状態を確認し、Billing Accountのlink後に必要なPrepay設定を完了する必要があります。新規ユーザーはPrepayの利用を求められる場合があり、その場合のcredits購入や支払設定は運用者がAI Studioで行います。TerraformはPrepay購入や自動reloadを設定しません。
 

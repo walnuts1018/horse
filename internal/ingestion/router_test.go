@@ -142,6 +142,37 @@ func TestGeminiSpendCapAndMalformedOutputAreTypedAndSanitized(t *testing.T) {
 	}
 }
 
+func TestSpendCapRetryUsesBillingMonthAndAllowsResetPropagation(t *testing.T) {
+	tests := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{
+			name: "UTC month changes before billing month",
+			now:  time.Date(2026, time.November, 1, 0, 0, 0, 0, time.UTC),
+			want: time.Date(2026, time.November, 1, 9, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "cap remains enforced just after reset",
+			now:  time.Date(2026, time.November, 1, 9, 0, 0, 0, time.UTC),
+			want: time.Date(2026, time.November, 1, 10, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "December cap resumes in January",
+			now:  time.Date(2026, time.December, 31, 23, 0, 0, 0, time.UTC),
+			want: time.Date(2027, time.January, 1, 9, 0, 0, 0, time.UTC),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.now.Add(spendCapRetryDelay(tt.now)); !got.Equal(tt.want) {
+				t.Fatalf("retry at %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestGeminiQualityReviewAddsEvidenceAndChangesRequest(t *testing.T) {
 	var mu sync.Mutex
 	var prompts []string

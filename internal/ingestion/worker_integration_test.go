@@ -98,7 +98,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		if err := db.QueryRow(ctx, `SELECT status,error_code,attempt,failure_count,extract(epoch FROM available_at-now()) FROM extraction_jobs WHERE id=$1`, spendCapJob).Scan(&status, &errorCode, &attempt, &failureCount, &availableInSeconds); err != nil {
 			t.Fatal(err)
 		}
-		if status != "queued" || errorCode != "spend_cap_reached" || attempt != expectedAttempt || failureCount != 4 || availableInSeconds < 5*60*60 {
+		if status != "queued" || errorCode != "spend_cap_reached" || attempt != expectedAttempt || failureCount != 4 || availableInSeconds < 30*60 {
 			t.Fatalf("spend cap must keep the source queued without consuming ordinary failures: status=%q error=%q attempt=%d failures=%d availableIn=%.0fs", status, errorCode, attempt, failureCount, availableInSeconds)
 		}
 		if expectedAttempt < 11 {
