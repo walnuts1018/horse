@@ -112,6 +112,7 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 		return strings.Compare(left.id.String(), right.id.String())
 	})
 	purchases := make(map[gofrsuuid.UUID]*models.Purchase, len(targets))
+	preparedTargets := make(map[gofrsuuid.UUID]bulkPurchaseTarget, len(targets))
 	for _, target := range lockOrder {
 		purchase, queryErr := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(target.id))), sm.ForUpdate()).One(ctx, executor)
 		if errors.Is(queryErr, sql.ErrNoRows) {
@@ -179,10 +180,12 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 		}
 		target.purchase = purchase
 		purchases[target.id] = purchase
+		preparedTargets[target.id] = target
 	}
 
 	for i := range targets {
 		target := &targets[i]
+		*target = preparedTargets[target.id]
 		target.purchase = purchases[target.id]
 		patch := target.input.Patch
 		purchase := target.purchase

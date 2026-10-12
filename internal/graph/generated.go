@@ -4293,8 +4293,6 @@ input CreateTagInput {
   pool: Pool!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/go_field_directive.graphqls", Input: `directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
-`, BuiltIn: false},
 	{Name: "../../graphql/household.graphqls", Input: `type Household implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
@@ -4365,8 +4363,6 @@ extend type Query {
   loanBalances(householdId: ID! @nodeID(of: "Household")): [LoanBalance!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/long.graphqls", Input: `scalar Long
-`, BuiltIn: false},
 	{Name: "../../graphql/member.graphqls", Input: `type Member implements Node {
   id: ID! @goField(forceResolver: true)
   displayName: String!
@@ -4411,19 +4407,6 @@ extend type Query {
 type MutationError {
   code: MutationErrorCode!
   message: String!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/node.graphqls", Input: `interface Node {
-  id: ID!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/node_id_directive.graphqls", Input: `directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
-`, BuiltIn: false},
-	{Name: "../../graphql/page_info.graphqls", Input: `type PageInfo {
-  hasNextPage: Boolean!
-  hasPreviousPage: Boolean!
-  startCursor: String
-  endCursor: String
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/pool.graphqls", Input: `type Pool implements Node {
@@ -4627,13 +4610,6 @@ type EffectiveUnitPrice {
   purchase: Purchase!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/purchase_patch.graphqls", Input: `input PurchasePatch {
-  occurredAt: String
-  merchant: String
-  paymentAccountId: ID @nodeID(of: "Account")
-  paymentAllocations: [PurchasePaymentInput!]
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/purchase_payment.graphqls", Input: `type PurchasePayment {
   paymentAccountId: ID! @goField(forceResolver: true)
   account: Account
@@ -4765,6 +4741,22 @@ union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | Mutat
 
 type RevokeHouseholdInvitationSuccess {
   result: HouseholdInvitation!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/schema.graphqls", Input: `scalar Long
+
+directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
+directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
+
+interface Node {
+  id: ID!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/set_allocation_rule_mutation.graphqls", Input: `extend type Mutation {
@@ -5062,6 +5054,13 @@ input UpdatePurchaseInput {
   baseRevision: Int!
   patch: PurchasePatch!
   changedFields: [String!]!
+}
+
+input PurchasePatch {
+  occurredAt: String
+  merchant: String
+  paymentAccountId: ID @nodeID(of: "Account")
+  paymentAllocations: [PurchasePaymentInput!]
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/update_tag_mutation.graphqls", Input: `extend type Mutation {

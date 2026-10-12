@@ -63,9 +63,11 @@ const sum = (numbers: number[]) => numbers.reduce((total, value) => total + valu
 
 export function PurchaseCreatePage({
   household,
+  onBack,
   onQueued,
 }: {
   household: Household;
+  onBack: () => void;
   onQueued: (idempotencyKey: string) => void;
 }) {
   const defaultCategoryId = household.categories.find((item) => !item.archived)?.id ?? "";
@@ -533,7 +535,7 @@ export function PurchaseCreatePage({
     <form className="composer" onSubmit={save}>
       <div className="composer-heading">
         <div>
-          <button type="button" className="back-link" onClick={() => window.history.back()}>
+          <button type="button" className="back-link" onClick={onBack}>
             <ChevronLeft size={16} />
             戻る
           </button>

@@ -50,6 +50,13 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 	defer func() {
 		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
+	pool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Personal", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
+		t.Fatal(err)
+	}
 	createPurchase := func(merchant string) *model.Purchase {
 		t.Helper()
 		purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{

@@ -71,9 +71,19 @@ export function App() {
   const senderId = useRef("");
   const currentPage = useRef(page);
   currentPage.current = page;
+  const purchaseCreatePreviousPage = useRef<Page>("home");
   const currentHouseholdId = useRef(household?.id);
   currentHouseholdId.current = household?.id;
   const autoNavigateKey = useRef<string | null>(null);
+
+  const navigateToPage = (nextPage: Page) => {
+    if (nextPage === "new") {
+      if (page !== "new") purchaseCreatePreviousPage.current = page;
+      setPage("new");
+      return;
+    }
+    setPage(nextPage);
+  };
 
   const refreshHousehold = async (id: string) => {
     const data = await read<{ household: Household }>(householdQuery, { id });
@@ -441,7 +451,7 @@ export function App() {
               <button
                 className={`sync-status-pill ${failedOutboxCount ? "sync-status-error" : ""}`}
                 type="button"
-                onClick={() => setPage("new")}
+                onClick={() => navigateToPage("new")}
                 disabled={!household}
               >
                 {outbox.online === false ? (
@@ -488,11 +498,12 @@ export function App() {
           <GraphQLErrorBoundary>
             <Suspense fallback={<div className="loading-screen">購入履歴を読み込んでいます</div>}>
               {page === "home" && household && (
-                <HomePage household={household} onNavigate={setPage} />
+                <HomePage household={household} onNavigate={navigateToPage} />
               )}
               {page === "new" && household && (
                 <PurchaseCreatePage
                   household={household}
+                  onBack={() => setPage(purchaseCreatePreviousPage.current)}
                   onQueued={(idempotencyKey) => {
                     autoNavigateKey.current = idempotencyKey;
                     showNotice("送信待ちに保存しました");
@@ -500,7 +511,7 @@ export function App() {
                 />
               )}
               {page === "ledger" && household && (
-                <LedgerPage household={household} onAdd={() => setPage("new")} />
+                <LedgerPage household={household} onAdd={() => navigateToPage("new")} />
               )}
               {page === "settlement" && household && <SettlementPage household={household} />}
               {page === "analysis" && household && <AnalysisPage household={household} />}
@@ -556,7 +567,7 @@ export function App() {
           <BookOpen />
           <span>帳簿</span>
         </button>
-        <button className="dock-add" onClick={() => setPage("new")}>
+        <button className="dock-add" onClick={() => navigateToPage("new")}>
           <Plus />
           <span>追加</span>
         </button>

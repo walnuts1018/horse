@@ -17,7 +17,7 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func TestAccountTransferFlowsThroughLedgerAndBalanceAnalysis(t *testing.T) {
+func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testing.T) {
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -78,19 +78,19 @@ func TestAccountTransferFlowsThroughLedgerAndBalanceAnalysis(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ledger, err := apiResolver.Query().Ledger(ctx, household.ID, nil, nil, nil, nil)
+	movements, err := apiResolver.Query().AccountMovements(ctx, household.ID, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var ledgerMovement *model.TransferLedgerEntry
-	for _, edge := range ledger.Edges {
-		if edge.Node.GetID() == movement.ID {
-			ledgerMovement, _ = edge.Node.(*model.TransferLedgerEntry)
+	var queriedMovement *model.AccountMovement
+	for _, edge := range movements.Edges {
+		if edge.Node.ID == movement.ID {
+			queriedMovement = edge.Node
 			break
 		}
 	}
-	if ledgerMovement == nil || ledgerMovement.AmountYen != 250 || ledgerMovement.Description != "Reserve transfer" {
-		t.Fatalf("account movement was not represented in the ledger: movement=%#v ledger=%#v", ledgerMovement, ledger)
+	if queriedMovement == nil || queriedMovement.AmountYen != 250 || queriedMovement.Description != "Reserve transfer" {
+		t.Fatalf("account movement query did not return the transfer: movement=%#v connection=%#v", queriedMovement, movements)
 	}
 
 	storedMovement, err := models.AccountMovements.Query(sm.Where(models.AccountMovements.Columns.ID.EQ(psql.Arg(generatedUUID(movement.ID))))).One(ctx, bobpgx.NewPool(db))
