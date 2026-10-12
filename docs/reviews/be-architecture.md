@@ -610,7 +610,7 @@ Factoryであらゆる値を暗黙に補完するより、家庭・メンバー�
 | `pgx.BeginFunc` | 積極活用 — Tx管理の簡素化 |
 | `otelpgx` | 採用 — DBトレーシング |
 | Bob Factory | 採用検討 — テストデータ生成 |
-| gqlgen DataLoader | 必要な箇所だけ — バッチロード優先 |
+| gqlgen DataLoader | 積極的に活用。dataloader/v7を使う |
 | 別のORM（GORM・Ent） | 不要 — Bobで十分 |
 | 別のHTTPフレームワーク | echo/v5を用いる |
 | DIコンテナ | kessokuを用いる |
