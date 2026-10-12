@@ -7,7 +7,161 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+
+	"github.com/99designs/gqlgen/graphql"
 )
+
+type AcceptHouseholdInvitationResult interface {
+	IsAcceptHouseholdInvitationResult()
+}
+
+type ArchiveBudgetResult interface {
+	IsArchiveBudgetResult()
+}
+
+type ArchiveRecurringExpenseResult interface {
+	IsArchiveRecurringExpenseResult()
+}
+
+type ArchiveTagResult interface {
+	IsArchiveTagResult()
+}
+
+type BulkUpdatePurchaseItemsResult interface {
+	IsBulkUpdatePurchaseItemsResult()
+}
+
+type ClosePeriodResult interface {
+	IsClosePeriodResult()
+}
+
+type CorrectPurchaseResult interface {
+	IsCorrectPurchaseResult()
+}
+
+type CreateAccountResult interface {
+	IsCreateAccountResult()
+}
+
+type CreateCategoryResult interface {
+	IsCreateCategoryResult()
+}
+
+type CreateHouseholdInvitationResult interface {
+	IsCreateHouseholdInvitationResult()
+}
+
+type CreateHouseholdResult interface {
+	IsCreateHouseholdResult()
+}
+
+type CreatePoolResult interface {
+	IsCreatePoolResult()
+}
+
+type CreateProductConceptResult interface {
+	IsCreateProductConceptResult()
+}
+
+type CreateProductVariantResult interface {
+	IsCreateProductVariantResult()
+}
+
+type CreatePurchaseResult interface {
+	IsCreatePurchaseResult()
+}
+
+type CreateTagResult interface {
+	IsCreateTagResult()
+}
+
+type LedgerEntry interface {
+	IsLedgerEntry()
+}
+
+type LedgerRecord interface {
+	IsLedgerRecord()
+	GetID() string
+	GetOccurredAt() string
+	GetDescription() string
+	GetAmountYen() Long
+	GetCurrency() string
+	GetCreatedAt() string
+}
+
+type PostPurchaseResult interface {
+	IsPostPurchaseResult()
+}
+
+type RecordAccountMovementResult interface {
+	IsRecordAccountMovementResult()
+}
+
+type RecordExternalIncomeResult interface {
+	IsRecordExternalIncomeResult()
+}
+
+type RecordFundingResult interface {
+	IsRecordFundingResult()
+}
+
+type RecordTransferResult interface {
+	IsRecordTransferResult()
+}
+
+type RevokeHouseholdInvitationResult interface {
+	IsRevokeHouseholdInvitationResult()
+}
+
+type SetAllocationRuleResult interface {
+	IsSetAllocationRuleResult()
+}
+
+type SetBudgetResult interface {
+	IsSetBudgetResult()
+}
+
+type SetCategoryArchivedResult interface {
+	IsSetCategoryArchivedResult()
+}
+
+type SetDefaultAllocationResult interface {
+	IsSetDefaultAllocationResult()
+}
+
+type SetFundingScheduleResult interface {
+	IsSetFundingScheduleResult()
+}
+
+type SetPoolFundingRuleResult interface {
+	IsSetPoolFundingRuleResult()
+}
+
+type SetProductAliasResult interface {
+	IsSetProductAliasResult()
+}
+
+type SetRecurringExpenseResult interface {
+	IsSetRecurringExpenseResult()
+}
+
+type UpdatePurchaseItemResult interface {
+	IsUpdatePurchaseItemResult()
+}
+
+type UpdatePurchaseResult interface {
+	IsUpdatePurchaseResult()
+}
+
+type UpdateTagResult interface {
+	IsUpdateTagResult()
+}
+
+type AcceptHouseholdInvitationSuccess struct {
+	Result *Household `json:"result"`
+}
+
+func (AcceptHouseholdInvitationSuccess) IsAcceptHouseholdInvitationResult() {}
 
 type Account struct {
 	ID     string      `json:"id"`
@@ -15,6 +169,8 @@ type Account struct {
 	Kind   AccountKind `json:"kind"`
 	PoolID *string     `json:"poolId,omitempty"`
 }
+
+func (Account) IsNode() {}
 
 type AccountBalance struct {
 	AccountID  string `json:"accountId"`
@@ -52,6 +208,8 @@ type AccountIncome struct {
 	CreatedAt   string `json:"createdAt"`
 }
 
+func (AccountIncome) IsNode() {}
+
 type AccountMovement struct {
 	ID            string              `json:"id"`
 	HouseholdID   string              `json:"householdId"`
@@ -64,6 +222,8 @@ type AccountMovement struct {
 	Description   string              `json:"description"`
 	CreatedAt     string              `json:"createdAt"`
 }
+
+func (AccountMovement) IsNode() {}
 
 type Allocation struct {
 	PoolID    string  `json:"poolId"`
@@ -89,6 +249,26 @@ type AllocationRule struct {
 	Allocations      []*Allocation       `json:"allocations"`
 }
 
+func (AllocationRule) IsNode() {}
+
+type ArchiveBudgetSuccess struct {
+	Result *Budget `json:"result"`
+}
+
+func (ArchiveBudgetSuccess) IsArchiveBudgetResult() {}
+
+type ArchiveRecurringExpenseSuccess struct {
+	Result *RecurringExpense `json:"result"`
+}
+
+func (ArchiveRecurringExpenseSuccess) IsArchiveRecurringExpenseResult() {}
+
+type ArchiveTagSuccess struct {
+	Result *Tag `json:"result"`
+}
+
+func (ArchiveTagSuccess) IsArchiveTagResult() {}
+
 type Budget struct {
 	ID           string  `json:"id"`
 	HouseholdID  string  `json:"householdId"`
@@ -103,6 +283,8 @@ type Budget struct {
 	Revision     int     `json:"revision"`
 }
 
+func (Budget) IsNode() {}
+
 type BulkPurchaseItemPatch struct {
 	CategoryID       *string            `json:"categoryId,omitempty"`
 	ProductVariantID *string            `json:"productVariantId,omitempty"`
@@ -116,6 +298,12 @@ type BulkUpdatePurchaseItemsInput struct {
 	ChangedFields []string                   `json:"changedFields"`
 }
 
+type BulkUpdatePurchaseItemsSuccess struct {
+	Items []*PurchaseItem `json:"items"`
+}
+
+func (BulkUpdatePurchaseItemsSuccess) IsBulkUpdatePurchaseItemsResult() {}
+
 type Category struct {
 	ID       string  `json:"id"`
 	Name     string  `json:"name"`
@@ -123,11 +311,19 @@ type Category struct {
 	Archived bool    `json:"archived"`
 }
 
+func (Category) IsNode() {}
+
 type ClosePeriodInput struct {
 	HouseholdID      string `json:"householdId"`
 	Period           string `json:"period"`
 	ExpectedRevision int    `json:"expectedRevision"`
 }
+
+type ClosePeriodSuccess struct {
+	Result *Settlement `json:"result"`
+}
+
+func (ClosePeriodSuccess) IsClosePeriodResult() {}
 
 type CorrectPurchaseInput struct {
 	HouseholdID        string                  `json:"householdId"`
@@ -140,6 +336,32 @@ type CorrectPurchaseInput struct {
 	IdempotencyKey     string                  `json:"idempotencyKey"`
 }
 
+type CorrectPurchaseSuccess struct {
+	Result *Purchase `json:"result"`
+}
+
+func (CorrectPurchaseSuccess) IsCorrectPurchaseResult() {}
+
+type CorrectionLedgerEntry struct {
+	ID          string    `json:"id"`
+	OccurredAt  string    `json:"occurredAt"`
+	Description string    `json:"description"`
+	AmountYen   Long      `json:"amountYen"`
+	Currency    string    `json:"currency"`
+	CreatedAt   string    `json:"createdAt"`
+	Purchase    *Purchase `json:"purchase"`
+}
+
+func (CorrectionLedgerEntry) IsLedgerRecord()             {}
+func (this CorrectionLedgerEntry) GetID() string          { return this.ID }
+func (this CorrectionLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
+func (this CorrectionLedgerEntry) GetDescription() string { return this.Description }
+func (this CorrectionLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
+func (this CorrectionLedgerEntry) GetCurrency() string    { return this.Currency }
+func (this CorrectionLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
+
+func (CorrectionLedgerEntry) IsLedgerEntry() {}
+
 type CreateAccountInput struct {
 	HouseholdID       string      `json:"householdId"`
 	Name              string      `json:"name"`
@@ -149,11 +371,23 @@ type CreateAccountInput struct {
 	OpeningBalanceAt  *string     `json:"openingBalanceAt,omitempty"`
 }
 
+type CreateAccountSuccess struct {
+	Result *Account `json:"result"`
+}
+
+func (CreateAccountSuccess) IsCreateAccountResult() {}
+
 type CreateCategoryInput struct {
 	HouseholdID string  `json:"householdId"`
 	Name        string  `json:"name"`
 	ParentID    *string `json:"parentId,omitempty"`
 }
+
+type CreateCategorySuccess struct {
+	Result *Category `json:"result"`
+}
+
+func (CreateCategorySuccess) IsCreateCategoryResult() {}
 
 type CreateHouseholdInput struct {
 	Name        string   `json:"name"`
@@ -165,17 +399,41 @@ type CreateHouseholdInvitationInput struct {
 	ExpiresAt   string `json:"expiresAt"`
 }
 
+type CreateHouseholdInvitationSuccess struct {
+	Result *CreatedHouseholdInvitation `json:"result"`
+}
+
+func (CreateHouseholdInvitationSuccess) IsCreateHouseholdInvitationResult() {}
+
+type CreateHouseholdSuccess struct {
+	Result *Household `json:"result"`
+}
+
+func (CreateHouseholdSuccess) IsCreateHouseholdResult() {}
+
 type CreatePoolInput struct {
 	HouseholdID string   `json:"householdId"`
 	Name        string   `json:"name"`
 	Kind        PoolKind `json:"kind"`
 }
 
+type CreatePoolSuccess struct {
+	Result *Pool `json:"result"`
+}
+
+func (CreatePoolSuccess) IsCreatePoolResult() {}
+
 type CreateProductConceptInput struct {
 	HouseholdID string  `json:"householdId"`
 	Name        string  `json:"name"`
 	CategoryID  *string `json:"categoryId,omitempty"`
 }
+
+type CreateProductConceptSuccess struct {
+	Result *ProductConcept `json:"result"`
+}
+
+func (CreateProductConceptSuccess) IsCreateProductConceptResult() {}
 
 type CreateProductVariantInput struct {
 	HouseholdID string  `json:"householdId"`
@@ -186,29 +444,75 @@ type CreateProductVariantInput struct {
 	Barcode     *string `json:"barcode,omitempty"`
 }
 
-type CreatePurchaseInput struct {
-	IdempotencyKey     string                  `json:"idempotencyKey"`
-	HouseholdID        string                  `json:"householdId"`
-	OccurredAt         string                  `json:"occurredAt"`
-	Merchant           string                  `json:"merchant"`
-	Origin             *PurchaseOrigin         `json:"origin,omitempty"`
-	PaymentAccountID   *string                 `json:"paymentAccountId,omitempty"`
-	PaymentAllocations []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
-	SourceDocumentID   *string                 `json:"sourceDocumentId,omitempty"`
-	SourceReference    *string                 `json:"sourceReference,omitempty"`
-	Items              []*PurchaseItemInput    `json:"items"`
-	Status             *PurchaseStatus         `json:"status,omitempty"`
+type CreateProductVariantSuccess struct {
+	Result *ProductVariant `json:"result"`
 }
+
+func (CreateProductVariantSuccess) IsCreateProductVariantResult() {}
+
+type CreatePurchaseInput struct {
+	IdempotencyKey             string                  `json:"idempotencyKey"`
+	HouseholdID                string                  `json:"householdId"`
+	OccurredAt                 string                  `json:"occurredAt"`
+	Merchant                   string                  `json:"merchant"`
+	Origin                     *PurchaseOrigin         `json:"origin,omitempty"`
+	PaymentAccountID           *string                 `json:"paymentAccountId,omitempty"`
+	PaymentAllocations         []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
+	SourceDocumentID           *string                 `json:"sourceDocumentId,omitempty"`
+	SourceReference            *string                 `json:"sourceReference,omitempty"`
+	ReceiptCandidateID         *string                 `json:"receiptCandidateId,omitempty"`
+	ManualAmountOverrideReason *string                 `json:"manualAmountOverrideReason,omitempty"`
+	Items                      []*PurchaseItemInput    `json:"items"`
+	Status                     *PurchaseStatus         `json:"status,omitempty"`
+}
+
+type CreatePurchaseSuccess struct {
+	Result *Purchase `json:"result"`
+}
+
+func (CreatePurchaseSuccess) IsCreatePurchaseResult() {}
 
 type CreateTagInput struct {
 	HouseholdID string `json:"householdId"`
 	Name        string `json:"name"`
 }
 
+type CreateTagSuccess struct {
+	Result *Tag `json:"result"`
+}
+
+func (CreateTagSuccess) IsCreateTagResult() {}
+
 type CreatedHouseholdInvitation struct {
 	Invitation *HouseholdInvitation `json:"invitation"`
 	Token      string               `json:"token"`
 }
+
+type EffectiveUnitPrice struct {
+	NumeratorYen string `json:"numeratorYen"`
+	Denominator  string `json:"denominator"`
+}
+
+type FundingLedgerEntry struct {
+	ID          string  `json:"id"`
+	OccurredAt  string  `json:"occurredAt"`
+	Description string  `json:"description"`
+	AmountYen   Long    `json:"amountYen"`
+	Currency    string  `json:"currency"`
+	CreatedAt   string  `json:"createdAt"`
+	Member      *Member `json:"member"`
+	Pool        *Pool   `json:"pool"`
+}
+
+func (FundingLedgerEntry) IsLedgerRecord()             {}
+func (this FundingLedgerEntry) GetID() string          { return this.ID }
+func (this FundingLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
+func (this FundingLedgerEntry) GetDescription() string { return this.Description }
+func (this FundingLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
+func (this FundingLedgerEntry) GetCurrency() string    { return this.Currency }
+func (this FundingLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
+
+func (FundingLedgerEntry) IsLedgerEntry() {}
 
 type Household struct {
 	ID                string        `json:"id"`
@@ -223,6 +527,8 @@ type Household struct {
 	UpdatedAt         string        `json:"updatedAt"`
 }
 
+func (Household) IsNode() {}
+
 type HouseholdInvitation struct {
 	ID          string  `json:"id"`
 	HouseholdID string  `json:"householdId"`
@@ -233,6 +539,8 @@ type HouseholdInvitation struct {
 	AcceptedAt  *string `json:"acceptedAt,omitempty"`
 }
 
+func (HouseholdInvitation) IsNode() {}
+
 type LedgerConnection struct {
 	Edges      []*LedgerEdge `json:"edges"`
 	PageInfo   *PageInfo     `json:"pageInfo"`
@@ -240,24 +548,8 @@ type LedgerConnection struct {
 }
 
 type LedgerEdge struct {
-	Cursor string       `json:"cursor"`
-	Node   *LedgerEntry `json:"node"`
-}
-
-type LedgerEntry struct {
-	ID               string     `json:"id"`
-	Kind             LedgerKind `json:"kind"`
-	OccurredAt       string     `json:"occurredAt"`
-	Description      string     `json:"description"`
-	AmountYen        Long       `json:"amountYen"`
-	Currency         string     `json:"currency"`
-	FromMemberID     *string    `json:"fromMemberId,omitempty"`
-	ToMemberID       *string    `json:"toMemberId,omitempty"`
-	PoolID           *string    `json:"poolId,omitempty"`
-	SourcePurchaseID *string    `json:"sourcePurchaseId,omitempty"`
-	TransferID       *string    `json:"transferId,omitempty"`
-	LoanID           *string    `json:"loanId,omitempty"`
-	CreatedAt        string     `json:"createdAt"`
+	Cursor string      `json:"cursor"`
+	Node   LedgerEntry `json:"node"`
 }
 
 type LoanBalance struct {
@@ -275,6 +567,8 @@ type Member struct {
 	DisplayName string `json:"displayName"`
 	Role        string `json:"role"`
 }
+
+func (Member) IsNode() {}
 
 type MonthlyCategorySpending struct {
 	Period       string  `json:"period"`
@@ -298,9 +592,82 @@ type MonthlyMemberSpendingReport struct {
 type Mutation struct {
 }
 
+type MutationError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (MutationError) IsAcceptHouseholdInvitationResult() {}
+
+func (MutationError) IsArchiveBudgetResult() {}
+
+func (MutationError) IsArchiveRecurringExpenseResult() {}
+
+func (MutationError) IsArchiveTagResult() {}
+
+func (MutationError) IsBulkUpdatePurchaseItemsResult() {}
+
+func (MutationError) IsClosePeriodResult() {}
+
+func (MutationError) IsCorrectPurchaseResult() {}
+
+func (MutationError) IsCreateAccountResult() {}
+
+func (MutationError) IsCreateCategoryResult() {}
+
+func (MutationError) IsCreateHouseholdInvitationResult() {}
+
+func (MutationError) IsCreateHouseholdResult() {}
+
+func (MutationError) IsCreatePoolResult() {}
+
+func (MutationError) IsCreateProductConceptResult() {}
+
+func (MutationError) IsCreateProductVariantResult() {}
+
+func (MutationError) IsCreatePurchaseResult() {}
+
+func (MutationError) IsCreateTagResult() {}
+
+func (MutationError) IsPostPurchaseResult() {}
+
+func (MutationError) IsRecordAccountMovementResult() {}
+
+func (MutationError) IsRecordExternalIncomeResult() {}
+
+func (MutationError) IsRecordFundingResult() {}
+
+func (MutationError) IsRecordTransferResult() {}
+
+func (MutationError) IsRevokeHouseholdInvitationResult() {}
+
+func (MutationError) IsSetAllocationRuleResult() {}
+
+func (MutationError) IsSetBudgetResult() {}
+
+func (MutationError) IsSetCategoryArchivedResult() {}
+
+func (MutationError) IsSetDefaultAllocationResult() {}
+
+func (MutationError) IsSetFundingScheduleResult() {}
+
+func (MutationError) IsSetPoolFundingRuleResult() {}
+
+func (MutationError) IsSetProductAliasResult() {}
+
+func (MutationError) IsSetRecurringExpenseResult() {}
+
+func (MutationError) IsUpdatePurchaseItemResult() {}
+
+func (MutationError) IsUpdatePurchaseResult() {}
+
+func (MutationError) IsUpdateTagResult() {}
+
 type PageInfo struct {
-	EndCursor   *string `json:"endCursor,omitempty"`
-	HasNextPage bool    `json:"hasNextPage"`
+	HasNextPage     bool    `json:"hasNextPage"`
+	HasPreviousPage bool    `json:"hasPreviousPage"`
+	StartCursor     *string `json:"startCursor,omitempty"`
+	EndCursor       *string `json:"endCursor,omitempty"`
 }
 
 type Pool struct {
@@ -314,6 +681,8 @@ type Pool struct {
 	FundingRuleVersion int                         `json:"fundingRuleVersion"`
 }
 
+func (Pool) IsNode() {}
+
 type PoolFundingShare struct {
 	MemberID   string `json:"memberId"`
 	MemberName string `json:"memberName"`
@@ -323,6 +692,22 @@ type PoolFundingShare struct {
 type PoolFundingShareInput struct {
 	MemberID string `json:"memberId"`
 	Weight   Long   `json:"weight"`
+}
+
+type PostPurchaseSuccess struct {
+	Result *Purchase `json:"result"`
+}
+
+func (PostPurchaseSuccess) IsPostPurchaseResult() {}
+
+type PrintedUnitPrice struct {
+	AmountYen Long              `json:"amountYen"`
+	Basis     *PurchaseQuantity `json:"basis"`
+}
+
+type PrintedUnitPriceInput struct {
+	AmountYen Long                   `json:"amountYen"`
+	Basis     *PurchaseQuantityInput `json:"basis"`
 }
 
 type ProductAlias struct {
@@ -335,6 +720,8 @@ type ProductAlias struct {
 	Revision        int    `json:"revision"`
 }
 
+func (ProductAlias) IsNode() {}
+
 type ProductConcept struct {
 	ID             string            `json:"id"`
 	HouseholdID    string            `json:"householdId"`
@@ -345,6 +732,8 @@ type ProductConcept struct {
 	Revision       int               `json:"revision"`
 	Variants       []*ProductVariant `json:"variants"`
 }
+
+func (ProductConcept) IsNode() {}
 
 type ProductSuggestion struct {
 	Concept     *ProductConcept `json:"concept"`
@@ -367,6 +756,8 @@ type ProductVariant struct {
 	Aliases        []*ProductAlias `json:"aliases"`
 }
 
+func (ProductVariant) IsNode() {}
+
 type Purchase struct {
 	ID                 string                `json:"id"`
 	HouseholdID        string                `json:"householdId"`
@@ -388,6 +779,8 @@ type Purchase struct {
 	UpdatedAt          string                `json:"updatedAt"`
 }
 
+func (Purchase) IsNode() {}
+
 type PurchaseConnection struct {
 	Edges      []*PurchaseEdge `json:"edges"`
 	PageInfo   *PageInfo       `json:"pageInfo"`
@@ -404,51 +797,64 @@ type PurchaseCorrection struct {
 	PaymentAllocations []*PurchasePayment `json:"paymentAllocations"`
 }
 
+func (PurchaseCorrection) IsNode() {}
+
 type PurchaseEdge struct {
 	Cursor string    `json:"cursor"`
 	Node   *Purchase `json:"node"`
 }
 
 type PurchaseItem struct {
-	ID                                  string        `json:"id"`
-	Name                                string        `json:"name"`
-	AmountYen                           Long          `json:"amountYen"`
-	Currency                            string        `json:"currency"`
-	QuantityNumerator                   *string       `json:"quantityNumerator,omitempty"`
-	QuantityDenominator                 *string       `json:"quantityDenominator,omitempty"`
-	QuantityUnit                        *string       `json:"quantityUnit,omitempty"`
-	PrintedUnitPriceYen                 *Long         `json:"printedUnitPriceYen,omitempty"`
-	PrintedUnitPriceQuantityNumerator   *string       `json:"printedUnitPriceQuantityNumerator,omitempty"`
-	PrintedUnitPriceQuantityDenominator *string       `json:"printedUnitPriceQuantityDenominator,omitempty"`
-	PrintedUnitPriceUnit                *string       `json:"printedUnitPriceUnit,omitempty"`
-	EffectiveUnitPriceNumeratorYen      *string       `json:"effectiveUnitPriceNumeratorYen,omitempty"`
-	EffectiveUnitPriceDenominator       *string       `json:"effectiveUnitPriceDenominator,omitempty"`
-	CategoryID                          *string       `json:"categoryId,omitempty"`
-	ProductVariantID                    *string       `json:"productVariantId,omitempty"`
-	Allocations                         []*Allocation `json:"allocations"`
-	Tags                                []*Tag        `json:"tags"`
-	Revision                            int           `json:"revision"`
+	ID                 string              `json:"id"`
+	Name               string              `json:"name"`
+	AmountYen          Long                `json:"amountYen"`
+	Currency           string              `json:"currency"`
+	Quantity           *PurchaseQuantity   `json:"quantity,omitempty"`
+	PrintedUnitPrice   *PrintedUnitPrice   `json:"printedUnitPrice,omitempty"`
+	EffectiveUnitPrice *EffectiveUnitPrice `json:"effectiveUnitPrice,omitempty"`
+	CategoryID         *string             `json:"categoryId,omitempty"`
+	ProductVariantID   *string             `json:"productVariantId,omitempty"`
+	Allocations        []*Allocation       `json:"allocations"`
+	Tags               []*Tag              `json:"tags"`
+	Revision           int                 `json:"revision"`
 }
 
+func (PurchaseItem) IsNode() {}
+
 type PurchaseItemInput struct {
-	Name                                string             `json:"name"`
-	AmountYen                           Long               `json:"amountYen"`
-	QuantityNumerator                   *string            `json:"quantityNumerator,omitempty"`
-	QuantityDenominator                 *string            `json:"quantityDenominator,omitempty"`
-	QuantityUnit                        *string            `json:"quantityUnit,omitempty"`
-	PrintedUnitPriceYen                 *Long              `json:"printedUnitPriceYen,omitempty"`
-	PrintedUnitPriceQuantityNumerator   *string            `json:"printedUnitPriceQuantityNumerator,omitempty"`
-	PrintedUnitPriceQuantityDenominator *string            `json:"printedUnitPriceQuantityDenominator,omitempty"`
-	PrintedUnitPriceUnit                *string            `json:"printedUnitPriceUnit,omitempty"`
-	CategoryID                          *string            `json:"categoryId,omitempty"`
-	ProductVariantID                    *string            `json:"productVariantId,omitempty"`
-	Allocations                         []*AllocationInput `json:"allocations,omitempty"`
+	Name             string                 `json:"name"`
+	AmountYen        Long                   `json:"amountYen"`
+	Quantity         *PurchaseQuantityInput `json:"quantity,omitempty"`
+	PrintedUnitPrice *PrintedUnitPriceInput `json:"printedUnitPrice,omitempty"`
+	CategoryID       *string                `json:"categoryId,omitempty"`
+	ProductVariantID *string                `json:"productVariantId,omitempty"`
+	Allocations      []*AllocationInput     `json:"allocations,omitempty"`
 }
 
 type PurchaseItemTargetInput struct {
 	ItemID       string `json:"itemId"`
 	BaseRevision int    `json:"baseRevision"`
 }
+
+type PurchaseLedgerEntry struct {
+	ID          string    `json:"id"`
+	OccurredAt  string    `json:"occurredAt"`
+	Description string    `json:"description"`
+	AmountYen   Long      `json:"amountYen"`
+	Currency    string    `json:"currency"`
+	CreatedAt   string    `json:"createdAt"`
+	Purchase    *Purchase `json:"purchase"`
+}
+
+func (PurchaseLedgerEntry) IsLedgerEntry() {}
+
+func (PurchaseLedgerEntry) IsLedgerRecord()             {}
+func (this PurchaseLedgerEntry) GetID() string          { return this.ID }
+func (this PurchaseLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
+func (this PurchaseLedgerEntry) GetDescription() string { return this.Description }
+func (this PurchaseLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
+func (this PurchaseLedgerEntry) GetCurrency() string    { return this.Currency }
+func (this PurchaseLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
 
 type PurchasePatch struct {
 	OccurredAt         *string                 `json:"occurredAt,omitempty"`
@@ -468,6 +874,18 @@ type PurchasePaymentInput struct {
 	AmountYen        Long   `json:"amountYen"`
 }
 
+type PurchaseQuantity struct {
+	Numerator   string `json:"numerator"`
+	Denominator string `json:"denominator"`
+	Unit        string `json:"unit"`
+}
+
+type PurchaseQuantityInput struct {
+	Numerator   string `json:"numerator"`
+	Denominator string `json:"denominator"`
+	Unit        string `json:"unit"`
+}
+
 type Query struct {
 }
 
@@ -482,6 +900,12 @@ type RecordAccountMovementInput struct {
 	IdempotencyKey string              `json:"idempotencyKey"`
 }
 
+type RecordAccountMovementSuccess struct {
+	Result *AccountMovement `json:"result"`
+}
+
+func (RecordAccountMovementSuccess) IsRecordAccountMovementResult() {}
+
 type RecordExternalIncomeInput struct {
 	HouseholdID    string `json:"householdId"`
 	AccountID      string `json:"accountId"`
@@ -490,6 +914,12 @@ type RecordExternalIncomeInput struct {
 	Description    string `json:"description"`
 	IdempotencyKey string `json:"idempotencyKey"`
 }
+
+type RecordExternalIncomeSuccess struct {
+	Result *AccountIncome `json:"result"`
+}
+
+func (RecordExternalIncomeSuccess) IsRecordExternalIncomeResult() {}
 
 type RecordFundingInput struct {
 	HouseholdID          string  `json:"householdId"`
@@ -501,6 +931,12 @@ type RecordFundingInput struct {
 	SourceAccountID      *string `json:"sourceAccountId,omitempty"`
 	DestinationAccountID *string `json:"destinationAccountId,omitempty"`
 }
+
+type RecordFundingSuccess struct {
+	Result LedgerEntry `json:"result"`
+}
+
+func (RecordFundingSuccess) IsRecordFundingResult() {}
 
 type RecordTransferInput struct {
 	HouseholdID          string       `json:"householdId"`
@@ -515,6 +951,12 @@ type RecordTransferInput struct {
 	Description          string       `json:"description"`
 	IdempotencyKey       string       `json:"idempotencyKey"`
 }
+
+type RecordTransferSuccess struct {
+	Result LedgerEntry `json:"result"`
+}
+
+func (RecordTransferSuccess) IsRecordTransferResult() {}
 
 type RecurringExpense struct {
 	ID               string  `json:"id"`
@@ -533,6 +975,14 @@ type RecurringExpense struct {
 	Revision         int     `json:"revision"`
 }
 
+func (RecurringExpense) IsNode() {}
+
+type RevokeHouseholdInvitationSuccess struct {
+	Result *HouseholdInvitation `json:"result"`
+}
+
+func (RevokeHouseholdInvitationSuccess) IsRevokeHouseholdInvitationResult() {}
+
 type SetAllocationRuleInput struct {
 	HouseholdID      string             `json:"householdId"`
 	CategoryID       *string            `json:"categoryId,omitempty"`
@@ -541,6 +991,12 @@ type SetAllocationRuleInput struct {
 	ProductVariantID *string            `json:"productVariantId,omitempty"`
 	Allocations      []*AllocationInput `json:"allocations"`
 }
+
+type SetAllocationRuleSuccess struct {
+	Result *AllocationRule `json:"result"`
+}
+
+func (SetAllocationRuleSuccess) IsSetAllocationRuleResult() {}
 
 type SetBudgetInput struct {
 	HouseholdID  string  `json:"householdId"`
@@ -553,10 +1009,28 @@ type SetBudgetInput struct {
 	EndsOn       *string `json:"endsOn,omitempty"`
 }
 
+type SetBudgetSuccess struct {
+	Result *Budget `json:"result"`
+}
+
+func (SetBudgetSuccess) IsSetBudgetResult() {}
+
+type SetCategoryArchivedSuccess struct {
+	Result *Category `json:"result"`
+}
+
+func (SetCategoryArchivedSuccess) IsSetCategoryArchivedResult() {}
+
 type SetDefaultAllocationInput struct {
 	HouseholdID string             `json:"householdId"`
 	Allocations []*AllocationInput `json:"allocations"`
 }
+
+type SetDefaultAllocationSuccess struct {
+	Result *Household `json:"result"`
+}
+
+func (SetDefaultAllocationSuccess) IsSetDefaultAllocationResult() {}
 
 type SetFundingScheduleInput struct {
 	HouseholdID string  `json:"householdId"`
@@ -568,6 +1042,12 @@ type SetFundingScheduleInput struct {
 	EndsOn      *string `json:"endsOn,omitempty"`
 }
 
+type SetFundingScheduleSuccess struct {
+	Success bool `json:"success"`
+}
+
+func (SetFundingScheduleSuccess) IsSetFundingScheduleResult() {}
+
 type SetPoolFundingRuleInput struct {
 	HouseholdID      string                      `json:"householdId"`
 	PoolID           string                      `json:"poolId"`
@@ -577,12 +1057,24 @@ type SetPoolFundingRuleInput struct {
 	ExpectedVersion  int                         `json:"expectedVersion"`
 }
 
+type SetPoolFundingRuleSuccess struct {
+	Result *Pool `json:"result"`
+}
+
+func (SetPoolFundingRuleSuccess) IsSetPoolFundingRuleResult() {}
+
 type SetProductAliasInput struct {
 	HouseholdID string `json:"householdId"`
 	VariantID   string `json:"variantId"`
 	Merchant    string `json:"merchant"`
 	Alias       string `json:"alias"`
 }
+
+type SetProductAliasSuccess struct {
+	Result *ProductAlias `json:"result"`
+}
+
+func (SetProductAliasSuccess) IsSetProductAliasResult() {}
 
 type SetRecurringExpenseInput struct {
 	HouseholdID      string  `json:"householdId"`
@@ -598,6 +1090,12 @@ type SetRecurringExpenseInput struct {
 	NextDueOn        string  `json:"nextDueOn"`
 	EndsOn           *string `json:"endsOn,omitempty"`
 }
+
+type SetRecurringExpenseSuccess struct {
+	Result *RecurringExpense `json:"result"`
+}
+
+func (SetRecurringExpenseSuccess) IsSetRecurringExpenseResult() {}
 
 type Settlement struct {
 	Period    string            `json:"period"`
@@ -627,7 +1125,33 @@ type Tag struct {
 	Revision    int    `json:"revision"`
 }
 
+func (Tag) IsNode() {}
+
+type TransferLedgerEntry struct {
+	ID           string       `json:"id"`
+	OccurredAt   string       `json:"occurredAt"`
+	Description  string       `json:"description"`
+	AmountYen    Long         `json:"amountYen"`
+	Currency     string       `json:"currency"`
+	CreatedAt    string       `json:"createdAt"`
+	FromMember   *Member      `json:"fromMember"`
+	ToMember     *Member      `json:"toMember"`
+	TransferKind TransferKind `json:"transferKind"`
+	Loan         *LoanBalance `json:"loan,omitempty"`
+}
+
+func (TransferLedgerEntry) IsLedgerEntry() {}
+
+func (TransferLedgerEntry) IsLedgerRecord()             {}
+func (this TransferLedgerEntry) GetID() string          { return this.ID }
+func (this TransferLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
+func (this TransferLedgerEntry) GetDescription() string { return this.Description }
+func (this TransferLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
+func (this TransferLedgerEntry) GetCurrency() string    { return this.Currency }
+func (this TransferLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
+
 type UnmatchedObservation struct {
+	ID              string                    `json:"id"`
 	DocumentID      string                    `json:"documentId"`
 	SourceReference string                    `json:"sourceReference"`
 	PurchaseID      *string                   `json:"purchaseId,omitempty"`
@@ -639,6 +1163,8 @@ type UnmatchedObservation struct {
 	OrderID         string                    `json:"orderId"`
 	TransactionID   string                    `json:"transactionId"`
 }
+
+func (UnmatchedObservation) IsNode() {}
 
 type UnmatchedObservationConnection struct {
 	Edges      []*UnmatchedObservationEdge `json:"edges"`
@@ -659,30 +1185,43 @@ type UpdatePurchaseInput struct {
 }
 
 type UpdatePurchaseItemInput struct {
-	ItemID                              string                `json:"itemId"`
-	BaseRevision                        int                   `json:"baseRevision"`
-	Name                                *string               `json:"name,omitempty"`
-	AmountYen                           *Long                 `json:"amountYen,omitempty"`
-	QuantityNumerator                   *string               `json:"quantityNumerator,omitempty"`
-	QuantityDenominator                 *string               `json:"quantityDenominator,omitempty"`
-	QuantityUnit                        *string               `json:"quantityUnit,omitempty"`
-	PrintedUnitPriceYen                 *Long                 `json:"printedUnitPriceYen,omitempty"`
-	PrintedUnitPriceQuantityNumerator   *string               `json:"printedUnitPriceQuantityNumerator,omitempty"`
-	PrintedUnitPriceQuantityDenominator *string               `json:"printedUnitPriceQuantityDenominator,omitempty"`
-	PrintedUnitPriceUnit                *string               `json:"printedUnitPriceUnit,omitempty"`
-	CategoryID                          *string               `json:"categoryId,omitempty"`
-	ProductVariantID                    *string               `json:"productVariantId,omitempty"`
-	ProductLearning                     *ProductLearningScope `json:"productLearning,omitempty"`
-	VariantName                         *string               `json:"variantName,omitempty"`
-	Allocations                         []*AllocationInput    `json:"allocations,omitempty"`
-	ChangedFields                       []string              `json:"changedFields"`
+	ItemID           string                                    `json:"itemId"`
+	BaseRevision     int                                       `json:"baseRevision"`
+	Name             *string                                   `json:"name,omitempty"`
+	AmountYen        *Long                                     `json:"amountYen,omitempty"`
+	Quantity         graphql.Omittable[*PurchaseQuantityInput] `json:"quantity,omitempty"`
+	PrintedUnitPrice graphql.Omittable[*PrintedUnitPriceInput] `json:"printedUnitPrice,omitempty"`
+	CategoryID       *string                                   `json:"categoryId,omitempty"`
+	ProductVariantID *string                                   `json:"productVariantId,omitempty"`
+	ProductLearning  *ProductLearningScope                     `json:"productLearning,omitempty"`
+	VariantName      *string                                   `json:"variantName,omitempty"`
+	Allocations      []*AllocationInput                        `json:"allocations,omitempty"`
+	ChangedFields    []string                                  `json:"changedFields"`
 }
+
+type UpdatePurchaseItemSuccess struct {
+	Result *PurchaseItem `json:"result"`
+}
+
+func (UpdatePurchaseItemSuccess) IsUpdatePurchaseItemResult() {}
+
+type UpdatePurchaseSuccess struct {
+	Result *Purchase `json:"result"`
+}
+
+func (UpdatePurchaseSuccess) IsUpdatePurchaseResult() {}
 
 type UpdateTagInput struct {
 	TagID        string `json:"tagId"`
 	BaseRevision int    `json:"baseRevision"`
 	Name         string `json:"name"`
 }
+
+type UpdateTagSuccess struct {
+	Result *Tag `json:"result"`
+}
+
+func (UpdateTagSuccess) IsUpdateTagResult() {}
 
 type Viewer struct {
 	ID          string       `json:"id"`
@@ -864,52 +1403,50 @@ func (e AllocationRuleScope) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-type LedgerKind string
+type MutationErrorCode string
 
 const (
-	LedgerKindPurchase   LedgerKind = "PURCHASE"
-	LedgerKindFunding    LedgerKind = "FUNDING"
-	LedgerKindTransfer   LedgerKind = "TRANSFER"
-	LedgerKindCorrection LedgerKind = "CORRECTION"
+	MutationErrorCodeBadInput MutationErrorCode = "BAD_INPUT"
+	MutationErrorCodeConflict MutationErrorCode = "CONFLICT"
+	MutationErrorCodeNotFound MutationErrorCode = "NOT_FOUND"
 )
 
-var AllLedgerKind = []LedgerKind{
-	LedgerKindPurchase,
-	LedgerKindFunding,
-	LedgerKindTransfer,
-	LedgerKindCorrection,
+var AllMutationErrorCode = []MutationErrorCode{
+	MutationErrorCodeBadInput,
+	MutationErrorCodeConflict,
+	MutationErrorCodeNotFound,
 }
 
-func (e LedgerKind) IsValid() bool {
+func (e MutationErrorCode) IsValid() bool {
 	switch e {
-	case LedgerKindPurchase, LedgerKindFunding, LedgerKindTransfer, LedgerKindCorrection:
+	case MutationErrorCodeBadInput, MutationErrorCodeConflict, MutationErrorCodeNotFound:
 		return true
 	}
 	return false
 }
 
-func (e LedgerKind) String() string {
+func (e MutationErrorCode) String() string {
 	return string(e)
 }
 
-func (e *LedgerKind) UnmarshalGQL(v any) error {
+func (e *MutationErrorCode) UnmarshalGQL(v any) error {
 	str, ok := v.(string)
 	if !ok {
 		return fmt.Errorf("enums must be strings")
 	}
 
-	*e = LedgerKind(str)
+	*e = MutationErrorCode(str)
 	if !e.IsValid() {
-		return fmt.Errorf("%s is not a valid LedgerKind", str)
+		return fmt.Errorf("%s is not a valid MutationErrorCode", str)
 	}
 	return nil
 }
 
-func (e LedgerKind) MarshalGQL(w io.Writer) {
+func (e MutationErrorCode) MarshalGQL(w io.Writer) {
 	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
 }
 
-func (e *LedgerKind) UnmarshalJSON(b []byte) error {
+func (e *MutationErrorCode) UnmarshalJSON(b []byte) error {
 	s, err := strconv.Unquote(string(b))
 	if err != nil {
 		return err
@@ -917,7 +1454,7 @@ func (e *LedgerKind) UnmarshalJSON(b []byte) error {
 	return e.UnmarshalGQL(s)
 }
 
-func (e LedgerKind) MarshalJSON() ([]byte, error) {
+func (e MutationErrorCode) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

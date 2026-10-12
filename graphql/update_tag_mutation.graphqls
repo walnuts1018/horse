@@ -1,0 +1,15 @@
+extend type Mutation {
+  updateTag(input: UpdateTagInput!): UpdateTagResult!
+}
+
+union UpdateTagResult = UpdateTagSuccess | MutationError
+
+type UpdateTagSuccess {
+  result: Tag!
+}
+
+input UpdateTagInput {
+  tagId: ID! @nodeID(of: "Tag")
+  baseRevision: Int!
+  name: String!
+}

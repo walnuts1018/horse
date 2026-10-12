@@ -104,13 +104,6 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported document type", http.StatusUnsupportedMediaType)
 		return
 	}
-	var hints []ingestion.HistoryHint
-	if encoded := r.FormValue("hints"); encoded != "" {
-		if err := json.Unmarshal([]byte(encoded), &hints); err != nil || len(hints) > 30 {
-			http.Error(w, "invalid extraction hints", http.StatusBadRequest)
-			return
-		}
-	}
 	key, hash, err := s.cfg.Store.Put(r.Context(), householdID, mimeType, data)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "document storage failed", "error", err)
@@ -161,7 +154,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
-	request, err := json.Marshal(map[string]any{"hints": hints})
+	request, err := json.Marshal(map[string]any{"purpose": ingestion.JobPurposeInteractive})
 	if err != nil {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
@@ -428,11 +421,10 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Hints []ingestion.HistoryHint `json:"hints"`
-		Crop  *ingestion.Region       `json:"crop,omitempty"`
+		Crop *ingestion.Region `json:"crop,omitempty"`
 	}
-	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 64<<10), &input); err != nil || len(input.Hints) > 30 || input.Crop != nil && !ingestion.ValidRegion(*input.Crop) {
-		http.Error(w, "invalid extraction hints", http.StatusBadRequest)
+	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 64<<10), &input); err != nil || input.Crop != nil && !ingestion.ValidRegion(*input.Crop) {
+		http.Error(w, "invalid extraction retry input", http.StatusBadRequest)
 		return
 	}
 	tx, err := s.db.Begin(r.Context())
@@ -482,7 +474,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "extraction is already running", http.StatusConflict)
 		return
 	}
-	request, err := json.Marshal(map[string]any{"hints": input.Hints, "crop": input.Crop})
+	request, err := json.Marshal(map[string]any{"crop": input.Crop, "purpose": ingestion.JobPurposeInteractive})
 	if err != nil {
 		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
 		return

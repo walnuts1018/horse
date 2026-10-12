@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3455caa6f9427b00742fe55ef29aeded>>
+ * @generated SignedSource<<9df28a5b52de8bf57efd00d141551252>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type SetRecurringExpenseInput = {
   amountYen: any;
   baseRevision?: number | null | undefined;
@@ -27,18 +28,29 @@ export type SetRecurringExpenseMutation$variables = {
 };
 export type SetRecurringExpenseMutation$data = {
   readonly setRecurringExpense: {
-    readonly amountYen: any;
-    readonly archived: boolean;
-    readonly cadence: string;
-    readonly categoryId: string | null | undefined;
-    readonly endsOn: string | null | undefined;
-    readonly id: string;
-    readonly merchant: string;
-    readonly name: string;
-    readonly nextDueOn: string;
-    readonly paymentAccountId: string | null | undefined;
-    readonly revision: number;
-    readonly startsOn: string;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "SetRecurringExpenseSuccess";
+    readonly result: {
+      readonly amountYen: any;
+      readonly archived: boolean;
+      readonly cadence: string;
+      readonly categoryId: string | null | undefined;
+      readonly endsOn: string | null | undefined;
+      readonly id: string;
+      readonly merchant: string;
+      readonly name: string;
+      readonly nextDueOn: string;
+      readonly paymentAccountId: string | null | undefined;
+      readonly revision: number;
+      readonly startsOn: string;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type SetRecurringExpenseMutation = {
@@ -64,7 +76,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "RecurringExpense",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "setRecurringExpense",
     "plural": false,
@@ -73,85 +85,131 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "name",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "RecurringExpense",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "name",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "merchant",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "amountYen",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "categoryId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "paymentAccountId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "cadence",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "startsOn",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "nextDueOn",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "endsOn",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "archived",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "SetRecurringExpenseSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "merchant",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "amountYen",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "categoryId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "paymentAccountId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "cadence",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "startsOn",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "nextDueOn",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "endsOn",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "archived",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -175,16 +233,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "51a11d754b3a4522b4c4e0bb74cd6ae1",
+    "cacheID": "1abaab34724e511d8e818f46345c27f9",
     "id": null,
     "metadata": {},
     "name": "SetRecurringExpenseMutation",
     "operationKind": "mutation",
-    "text": "mutation SetRecurringExpenseMutation(\n  $input: SetRecurringExpenseInput!\n) {\n  setRecurringExpense(input: $input) {\n    id\n    name\n    merchant\n    amountYen\n    categoryId\n    paymentAccountId\n    cadence\n    startsOn\n    nextDueOn\n    endsOn\n    archived\n    revision\n  }\n}\n"
+    "text": "mutation SetRecurringExpenseMutation(\n  $input: SetRecurringExpenseInput!\n) {\n  setRecurringExpense(input: $input) {\n    __typename\n    ... on SetRecurringExpenseSuccess {\n      result {\n        id\n        name\n        merchant\n        amountYen\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3acfcdce2f50a0c5db70ee5b9c462088";
+(node as any).hash = "cf4e527fc3ec1d81e3e3827882b8a9a7";
 
 export default node;

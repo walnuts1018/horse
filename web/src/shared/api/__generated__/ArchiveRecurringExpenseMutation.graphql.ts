@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<2e99cf46dad7482f604fdb5fd2ebf2cb>>
+ * @generated SignedSource<<6daaddb08b26477724076e583c6cad63>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type ArchiveRecurringExpenseMutation$variables = {
   archived: boolean;
   baseRevision: number;
@@ -15,9 +16,20 @@ export type ArchiveRecurringExpenseMutation$variables = {
 };
 export type ArchiveRecurringExpenseMutation$data = {
   readonly archiveRecurringExpense: {
-    readonly archived: boolean;
-    readonly id: string;
-    readonly revision: number;
+    readonly __typename: "ArchiveRecurringExpenseSuccess";
+    readonly result: {
+      readonly archived: boolean;
+      readonly id: string;
+      readonly revision: number;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type ArchiveRecurringExpenseMutation = {
@@ -61,7 +73,7 @@ v3 = [
         "variableName": "expenseId"
       }
     ],
-    "concreteType": "RecurringExpense",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "archiveRecurringExpense",
     "plural": false,
@@ -70,22 +82,68 @@ v3 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "archived",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "RecurringExpense",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "archived",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "ArchiveRecurringExpenseSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -117,16 +175,16 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "4c0e7ac2798c5e86993ff2a2a0b63fb8",
+    "cacheID": "87b7ff44429c939f6a8d97526f3b5f32",
     "id": null,
     "metadata": {},
     "name": "ArchiveRecurringExpenseMutation",
     "operationKind": "mutation",
-    "text": "mutation ArchiveRecurringExpenseMutation(\n  $expenseId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveRecurringExpense(expenseId: $expenseId, baseRevision: $baseRevision, archived: $archived) {\n    id\n    archived\n    revision\n  }\n}\n"
+    "text": "mutation ArchiveRecurringExpenseMutation(\n  $expenseId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveRecurringExpense(expenseId: $expenseId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveRecurringExpenseSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "a4f25a66986b4077b992f92a24b97db9";
+(node as any).hash = "1889dcfdbaa4fdc29bb8912aa2919308";
 
 export default node;

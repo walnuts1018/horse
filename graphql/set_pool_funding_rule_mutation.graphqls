@@ -1,0 +1,23 @@
+extend type Mutation {
+  setPoolFundingRule(input: SetPoolFundingRuleInput!): SetPoolFundingRuleResult!
+}
+
+union SetPoolFundingRuleResult = SetPoolFundingRuleSuccess | MutationError
+
+type SetPoolFundingRuleSuccess {
+  result: Pool!
+}
+
+input SetPoolFundingRuleInput {
+  householdId: ID! @nodeID(of: "Household")
+  poolId: ID! @nodeID(of: "Pool")
+  ownerMemberId: ID @nodeID(of: "Member")
+  fundingShares: [PoolFundingShareInput!]!
+  settlementPolicy: SharedPoolSettlementPolicy
+  expectedVersion: Int!
+}
+
+input PoolFundingShareInput {
+  memberId: ID! @nodeID(of: "Member")
+  weight: Long!
+}

@@ -1,0 +1,20 @@
+extend type Mutation {
+  setBudget(input: SetBudgetInput!): SetBudgetResult!
+}
+
+union SetBudgetResult = SetBudgetSuccess | MutationError
+
+type SetBudgetSuccess {
+  result: Budget!
+}
+
+input SetBudgetInput {
+  householdId: ID! @nodeID(of: "Household")
+  budgetId: ID @nodeID(of: "Budget")
+  baseRevision: Int
+  categoryId: ID @nodeID(of: "Category")
+  name: String!
+  amountYen: Long!
+  startsOn: String!
+  endsOn: String
+}

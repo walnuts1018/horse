@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<19082df2ac19a51f8f8e10ed44b5ac0f>>
+ * @generated SignedSource<<e297c57e3c4ed64b1456d5f0892e3af5>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type CreateHouseholdInput = {
   memberNames: ReadonlyArray<string>;
   name: string;
@@ -17,7 +18,18 @@ export type CreateHouseholdMutation$variables = {
 };
 export type CreateHouseholdMutation$data = {
   readonly createHousehold: {
-    readonly id: string;
+    readonly __typename: "CreateHouseholdSuccess";
+    readonly result: {
+      readonly id: string;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type CreateHouseholdMutation = {
@@ -43,7 +55,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Household",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "createHousehold",
     "plural": false,
@@ -52,8 +64,54 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Household",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "CreateHouseholdSuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -77,16 +135,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "b9d9023cefa843969fd009ac7222dd78",
+    "cacheID": "3736dd5d55d7d9a9ed65ecbac4f33495",
     "id": null,
     "metadata": {},
     "name": "CreateHouseholdMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateHouseholdMutation(\n  $input: CreateHouseholdInput!\n) {\n  createHousehold(input: $input) {\n    id\n  }\n}\n"
+    "text": "mutation CreateHouseholdMutation(\n  $input: CreateHouseholdInput!\n) {\n  createHousehold(input: $input) {\n    __typename\n    ... on CreateHouseholdSuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3f483f030d77297cd6bdf2dc0644fb1a";
+(node as any).hash = "cc3ce2a3de369a76b541deb586df3cf0";
 
 export default node;

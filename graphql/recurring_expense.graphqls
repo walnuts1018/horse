@@ -1,0 +1,20 @@
+type RecurringExpense implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  name: String!
+  merchant: String!
+  amountYen: Long!
+  currency: String!
+  categoryId: ID @goField(forceResolver: true)
+  paymentAccountId: ID @goField(forceResolver: true)
+  cadence: String!
+  startsOn: String!
+  nextDueOn: String!
+  endsOn: String
+  archived: Boolean!
+  revision: Int!
+}
+
+extend type Query {
+  recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [RecurringExpense!]!
+}

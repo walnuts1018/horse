@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<96607aae7a1b78fcf8bc831d6bc2a5f6>>
+ * @generated SignedSource<<b15c2d895b9d3b01cfac859b273aedac>>
  * @lightSyntaxTransform
  */
 
@@ -86,184 +86,150 @@ v6 = {
 },
 v7 = [
   {
-    "alias": null,
-    "args": [
-      {
-        "kind": "Variable",
-        "name": "after",
-        "variableName": "after"
-      },
-      {
-        "kind": "Variable",
-        "name": "first",
-        "variableName": "first"
-      },
-      {
-        "kind": "Variable",
-        "name": "from",
-        "variableName": "from"
-      },
-      {
-        "kind": "Variable",
-        "name": "householdId",
-        "variableName": "householdId"
-      },
-      {
-        "kind": "Variable",
-        "name": "sourceKind",
-        "variableName": "sourceKind"
-      },
-      {
-        "kind": "Variable",
-        "name": "state",
-        "variableName": "state"
-      },
-      {
-        "kind": "Variable",
-        "name": "to",
-        "variableName": "to"
-      }
-    ],
-    "concreteType": "UnmatchedObservationConnection",
-    "kind": "LinkedField",
-    "name": "unmatchedObservations",
-    "plural": false,
-    "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "concreteType": "UnmatchedObservationEdge",
-        "kind": "LinkedField",
-        "name": "edges",
-        "plural": true,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "cursor",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "UnmatchedObservation",
-            "kind": "LinkedField",
-            "name": "node",
-            "plural": false,
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "documentId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "sourceReference",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "purchaseId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "sourceKind",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "state",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "merchant",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "occurredAt",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "amountYen",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "orderId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "transactionId",
-                "storageKey": null
-              }
-            ],
-            "storageKey": null
-          }
-        ],
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "concreteType": "PageInfo",
-        "kind": "LinkedField",
-        "name": "pageInfo",
-        "plural": false,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "endCursor",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "hasNextPage",
-            "storageKey": null
-          }
-        ],
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "totalCount",
-        "storageKey": null
-      }
-    ],
-    "storageKey": null
+    "kind": "Variable",
+    "name": "after",
+    "variableName": "after"
+  },
+  {
+    "kind": "Variable",
+    "name": "first",
+    "variableName": "first"
+  },
+  {
+    "kind": "Variable",
+    "name": "from",
+    "variableName": "from"
+  },
+  {
+    "kind": "Variable",
+    "name": "householdId",
+    "variableName": "householdId"
+  },
+  {
+    "kind": "Variable",
+    "name": "sourceKind",
+    "variableName": "sourceKind"
+  },
+  {
+    "kind": "Variable",
+    "name": "state",
+    "variableName": "state"
+  },
+  {
+    "kind": "Variable",
+    "name": "to",
+    "variableName": "to"
   }
-];
+],
+v8 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "cursor",
+  "storageKey": null
+},
+v9 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "documentId",
+  "storageKey": null
+},
+v10 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "sourceReference",
+  "storageKey": null
+},
+v11 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "purchaseId",
+  "storageKey": null
+},
+v12 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "sourceKind",
+  "storageKey": null
+},
+v13 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "state",
+  "storageKey": null
+},
+v14 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "merchant",
+  "storageKey": null
+},
+v15 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "occurredAt",
+  "storageKey": null
+},
+v16 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "amountYen",
+  "storageKey": null
+},
+v17 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "orderId",
+  "storageKey": null
+},
+v18 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "transactionId",
+  "storageKey": null
+},
+v19 = {
+  "alias": null,
+  "args": null,
+  "concreteType": "PageInfo",
+  "kind": "LinkedField",
+  "name": "pageInfo",
+  "plural": false,
+  "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "endCursor",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "hasNextPage",
+      "storageKey": null
+    }
+  ],
+  "storageKey": null
+},
+v20 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "totalCount",
+  "storageKey": null
+};
 return {
   "fragment": {
     "argumentDefinitions": [
@@ -278,7 +244,54 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "UnmatchedObservationsQuery",
-    "selections": (v7/*:: as any*/),
+    "selections": [
+      {
+        "alias": null,
+        "args": (v7/*:: as any*/),
+        "concreteType": "UnmatchedObservationConnection",
+        "kind": "LinkedField",
+        "name": "unmatchedObservations",
+        "plural": false,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "UnmatchedObservationEdge",
+            "kind": "LinkedField",
+            "name": "edges",
+            "plural": true,
+            "selections": [
+              (v8/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "UnmatchedObservation",
+                "kind": "LinkedField",
+                "name": "node",
+                "plural": false,
+                "selections": [
+                  (v9/*:: as any*/),
+                  (v10/*:: as any*/),
+                  (v11/*:: as any*/),
+                  (v12/*:: as any*/),
+                  (v13/*:: as any*/),
+                  (v14/*:: as any*/),
+                  (v15/*:: as any*/),
+                  (v16/*:: as any*/),
+                  (v17/*:: as any*/),
+                  (v18/*:: as any*/)
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          },
+          (v19/*:: as any*/),
+          (v20/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ],
     "type": "Query",
     "abstractKey": null
   },
@@ -295,15 +308,69 @@ return {
     ],
     "kind": "Operation",
     "name": "UnmatchedObservationsQuery",
-    "selections": (v7/*:: as any*/)
+    "selections": [
+      {
+        "alias": null,
+        "args": (v7/*:: as any*/),
+        "concreteType": "UnmatchedObservationConnection",
+        "kind": "LinkedField",
+        "name": "unmatchedObservations",
+        "plural": false,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "UnmatchedObservationEdge",
+            "kind": "LinkedField",
+            "name": "edges",
+            "plural": true,
+            "selections": [
+              (v8/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "UnmatchedObservation",
+                "kind": "LinkedField",
+                "name": "node",
+                "plural": false,
+                "selections": [
+                  (v9/*:: as any*/),
+                  (v10/*:: as any*/),
+                  (v11/*:: as any*/),
+                  (v12/*:: as any*/),
+                  (v13/*:: as any*/),
+                  (v14/*:: as any*/),
+                  (v15/*:: as any*/),
+                  (v16/*:: as any*/),
+                  (v17/*:: as any*/),
+                  (v18/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "id",
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          },
+          (v19/*:: as any*/),
+          (v20/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ]
   },
   "params": {
-    "cacheID": "5270ebc314526eaec14ffb4da1fe7a2f",
+    "cacheID": "3f0b55d52ea85226cad4157cb01397d3",
     "id": null,
     "metadata": {},
     "name": "UnmatchedObservationsQuery",
     "operationKind": "query",
-    "text": "query UnmatchedObservationsQuery(\n  $householdId: ID!\n  $from: String\n  $to: String\n  $sourceKind: SourceKind\n  $state: UnmatchedObservationState\n  $after: String\n  $first: Int\n) {\n  unmatchedObservations(householdId: $householdId, from: $from, to: $to, sourceKind: $sourceKind, state: $state, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        documentId\n        sourceReference\n        purchaseId\n        sourceKind\n        state\n        merchant\n        occurredAt\n        amountYen\n        orderId\n        transactionId\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query UnmatchedObservationsQuery(\n  $householdId: ID!\n  $from: String\n  $to: String\n  $sourceKind: SourceKind\n  $state: UnmatchedObservationState\n  $after: String\n  $first: Int\n) {\n  unmatchedObservations(householdId: $householdId, from: $from, to: $to, sourceKind: $sourceKind, state: $state, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        documentId\n        sourceReference\n        purchaseId\n        sourceKind\n        state\n        merchant\n        occurredAt\n        amountYen\n        orderId\n        transactionId\n        id\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();

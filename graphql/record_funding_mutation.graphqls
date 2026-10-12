@@ -1,0 +1,20 @@
+extend type Mutation {
+  recordFunding(input: RecordFundingInput!): RecordFundingResult!
+}
+
+union RecordFundingResult = RecordFundingSuccess | MutationError
+
+type RecordFundingSuccess {
+  result: LedgerEntry!
+}
+
+input RecordFundingInput {
+  householdId: ID! @nodeID(of: "Household")
+  memberId: ID! @nodeID(of: "Member")
+  poolId: ID! @nodeID(of: "Pool")
+  amountYen: Long!
+  occurredAt: String!
+  idempotencyKey: String!
+  sourceAccountId: ID @nodeID(of: "Account")
+  destinationAccountId: ID @nodeID(of: "Account")
+}

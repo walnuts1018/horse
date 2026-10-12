@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func TestGeminiRouterUsesFreeThenPaidFlexOnQuota(t *testing.T) {
+func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 	freeCalls := 0
 	freeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		freeCalls++
@@ -42,9 +42,8 @@ func TestGeminiRouterUsesFreeThenPaidFlexOnQuota(t *testing.T) {
 		Free:       Gemini{APIKey: "free-test-key", Project: "free-id", Endpoint: freeServer.URL + "/v1beta/", HTTPClient: freeServer.Client()},
 		Paid:       Gemini{APIKey: "paid-test-key", Project: "paid-id", Endpoint: paidServer.URL + "/v1beta/", HTTPClient: paidServer.Client()},
 		USDJPYRate: 158.535,
-		Background: true,
 	}
-	receipt, runs, err := router.Generate(context.Background(), "receipt", Document{MIMEType: "image/jpeg", Data: []byte("not a real image; test transport only")}, nil, GeminiRouteOptions{Reason: "initial_extraction"})
+	receipt, runs, err := router.Generate(context.Background(), "receipt", Document{MIMEType: "image/jpeg", Data: []byte("not a real image; test transport only")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive, Reason: "initial_extraction"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,8 +59,8 @@ func TestGeminiRouterUsesFreeThenPaidFlexOnQuota(t *testing.T) {
 	if runs[0].PromptVersion != PromptVersion || runs[0].PriceTableVersion != GeminiPriceTableVersion || runs[0].PriceEstimateStatus != "unavailable_failed_run" || runs[1].PromptVersion != PromptVersion || runs[1].PriceTableVersion != GeminiPriceTableVersion || runs[1].PriceEstimateStatus != "estimated_paid" || runs[1].USDJPYRate != 158.535 || runs[1].USDJPYRateSource != "unspecified" || runs[1].PricedAt.IsZero() {
 		t.Fatalf("run audit metadata is incomplete: %#v", runs)
 	}
-	if paidBody["service_tier"] != "flex" {
-		t.Fatalf("background paid route must use Flex: request=%#v", paidBody)
+	if paidBody["service_tier"] != "standard" {
+		t.Fatalf("interactive paid fallback must use Standard: request=%#v", paidBody)
 	}
 	generationConfig, ok := paidBody["generationConfig"].(map[string]any)
 	if !ok || generationConfig["serviceTier"] != nil || generationConfig["maxOutputTokens"] != float64(MaxOutputTokens) {
@@ -70,6 +69,22 @@ func TestGeminiRouterUsesFreeThenPaidFlexOnQuota(t *testing.T) {
 	thinkingConfig, ok := generationConfig["thinkingConfig"].(map[string]any)
 	if !ok || thinkingConfig["thinkingLevel"] != "low" {
 		t.Fatalf("initial image request must use low thinking: %#v", generationConfig)
+	}
+}
+
+func TestGeminiServiceTierFollowsJobPurpose(t *testing.T) {
+	for _, test := range []struct {
+		purpose string
+		want    string
+	}{
+		{purpose: JobPurposeInteractive, want: "standard"},
+		{purpose: JobPurposeBackground, want: "flex"},
+		{want: "standard"},
+	} {
+		got, err := defaultServiceTier(test.purpose)
+		if err != nil || got != test.want {
+			t.Fatalf("defaultServiceTier(%q) = %q, %v; want %q", test.purpose, got, err, test.want)
+		}
 	}
 }
 
@@ -91,11 +106,10 @@ func TestGeminiRouterSelectsEmailLiteAndOnlyRetriesTemporaryErrors(t *testing.T)
 	}))
 	defer paid.Close()
 	router := GeminiRouter{
-		Free:       Gemini{APIKey: "free", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()},
-		Paid:       Gemini{APIKey: "paid", Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
-		Background: false,
+		Free: Gemini{APIKey: "free", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()},
+		Paid: Gemini{APIKey: "paid", Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
 	}
-	_, runs, err := router.Generate(context.Background(), "email", Document{MIMEType: "message/rfc822", Data: []byte("example")}, nil, GeminiRouteOptions{})
+	_, runs, err := router.Generate(context.Background(), "email", Document{MIMEType: "message/rfc822", Data: []byte("example")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +143,7 @@ func TestGeminiSpendCapAndMalformedOutputAreTypedAndSanitized(t *testing.T) {
 				_, _ = io.WriteString(w, tt.body)
 			}))
 			defer server.Close()
-			router := GeminiRouter{Paid: Gemini{APIKey: "paid", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}, Background: true}
+			router := GeminiRouter{Paid: Gemini{APIKey: "paid", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}}
 			_, runs, err := router.Generate(context.Background(), "receipt", Document{MIMEType: "application/pdf", Data: []byte("test")}, nil, GeminiRouteOptions{PaidOnly: true})
 			if err == nil || len(runs) != 1 {
 				t.Fatalf("expected one failed run, got runs=%#v error=%v", runs, err)

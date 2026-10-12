@@ -1,0 +1,12 @@
+type TransferLedgerEntry implements LedgerRecord {
+  id: ID!
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  fromMember: Member!
+  toMember: Member!
+  transferKind: TransferKind!
+  loan: LoanBalance
+}

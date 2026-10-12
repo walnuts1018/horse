@@ -1,0 +1,14 @@
+type ProductConcept implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  name: String!
+  normalizedName: String!
+  categoryId: ID @goField(forceResolver: true)
+  archived: Boolean!
+  revision: Int!
+  variants: [ProductVariant!]!
+}
+
+extend type Query {
+  productCatalog(householdId: ID! @nodeID(of: "Household")): [ProductConcept!]!
+}

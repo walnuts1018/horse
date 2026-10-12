@@ -1,0 +1,13 @@
+type Account implements Node {
+  id: ID! @goField(forceResolver: true)
+  name: String!
+  kind: AccountKind!
+  poolId: ID @goField(forceResolver: true)
+}
+
+enum AccountKind {
+  BANK
+  CASH
+  CARD
+  OTHER
+}

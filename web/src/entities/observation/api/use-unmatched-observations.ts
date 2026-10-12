@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   readGraphql,
-  unmatchedObservationsQuery,
   type Connection,
   type SourceKind,
   type UnmatchedObservation,
   type UnmatchedObservationState,
-} from "./household";
+} from "../../../shared/api";
+import { unmatchedObservationsQuery } from "./operations";
 
 type Options = {
   enabled?: boolean;

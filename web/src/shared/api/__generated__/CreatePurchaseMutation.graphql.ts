@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8748de747cae1b090941c3f3ccb1390b>>
+ * @generated SignedSource<<851fef13b85f8b286888404ae6519492>>
  * @lightSyntaxTransform
  */
 
@@ -8,17 +8,20 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN" | "%future added value";
 export type PurchaseStatus = "CLOSED" | "DRAFT" | "POSTED" | "%future added value";
 export type CreatePurchaseInput = {
   householdId: string;
   idempotencyKey: string;
   items: ReadonlyArray<PurchaseItemInput>;
+  manualAmountOverrideReason?: string | null | undefined;
   merchant: string;
   occurredAt: string;
   origin?: PurchaseOrigin | null | undefined;
   paymentAccountId?: string | null | undefined;
   paymentAllocations?: ReadonlyArray<PurchasePaymentInput> | null | undefined;
+  receiptCandidateId?: string | null | undefined;
   sourceDocumentId?: string | null | undefined;
   sourceReference?: string | null | undefined;
   status?: PurchaseStatus | null | undefined;
@@ -32,14 +35,18 @@ export type PurchaseItemInput = {
   amountYen: any;
   categoryId?: string | null | undefined;
   name: string;
-  printedUnitPriceQuantityDenominator?: string | null | undefined;
-  printedUnitPriceQuantityNumerator?: string | null | undefined;
-  printedUnitPriceUnit?: string | null | undefined;
-  printedUnitPriceYen?: any | null | undefined;
+  printedUnitPrice?: PrintedUnitPriceInput | null | undefined;
   productVariantId?: string | null | undefined;
-  quantityDenominator?: string | null | undefined;
-  quantityNumerator?: string | null | undefined;
-  quantityUnit?: string | null | undefined;
+  quantity?: PurchaseQuantityInput | null | undefined;
+};
+export type PurchaseQuantityInput = {
+  denominator: string;
+  numerator: string;
+  unit: string;
+};
+export type PrintedUnitPriceInput = {
+  amountYen: any;
+  basis: PurchaseQuantityInput;
 };
 export type AllocationInput = {
   poolId: string;
@@ -50,42 +57,64 @@ export type CreatePurchaseMutation$variables = {
 };
 export type CreatePurchaseMutation$data = {
   readonly createPurchase: {
-    readonly householdId: string;
-    readonly id: string;
-    readonly items: ReadonlyArray<{
-      readonly allocations: ReadonlyArray<{
-        readonly amountYen: any | null | undefined;
-        readonly poolId: string;
-        readonly weight: any;
-      }>;
-      readonly amountYen: any;
-      readonly categoryId: string | null | undefined;
-      readonly effectiveUnitPriceDenominator: string | null | undefined;
-      readonly effectiveUnitPriceNumeratorYen: string | null | undefined;
+    readonly __typename: "CreatePurchaseSuccess";
+    readonly result: {
+      readonly householdId: string;
       readonly id: string;
-      readonly name: string;
-      readonly printedUnitPriceQuantityDenominator: string | null | undefined;
-      readonly printedUnitPriceQuantityNumerator: string | null | undefined;
-      readonly printedUnitPriceUnit: string | null | undefined;
-      readonly printedUnitPriceYen: any | null | undefined;
-      readonly productVariantId: string | null | undefined;
-      readonly quantityDenominator: string | null | undefined;
-      readonly quantityNumerator: string | null | undefined;
-      readonly quantityUnit: string | null | undefined;
-      readonly tags: ReadonlyArray<{
-        readonly archived: boolean;
-        readonly householdId: string;
+      readonly items: ReadonlyArray<{
+        readonly allocations: ReadonlyArray<{
+          readonly amountYen: any | null | undefined;
+          readonly poolId: string;
+          readonly poolName: string | null | undefined;
+          readonly weight: any;
+        }>;
+        readonly amountYen: any;
+        readonly categoryId: string | null | undefined;
+        readonly currency: string;
+        readonly effectiveUnitPrice: {
+          readonly denominator: string;
+          readonly numeratorYen: string;
+        } | null | undefined;
         readonly id: string;
         readonly name: string;
+        readonly printedUnitPrice: {
+          readonly amountYen: any;
+          readonly basis: {
+            readonly denominator: string;
+            readonly numerator: string;
+            readonly unit: string;
+          };
+        } | null | undefined;
+        readonly productVariantId: string | null | undefined;
+        readonly quantity: {
+          readonly denominator: string;
+          readonly numerator: string;
+          readonly unit: string;
+        } | null | undefined;
         readonly revision: number;
+        readonly tags: ReadonlyArray<{
+          readonly archived: boolean;
+          readonly householdId: string;
+          readonly id: string;
+          readonly name: string;
+          readonly revision: number;
+        }>;
       }>;
-    }>;
-    readonly merchant: string;
-    readonly occurredAt: string;
-    readonly paymentAccountId: string | null | undefined;
-    readonly revision: number;
-    readonly status: PurchaseStatus;
-    readonly totalYen: any;
+      readonly merchant: string;
+      readonly occurredAt: string;
+      readonly paymentAccountId: string | null | undefined;
+      readonly revision: number;
+      readonly status: PurchaseStatus;
+      readonly totalYen: any;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type CreatePurchaseMutation = {
@@ -136,7 +165,31 @@ v5 = {
   "name": "amountYen",
   "storageKey": null
 },
-v6 = [
+v6 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "denominator",
+  "storageKey": null
+},
+v7 = [
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "numerator",
+    "storageKey": null
+  },
+  (v6/*:: as any*/),
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "unit",
+    "storageKey": null
+  }
+],
+v8 = [
   {
     "alias": null,
     "args": [
@@ -146,187 +199,236 @@ v6 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Purchase",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "createPurchase",
     "plural": false,
     "selections": [
-      (v1/*:: as any*/),
-      (v2/*:: as any*/),
       {
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "occurredAt",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "merchant",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "paymentAccountId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "totalYen",
-        "storageKey": null
-      },
-      (v3/*:: as any*/),
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "status",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "concreteType": "PurchaseItem",
-        "kind": "LinkedField",
-        "name": "items",
-        "plural": true,
+        "kind": "InlineFragment",
         "selections": [
-          (v1/*:: as any*/),
-          (v4/*:: as any*/),
-          (v5/*:: as any*/),
           {
             "alias": null,
             "args": null,
-            "kind": "ScalarField",
-            "name": "quantityNumerator",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "quantityDenominator",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "quantityUnit",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "printedUnitPriceYen",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "printedUnitPriceQuantityNumerator",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "printedUnitPriceQuantityDenominator",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "printedUnitPriceUnit",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "effectiveUnitPriceNumeratorYen",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "effectiveUnitPriceDenominator",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "categoryId",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "productVariantId",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "Tag",
+            "concreteType": "Purchase",
             "kind": "LinkedField",
-            "name": "tags",
-            "plural": true,
+            "name": "result",
+            "plural": false,
             "selections": [
               (v1/*:: as any*/),
-              (v4/*:: as any*/),
+              (v2/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
-                "name": "archived",
+                "name": "occurredAt",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "merchant",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "paymentAccountId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "totalYen",
                 "storageKey": null
               },
               (v3/*:: as any*/),
-              (v2/*:: as any*/)
-            ],
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "Allocation",
-            "kind": "LinkedField",
-            "name": "allocations",
-            "plural": true,
-            "selections": [
               {
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
-                "name": "poolId",
+                "name": "status",
                 "storageKey": null
               },
               {
                 "alias": null,
                 "args": null,
-                "kind": "ScalarField",
-                "name": "weight",
+                "concreteType": "PurchaseItem",
+                "kind": "LinkedField",
+                "name": "items",
+                "plural": true,
+                "selections": [
+                  (v1/*:: as any*/),
+                  (v4/*:: as any*/),
+                  (v5/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "currency",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "PurchaseQuantity",
+                    "kind": "LinkedField",
+                    "name": "quantity",
+                    "plural": false,
+                    "selections": (v7/*:: as any*/),
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "PrintedUnitPrice",
+                    "kind": "LinkedField",
+                    "name": "printedUnitPrice",
+                    "plural": false,
+                    "selections": [
+                      (v5/*:: as any*/),
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "PurchaseQuantity",
+                        "kind": "LinkedField",
+                        "name": "basis",
+                        "plural": false,
+                        "selections": (v7/*:: as any*/),
+                        "storageKey": null
+                      }
+                    ],
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "EffectiveUnitPrice",
+                    "kind": "LinkedField",
+                    "name": "effectiveUnitPrice",
+                    "plural": false,
+                    "selections": [
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "numeratorYen",
+                        "storageKey": null
+                      },
+                      (v6/*:: as any*/)
+                    ],
+                    "storageKey": null
+                  },
+                  (v3/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "categoryId",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "productVariantId",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "Allocation",
+                    "kind": "LinkedField",
+                    "name": "allocations",
+                    "plural": true,
+                    "selections": [
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "poolId",
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "poolName",
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "weight",
+                        "storageKey": null
+                      },
+                      (v5/*:: as any*/)
+                    ],
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "Tag",
+                    "kind": "LinkedField",
+                    "name": "tags",
+                    "plural": true,
+                    "selections": [
+                      (v1/*:: as any*/),
+                      (v2/*:: as any*/),
+                      (v4/*:: as any*/),
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "archived",
+                        "storageKey": null
+                      },
+                      (v3/*:: as any*/)
+                    ],
+                    "storageKey": null
+                  }
+                ],
                 "storageKey": null
-              },
-              (v5/*:: as any*/)
+              }
             ],
             "storageKey": null
           }
         ],
-        "storageKey": null
+        "type": "CreatePurchaseSuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -338,7 +440,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "CreatePurchaseMutation",
-    "selections": (v6/*:: as any*/),
+    "selections": (v8/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
@@ -347,19 +449,19 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "CreatePurchaseMutation",
-    "selections": (v6/*:: as any*/)
+    "selections": (v8/*:: as any*/)
   },
   "params": {
-    "cacheID": "b20679ddd30654cf5e3f9b76583dfe15",
+    "cacheID": "4e6b435aec4b73b775e39485031afac3",
     "id": null,
     "metadata": {},
     "name": "CreatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    id\n    householdId\n    occurredAt\n    merchant\n    paymentAccountId\n    totalYen\n    revision\n    status\n    items {\n      id\n      name\n      amountYen\n      quantityNumerator\n      quantityDenominator\n      quantityUnit\n      printedUnitPriceYen\n      printedUnitPriceQuantityNumerator\n      printedUnitPriceQuantityDenominator\n      printedUnitPriceUnit\n      effectiveUnitPriceNumeratorYen\n      effectiveUnitPriceDenominator\n      categoryId\n      productVariantId\n      tags {\n        id\n        name\n        archived\n        revision\n        householdId\n      }\n      allocations {\n        poolId\n        weight\n        amountYen\n      }\n    }\n  }\n}\n"
+    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    __typename\n    ... on CreatePurchaseSuccess {\n      result {\n        id\n        householdId\n        occurredAt\n        merchant\n        paymentAccountId\n        totalYen\n        revision\n        status\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "1947f8867a66dcedfc1ebaf88dd53fd7";
+(node as any).hash = "7c14862be4bd29dc79fe975da5a229c2";
 
 export default node;

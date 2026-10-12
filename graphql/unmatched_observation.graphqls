@@ -1,0 +1,33 @@
+type UnmatchedObservation implements Node {
+  id: ID! @goField(forceResolver: true)
+  documentId: ID!
+  sourceReference: String!
+  purchaseId: ID @goField(forceResolver: true)
+  sourceKind: SourceKind!
+  state: UnmatchedObservationState!
+  merchant: String!
+  occurredAt: String
+  amountYen: Long!
+  orderId: String!
+  transactionId: String!
+}
+
+enum UnmatchedObservationState {
+  UNMATCHED
+  CONFIRMED
+}
+
+type UnmatchedObservationEdge {
+  cursor: String!
+  node: UnmatchedObservation!
+}
+
+type UnmatchedObservationConnection {
+  edges: [UnmatchedObservationEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  unmatchedObservations(householdId: ID! @nodeID(of: "Household"), from: String, to: String, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, before: String, first: Int, last: Int): UnmatchedObservationConnection!
+}

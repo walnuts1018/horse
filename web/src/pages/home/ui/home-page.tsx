@@ -1,14 +1,9 @@
 import { useEffect, useState } from "react";
 import { BookOpen, ChevronRight, Plus, ReceiptJapaneseYen, Upload, Wallet } from "lucide-react";
-import {
-  readGraphql,
-  settlementQuery,
-  type Household,
-  type Purchase,
-  type Settlement,
-} from "../../../shared/api";
-import { EmptyState, InlineError } from "../../../shared/ui";
-import { useHouseholdPurchases } from "../../../shared/api";
+import { readGraphql, type Household, type Purchase, type Settlement } from "../../../shared/api";
+import { settlementQuery } from "../../../entities/settlement";
+import { EmptyState } from "../../../shared/ui";
+import { useHouseholdPurchases } from "../../../entities/purchase";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -26,7 +21,7 @@ export function HomePage({
   household: Household;
   onNavigate: (page: "new" | "ledger" | "analysis" | "imports" | "settlement") => void;
 }) {
-  const { purchases, loading, error } = useHouseholdPurchases(household.id, 8);
+  const { purchases } = useHouseholdPurchases(household.id, 8);
   const currentMonth = monthKey();
   const monthPurchases = purchases.filter((item) => item.occurredAt.slice(0, 7) === currentMonth);
   const total = sum(monthPurchases.map((item) => item.totalYen));
@@ -133,15 +128,7 @@ export function HomePage({
         </button>
       </div>
       <section className="panel recent-panel">
-        {loading ? (
-          <div className="skeleton-list">
-            <i />
-            <i />
-            <i />
-          </div>
-        ) : error ? (
-          <InlineError message={error} />
-        ) : purchases.length === 0 ? (
+        {purchases.length === 0 ? (
           <EmptyState
             icon={<BookOpen />}
             title="買い物を記録"

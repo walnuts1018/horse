@@ -1,0 +1,23 @@
+type Settlement {
+  period: String!
+  status: String!
+  revision: Int!
+  lines: [SettlementLine!]!
+  createdAt: String
+}
+
+type SettlementLine {
+  memberId: ID! @goField(forceResolver: true)
+  memberName: String!
+  scheduledYen: Long!
+  paidYen: Long!
+  carryYen: Long!
+  priorBalanceYen: Long!
+  monthlyAdjustmentYen: Long!
+  advanceCreditYen: Long!
+  amountDueYen: Long!
+}
+
+extend type Query {
+  settlement(householdId: ID! @nodeID(of: "Household"), period: String!): Settlement!
+}

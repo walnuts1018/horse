@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ebb73994f305b4bfd45c6bd02138c749>>
+ * @generated SignedSource<<ba23574429ccabb2e7013cb2a7a4407a>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type ArchiveTagMutation$variables = {
   archived: boolean;
   baseRevision: number;
@@ -15,9 +16,20 @@ export type ArchiveTagMutation$variables = {
 };
 export type ArchiveTagMutation$data = {
   readonly archiveTag: {
-    readonly archived: boolean;
-    readonly id: string;
-    readonly revision: number;
+    readonly __typename: "ArchiveTagSuccess";
+    readonly result: {
+      readonly archived: boolean;
+      readonly id: string;
+      readonly revision: number;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type ArchiveTagMutation = {
@@ -61,7 +73,7 @@ v3 = [
         "variableName": "tagId"
       }
     ],
-    "concreteType": "Tag",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "archiveTag",
     "plural": false,
@@ -70,22 +82,68 @@ v3 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "archived",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Tag",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "archived",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "ArchiveTagSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -117,16 +175,16 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "b37b251734a32e537dd1a70bb37682bb",
+    "cacheID": "69f58eba9671a508d912c559b92c6eb3",
     "id": null,
     "metadata": {},
     "name": "ArchiveTagMutation",
     "operationKind": "mutation",
-    "text": "mutation ArchiveTagMutation(\n  $tagId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveTag(tagId: $tagId, baseRevision: $baseRevision, archived: $archived) {\n    id\n    archived\n    revision\n  }\n}\n"
+    "text": "mutation ArchiveTagMutation(\n  $tagId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveTag(tagId: $tagId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveTagSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "73fe0c2fea1d8d1abee3ad1be35271b8";
+(node as any).hash = "656dd6670f26fb1de5cf7730a78ba5ba";
 
 export default node;

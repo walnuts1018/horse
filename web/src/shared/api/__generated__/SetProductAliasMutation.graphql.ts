@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4c05b9745df1649221348e40c905506a>>
+ * @generated SignedSource<<e89efc88bb53d01cc54b3a233f3777f0>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type SetProductAliasInput = {
   alias: string;
   householdId: string;
@@ -19,10 +20,21 @@ export type SetProductAliasMutation$variables = {
 };
 export type SetProductAliasMutation$data = {
   readonly setProductAlias: {
-    readonly alias: string;
-    readonly id: string;
-    readonly merchantKey: string;
-    readonly revision: number;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "SetProductAliasSuccess";
+    readonly result: {
+      readonly alias: string;
+      readonly id: string;
+      readonly merchantKey: string;
+      readonly revision: number;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type SetProductAliasMutation = {
@@ -48,7 +60,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "ProductAlias",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "setProductAlias",
     "plural": false,
@@ -57,29 +69,75 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "alias",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "ProductAlias",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "alias",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "merchantKey",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "SetProductAliasSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "merchantKey",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -103,16 +161,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "7c1124c2812f5dea3fc0d9939e449ba5",
+    "cacheID": "280b58f6d60dce65986d6fe7a86d6045",
     "id": null,
     "metadata": {},
     "name": "SetProductAliasMutation",
     "operationKind": "mutation",
-    "text": "mutation SetProductAliasMutation(\n  $input: SetProductAliasInput!\n) {\n  setProductAlias(input: $input) {\n    id\n    alias\n    merchantKey\n    revision\n  }\n}\n"
+    "text": "mutation SetProductAliasMutation(\n  $input: SetProductAliasInput!\n) {\n  setProductAlias(input: $input) {\n    __typename\n    ... on SetProductAliasSuccess {\n      result {\n        id\n        alias\n        merchantKey\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "8a4bbee96569dbd68ed7248747ec7b59";
+(node as any).hash = "563d6654f330484b0b8a269b651afcc5";
 
 export default node;

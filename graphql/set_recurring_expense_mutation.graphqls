@@ -1,0 +1,24 @@
+extend type Mutation {
+  setRecurringExpense(input: SetRecurringExpenseInput!): SetRecurringExpenseResult!
+}
+
+union SetRecurringExpenseResult = SetRecurringExpenseSuccess | MutationError
+
+type SetRecurringExpenseSuccess {
+  result: RecurringExpense!
+}
+
+input SetRecurringExpenseInput {
+  householdId: ID! @nodeID(of: "Household")
+  expenseId: ID @nodeID(of: "RecurringExpense")
+  baseRevision: Int
+  name: String!
+  merchant: String!
+  amountYen: Long!
+  categoryId: ID @nodeID(of: "Category")
+  paymentAccountId: ID @nodeID(of: "Account")
+  cadence: String!
+  startsOn: String!
+  nextDueOn: String!
+  endsOn: String
+}

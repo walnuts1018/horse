@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<cb7eae377b404a20c977ed56ac6abecb>>
+ * @generated SignedSource<<75ce94c523dc7a9c7350a18c8a93d434>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type CreateProductConceptInput = {
   categoryId?: string | null | undefined;
   householdId: string;
@@ -18,8 +19,19 @@ export type CreateProductConceptMutation$variables = {
 };
 export type CreateProductConceptMutation$data = {
   readonly createProductConcept: {
-    readonly id: string;
-    readonly name: string;
+    readonly __typename: "CreateProductConceptSuccess";
+    readonly result: {
+      readonly id: string;
+      readonly name: string;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type CreateProductConceptMutation = {
@@ -45,7 +57,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "ProductConcept",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "createProductConcept",
     "plural": false,
@@ -54,15 +66,61 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "name",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "ProductConcept",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "name",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "CreateProductConceptSuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -86,16 +144,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "ba1024381281c71e609d4e554a0d1588",
+    "cacheID": "2f4d92d6e2962460fc88b2180bfede56",
     "id": null,
     "metadata": {},
     "name": "CreateProductConceptMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateProductConceptMutation(\n  $input: CreateProductConceptInput!\n) {\n  createProductConcept(input: $input) {\n    id\n    name\n  }\n}\n"
+    "text": "mutation CreateProductConceptMutation(\n  $input: CreateProductConceptInput!\n) {\n  createProductConcept(input: $input) {\n    __typename\n    ... on CreateProductConceptSuccess {\n      result {\n        id\n        name\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "36c813e3932a4a55055ce5f31a514d3b";
+(node as any).hash = "74921d6da79d4ebed209502d22c2a4c2";
 
 export default node;

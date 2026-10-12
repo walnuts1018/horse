@@ -25,6 +25,9 @@ type accountingDB interface {
 	bob.Executor
 }
 
+var ErrUnattributedPurchasePayment = errors.New("posted purchase payment has no funding pool")
+var ErrMissingPurchaseFundingSnapshot = errors.New("posted purchase has no funding snapshot")
+
 var accountingLocation = time.FixedZone("JST", 9*60*60)
 
 func accountingPeriod(value time.Time) string { return value.In(accountingLocation).Format("2006-01") }
@@ -251,7 +254,7 @@ func poolFundingRules(ctx context.Context, db accountingDB, householdID string) 
 	return rules, nil
 }
 
-func calculatePeriodAccounting(ctx context.Context, db accountingDB, householdID, period string, rules map[string]domain.PoolFundingRule) ([]domain.SettlementAmount, error) {
+func calculatePeriodAccounting(ctx context.Context, db accountingDB, householdID, period string) ([]domain.SettlementAmount, error) {
 	start, err := parseAccountingPeriod(period)
 	if err != nil {
 		return nil, fmt.Errorf("%w: period must use YYYY-MM", ErrBadInput)
@@ -282,7 +285,7 @@ func calculatePeriodAccounting(ctx context.Context, db accountingDB, householdID
 	if err := addFundingAmounts(ctx, db, householdUUID, period, start, end, inputs, memberIndex); err != nil {
 		return nil, err
 	}
-	expenses, err := loadFundingExpenses(ctx, db, householdUUID, start, end)
+	expenses, rules, err := loadFundingExpenses(ctx, db, householdUUID, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -420,7 +423,7 @@ func addFundingAmounts(ctx context.Context, db accountingDB, householdUUID gofrs
 	return nil
 }
 
-func loadFundingExpenses(ctx context.Context, db accountingDB, householdUUID gofrsuuid.UUID, start, end time.Time) ([]domain.FundingExpense, error) {
+func loadFundingExpenses(ctx context.Context, db accountingDB, householdUUID gofrsuuid.UUID, start, end time.Time) ([]domain.FundingExpense, map[string]domain.PoolFundingRule, error) {
 	purchases, err := models.Purchases.Query(sm.Where(psql.And(
 		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.Purchases.Columns.Status.In(psql.Arg(string(model.PurchaseStatusPosted)), psql.Arg(string(model.PurchaseStatusClosed))),
@@ -428,12 +431,22 @@ func loadFundingExpenses(ctx context.Context, db accountingDB, householdUUID gof
 		models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)),
 	))).All(ctx, db)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	slices.SortFunc(purchases, func(left, right *models.Purchase) int {
 		return cmp.Compare(left.ID.String(), right.ID.String())
 	})
 	expenses := make([]domain.FundingExpense, 0, len(purchases))
+	rules := make(map[string]domain.PoolFundingRule)
+	type fundingRuleVersion struct {
+		poolID  gofrsuuid.UUID
+		version int32
+	}
+	type historicalFundingRule struct {
+		row    *models.PoolFundingRule
+		shares map[gofrsuuid.UUID]int64
+	}
+	historicalRules := make(map[fundingRuleVersion]historicalFundingRule)
 	for _, purchase := range purchases {
 		items, err := models.PurchaseItems.Query(
 			sm.Where(psql.And(
@@ -443,82 +456,171 @@ func loadFundingExpenses(ctx context.Context, db accountingDB, householdUUID gof
 			sm.OrderBy(models.PurchaseItems.Columns.ID),
 		).All(ctx, db)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if len(items) == 0 {
 			continue
 		}
 		payments, err := models.PurchasePayments.Query(
-			sm.Where(models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),
+			sm.Where(psql.And(
+				models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+				models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
+			)),
 			sm.OrderBy(models.PurchasePayments.Columns.LineNo),
 		).All(ctx, db)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		storedPayments := make([]domain.FundingPayment, 0, len(payments))
+		paymentSnapshots, err := models.PurchasePaymentFundingSnapshots.Query(sm.Where(psql.And(
+			models.PurchasePaymentFundingSnapshots.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+			models.PurchasePaymentFundingSnapshots.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
+		))).All(ctx, db)
+		if err != nil {
+			return nil, nil, err
+		}
 		if len(payments) == 0 {
-			if !purchase.PaymentAccountID.Valid {
+			return nil, nil, fmt.Errorf("%w: purchase %s payment", ErrMissingPurchaseFundingSnapshot, purchase.ID)
+		}
+		slices.SortFunc(paymentSnapshots, func(left, right *models.PurchasePaymentFundingSnapshot) int {
+			if comparison := cmp.Compare(left.PaymentLineNo, right.PaymentLineNo); comparison != 0 {
+				return comparison
+			}
+			return cmp.Compare(left.MemberID.String(), right.MemberID.String())
+		})
+		snapshotsByLine := make(map[int32]models.PurchasePaymentFundingSnapshotSlice)
+		for _, snapshot := range paymentSnapshots {
+			snapshotsByLine[snapshot.PaymentLineNo] = append(snapshotsByLine[snapshot.PaymentLineNo], snapshot)
+		}
+		for _, payment := range payments {
+			if len(snapshotsByLine[payment.LineNo]) != 0 {
 				continue
 			}
 			account, err := models.Accounts.Query(sm.Where(psql.And(
 				models.Accounts.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
-				models.Accounts.Columns.ID.EQ(psql.Arg(purchase.PaymentAccountID.V)),
+				models.Accounts.Columns.ID.EQ(psql.Arg(payment.AccountID)),
 			))).One(ctx, db)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if !account.PoolID.Valid {
-				continue
+				return nil, nil, fmt.Errorf("%w: purchase %s payment account %s", ErrUnattributedPurchasePayment, purchase.ID, account.ID)
 			}
-			var amount int64
-			for _, item := range items {
-				var ok bool
-				amount, ok = checkedAdd(amount, item.AmountYen)
-				if !ok {
-					return nil, domain.ErrInvalidFundingExpense
+		}
+		storedPayments := make([]domain.FundingPayment, 0, len(payments))
+		for _, payment := range payments {
+			paymentRuleSnapshots := snapshotsByLine[payment.LineNo]
+			if len(paymentRuleSnapshots) == 0 {
+				return nil, nil, fmt.Errorf("%w: purchase %s payment line %d", ErrMissingPurchaseFundingSnapshot, purchase.ID, payment.LineNo)
+			}
+			alias := fmt.Sprintf("%s:payment:%d", purchase.ID, payment.LineNo)
+			var rule domain.PoolFundingRule
+			first := paymentRuleSnapshots[0]
+			rule.PoolID = alias
+			rule.Version = int(first.FundingRuleVersion)
+			for _, snapshot := range paymentRuleSnapshots {
+				if snapshot.PoolID != first.PoolID || snapshot.FundingRuleVersion != first.FundingRuleVersion || snapshot.SettlementPolicy != first.SettlementPolicy || snapshot.SnapshotSource != first.SnapshotSource {
+					return nil, nil, fmt.Errorf("%w: purchase %s payment line %d is inconsistent", ErrMissingPurchaseFundingSnapshot, purchase.ID, payment.LineNo)
 				}
+				rule.FundingShares = append(rule.FundingShares, domain.MemberWeight{MemberID: snapshot.MemberID.String(), Weight: snapshot.FundingWeight})
 			}
-			storedPayments = append(storedPayments, domain.FundingPayment{ID: account.ID.String(), PoolID: account.PoolID.V.String(), Amount: amount})
-		} else {
-			if err := payments.LoadAccount(ctx, db); err != nil {
-				return nil, err
-			}
-			hasOutOfPoolAccount := false
-			for _, payment := range payments {
-				account := payment.R.Account
-				if account == nil || !account.PoolID.Valid {
-					hasOutOfPoolAccount = true
-					break
+			if first.SettlementPolicy.Valid {
+				rule.Kind = domain.FundingPoolShared
+				rule.SettlementPolicy = first.SettlementPolicy.V
+			} else {
+				if len(paymentRuleSnapshots) != 1 || first.FundingWeight != 1 {
+					return nil, nil, fmt.Errorf("%w: purchase %s personal payment line %d is inconsistent", ErrMissingPurchaseFundingSnapshot, purchase.ID, payment.LineNo)
 				}
-				storedPayments = append(storedPayments, domain.FundingPayment{ID: account.ID.String(), PoolID: account.PoolID.V.String(), Amount: payment.AmountYen})
+				rule.Kind = domain.FundingPoolPersonal
+				rule.OwnerMemberID = first.MemberID.String()
+				rule.FundingShares = nil
 			}
-			if hasOutOfPoolAccount {
-				continue
-			}
+			rules[alias] = rule
+			storedPayments = append(storedPayments, domain.FundingPayment{ID: alias, PoolID: alias, Amount: payment.AmountYen})
+			delete(snapshotsByLine, payment.LineNo)
+		}
+		if len(snapshotsByLine) != 0 {
+			return nil, nil, fmt.Errorf("%w: purchase %s has orphaned payment snapshots", ErrMissingPurchaseFundingSnapshot, purchase.ID)
 		}
 		fundingItems := make([]domain.FundingExpenseItem, 0, len(items))
 		for _, item := range items {
-			allocations, err := models.ItemAllocations.Query(sm.Where(psql.And(
-				models.ItemAllocations.Columns.HouseholdID.EQ(psql.Arg(item.HouseholdID)),
-				models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(item.PurchaseID)),
-				models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(item.ID)),
-			)), sm.OrderBy(models.ItemAllocations.Columns.PoolID)).All(ctx, db)
+			burdens, err := models.PurchaseMemberBurdens.Query(sm.Where(psql.And(
+				models.PurchaseMemberBurdens.Columns.HouseholdID.EQ(psql.Arg(item.HouseholdID)),
+				models.PurchaseMemberBurdens.Columns.PurchaseID.EQ(psql.Arg(item.PurchaseID)),
+				models.PurchaseMemberBurdens.Columns.ItemID.EQ(psql.Arg(item.ID)),
+			)), sm.OrderBy(models.PurchaseMemberBurdens.Columns.PoolID), sm.OrderBy(models.PurchaseMemberBurdens.Columns.MemberID)).All(ctx, db)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			allocationItems := make([]domain.PoolAmount, 0, len(allocations))
-			for _, allocation := range allocations {
-				allocationItems = append(allocationItems, domain.PoolAmount{PoolID: allocation.PoolID.String(), Amount: allocation.AmountYen})
+			if len(burdens) == 0 {
+				return nil, nil, fmt.Errorf("%w: purchase %s item %s", ErrMissingPurchaseFundingSnapshot, purchase.ID, item.ID)
+			}
+			allocationItems := make([]domain.PoolAmount, 0, len(burdens))
+			var burdenTotal int64
+			for _, burden := range burdens {
+				versionKey := fundingRuleVersion{poolID: burden.PoolID, version: burden.FundingRuleVersion}
+				historicalRule, exists := historicalRules[versionKey]
+				if !exists {
+					fundingRule, err := models.PoolFundingRules.Query(sm.Where(psql.And(
+						models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(burden.HouseholdID)),
+						models.PoolFundingRules.Columns.PoolID.EQ(psql.Arg(burden.PoolID)),
+						models.PoolFundingRules.Columns.Version.EQ(psql.Arg(burden.FundingRuleVersion)),
+					))).One(ctx, db)
+					if err != nil {
+						return nil, nil, err
+					}
+					historicalRule.row = fundingRule
+					if !fundingRule.OwnerMemberID.Valid {
+						shares, err := models.PoolFundingShares.Query(sm.Where(psql.And(
+							models.PoolFundingShares.Columns.HouseholdID.EQ(psql.Arg(burden.HouseholdID)),
+							models.PoolFundingShares.Columns.PoolID.EQ(psql.Arg(burden.PoolID)),
+							models.PoolFundingShares.Columns.Version.EQ(psql.Arg(burden.FundingRuleVersion)),
+						))).All(ctx, db)
+						if err != nil {
+							return nil, nil, err
+						}
+						historicalRule.shares = make(map[gofrsuuid.UUID]int64, len(shares))
+						for _, share := range shares {
+							historicalRule.shares[share.MemberID] = share.Weight
+						}
+					}
+					historicalRules[versionKey] = historicalRule
+				}
+				alias := fmt.Sprintf("%s:allocation:%s:%s:%s", purchase.ID, item.ID, burden.PoolID, burden.MemberID)
+				rule := domain.PoolFundingRule{PoolID: alias}
+				if historicalRule.row.OwnerMemberID.Valid {
+					if historicalRule.row.OwnerMemberID.V != burden.MemberID || burden.FundingWeight != 1 {
+						return nil, nil, fmt.Errorf("%w: purchase %s item %s has an invalid personal burden", ErrMissingPurchaseFundingSnapshot, purchase.ID, item.ID)
+					}
+					rule.Kind = domain.FundingPoolPersonal
+					rule.OwnerMemberID = burden.MemberID.String()
+				} else {
+					weight, ok := historicalRule.shares[burden.MemberID]
+					if !ok || weight != burden.FundingWeight {
+						return nil, nil, fmt.Errorf("%w: purchase %s item %s has an invalid shared burden", ErrMissingPurchaseFundingSnapshot, purchase.ID, item.ID)
+					}
+					rule.Kind = domain.FundingPoolShared
+					rule.FundingShares = []domain.MemberWeight{{MemberID: burden.MemberID.String(), Weight: 1}}
+				}
+				rules[alias] = rule
+				allocationItems = append(allocationItems, domain.PoolAmount{PoolID: alias, Amount: burden.AmountYen})
+				var ok bool
+				burdenTotal, ok = checkedAdd(burdenTotal, burden.AmountYen)
+				if !ok {
+					return nil, nil, domain.ErrInvalidFundingExpense
+				}
+			}
+			if burdenTotal != item.AmountYen {
+				return nil, nil, fmt.Errorf("%w: purchase %s item %s total does not match", ErrMissingPurchaseFundingSnapshot, purchase.ID, item.ID)
 			}
 			fundingItems = append(fundingItems, domain.FundingExpenseItem{Amount: item.AmountYen, Allocations: allocationItems})
 		}
 		split, err := domain.SplitFundingExpense(fundingItems, storedPayments)
 		if err != nil {
-			return nil, fmt.Errorf("purchase %s: %w", purchase.ID, err)
+			return nil, nil, fmt.Errorf("purchase %s: %w", purchase.ID, err)
 		}
 		expenses = append(expenses, split...)
 	}
-	return expenses, nil
+	return expenses, rules, nil
 }
 
 func checkedAdd(left, right int64) (int64, bool) {
@@ -529,14 +631,10 @@ func checkedAdd(left, right int64) (int64, bool) {
 }
 
 func calculateSettlementPreview(ctx context.Context, db accountingDB, householdID, period string) ([]domain.SettlementAmount, error) {
-	rules, err := poolFundingRules(ctx, db, householdID)
-	if err != nil {
-		return nil, err
-	}
-	return calculateSettlementPreviewWithRules(ctx, db, householdID, period, rules)
+	return calculateSettlementPreviewWithRules(ctx, db, householdID, period)
 }
 
-func calculateSettlementPreviewWithRules(ctx context.Context, db accountingDB, householdID, period string, rules map[string]domain.PoolFundingRule) ([]domain.SettlementAmount, error) {
+func calculateSettlementPreviewWithRules(ctx context.Context, db accountingDB, householdID, period string) ([]domain.SettlementAmount, error) {
 	target, err := parseAccountingPeriod(period)
 	if err != nil {
 		return nil, fmt.Errorf("%w: period must use YYYY-MM", ErrBadInput)
@@ -617,7 +715,7 @@ func calculateSettlementPreviewWithRules(ctx context.Context, db accountingDB, h
 		firstOpen = target
 	}
 	for month := firstOpen; month.Before(target); month = month.AddDate(0, 1, 0) {
-		monthInputs, err := calculatePeriodAccounting(ctx, db, householdID, month.Format("2006-01"), rules)
+		monthInputs, err := calculatePeriodAccounting(ctx, db, householdID, month.Format("2006-01"))
 		if err != nil {
 			return nil, err
 		}
@@ -629,7 +727,7 @@ func calculateSettlementPreviewWithRules(ctx context.Context, db accountingDB, h
 			carry[line.MemberID] = value
 		}
 	}
-	current, err := calculatePeriodAccounting(ctx, db, householdID, period, rules)
+	current, err := calculatePeriodAccounting(ctx, db, householdID, period)
 	if err != nil {
 		return nil, err
 	}

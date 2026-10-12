@@ -1,0 +1,24 @@
+extend type Mutation {
+  recordTransfer(input: RecordTransferInput!): RecordTransferResult!
+}
+
+union RecordTransferResult = RecordTransferSuccess | MutationError
+
+type RecordTransferSuccess {
+  result: LedgerEntry!
+}
+
+input RecordTransferInput {
+  householdId: ID! @nodeID(of: "Household")
+  fromMemberId: ID! @nodeID(of: "Member")
+  toMemberId: ID! @nodeID(of: "Member")
+  kind: TransferKind!
+  loanId: ID
+  paymentAccountId: ID @nodeID(of: "Account")
+  destinationAccountId: ID @nodeID(of: "Account")
+  amountYen: Long!
+  occurredAt: String!
+  description: String!
+  idempotencyKey: String!
+}
+

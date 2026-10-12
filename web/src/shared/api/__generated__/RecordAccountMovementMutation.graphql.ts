@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f2cc89cb3fcd385313606757503c7ae7>>
+ * @generated SignedSource<<ddd72bd512ee0400349725a8ff7d3f3e>>
  * @lightSyntaxTransform
  */
 
@@ -9,6 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type AccountMovementKind = "CARD_BILL_PAYMENT" | "TRANSFER" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type RecordAccountMovementInput = {
   amountYen: any;
   description: string;
@@ -24,13 +25,24 @@ export type RecordAccountMovementMutation$variables = {
 };
 export type RecordAccountMovementMutation$data = {
   readonly recordAccountMovement: {
-    readonly amountYen: any;
-    readonly description: string;
-    readonly fromAccountId: string;
-    readonly id: string;
-    readonly kind: AccountMovementKind;
-    readonly occurredAt: string;
-    readonly toAccountId: string;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "RecordAccountMovementSuccess";
+    readonly result: {
+      readonly amountYen: any;
+      readonly description: string;
+      readonly fromAccountId: string;
+      readonly id: string;
+      readonly kind: AccountMovementKind;
+      readonly occurredAt: string;
+      readonly toAccountId: string;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type RecordAccountMovementMutation = {
@@ -56,7 +68,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "AccountMovement",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "recordAccountMovement",
     "plural": false,
@@ -65,50 +77,96 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "kind",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "AccountMovement",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "kind",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "occurredAt",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "fromAccountId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "toAccountId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "amountYen",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "description",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "RecordAccountMovementSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "occurredAt",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "fromAccountId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "toAccountId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "amountYen",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "description",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -132,16 +190,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "941cfd7da3f1cbac61a03deece7c0d8a",
+    "cacheID": "08e304fccbd3fa5f6d4bfdac9973da75",
     "id": null,
     "metadata": {},
     "name": "RecordAccountMovementMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordAccountMovementMutation(\n  $input: RecordAccountMovementInput!\n) {\n  recordAccountMovement(input: $input) {\n    id\n    kind\n    occurredAt\n    fromAccountId\n    toAccountId\n    amountYen\n    description\n  }\n}\n"
+    "text": "mutation RecordAccountMovementMutation(\n  $input: RecordAccountMovementInput!\n) {\n  recordAccountMovement(input: $input) {\n    __typename\n    ... on RecordAccountMovementSuccess {\n      result {\n        id\n        kind\n        occurredAt\n        fromAccountId\n        toAccountId\n        amountYen\n        description\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "93801d1d8c311b4e4c955e1858016b93";
+(node as any).hash = "f2b378a287d2d2f0df1f9ba8b5f686b8";
 
 export default node;

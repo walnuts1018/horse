@@ -52,11 +52,11 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 		))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
 
-	resolver := (&Resolver{DB: db}).Mutation()
+	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
 	ownerCtx := auth.WithPrincipal(ctx, auth.Principal{MemberID: ownerID, Subject: "invitation-test:" + ownerID, DisplayName: "Owner"})
 	memberCtx := auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: "invitation-test:" + memberID, DisplayName: "Member"})
 	otherCtx := auth.WithPrincipal(ctx, auth.Principal{MemberID: otherID, Subject: "invitation-test:" + otherID, DisplayName: "Other"})
-	household, err := resolver.CreateHousehold(ownerCtx, model.CreateHouseholdInput{Name: "invitation-test", MemberNames: []string{"Future member"}})
+	household, err := resolver.createHousehold(ownerCtx, model.CreateHouseholdInput{Name: "invitation-test", MemberNames: []string{"Future member"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 		householdUUID, _ := gofrsuuid.FromString(household.ID)
 		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
-	otherHousehold, err := resolver.CreateHousehold(otherCtx, model.CreateHouseholdInput{Name: "other-invitation-test"})
+	otherHousehold, err := resolver.createHousehold(otherCtx, model.CreateHouseholdInput{Name: "other-invitation-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 
 	createInvitation := func(expiresAt time.Time) *model.CreatedHouseholdInvitation {
 		t.Helper()
-		invitation, err := resolver.CreateHouseholdInvitation(ownerCtx, model.CreateHouseholdInvitationInput{HouseholdID: household.ID, ExpiresAt: expiresAt.Format(time.RFC3339Nano)})
+		invitation, err := resolver.createHouseholdInvitation(ownerCtx, model.CreateHouseholdInvitationInput{HouseholdID: household.ID, ExpiresAt: expiresAt.Format(time.RFC3339Nano)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -121,13 +121,13 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if _, err := ownerQuery.HouseholdInvitations(ownerCtx, otherHousehold.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("owner must not list another household's invitations: error=%v", err)
 	}
-	if _, err := resolver.CreateHouseholdInvitation(memberCtx, model.CreateHouseholdInvitationInput{HouseholdID: household.ID, ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano)}); !errors.Is(err, ErrNotFound) {
+	if _, err := resolver.createHouseholdInvitation(memberCtx, model.CreateHouseholdInvitationInput{HouseholdID: household.ID, ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano)}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("non-owner must not create invitations: error=%v", err)
 	}
-	if _, err := resolver.RevokeHouseholdInvitation(ownerCtx, otherHousehold.ID, active.Invitation.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := resolver.revokeHouseholdInvitation(ownerCtx, otherHousehold.ID, active.Invitation.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("invitation from another household must not be revoked: error=%v", err)
 	}
-	if _, err := resolver.AcceptHouseholdInvitation(memberCtx, active.Token); err != nil {
+	if _, err := resolver.acceptHouseholdInvitation(memberCtx, active.Token); err != nil {
 		t.Fatalf("valid invitation was not accepted: %v", err)
 	}
 	householdUUID, _ := gofrsuuid.FromString(household.ID)
@@ -146,10 +146,10 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if !placeholderExists {
 		t.Fatalf("joining user must not replace historical placeholder membership: exists=%v error=%v", placeholderExists, err)
 	}
-	if _, err := resolver.AcceptHouseholdInvitation(memberCtx, active.Token); !errors.Is(err, ErrConflict) {
+	if _, err := resolver.acceptHouseholdInvitation(memberCtx, active.Token); !errors.Is(err, ErrConflict) {
 		t.Fatalf("used invitation must be rejected: error=%v", err)
 	}
-	if _, err := resolver.AcceptHouseholdInvitation(otherCtx, active.Token); !errors.Is(err, ErrConflict) {
+	if _, err := resolver.acceptHouseholdInvitation(otherCtx, active.Token); !errors.Is(err, ErrConflict) {
 		t.Fatalf("accepted invitation must not be reused by another user: error=%v", err)
 	}
 
@@ -159,18 +159,18 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if _, err := models.HouseholdInvitations.Update(um.Where(models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(expiredID))), um.SetCol("expires_at").To(psql.Arg(expiredAt))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.AcceptHouseholdInvitation(otherCtx, expired.Token); !errors.Is(err, ErrConflict) {
+	if _, err := resolver.acceptHouseholdInvitation(otherCtx, expired.Token); !errors.Is(err, ErrConflict) {
 		t.Fatalf("expired invitation must be rejected: error=%v", err)
 	}
 
 	revoked := createInvitation(time.Now().Add(24 * time.Hour))
-	if _, err := resolver.RevokeHouseholdInvitation(ownerCtx, household.ID, revoked.Invitation.ID); err != nil {
+	if _, err := resolver.revokeHouseholdInvitation(ownerCtx, household.ID, revoked.Invitation.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.AcceptHouseholdInvitation(otherCtx, revoked.Token); !errors.Is(err, ErrConflict) {
+	if _, err := resolver.acceptHouseholdInvitation(otherCtx, revoked.Token); !errors.Is(err, ErrConflict) {
 		t.Fatalf("revoked invitation must be rejected: error=%v", err)
 	}
-	if _, err := resolver.RevokeHouseholdInvitation(memberCtx, household.ID, expired.Invitation.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := resolver.revokeHouseholdInvitation(memberCtx, household.ID, expired.Invitation.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("non-owner must not revoke invitations: error=%v", err)
 	}
 
@@ -179,7 +179,7 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &otherUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.AcceptHouseholdInvitation(otherCtx, duplicate.Token); !errors.Is(err, ErrConflict) {
+	if _, err := resolver.acceptHouseholdInvitation(otherCtx, duplicate.Token); !errors.Is(err, ErrConflict) {
 		t.Fatalf("existing member must not be inserted twice: error=%v", err)
 	}
 	otherRows, err := models.HouseholdMembers.Query(sm.Where(psql.And(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(otherUUID))))).All(ctx, bobpgx.NewPool(db))

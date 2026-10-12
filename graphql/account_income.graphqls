@@ -1,0 +1,14 @@
+type AccountIncome implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  accountId: ID! @goField(forceResolver: true)
+  amountYen: Long!
+  currency: String!
+  occurredAt: String!
+  description: String!
+  createdAt: String!
+}
+
+extend type Query {
+  accountIncomes(householdId: ID! @nodeID(of: "Household"), first: Int = 50): [AccountIncome!]!
+}

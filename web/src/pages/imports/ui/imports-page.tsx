@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronRight, FileImage, Link2, ShieldCheck, Upload, X } from "lucide-react";
-import { createAndPostPurchase, type Household } from "../../../shared/api";
+import { type Household } from "../../../shared/api";
+import { useCreateAndPostPurchase } from "../../../entities/purchase";
 import { InlineError } from "../../../shared/ui";
-import { useHouseholdPurchases } from "../../../shared/api";
+import { useHouseholdPurchases } from "../../../entities/purchase";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -174,6 +175,7 @@ export function ImportsPage({
   household: Household;
   onAdded: (keepOpen?: boolean) => void;
 }) {
+  const createAndPostPurchase = useCreateAndPostPurchase();
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [csvKinds, setCsvKinds] = useState<Record<string, "card" | "bank">>({});
@@ -184,6 +186,10 @@ export function ImportsPage({
   const [selected, setSelected] = useState<string | null>(null);
   const [confirmedStatements, setConfirmedStatements] = useState<Set<string>>(() => new Set());
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
+  const [manualAmountOverrides, setManualAmountOverrides] = useState<Record<string, boolean>>({});
+  const [manualAmountOverrideReasons, setManualAmountOverrideReasons] = useState<
+    Record<string, string>
+  >({});
   const [paymentAccountId, setPaymentAccountId] = useState(household.accounts[0]?.id ?? "");
   const [cropRegion, setCropRegion] = useState<Region | null>(null);
   const [cropPending, setCropPending] = useState(false);
@@ -431,7 +437,7 @@ export function ImportsPage({
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ hints: [] }),
+        body: JSON.stringify({}),
       });
       if (!response.ok) throw new Error(`再抽出を開始できませんでした (${response.status})`);
       await refreshDocuments(true);
@@ -450,7 +456,7 @@ export function ImportsPage({
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ hints: [], crop: cropRegion }),
+        body: JSON.stringify({ crop: cropRegion }),
       });
       if (!response.ok) throw new Error(`範囲を再抽出できませんでした (${response.status})`);
       const accepted = (await response.json()) as { jobId: string; status: string };
@@ -556,12 +562,22 @@ export function ImportsPage({
   const confirm = async (document: DocumentReview) => {
     const receipt = document.result?.receipt;
     const items = receipt?.items ?? [];
+    const candidateID = selectedCandidates[document.id] ?? "";
+    const candidate = document.result?.candidates?.find((item) => item.id === candidateID);
+    const overrideReason = manualAmountOverrideReasons[document.id]?.trim() ?? "";
+    const requiresOverrideReason =
+      manualAmountOverrides[document.id] ||
+      (candidate ? !candidate.consistent : !document.result?.balanced);
     if (!items.length) {
       setMessage("確定できる品目がありません");
       return;
     }
     if (document.result?.candidates?.length && !selectedCandidates[document.id]) {
       setMessage("税計算候補を選択してください");
+      return;
+    }
+    if (requiresOverrideReason && overrideReason.length < 3) {
+      setMessage("金額の訂正理由を入力してください");
       return;
     }
     setPending(true);
@@ -577,13 +593,13 @@ export function ImportsPage({
           : new Date().toISOString(),
         merchant: receipt?.merchant ?? "",
         paymentAccountId: paymentAccountId || null,
+        receiptCandidateId: candidateID || null,
+        manualAmountOverrideReason: overrideReason || null,
         items: items.map((item, index) => ({
           name: item.name,
-          amountYen:
-            document.result?.candidates?.find(
-              (candidate) => candidate.id === selectedCandidates[document.id],
-            )?.amounts[index] ??
-            (item.grossAmount || item.printedAmount),
+          amountYen: manualAmountOverrides[document.id]
+            ? (item.grossAmount ?? item.printedAmount)
+            : (candidate?.amounts[index] ?? item.grossAmount ?? item.printedAmount),
           quantityNumerator: item.quantityNumerator,
           quantityDenominator: item.quantityDenominator,
           quantityUnit: item.quantityUnit,
@@ -918,7 +934,7 @@ export function ImportsPage({
                       if (item.region) selectCropRegion(item.region);
                     }}
                   >
-                    {item.name} · {yen(item.grossAmount || item.printedAmount)}
+                    {item.name} · {yen(item.grossAmount ?? item.printedAmount)}
                   </button>
                 ))}
               </div>
@@ -1051,12 +1067,16 @@ export function ImportsPage({
                       ¥
                       <input
                         inputMode="numeric"
-                        value={String(item.grossAmount || item.printedAmount)}
-                        onChange={(event) =>
+                        value={String(item.grossAmount ?? item.printedAmount)}
+                        onChange={(event) => {
+                          setManualAmountOverrides((current) => ({
+                            ...current,
+                            [selectedDocument.id]: true,
+                          }));
                           editItem(selectedDocument.id, index, {
                             grossAmount: Number(event.target.value.replace(/\D/g, "")),
-                          })
-                        }
+                          });
+                        }}
                       />
                     </label>
                     <details className="receipt-measure-details">
@@ -1180,6 +1200,26 @@ export function ImportsPage({
                     ))}
                     <small>品目の印字額は保持されます。選んだ計算額を帳簿に使います。</small>
                   </div>
+                )}
+                {(manualAmountOverrides[selectedDocument.id] ||
+                  (selectedCandidates[selectedDocument.id]
+                    ? !selectedDocument.result.candidates?.find(
+                        (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
+                      )?.consistent
+                    : !selectedDocument.result.balanced)) && (
+                  <label className="field-group">
+                    金額の訂正理由
+                    <input
+                      maxLength={500}
+                      value={manualAmountOverrideReasons[selectedDocument.id] ?? ""}
+                      onChange={(event) =>
+                        setManualAmountOverrideReasons((current) => ({
+                          ...current,
+                          [selectedDocument.id]: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
                 )}
                 <div className="review-total">
                   <span>認識した合計</span>

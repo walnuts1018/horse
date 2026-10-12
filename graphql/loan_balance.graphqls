@@ -1,0 +1,13 @@
+type LoanBalance {
+  loanId: ID!
+  lenderMemberId: ID!
+  borrowerMemberId: ID!
+  principalYen: Long!
+  repaidYen: Long!
+  balanceYen: Long!
+  createdAt: String!
+}
+
+extend type Query {
+  loanBalances(householdId: ID! @nodeID(of: "Household")): [LoanBalance!]!
+}

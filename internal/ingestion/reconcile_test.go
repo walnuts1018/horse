@@ -33,7 +33,7 @@ func TestReconcile(t *testing.T) {
 		{"同原本", Observation{Hash: "abc"}, Observation{Hash: "abc"}, "DUPLICATE"},
 		{"分割発送", Observation{OrderID: "order", Amount: 100}, Observation{OrderID: "order", Amount: 200}, "POSSIBLE"},
 		{"同額でも別購入を確定統合しない", Observation{Merchant: "店", Amount: 100, OccurredAt: now}, Observation{Merchant: "店", Amount: 100, OccurredAt: now}, "POSSIBLE"},
-		{"銀行引落しは支出に統合しない", Observation{Merchant: "店", Amount: 100, OccurredAt: now, SourceKind: "bank"}, Observation{Merchant: "店", Amount: 100, OccurredAt: now, SourceKind: "card"}, ""},
+		{"銀行明細とカード利用を直接照合しない", Observation{Merchant: "店", Amount: 100, OccurredAt: now, SourceKind: "bank", TransactionKind: "PURCHASE_PAYMENT"}, Observation{Merchant: "店", Amount: 100, OccurredAt: now, SourceKind: "card", TransactionKind: "CARD_PURCHASE"}, ""},
 		{"取引番号の金額相違", Observation{Merchant: "店", TransactionID: "tx", Amount: 100}, Observation{Merchant: "店", TransactionID: "tx", Amount: 200}, "CONFLICT"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -46,6 +46,26 @@ func TestReconcile(t *testing.T) {
 			}
 			if len(got) != 1 || got[0].State != tc.state {
 				t.Fatalf("got %v want %s", got, tc.state)
+			}
+		})
+	}
+}
+
+func TestReconcileBankTransactionsOnlyAgainstReceipts(t *testing.T) {
+	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+	receipt := Observation{DocumentID: "receipt", SourceKind: "receipt", TransactionKind: "RECEIPT_PURCHASE", Merchant: "スーパー", Amount: 1000, OccurredAt: now}
+	for _, kind := range []string{"PURCHASE_PAYMENT", "CARD_BILL_PAYMENT", "ACCOUNT_TRANSFER", "REFUND", "UNCLASSIFIED"} {
+		t.Run(kind, func(t *testing.T) {
+			bank := Observation{DocumentID: "statement", SourceKind: "bank", TransactionKind: kind, Merchant: "スーパー", Amount: 1000, OccurredAt: now}
+			got := Reconcile(bank, []Observation{receipt})
+			if kind == "PURCHASE_PAYMENT" {
+				if len(got) != 1 || got[0].State != "POSSIBLE" {
+					t.Fatalf("purchase payment was not retained as a receipt candidate: %#v", got)
+				}
+				return
+			}
+			if len(got) != 0 {
+				t.Fatalf("non-purchase bank transaction became a receipt candidate: %#v", got)
 			}
 		})
 	}

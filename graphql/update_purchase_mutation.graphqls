@@ -1,0 +1,23 @@
+extend type Mutation {
+  updatePurchase(input: UpdatePurchaseInput!): UpdatePurchaseResult!
+}
+
+union UpdatePurchaseResult = UpdatePurchaseSuccess | MutationError
+
+type UpdatePurchaseSuccess {
+  result: Purchase!
+}
+
+input UpdatePurchaseInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+  baseRevision: Int!
+  patch: PurchasePatch!
+  changedFields: [String!]!
+}
+
+input PurchasePatch {
+  occurredAt: String
+  merchant: String
+  paymentAccountId: ID @nodeID(of: "Account")
+  paymentAllocations: [PurchasePaymentInput!]
+}

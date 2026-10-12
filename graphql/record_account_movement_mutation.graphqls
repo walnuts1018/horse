@@ -1,0 +1,20 @@
+extend type Mutation {
+  recordAccountMovement(input: RecordAccountMovementInput!): RecordAccountMovementResult!
+}
+
+union RecordAccountMovementResult = RecordAccountMovementSuccess | MutationError
+
+type RecordAccountMovementSuccess {
+  result: AccountMovement!
+}
+
+input RecordAccountMovementInput {
+  householdId: ID! @nodeID(of: "Household")
+  kind: AccountMovementKind!
+  fromAccountId: ID! @nodeID(of: "Account")
+  toAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
+  occurredAt: String!
+  description: String!
+  idempotencyKey: String!
+}

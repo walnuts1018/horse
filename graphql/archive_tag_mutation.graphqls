@@ -1,0 +1,9 @@
+extend type Mutation {
+  archiveTag(tagId: ID!, baseRevision: Int!, archived: Boolean!): ArchiveTagResult!
+}
+
+union ArchiveTagResult = ArchiveTagSuccess | MutationError
+
+type ArchiveTagSuccess {
+  result: Tag!
+}

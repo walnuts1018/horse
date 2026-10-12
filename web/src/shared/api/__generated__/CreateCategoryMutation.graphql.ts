@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<952f44855fbab2bbc41bffbf9436a120>>
+ * @generated SignedSource<<a2f651f94ccbc64756479cc82580a051>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type CreateCategoryInput = {
   householdId: string;
   name: string;
@@ -18,7 +19,18 @@ export type CreateCategoryMutation$variables = {
 };
 export type CreateCategoryMutation$data = {
   readonly createCategory: {
-    readonly id: string;
+    readonly __typename: "CreateCategorySuccess";
+    readonly result: {
+      readonly id: string;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type CreateCategoryMutation = {
@@ -44,7 +56,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Category",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "createCategory",
     "plural": false,
@@ -53,8 +65,54 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Category",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "CreateCategorySuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -78,16 +136,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "7c456adc36e3dbc181d256f018b21a46",
+    "cacheID": "f6e3c61ce9db4a6b85fafba89784361f",
     "id": null,
     "metadata": {},
     "name": "CreateCategoryMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateCategoryMutation(\n  $input: CreateCategoryInput!\n) {\n  createCategory(input: $input) {\n    id\n  }\n}\n"
+    "text": "mutation CreateCategoryMutation(\n  $input: CreateCategoryInput!\n) {\n  createCategory(input: $input) {\n    __typename\n    ... on CreateCategorySuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "ffe53f97fb3153ba5b08afc7753e912a";
+(node as any).hash = "955ea11fa86a8f8675ee7fa8f2d740f4";
 
 export default node;

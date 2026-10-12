@@ -87,6 +87,15 @@ var PurchaseMemberBurdens = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		SnapshotSource: column{
+			Name:      "snapshot_source",
+			DBType:    "text",
+			Default:   "'POSTED'::text",
+			Comment:   "",
+			Nullable:  false,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: purchaseMemberBurdenIndexes{
 		PurchaseMemberBurdensPkey: index{
@@ -199,6 +208,14 @@ var PurchaseMemberBurdens = Table[
 			},
 			Expression: "(funding_weight > 0)",
 		},
+		PurchaseMemberBurdensSnapshotSourceCheck: check{
+			constraint: constraint{
+				Name:    "purchase_member_burdens_snapshot_source_check",
+				Columns: []string{"snapshot_source"},
+				Comment: "",
+			},
+			Expression: "(snapshot_source = ANY (ARRAY['POSTED'::text, 'LEGACY_CURRENT_RULES'::text]))",
+		},
 	},
 	Comment: "",
 }
@@ -212,11 +229,12 @@ type purchaseMemberBurdenColumns struct {
 	AmountYen          column
 	FundingRuleVersion column
 	FundingWeight      column
+	SnapshotSource     column
 }
 
 func (c purchaseMemberBurdenColumns) AsSlice() []column {
 	return []column{
-		c.HouseholdID, c.PurchaseID, c.ItemID, c.PoolID, c.MemberID, c.AmountYen, c.FundingRuleVersion, c.FundingWeight,
+		c.HouseholdID, c.PurchaseID, c.ItemID, c.PoolID, c.MemberID, c.AmountYen, c.FundingRuleVersion, c.FundingWeight, c.SnapshotSource,
 	}
 }
 
@@ -253,10 +271,11 @@ type purchaseMemberBurdenChecks struct {
 	PurchaseMemberBurdensAmountYenCheck          check
 	PurchaseMemberBurdensFundingRuleVersionCheck check
 	PurchaseMemberBurdensFundingWeightCheck      check
+	PurchaseMemberBurdensSnapshotSourceCheck     check
 }
 
 func (c purchaseMemberBurdenChecks) AsSlice() []check {
 	return []check{
-		c.PurchaseMemberBurdensAmountYenCheck, c.PurchaseMemberBurdensFundingRuleVersionCheck, c.PurchaseMemberBurdensFundingWeightCheck,
+		c.PurchaseMemberBurdensAmountYenCheck, c.PurchaseMemberBurdensFundingRuleVersionCheck, c.PurchaseMemberBurdensFundingWeightCheck, c.PurchaseMemberBurdensSnapshotSourceCheck,
 	}
 }

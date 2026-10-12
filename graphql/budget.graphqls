@@ -1,0 +1,17 @@
+type Budget implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  categoryId: ID @goField(forceResolver: true)
+  name: String!
+  amountYen: Long!
+  actualYen: Long!
+  remainingYen: Long!
+  startsOn: String!
+  endsOn: String
+  archived: Boolean!
+  revision: Int!
+}
+
+extend type Query {
+  budgets(householdId: ID! @nodeID(of: "Household"), period: String!): [Budget!]!
+}

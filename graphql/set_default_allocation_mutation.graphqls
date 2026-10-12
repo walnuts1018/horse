@@ -1,0 +1,14 @@
+extend type Mutation {
+  setDefaultAllocation(input: SetDefaultAllocationInput!): SetDefaultAllocationResult!
+}
+
+union SetDefaultAllocationResult = SetDefaultAllocationSuccess | MutationError
+
+type SetDefaultAllocationSuccess {
+  result: Household!
+}
+
+input SetDefaultAllocationInput {
+  householdId: ID! @nodeID(of: "Household")
+  allocations: [AllocationInput!]!
+}

@@ -1,0 +1,9 @@
+extend type Mutation {
+  postPurchase(purchaseId: ID!, expectedRevision: Int!, idempotencyKey: String!): PostPurchaseResult!
+}
+
+union PostPurchaseResult = PostPurchaseSuccess | MutationError
+
+type PostPurchaseSuccess {
+  result: Purchase!
+}

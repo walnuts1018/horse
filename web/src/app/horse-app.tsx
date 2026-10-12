@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeftRight,
   AlertCircle,
@@ -18,17 +18,15 @@ import {
   Search,
   WifiOff,
 } from "lucide-react";
+import { ApiError, executeGraphql, getViewer, type Household } from "../shared/api";
 import {
-  ApiError,
-  createHouseholdMutation,
-  createAndPostPurchase,
   acceptHouseholdInvitationMutation,
-  executeGraphql,
-  getViewer,
+  createHouseholdMutation,
   householdQuery,
   householdsQuery,
-  type Household,
-} from "../shared/api";
+} from "./api/operations";
+import { useCreateAndPostPurchase } from "../entities/purchase";
+import { GraphQLErrorBoundary } from "./ui/graphql-error-boundary";
 import {
   claimPurchaseOutbox,
   completePurchaseOutbox,
@@ -54,6 +52,7 @@ async function read<T>(
 
 export function App() {
   const outbox = usePurchaseOutbox();
+  const createAndPostPurchase = useCreateAndPostPurchase();
   const [viewer, setViewer] = useState<{ id: string; displayName: string; email?: string } | null>(
     null,
   );
@@ -184,7 +183,7 @@ export function App() {
         }
       })();
     }
-  }, [viewer, households, outbox.entries, outbox.ready, outbox.online, outbox.refresh]);
+  }, [viewer, households, outbox.entries, outbox.ready, outbox.online, outbox.refresh, createAndPostPurchase]);
   const currentOutbox = outbox.entries.filter((entry) => entry.input.householdId === household?.id);
   const failedOutboxCount = currentOutbox.filter((entry) => entry.status === "FAILED").length;
   const pendingOutboxCount = currentOutbox.filter((entry) => entry.status === "PENDING").length;
@@ -478,51 +477,57 @@ export function App() {
           </section>
         )}
         <div className="page-content">
-          {page === "home" && household && <HomePage household={household} onNavigate={setPage} />}
-          {page === "new" && household && (
-            <PurchaseCreatePage
-              household={household}
-              onQueued={(idempotencyKey) => {
-                autoNavigateKey.current = idempotencyKey;
-                showNotice("送信待ちに保存しました");
-              }}
-            />
-          )}
-          {page === "ledger" && household && (
-            <LedgerPage household={household} onAdd={() => setPage("new")} />
-          )}
-          {page === "settlement" && household && <SettlementPage household={household} />}
-          {page === "analysis" && household && <AnalysisPage household={household} />}
-          {page === "imports" && household && (
-            <ImportsPage
-              household={household}
-              onAdded={async (keepOpen) => {
-                await refreshHousehold(household.id);
-                if (!keepOpen) setPage("ledger");
-                showNotice("買い物を帳簿に追加しました");
-              }}
-            />
-          )}
-          {page === "settings" && household && (
-            <SettingsPage
-              household={household}
-              isOwner={household.members.some(
-                (member) => member.id === viewer.id && member.role === "OWNER",
+          <GraphQLErrorBoundary>
+            <Suspense fallback={<div className="loading-screen">購入履歴を読み込んでいます</div>}>
+              {page === "home" && household && (
+                <HomePage household={household} onNavigate={setPage} />
               )}
-              onRefresh={() => refreshHousehold(household.id)}
-              onNotice={showNotice}
-            />
-          )}
-          {!household && (
-            <EmptyHousehold
-              households={households}
-              onSelect={selectHousehold}
-              onCreated={(id) => {
-                void refreshHousehold(id);
-                setHouseholds((items) => [{ id, name: "家計簿" }, ...items]);
-              }}
-            />
-          )}
+              {page === "new" && household && (
+                <PurchaseCreatePage
+                  household={household}
+                  onQueued={(idempotencyKey) => {
+                    autoNavigateKey.current = idempotencyKey;
+                    showNotice("送信待ちに保存しました");
+                  }}
+                />
+              )}
+              {page === "ledger" && household && (
+                <LedgerPage household={household} onAdd={() => setPage("new")} />
+              )}
+              {page === "settlement" && household && <SettlementPage household={household} />}
+              {page === "analysis" && household && <AnalysisPage household={household} />}
+              {page === "imports" && household && (
+                <ImportsPage
+                  household={household}
+                  onAdded={async (keepOpen) => {
+                    await refreshHousehold(household.id);
+                    if (!keepOpen) setPage("ledger");
+                    showNotice("買い物を帳簿に追加しました");
+                  }}
+                />
+              )}
+              {page === "settings" && household && (
+                <SettingsPage
+                  household={household}
+                  isOwner={household.members.some(
+                    (member) => member.id === viewer.id && member.role === "OWNER",
+                  )}
+                  onRefresh={() => refreshHousehold(household.id)}
+                  onNotice={showNotice}
+                />
+              )}
+              {!household && (
+                <EmptyHousehold
+                  households={households}
+                  onSelect={selectHousehold}
+                  onCreated={(id) => {
+                    void refreshHousehold(id);
+                    setHouseholds((items) => [{ id, name: "家計簿" }, ...items]);
+                  }}
+                />
+              )}
+            </Suspense>
+          </GraphQLErrorBoundary>
         </div>
       </main>
       {notice && (

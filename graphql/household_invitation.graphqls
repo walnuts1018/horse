@@ -1,0 +1,13 @@
+type HouseholdInvitation implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  role: String!
+  expiresAt: String!
+  createdAt: String!
+  revokedAt: String
+  acceptedAt: String
+}
+
+extend type Query {
+  householdInvitations(householdId: ID! @nodeID(of: "Household")): [HouseholdInvitation!]!
+}

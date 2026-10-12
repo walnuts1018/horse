@@ -1,0 +1,21 @@
+type AccountMovement implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  kind: AccountMovementKind!
+  occurredAt: String!
+  fromAccountId: ID! @goField(forceResolver: true)
+  toAccountId: ID! @goField(forceResolver: true)
+  amountYen: Long!
+  currency: String!
+  description: String!
+  createdAt: String!
+}
+
+enum AccountMovementKind {
+  TRANSFER
+  CARD_BILL_PAYMENT
+}
+
+extend type Query {
+  accountMovements(householdId: ID! @nodeID(of: "Household"), first: Int = 50): [AccountMovement!]!
+}

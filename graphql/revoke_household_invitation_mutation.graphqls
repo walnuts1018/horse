@@ -1,0 +1,9 @@
+extend type Mutation {
+  revokeHouseholdInvitation(householdId: ID!, invitationId: ID!): RevokeHouseholdInvitationResult!
+}
+
+union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | MutationError
+
+type RevokeHouseholdInvitationSuccess {
+  result: HouseholdInvitation!
+}

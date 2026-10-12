@@ -1,0 +1,14 @@
+extend type Mutation {
+  createTag(input: CreateTagInput!): CreateTagResult!
+}
+
+union CreateTagResult = CreateTagSuccess | MutationError
+
+type CreateTagSuccess {
+  result: Tag!
+}
+
+input CreateTagInput {
+  householdId: ID! @nodeID(of: "Household")
+  name: String!
+}

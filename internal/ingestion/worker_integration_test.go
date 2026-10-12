@@ -113,9 +113,8 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	worker := Worker{
 		DB: db, Store: store, GeminiEnabled: true,
 		Router: GeminiRouter{
-			Free:       Gemini{APIKey: "test-free", Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
-			Paid:       Gemini{APIKey: "test-paid", Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
-			Background: true,
+			Free: Gemini{APIKey: "test-free", Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
+			Paid: Gemini{APIKey: "test-paid", Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
 		},
 	}
 	for expectedAttempt := 10; expectedAttempt <= 11; expectedAttempt++ {

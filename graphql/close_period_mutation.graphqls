@@ -1,0 +1,15 @@
+extend type Mutation {
+  closePeriod(input: ClosePeriodInput!): ClosePeriodResult!
+}
+
+union ClosePeriodResult = ClosePeriodSuccess | MutationError
+
+type ClosePeriodSuccess {
+  result: Settlement!
+}
+
+input ClosePeriodInput {
+  householdId: ID! @nodeID(of: "Household")
+  period: String!
+  expectedRevision: Int!
+}

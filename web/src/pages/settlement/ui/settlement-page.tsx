@@ -9,20 +9,21 @@ import {
   Wallet,
 } from "lucide-react";
 import {
-  closePeriodMutation,
-  ledgerQuery,
-  loanBalancesQuery,
   makeIdempotencyKey,
-  recordFundingMutation,
-  recordTransferMutation,
   readGraphql,
-  settlementQuery,
   type Connection,
   type Household,
   type LedgerEntry,
   type LoanBalance,
   type Settlement,
 } from "../../../shared/api";
+import { closePeriodMutation, settlementQuery } from "../../../entities/settlement";
+import {
+  ledgerQuery,
+  loanBalancesQuery,
+  recordFundingMutation,
+  recordTransferMutation,
+} from "../../../entities/ledger";
 import { InlineError } from "../../../shared/ui";
 
 const yen = (amount = 0) =>

@@ -25,29 +25,69 @@ type purchaseItemMeasure struct {
 }
 
 func measureFromInput(input *model.PurchaseItemInput) (purchaseItemMeasure, error) {
-	return newPurchaseItemMeasure(input.QuantityNumerator, input.QuantityDenominator, input.QuantityUnit,
-		input.PrintedUnitPriceYen, input.PrintedUnitPriceQuantityNumerator,
-		input.PrintedUnitPriceQuantityDenominator, input.PrintedUnitPriceUnit)
+	var quantityNumerator, quantityDenominator, quantityUnit *string
+	if input.Quantity != nil {
+		quantityNumerator, quantityDenominator, quantityUnit = &input.Quantity.Numerator, &input.Quantity.Denominator, &input.Quantity.Unit
+	}
+	var printedPrice *model.Long
+	var printedBasisNumerator, printedBasisDenominator, printedUnit *string
+	if input.PrintedUnitPrice != nil {
+		if input.PrintedUnitPrice.Basis == nil {
+			return purchaseItemMeasure{}, errors.New("printed unit price basis is required")
+		}
+		printedPrice = &input.PrintedUnitPrice.AmountYen
+		printedBasisNumerator = &input.PrintedUnitPrice.Basis.Numerator
+		printedBasisDenominator = &input.PrintedUnitPrice.Basis.Denominator
+		printedUnit = &input.PrintedUnitPrice.Basis.Unit
+	}
+	return newPurchaseItemMeasure(quantityNumerator, quantityDenominator, quantityUnit, printedPrice, printedBasisNumerator, printedBasisDenominator, printedUnit)
 }
 
 func measureFromUpdate(input model.UpdatePurchaseItemInput, current purchaseItemMeasure) (purchaseItemMeasure, error) {
 	updated := current
 	if containsChangedField(input.ChangedFields, "quantity") {
-		numerator, denominator, err := parseMeasureRational(input.QuantityNumerator, input.QuantityDenominator)
+		if !input.Quantity.IsSet() {
+			return purchaseItemMeasure{}, errors.New("changed quantity has no value")
+		}
+		quantity := input.Quantity.Value()
+		var numeratorValue, denominatorValue, unitValue *string
+		if quantity != nil {
+			numeratorValue, denominatorValue, unitValue = &quantity.Numerator, &quantity.Denominator, &quantity.Unit
+		}
+		numerator, denominator, err := parseMeasureRational(numeratorValue, denominatorValue)
 		if err != nil {
 			return purchaseItemMeasure{}, err
 		}
 		updated.quantityNumerator, updated.quantityDenominator = numerator, denominator
-		updated.quantityUnit = nullString(input.QuantityUnit)
+		updated.quantityUnit = nullString(unitValue)
+	} else if input.Quantity.IsSet() {
+		return purchaseItemMeasure{}, errors.New("quantity is missing from changedFields")
 	}
 	if containsChangedField(input.ChangedFields, "printedUnitPrice") {
-		updated.printedUnitPriceYen = nullLong(input.PrintedUnitPriceYen)
-		numerator, denominator, err := parseMeasureRational(input.PrintedUnitPriceQuantityNumerator, input.PrintedUnitPriceQuantityDenominator)
+		if !input.PrintedUnitPrice.IsSet() {
+			return purchaseItemMeasure{}, errors.New("changed printed unit price has no value")
+		}
+		printedUnitPrice := input.PrintedUnitPrice.Value()
+		var price *model.Long
+		var numeratorInput, denominatorInput, unitInput *string
+		if printedUnitPrice != nil {
+			if printedUnitPrice.Basis == nil {
+				return purchaseItemMeasure{}, errors.New("printed unit price basis is required")
+			}
+			price = &printedUnitPrice.AmountYen
+			numeratorInput = &printedUnitPrice.Basis.Numerator
+			denominatorInput = &printedUnitPrice.Basis.Denominator
+			unitInput = &printedUnitPrice.Basis.Unit
+		}
+		updated.printedUnitPriceYen = nullLong(price)
+		numerator, denominator, err := parseMeasureRational(numeratorInput, denominatorInput)
 		if err != nil {
 			return purchaseItemMeasure{}, err
 		}
 		updated.printedUnitPriceQuantityNumerator, updated.printedUnitPriceQuantityDenominator = numerator, denominator
-		updated.printedUnitPriceUnit = nullString(input.PrintedUnitPriceUnit)
+		updated.printedUnitPriceUnit = nullString(unitInput)
+	} else if input.PrintedUnitPrice.IsSet() {
+		return purchaseItemMeasure{}, errors.New("printed unit price is missing from changedFields")
 	}
 	if _, err := newPurchaseItemMeasure(measureIntegerString(updated.quantityNumerator), measureIntegerString(updated.quantityDenominator), measureString(updated.quantityUnit),
 		measureLong(updated.printedUnitPriceYen), measureIntegerString(updated.printedUnitPriceQuantityNumerator),

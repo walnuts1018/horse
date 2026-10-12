@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ea0fd1dea8210d8d57b22cfd9a768ebf>>
+ * @generated SignedSource<<2a0fa0cf3d9e0242b87d5ca1de4fc343>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type LedgerKind = "CORRECTION" | "FUNDING" | "PURCHASE" | "TRANSFER" | "%future added value";
+import type { FragmentRefs } from "relay-runtime";
 export type LedgerQuery$variables = {
   after?: string | null | undefined;
   first?: number | null | undefined;
@@ -19,17 +19,7 @@ export type LedgerQuery$data = {
     readonly edges: ReadonlyArray<{
       readonly cursor: string;
       readonly node: {
-        readonly amountYen: any;
-        readonly currency: string;
-        readonly description: string;
-        readonly fromMemberId: string | null | undefined;
-        readonly id: string;
-        readonly kind: LedgerKind;
-        readonly loanId: string | null | undefined;
-        readonly occurredAt: string;
-        readonly poolId: string | null | undefined;
-        readonly sourcePurchaseId: string | null | undefined;
-        readonly toMemberId: string | null | undefined;
+        readonly " $fragmentSpreads": FragmentRefs<"LedgerEntryFields">;
       };
     }>;
     readonly pageInfo: {
@@ -62,168 +52,129 @@ v2 = {
 },
 v3 = [
   {
+    "kind": "Variable",
+    "name": "after",
+    "variableName": "after"
+  },
+  {
+    "kind": "Variable",
+    "name": "first",
+    "variableName": "first"
+  },
+  {
+    "kind": "Variable",
+    "name": "householdId",
+    "variableName": "householdId"
+  }
+],
+v4 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "cursor",
+  "storageKey": null
+},
+v5 = {
+  "alias": null,
+  "args": null,
+  "concreteType": "PageInfo",
+  "kind": "LinkedField",
+  "name": "pageInfo",
+  "plural": false,
+  "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "endCursor",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "hasNextPage",
+      "storageKey": null
+    }
+  ],
+  "storageKey": null
+},
+v6 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "totalCount",
+  "storageKey": null
+},
+v7 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v8 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "occurredAt",
+  "storageKey": null
+},
+v9 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "description",
+  "storageKey": null
+},
+v10 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "amountYen",
+  "storageKey": null
+},
+v11 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "currency",
+  "storageKey": null
+},
+v12 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "createdAt",
+  "storageKey": null
+},
+v13 = [
+  (v7/*:: as any*/),
+  (v8/*:: as any*/),
+  (v9/*:: as any*/),
+  (v10/*:: as any*/),
+  (v11/*:: as any*/),
+  (v12/*:: as any*/),
+  {
     "alias": null,
-    "args": [
-      {
-        "kind": "Variable",
-        "name": "after",
-        "variableName": "after"
-      },
-      {
-        "kind": "Variable",
-        "name": "first",
-        "variableName": "first"
-      },
-      {
-        "kind": "Variable",
-        "name": "householdId",
-        "variableName": "householdId"
-      }
-    ],
-    "concreteType": "LedgerConnection",
+    "args": null,
+    "concreteType": "Purchase",
     "kind": "LinkedField",
-    "name": "ledger",
+    "name": "purchase",
     "plural": false,
     "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "concreteType": "LedgerEdge",
-        "kind": "LinkedField",
-        "name": "edges",
-        "plural": true,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "cursor",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "LedgerEntry",
-            "kind": "LinkedField",
-            "name": "node",
-            "plural": false,
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "id",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "kind",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "occurredAt",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "description",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "amountYen",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "currency",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "fromMemberId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "toMemberId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "poolId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "sourcePurchaseId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "loanId",
-                "storageKey": null
-              }
-            ],
-            "storageKey": null
-          }
-        ],
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "concreteType": "PageInfo",
-        "kind": "LinkedField",
-        "name": "pageInfo",
-        "plural": false,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "endCursor",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "hasNextPage",
-            "storageKey": null
-          }
-        ],
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "totalCount",
-        "storageKey": null
-      }
+      (v7/*:: as any*/)
     ],
+    "storageKey": null
+  }
+],
+v14 = [
+  (v7/*:: as any*/),
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "displayName",
     "storageKey": null
   }
 ];
@@ -237,7 +188,49 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "LedgerQuery",
-    "selections": (v3/*:: as any*/),
+    "selections": [
+      {
+        "alias": null,
+        "args": (v3/*:: as any*/),
+        "concreteType": "LedgerConnection",
+        "kind": "LinkedField",
+        "name": "ledger",
+        "plural": false,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "LedgerEdge",
+            "kind": "LinkedField",
+            "name": "edges",
+            "plural": true,
+            "selections": [
+              (v4/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": null,
+                "kind": "LinkedField",
+                "name": "node",
+                "plural": false,
+                "selections": [
+                  {
+                    "args": null,
+                    "kind": "FragmentSpread",
+                    "name": "LedgerEntryFields"
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          },
+          (v5/*:: as any*/),
+          (v6/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ],
     "type": "Query",
     "abstractKey": null
   },
@@ -250,19 +243,179 @@ return {
     ],
     "kind": "Operation",
     "name": "LedgerQuery",
-    "selections": (v3/*:: as any*/)
+    "selections": [
+      {
+        "alias": null,
+        "args": (v3/*:: as any*/),
+        "concreteType": "LedgerConnection",
+        "kind": "LinkedField",
+        "name": "ledger",
+        "plural": false,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "LedgerEdge",
+            "kind": "LinkedField",
+            "name": "edges",
+            "plural": true,
+            "selections": [
+              (v4/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": null,
+                "kind": "LinkedField",
+                "name": "node",
+                "plural": false,
+                "selections": [
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "__typename",
+                    "storageKey": null
+                  },
+                  {
+                    "kind": "TypeDiscriminator",
+                    "abstractKey": "__isLedgerEntry"
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": (v13/*:: as any*/),
+                    "type": "PurchaseLedgerEntry",
+                    "abstractKey": null
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": [
+                      (v7/*:: as any*/),
+                      (v8/*:: as any*/),
+                      (v9/*:: as any*/),
+                      (v10/*:: as any*/),
+                      (v11/*:: as any*/),
+                      (v12/*:: as any*/),
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "Member",
+                        "kind": "LinkedField",
+                        "name": "member",
+                        "plural": false,
+                        "selections": (v14/*:: as any*/),
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "Pool",
+                        "kind": "LinkedField",
+                        "name": "pool",
+                        "plural": false,
+                        "selections": [
+                          (v7/*:: as any*/),
+                          {
+                            "alias": null,
+                            "args": null,
+                            "kind": "ScalarField",
+                            "name": "name",
+                            "storageKey": null
+                          }
+                        ],
+                        "storageKey": null
+                      }
+                    ],
+                    "type": "FundingLedgerEntry",
+                    "abstractKey": null
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": [
+                      (v7/*:: as any*/),
+                      (v8/*:: as any*/),
+                      (v9/*:: as any*/),
+                      (v10/*:: as any*/),
+                      (v11/*:: as any*/),
+                      (v12/*:: as any*/),
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "Member",
+                        "kind": "LinkedField",
+                        "name": "fromMember",
+                        "plural": false,
+                        "selections": (v14/*:: as any*/),
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "Member",
+                        "kind": "LinkedField",
+                        "name": "toMember",
+                        "plural": false,
+                        "selections": (v14/*:: as any*/),
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "transferKind",
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "LoanBalance",
+                        "kind": "LinkedField",
+                        "name": "loan",
+                        "plural": false,
+                        "selections": [
+                          {
+                            "alias": null,
+                            "args": null,
+                            "kind": "ScalarField",
+                            "name": "loanId",
+                            "storageKey": null
+                          }
+                        ],
+                        "storageKey": null
+                      }
+                    ],
+                    "type": "TransferLedgerEntry",
+                    "abstractKey": null
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": (v13/*:: as any*/),
+                    "type": "CorrectionLedgerEntry",
+                    "abstractKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          },
+          (v5/*:: as any*/),
+          (v6/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ]
   },
   "params": {
-    "cacheID": "2f57e021d48fde7847e797612f788a17",
+    "cacheID": "324686adef4512322a79dd468e1e2b15",
     "id": null,
     "metadata": {},
     "name": "LedgerQuery",
     "operationKind": "query",
-    "text": "query LedgerQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  ledger(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        kind\n        occurredAt\n        description\n        amountYen\n        currency\n        fromMemberId\n        toMemberId\n        poolId\n        sourcePurchaseId\n        loanId\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query LedgerQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  ledger(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        __typename\n        ...LedgerEntryFields\n        ... on CorrectionLedgerEntry {\n          id\n        }\n        ... on FundingLedgerEntry {\n          id\n        }\n        ... on PurchaseLedgerEntry {\n          id\n        }\n        ... on TransferLedgerEntry {\n          id\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  ... on PurchaseLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      loanId\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    purchase {\n      id\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "2ef7e718a9b809876fa683d52513073a";
+(node as any).hash = "e3e5e320e61803f10014d69d615db9f6";
 
 export default node;

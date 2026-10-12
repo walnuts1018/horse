@@ -70,9 +70,105 @@ func snapshotPurchaseMemberBurden(ctx context.Context, executor bob.Executor, ho
 			poolUUID := allocation.PoolID
 			itemUUID := allocation.ItemID
 			version := int32(rule.Version)
+			snapshotSource := "POSTED"
 			if _, err := models.PurchaseMemberBurdens.Insert(&models.PurchaseMemberBurdenSetter{
 				HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, ItemID: &itemUUID, PoolID: &poolUUID,
-				MemberID: &memberID, AmountYen: &part.Amount, FundingRuleVersion: &version, FundingWeight: &part.Weight,
+				MemberID: &memberID, AmountYen: &part.Amount, FundingRuleVersion: &version, FundingWeight: &part.Weight, SnapshotSource: &snapshotSource,
+			}).Exec(ctx, executor); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func snapshotPurchasePaymentFunding(ctx context.Context, executor bob.Executor, householdID string, purchase *models.Purchase) error {
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return fmt.Errorf("parse household id: %w", err)
+	}
+	type paymentSnapshot struct {
+		lineNo    int32
+		accountID gofrsuuid.UUID
+	}
+	payments, err := models.PurchasePayments.Query(sm.Where(psql.And(
+		models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
+	)), sm.OrderBy(models.PurchasePayments.Columns.LineNo)).All(ctx, executor)
+	if err != nil {
+		return err
+	}
+	snapshots := make([]paymentSnapshot, 0, len(payments))
+	for _, payment := range payments {
+		snapshots = append(snapshots, paymentSnapshot{lineNo: payment.LineNo, accountID: payment.AccountID})
+	}
+	if len(snapshots) == 0 {
+		if !purchase.PaymentAccountID.Valid {
+			return fmt.Errorf("%w: purchase %s has no payment account", ErrUnattributedPurchasePayment, purchase.ID)
+		}
+		items, err := models.PurchaseItems.Query(sm.Where(psql.And(
+			models.PurchaseItems.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
+		))).All(ctx, executor)
+		if err != nil {
+			return err
+		}
+		var amount int64
+		for _, item := range items {
+			var ok bool
+			amount, ok = checkedAdd(amount, item.AmountYen)
+			if !ok {
+				return fmt.Errorf("%w: purchase total is too large", ErrBadInput)
+			}
+		}
+		lineNo := int32(1)
+		accountID := purchase.PaymentAccountID.V
+		if _, err := models.PurchasePayments.Insert(&models.PurchasePaymentSetter{
+			HouseholdID: &householdUUID, PurchaseID: &purchase.ID, LineNo: &lineNo, AccountID: &accountID, AmountYen: &amount,
+		}).Exec(ctx, executor); err != nil {
+			return err
+		}
+		snapshots = append(snapshots, paymentSnapshot{lineNo: lineNo, accountID: accountID})
+	}
+	rules, err := poolFundingRules(ctx, executor, householdID)
+	if err != nil {
+		return err
+	}
+	for _, payment := range snapshots {
+		account, err := models.Accounts.Query(sm.Where(psql.And(
+			models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.Accounts.Columns.ID.EQ(psql.Arg(payment.accountID)),
+		))).One(ctx, executor)
+		if err != nil {
+			return err
+		}
+		if !account.PoolID.Valid {
+			continue
+		}
+		poolID := account.PoolID.V
+		rule, ok := rules[poolID.String()]
+		if !ok || rule.Version < 1 || rule.Version > math.MaxInt32 {
+			continue
+		}
+		weights, err := memberWeights(rule)
+		if err != nil {
+			continue
+		}
+		var policy sql.Null[string]
+		if rule.Kind == domain.FundingPoolShared {
+			policy = sql.Null[string]{V: rule.SettlementPolicy, Valid: true}
+		}
+		version := int32(rule.Version)
+		for _, weight := range weights {
+			memberID, err := gofrsuuid.FromString(weight.PoolID)
+			if err != nil {
+				return fmt.Errorf("parse member id: %w", err)
+			}
+			lineNo := payment.lineNo
+			snapshotSource := "POSTED"
+			if _, err := models.PurchasePaymentFundingSnapshots.Insert(&models.PurchasePaymentFundingSnapshotSetter{
+				HouseholdID: &householdUUID, PurchaseID: &purchase.ID, PaymentLineNo: &lineNo, PoolID: &poolID,
+				MemberID: &memberID, FundingRuleVersion: &version, FundingWeight: &weight.Value, SettlementPolicy: &policy, SnapshotSource: &snapshotSource,
 			}).Exec(ctx, executor); err != nil {
 				return err
 			}
@@ -99,10 +195,12 @@ func refreshPurchaseMemberBurden(ctx context.Context, executor bob.Executor, hou
 	}
 	weightsByAllocation := make(map[allocationKey][]domain.Weight)
 	versionsByAllocation := make(map[allocationKey]int32)
+	sourcesByAllocation := make(map[allocationKey]string)
 	for _, row := range previous {
 		key := allocationKey{itemID: row.ItemID, poolID: row.PoolID}
 		weightsByAllocation[key] = append(weightsByAllocation[key], domain.Weight{PoolID: row.MemberID.String(), Value: row.FundingWeight})
 		versionsByAllocation[key] = row.FundingRuleVersion
+		sourcesByAllocation[key] = row.SnapshotSource
 	}
 	if _, err := models.PurchaseMemberBurdens.Delete(dm.Where(psql.And(
 		models.PurchaseMemberBurdens.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
@@ -121,6 +219,7 @@ func refreshPurchaseMemberBurden(ctx context.Context, executor bob.Executor, hou
 			return err
 		}
 		version := versionsByAllocation[key]
+		snapshotSource := sourcesByAllocation[key]
 		for _, part := range parts {
 			memberID, err := gofrsuuid.FromString(part.PoolID)
 			if err != nil {
@@ -129,7 +228,7 @@ func refreshPurchaseMemberBurden(ctx context.Context, executor bob.Executor, hou
 			itemUUID, poolUUID := allocation.ItemID, allocation.PoolID
 			if _, err := models.PurchaseMemberBurdens.Insert(&models.PurchaseMemberBurdenSetter{
 				HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, ItemID: &itemUUID, PoolID: &poolUUID,
-				MemberID: &memberID, AmountYen: &part.Amount, FundingRuleVersion: &version, FundingWeight: &part.Weight,
+				MemberID: &memberID, AmountYen: &part.Amount, FundingRuleVersion: &version, FundingWeight: &part.Weight, SnapshotSource: &snapshotSource,
 			}).Exec(ctx, executor); err != nil {
 				return err
 			}

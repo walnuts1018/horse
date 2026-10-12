@@ -1,0 +1,13 @@
+type ProductVariant implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  conceptId: ID! @goField(forceResolver: true)
+  name: String!
+  normalizedName: String!
+  brand: String!
+  packageSize: String!
+  barcode: String
+  archived: Boolean!
+  revision: Int!
+  aliases: [ProductAlias!]!
+}

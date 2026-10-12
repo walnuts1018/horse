@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f0866e48edcc6c7f29cd23eab2bb7e56>>
+ * @generated SignedSource<<983a1ef9dfaa95d25668eebb398ec030>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type PurchaseStatus = "CLOSED" | "DRAFT" | "POSTED" | "%future added value";
 export type PostPurchaseMutation$variables = {
   expectedRevision: number;
@@ -16,9 +17,20 @@ export type PostPurchaseMutation$variables = {
 };
 export type PostPurchaseMutation$data = {
   readonly postPurchase: {
-    readonly id: string;
-    readonly revision: number;
-    readonly status: PurchaseStatus;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "PostPurchaseSuccess";
+    readonly result: {
+      readonly id: string;
+      readonly revision: number;
+      readonly status: PurchaseStatus;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type PostPurchaseMutation = {
@@ -62,7 +74,7 @@ v3 = [
         "variableName": "purchaseId"
       }
     ],
-    "concreteType": "Purchase",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "postPurchase",
     "plural": false,
@@ -71,22 +83,68 @@ v3 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Purchase",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "status",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "PostPurchaseSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "status",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -118,16 +176,16 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "dd9b164a06ecde47cc12719ec09fd82a",
+    "cacheID": "cf117f237d7d6f2c2f5e166ac887cd7f",
     "id": null,
     "metadata": {},
     "name": "PostPurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation PostPurchaseMutation(\n  $purchaseId: ID!\n  $expectedRevision: Int!\n  $idempotencyKey: String!\n) {\n  postPurchase(purchaseId: $purchaseId, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) {\n    id\n    revision\n    status\n  }\n}\n"
+    "text": "mutation PostPurchaseMutation(\n  $purchaseId: ID!\n  $expectedRevision: Int!\n  $idempotencyKey: String!\n) {\n  postPurchase(purchaseId: $purchaseId, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) {\n    __typename\n    ... on PostPurchaseSuccess {\n      result {\n        id\n        revision\n        status\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "fd7bb13f5b4f2ad498716838681700a9";
+(node as any).hash = "09de9834e8e652f8e2c82230fe1a906a";
 
 export default node;

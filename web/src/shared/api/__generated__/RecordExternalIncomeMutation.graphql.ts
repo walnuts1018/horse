@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9b0f305016b23019bccd11087e015c31>>
+ * @generated SignedSource<<898077abd3f4fb10de58decfb900ee37>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type RecordExternalIncomeInput = {
   accountId: string;
   amountYen: any;
@@ -21,13 +22,24 @@ export type RecordExternalIncomeMutation$variables = {
 };
 export type RecordExternalIncomeMutation$data = {
   readonly recordExternalIncome: {
-    readonly accountId: string;
-    readonly amountYen: any;
-    readonly currency: string;
-    readonly description: string;
-    readonly householdId: string;
-    readonly id: string;
-    readonly occurredAt: string;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "RecordExternalIncomeSuccess";
+    readonly result: {
+      readonly accountId: string;
+      readonly amountYen: any;
+      readonly currency: string;
+      readonly description: string;
+      readonly householdId: string;
+      readonly id: string;
+      readonly occurredAt: string;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type RecordExternalIncomeMutation = {
@@ -53,7 +65,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "AccountIncome",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "recordExternalIncome",
     "plural": false,
@@ -62,50 +74,96 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "householdId",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "AccountIncome",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "householdId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "accountId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "currency",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "occurredAt",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "amountYen",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "description",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "RecordExternalIncomeSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "accountId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "currency",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "occurredAt",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "amountYen",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "description",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -129,16 +187,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "46fb2404fe8f7716679b4db5fbb2c7f4",
+    "cacheID": "59ce01330df93c2ef3855d733a7b5b8a",
     "id": null,
     "metadata": {},
     "name": "RecordExternalIncomeMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordExternalIncomeMutation(\n  $input: RecordExternalIncomeInput!\n) {\n  recordExternalIncome(input: $input) {\n    id\n    householdId\n    accountId\n    currency\n    occurredAt\n    amountYen\n    description\n  }\n}\n"
+    "text": "mutation RecordExternalIncomeMutation(\n  $input: RecordExternalIncomeInput!\n) {\n  recordExternalIncome(input: $input) {\n    __typename\n    ... on RecordExternalIncomeSuccess {\n      result {\n        id\n        householdId\n        accountId\n        currency\n        occurredAt\n        amountYen\n        description\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "f85fdb15564e0e4d188f25fab8154ff8";
+(node as any).hash = "b2a4a4f3c0198801387da066a0553250";
 
 export default node;

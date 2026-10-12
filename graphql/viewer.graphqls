@@ -1,0 +1,10 @@
+type Viewer {
+  id: ID!
+  subject: String!
+  displayName: String!
+  households: [Household!]!
+}
+
+extend type Query {
+  viewer: Viewer!
+}

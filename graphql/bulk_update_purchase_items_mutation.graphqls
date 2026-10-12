@@ -1,0 +1,27 @@
+extend type Mutation {
+  bulkUpdatePurchaseItems(input: BulkUpdatePurchaseItemsInput!): BulkUpdatePurchaseItemsResult!
+}
+
+union BulkUpdatePurchaseItemsResult = BulkUpdatePurchaseItemsSuccess | MutationError
+
+type BulkUpdatePurchaseItemsSuccess {
+  items: [PurchaseItem!]!
+}
+
+input BulkUpdatePurchaseItemsInput {
+  targets: [PurchaseItemTargetInput!]!
+  patch: BulkPurchaseItemPatch!
+  changedFields: [String!]!
+}
+
+input BulkPurchaseItemPatch {
+  categoryId: ID @nodeID(of: "Category")
+  productVariantId: ID @nodeID(of: "ProductVariant")
+  allocations: [AllocationInput!]
+  tagIds: [ID!]
+}
+
+input PurchaseItemTargetInput {
+  itemId: ID! @nodeID(of: "PurchaseItem")
+  baseRevision: Int!
+}

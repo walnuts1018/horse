@@ -49,12 +49,13 @@ type HouseholdMembersQuery = *psql.ViewQuery[*HouseholdMember, HouseholdMemberSl
 
 // householdMemberR is where relationships are stored.
 type householdMemberR struct {
-	CorrectionMemberBurdens CorrectionMemberBurdenSlice // correction_member_burdens.correction_member_burdens_household_id_member_id_fkey
-	Household               *Household                  // household_members.household_members_household_id_fkey
-	Member                  *Member                     // household_members.household_members_member_id_fkey
-	PoolFundingRules        PoolFundingRuleSlice        // pool_funding_rules.pool_funding_rules_household_id_owner_member_id_fkey
-	PoolFundingShares       PoolFundingShareSlice       // pool_funding_shares.pool_funding_shares_household_id_member_id_fkey
-	PurchaseMemberBurdens   PurchaseMemberBurdenSlice   // purchase_member_burdens.purchase_member_burdens_household_id_member_id_fkey
+	CorrectionMemberBurdens         CorrectionMemberBurdenSlice         // correction_member_burdens.correction_member_burdens_household_id_member_id_fkey
+	Household                       *Household                          // household_members.household_members_household_id_fkey
+	Member                          *Member                             // household_members.household_members_member_id_fkey
+	PoolFundingRules                PoolFundingRuleSlice                // pool_funding_rules.pool_funding_rules_household_id_owner_member_id_fkey
+	PoolFundingShares               PoolFundingShareSlice               // pool_funding_shares.pool_funding_shares_household_id_member_id_fkey
+	PurchaseMemberBurdens           PurchaseMemberBurdenSlice           // purchase_member_burdens.purchase_member_burdens_household_id_member_id_fkey
+	PurchasePaymentFundingSnapshots PurchasePaymentFundingSnapshotSlice // purchase_payment_funding_snapshots.purchase_payment_funding_snapshots_household_id_member_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -63,12 +64,13 @@ type householdMemberR struct {
 
 // householdMemberRLoaded tracks which relationships on HouseholdMember have been loaded.
 type householdMemberRLoaded struct {
-	CorrectionMemberBurdens bool // correction_member_burdens.correction_member_burdens_household_id_member_id_fkey
-	Household               bool // household_members.household_members_household_id_fkey
-	Member                  bool // household_members.household_members_member_id_fkey
-	PoolFundingRules        bool // pool_funding_rules.pool_funding_rules_household_id_owner_member_id_fkey
-	PoolFundingShares       bool // pool_funding_shares.pool_funding_shares_household_id_member_id_fkey
-	PurchaseMemberBurdens   bool // purchase_member_burdens.purchase_member_burdens_household_id_member_id_fkey
+	CorrectionMemberBurdens         bool // correction_member_burdens.correction_member_burdens_household_id_member_id_fkey
+	Household                       bool // household_members.household_members_household_id_fkey
+	Member                          bool // household_members.household_members_member_id_fkey
+	PoolFundingRules                bool // pool_funding_rules.pool_funding_rules_household_id_owner_member_id_fkey
+	PoolFundingShares               bool // pool_funding_shares.pool_funding_shares_household_id_member_id_fkey
+	PurchaseMemberBurdens           bool // purchase_member_burdens.purchase_member_burdens_household_id_member_id_fkey
+	PurchasePaymentFundingSnapshots bool // purchase_payment_funding_snapshots.purchase_payment_funding_snapshots_household_id_member_id_fkey
 }
 
 func buildHouseholdMemberColumns(tableName string) householdMemberColumns {
@@ -760,6 +762,35 @@ func (os HouseholdMemberSlice) PurchaseMemberBurdens(mods ...bob.Mod[*dialect.Se
 	)...)
 }
 
+// PurchasePaymentFundingSnapshots starts a query for related objects on purchase_payment_funding_snapshots
+func (o *HouseholdMember) PurchasePaymentFundingSnapshots(mods ...bob.Mod[*dialect.SelectQuery]) PurchasePaymentFundingSnapshotsQuery {
+	return PurchasePaymentFundingSnapshots.Query(append(mods,
+		sm.Where(PurchasePaymentFundingSnapshots.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(PurchasePaymentFundingSnapshots.Columns.MemberID.EQ(psql.Arg(o.MemberID))),
+	)...)
+}
+
+func (os HouseholdMemberSlice) PurchasePaymentFundingSnapshots(mods ...bob.Mod[*dialect.SelectQuery]) PurchasePaymentFundingSnapshotsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkMemberID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkMemberID = append(pkMemberID, o.MemberID)
+	}
+
+	return PurchasePaymentFundingSnapshots.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "MemberID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkMemberID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "MemberID"),
+		)).As("bob_rel_keys").On(PurchasePaymentFundingSnapshots.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), PurchasePaymentFundingSnapshots.Columns.MemberID.EQ(psql.Quote("bob_rel_keys", "MemberID"))),
+	)...)
+}
+
 func insertHouseholdMemberCorrectionMemberBurdens0(ctx context.Context, exec bob.Executor, correctionMemberBurdens1 []*CorrectionMemberBurdenSetter, householdMember0 *HouseholdMember) (CorrectionMemberBurdenSlice, error) {
 	for i := range correctionMemberBurdens1 {
 		correctionMemberBurdens1[i].HouseholdID = func() *uuid.UUID { return &householdMember0.HouseholdID }()
@@ -1154,6 +1185,78 @@ func (householdMember0 *HouseholdMember) AttachPurchaseMemberBurdens(ctx context
 	return nil
 }
 
+func insertHouseholdMemberPurchasePaymentFundingSnapshots0(ctx context.Context, exec bob.Executor, purchasePaymentFundingSnapshots1 []*PurchasePaymentFundingSnapshotSetter, householdMember0 *HouseholdMember) (PurchasePaymentFundingSnapshotSlice, error) {
+	for i := range purchasePaymentFundingSnapshots1 {
+		purchasePaymentFundingSnapshots1[i].HouseholdID = func() *uuid.UUID { return &householdMember0.HouseholdID }()
+		purchasePaymentFundingSnapshots1[i].MemberID = func() *uuid.UUID { return &householdMember0.MemberID }()
+	}
+
+	ret, err := PurchasePaymentFundingSnapshots.Insert(bob.ToMods(purchasePaymentFundingSnapshots1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertHouseholdMemberPurchasePaymentFundingSnapshots0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachHouseholdMemberPurchasePaymentFundingSnapshots0(ctx context.Context, exec bob.Executor, count int, purchasePaymentFundingSnapshots1 PurchasePaymentFundingSnapshotSlice, householdMember0 *HouseholdMember) (PurchasePaymentFundingSnapshotSlice, error) {
+	setter := &PurchasePaymentFundingSnapshotSetter{
+		HouseholdID: func() *uuid.UUID { return &householdMember0.HouseholdID }(),
+		MemberID:    func() *uuid.UUID { return &householdMember0.MemberID }(),
+	}
+
+	err := purchasePaymentFundingSnapshots1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachHouseholdMemberPurchasePaymentFundingSnapshots0: %w", err)
+	}
+
+	return purchasePaymentFundingSnapshots1, nil
+}
+
+func (householdMember0 *HouseholdMember) InsertPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, related ...*PurchasePaymentFundingSnapshotSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	purchasePaymentFundingSnapshots1, err := insertHouseholdMemberPurchasePaymentFundingSnapshots0(ctx, exec, related, householdMember0)
+	if err != nil {
+		return err
+	}
+
+	householdMember0.R.PurchasePaymentFundingSnapshots = append(householdMember0.R.PurchasePaymentFundingSnapshots, purchasePaymentFundingSnapshots1...)
+
+	for _, rel := range purchasePaymentFundingSnapshots1 {
+		rel.R.HouseholdMember = householdMember0
+		rel.R.Loaded.HouseholdMember = true
+	}
+	return nil
+}
+
+func (householdMember0 *HouseholdMember) AttachPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, related ...*PurchasePaymentFundingSnapshot) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	purchasePaymentFundingSnapshots1 := PurchasePaymentFundingSnapshotSlice(related)
+
+	_, err = attachHouseholdMemberPurchasePaymentFundingSnapshots0(ctx, exec, len(related), purchasePaymentFundingSnapshots1, householdMember0)
+	if err != nil {
+		return err
+	}
+
+	householdMember0.R.PurchasePaymentFundingSnapshots = append(householdMember0.R.PurchasePaymentFundingSnapshots, purchasePaymentFundingSnapshots1...)
+
+	for _, rel := range related {
+		rel.R.HouseholdMember = householdMember0
+		rel.R.Loaded.HouseholdMember = true
+	}
+
+	return nil
+}
+
 type householdMemberWhere[Q psql.Filterable] struct {
 	cols        householdMemberColumns
 	HouseholdID psql.WhereMod[Q, uuid.UUID]
@@ -1268,6 +1371,21 @@ func (w householdMemberWhereR[Q]) HasPurchaseMemberBurdens(filters ...bob.Mod[*d
 		sm.From(PurchaseMemberBurdens.NameExpr()),
 		sm.Where(PurchaseMemberBurdens.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(PurchaseMemberBurdens.Columns.MemberID.EQ(w.cols.MemberID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasPurchasePaymentFundingSnapshots filters parents that have a matching PurchasePaymentFundingSnapshots using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to PurchasePaymentFundingSnapshots).
+func (w householdMemberWhereR[Q]) HasPurchasePaymentFundingSnapshots(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(PurchasePaymentFundingSnapshots.NameExpr()),
+		sm.Where(PurchasePaymentFundingSnapshots.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(PurchasePaymentFundingSnapshots.Columns.MemberID.EQ(w.cols.MemberID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -1453,6 +1571,22 @@ func (o *HouseholdMember) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "PurchasePaymentFundingSnapshots":
+		rels, ok := retrieved.(PurchasePaymentFundingSnapshotSlice)
+		if !ok {
+			return fmt.Errorf("householdMember cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.PurchasePaymentFundingSnapshots = rels
+		o.R.Loaded.PurchasePaymentFundingSnapshots = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.HouseholdMember = o
+				rel.R.Loaded.HouseholdMember = true
+			}
+		}
+		return nil
 	default:
 		return fmt.Errorf("householdMember has no relationship %q", name)
 	}
@@ -1495,12 +1629,13 @@ func buildHouseholdMemberPreloader() householdMemberPreloader {
 }
 
 type householdMemberThenLoader[Q orm.Loadable] struct {
-	CorrectionMemberBurdens func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Household               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Member                  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	PoolFundingRules        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	PoolFundingShares       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	PurchaseMemberBurdens   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CorrectionMemberBurdens         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Household                       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Member                          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PoolFundingRules                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PoolFundingShares               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PurchaseMemberBurdens           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PurchasePaymentFundingSnapshots func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildHouseholdMemberThenLoader[Q orm.Loadable]() householdMemberThenLoader[Q] {
@@ -1521,6 +1656,9 @@ func buildHouseholdMemberThenLoader[Q orm.Loadable]() householdMemberThenLoader[
 	}
 	type PurchaseMemberBurdensLoadInterface interface {
 		LoadPurchaseMemberBurdens(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type PurchasePaymentFundingSnapshotsLoadInterface interface {
+		LoadPurchasePaymentFundingSnapshots(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return householdMemberThenLoader[Q]{
@@ -1558,6 +1696,12 @@ func buildHouseholdMemberThenLoader[Q orm.Loadable]() householdMemberThenLoader[
 			"PurchaseMemberBurdens",
 			func(ctx context.Context, exec bob.Executor, retrieved PurchaseMemberBurdensLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadPurchaseMemberBurdens(ctx, exec, mods...)
+			},
+		),
+		PurchasePaymentFundingSnapshots: thenLoadBuilder[Q](
+			"PurchasePaymentFundingSnapshots",
+			func(ctx context.Context, exec bob.Executor, retrieved PurchasePaymentFundingSnapshotsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadPurchasePaymentFundingSnapshots(ctx, exec, mods...)
 			},
 		),
 	}
@@ -1992,12 +2136,82 @@ func (os HouseholdMemberSlice) LoadPurchaseMemberBurdens(ctx context.Context, ex
 	return nil
 }
 
+// LoadPurchasePaymentFundingSnapshots loads the householdMember's PurchasePaymentFundingSnapshots into the .R struct
+func (o *HouseholdMember) LoadPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.PurchasePaymentFundingSnapshots = nil
+	o.R.Loaded.PurchasePaymentFundingSnapshots = false
+
+	related, err := o.PurchasePaymentFundingSnapshots(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.HouseholdMember = o
+		rel.R.Loaded.HouseholdMember = true
+	}
+
+	o.R.PurchasePaymentFundingSnapshots = related
+	o.R.Loaded.PurchasePaymentFundingSnapshots = true
+	return nil
+}
+
+// LoadPurchasePaymentFundingSnapshots loads the householdMember's PurchasePaymentFundingSnapshots into the .R struct
+func (os HouseholdMemberSlice) LoadPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	purchasePaymentFundingSnapshots, err := os.PurchasePaymentFundingSnapshots(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.PurchasePaymentFundingSnapshots = nil
+		o.R.Loaded.PurchasePaymentFundingSnapshots = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range purchasePaymentFundingSnapshots {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.MemberID == rel.MemberID) {
+				continue
+			}
+
+			rel.R.HouseholdMember = o
+			rel.R.Loaded.HouseholdMember = true
+
+			o.R.PurchasePaymentFundingSnapshots = append(o.R.PurchasePaymentFundingSnapshots, rel)
+		}
+	}
+
+	return nil
+}
+
 // householdMemberC is where relationship counts are stored.
 type householdMemberC struct {
-	CorrectionMemberBurdens *int64
-	PoolFundingRules        *int64
-	PoolFundingShares       *int64
-	PurchaseMemberBurdens   *int64
+	CorrectionMemberBurdens         *int64
+	PoolFundingRules                *int64
+	PoolFundingShares               *int64
+	PurchaseMemberBurdens           *int64
+	PurchasePaymentFundingSnapshots *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -2015,15 +2229,18 @@ func (o *HouseholdMember) PreloadCount(name string, count int64) error {
 		o.C.PoolFundingShares = &count
 	case "PurchaseMemberBurdens":
 		o.C.PurchaseMemberBurdens = &count
+	case "PurchasePaymentFundingSnapshots":
+		o.C.PurchasePaymentFundingSnapshots = &count
 	}
 	return nil
 }
 
 type householdMemberCountPreloader struct {
-	CorrectionMemberBurdens func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	PoolFundingRules        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	PoolFundingShares       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	PurchaseMemberBurdens   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CorrectionMemberBurdens         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	PoolFundingRules                func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	PoolFundingShares               func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	PurchaseMemberBurdens           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	PurchasePaymentFundingSnapshots func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildHouseholdMemberCountPreloader() householdMemberCountPreloader {
@@ -2100,14 +2317,33 @@ func buildHouseholdMemberCountPreloader() householdMemberCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		PurchasePaymentFundingSnapshots: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*HouseholdMember]("PurchasePaymentFundingSnapshots", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = HouseholdMembers.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(PurchasePaymentFundingSnapshots.NameAsExpr()),
+					sm.Where(psql.Quote(PurchasePaymentFundingSnapshots.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(PurchasePaymentFundingSnapshots.Alias(), "member_id").EQ(psql.Quote(parent, "member_id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 	}
 }
 
 type householdMemberCountThenLoader[Q orm.Loadable] struct {
-	CorrectionMemberBurdens func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	PoolFundingRules        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	PoolFundingShares       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	PurchaseMemberBurdens   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CorrectionMemberBurdens         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PoolFundingRules                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PoolFundingShares               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PurchaseMemberBurdens           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PurchasePaymentFundingSnapshots func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildHouseholdMemberCountThenLoader[Q orm.Loadable]() householdMemberCountThenLoader[Q] {
@@ -2122,6 +2358,9 @@ func buildHouseholdMemberCountThenLoader[Q orm.Loadable]() householdMemberCountT
 	}
 	type PurchaseMemberBurdensCountInterface interface {
 		LoadCountPurchaseMemberBurdens(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type PurchasePaymentFundingSnapshotsCountInterface interface {
+		LoadCountPurchasePaymentFundingSnapshots(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return householdMemberCountThenLoader[Q]{
@@ -2147,6 +2386,12 @@ func buildHouseholdMemberCountThenLoader[Q orm.Loadable]() householdMemberCountT
 			"PurchaseMemberBurdens",
 			func(ctx context.Context, exec bob.Executor, retrieved PurchaseMemberBurdensCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountPurchaseMemberBurdens(ctx, exec, mods...)
+			},
+		),
+		PurchasePaymentFundingSnapshots: countThenLoadBuilder[Q](
+			"PurchasePaymentFundingSnapshots",
+			func(ctx context.Context, exec bob.Executor, retrieved PurchasePaymentFundingSnapshotsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountPurchasePaymentFundingSnapshots(ctx, exec, mods...)
 			},
 		),
 	}
@@ -2592,14 +2837,125 @@ func (os HouseholdMemberSlice) LoadCountPurchaseMemberBurdens(ctx context.Contex
 	return nil
 }
 
+// LoadCountPurchasePaymentFundingSnapshots loads the count of PurchasePaymentFundingSnapshots into the C struct
+func (o *HouseholdMember) LoadCountPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.PurchasePaymentFundingSnapshots(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.PurchasePaymentFundingSnapshots = &count
+	return nil
+}
+
+// LoadCountPurchasePaymentFundingSnapshots loads the count of PurchasePaymentFundingSnapshots for a slice in a single batch query
+func (os HouseholdMemberSlice) LoadCountPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkMemberID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkMemberID = append(pkMemberID, o.MemberID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		MemberID uuid.UUID
+		Count    int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			PurchasePaymentFundingSnapshots.Columns.HouseholdID.As("household_id"),
+			PurchasePaymentFundingSnapshots.Columns.MemberID.As("member_id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(PurchasePaymentFundingSnapshots.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "MemberID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkMemberID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "MemberID"),
+		)).As("bob_rel_keys").On(
+			PurchasePaymentFundingSnapshots.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			PurchasePaymentFundingSnapshots.Columns.MemberID.EQ(psql.Quote("bob_rel_keys", "MemberID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(PurchasePaymentFundingSnapshots.Columns.HouseholdID),
+		sm.GroupBy(PurchasePaymentFundingSnapshots.Columns.MemberID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		MemberID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			MemberID: r.MemberID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			MemberID: o.MemberID,
+		}]
+		o.C.PurchasePaymentFundingSnapshots = &count
+	}
+
+	return nil
+}
+
 type householdMemberJoins[Q dialect.Joinable] struct {
-	typ                     string
-	CorrectionMemberBurdens modAs[Q, correctionMemberBurdenColumns]
-	Household               modAs[Q, householdColumns]
-	Member                  modAs[Q, memberColumns]
-	PoolFundingRules        modAs[Q, poolFundingRuleColumns]
-	PoolFundingShares       modAs[Q, poolFundingShareColumns]
-	PurchaseMemberBurdens   modAs[Q, purchaseMemberBurdenColumns]
+	typ                             string
+	CorrectionMemberBurdens         modAs[Q, correctionMemberBurdenColumns]
+	Household                       modAs[Q, householdColumns]
+	Member                          modAs[Q, memberColumns]
+	PoolFundingRules                modAs[Q, poolFundingRuleColumns]
+	PoolFundingShares               modAs[Q, poolFundingShareColumns]
+	PurchaseMemberBurdens           modAs[Q, purchaseMemberBurdenColumns]
+	PurchasePaymentFundingSnapshots modAs[Q, purchasePaymentFundingSnapshotColumns]
 }
 
 func (j householdMemberJoins[Q]) aliasedAs(alias string) householdMemberJoins[Q] {
@@ -2686,6 +3042,20 @@ func buildHouseholdMemberJoins[Q dialect.Joinable](cols householdMemberColumns, 
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, PurchaseMemberBurdens.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.MemberID.EQ(cols.MemberID),
+					))
+				}
+
+				return mods
+			},
+		},
+		PurchasePaymentFundingSnapshots: modAs[Q, purchasePaymentFundingSnapshotColumns]{
+			c: PurchasePaymentFundingSnapshots.Columns,
+			f: func(to purchasePaymentFundingSnapshotColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, PurchasePaymentFundingSnapshots.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.HouseholdID), to.MemberID.EQ(cols.MemberID),
 					))
 				}

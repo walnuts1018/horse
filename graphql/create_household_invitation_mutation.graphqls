@@ -1,0 +1,19 @@
+type CreatedHouseholdInvitation {
+  invitation: HouseholdInvitation!
+  token: String!
+}
+
+extend type Mutation {
+  createHouseholdInvitation(input: CreateHouseholdInvitationInput!): CreateHouseholdInvitationResult!
+}
+
+union CreateHouseholdInvitationResult = CreateHouseholdInvitationSuccess | MutationError
+
+type CreateHouseholdInvitationSuccess {
+  result: CreatedHouseholdInvitation!
+}
+
+input CreateHouseholdInvitationInput {
+  householdId: ID! @nodeID(of: "Household")
+  expiresAt: String!
+}

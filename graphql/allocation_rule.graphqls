@@ -1,0 +1,22 @@
+type AllocationRule implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  scope: AllocationRuleScope!
+  categoryId: ID @goField(forceResolver: true)
+  merchant: String
+  productConceptId: ID @goField(forceResolver: true)
+  productVariantId: ID @goField(forceResolver: true)
+  revision: Int!
+  allocations: [Allocation!]!
+}
+
+enum AllocationRuleScope {
+  PRODUCT_VARIANT
+  PRODUCT
+  CATEGORY
+  MERCHANT
+}
+
+extend type Query {
+  allocationRules(householdId: ID! @nodeID(of: "Household")): [AllocationRule!]!
+}

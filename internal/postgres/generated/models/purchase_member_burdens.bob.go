@@ -32,6 +32,7 @@ type PurchaseMemberBurden struct {
 	AmountYen          int64     `db:"amount_yen" `
 	FundingRuleVersion int32     `db:"funding_rule_version" `
 	FundingWeight      int64     `db:"funding_weight" `
+	SnapshotSource     string    `db:"snapshot_source" `
 
 	R purchaseMemberBurdenR `db:"-" `
 }
@@ -66,7 +67,7 @@ type purchaseMemberBurdenRLoaded struct {
 
 func buildPurchaseMemberBurdenColumns(tableName string) purchaseMemberBurdenColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"household_id", "purchase_id", "item_id", "pool_id", "member_id", "amount_yen", "funding_rule_version", "funding_weight",
+		"household_id", "purchase_id", "item_id", "pool_id", "member_id", "amount_yen", "funding_rule_version", "funding_weight", "snapshot_source",
 	)
 
 	if tableName != "" {
@@ -84,6 +85,7 @@ func buildPurchaseMemberBurdenColumns(tableName string) purchaseMemberBurdenColu
 		AmountYen:          buildPurchaseMemberBurdenColumn(tableName, "amount_yen"),
 		FundingRuleVersion: buildPurchaseMemberBurdenColumn(tableName, "funding_rule_version"),
 		FundingWeight:      buildPurchaseMemberBurdenColumn(tableName, "funding_weight"),
+		SnapshotSource:     buildPurchaseMemberBurdenColumn(tableName, "snapshot_source"),
 	}
 }
 
@@ -98,6 +100,7 @@ type purchaseMemberBurdenColumns struct {
 	AmountYen          purchaseMemberBurdenColumn
 	FundingRuleVersion purchaseMemberBurdenColumn
 	FundingWeight      purchaseMemberBurdenColumn
+	SnapshotSource     purchaseMemberBurdenColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -151,10 +154,11 @@ type PurchaseMemberBurdenSetter struct {
 	AmountYen          *int64     `db:"amount_yen" `
 	FundingRuleVersion *int32     `db:"funding_rule_version" `
 	FundingWeight      *int64     `db:"funding_weight" `
+	SnapshotSource     *string    `db:"snapshot_source" `
 }
 
 func (s PurchaseMemberBurdenSetter) SetColumns() []string {
-	vals := make([]string, 0, 8)
+	vals := make([]string, 0, 9)
 	if s.HouseholdID != nil {
 		vals = append(vals, "household_id")
 	}
@@ -178,6 +182,9 @@ func (s PurchaseMemberBurdenSetter) SetColumns() []string {
 	}
 	if s.FundingWeight != nil {
 		vals = append(vals, "funding_weight")
+	}
+	if s.SnapshotSource != nil {
+		vals = append(vals, "snapshot_source")
 	}
 	return vals
 }
@@ -245,6 +252,14 @@ func (s PurchaseMemberBurdenSetter) Overwrite(t *PurchaseMemberBurden) {
 				return *new(int64)
 			}
 			return *s.FundingWeight
+		}()
+	}
+	if s.SnapshotSource != nil {
+		t.SnapshotSource = func() string {
+			if s.SnapshotSource == nil {
+				return *new(string)
+			}
+			return *s.SnapshotSource
 		}()
 	}
 }
@@ -335,6 +350,16 @@ func (s *PurchaseMemberBurdenSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.FundingWeight
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.SnapshotSource == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() string {
+				if s.SnapshotSource == nil {
+					return *new(string)
+				}
+				return *s.SnapshotSource
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -343,7 +368,7 @@ func (s PurchaseMemberBurdenSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s PurchaseMemberBurdenSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 8)
+	exprs := make([]bob.Expression, 0, 9)
 
 	if s.HouseholdID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -401,6 +426,13 @@ func (s PurchaseMemberBurdenSetter) Expressions(prefix ...string) []bob.Expressi
 		}})
 	}
 
+	if s.SnapshotSource != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "snapshot_source")...),
+			psql.Arg(s.SnapshotSource),
+		}})
+	}
+
 	return exprs
 }
 
@@ -411,7 +443,7 @@ func purchaseMemberBurdenScanMapper(ctx context.Context, cols []string) (scan.Be
 		idx int
 		dst func(o *PurchaseMemberBurden) any
 	}
-	targets := make([]target, 0, 8)
+	targets := make([]target, 0, 9)
 	for i, col := range cols {
 		switch col {
 		case "household_id":
@@ -430,6 +462,8 @@ func purchaseMemberBurdenScanMapper(ctx context.Context, cols []string) (scan.Be
 			targets = append(targets, target{i, func(o *PurchaseMemberBurden) any { return &o.FundingRuleVersion }})
 		case "funding_weight":
 			targets = append(targets, target{i, func(o *PurchaseMemberBurden) any { return &o.FundingWeight }})
+		case "snapshot_source":
+			targets = append(targets, target{i, func(o *PurchaseMemberBurden) any { return &o.SnapshotSource }})
 		}
 	}
 
@@ -975,6 +1009,7 @@ type purchaseMemberBurdenWhere[Q psql.Filterable] struct {
 	AmountYen          psql.WhereMod[Q, int64]
 	FundingRuleVersion psql.WhereMod[Q, int32]
 	FundingWeight      psql.WhereMod[Q, int64]
+	SnapshotSource     psql.WhereMod[Q, string]
 	R                  purchaseMemberBurdenWhereR[Q]
 }
 
@@ -993,6 +1028,7 @@ func buildPurchaseMemberBurdenWhere[Q psql.Filterable](cols purchaseMemberBurden
 		AmountYen:          psql.Where[Q, int64](cols.AmountYen.Expression),
 		FundingRuleVersion: psql.Where[Q, int32](cols.FundingRuleVersion.Expression),
 		FundingWeight:      psql.Where[Q, int64](cols.FundingWeight.Expression),
+		SnapshotSource:     psql.Where[Q, string](cols.SnapshotSource.Expression),
 		R:                  purchaseMemberBurdenWhereR[Q]{cols: cols},
 	}
 }

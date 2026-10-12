@@ -1,0 +1,20 @@
+extend type Mutation {
+  correctPurchase(input: CorrectPurchaseInput!): CorrectPurchaseResult!
+}
+
+union CorrectPurchaseResult = CorrectPurchaseSuccess | MutationError
+
+type CorrectPurchaseSuccess {
+  result: Purchase!
+}
+
+input CorrectPurchaseInput {
+  householdId: ID! @nodeID(of: "Household")
+  purchaseId: ID! @nodeID(of: "Purchase")
+  itemId: ID @nodeID(of: "PurchaseItem")
+  amountDeltaYen: Long!
+  reason: String!
+  allocations: [AllocationInput!]
+  paymentAllocations: [PurchasePaymentInput!]
+  idempotencyKey: String!
+}

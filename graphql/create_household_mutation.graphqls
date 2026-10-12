@@ -1,0 +1,14 @@
+extend type Mutation {
+  createHousehold(input: CreateHouseholdInput!): CreateHouseholdResult!
+}
+
+union CreateHouseholdResult = CreateHouseholdSuccess | MutationError
+
+type CreateHouseholdSuccess {
+  result: Household!
+}
+
+input CreateHouseholdInput {
+  name: String!
+  memberNames: [String!]!
+}

@@ -1,38 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Activity, ArrowLeftRight, Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import {
-  accountMovementsQuery,
-  accountBalancesQuery,
-  accountBalanceAnalysisQuery,
-  accountIncomesQuery,
-  archiveBudgetMutation,
-  archiveRecurringExpenseMutation,
-  archiveTagMutation,
-  budgetsQuery,
-  createAccountMutation,
-  createCategoryMutation,
-  createPoolMutation,
-  allocationRulesQuery,
-  setAllocationRuleMutation,
-  setCategoryArchivedMutation,
-  createHouseholdInvitationMutation,
-  householdInvitationsQuery,
-  revokeHouseholdInvitationMutation,
-  productCatalogQuery,
-  recurringExpensesQuery,
-  recordAccountMovementMutation,
-  recordExternalIncomeMutation,
-  createProductConceptMutation,
-  createProductVariantMutation,
-  createTagMutation,
-  setProductAliasMutation,
   readGraphql,
-  setDefaultAllocationMutation,
-  setPoolFundingRuleMutation,
-  setBudgetMutation,
-  setRecurringExpenseMutation,
-  tagsQuery,
-  updateTagMutation,
   type SharedPoolSettlementPolicy,
   type AllocationRule,
   type HouseholdInvitation,
@@ -46,6 +15,47 @@ import {
   type RecurringExpense,
   type Tag,
 } from "../../../shared/api";
+import {
+  allocationRulesQuery,
+  createAccountMutation,
+  createCategoryMutation,
+  createPoolMutation,
+  setAllocationRuleMutation,
+  setCategoryArchivedMutation,
+  setDefaultAllocationMutation,
+  setPoolFundingRuleMutation,
+} from "../api/operations";
+import { archiveBudgetMutation, budgetsQuery, setBudgetMutation } from "../../../entities/budget";
+import {
+  archiveRecurringExpenseMutation,
+  recurringExpensesQuery,
+  setRecurringExpenseMutation,
+} from "../../../entities/recurring-expense";
+import {
+  archiveTagMutation,
+  createTagMutation,
+  tagsQuery,
+  updateTagMutation,
+} from "../../../entities/tag";
+import {
+  createProductConceptMutation,
+  createProductVariantMutation,
+  productCatalogQuery,
+  setProductAliasMutation,
+} from "../../../entities/product";
+import {
+  createHouseholdInvitationMutation,
+  householdInvitationsQuery,
+  revokeHouseholdInvitationMutation,
+} from "../../../entities/household";
+import {
+  accountMovementsQuery,
+  accountBalancesQuery,
+  accountBalanceAnalysisQuery,
+  accountIncomesQuery,
+  recordAccountMovementMutation,
+  recordExternalIncomeMutation,
+} from "../../../entities/ledger";
 import { InlineError } from "../../../shared/ui";
 
 const currentMonth = () =>

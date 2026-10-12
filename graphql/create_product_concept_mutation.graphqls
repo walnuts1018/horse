@@ -1,0 +1,15 @@
+extend type Mutation {
+  createProductConcept(input: CreateProductConceptInput!): CreateProductConceptResult!
+}
+
+union CreateProductConceptResult = CreateProductConceptSuccess | MutationError
+
+type CreateProductConceptSuccess {
+  result: ProductConcept!
+}
+
+input CreateProductConceptInput {
+  householdId: ID! @nodeID(of: "Household")
+  name: String!
+  categoryId: ID @nodeID(of: "Category")
+}

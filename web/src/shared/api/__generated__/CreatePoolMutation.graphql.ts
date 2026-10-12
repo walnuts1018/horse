@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<73630abba956a70775bcfd0ae732c2aa>>
+ * @generated SignedSource<<64f67cd3f79e6e36ac0775868510b52f>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type PoolKind = "PERSONAL" | "SHARED" | "%future added value";
 export type CreatePoolInput = {
   householdId: string;
@@ -19,7 +20,18 @@ export type CreatePoolMutation$variables = {
 };
 export type CreatePoolMutation$data = {
   readonly createPool: {
-    readonly id: string;
+    readonly __typename: "CreatePoolSuccess";
+    readonly result: {
+      readonly id: string;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type CreatePoolMutation = {
@@ -45,7 +57,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Pool",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "createPool",
     "plural": false,
@@ -54,8 +66,54 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Pool",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "CreatePoolSuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -79,16 +137,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "b628a46fbdb5f09503ee3020f0ec9dfa",
+    "cacheID": "7aae90bf3012810cd9f44f01f214e9ff",
     "id": null,
     "metadata": {},
     "name": "CreatePoolMutation",
     "operationKind": "mutation",
-    "text": "mutation CreatePoolMutation(\n  $input: CreatePoolInput!\n) {\n  createPool(input: $input) {\n    id\n  }\n}\n"
+    "text": "mutation CreatePoolMutation(\n  $input: CreatePoolInput!\n) {\n  createPool(input: $input) {\n    __typename\n    ... on CreatePoolSuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "f7e301e0720a5e51517d865ae1b94d9d";
+(node as any).hash = "95d575d97c91b355aed7921f1cb387c5";
 
 export default node;

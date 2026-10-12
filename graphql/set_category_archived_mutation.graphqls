@@ -1,0 +1,9 @@
+extend type Mutation {
+  setCategoryArchived(categoryId: ID!, archived: Boolean!): SetCategoryArchivedResult!
+}
+
+union SetCategoryArchivedResult = SetCategoryArchivedSuccess | MutationError
+
+type SetCategoryArchivedSuccess {
+  result: Category!
+}

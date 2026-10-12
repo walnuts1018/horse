@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b2e54413e925acd47698804a6f3dca9e>>
+ * @generated SignedSource<<ac769107c4bc624a82be1d1e4f212488>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type ClosePeriodInput = {
   expectedRevision: number;
   householdId: string;
@@ -18,9 +19,20 @@ export type ClosePeriodMutation$variables = {
 };
 export type ClosePeriodMutation$data = {
   readonly closePeriod: {
-    readonly period: string;
-    readonly revision: number;
-    readonly status: string;
+    readonly __typename: "ClosePeriodSuccess";
+    readonly result: {
+      readonly period: string;
+      readonly revision: number;
+      readonly status: string;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type ClosePeriodMutation = {
@@ -46,7 +58,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Settlement",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "closePeriod",
     "plural": false,
@@ -55,22 +67,68 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "period",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "status",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Settlement",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "period",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "status",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "ClosePeriodSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -94,16 +152,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "374a9f0e58d7a8d55432c3e5d9bb06c9",
+    "cacheID": "eda53cb6dd3f260de79fd55a8f0082ba",
     "id": null,
     "metadata": {},
     "name": "ClosePeriodMutation",
     "operationKind": "mutation",
-    "text": "mutation ClosePeriodMutation(\n  $input: ClosePeriodInput!\n) {\n  closePeriod(input: $input) {\n    period\n    status\n    revision\n  }\n}\n"
+    "text": "mutation ClosePeriodMutation(\n  $input: ClosePeriodInput!\n) {\n  closePeriod(input: $input) {\n    __typename\n    ... on ClosePeriodSuccess {\n      result {\n        period\n        status\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "5616e5b6862a0ee15f3d58e0ad13bb87";
+(node as any).hash = "96956fe1555f7d2424302347cd87865a";
 
 export default node;

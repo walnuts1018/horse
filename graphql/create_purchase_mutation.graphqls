@@ -1,0 +1,35 @@
+extend type Mutation {
+  createPurchase(input: CreatePurchaseInput!): CreatePurchaseResult!
+}
+
+union CreatePurchaseResult = CreatePurchaseSuccess | MutationError
+
+type CreatePurchaseSuccess {
+  result: Purchase!
+}
+
+input CreatePurchaseInput {
+  idempotencyKey: String!
+  householdId: ID! @nodeID(of: "Household")
+  occurredAt: String!
+  merchant: String!
+  origin: PurchaseOrigin
+  paymentAccountId: ID @nodeID(of: "Account")
+  paymentAllocations: [PurchasePaymentInput!]
+  sourceDocumentId: ID
+  sourceReference: String
+  receiptCandidateId: String
+  manualAmountOverrideReason: String
+  items: [PurchaseItemInput!]!
+  status: PurchaseStatus
+}
+
+input PurchaseItemInput {
+  name: String!
+  amountYen: Long!
+  quantity: PurchaseQuantityInput
+  printedUnitPrice: PrintedUnitPriceInput
+  categoryId: ID @nodeID(of: "Category")
+  productVariantId: ID @nodeID(of: "ProductVariant")
+  allocations: [AllocationInput!]
+}

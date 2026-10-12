@@ -1,0 +1,19 @@
+extend type Mutation {
+  setFundingSchedule(input: SetFundingScheduleInput!): SetFundingScheduleResult!
+}
+
+union SetFundingScheduleResult = SetFundingScheduleSuccess | MutationError
+
+type SetFundingScheduleSuccess {
+  success: Boolean!
+}
+
+input SetFundingScheduleInput {
+  householdId: ID! @nodeID(of: "Household")
+  memberId: ID! @nodeID(of: "Member")
+  poolId: ID! @nodeID(of: "Pool")
+  amountYen: Long!
+  cadence: String!
+  startsOn: String!
+  endsOn: String
+}

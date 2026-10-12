@@ -1,0 +1,6 @@
+type Category implements Node {
+  id: ID! @goField(forceResolver: true)
+  name: String!
+  parentId: ID @goField(forceResolver: true)
+  archived: Boolean!
+}

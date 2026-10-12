@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<c68ced987ec9d502b861b12b49fdd8cd>>
+ * @generated SignedSource<<61785b3f07743504b14116baecdfeec7>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type CreateTagInput = {
   householdId: string;
   name: string;
@@ -17,11 +18,22 @@ export type CreateTagMutation$variables = {
 };
 export type CreateTagMutation$data = {
   readonly createTag: {
-    readonly archived: boolean;
-    readonly householdId: string;
-    readonly id: string;
-    readonly name: string;
-    readonly revision: number;
+    readonly __typename: "CreateTagSuccess";
+    readonly result: {
+      readonly archived: boolean;
+      readonly householdId: string;
+      readonly id: string;
+      readonly name: string;
+      readonly revision: number;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type CreateTagMutation = {
@@ -47,7 +59,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Tag",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "createTag",
     "plural": false,
@@ -56,36 +68,82 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "householdId",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Tag",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "householdId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "name",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "archived",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "CreateTagSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "name",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "archived",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -109,16 +167,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "73456e3d84bec10ff783891efa59b59f",
+    "cacheID": "f836008e386e33fdb12b90c5549fd0fa",
     "id": null,
     "metadata": {},
     "name": "CreateTagMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateTagMutation(\n  $input: CreateTagInput!\n) {\n  createTag(input: $input) {\n    id\n    householdId\n    name\n    archived\n    revision\n  }\n}\n"
+    "text": "mutation CreateTagMutation(\n  $input: CreateTagInput!\n) {\n  createTag(input: $input) {\n    __typename\n    ... on CreateTagSuccess {\n      result {\n        id\n        householdId\n        name\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "f3297a3ad9f5360d85d043714fce9305";
+(node as any).hash = "a9c2823e7bc5f46932bf74ce1486b504";
 
 export default node;

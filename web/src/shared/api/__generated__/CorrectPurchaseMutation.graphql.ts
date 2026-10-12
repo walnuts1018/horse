@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4a29afb674ecb4c147daa5158bd134d8>>
+ * @generated SignedSource<<2982bf3c9a90c9b3ba15feec666a1e98>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type CorrectPurchaseInput = {
   allocations?: ReadonlyArray<AllocationInput> | null | undefined;
   amountDeltaYen: any;
@@ -31,8 +32,19 @@ export type CorrectPurchaseMutation$variables = {
 };
 export type CorrectPurchaseMutation$data = {
   readonly correctPurchase: {
-    readonly id: string;
-    readonly revision: number;
+    readonly __typename: "CorrectPurchaseSuccess";
+    readonly result: {
+      readonly id: string;
+      readonly revision: number;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type CorrectPurchaseMutation = {
@@ -58,7 +70,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Purchase",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "correctPurchase",
     "plural": false,
@@ -67,15 +79,61 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Purchase",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "CorrectPurchaseSuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -99,16 +157,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "149f7aba6701c3ab79c5bbc10e946481",
+    "cacheID": "d142a74b263af2342436fb3b16a9c393",
     "id": null,
     "metadata": {},
     "name": "CorrectPurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation CorrectPurchaseMutation(\n  $input: CorrectPurchaseInput!\n) {\n  correctPurchase(input: $input) {\n    id\n    revision\n  }\n}\n"
+    "text": "mutation CorrectPurchaseMutation(\n  $input: CorrectPurchaseInput!\n) {\n  correctPurchase(input: $input) {\n    __typename\n    ... on CorrectPurchaseSuccess {\n      result {\n        id\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d1e39f45cd0970d54368af9717b08758";
+(node as any).hash = "356713b4c0e954e2e1dfa972cb0ef019";
 
 export default node;

@@ -12,6 +12,9 @@ const (
 	ProjectFree = "free"
 	ProjectPaid = "paid"
 
+	JobPurposeInteractive = "interactive"
+	JobPurposeBackground  = "background"
+
 	ModelReceipt = "gemini-3.8-flash"
 	ModelEmail   = "gemini-3.5-flash-lite"
 	ModelPro     = "gemini-3.1-pro-preview"
@@ -56,7 +59,6 @@ type GeminiRouter struct {
 	USDJPYRate       float64
 	USDJPYRateSource string
 	USDJPYRateAsOf   string
-	Background       bool
 }
 
 type GeminiRouteOptions struct {
@@ -64,6 +66,7 @@ type GeminiRouteOptions struct {
 	ThinkingLevel    string
 	ServiceTier      string
 	ProjectPreferred string
+	Purpose          string
 	Reason           string
 	Guidance         []string
 	PaidOnly         bool
@@ -80,10 +83,10 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	}
 	tier := options.ServiceTier
 	if tier == "" {
-		if r.Background {
-			tier = "flex"
-		} else {
-			tier = "standard"
+		var err error
+		tier, err = defaultServiceTier(options.Purpose)
+		if err != nil {
+			return Receipt{}, nil, err
 		}
 	}
 	if err := validateRouteOptions(model, thinking, tier); err != nil {
@@ -168,7 +171,7 @@ func (r GeminiRouter) QualityOptions(sourceKind string, previous ExtractionRun, 
 	}
 }
 
-func (r GeminiRouter) ProOptions(guidance []string) GeminiRouteOptions {
+func (r GeminiRouter) ProOptions(purpose string, guidance []string) GeminiRouteOptions {
 	model := r.ProModel
 	if model == "" {
 		model = ModelPro
@@ -176,10 +179,21 @@ func (r GeminiRouter) ProOptions(guidance []string) GeminiRouteOptions {
 	return GeminiRouteOptions{
 		Model:         model,
 		ThinkingLevel: "high",
-		ServiceTier:   "flex",
+		Purpose:       purpose,
 		Reason:        "evidence_guided_pro_review",
 		Guidance:      guidance,
 		PaidOnly:      true,
+	}
+}
+
+func defaultServiceTier(purpose string) (string, error) {
+	switch purpose {
+	case JobPurposeBackground:
+		return "flex", nil
+	case "", JobPurposeInteractive:
+		return "standard", nil
+	default:
+		return "", errors.New("invalid Gemini job purpose")
 	}
 }
 

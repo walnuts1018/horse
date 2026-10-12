@@ -1,4 +1,4 @@
-import { commitMutation, fetchQuery, graphql } from "react-relay";
+import { commitMutation, fetchQuery, useMutation } from "react-relay";
 import {
   Environment,
   Network,
@@ -8,6 +8,7 @@ import {
   type GraphQLResponse,
   type OperationType,
 } from "relay-runtime";
+import { useCallback } from "react";
 
 export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL";
 export type PoolFundingShare = { memberId: string; memberName: string; weight: number };
@@ -146,6 +147,8 @@ export type CreatePurchaseInput = {
   origin?: "AI" | "MANUAL" | "UNKNOWN";
   sourceDocumentId?: string | null;
   sourceReference?: string | null;
+  receiptCandidateId?: string | null;
+  manualAmountOverrideReason?: string | null;
   paymentAccountId: string | null;
   paymentAllocations?: PurchasePaymentInput[];
   items: Array<{
@@ -361,28 +364,222 @@ export async function executeGraphql<T, V extends OperationType["variables"]>(
   variables: V,
 ): Promise<T> {
   const request = operation as { params?: { operationKind?: string } };
+  const operationName = (operation as { params?: { name?: string } }).params?.name;
+  const requestVariables = normalizePurchaseVariables(operationName, variables);
   if (request.params?.operationKind === "mutation") {
     return new Promise<T>((resolve, reject) =>
       commitMutation(getRelayEnvironment(), {
         mutation: operation,
-        variables,
-        onCompleted: (response, errors) =>
-          errors?.length
-            ? reject(
-                new ApiError(
-                  errors[0].message,
-                  (errors[0] as Error & { extensions?: { code?: string } }).extensions?.code,
-                ),
-              )
-            : resolve(response as T),
+        variables: requestVariables,
+        onCompleted: (response, errors) => {
+          if (errors?.length) {
+            reject(
+              new ApiError(
+                errors[0].message,
+                (errors[0] as Error & { extensions?: { code?: string } }).extensions?.code,
+              ),
+            );
+            return;
+          }
+          try {
+            resolve(normalizeGraphQLValue(unwrapMutationResults(response)) as T);
+          } catch (reason) {
+            reject(reason);
+          }
+        },
         onError: reject,
       }),
     );
   }
-  const result = await fetchQuery(getRelayEnvironment(), operation, variables, {
+  const result = await fetchQuery(getRelayEnvironment(), operation, requestVariables, {
     fetchPolicy: "network-only",
   }).toPromise();
-  return result as T;
+  return normalizeGraphQLValue(result) as T;
+}
+
+export function useGraphqlMutation<T = unknown>(operation: GraphQLTaggedNode) {
+  const [commit, isInFlight] = useMutation(operation as never);
+  const name = (operation as { params?: { name?: string } }).params?.name;
+  const mutate = useCallback(
+    (variables: Record<string, unknown>) =>
+      new Promise<T>((resolve, reject) =>
+        commit({
+          variables: normalizePurchaseVariables(name, variables) as never,
+          onCompleted: (response: unknown, errors?: readonly { message: string }[] | null) => {
+            if (errors?.length) {
+              reject(new ApiError(errors[0].message));
+              return;
+            }
+            try {
+              resolve(
+                normalizeGraphQLValue(
+                  unwrapMutationResults(response as Record<string, unknown>),
+                ) as T,
+              );
+            } catch (reason) {
+              reject(reason);
+            }
+          },
+          onError: reject,
+        }),
+      ),
+    [commit, name],
+  );
+  return { mutate, isInFlight };
+}
+
+function normalizePurchaseVariables(
+  name: string | undefined,
+  variables: OperationType["variables"],
+) {
+  if (!variables || typeof variables !== "object") return variables;
+  const value = variables as Record<string, unknown>;
+  if (!("input" in value) || !value.input || typeof value.input !== "object") return variables;
+  const input = value.input as Record<string, unknown>;
+  if (name === "CreatePurchaseMutation" && Array.isArray(input.items)) {
+    return {
+      ...value,
+      input: {
+        ...input,
+        items: input.items.map(normalizePurchaseItemInput),
+      },
+    };
+  }
+  if (name === "UpdatePurchaseItemMutation") {
+    return { ...value, input: normalizePurchaseItemInput(input) };
+  }
+  return variables;
+}
+
+function normalizePurchaseItemInput(input: Record<string, unknown>) {
+  const {
+    quantityNumerator,
+    quantityDenominator,
+    quantityUnit,
+    printedUnitPriceYen,
+    printedUnitPriceQuantityNumerator,
+    printedUnitPriceQuantityDenominator,
+    printedUnitPriceUnit,
+    ...rest
+  } = input;
+  const hasQuantityInput =
+    "quantityNumerator" in input || "quantityDenominator" in input || "quantityUnit" in input;
+  const quantity =
+    quantityNumerator && quantityDenominator && quantityUnit
+      ? { numerator: quantityNumerator, denominator: quantityDenominator, unit: quantityUnit }
+      : null;
+  const hasPrintedUnitPriceInput =
+    "printedUnitPriceYen" in input ||
+    "printedUnitPriceQuantityNumerator" in input ||
+    "printedUnitPriceQuantityDenominator" in input ||
+    "printedUnitPriceUnit" in input;
+  const printedUnitPrice =
+    printedUnitPriceYen != null &&
+    printedUnitPriceQuantityNumerator &&
+    printedUnitPriceQuantityDenominator &&
+    printedUnitPriceUnit
+      ? {
+          amountYen: printedUnitPriceYen,
+          basis: {
+            numerator: printedUnitPriceQuantityNumerator,
+            denominator: printedUnitPriceQuantityDenominator,
+            unit: printedUnitPriceUnit,
+          },
+        }
+      : null;
+  return {
+    ...rest,
+    ...(hasQuantityInput ? { quantity } : {}),
+    ...(hasPrintedUnitPriceInput ? { printedUnitPrice } : {}),
+  };
+}
+
+function normalizeGraphQLValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeGraphQLValue);
+  if (!value || typeof value !== "object") return value;
+  const item = value as Record<string, unknown>;
+  if ("quantity" in item || "printedUnitPrice" in item || "effectiveUnitPrice" in item) {
+    const quantity = item.quantity as {
+      numerator?: string;
+      denominator?: string;
+      unit?: string;
+    } | null;
+    const printed = item.printedUnitPrice as {
+      amountYen: number;
+      basis: { numerator: string; denominator: string; unit: string };
+    } | null;
+    const effective = item.effectiveUnitPrice as {
+      numeratorYen: string;
+      denominator: string;
+    } | null;
+    const normalized = {
+      ...item,
+      quantityNumerator: quantity?.numerator ?? null,
+      quantityDenominator: quantity?.denominator ?? null,
+      quantityUnit: quantity?.unit ?? null,
+      printedUnitPriceYen: printed?.amountYen ?? null,
+      printedUnitPriceQuantityNumerator: printed?.basis.numerator ?? null,
+      printedUnitPriceQuantityDenominator: printed?.basis.denominator ?? null,
+      printedUnitPriceUnit: printed?.basis.unit ?? null,
+      effectiveUnitPriceNumeratorYen: effective?.numeratorYen ?? null,
+      effectiveUnitPriceDenominator: effective?.denominator ?? null,
+    };
+    return Object.fromEntries(
+      Object.entries(normalized).map(([key, nested]) => [key, normalizeGraphQLValue(nested)]),
+    );
+  }
+  if (typeof item.__typename === "string" && item.__typename.endsWith("LedgerEntry")) {
+    const typename = item.__typename;
+    const base = Object.fromEntries(
+      Object.entries(item).map(([key, nested]) => [key, normalizeGraphQLValue(nested)]),
+    );
+    if (typename === "FundingLedgerEntry") {
+      const member = item.member as { id?: string } | undefined;
+      const pool = item.pool as { id?: string } | undefined;
+      return { ...base, kind: "FUNDING", fromMemberId: member?.id, poolId: pool?.id };
+    }
+    if (typename === "TransferLedgerEntry") {
+      const from = item.fromMember as { id?: string } | undefined;
+      const to = item.toMember as { id?: string } | undefined;
+      const loan = item.loan as { loanId?: string } | null;
+      return {
+        ...base,
+        kind: item.transferKind,
+        fromMemberId: from?.id,
+        toMemberId: to?.id,
+        loanId: loan?.loanId,
+      };
+    }
+    if (typename === "PurchaseLedgerEntry" || typename === "CorrectionLedgerEntry") {
+      const purchase = item.purchase as { id?: string } | undefined;
+      return {
+        ...base,
+        kind: typename === "PurchaseLedgerEntry" ? "PURCHASE" : "CORRECTION",
+        sourcePurchaseId: purchase?.id,
+      };
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(item).map(([key, nested]) => [key, normalizeGraphQLValue(nested)]),
+  );
+}
+
+function unwrapMutationResults(response: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(response).map(([key, value]) => {
+      if (!value || typeof value !== "object" || !("__typename" in value)) return [key, value];
+      const result = value as Record<string, unknown>;
+      if (result.__typename === "MutationError") {
+        throw new ApiError(String(result.message), String(result.code));
+      }
+      if (typeof result.__typename === "string" && result.__typename.endsWith("Success")) {
+        if ("result" in result) return [key, result.result];
+        if ("items" in result) return [key, result.items];
+        if ("success" in result) return [key, result.success];
+      }
+      return [key, value];
+    }),
+  );
 }
 
 export async function readGraphql<T>(
@@ -406,955 +603,6 @@ export async function getViewer(): Promise<{ id: string; displayName: string; em
   if (!viewer?.id) throw new ApiError("ログイン情報を取得できませんでした");
   return { id: viewer.id, displayName: viewer.displayName ?? "メンバー", email: viewer.email };
 }
-
-export const householdQuery = graphql`
-  query HouseholdQuery($id: ID!) {
-    household(id: $id) {
-      id
-      name
-      revision
-      members {
-        id
-        displayName
-        role
-      }
-      pools {
-        id
-        name
-        kind
-        defaultShareWeight
-        ownerMemberId
-        fundingShares {
-          memberId
-          memberName
-          weight
-        }
-        settlementPolicy
-        fundingRuleVersion
-      }
-      accounts {
-        id
-        name
-        kind
-        poolId
-      }
-      categories {
-        id
-        name
-        parentId
-        archived
-      }
-      defaultAllocation {
-        poolId
-        weight
-      }
-    }
-  }
-`;
-
-export const householdsQuery = graphql`
-  query HouseholdsQuery {
-    households {
-      id
-      name
-    }
-  }
-`;
-
-export const purchasesQuery = graphql`
-  query PurchasesQuery(
-    $householdId: ID!
-    $from: String
-    $to: String
-    $origin: PurchaseOrigin
-    $hasEvidence: Boolean
-    $after: String
-    $first: Int
-  ) {
-    purchases(
-      householdId: $householdId
-      from: $from
-      to: $to
-      origin: $origin
-      hasEvidence: $hasEvidence
-      after: $after
-      first: $first
-    ) {
-      edges {
-        cursor
-        node {
-          id
-          householdId
-          occurredAt
-          merchant
-          origin
-          hasEvidence
-          sourceKinds
-          paymentAccountId
-          paymentAccount {
-            id
-            name
-            kind
-            poolId
-          }
-          paymentAllocations {
-            paymentAccountId
-            amountYen
-            account {
-              id
-              name
-            }
-          }
-          items {
-            id
-            name
-            amountYen
-            quantityNumerator
-            quantityDenominator
-            quantityUnit
-            printedUnitPriceYen
-            printedUnitPriceQuantityNumerator
-            printedUnitPriceQuantityDenominator
-            printedUnitPriceUnit
-            effectiveUnitPriceNumeratorYen
-            effectiveUnitPriceDenominator
-            revision
-            categoryId
-            productVariantId
-            allocations {
-              poolId
-              poolName
-              weight
-              amountYen
-            }
-            tags {
-              id
-              householdId
-              name
-              archived
-              revision
-            }
-          }
-          totalYen
-          corrections {
-            id
-            itemId
-            amountDeltaYen
-            reason
-            occurredAt
-            settlementMonth
-            paymentAllocations {
-              paymentAccountId
-              amountYen
-              account {
-                id
-                name
-              }
-            }
-          }
-          revision
-          status
-          createdAt
-          updatedAt
-        }
-      }
-      pageInfo {
-        endCursor
-        hasNextPage
-      }
-      totalCount
-    }
-  }
-`;
-
-export const unmatchedObservationsQuery = graphql`
-  query UnmatchedObservationsQuery(
-    $householdId: ID!
-    $from: String
-    $to: String
-    $sourceKind: SourceKind
-    $state: UnmatchedObservationState
-    $after: String
-    $first: Int
-  ) {
-    unmatchedObservations(
-      householdId: $householdId
-      from: $from
-      to: $to
-      sourceKind: $sourceKind
-      state: $state
-      after: $after
-      first: $first
-    ) {
-      edges {
-        cursor
-        node {
-          documentId
-          sourceReference
-          purchaseId
-          sourceKind
-          state
-          merchant
-          occurredAt
-          amountYen
-          orderId
-          transactionId
-        }
-      }
-      pageInfo {
-        endCursor
-        hasNextPage
-      }
-      totalCount
-    }
-  }
-`;
-
-export const settlementQuery = graphql`
-  query SettlementQuery($householdId: ID!, $period: String!) {
-    settlement(householdId: $householdId, period: $period) {
-      period
-      status
-      revision
-      lines {
-        memberId
-        memberName
-        scheduledYen
-        paidYen
-        carryYen
-        priorBalanceYen
-        monthlyAdjustmentYen
-        advanceCreditYen
-        amountDueYen
-      }
-    }
-  }
-`;
-export const monthlyCategorySpendingQuery = graphql`
-  query MonthlyCategorySpendingQuery($householdId: ID!, $from: String!, $to: String!) {
-    monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {
-      period
-      categoryId
-      categoryName
-      amountYen
-    }
-  }
-`;
-
-export const monthlyMemberSpendingQuery = graphql`
-  query MonthlyMemberSpendingQuery($householdId: ID!, $from: String!, $to: String!) {
-    monthlyMemberSpending(householdId: $householdId, from: $from, to: $to) {
-      items {
-        period
-        memberId
-        memberName
-        amountYen
-      }
-      hasUnattributedPurchases
-    }
-  }
-`;
-export const allocationRulesQuery = graphql`
-  query AllocationRulesQuery($householdId: ID!) {
-    allocationRules(householdId: $householdId) {
-      id
-      householdId
-      scope
-      categoryId
-      merchant
-      productConceptId
-      productVariantId
-      revision
-      allocations {
-        poolId
-        poolName
-        weight
-        amountYen
-      }
-    }
-  }
-`;
-
-export const ledgerQuery = graphql`
-  query LedgerQuery($householdId: ID!, $after: String, $first: Int) {
-    ledger(householdId: $householdId, after: $after, first: $first) {
-      edges {
-        cursor
-        node {
-          id
-          kind
-          occurredAt
-          description
-          amountYen
-          currency
-          fromMemberId
-          toMemberId
-          poolId
-          sourcePurchaseId
-          loanId
-        }
-      }
-      pageInfo {
-        endCursor
-        hasNextPage
-      }
-      totalCount
-    }
-  }
-`;
-
-export const loanBalancesQuery = graphql`
-  query LoanBalancesQuery($householdId: ID!) {
-    loanBalances(householdId: $householdId) {
-      loanId
-      lenderMemberId
-      borrowerMemberId
-      principalYen
-      repaidYen
-      balanceYen
-    }
-  }
-`;
-
-export const createHouseholdMutation = graphql`
-  mutation CreateHouseholdMutation($input: CreateHouseholdInput!) {
-    createHousehold(input: $input) {
-      id
-    }
-  }
-`;
-
-export const createPurchaseMutation = graphql`
-  mutation CreatePurchaseMutation($input: CreatePurchaseInput!) {
-    createPurchase(input: $input) {
-      id
-      householdId
-      occurredAt
-      merchant
-      paymentAccountId
-      totalYen
-      revision
-      status
-      items {
-        id
-        name
-        amountYen
-        quantityNumerator
-        quantityDenominator
-        quantityUnit
-        printedUnitPriceYen
-        printedUnitPriceQuantityNumerator
-        printedUnitPriceQuantityDenominator
-        printedUnitPriceUnit
-        effectiveUnitPriceNumeratorYen
-        effectiveUnitPriceDenominator
-        categoryId
-        productVariantId
-        tags {
-          id
-          name
-          archived
-          revision
-          householdId
-        }
-        allocations {
-          poolId
-          weight
-          amountYen
-        }
-      }
-    }
-  }
-`;
-
-export const postPurchaseMutation = graphql`
-  mutation PostPurchaseMutation(
-    $purchaseId: ID!
-    $expectedRevision: Int!
-    $idempotencyKey: String!
-  ) {
-    postPurchase(
-      purchaseId: $purchaseId
-      expectedRevision: $expectedRevision
-      idempotencyKey: $idempotencyKey
-    ) {
-      id
-      revision
-      status
-    }
-  }
-`;
-
-export async function createAndPostPurchase(input: CreatePurchaseInput) {
-  type PurchaseSubmission = {
-    createPurchase: { id: string; revision: number; status: string; items: Array<{ id: string }> };
-  };
-  const created = await readGraphql<PurchaseSubmission>(createPurchaseMutation, { input });
-  if (created.createPurchase.status !== "DRAFT") return created;
-  try {
-    const posted = await readGraphql<{
-      postPurchase: { id: string; revision: number; status: string };
-    }>(postPurchaseMutation, {
-      purchaseId: created.createPurchase.id,
-      expectedRevision: created.createPurchase.revision,
-      idempotencyKey: input.idempotencyKey,
-    });
-    return {
-      createPurchase: {
-        ...created.createPurchase,
-        revision: posted.postPurchase.revision,
-        status: posted.postPurchase.status,
-      },
-    };
-  } catch (reason) {
-    const latest = await readGraphql<PurchaseSubmission>(createPurchaseMutation, { input });
-    if (latest.createPurchase.status !== "DRAFT") return latest;
-    throw reason;
-  }
-}
-
-export const updatePurchaseMutation = graphql`
-  mutation UpdatePurchaseMutation($input: UpdatePurchaseInput!) {
-    updatePurchase(input: $input) {
-      id
-      revision
-      occurredAt
-      merchant
-      paymentAccountId
-    }
-  }
-`;
-
-export const updatePurchaseItemMutation = graphql`
-  mutation UpdatePurchaseItemMutation($input: UpdatePurchaseItemInput!) {
-    updatePurchaseItem(input: $input) {
-      id
-      revision
-      name
-      amountYen
-      categoryId
-      quantityNumerator
-      quantityDenominator
-      quantityUnit
-      printedUnitPriceYen
-      printedUnitPriceQuantityNumerator
-      printedUnitPriceQuantityDenominator
-      printedUnitPriceUnit
-      effectiveUnitPriceNumeratorYen
-      effectiveUnitPriceDenominator
-    }
-  }
-`;
-
-export const setCategoryArchivedMutation = graphql`
-  mutation SetCategoryArchivedMutation($categoryId: ID!, $archived: Boolean!) {
-    setCategoryArchived(categoryId: $categoryId, archived: $archived) {
-      id
-      archived
-    }
-  }
-`;
-export const setAllocationRuleMutation = graphql`
-  mutation SetAllocationRuleMutation($input: SetAllocationRuleInput!) {
-    setAllocationRule(input: $input) {
-      id
-      scope
-      categoryId
-      merchant
-      productConceptId
-      productVariantId
-      revision
-      allocations {
-        poolId
-        weight
-      }
-    }
-  }
-`;
-
-export const householdInvitationsQuery = graphql`
-  query HouseholdInvitationsQuery($householdId: ID!) {
-    householdInvitations(householdId: $householdId) {
-      id
-      householdId
-      role
-      expiresAt
-      createdAt
-      revokedAt
-      acceptedAt
-    }
-  }
-`;
-
-export const createHouseholdInvitationMutation = graphql`
-  mutation CreateHouseholdInvitationMutation($input: CreateHouseholdInvitationInput!) {
-    createHouseholdInvitation(input: $input) {
-      token
-      invitation {
-        id
-        householdId
-        role
-        expiresAt
-        createdAt
-        revokedAt
-        acceptedAt
-      }
-    }
-  }
-`;
-
-export const revokeHouseholdInvitationMutation = graphql`
-  mutation RevokeHouseholdInvitationMutation($householdId: ID!, $invitationId: ID!) {
-    revokeHouseholdInvitation(householdId: $householdId, invitationId: $invitationId) {
-      id
-      revokedAt
-    }
-  }
-`;
-
-export const acceptHouseholdInvitationMutation = graphql`
-  mutation AcceptHouseholdInvitationMutation($token: String!) {
-    acceptHouseholdInvitation(token: $token) {
-      id
-      name
-    }
-  }
-`;
-
-export const productCatalogQuery = graphql`
-  query ProductCatalogQuery($householdId: ID!) {
-    productCatalog(householdId: $householdId) {
-      id
-      householdId
-      name
-      normalizedName
-      categoryId
-      archived
-      revision
-      variants {
-        id
-        householdId
-        conceptId
-        name
-        normalizedName
-        brand
-        packageSize
-        barcode
-        archived
-        revision
-        aliases {
-          id
-          alias
-          merchantKey
-          revision
-        }
-      }
-    }
-  }
-`;
-
-export const productSuggestionsQuery = graphql`
-  query ProductSuggestionsQuery(
-    $householdId: ID!
-    $query: String!
-    $merchant: String
-    $first: Int
-  ) {
-    productSuggestions(
-      householdId: $householdId
-      query: $query
-      merchant: $merchant
-      first: $first
-    ) {
-      concept {
-        id
-        name
-        categoryId
-      }
-      variant {
-        id
-        name
-        brand
-        packageSize
-      }
-      matchedName
-      score
-    }
-  }
-`;
-
-export const createProductConceptMutation = graphql`
-  mutation CreateProductConceptMutation($input: CreateProductConceptInput!) {
-    createProductConcept(input: $input) {
-      id
-      name
-    }
-  }
-`;
-
-export const createProductVariantMutation = graphql`
-  mutation CreateProductVariantMutation($input: CreateProductVariantInput!) {
-    createProductVariant(input: $input) {
-      id
-      name
-    }
-  }
-`;
-
-export const setProductAliasMutation = graphql`
-  mutation SetProductAliasMutation($input: SetProductAliasInput!) {
-    setProductAlias(input: $input) {
-      id
-      alias
-      merchantKey
-      revision
-    }
-  }
-`;
-
-export const createPoolMutation = graphql`
-  mutation CreatePoolMutation($input: CreatePoolInput!) {
-    createPool(input: $input) {
-      id
-    }
-  }
-`;
-export const createAccountMutation = graphql`
-  mutation CreateAccountMutation($input: CreateAccountInput!) {
-    createAccount(input: $input) {
-      id
-    }
-  }
-`;
-export const createCategoryMutation = graphql`
-  mutation CreateCategoryMutation($input: CreateCategoryInput!) {
-    createCategory(input: $input) {
-      id
-    }
-  }
-`;
-export const setDefaultAllocationMutation = graphql`
-  mutation SetDefaultAllocationMutation($input: SetDefaultAllocationInput!) {
-    setDefaultAllocation(input: $input) {
-      id
-      revision
-    }
-  }
-`;
-export const setPoolFundingRuleMutation = graphql`
-  mutation SetPoolFundingRuleMutation($input: SetPoolFundingRuleInput!) {
-    setPoolFundingRule(input: $input) {
-      id
-      kind
-      ownerMemberId
-      fundingRuleVersion
-      settlementPolicy
-      fundingShares {
-        memberId
-        memberName
-        weight
-      }
-    }
-  }
-`;
-export const recordFundingMutation = graphql`
-  mutation RecordFundingMutation($input: RecordFundingInput!) {
-    recordFunding(input: $input) {
-      id
-    }
-  }
-`;
-export const recordTransferMutation = graphql`
-  mutation RecordTransferMutation($input: RecordTransferInput!) {
-    recordTransfer(input: $input) {
-      id
-      loanId
-    }
-  }
-`;
-export const correctPurchaseMutation = graphql`
-  mutation CorrectPurchaseMutation($input: CorrectPurchaseInput!) {
-    correctPurchase(input: $input) {
-      id
-      revision
-    }
-  }
-`;
-export const closePeriodMutation = graphql`
-  mutation ClosePeriodMutation($input: ClosePeriodInput!) {
-    closePeriod(input: $input) {
-      period
-      status
-      revision
-    }
-  }
-`;
-
-export const tagsQuery = graphql`
-  query TagsQuery($householdId: ID!, $includeArchived: Boolean) {
-    tags(householdId: $householdId, includeArchived: $includeArchived) {
-      id
-      householdId
-      name
-      archived
-      revision
-    }
-  }
-`;
-
-export const createTagMutation = graphql`
-  mutation CreateTagMutation($input: CreateTagInput!) {
-    createTag(input: $input) {
-      id
-      householdId
-      name
-      archived
-      revision
-    }
-  }
-`;
-
-export const updateTagMutation = graphql`
-  mutation UpdateTagMutation($input: UpdateTagInput!) {
-    updateTag(input: $input) {
-      id
-      householdId
-      name
-      archived
-      revision
-    }
-  }
-`;
-
-export const archiveTagMutation = graphql`
-  mutation ArchiveTagMutation($tagId: ID!, $baseRevision: Int!, $archived: Boolean!) {
-    archiveTag(tagId: $tagId, baseRevision: $baseRevision, archived: $archived) {
-      id
-      archived
-      revision
-    }
-  }
-`;
-
-export const bulkUpdatePurchaseItemsMutation = graphql`
-  mutation BulkUpdatePurchaseItemsMutation($input: BulkUpdatePurchaseItemsInput!) {
-    bulkUpdatePurchaseItems(input: $input) {
-      id
-      revision
-      categoryId
-      productVariantId
-      allocations {
-        poolId
-        weight
-      }
-      tags {
-        id
-        name
-        revision
-        archived
-      }
-    }
-  }
-`;
-
-export const budgetsQuery = graphql`
-  query BudgetsQuery($householdId: ID!, $period: String!) {
-    budgets(householdId: $householdId, period: $period) {
-      id
-      householdId
-      categoryId
-      name
-      amountYen
-      actualYen
-      remainingYen
-      startsOn
-      endsOn
-      archived
-      revision
-    }
-  }
-`;
-
-export const setBudgetMutation = graphql`
-  mutation SetBudgetMutation($input: SetBudgetInput!) {
-    setBudget(input: $input) {
-      id
-      categoryId
-      name
-      amountYen
-      actualYen
-      remainingYen
-      startsOn
-      endsOn
-      archived
-      revision
-    }
-  }
-`;
-
-export const archiveBudgetMutation = graphql`
-  mutation ArchiveBudgetMutation($budgetId: ID!, $baseRevision: Int!, $archived: Boolean!) {
-    archiveBudget(budgetId: $budgetId, baseRevision: $baseRevision, archived: $archived) {
-      id
-      archived
-      revision
-    }
-  }
-`;
-
-export const recurringExpensesQuery = graphql`
-  query RecurringExpensesQuery($householdId: ID!, $includeArchived: Boolean) {
-    recurringExpenses(householdId: $householdId, includeArchived: $includeArchived) {
-      id
-      householdId
-      name
-      merchant
-      amountYen
-      currency
-      categoryId
-      paymentAccountId
-      cadence
-      startsOn
-      nextDueOn
-      endsOn
-      archived
-      revision
-    }
-  }
-`;
-
-export const setRecurringExpenseMutation = graphql`
-  mutation SetRecurringExpenseMutation($input: SetRecurringExpenseInput!) {
-    setRecurringExpense(input: $input) {
-      id
-      name
-      merchant
-      amountYen
-      categoryId
-      paymentAccountId
-      cadence
-      startsOn
-      nextDueOn
-      endsOn
-      archived
-      revision
-    }
-  }
-`;
-
-export const archiveRecurringExpenseMutation = graphql`
-  mutation ArchiveRecurringExpenseMutation(
-    $expenseId: ID!
-    $baseRevision: Int!
-    $archived: Boolean!
-  ) {
-    archiveRecurringExpense(
-      expenseId: $expenseId
-      baseRevision: $baseRevision
-      archived: $archived
-    ) {
-      id
-      archived
-      revision
-    }
-  }
-`;
-
-export const accountMovementsQuery = graphql`
-  query AccountMovementsQuery($householdId: ID!, $first: Int) {
-    accountMovements(householdId: $householdId, first: $first) {
-      id
-      householdId
-      kind
-      occurredAt
-      fromAccountId
-      toAccountId
-      amountYen
-      currency
-      description
-      createdAt
-    }
-  }
-`;
-
-export const accountBalancesQuery = graphql`
-  query AccountBalancesQuery($householdId: ID!) {
-    accountBalances(householdId: $householdId) {
-      accountId
-      balanceYen
-      currency
-    }
-  }
-`;
-
-export const accountBalanceAnalysisQuery = graphql`
-  query AccountBalanceAnalysisQuery(
-    $householdId: ID!
-    $accountId: ID!
-    $from: String!
-    $to: String!
-  ) {
-    accountBalanceAnalysis(householdId: $householdId, accountId: $accountId, from: $from, to: $to) {
-      accountId
-      currency
-      from
-      to
-      openingBalanceYen
-      closingBalanceYen
-      changes {
-        occurredAt
-        sourceKind
-        sourceId
-        description
-        changeYen
-        balanceYen
-      }
-    }
-  }
-`;
-
-export const accountIncomesQuery = graphql`
-  query AccountIncomesQuery($householdId: ID!, $first: Int) {
-    accountIncomes(householdId: $householdId, first: $first) {
-      id
-      householdId
-      accountId
-      amountYen
-      currency
-      occurredAt
-      description
-      createdAt
-    }
-  }
-`;
-
-export const recordAccountMovementMutation = graphql`
-  mutation RecordAccountMovementMutation($input: RecordAccountMovementInput!) {
-    recordAccountMovement(input: $input) {
-      id
-      kind
-      occurredAt
-      fromAccountId
-      toAccountId
-      amountYen
-      description
-    }
-  }
-`;
-
-export const recordExternalIncomeMutation = graphql`
-  mutation RecordExternalIncomeMutation($input: RecordExternalIncomeInput!) {
-    recordExternalIncome(input: $input) {
-      id
-      householdId
-      accountId
-      currency
-      occurredAt
-      amountYen
-      description
-    }
-  }
-`;
 
 export function makeIdempotencyKey() {
   return crypto.randomUUID();

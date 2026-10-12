@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4e3e6c692af6dc0d68aae342d9b618fa>>
+ * @generated SignedSource<<93805c76b7e583f422da3ce767804629>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type SetDefaultAllocationInput = {
   allocations: ReadonlyArray<AllocationInput>;
   householdId: string;
@@ -21,8 +22,19 @@ export type SetDefaultAllocationMutation$variables = {
 };
 export type SetDefaultAllocationMutation$data = {
   readonly setDefaultAllocation: {
-    readonly id: string;
-    readonly revision: number;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "SetDefaultAllocationSuccess";
+    readonly result: {
+      readonly id: string;
+      readonly revision: number;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type SetDefaultAllocationMutation = {
@@ -48,7 +60,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Household",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "setDefaultAllocation",
     "plural": false,
@@ -57,15 +69,61 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Household",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "SetDefaultAllocationSuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -89,16 +147,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "f24270cce1303283f1088b81049e3f3c",
+    "cacheID": "2aee9d091e54a8cab098418992e8f3d3",
     "id": null,
     "metadata": {},
     "name": "SetDefaultAllocationMutation",
     "operationKind": "mutation",
-    "text": "mutation SetDefaultAllocationMutation(\n  $input: SetDefaultAllocationInput!\n) {\n  setDefaultAllocation(input: $input) {\n    id\n    revision\n  }\n}\n"
+    "text": "mutation SetDefaultAllocationMutation(\n  $input: SetDefaultAllocationInput!\n) {\n  setDefaultAllocation(input: $input) {\n    __typename\n    ... on SetDefaultAllocationSuccess {\n      result {\n        id\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "8a20504e48c8981fc2d7eccac6079bed";
+(node as any).hash = "9372e55ca555e9e9477ef3b053829616";
 
 export default node;

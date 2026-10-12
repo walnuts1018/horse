@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<dca04da9c37fc182150db99cd8099b49>>
+ * @generated SignedSource<<ffb8707c1fcf1f254fb4894bb5d4de33>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type ArchiveBudgetMutation$variables = {
   archived: boolean;
   baseRevision: number;
@@ -15,9 +16,20 @@ export type ArchiveBudgetMutation$variables = {
 };
 export type ArchiveBudgetMutation$data = {
   readonly archiveBudget: {
-    readonly archived: boolean;
-    readonly id: string;
-    readonly revision: number;
+    readonly __typename: "ArchiveBudgetSuccess";
+    readonly result: {
+      readonly archived: boolean;
+      readonly id: string;
+      readonly revision: number;
+    };
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type ArchiveBudgetMutation = {
@@ -61,7 +73,7 @@ v3 = [
         "variableName": "budgetId"
       }
     ],
-    "concreteType": "Budget",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "archiveBudget",
     "plural": false,
@@ -70,22 +82,68 @@ v3 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "archived",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Budget",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "archived",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "ArchiveBudgetSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -117,16 +175,16 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "f1f37952896566b84d32ac60b9d7867b",
+    "cacheID": "5c54b63c82046018c60d6b5f9ad691ee",
     "id": null,
     "metadata": {},
     "name": "ArchiveBudgetMutation",
     "operationKind": "mutation",
-    "text": "mutation ArchiveBudgetMutation(\n  $budgetId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveBudget(budgetId: $budgetId, baseRevision: $baseRevision, archived: $archived) {\n    id\n    archived\n    revision\n  }\n}\n"
+    "text": "mutation ArchiveBudgetMutation(\n  $budgetId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveBudget(budgetId: $budgetId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveBudgetSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "0d454db68ac8b79dbcf90dd19e294d98";
+(node as any).hash = "bfe5ce5245062026fb2d2e49fd9808b8";
 
 export default node;

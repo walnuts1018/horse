@@ -11,6 +11,7 @@ type Observation struct {
 	SourceReference string    `json:"sourceReference"`
 	Hash            string    `json:"hash"`
 	SourceKind      string    `json:"sourceKind"`
+	TransactionKind string    `json:"transactionKind"`
 	OrderID         string    `json:"orderId"`
 	TransactionID   string    `json:"transactionId"`
 	Merchant        string    `json:"merchant"`
@@ -40,8 +41,7 @@ func Reconcile(incoming Observation, existing []Observation) []Match {
 			matches = append(matches, match)
 			continue
 		}
-		if incoming.SourceKind == "bank" || old.SourceKind == "bank" {
-			// 銀行引落しは購入との同一性を示さず、決済債務の履行として別に記録する。
+		if !reconcilablePair(incoming, old) {
 			continue
 		}
 		transaction := incoming.TransactionID != "" && incoming.TransactionID == old.TransactionID && normalize(incoming.Merchant) == normalize(old.Merchant)
@@ -95,7 +95,7 @@ func SourceObservations(documentID, hash, sourceKind string, result Verification
 		if entry.TransactionID != "" {
 			reference = "transaction:" + entry.TransactionID
 		}
-		observations = append(observations, Observation{DocumentID: documentID, SourceReference: reference, Hash: hash, SourceKind: sourceKind, OrderID: entry.OrderID, TransactionID: entry.TransactionID, Merchant: entry.Merchant, OccurredAt: occurredAt, Amount: entry.Amount, CardLast4: entry.CardLast4})
+		observations = append(observations, Observation{DocumentID: documentID, SourceReference: reference, Hash: hash, SourceKind: sourceKind, TransactionKind: entry.Kind, OrderID: entry.OrderID, TransactionID: entry.TransactionID, Merchant: entry.Merchant, OccurredAt: occurredAt, Amount: entry.Amount, CardLast4: entry.CardLast4})
 	}
 	if len(result.Receipt.Items) > 0 {
 		receipt := result.Receipt
@@ -111,9 +111,19 @@ func SourceObservations(documentID, hash, sourceKind string, result Verification
 			}
 			card = payment.CardLast4
 		}
-		observations = append(observations, Observation{DocumentID: documentID, Hash: hash, SourceKind: sourceKind, OrderID: receipt.OrderID, TransactionID: receipt.TransactionID, Merchant: receipt.Merchant, OccurredAt: occurredAt, Amount: receipt.Total, CardLast4: card})
+		observations = append(observations, Observation{DocumentID: documentID, Hash: hash, SourceKind: sourceKind, TransactionKind: "RECEIPT_PURCHASE", OrderID: receipt.OrderID, TransactionID: receipt.TransactionID, Merchant: receipt.Merchant, OccurredAt: occurredAt, Amount: receipt.Total, CardLast4: card})
 	}
 	return observations
+}
+
+func reconcilablePair(left, right Observation) bool {
+	if left.SourceKind != "bank" && right.SourceKind != "bank" {
+		return true
+	}
+	if left.SourceKind == "bank" {
+		return left.TransactionKind == "PURCHASE_PAYMENT" && right.TransactionKind == "RECEIPT_PURCHASE"
+	}
+	return right.TransactionKind == "PURCHASE_PAYMENT" && left.TransactionKind == "RECEIPT_PURCHASE"
 }
 
 func normalize(value string) string { return strings.ToLower(strings.Join(strings.Fields(value), "")) }

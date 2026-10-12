@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<67a2d522c5def39d8f8fa569f5a4329f>>
+ * @generated SignedSource<<343edd8c75b3182ea7f25f879afde048>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type UpdatePurchaseInput = {
   baseRevision: number;
   changedFields: ReadonlyArray<string>;
@@ -29,11 +30,22 @@ export type UpdatePurchaseMutation$variables = {
 };
 export type UpdatePurchaseMutation$data = {
   readonly updatePurchase: {
-    readonly id: string;
-    readonly merchant: string;
-    readonly occurredAt: string;
-    readonly paymentAccountId: string | null | undefined;
-    readonly revision: number;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "UpdatePurchaseSuccess";
+    readonly result: {
+      readonly id: string;
+      readonly merchant: string;
+      readonly occurredAt: string;
+      readonly paymentAccountId: string | null | undefined;
+      readonly revision: number;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type UpdatePurchaseMutation = {
@@ -59,7 +71,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Purchase",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "updatePurchase",
     "plural": false,
@@ -68,36 +80,82 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Purchase",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "occurredAt",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "merchant",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "paymentAccountId",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "UpdatePurchaseSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "occurredAt",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "merchant",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "paymentAccountId",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -121,16 +179,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "a89070617ea935d6571f7cadc4defa96",
+    "cacheID": "ad19f96cd685c3daf2a1b25e1af85532",
     "id": null,
     "metadata": {},
     "name": "UpdatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation UpdatePurchaseMutation(\n  $input: UpdatePurchaseInput!\n) {\n  updatePurchase(input: $input) {\n    id\n    revision\n    occurredAt\n    merchant\n    paymentAccountId\n  }\n}\n"
+    "text": "mutation UpdatePurchaseMutation(\n  $input: UpdatePurchaseInput!\n) {\n  updatePurchase(input: $input) {\n    __typename\n    ... on UpdatePurchaseSuccess {\n      result {\n        id\n        revision\n        occurredAt\n        merchant\n        paymentAccountId\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "b6996a853481ca15435e5f6ea321e4c8";
+(node as any).hash = "745433f732d5d56fce0c67e31f5bdff4";
 
 export default node;

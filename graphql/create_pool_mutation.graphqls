@@ -1,0 +1,15 @@
+extend type Mutation {
+  createPool(input: CreatePoolInput!): CreatePoolResult!
+}
+
+union CreatePoolResult = CreatePoolSuccess | MutationError
+
+type CreatePoolSuccess {
+  result: Pool!
+}
+
+input CreatePoolInput {
+  householdId: ID! @nodeID(of: "Household")
+  name: String!
+  kind: PoolKind!
+}

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<07108416605168576cdfd6a7799d07cf>>
+ * @generated SignedSource<<06f248906a40247d9075f7766534750d>>
  * @lightSyntaxTransform
  */
 
@@ -54,7 +54,7 @@ export type HouseholdQuery$data = {
       readonly settlementPolicy: SharedPoolSettlementPolicy | null | undefined;
     }>;
     readonly revision: number;
-  };
+  } | null | undefined;
 };
 export type HouseholdQuery = {
   response: HouseholdQuery$data;

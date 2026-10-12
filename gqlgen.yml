@@ -1,5 +1,5 @@
 schema:
-  - graphql/schema.graphqls
+  - graphql/*.graphqls
 exec:
   filename: internal/graph/generated.go
   package: graph
@@ -19,3 +19,6 @@ models:
     model:
       - github.com/99designs/gqlgen/graphql.ID
       - github.com/99designs/gqlgen/graphql.String
+  Node:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.Node

@@ -1,0 +1,16 @@
+extend type Mutation {
+  setProductAlias(input: SetProductAliasInput!): SetProductAliasResult!
+}
+
+union SetProductAliasResult = SetProductAliasSuccess | MutationError
+
+type SetProductAliasSuccess {
+  result: ProductAlias!
+}
+
+input SetProductAliasInput {
+  householdId: ID! @nodeID(of: "Household")
+  variantId: ID! @nodeID(of: "ProductVariant")
+  merchant: String!
+  alias: String!
+}

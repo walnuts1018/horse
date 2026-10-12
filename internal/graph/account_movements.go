@@ -37,6 +37,10 @@ func (r *mutationResolver) recordAccountMovement(ctx context.Context, input mode
 	if err != nil {
 		return nil, err
 	}
+	fingerprint, err := mutationRequestFingerprint(input)
+	if err != nil {
+		return nil, err
+	}
 	householdID, err := gofrsuuid.FromString(input.HouseholdID)
 	if err != nil {
 		return nil, ErrNotFound
@@ -67,6 +71,9 @@ func (r *mutationResolver) recordAccountMovement(ctx context.Context, input mode
 		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
 	))).One(ctx, executor)
 	if err == nil && existing.ResourceID.Valid {
+		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
+			return nil, err
+		}
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
@@ -80,6 +87,9 @@ func (r *mutationResolver) recordAccountMovement(ctx context.Context, input mode
 		return accountMovementModel(row), nil
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if err := lockAccountingPeriods(ctx, tx, input.HouseholdID, accountingPeriod(occurredAt)); err != nil {
 		return nil, err
 	}
 	fromAccount, err := models.Accounts.Query(sm.Where(psql.And(models.Accounts.Columns.ID.EQ(psql.Arg(fromID)), models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdID))))).One(ctx, executor)
@@ -134,7 +144,11 @@ func (r *mutationResolver) recordAccountMovement(ctx context.Context, input mode
 		return nil, err
 	}
 	resourceID := sql.Null[gofrsuuid.UUID]{V: movementID, Valid: true}
-	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{HouseholdID: &householdID, Key: &input.IdempotencyKey, Operation: &operation, ResourceID: &resourceID}).Exec(ctx, executor); err != nil {
+	requestFingerprint := sql.Null[[]byte]{V: fingerprint[:], Valid: true}
+	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
+		HouseholdID: &householdID, Key: &input.IdempotencyKey, Operation: &operation, ResourceID: &resourceID,
+		RequestFingerprint: &requestFingerprint,
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "account.movement.recorded", movementID.String(), 1, []string{"kind", "fromAccountId", "toAccountId", "amountYen", "occurredAt"}, user.MemberID); err != nil {
@@ -165,6 +179,10 @@ func (r *mutationResolver) recordExternalIncome(ctx context.Context, input model
 	if description == "" {
 		description = "External income"
 	}
+	fingerprint, err := mutationRequestFingerprint(input)
+	if err != nil {
+		return nil, err
+	}
 	householdID, err := gofrsuuid.FromString(input.HouseholdID)
 	if err != nil {
 		return nil, ErrNotFound
@@ -186,6 +204,9 @@ func (r *mutationResolver) recordExternalIncome(ctx context.Context, input model
 		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
 	))).One(ctx, executor)
 	if err == nil && existing.ResourceID.Valid {
+		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
+			return nil, err
+		}
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
@@ -251,8 +272,10 @@ func (r *mutationResolver) recordExternalIncome(ctx context.Context, input model
 		return nil, err
 	}
 	resourceID := sql.Null[gofrsuuid.UUID]{V: incomeID, Valid: true}
+	requestFingerprint := sql.Null[[]byte]{V: fingerprint[:], Valid: true}
 	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
 		HouseholdID: &householdID, Key: &input.IdempotencyKey, Operation: &operation, ResourceID: &resourceID,
+		RequestFingerprint: &requestFingerprint,
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}

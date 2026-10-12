@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -322,19 +323,29 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 		item := &model.PurchaseItem{
 			ID: storedItem.ID.String(), Name: storedItem.Name, AmountYen: graphLong(storedItem.AmountYen),
 			Revision: int(storedItem.Revision), Currency: "JPY", Allocations: make([]*model.Allocation, 0), Tags: make([]*model.Tag, 0),
-			QuantityNumerator: measureIntegerString(storedItem.QuantityNumerator), QuantityDenominator: measureIntegerString(storedItem.QuantityDenominator), QuantityUnit: measureString(storedItem.QuantityUnit),
-			PrintedUnitPriceYen: measureLong(storedItem.PrintedUnitPriceYen), PrintedUnitPriceQuantityNumerator: measureIntegerString(storedItem.PrintedUnitPriceQuantityNumerator),
-			PrintedUnitPriceQuantityDenominator: measureIntegerString(storedItem.PrintedUnitPriceQuantityDenominator), PrintedUnitPriceUnit: measureString(storedItem.PrintedUnitPriceUnit),
 		}
 		measure := purchaseItemMeasure{
 			quantityNumerator: storedItem.QuantityNumerator, quantityDenominator: storedItem.QuantityDenominator,
+			quantityUnit: storedItem.QuantityUnit, printedUnitPriceYen: storedItem.PrintedUnitPriceYen,
+			printedUnitPriceQuantityNumerator:   storedItem.PrintedUnitPriceQuantityNumerator,
+			printedUnitPriceQuantityDenominator: storedItem.PrintedUnitPriceQuantityDenominator, printedUnitPriceUnit: storedItem.PrintedUnitPriceUnit,
+		}
+		if measure.quantityNumerator.Valid {
+			item.Quantity = &model.PurchaseQuantity{Numerator: strconv.FormatInt(measure.quantityNumerator.V, 10), Denominator: strconv.FormatInt(measure.quantityDenominator.V, 10), Unit: measure.quantityUnit.V}
+		}
+		if measure.printedUnitPriceYen.Valid {
+			item.PrintedUnitPrice = &model.PrintedUnitPrice{
+				AmountYen: graphLong(measure.printedUnitPriceYen.V),
+				Basis:     &model.PurchaseQuantity{Numerator: strconv.FormatInt(measure.printedUnitPriceQuantityNumerator.V, 10), Denominator: strconv.FormatInt(measure.printedUnitPriceQuantityDenominator.V, 10), Unit: measure.printedUnitPriceUnit.V},
+			}
 		}
 		effectiveNumerator, effectiveDenominator, ok := effectiveUnitPrice(storedItem.AmountYen, measure)
 		if !ok {
 			return nil, fmt.Errorf("purchase item %s effective unit price exceeds int64", storedItem.ID)
 		}
-		item.EffectiveUnitPriceNumeratorYen = effectiveNumerator
-		item.EffectiveUnitPriceDenominator = effectiveDenominator
+		if effectiveNumerator != nil && effectiveDenominator != nil {
+			item.EffectiveUnitPrice = &model.EffectiveUnitPrice{NumeratorYen: *effectiveNumerator, Denominator: *effectiveDenominator}
+		}
 		if storedItem.CategoryID.Valid {
 			categoryID := storedItem.CategoryID.V.String()
 			item.CategoryID = &categoryID

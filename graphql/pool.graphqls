@@ -1,0 +1,26 @@
+type Pool implements Node {
+  id: ID! @goField(forceResolver: true)
+  name: String!
+  kind: PoolKind!
+  defaultShareWeight: Long!
+  ownerMemberId: ID @goField(forceResolver: true)
+  fundingShares: [PoolFundingShare!]!
+  settlementPolicy: SharedPoolSettlementPolicy
+  fundingRuleVersion: Int!
+}
+
+type PoolFundingShare {
+  memberId: ID! @goField(forceResolver: true)
+  memberName: String!
+  weight: Long!
+}
+
+enum PoolKind {
+  PERSONAL
+  SHARED
+}
+
+enum SharedPoolSettlementPolicy {
+  BALANCE_TO_STANDARD
+  REIMBURSE_PERSONAL
+}

@@ -1,0 +1,9 @@
+extend type Mutation {
+  archiveBudget(budgetId: ID!, baseRevision: Int!, archived: Boolean!): ArchiveBudgetResult!
+}
+
+union ArchiveBudgetResult = ArchiveBudgetSuccess | MutationError
+
+type ArchiveBudgetSuccess {
+  result: Budget!
+}

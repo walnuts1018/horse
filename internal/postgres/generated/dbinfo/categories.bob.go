@@ -133,7 +133,7 @@ var Categories = Table[
 			Unique:        true,
 			Comment:       "",
 			NullsFirst:    []bool{false, false, false},
-			NullsDistinct: false,
+			NullsDistinct: true,
 			Where:         "",
 			Include:       []string{},
 		},

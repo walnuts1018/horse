@@ -1,0 +1,18 @@
+extend type Mutation {
+  setAllocationRule(input: SetAllocationRuleInput!): SetAllocationRuleResult!
+}
+
+union SetAllocationRuleResult = SetAllocationRuleSuccess | MutationError
+
+type SetAllocationRuleSuccess {
+  result: AllocationRule!
+}
+
+input SetAllocationRuleInput {
+  householdId: ID! @nodeID(of: "Household")
+  categoryId: ID @nodeID(of: "Category")
+  merchant: String
+  productConceptId: ID @nodeID(of: "ProductConcept")
+  productVariantId: ID @nodeID(of: "ProductVariant")
+  allocations: [AllocationInput!]!
+}

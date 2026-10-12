@@ -1,0 +1,47 @@
+type Purchase implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  occurredAt: String!
+  merchant: String!
+  origin: PurchaseOrigin!
+  hasEvidence: Boolean!
+  sourceKinds: [SourceKind!]!
+  paymentAccountId: ID @goField(forceResolver: true)
+  paymentAccount: Account
+  paymentAllocations: [PurchasePayment!]!
+  items: [PurchaseItem!]!
+  corrections: [PurchaseCorrection!]!
+  totalYen: Long!
+  currency: String!
+  revision: Int!
+  status: PurchaseStatus!
+  createdAt: String!
+  updatedAt: String!
+}
+
+enum PurchaseStatus {
+  DRAFT
+  POSTED
+  CLOSED
+}
+
+enum PurchaseOrigin {
+  AI
+  MANUAL
+  UNKNOWN
+}
+
+type PurchaseEdge {
+  cursor: String!
+  node: Purchase!
+}
+
+type PurchaseConnection {
+  edges: [PurchaseEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  purchases(householdId: ID! @nodeID(of: "Household"), from: String, to: String, origin: PurchaseOrigin, hasEvidence: Boolean, after: String, before: String, first: Int, last: Int): PurchaseConnection!
+}

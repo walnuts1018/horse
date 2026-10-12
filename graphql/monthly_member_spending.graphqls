@@ -1,0 +1,15 @@
+type MonthlyMemberSpending {
+  period: String!
+  memberId: ID! @goField(forceResolver: true)
+  memberName: String!
+  amountYen: Long!
+}
+
+type MonthlyMemberSpendingReport {
+  items: [MonthlyMemberSpending!]!
+  hasUnattributedPurchases: Boolean!
+}
+
+extend type Query {
+  monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): MonthlyMemberSpendingReport!
+}

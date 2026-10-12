@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b59db28b50db1dcb43109184a8b4f23e>>
+ * @generated SignedSource<<30ce2700645feed1136e3d85b8eb3ee7>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,8 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+import type { FragmentRefs } from "relay-runtime";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type RecordFundingInput = {
   amountYen: any;
   destinationAccountId?: string | null | undefined;
@@ -23,7 +25,18 @@ export type RecordFundingMutation$variables = {
 };
 export type RecordFundingMutation$data = {
   readonly recordFunding: {
-    readonly id: string;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "RecordFundingSuccess";
+    readonly result: {
+      readonly " $fragmentSpreads": FragmentRefs<"LedgerEntryFields">;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type RecordFundingMutation = {
@@ -41,27 +54,108 @@ var v0 = [
 ],
 v1 = [
   {
+    "kind": "Variable",
+    "name": "input",
+    "variableName": "input"
+  }
+],
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "__typename",
+  "storageKey": null
+},
+v3 = {
+  "kind": "InlineFragment",
+  "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "code",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "message",
+      "storageKey": null
+    }
+  ],
+  "type": "MutationError",
+  "abstractKey": null
+},
+v4 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v5 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "occurredAt",
+  "storageKey": null
+},
+v6 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "description",
+  "storageKey": null
+},
+v7 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "amountYen",
+  "storageKey": null
+},
+v8 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "currency",
+  "storageKey": null
+},
+v9 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "createdAt",
+  "storageKey": null
+},
+v10 = [
+  (v4/*:: as any*/),
+  (v5/*:: as any*/),
+  (v6/*:: as any*/),
+  (v7/*:: as any*/),
+  (v8/*:: as any*/),
+  (v9/*:: as any*/),
+  {
     "alias": null,
-    "args": [
-      {
-        "kind": "Variable",
-        "name": "input",
-        "variableName": "input"
-      }
-    ],
-    "concreteType": "LedgerEntry",
+    "args": null,
+    "concreteType": "Purchase",
     "kind": "LinkedField",
-    "name": "recordFunding",
+    "name": "purchase",
     "plural": false,
     "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "id",
-        "storageKey": null
-      }
+      (v4/*:: as any*/)
     ],
+    "storageKey": null
+  }
+],
+v11 = [
+  (v4/*:: as any*/),
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "displayName",
     "storageKey": null
   }
 ];
@@ -71,7 +165,44 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "RecordFundingMutation",
-    "selections": (v1/*:: as any*/),
+    "selections": [
+      {
+        "alias": null,
+        "args": (v1/*:: as any*/),
+        "concreteType": null,
+        "kind": "LinkedField",
+        "name": "recordFunding",
+        "plural": false,
+        "selections": [
+          (v2/*:: as any*/),
+          {
+            "kind": "InlineFragment",
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": null,
+                "kind": "LinkedField",
+                "name": "result",
+                "plural": false,
+                "selections": [
+                  {
+                    "args": null,
+                    "kind": "FragmentSpread",
+                    "name": "LedgerEntryFields"
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "type": "RecordFundingSuccess",
+            "abstractKey": null
+          },
+          (v3/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ],
     "type": "Mutation",
     "abstractKey": null
   },
@@ -80,19 +211,168 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "RecordFundingMutation",
-    "selections": (v1/*:: as any*/)
+    "selections": [
+      {
+        "alias": null,
+        "args": (v1/*:: as any*/),
+        "concreteType": null,
+        "kind": "LinkedField",
+        "name": "recordFunding",
+        "plural": false,
+        "selections": [
+          (v2/*:: as any*/),
+          {
+            "kind": "InlineFragment",
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": null,
+                "kind": "LinkedField",
+                "name": "result",
+                "plural": false,
+                "selections": [
+                  (v2/*:: as any*/),
+                  {
+                    "kind": "TypeDiscriminator",
+                    "abstractKey": "__isLedgerEntry"
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": (v10/*:: as any*/),
+                    "type": "PurchaseLedgerEntry",
+                    "abstractKey": null
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": [
+                      (v4/*:: as any*/),
+                      (v5/*:: as any*/),
+                      (v6/*:: as any*/),
+                      (v7/*:: as any*/),
+                      (v8/*:: as any*/),
+                      (v9/*:: as any*/),
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "Member",
+                        "kind": "LinkedField",
+                        "name": "member",
+                        "plural": false,
+                        "selections": (v11/*:: as any*/),
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "Pool",
+                        "kind": "LinkedField",
+                        "name": "pool",
+                        "plural": false,
+                        "selections": [
+                          (v4/*:: as any*/),
+                          {
+                            "alias": null,
+                            "args": null,
+                            "kind": "ScalarField",
+                            "name": "name",
+                            "storageKey": null
+                          }
+                        ],
+                        "storageKey": null
+                      }
+                    ],
+                    "type": "FundingLedgerEntry",
+                    "abstractKey": null
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": [
+                      (v4/*:: as any*/),
+                      (v5/*:: as any*/),
+                      (v6/*:: as any*/),
+                      (v7/*:: as any*/),
+                      (v8/*:: as any*/),
+                      (v9/*:: as any*/),
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "Member",
+                        "kind": "LinkedField",
+                        "name": "fromMember",
+                        "plural": false,
+                        "selections": (v11/*:: as any*/),
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "Member",
+                        "kind": "LinkedField",
+                        "name": "toMember",
+                        "plural": false,
+                        "selections": (v11/*:: as any*/),
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "transferKind",
+                        "storageKey": null
+                      },
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "LoanBalance",
+                        "kind": "LinkedField",
+                        "name": "loan",
+                        "plural": false,
+                        "selections": [
+                          {
+                            "alias": null,
+                            "args": null,
+                            "kind": "ScalarField",
+                            "name": "loanId",
+                            "storageKey": null
+                          }
+                        ],
+                        "storageKey": null
+                      }
+                    ],
+                    "type": "TransferLedgerEntry",
+                    "abstractKey": null
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": (v10/*:: as any*/),
+                    "type": "CorrectionLedgerEntry",
+                    "abstractKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "type": "RecordFundingSuccess",
+            "abstractKey": null
+          },
+          (v3/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ]
   },
   "params": {
-    "cacheID": "219ea0d517261f0b877d9380875b56ad",
+    "cacheID": "8291d245ccf8833e4f87caf848fb926a",
     "id": null,
     "metadata": {},
     "name": "RecordFundingMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordFundingMutation(\n  $input: RecordFundingInput!\n) {\n  recordFunding(input: $input) {\n    id\n  }\n}\n"
+    "text": "mutation RecordFundingMutation(\n  $input: RecordFundingInput!\n) {\n  recordFunding(input: $input) {\n    __typename\n    ... on RecordFundingSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        ... on CorrectionLedgerEntry {\n          id\n        }\n        ... on FundingLedgerEntry {\n          id\n        }\n        ... on PurchaseLedgerEntry {\n          id\n        }\n        ... on TransferLedgerEntry {\n          id\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  ... on PurchaseLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      loanId\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    purchase {\n      id\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d7ab0fe4961973b159859dee38115e93";
+(node as any).hash = "fc60d67bafc81ccd03b7097658d7fe8d";
 
 export default node;

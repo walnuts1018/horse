@@ -86,7 +86,12 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resolver := &graph.Resolver{DB: s.db, Auth: s.auth}
-	executor := handler.New(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))
+	executor := handler.New(graph.NewExecutableSchema(graph.Config{
+		Resolvers: resolver,
+		Directives: graph.DirectiveRoot{
+			NodeID: graph.NodeIDDirective,
+		},
+	}))
 	executor.AddTransport(transport.POST{})
 	executor.Use(extension.Introspection{})
 	executor.SetErrorPresenter(func(ctx context.Context, err error) *gqlerror.Error {

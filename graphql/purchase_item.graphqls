@@ -1,0 +1,41 @@
+type PurchaseItem implements Node {
+  id: ID! @goField(forceResolver: true)
+  name: String!
+  amountYen: Long!
+  currency: String!
+  quantity: PurchaseQuantity
+  printedUnitPrice: PrintedUnitPrice
+  effectiveUnitPrice: EffectiveUnitPrice
+  categoryId: ID @goField(forceResolver: true)
+  productVariantId: ID @goField(forceResolver: true)
+  allocations: [Allocation!]!
+  tags: [Tag!]!
+  revision: Int!
+}
+
+type PurchaseQuantity {
+  numerator: String!
+  denominator: String!
+  unit: String!
+}
+
+input PurchaseQuantityInput {
+  numerator: String!
+  denominator: String!
+  unit: String!
+}
+
+type PrintedUnitPrice {
+  amountYen: Long!
+  basis: PurchaseQuantity!
+}
+
+input PrintedUnitPriceInput {
+  amountYen: Long!
+  basis: PurchaseQuantityInput!
+}
+
+type EffectiveUnitPrice {
+  numeratorYen: String!
+  denominator: String!
+}

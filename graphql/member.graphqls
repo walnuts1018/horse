@@ -1,0 +1,5 @@
+type Member implements Node {
+  id: ID! @goField(forceResolver: true)
+  displayName: String!
+  role: String!
+}

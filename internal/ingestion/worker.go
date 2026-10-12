@@ -11,6 +11,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
@@ -51,6 +52,13 @@ type job struct {
 	Attempt      int
 	FailureCount int
 	Version      int64
+}
+
+type historyCandidate struct {
+	merchant       string
+	printedName    string
+	normalizedName string
+	category       string
 }
 
 func postgresInt32(value int, field string) (int32, error) {
@@ -302,8 +310,8 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		return Verification{Statements: entries, Balanced: true}, nil
 	}
 	var request struct {
-		Hints []HistoryHint `json:"hints"`
-		Crop  *Region       `json:"crop,omitempty"`
+		Crop    *Region `json:"crop,omitempty"`
+		Purpose string  `json:"purpose,omitempty"`
 	}
 	if err := json.Unmarshal(j.Request, &request); err != nil {
 		return Verification{}, fmt.Errorf("decode extraction request: %w", err)
@@ -317,7 +325,16 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			return Verification{}, fmt.Errorf("prepare cropped document: %w", err)
 		}
 	}
-	receipt, runs, err := w.Router.Generate(ctx, j.SourceKind, document, request.Hints, GeminiRouteOptions{Reason: "initial_extraction"})
+	var lines []OCRLine
+	var ocrErr error
+	if strings.HasPrefix(document.MIMEType, "image/") {
+		lines, ocrErr = w.OCR.Extract(ctx, document)
+	}
+	hints, err := w.historyHints(ctx, j.HouseholdID, lines)
+	if err != nil {
+		return Verification{}, fmt.Errorf("load receipt history hints: %w", err)
+	}
+	receipt, runs, err := w.Router.Generate(ctx, j.SourceKind, document, hints, GeminiRouteOptions{Purpose: request.Purpose, Reason: "initial_extraction"})
 	if err != nil {
 		return Verification{Runs: runs}, err
 	}
@@ -325,10 +342,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if err != nil {
 		return Verification{Receipt: receipt, Runs: runs}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "receipt_validation_failed"}
 	}
-	var lines []OCRLine
-	var ocrErr error
 	if len(document.MIMEType) >= 6 && document.MIMEType[:6] == "image/" {
-		lines, ocrErr = w.OCR.Extract(ctx, document)
 		if ocrErr == nil {
 			if err := transformVerification(&verified, lines, transform, transformPage); err != nil {
 				return Verification{}, fmt.Errorf("map evidence regions to original image: %w", err)
@@ -354,7 +368,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		guidance := evidenceGuidance(verified.Issues, verified.OCRLines)
 		lastRun := latestSuccessfulRun(verified.Runs)
 		if lastRun != nil {
-			alternative, qualityRuns, qualityErr := w.Router.Generate(ctx, j.SourceKind, document, request.Hints, w.Router.QualityOptions(j.SourceKind, *lastRun, guidance))
+			alternative, qualityRuns, qualityErr := w.Router.Generate(ctx, j.SourceKind, document, hints, w.Router.QualityOptions(j.SourceKind, *lastRun, guidance))
 			verified.Runs = append(verified.Runs, qualityRuns...)
 			if qualityErr == nil {
 				second, verifyErr := Verify(alternative)
@@ -375,7 +389,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			}
 		}
 		if !verified.Balanced && supportsProReview(document.MIMEType) && needsProReview(verified.Issues) && w.Router.Paid.APIKey != "" {
-			proReceipt, proRuns, proErr := w.Router.Generate(ctx, j.SourceKind, document, request.Hints, w.Router.ProOptions(evidenceGuidance(verified.Issues, verified.OCRLines)))
+			proReceipt, proRuns, proErr := w.Router.Generate(ctx, j.SourceKind, document, hints, w.Router.ProOptions(request.Purpose, evidenceGuidance(verified.Issues, verified.OCRLines)))
 			verified.Runs = append(verified.Runs, proRuns...)
 			if proErr == nil {
 				proVerification, verifyErr := Verify(proReceipt)
@@ -397,6 +411,110 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		}
 	}
 	return verified, nil
+}
+
+func (w *Worker) historyHints(ctx context.Context, householdID string, lines []OCRLine) ([]HistoryHint, error) {
+	if len(lines) == 0 {
+		return nil, nil
+	}
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	executor := bobpgx.NewPool(w.DB)
+	purchases, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		psql.Or(
+			models.Purchases.Columns.Status.EQ(psql.Arg("POSTED")),
+			models.Purchases.Columns.Status.EQ(psql.Arg("CLOSED")),
+		),
+	)), sm.OrderBy(models.Purchases.Columns.OccurredAt).Desc(), sm.OrderBy(models.Purchases.Columns.ID).Desc(), sm.Limit(20)).All(ctx, executor)
+	if err != nil {
+		return nil, fmt.Errorf("query recent purchases: %w", err)
+	}
+	if len(purchases) == 0 {
+		return nil, nil
+	}
+	if err := purchases.LoadPurchaseItems(ctx, executor, sm.OrderBy(models.PurchaseItems.Columns.CreatedAt).Desc()); err != nil {
+		return nil, fmt.Errorf("load recent purchase items: %w", err)
+	}
+	var items models.PurchaseItemSlice
+	for _, purchase := range purchases {
+		items = append(items, purchase.R.PurchaseItems...)
+	}
+	if len(items) == 0 {
+		return nil, nil
+	}
+	if err := items.LoadProductVariant(ctx, executor); err != nil {
+		return nil, fmt.Errorf("load recent product variants: %w", err)
+	}
+	if err := items.LoadCategory(ctx, executor); err != nil {
+		return nil, fmt.Errorf("load recent item categories: %w", err)
+	}
+	merchantByPurchase := make(map[string]string, len(purchases))
+	for _, purchase := range purchases {
+		merchantByPurchase[purchase.ID.String()] = purchase.Merchant
+	}
+	candidates := make([]historyCandidate, 0, len(items))
+	for _, item := range items {
+		normalizedName := item.Name
+		if item.R.ProductVariant != nil {
+			if item.R.ProductVariant.NormalizedName != "" {
+				normalizedName = item.R.ProductVariant.NormalizedName
+			} else if item.R.ProductVariant.Name != "" {
+				normalizedName = item.R.ProductVariant.Name
+			}
+		}
+		candidate := historyCandidate{merchant: merchantByPurchase[item.PurchaseID.String()], printedName: item.Name, normalizedName: normalizedName}
+		if item.R.Category != nil {
+			candidate.category = item.R.Category.Name
+		}
+		candidates = append(candidates, candidate)
+	}
+	return selectHistoryHints(candidates, lines), nil
+}
+
+func selectHistoryHints(candidates []historyCandidate, lines []OCRLine) []HistoryHint {
+	var source strings.Builder
+	for _, line := range lines {
+		source.WriteString(normalizeHistoryText(line.Text))
+	}
+	sourceText := source.String()
+	if sourceText == "" {
+		return nil
+	}
+	hints := make([]HistoryHint, 0, 10)
+	seen := make(map[string]struct{})
+	for _, candidate := range candidates {
+		printedKey := normalizeHistoryText(candidate.printedName)
+		normalizedKey := normalizeHistoryText(candidate.normalizedName)
+		if len([]rune(printedKey)) < 3 && len([]rune(normalizedKey)) < 3 {
+			continue
+		}
+		if (printedKey == "" || !strings.Contains(sourceText, printedKey)) && (normalizedKey == "" || !strings.Contains(sourceText, normalizedKey)) {
+			continue
+		}
+		key := printedKey + "\x00" + normalizedKey
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		hints = append(hints, HistoryHint{Merchant: candidate.merchant, PrintedName: candidate.printedName, NormalizedName: candidate.normalizedName, Category: candidate.category})
+		if len(hints) == 10 {
+			break
+		}
+	}
+	return hints
+}
+
+func normalizeHistoryText(value string) string {
+	var normalized strings.Builder
+	for _, r := range strings.ToLower(value) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			normalized.WriteRune(r)
+		}
+	}
+	return normalized.String()
 }
 
 func appendPreviousRuns(runs []ExtractionRun, previous []byte) []ExtractionRun {

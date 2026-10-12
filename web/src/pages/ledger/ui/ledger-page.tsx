@@ -2,16 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { BookOpen, ChevronDown, ChevronRight, Plus, Search, X } from "lucide-react";
 import {
   ApiError,
-  bulkUpdatePurchaseItemsMutation,
-  correctPurchaseMutation,
   makeIdempotencyKey,
-  postPurchaseMutation,
-  purchasesQuery,
-  productCatalogQuery,
   readGraphql,
-  tagsQuery,
-  updatePurchaseItemMutation,
-  updatePurchaseMutation,
+  useGraphqlMutation,
   type Connection,
   type Household,
   type Purchase,
@@ -22,9 +15,22 @@ import {
   type SourceKind,
   type UnmatchedObservationState,
 } from "../../../shared/api";
+import {
+  bulkUpdatePurchaseItemsMutation,
+  correctPurchaseMutation,
+  postPurchaseMutation,
+  purchasesQuery,
+  updatePurchaseItemMutation,
+  updatePurchaseMutation,
+} from "../../../entities/purchase";
+import { ledgerQuery } from "../../../entities/ledger";
+import { unmatchedObservationsQuery } from "../../../entities/observation";
+import { productCatalogQuery } from "../../../entities/product";
+import { tagsQuery } from "../../../entities/tag";
 import { EmptyState, InlineError } from "../../../shared/ui";
 import { formatQuantity, parseQuantity } from "../../../shared/lib";
-import { useHouseholdPurchases, useUnmatchedObservations } from "../../../shared/api";
+import { useHouseholdPurchases } from "../../../entities/purchase";
+import { useUnmatchedObservations } from "../../../entities/observation";
 
 type PurchaseEvidence = {
   documentId: string;
@@ -55,6 +61,13 @@ const nextMonth = (month: string) => {
 };
 
 export function LedgerPage({ household, onAdd }: { household: Household; onAdd: () => void }) {
+  const { mutate: mutatePostPurchase } = useGraphqlMutation(postPurchaseMutation);
+  const { mutate: mutateCorrectPurchase } = useGraphqlMutation(correctPurchaseMutation);
+  const { mutate: mutateUpdatePurchaseItem } = useGraphqlMutation(updatePurchaseItemMutation);
+  const { mutate: mutateUpdatePurchase } = useGraphqlMutation(updatePurchaseMutation);
+  const { mutate: mutateBulkUpdatePurchaseItems } = useGraphqlMutation<{
+    bulkUpdatePurchaseItems: Array<{ id: string; revision: number }>;
+  }>(bulkUpdatePurchaseItemsMutation);
   const [recordMode, setRecordMode] = useState<"purchases" | "observations">("purchases");
   const [viewMode, setViewMode] = useState<"purchases" | "items">("purchases");
   const [search, setSearch] = useState("");
@@ -85,24 +98,15 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     minimumAmount ||
     maximumAmount,
   );
-  const {
-    purchases,
-    loading,
-    loadingMore,
-    error,
-    moreError,
-    hasNextPage,
-    totalCount,
-    loadMore,
-    refresh,
-  } = useHouseholdPurchases(household.id, 100, {
-    from: fromMonth ? `${fromMonth}-01T00:00:00+09:00` : undefined,
-    to: toMonth ? `${nextMonth(toMonth)}-01T00:00:00+09:00` : undefined,
-    origin: recordMode === "purchases" ? originFilter || undefined : undefined,
-    hasEvidence:
-      recordMode === "purchases" && evidenceFilter !== "" ? evidenceFilter === "true" : undefined,
-    loadAll: recordMode === "purchases" && (viewMode === "items" || filtersActive),
-  });
+  const { purchases, loadingMore, moreError, hasNextPage, totalCount, loadMore, refresh } =
+    useHouseholdPurchases(household.id, 100, {
+      from: fromMonth ? `${fromMonth}-01T00:00:00+09:00` : undefined,
+      to: toMonth ? `${nextMonth(toMonth)}-01T00:00:00+09:00` : undefined,
+      origin: recordMode === "purchases" ? originFilter || undefined : undefined,
+      hasEvidence:
+        recordMode === "purchases" && evidenceFilter !== "" ? evidenceFilter === "true" : undefined,
+      loadAll: recordMode === "purchases" && (viewMode === "items" || filtersActive),
+    });
   const unmatched = useUnmatchedObservations(household.id, {
     enabled: recordMode === "observations",
     from: fromMonth || undefined,
@@ -177,7 +181,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     setPostingPurchase(purchase.id);
     setEditError("");
     try {
-      await readGraphql(postPurchaseMutation, {
+      await mutatePostPurchase({
         purchaseId: purchase.id,
         expectedRevision: purchase.revision,
         idempotencyKey: makeIdempotencyKey(),
@@ -406,7 +410,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     setCorrectionPending(true);
     setEditError("");
     try {
-      await readGraphql(correctPurchaseMutation, {
+      await mutateCorrectPurchase({
         input: {
           householdId: household.id,
           purchaseId: purchase.id,
@@ -512,7 +516,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       changedFields,
     });
     try {
-      await readGraphql(updatePurchaseItemMutation, {
+      await mutateUpdatePurchaseItem({
         input: inputForRevision(item.revision),
       });
       await refresh();
@@ -533,7 +537,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
               .join("、"),
             serverValue: `${current.name} · ${yen(current.amountYen)}`,
             retry: async () => {
-              await readGraphql(updatePurchaseItemMutation, {
+              await mutateUpdatePurchaseItem({
                 input: inputForRevision(current.revision),
               });
               await refresh();
@@ -594,7 +598,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     if (!changedFields.length) return;
     const changedPatch = Object.fromEntries(changedFields.map((field) => [field, patch[field]]));
     try {
-      await readGraphql(updatePurchaseMutation, {
+      await mutateUpdatePurchase({
         input: {
           purchaseId: purchase.id,
           baseRevision: purchase.revision,
@@ -619,7 +623,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             localValue: `${patch.merchant} · ${new Date(patch.occurredAt).toLocaleString("ja-JP")}`,
             serverValue: `${latest.merchant} · ${new Date(latest.occurredAt).toLocaleString("ja-JP")}`,
             retry: async () => {
-              await readGraphql(updatePurchaseMutation, {
+              await mutateUpdatePurchase({
                 input: {
                   purchaseId: latest.id,
                   baseRevision: latest.revision,
@@ -702,7 +706,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       })
       .map((item) => ({ purchase, item }));
   });
-  const itemCoverageComplete = !loading && !loadingMore && !hasNextPage && !moreError;
+  const itemCoverageComplete = !loadingMore && !hasNextPage && !moreError;
   const selectedCount = selectedItems.size;
   const selectedPurchaseCount = selectedPurchases.size;
   const bulkAllocationEntries = Object.entries(bulkAllocations)
@@ -771,9 +775,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         patch.tagIds = bulkTags;
         changedFields.push("tags");
       }
-      const result = await readGraphql<{
-        bulkUpdatePurchaseItems: Array<{ id: string; revision: number }>;
-      }>(bulkUpdatePurchaseItemsMutation, {
+      const result = await mutateBulkUpdatePurchaseItems({
         input: {
           targets: targets.map(({ item }) => ({ itemId: item.id, baseRevision: item.revision })),
           patch,
@@ -828,7 +830,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       }
       for (const group of groups.values()) {
         if (!group.length) continue;
-        await readGraphql(bulkUpdatePurchaseItemsMutation, {
+        await mutateBulkUpdatePurchaseItems({
           input: {
             targets: group.map(({ itemId, baseRevision }) => ({ itemId, baseRevision })),
             patch: group[0].patch,
@@ -929,7 +931,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     try {
       while (remaining.length) {
         const entry = remaining[0];
-        await readGraphql(updatePurchaseMutation, {
+        await mutateUpdatePurchase({
           input: {
             purchaseId: entry.purchaseId,
             baseRevision: entry.baseRevision,
@@ -1504,15 +1506,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       )}
       {recordMode === "purchases" && viewMode === "items" && (
         <section className="panel ledger-list">
-          {loading && purchases.length === 0 ? (
-            <div className="skeleton-list">
-              <i />
-              <i />
-              <i />
-            </div>
-          ) : error ? (
-            <InlineError message={error} />
-          ) : filteredItems.length === 0 && itemCoverageComplete ? (
+          {filteredItems.length === 0 && itemCoverageComplete ? (
             <EmptyState
               icon={<BookOpen />}
               title="品目が見つかりません"
@@ -1598,14 +1592,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       )}
       {recordMode === "purchases" && viewMode === "purchases" && (
         <section className="panel ledger-list">
-          {loading || (filtersActive && loadingMore) ? (
+          {filtersActive && loadingMore ? (
             <div className="skeleton-list">
               <i />
               <i />
               <i />
             </div>
-          ) : error ? (
-            <InlineError message={error} />
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<BookOpen />}

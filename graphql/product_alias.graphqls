@@ -1,0 +1,9 @@
+type ProductAlias implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  variantId: ID! @goField(forceResolver: true)
+  merchantKey: String!
+  alias: String!
+  normalizedAlias: String!
+  revision: Int!
+}

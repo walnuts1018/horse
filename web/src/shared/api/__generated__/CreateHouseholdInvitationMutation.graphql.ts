@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<fbcb181d8551191d3dd039ad56edc70c>>
+ * @generated SignedSource<<bc97885e9505de1fc9060bcd7796634d>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type CreateHouseholdInvitationInput = {
   expiresAt: string;
   householdId: string;
@@ -17,16 +18,27 @@ export type CreateHouseholdInvitationMutation$variables = {
 };
 export type CreateHouseholdInvitationMutation$data = {
   readonly createHouseholdInvitation: {
-    readonly invitation: {
-      readonly acceptedAt: string | null | undefined;
-      readonly createdAt: string;
-      readonly expiresAt: string;
-      readonly householdId: string;
-      readonly id: string;
-      readonly revokedAt: string | null | undefined;
-      readonly role: string;
+    readonly __typename: "CreateHouseholdInvitationSuccess";
+    readonly result: {
+      readonly invitation: {
+        readonly acceptedAt: string | null | undefined;
+        readonly createdAt: string;
+        readonly expiresAt: string;
+        readonly householdId: string;
+        readonly id: string;
+        readonly revokedAt: string | null | undefined;
+        readonly role: string;
+      };
+      readonly token: string;
     };
-    readonly token: string;
+  } | {
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type CreateHouseholdInvitationMutation = {
@@ -52,7 +64,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "CreatedHouseholdInvitation",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "createHouseholdInvitation",
     "plural": false,
@@ -61,68 +73,114 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "token",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "concreteType": "HouseholdInvitation",
-        "kind": "LinkedField",
-        "name": "invitation",
-        "plural": false,
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "CreatedHouseholdInvitation",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "token",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "HouseholdInvitation",
+                "kind": "LinkedField",
+                "name": "invitation",
+                "plural": false,
+                "selections": [
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "id",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "householdId",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "role",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "expiresAt",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "createdAt",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "revokedAt",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "acceptedAt",
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "CreateHouseholdInvitationSuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
         "selections": [
           {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "id",
+            "name": "code",
             "storageKey": null
           },
           {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "householdId",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "role",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "expiresAt",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "createdAt",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "revokedAt",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "acceptedAt",
+            "name": "message",
             "storageKey": null
           }
         ],
-        "storageKey": null
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -146,16 +204,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "fb0856ccd91c6c229fc0d67c24fdc452",
+    "cacheID": "a4548d860fbf741eb3be91199e6c504c",
     "id": null,
     "metadata": {},
     "name": "CreateHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateHouseholdInvitationMutation(\n  $input: CreateHouseholdInvitationInput!\n) {\n  createHouseholdInvitation(input: $input) {\n    token\n    invitation {\n      id\n      householdId\n      role\n      expiresAt\n      createdAt\n      revokedAt\n      acceptedAt\n    }\n  }\n}\n"
+    "text": "mutation CreateHouseholdInvitationMutation(\n  $input: CreateHouseholdInvitationInput!\n) {\n  createHouseholdInvitation(input: $input) {\n    __typename\n    ... on CreateHouseholdInvitationSuccess {\n      result {\n        token\n        invitation {\n          id\n          householdId\n          role\n          expiresAt\n          createdAt\n          revokedAt\n          acceptedAt\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "82a73c7db5610ae1b7be34fe088b4a64";
+(node as any).hash = "148c7c32e1ab85d994dccec37ef0c5e3";
 
 export default node;

@@ -1,0 +1,9 @@
+extend type Mutation {
+  archiveRecurringExpense(expenseId: ID!, baseRevision: Int!, archived: Boolean!): ArchiveRecurringExpenseResult!
+}
+
+union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | MutationError
+
+type ArchiveRecurringExpenseSuccess {
+  result: RecurringExpense!
+}

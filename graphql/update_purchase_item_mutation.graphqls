@@ -1,0 +1,30 @@
+extend type Mutation {
+  updatePurchaseItem(input: UpdatePurchaseItemInput!): UpdatePurchaseItemResult!
+}
+
+union UpdatePurchaseItemResult = UpdatePurchaseItemSuccess | MutationError
+
+type UpdatePurchaseItemSuccess {
+  result: PurchaseItem!
+}
+
+input UpdatePurchaseItemInput {
+  itemId: ID! @nodeID(of: "PurchaseItem")
+  baseRevision: Int!
+  name: String
+  amountYen: Long
+  quantity: PurchaseQuantityInput @goField(omittable: true)
+  printedUnitPrice: PrintedUnitPriceInput @goField(omittable: true)
+  categoryId: ID @nodeID(of: "Category")
+  productVariantId: ID @nodeID(of: "ProductVariant")
+  productLearning: ProductLearningScope = ITEM_ONLY
+  variantName: String
+  allocations: [AllocationInput!]
+  changedFields: [String!]!
+}
+
+enum ProductLearningScope {
+  ITEM_ONLY
+  VARIANT_NAME
+  MERCHANT_ALIAS
+}

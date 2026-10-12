@@ -1,0 +1,17 @@
+type Household implements Node {
+  id: ID! @goField(forceResolver: true)
+  name: String!
+  revision: Int!
+  members: [Member!]!
+  pools: [Pool!]!
+  accounts: [Account!]!
+  categories: [Category!]!
+  defaultAllocation: [Allocation!]!
+  createdAt: String!
+  updatedAt: String!
+}
+
+extend type Query {
+  households: [Household!]!
+  household(id: ID! @nodeID(of: "Household")): Household
+}

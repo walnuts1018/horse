@@ -31,6 +31,13 @@ var PurchaseMemberBurdenErrors = &purchaseMemberBurdenErrors{
 		columns: []string{"funding_weight"},
 		s:       "purchase_member_burdens_funding_weight_check",
 	},
+
+	ErrCheckPurchaseMemberBurdensSnapshotSourceCheck: &CheckConstraintError{
+		schema:  "",
+		table:   "purchase_member_burdens",
+		columns: []string{"snapshot_source"},
+		s:       "purchase_member_burdens_snapshot_source_check",
+	},
 }
 
 type purchaseMemberBurdenErrors struct {
@@ -41,4 +48,6 @@ type purchaseMemberBurdenErrors struct {
 	ErrCheckPurchaseMemberBurdensFundingRuleVersionCheck *CheckConstraintError
 
 	ErrCheckPurchaseMemberBurdensFundingWeightCheck *CheckConstraintError
+
+	ErrCheckPurchaseMemberBurdensSnapshotSourceCheck *CheckConstraintError
 }

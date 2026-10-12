@@ -8,6 +8,7 @@ import (
 
 	"uuid"
 
+	"github.com/99designs/gqlgen/graphql"
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
@@ -45,27 +46,27 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: memberName})
-	resolver := (&Resolver{DB: db}).Mutation()
-	household, err := resolver.CreateHousehold(ctx, model.CreateHouseholdInput{Name: "planning-integration"})
+	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
+	household, err := resolver.createHousehold(ctx, model.CreateHouseholdInput{Name: "planning-integration"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
 		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
-	poolA, err := resolver.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "A", Kind: model.PoolKindPersonal})
+	poolA, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "A", Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
 	}
-	poolB, err := resolver.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "B", Kind: model.PoolKindPersonal})
+	poolB, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "B", Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
 	}
-	category, err := resolver.CreateCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: "Food"})
+	category, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: "Food"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.SetDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}, {PoolID: poolB.ID, Weight: 1}}}); err != nil {
+	if _, err := resolver.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}, {PoolID: poolB.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
 	quantityNumerator, quantityDenominator := "3", "2"
@@ -73,37 +74,36 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	printedUnitPrice := model.Long(130)
 	printedBasisNumerator, printedBasisDenominator := "1", "1"
 	printedUnit := "kg"
-	purchase, err := resolver.CreatePurchase(ctx, model.CreatePurchaseInput{
+	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-04-12T11:59:00Z", Merchant: "Market",
 		Items: []*model.PurchaseItemInput{{
-			Name: "Yogurt", AmountYen: 500, QuantityNumerator: &quantityNumerator, QuantityDenominator: &quantityDenominator, QuantityUnit: &quantityUnit,
-			PrintedUnitPriceYen: &printedUnitPrice, PrintedUnitPriceQuantityNumerator: &printedBasisNumerator,
-			PrintedUnitPriceQuantityDenominator: &printedBasisDenominator, PrintedUnitPriceUnit: &printedUnit,
+			Name: "Yogurt", AmountYen: 500,
+			Quantity:         &model.PurchaseQuantityInput{Numerator: quantityNumerator, Denominator: quantityDenominator, Unit: quantityUnit},
+			PrintedUnitPrice: &model.PrintedUnitPriceInput{AmountYen: printedUnitPrice, Basis: &model.PurchaseQuantityInput{Numerator: printedBasisNumerator, Denominator: printedBasisDenominator, Unit: printedUnit}},
 		}, {Name: "Milk", AmountYen: 300}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	item := purchase.Items[0]
-	if item.QuantityNumerator == nil || *item.QuantityNumerator != "3" || item.QuantityDenominator == nil || *item.QuantityDenominator != "2" || item.QuantityUnit == nil || *item.QuantityUnit != "kg" ||
-		item.EffectiveUnitPriceNumeratorYen == nil || *item.EffectiveUnitPriceNumeratorYen != "1000" || item.EffectiveUnitPriceDenominator == nil || *item.EffectiveUnitPriceDenominator != "3" ||
-		item.PrintedUnitPriceYen == nil || *item.PrintedUnitPriceYen != 130 {
+	if item.Quantity == nil || item.Quantity.Numerator != "3" || item.Quantity.Denominator != "2" || item.Quantity.Unit != "kg" ||
+		item.EffectiveUnitPrice == nil || item.EffectiveUnitPrice.NumeratorYen != "1000" || item.EffectiveUnitPrice.Denominator != "3" ||
+		item.PrintedUnitPrice == nil || item.PrintedUnitPrice.AmountYen != 130 {
 		t.Fatalf("purchase item must preserve quantity and distinct effective and printed prices: %#v", item)
 	}
 	unknownItem := purchase.Items[1]
-	if unknownItem.QuantityNumerator != nil || unknownItem.EffectiveUnitPriceNumeratorYen != nil || unknownItem.EffectiveUnitPriceDenominator != nil {
+	if unknownItem.Quantity != nil || unknownItem.EffectiveUnitPrice != nil {
 		t.Fatalf("quantity-unknown item must not be reported as a unit price: %#v", unknownItem)
 	}
 	beforePoolA := amountForPool(item.Allocations, poolA.ID)
 	beforePoolB := amountForPool(item.Allocations, poolB.ID)
 	updatedNumerator, updatedDenominator := "4", "1"
-	updatedQuantity, err := resolver.UpdatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
-		ItemID: item.ID, BaseRevision: item.Revision, QuantityNumerator: &updatedNumerator,
-		QuantityDenominator: &updatedDenominator, QuantityUnit: &quantityUnit, ChangedFields: []string{"quantity"},
+	updatedQuantity, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
+		ItemID: item.ID, BaseRevision: item.Revision, Quantity: graphql.OmittableOf[*model.PurchaseQuantityInput](&model.PurchaseQuantityInput{Numerator: updatedNumerator, Denominator: updatedDenominator, Unit: quantityUnit}), ChangedFields: []string{"quantity"},
 	})
 	if err != nil || updatedQuantity.AmountYen != item.AmountYen || amountForPool(updatedQuantity.Allocations, poolA.ID) != beforePoolA || amountForPool(updatedQuantity.Allocations, poolB.ID) != beforePoolB ||
-		updatedQuantity.EffectiveUnitPriceNumeratorYen == nil || *updatedQuantity.EffectiveUnitPriceNumeratorYen != "125" || updatedQuantity.EffectiveUnitPriceDenominator == nil || *updatedQuantity.EffectiveUnitPriceDenominator != "1" ||
-		updatedQuantity.PrintedUnitPriceYen == nil || *updatedQuantity.PrintedUnitPriceYen != printedUnitPrice {
+		updatedQuantity.EffectiveUnitPrice == nil || updatedQuantity.EffectiveUnitPrice.NumeratorYen != "125" || updatedQuantity.EffectiveUnitPrice.Denominator != "1" ||
+		updatedQuantity.PrintedUnitPrice == nil || updatedQuantity.PrintedUnitPrice.AmountYen != printedUnitPrice {
 		t.Fatalf("quantity-only edit changed financial amounts or allocations: item=%#v error=%v", updatedQuantity, err)
 	}
 	purchase, err = loadPurchase(ctx, db, purchase.ID)
@@ -126,7 +126,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if err != nil || purchase.Items[0].AmountYen != 500 {
 		t.Fatalf("allocation constraint failure must roll back the item amount: purchase=%#v error=%v", purchase, err)
 	}
-	tag, err := resolver.CreateTag(ctx, model.CreateTagInput{HouseholdID: household.ID, Name: "Weekly"})
+	tag, err := resolver.createTag(ctx, model.CreateTagInput{HouseholdID: household.ID, Name: "Weekly"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 		{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision},
 		{ItemID: purchase.Items[1].ID, BaseRevision: purchase.Items[1].Revision},
 	}
-	updated, err := resolver.BulkUpdatePurchaseItems(ctx, model.BulkUpdatePurchaseItemsInput{
+	updated, err := resolver.bulkUpdatePurchaseItems(ctx, model.BulkUpdatePurchaseItemsInput{
 		Targets:       itemTargets,
 		Patch:         &model.BulkPurchaseItemPatch{CategoryID: &category.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 3}, {PoolID: poolB.ID, Weight: 1}}, TagIds: []string{tag.ID}},
 		ChangedFields: []string{"categoryId", "allocations", "tags"},
@@ -145,7 +145,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if len(updated) != 2 || updated[0].CategoryID == nil || *updated[0].CategoryID != category.ID || len(updated[0].Tags) != 1 || updated[0].Tags[0].ID != tag.ID || amountForPool(updated[0].Allocations, poolA.ID) != 375 {
 		t.Fatalf("bulk update did not apply the same category, tags, and allocations to every item: %#v", updated)
 	}
-	stale, err := resolver.BulkUpdatePurchaseItems(ctx, model.BulkUpdatePurchaseItemsInput{
+	stale, err := resolver.bulkUpdatePurchaseItems(ctx, model.BulkUpdatePurchaseItemsInput{
 		Targets: []*model.PurchaseItemTargetInput{{ItemID: updated[0].ID, BaseRevision: updated[0].Revision}, {ItemID: updated[1].ID, BaseRevision: 1}},
 		Patch:   &model.BulkPurchaseItemPatch{TagIds: []string{}}, ChangedFields: []string{"tags"},
 	})
@@ -161,10 +161,10 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 			t.Fatalf("failed bulk operation partially changed item tags: %#v", item)
 		}
 	}
-	if _, err := resolver.PostPurchase(ctx, purchase.ID, reloaded.Revision, uuid.NewV7().String()); err != nil {
+	if _, err := resolver.postPurchase(ctx, purchase.ID, reloaded.Revision, uuid.NewV7().String()); err != nil {
 		t.Fatal(err)
 	}
-	budget, err := resolver.SetBudget(ctx, model.SetBudgetInput{HouseholdID: household.ID, CategoryID: &category.ID, Name: "Food", AmountYen: 1000, StartsOn: "2026-04-01"})
+	budget, err := resolver.setBudget(ctx, model.SetBudgetInput{HouseholdID: household.ID, CategoryID: &category.ID, Name: "Food", AmountYen: 1000, StartsOn: "2026-04-01"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if len(budgets) != 1 || budgets[0].ID != budget.ID || budgets[0].ActualYen != 800 || budgets[0].RemainingYen != 200 {
 		t.Fatalf("budget should compare posted category actuals to the cap: %#v", budgets)
 	}
-	allBudget, err := resolver.SetBudget(ctx, model.SetBudgetInput{HouseholdID: household.ID, Name: "All spending", AmountYen: 2000, StartsOn: "2026-04-01"})
+	allBudget, err := resolver.setBudget(ctx, model.SetBudgetInput{HouseholdID: household.ID, Name: "All spending", AmountYen: 2000, StartsOn: "2026-04-01"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 			t.Fatalf("uncategorized budget should include all posted spending: %#v", entry)
 		}
 	}
-	recurring, err := resolver.SetRecurringExpense(ctx, model.SetRecurringExpenseInput{HouseholdID: household.ID, Name: "Internet", Merchant: "ISP", AmountYen: 4500, CategoryID: &category.ID, Cadence: "MONTHLY", StartsOn: "2026-04-01", NextDueOn: "2026-05-01"})
+	recurring, err := resolver.setRecurringExpense(ctx, model.SetRecurringExpenseInput{HouseholdID: household.ID, Name: "Internet", Merchant: "ISP", AmountYen: 4500, CategoryID: &category.ID, Cadence: "MONTHLY", StartsOn: "2026-04-01", NextDueOn: "2026-05-01"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,11 +199,11 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if len(expenses) != 1 || expenses[0].ID != recurring.ID || expenses[0].NextDueOn != "2026-05-01" {
 		t.Fatalf("recurring expense metadata did not round-trip: %#v", expenses)
 	}
-	bank, err := resolver.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Bank", Kind: model.AccountKindBank})
+	bank, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Bank", Kind: model.AccountKindBank})
 	if err != nil {
 		t.Fatal(err)
 	}
-	card, err := resolver.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Card", Kind: model.AccountKindCard})
+	card, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Card", Kind: model.AccountKindCard})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,11 +212,11 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 		FromAccountID: bank.ID, ToAccountID: card.ID, AmountYen: 800,
 		OccurredAt: "2026-05-01T09:00:00Z", Description: "April card statement", IdempotencyKey: uuid.NewV7().String(),
 	}
-	movement, err := resolver.RecordAccountMovement(ctx, movementInput)
+	movement, err := resolver.recordAccountMovement(ctx, movementInput)
 	if err != nil {
 		t.Fatal(err)
 	}
-	replayed, err := resolver.RecordAccountMovement(ctx, movementInput)
+	replayed, err := resolver.recordAccountMovement(ctx, movementInput)
 	if err != nil || replayed.ID != movement.ID {
 		t.Fatalf("idempotent account movement replay created a second record: movement=%#v replay=%#v err=%v", movement, replayed, err)
 	}
@@ -240,7 +240,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 			t.Fatalf("card bill movement must reduce card liability and bank cash: %#v", journalEntries)
 		}
 	}
-	if _, err := resolver.RecordAccountMovement(ctx, model.RecordAccountMovementInput{HouseholdID: household.ID, Kind: model.AccountMovementKindCardBillPayment, FromAccountID: card.ID, ToAccountID: bank.ID, AmountYen: 800, OccurredAt: movementInput.OccurredAt, IdempotencyKey: uuid.NewV7().String()}); !errors.Is(err, ErrBadInput) {
+	if _, err := resolver.recordAccountMovement(ctx, model.RecordAccountMovementInput{HouseholdID: household.ID, Kind: model.AccountMovementKindCardBillPayment, FromAccountID: card.ID, ToAccountID: bank.ID, AmountYen: 800, OccurredAt: movementInput.OccurredAt, IdempotencyKey: uuid.NewV7().String()}); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("card bill payment must debit a bank account into a card account: %v", err)
 	}
 }

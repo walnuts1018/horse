@@ -1,0 +1,11 @@
+type Tag implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID!
+  name: String!
+  archived: Boolean!
+  revision: Int!
+}
+
+extend type Query {
+  tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
+}

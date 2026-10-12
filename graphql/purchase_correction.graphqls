@@ -1,0 +1,13 @@
+type PurchaseCorrection implements Node {
+  id: ID! @goField(forceResolver: true)
+  itemId: ID @goField(forceResolver: true)
+  amountDeltaYen: Long!
+  reason: String!
+  occurredAt: String!
+  settlementMonth: String!
+  paymentAllocations: [PurchasePayment!]!
+}
+
+extend type Query {
+  purchaseCorrections(purchaseId: ID! @nodeID(of: "Purchase")): [PurchaseCorrection!]!
+}

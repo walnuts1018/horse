@@ -1,17 +1,16 @@
 import { BarChart3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
-  budgetsQuery,
-  monthlyCategorySpendingQuery,
-  monthlyMemberSpendingQuery,
-  recurringExpensesQuery,
   readGraphql,
   type Household,
   type Budget,
   type Purchase,
   type RecurringExpense,
 } from "../../../shared/api";
-import { useHouseholdPurchases } from "../../../shared/api";
+import { monthlyCategorySpendingQuery, monthlyMemberSpendingQuery } from "../api/operations";
+import { budgetsQuery } from "../../../entities/budget";
+import { recurringExpensesQuery } from "../../../entities/recurring-expense";
+import { useHouseholdPurchases } from "../../../entities/purchase";
 import { InlineError } from "../../../shared/ui";
 
 const yen = (amount = 0) =>
@@ -206,15 +205,11 @@ export function AnalysisPage({ household }: { household: Household }) {
   const finalMonth = months[months.length - 1];
   const from = `${months[0]}-01T00:00:00+09:00`;
   const to = `${nextMonth(finalMonth)}-01T00:00:00+09:00`;
-  const { purchases, loading, loadingMore, error, moreError } = useHouseholdPurchases(
-    household.id,
-    100,
-    {
-      from,
-      to,
-      loadAll: true,
-    },
-  );
+  const { purchases, loadingMore, moreError } = useHouseholdPurchases(household.id, 100, {
+    from,
+    to,
+    loadAll: true,
+  });
   const [spending, setSpending] = useState<
     Array<{
       period: string;
@@ -384,9 +379,9 @@ export function AnalysisPage({ household }: { household: Household }) {
     member: "メンバー負担",
   };
   const isLoading =
-    loading || loadingMore || spendingLoading || (dimension === "member" && memberSpendingLoading);
+    loadingMore || spendingLoading || (dimension === "member" && memberSpendingLoading);
   const loadError =
-    error || moreError || spendingError || budgetError || recurringError || memberSpendingError;
+    moreError || spendingError || budgetError || recurringError || memberSpendingError;
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
     year: "numeric",

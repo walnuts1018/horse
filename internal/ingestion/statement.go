@@ -78,7 +78,7 @@ func ParseStatementCSV(data []byte, sourceKind string) ([]StatementEntry, error)
 		}
 		kind := "CARD_PURCHASE"
 		if sourceKind == "bank" {
-			kind = "BANK_MOVEMENT"
+			kind = bankTransactionKind(value(row, "transactionKind"))
 		}
 		result = append(result, StatementEntry{Row: rowNumber, Kind: kind, OccurredAt: date.Format(time.RFC3339), Merchant: merchant, Amount: amount, TransactionID: value(row, "transactionId"), OrderID: value(row, "orderId"), CardLast4: value(row, "cardLast4")})
 	}
@@ -102,8 +102,25 @@ func headerKey(value string) string {
 		return "orderId"
 	case "cardlast4", "card_last4", "カード末尾":
 		return "cardLast4"
+	case "kind", "type", "transactionkind", "transaction_kind", "取引種別", "取引区分", "種別":
+		return "transactionKind"
 	default:
 		return ""
+	}
+}
+
+func bankTransactionKind(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "PURCHASE_PAYMENT", "商品購入", "デビット購入":
+		return "PURCHASE_PAYMENT"
+	case "CARD_BILL_PAYMENT", "CARD_PAYMENT", "クレジットカード引落", "カード利用代金":
+		return "CARD_BILL_PAYMENT"
+	case "ACCOUNT_TRANSFER", "TRANSFER", "振込", "振替":
+		return "ACCOUNT_TRANSFER"
+	case "REFUND", "返金", "払い戻し":
+		return "REFUND"
+	default:
+		return "UNCLASSIFIED"
 	}
 }
 

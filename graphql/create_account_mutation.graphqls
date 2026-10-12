@@ -1,0 +1,18 @@
+extend type Mutation {
+  createAccount(input: CreateAccountInput!): CreateAccountResult!
+}
+
+union CreateAccountResult = CreateAccountSuccess | MutationError
+
+type CreateAccountSuccess {
+  result: Account!
+}
+
+input CreateAccountInput {
+  householdId: ID! @nodeID(of: "Household")
+  name: String!
+  kind: AccountKind!
+  poolId: ID @nodeID(of: "Pool")
+  openingBalanceYen: Long
+  openingBalanceAt: String
+}

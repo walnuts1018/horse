@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ede91cdb15c4b8eaa8c4702341bfc8db>>
+ * @generated SignedSource<<e066c1166a2a375c20bbca6204ee9595>>
  * @lightSyntaxTransform
  */
 
@@ -8,14 +8,26 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type SetCategoryArchivedMutation$variables = {
   archived: boolean;
   categoryId: string;
 };
 export type SetCategoryArchivedMutation$data = {
   readonly setCategoryArchived: {
-    readonly archived: boolean;
-    readonly id: string;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "SetCategoryArchivedSuccess";
+    readonly result: {
+      readonly archived: boolean;
+      readonly id: string;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type SetCategoryArchivedMutation = {
@@ -49,7 +61,7 @@ v2 = [
         "variableName": "categoryId"
       }
     ],
-    "concreteType": "Category",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "setCategoryArchived",
     "plural": false,
@@ -58,15 +70,61 @@ v2 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "archived",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Category",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "archived",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "SetCategoryArchivedSuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -96,16 +154,16 @@ return {
     "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "bba357bee8d2b72f7108dad6a782329c",
+    "cacheID": "11126441e3ad63e05a7eff4fabff4a05",
     "id": null,
     "metadata": {},
     "name": "SetCategoryArchivedMutation",
     "operationKind": "mutation",
-    "text": "mutation SetCategoryArchivedMutation(\n  $categoryId: ID!\n  $archived: Boolean!\n) {\n  setCategoryArchived(categoryId: $categoryId, archived: $archived) {\n    id\n    archived\n  }\n}\n"
+    "text": "mutation SetCategoryArchivedMutation(\n  $categoryId: ID!\n  $archived: Boolean!\n) {\n  setCategoryArchived(categoryId: $categoryId, archived: $archived) {\n    __typename\n    ... on SetCategoryArchivedSuccess {\n      result {\n        id\n        archived\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "ba62a4d896ef41c2e7b2f90dd3347aa3";
+(node as any).hash = "c66701127da7408d2641152fa802ac48";
 
 export default node;

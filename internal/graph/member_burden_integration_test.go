@@ -54,8 +54,8 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "burden-integration:" + memberA, DisplayName: "A"})
-	resolver := (&Resolver{DB: db}).Mutation()
-	household, err := resolver.CreateHousehold(ctx, model.CreateHouseholdInput{Name: "burden-integration"})
+	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
+	household, err := resolver.createHousehold(ctx, model.CreateHouseholdInput{Name: "burden-integration"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,18 +67,18 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdID, MemberID: &memberBID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	pool, err := resolver.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Shared", Kind: model.PoolKindShared})
+	pool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Shared", Kind: model.PoolKindShared})
 	if err != nil {
 		t.Fatal(err)
 	}
 	initialPolicy := model.SharedPoolSettlementPolicyBalanceToStandard
-	if _, err := resolver.SetPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, SettlementPolicy: &initialPolicy, ExpectedVersion: 1}); err != nil {
+	if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, SettlementPolicy: &initialPolicy, ExpectedVersion: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.SetDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
+	if _, err := resolver.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
-	account, err := resolver.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Shared card", Kind: model.AccountKindCard, PoolID: &pool.ID})
+	account, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Shared card", Kind: model.AccountKindCard, PoolID: &pool.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	purchaseDate := currentMonthStart.AddDate(0, -1, 10)
 	occurredAt := purchaseDate.UTC().Format(time.RFC3339)
 	period := accountingPeriod(purchaseDate)
-	purchase, err := resolver.CreatePurchase(ctx, model.CreatePurchaseInput{
+	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: occurredAt, Merchant: "Shop", PaymentAccountID: &account.ID,
 		Items: []*model.PurchaseItemInput{{Name: "item", AmountYen: 1000}},
 	})
@@ -97,7 +97,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if purchase.Origin != model.PurchaseOriginManual || purchase.HasEvidence {
 		t.Fatalf("manual purchase origin was conflated with evidence state: %#v", purchase)
 	}
-	if _, err := resolver.PostPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String()); err != nil {
+	if _, err := resolver.postPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String()); err != nil {
 		t.Fatal(err)
 	}
 	sourceDocumentID := generatedUUID(uuid.NewV7().String())
@@ -121,7 +121,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	}
 	query := (&Resolver{DB: db}).Query()
 	manualOrigin, evidencePresent := model.PurchaseOriginManual, true
-	filtered, err := query.Purchases(ctx, household.ID, nil, nil, &manualOrigin, &evidencePresent, nil, nil)
+	filtered, err := query.Purchases(ctx, household.ID, nil, nil, &manualOrigin, &evidencePresent, nil, nil, nil, nil)
 	if err != nil || filtered.TotalCount != 1 || len(filtered.Edges) != 1 || filtered.Edges[0].Node.Origin != model.PurchaseOriginManual {
 		t.Fatalf("origin and evidence filters did not remain independent: connection=%#v error=%v", filtered, err)
 	}
@@ -135,7 +135,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	queryFrom := period
 	queryTo := period
 	kind, candidateState := model.SourceKindReceipt, model.UnmatchedObservationStateUnmatched
-	observations, err := query.UnmatchedObservations(ctx, household.ID, &queryFrom, &queryTo, &kind, &candidateState, nil, nil)
+	observations, err := query.UnmatchedObservations(ctx, household.ID, &queryFrom, &queryTo, &kind, &candidateState, nil, nil, nil, nil)
 	if err != nil || observations.TotalCount != 1 || len(observations.Edges) != 1 || observations.Edges[0].Node.State != model.UnmatchedObservationStateUnmatched {
 		t.Fatalf("unmatched receipt observation was not listed: connection=%#v error=%v", observations, err)
 	}
@@ -144,22 +144,22 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		t.Fatal(err)
 	}
 	candidateState = model.UnmatchedObservationStateConfirmed
-	observations, err = query.UnmatchedObservations(ctx, household.ID, &queryFrom, &queryTo, &kind, &candidateState, nil, nil)
+	observations, err = query.UnmatchedObservations(ctx, household.ID, &queryFrom, &queryTo, &kind, &candidateState, nil, nil, nil, nil)
 	if err != nil || observations.TotalCount != 1 || observations.Edges[0].Node.PurchaseID == nil || *observations.Edges[0].Node.PurchaseID != purchase.ID {
 		t.Fatalf("confirmed observation did not retain its purchase link: connection=%#v error=%v", observations, err)
 	}
 	updatedAmount := model.Long(1200)
-	if _, err := resolver.UpdatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: &updatedAmount, ChangedFields: []string{"amountYen"}}); err != nil {
+	if _, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: &updatedAmount, ChangedFields: []string{"amountYen"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.ClosePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: period, ExpectedRevision: 0}); err != nil {
+	if _, err := resolver.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: period, ExpectedRevision: 0}); err != nil {
 		t.Fatal(err)
 	}
 	policy := model.SharedPoolSettlementPolicyBalanceToStandard
-	if _, err := resolver.SetPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, SettlementPolicy: &policy, ExpectedVersion: 2}); err != nil {
+	if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, SettlementPolicy: &policy, ExpectedVersion: 2}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.CorrectPurchase(ctx, model.CorrectPurchaseInput{HouseholdID: household.ID, PurchaseID: purchase.ID, ItemID: &purchase.Items[0].ID, AmountDeltaYen: -100, Reason: "refund", IdempotencyKey: uuid.NewV7().String()}); err != nil {
+	if _, err := resolver.correctPurchase(ctx, model.CorrectPurchaseInput{HouseholdID: household.ID, PurchaseID: purchase.ID, ItemID: &purchase.Items[0].ID, AmountDeltaYen: -100, Reason: "refund", IdempotencyKey: uuid.NewV7().String()}); err != nil {
 		t.Fatal(err)
 	}
 	purchaseUUID = generatedUUID(purchase.ID)

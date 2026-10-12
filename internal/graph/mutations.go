@@ -213,6 +213,11 @@ func (r *mutationResolver) createAccount(ctx context.Context, input model.Create
 	}
 	accountKind := string(input.Kind)
 	executor := bobpgx.NewTx(tx, nil)
+	if openingBalance > 0 {
+		if err := lockAccountingPeriods(ctx, tx, input.HouseholdID, accountingPeriod(openingAt)); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := models.Accounts.Insert(&models.AccountSetter{ID: &idUUID, HouseholdID: &householdUUID, PoolID: &poolValue, Name: &name, Kind: &accountKind}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
@@ -722,12 +727,19 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	}
 	executor := bobpgx.NewTx(tx, nil)
 	key, operation := input.IdempotencyKey, "createPurchase"
+	fingerprint, err := mutationRequestFingerprint(input)
+	if err != nil {
+		return nil, err
+	}
 	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
 		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(key)),
 		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
 	))).One(ctx, executor)
 	if err == nil {
+		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
+			return nil, err
+		}
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
@@ -938,8 +950,10 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 		}
 	}
 	purchaseResource := sql.Null[gofrsuuid.UUID]{V: purchaseUUID, Valid: true}
+	requestFingerprint := sql.Null[[]byte]{V: fingerprint[:], Valid: true}
 	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
 		HouseholdID: &householdUUID, Key: &key, Operation: &operation, ResourceID: &purchaseResource,
+		RequestFingerprint: &requestFingerprint,
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
@@ -963,7 +977,19 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 			return nil, err
 		}
 		if sourceReference == "" {
-			if err := linkImportedReceiptItems(ctx, executor, householdUUID, documentUUID, purchaseUUID, purchaseItemUUIDs); err != nil {
+			amounts := make([]int64, len(input.Items))
+			for index, item := range input.Items {
+				amounts[index] = int64(item.AmountYen)
+			}
+			candidateID := ""
+			if input.ReceiptCandidateID != nil {
+				candidateID = *input.ReceiptCandidateID
+			}
+			overrideReason := ""
+			if input.ManualAmountOverrideReason != nil {
+				overrideReason = *input.ManualAmountOverrideReason
+			}
+			if err := linkImportedReceiptItems(ctx, executor, householdUUID, documentUUID, purchaseUUID, purchaseItemUUIDs, amounts, candidateID, overrideReason); err != nil {
 				return nil, err
 			}
 		}
@@ -977,7 +1003,7 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	return loadPurchase(ctx, r.DB, purchaseID)
 }
 
-func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, householdID, documentID, purchaseID gofrsuuid.UUID, itemIDs []gofrsuuid.UUID) error {
+func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, householdID, documentID, purchaseID gofrsuuid.UUID, itemIDs []gofrsuuid.UUID, amounts []int64, candidateID, overrideReason string) error {
 	job, err := models.ExtractionJobs.Query(
 		sm.Where(psql.And(
 			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(householdID)),
@@ -1001,16 +1027,27 @@ func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, househ
 		return err
 	}
 	if len(verified.Receipt.Items) == 0 {
+		if candidateID != "" || strings.TrimSpace(overrideReason) != "" {
+			return fmt.Errorf("%w: receipt verification is unavailable", ErrBadInput)
+		}
 		return nil
 	}
-	if len(verified.Receipt.Items) != len(itemIDs) {
-		return fmt.Errorf("%w: receipt item count does not match the imported purchase", ErrBadInput)
+	overridden, err := ingestion.ValidateReceiptConfirmation(verified, amounts, candidateID, overrideReason)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
 	for index, item := range verified.Receipt.Items {
-		observation, err := stdjson.Marshal(map[string]any{
+		observationValues := map[string]any{
 			"jobId": job.ID.String(), "itemIndex": index, "item": item,
 			"transform": verified.Transform, "transformPage": verified.TransformPage,
-		})
+		}
+		if candidateID != "" {
+			observationValues["receiptCandidateId"] = candidateID
+		}
+		if overridden {
+			observationValues["manualAmountOverrideReason"] = strings.TrimSpace(overrideReason)
+		}
+		observation, err := stdjson.Marshal(observationValues)
 		if err != nil {
 			return err
 		}
@@ -1702,8 +1739,8 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 		}
 	}
 	if input.Name != nil && !slices.Contains(input.ChangedFields, "name") || input.AmountYen != nil && !slices.Contains(input.ChangedFields, "amountYen") ||
-		(input.QuantityNumerator != nil || input.QuantityDenominator != nil || input.QuantityUnit != nil) && !slices.Contains(input.ChangedFields, "quantity") ||
-		(input.PrintedUnitPriceYen != nil || input.PrintedUnitPriceQuantityNumerator != nil || input.PrintedUnitPriceQuantityDenominator != nil || input.PrintedUnitPriceUnit != nil) && !slices.Contains(input.ChangedFields, "printedUnitPrice") ||
+		input.Quantity.IsSet() && !slices.Contains(input.ChangedFields, "quantity") ||
+		input.PrintedUnitPrice.IsSet() && !slices.Contains(input.ChangedFields, "printedUnitPrice") ||
 		input.CategoryID != nil && !slices.Contains(input.ChangedFields, "categoryId") || input.ProductVariantID != nil && !slices.Contains(input.ChangedFields, "productVariantId") || input.Allocations != nil && !slices.Contains(input.ChangedFields, "allocations") {
 		return nil, fmt.Errorf("%w: patch contains fields missing from changedFields", ErrBadInput)
 	}
@@ -2015,18 +2052,33 @@ func (r *mutationResolver) postPurchase(ctx context.Context, purchaseID string, 
 		return nil, err
 	}
 	operation := "postPurchase"
+	fingerprint, err := mutationRequestFingerprint(struct {
+		PurchaseID       string
+		ExpectedRevision int
+	}{PurchaseID: purchaseID, ExpectedRevision: expectedRevision})
+	if err != nil {
+		return nil, err
+	}
 	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
 		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(idempotencyKey)),
 		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
 	))).One(ctx, executor)
 	if err == nil {
+		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
+			return nil, err
+		}
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
 		return loadPurchase(ctx, r.DB, existing.ResourceID.V.String())
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
 		return nil, err
 	}
 	period := accountingPeriod(occurredAt)
@@ -2099,6 +2151,9 @@ func (r *mutationResolver) postPurchase(ctx context.Context, purchaseID string, 
 		return nil, err
 	}
 	if err := snapshotPurchaseMemberBurden(ctx, executor, householdID, purchaseID, allocations); err != nil {
+		return nil, err
+	}
+	if err := snapshotPurchasePaymentFunding(ctx, executor, householdID, purchase); err != nil {
 		return nil, err
 	}
 	type purchaseShare struct {
@@ -2182,8 +2237,10 @@ func (r *mutationResolver) postPurchase(ctx context.Context, purchaseID string, 
 		return nil, err
 	}
 	purchaseResource := sql.Null[gofrsuuid.UUID]{V: purchaseUUID, Valid: true}
+	requestFingerprint := sql.Null[[]byte]{V: fingerprint[:], Valid: true}
 	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
 		HouseholdID: &householdUUID, Key: &idempotencyKey, Operation: &operation, ResourceID: &purchaseResource,
+		RequestFingerprint: &requestFingerprint,
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
@@ -2196,7 +2253,7 @@ func (r *mutationResolver) postPurchase(ctx context.Context, purchaseID string, 
 	return loadPurchase(ctx, r.DB, purchaseID)
 }
 
-func (r *mutationResolver) recordFunding(ctx context.Context, input model.RecordFundingInput) (*model.LedgerEntry, error) {
+func (r *mutationResolver) recordFunding(ctx context.Context, input model.RecordFundingInput) (*model.LedgerEntryData, error) {
 	user, err := requireMember(ctx, r.DB, input.HouseholdID)
 	if err != nil {
 		return nil, err
@@ -2241,12 +2298,19 @@ func (r *mutationResolver) recordFunding(ctx context.Context, input model.Record
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	transactionExecutor := bobpgx.NewTx(tx, nil)
 	operation := "recordFunding"
+	fingerprint, err := mutationRequestFingerprint(input)
+	if err != nil {
+		return nil, err
+	}
 	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
 		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(input.IdempotencyKey)),
 		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
 	))).One(ctx, transactionExecutor)
 	if err == nil && existing.ResourceID.Valid {
+		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
+			return nil, err
+		}
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
@@ -2361,7 +2425,7 @@ func (r *mutationResolver) recordFunding(ctx context.Context, input model.Record
 		return nil, err
 	}
 	journalUUID, ledgerUUID := generatedUUID(newID()), generatedUUID(newID())
-	sourceKind := string(model.LedgerKindFunding)
+	sourceKind := string("FUNDING")
 	if _, err := models.Journals.Insert(&models.JournalSetter{
 		ID: &journalUUID, HouseholdID: &householdID, SourceKind: &sourceKind, SourceID: &ledgerUUID,
 		IdempotencyKey: &input.IdempotencyKey, OccurredAt: &occurredAt, CreatedBy: &memberID,
@@ -2419,15 +2483,17 @@ func (r *mutationResolver) recordFunding(ctx context.Context, input model.Record
 	}
 	memberReference := sql.Null[gofrsuuid.UUID]{V: memberID, Valid: true}
 	if _, err := models.LedgerEntries.Insert(&models.LedgerEntrySetter{
-		ID: &ledgerUUID, HouseholdID: &householdID, JournalID: &journalUUID, Kind: new(string(model.LedgerKindFunding)),
+		ID: &ledgerUUID, HouseholdID: &householdID, JournalID: &journalUUID, Kind: new(string("FUNDING")),
 		OccurredAt: &occurredAt, Description: new("Pool funding"), AmountYen: &amount,
 		FromMemberID: &memberReference, PoolID: &poolReference,
 	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
 	resourceID := sql.Null[gofrsuuid.UUID]{V: ledgerUUID, Valid: true}
+	requestFingerprint := sql.Null[[]byte]{V: fingerprint[:], Valid: true}
 	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
 		HouseholdID: &householdID, Key: &input.IdempotencyKey, Operation: &operation, ResourceID: &resourceID,
+		RequestFingerprint: &requestFingerprint,
 	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
@@ -2462,7 +2528,7 @@ func verifyHouseholdMember(ctx context.Context, db *pgxpool.Pool, householdID, m
 	return nil
 }
 
-func loadLedgerEntry(ctx context.Context, db *pgxpool.Pool, entryID string) (*model.LedgerEntry, error) {
+func loadLedgerEntry(ctx context.Context, db *pgxpool.Pool, entryID string) (*model.LedgerEntryData, error) {
 	entryUUID, err := gofrsuuid.FromString(entryID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid ledger entry id", ErrBadInput)
@@ -2474,8 +2540,8 @@ func loadLedgerEntry(ctx context.Context, db *pgxpool.Pool, entryID string) (*mo
 	if err != nil {
 		return nil, err
 	}
-	result := &model.LedgerEntry{
-		ID: row.ID.String(), Kind: model.LedgerKind(row.Kind), OccurredAt: timeString(row.OccurredAt),
+	result := &model.LedgerEntryData{
+		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, OccurredAt: timeString(row.OccurredAt),
 		Description: row.Description, AmountYen: graphLong(row.AmountYen), Currency: "JPY", CreatedAt: timeString(row.CreatedAt),
 	}
 	if row.FromMemberID.Valid {
@@ -2505,7 +2571,7 @@ func loadLedgerEntry(ctx context.Context, db *pgxpool.Pool, entryID string) (*mo
 	} else if !errors.Is(transferErr, sql.ErrNoRows) {
 		return nil, transferErr
 	}
-	if result.LoanID == nil && result.Kind == model.LedgerKindTransfer && result.TransferID != nil {
+	if result.LoanID == nil && result.Kind == "TRANSFER" && result.TransferID != nil {
 		if transferErr != nil {
 			return nil, transferErr
 		}
@@ -2516,7 +2582,7 @@ func loadLedgerEntry(ctx context.Context, db *pgxpool.Pool, entryID string) (*mo
 	return result, nil
 }
 
-func (r *mutationResolver) recordTransfer(ctx context.Context, input model.RecordTransferInput) (*model.LedgerEntry, error) {
+func (r *mutationResolver) recordTransfer(ctx context.Context, input model.RecordTransferInput) (*model.LedgerEntryData, error) {
 	user, err := requireMember(ctx, r.DB, input.HouseholdID)
 	if err != nil {
 		return nil, err
@@ -2662,12 +2728,19 @@ func (r *mutationResolver) recordTransfer(ctx context.Context, input model.Recor
 	}
 	key := input.IdempotencyKey
 	operation := "recordTransfer"
+	fingerprint, err := mutationRequestFingerprint(input)
+	if err != nil {
+		return nil, err
+	}
 	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
 		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(key)),
 		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
 	))).One(ctx, transactionExecutor)
 	if err == nil {
+		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
+			return nil, err
+		}
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
@@ -2888,8 +2961,10 @@ func (r *mutationResolver) recordTransfer(ctx context.Context, input model.Recor
 		}
 	}
 	ledgerResource := sql.Null[gofrsuuid.UUID]{V: ledgerUUID, Valid: true}
+	requestFingerprint := sql.Null[[]byte]{V: fingerprint[:], Valid: true}
 	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
 		HouseholdID: &householdID, Key: &key, Operation: &operation, ResourceID: &ledgerResource,
+		RequestFingerprint: &requestFingerprint,
 	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
@@ -3087,7 +3162,7 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 	if err != nil {
 		return nil, err
 	}
-	lines, err := calculateSettlementPreviewWithRules(ctx, executor, input.HouseholdID, input.Period, rules)
+	lines, err := calculateSettlementPreviewWithRules(ctx, executor, input.HouseholdID, input.Period)
 	if err != nil {
 		return nil, err
 	}
@@ -3182,7 +3257,7 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		return nil, err
 	}
 	operation := "correctPurchase"
-	fingerprint, err := correctionRequestFingerprint(input)
+	fingerprint, err := mutationRequestFingerprint(input)
 	if err != nil {
 		return nil, err
 	}
@@ -3192,8 +3267,8 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
 	))).One(ctx, executor)
 	if err == nil && existing.ResourceID.Valid {
-		if existing.RequestFingerprint.Valid && !slices.Equal(existing.RequestFingerprint.V, fingerprint[:]) {
-			return nil, fmt.Errorf("%w: idempotency key was used with a different correction", ErrConflict)
+		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
+			return nil, err
 		}
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
@@ -3540,12 +3615,22 @@ func abs(value int64) int64 {
 	return value
 }
 
-func correctionRequestFingerprint(input model.CorrectPurchaseInput) ([sha256.Size]byte, error) {
+func mutationRequestFingerprint(input any) ([sha256.Size]byte, error) {
 	encoded, err := stdjson.Marshal(input)
 	if err != nil {
 		return [sha256.Size]byte{}, err
 	}
 	return sha256.Sum256(encoded), nil
+}
+
+func validateIdempotencyFingerprint(existing *models.IdempotencyKey, fingerprint [sha256.Size]byte) error {
+	if !existing.RequestFingerprint.Valid {
+		return fmt.Errorf("%w: idempotency key has no request fingerprint", ErrConflict)
+	}
+	if !slices.Equal(existing.RequestFingerprint.V, fingerprint[:]) {
+		return fmt.Errorf("%w: idempotency key was used with a different request", ErrConflict)
+	}
+	return nil
 }
 
 func writeEvent(ctx context.Context, tx pgx.Tx, householdID, eventType, entityID string, revision int64, fields []string, actorID string) error {

@@ -36,6 +36,7 @@ type preloadCounts struct {
 	ProductConcept   productConceptCountPreloader
 	ProductVariant   productVariantCountPreloader
 	PurchaseItem     purchaseItemCountPreloader
+	PurchasePayment  purchasePaymentCountPreloader
 	Purchase         purchaseCountPreloader
 	SettlementRun    settlementRunCountPreloader
 	SourceDocument   sourceDocumentCountPreloader
@@ -60,6 +61,7 @@ func getPreloadCount() preloadCounts {
 		ProductConcept:   buildProductConceptCountPreloader(),
 		ProductVariant:   buildProductVariantCountPreloader(),
 		PurchaseItem:     buildPurchaseItemCountPreloader(),
+		PurchasePayment:  buildPurchasePaymentCountPreloader(),
 		Purchase:         buildPurchaseCountPreloader(),
 		SettlementRun:    buildSettlementRunCountPreloader(),
 		SourceDocument:   buildSourceDocumentCountPreloader(),
@@ -84,6 +86,7 @@ type thenLoadCounts[Q orm.Loadable] struct {
 	ProductConcept   productConceptCountThenLoader[Q]
 	ProductVariant   productVariantCountThenLoader[Q]
 	PurchaseItem     purchaseItemCountThenLoader[Q]
+	PurchasePayment  purchasePaymentCountThenLoader[Q]
 	Purchase         purchaseCountThenLoader[Q]
 	SettlementRun    settlementRunCountThenLoader[Q]
 	SourceDocument   sourceDocumentCountThenLoader[Q]
@@ -108,6 +111,7 @@ func getThenLoadCount[Q orm.Loadable]() thenLoadCounts[Q] {
 		ProductConcept:   buildProductConceptCountThenLoader[Q](),
 		ProductVariant:   buildProductVariantCountThenLoader[Q](),
 		PurchaseItem:     buildPurchaseItemCountThenLoader[Q](),
+		PurchasePayment:  buildPurchasePaymentCountThenLoader[Q](),
 		Purchase:         buildPurchaseCountThenLoader[Q](),
 		SettlementRun:    buildSettlementRunCountThenLoader[Q](),
 		SourceDocument:   buildSourceDocumentCountThenLoader[Q](),

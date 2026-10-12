@@ -5,8 +5,10 @@ package models
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob"
@@ -31,6 +33,8 @@ type PurchasePayment struct {
 	AmountYen   int64     `db:"amount_yen" `
 
 	R purchasePaymentR `db:"-" `
+
+	C purchasePaymentC `db:"-" `
 }
 
 // PurchasePaymentSlice is an alias for a slice of pointers to PurchasePayment.
@@ -45,8 +49,9 @@ type PurchasePaymentsQuery = *psql.ViewQuery[*PurchasePayment, PurchasePaymentSl
 
 // purchasePaymentR is where relationships are stored.
 type purchasePaymentR struct {
-	Account  *Account  // purchase_payments.purchase_payments_household_id_account_id_fkey
-	Purchase *Purchase // purchase_payments.purchase_payments_household_id_purchase_id_fkey
+	PurchasePaymentFundingSnapshots PurchasePaymentFundingSnapshotSlice // purchase_payment_funding_snapshots.purchase_payment_funding_snaps_purchase_id_payment_line_no_fkey
+	Account                         *Account                            // purchase_payments.purchase_payments_household_id_account_id_fkey
+	Purchase                        *Purchase                           // purchase_payments.purchase_payments_household_id_purchase_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -55,8 +60,9 @@ type purchasePaymentR struct {
 
 // purchasePaymentRLoaded tracks which relationships on PurchasePayment have been loaded.
 type purchasePaymentRLoaded struct {
-	Account  bool // purchase_payments.purchase_payments_household_id_account_id_fkey
-	Purchase bool // purchase_payments.purchase_payments_household_id_purchase_id_fkey
+	PurchasePaymentFundingSnapshots bool // purchase_payment_funding_snapshots.purchase_payment_funding_snaps_purchase_id_payment_line_no_fkey
+	Account                         bool // purchase_payments.purchase_payments_household_id_account_id_fkey
+	Purchase                        bool // purchase_payments.purchase_payments_household_id_purchase_id_fkey
 }
 
 func buildPurchasePaymentColumns(tableName string) purchasePaymentColumns {
@@ -605,6 +611,35 @@ func (o PurchasePaymentSlice) ReloadAll(ctx context.Context, exec bob.Executor) 
 	return nil
 }
 
+// PurchasePaymentFundingSnapshots starts a query for related objects on purchase_payment_funding_snapshots
+func (o *PurchasePayment) PurchasePaymentFundingSnapshots(mods ...bob.Mod[*dialect.SelectQuery]) PurchasePaymentFundingSnapshotsQuery {
+	return PurchasePaymentFundingSnapshots.Query(append(mods,
+		sm.Where(PurchasePaymentFundingSnapshots.Columns.PurchaseID.EQ(psql.Arg(o.PurchaseID))), sm.Where(PurchasePaymentFundingSnapshots.Columns.PaymentLineNo.EQ(psql.Arg(o.LineNo))),
+	)...)
+}
+
+func (os PurchasePaymentSlice) PurchasePaymentFundingSnapshots(mods ...bob.Mod[*dialect.SelectQuery]) PurchasePaymentFundingSnapshotsQuery {
+	pkPurchaseID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkLineNo := make(pgtypes.Array[int32], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkPurchaseID = append(pkPurchaseID, o.PurchaseID)
+		pkLineNo = append(pkLineNo, o.LineNo)
+	}
+
+	return PurchasePaymentFundingSnapshots.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "PurchaseID"), psql.Quote("bob_rel_keys_src", "PaymentLineNo")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkPurchaseID), "uuid[]"), psql.Cast(psql.Arg(pkLineNo), "integer[]"))).As("bob_rel_keys_src", "PurchaseID", "PaymentLineNo"),
+		)).As("bob_rel_keys").On(PurchasePaymentFundingSnapshots.Columns.PurchaseID.EQ(psql.Quote("bob_rel_keys", "PurchaseID")), PurchasePaymentFundingSnapshots.Columns.PaymentLineNo.EQ(psql.Quote("bob_rel_keys", "PaymentLineNo"))),
+	)...)
+}
+
 // Account starts a query for related objects on accounts
 func (o *PurchasePayment) Account(mods ...bob.Mod[*dialect.SelectQuery]) AccountsQuery {
 	return Accounts.Query(append(mods,
@@ -661,6 +696,78 @@ func (os PurchasePaymentSlice) Purchase(mods ...bob.Mod[*dialect.SelectQuery]) P
 			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkPurchaseID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
 		)).As("bob_rel_keys").On(Purchases.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Purchases.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
 	)...)
+}
+
+func insertPurchasePaymentPurchasePaymentFundingSnapshots0(ctx context.Context, exec bob.Executor, purchasePaymentFundingSnapshots1 []*PurchasePaymentFundingSnapshotSetter, purchasePayment0 *PurchasePayment) (PurchasePaymentFundingSnapshotSlice, error) {
+	for i := range purchasePaymentFundingSnapshots1 {
+		purchasePaymentFundingSnapshots1[i].PurchaseID = func() *uuid.UUID { return &purchasePayment0.PurchaseID }()
+		purchasePaymentFundingSnapshots1[i].PaymentLineNo = func() *int32 { return &purchasePayment0.LineNo }()
+	}
+
+	ret, err := PurchasePaymentFundingSnapshots.Insert(bob.ToMods(purchasePaymentFundingSnapshots1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertPurchasePaymentPurchasePaymentFundingSnapshots0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachPurchasePaymentPurchasePaymentFundingSnapshots0(ctx context.Context, exec bob.Executor, count int, purchasePaymentFundingSnapshots1 PurchasePaymentFundingSnapshotSlice, purchasePayment0 *PurchasePayment) (PurchasePaymentFundingSnapshotSlice, error) {
+	setter := &PurchasePaymentFundingSnapshotSetter{
+		PurchaseID:    func() *uuid.UUID { return &purchasePayment0.PurchaseID }(),
+		PaymentLineNo: func() *int32 { return &purchasePayment0.LineNo }(),
+	}
+
+	err := purchasePaymentFundingSnapshots1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachPurchasePaymentPurchasePaymentFundingSnapshots0: %w", err)
+	}
+
+	return purchasePaymentFundingSnapshots1, nil
+}
+
+func (purchasePayment0 *PurchasePayment) InsertPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, related ...*PurchasePaymentFundingSnapshotSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	purchasePaymentFundingSnapshots1, err := insertPurchasePaymentPurchasePaymentFundingSnapshots0(ctx, exec, related, purchasePayment0)
+	if err != nil {
+		return err
+	}
+
+	purchasePayment0.R.PurchasePaymentFundingSnapshots = append(purchasePayment0.R.PurchasePaymentFundingSnapshots, purchasePaymentFundingSnapshots1...)
+
+	for _, rel := range purchasePaymentFundingSnapshots1 {
+		rel.R.PurchasePayment = purchasePayment0
+		rel.R.Loaded.PurchasePayment = true
+	}
+	return nil
+}
+
+func (purchasePayment0 *PurchasePayment) AttachPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, related ...*PurchasePaymentFundingSnapshot) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	purchasePaymentFundingSnapshots1 := PurchasePaymentFundingSnapshotSlice(related)
+
+	_, err = attachPurchasePaymentPurchasePaymentFundingSnapshots0(ctx, exec, len(related), purchasePaymentFundingSnapshots1, purchasePayment0)
+	if err != nil {
+		return err
+	}
+
+	purchasePayment0.R.PurchasePaymentFundingSnapshots = append(purchasePayment0.R.PurchasePaymentFundingSnapshots, purchasePaymentFundingSnapshots1...)
+
+	for _, rel := range related {
+		rel.R.PurchasePayment = purchasePayment0
+		rel.R.Loaded.PurchasePayment = true
+	}
+
+	return nil
 }
 
 func attachPurchasePaymentAccount0(ctx context.Context, exec bob.Executor, count int, purchasePayment0 *PurchasePayment, account1 *Account) (*PurchasePayment, error) {
@@ -798,6 +905,21 @@ type purchasePaymentWhereR[Q psql.Filterable] struct {
 	cols purchasePaymentColumns
 }
 
+// HasPurchasePaymentFundingSnapshots filters parents that have a matching PurchasePaymentFundingSnapshots using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to PurchasePaymentFundingSnapshots).
+func (w purchasePaymentWhereR[Q]) HasPurchasePaymentFundingSnapshots(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(PurchasePaymentFundingSnapshots.NameExpr()),
+		sm.Where(PurchasePaymentFundingSnapshots.Columns.PurchaseID.EQ(w.cols.PurchaseID)),
+		sm.Where(PurchasePaymentFundingSnapshots.Columns.PaymentLineNo.EQ(w.cols.LineNo)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasAccount filters parents that have a matching Account using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -828,12 +950,119 @@ func (w purchasePaymentWhereR[Q]) HasPurchase(filters ...bob.Mod[*dialect.Select
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// NULL-tolerant scan buffer for purchasePaymentScanMapperNullable:
+// on a LEFT JOIN miss every column comes back NULL, so each field uses the
+// nullable version of the column type even when the column itself is NOT NULL.
+type purchasePaymentPreloadBuf struct {
+	HouseholdID sql.Null[uuid.UUID]
+	PurchaseID  sql.Null[uuid.UUID]
+	LineNo      sql.Null[int32]
+	AccountID   sql.Null[uuid.UUID]
+	AmountYen   sql.Null[int64]
+}
+
+// purchasePaymentScanMapperNullable maps the preloaded purchasePayment
+// columns (prefixed with the runtime join alias) without reflection, while
+// keeping the LEFT JOIN semantics of the reflection-based mapper: a row whose
+// prefixed columns are all NULL yields nil (no child), and NULL values never
+// error, they just leave the zero value in the field.
+func purchasePaymentScanMapperNullable(prefix string) scan.Mapper[*PurchasePayment] {
+	return func(ctx context.Context, cols []string) (scan.BeforeFunc, func(any) (*PurchasePayment, error)) {
+		// resolve the column names once per query, not per row
+		type target struct {
+			idx int
+			dst func(b *purchasePaymentPreloadBuf) any
+		}
+		targets := make([]target, 0, 5)
+		for i, col := range cols {
+			name, ok := strings.CutPrefix(col, prefix)
+			if !ok {
+				continue
+			}
+			switch name {
+			case "household_id":
+				targets = append(targets, target{i, func(b *purchasePaymentPreloadBuf) any { return &b.HouseholdID }})
+			case "purchase_id":
+				targets = append(targets, target{i, func(b *purchasePaymentPreloadBuf) any { return &b.PurchaseID }})
+			case "line_no":
+				targets = append(targets, target{i, func(b *purchasePaymentPreloadBuf) any { return &b.LineNo }})
+			case "account_id":
+				targets = append(targets, target{i, func(b *purchasePaymentPreloadBuf) any { return &b.AccountID }})
+			case "amount_yen":
+				targets = append(targets, target{i, func(b *purchasePaymentPreloadBuf) any { return &b.AmountYen }})
+			}
+		}
+
+		// One scratch buffer reused for every row: before -> scan -> after runs
+		// synchronously per row, the scheduled columns are fully overwritten each
+		// row, and unselected columns stay zero, so a single buffer preserves the
+		// per-row NULL semantics without allocating a buffer per parent row. The
+		// returned child (o below) is always freshly allocated, so buf never
+		// escapes past the after func.
+		buf := new(purchasePaymentPreloadBuf)
+		return func(row *scan.Row) (any, error) {
+				for _, t := range targets {
+					row.ScheduleScanByIndex(t.idx, t.dst(buf))
+				}
+				return buf, nil
+			}, func(link any) (*PurchasePayment, error) {
+				buf := link.(*purchasePaymentPreloadBuf)
+
+				// Same rule as the reflection mapper's row validator: the child
+				// exists only if at least one of its columns is not NULL. Columns
+				// not selected by the query are never scanned and stay invalid,
+				// so this check also matches when only a subset is selected.
+				if !(buf.HouseholdID.Valid) &&
+					!(buf.PurchaseID.Valid) &&
+					!(buf.LineNo.Valid) &&
+					!(buf.AccountID.Valid) &&
+					!(buf.AmountYen.Valid) {
+					return nil, nil
+				}
+
+				o := new(PurchasePayment)
+				if buf.HouseholdID.Valid {
+					o.HouseholdID = buf.HouseholdID.V
+				}
+				if buf.PurchaseID.Valid {
+					o.PurchaseID = buf.PurchaseID.V
+				}
+				if buf.LineNo.Valid {
+					o.LineNo = buf.LineNo.V
+				}
+				if buf.AccountID.Valid {
+					o.AccountID = buf.AccountID.V
+				}
+				if buf.AmountYen.Valid {
+					o.AmountYen = buf.AmountYen.V
+				}
+				return o, nil
+			}
+	}
+}
+
 func (o *PurchasePayment) Preload(name string, retrieved any) error {
 	if o == nil {
 		return nil
 	}
 
 	switch name {
+	case "PurchasePaymentFundingSnapshots":
+		rels, ok := retrieved.(PurchasePaymentFundingSnapshotSlice)
+		if !ok {
+			return fmt.Errorf("purchasePayment cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.PurchasePaymentFundingSnapshots = rels
+		o.R.Loaded.PurchasePaymentFundingSnapshots = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.PurchasePayment = o
+				rel.R.Loaded.PurchasePayment = true
+			}
+		}
+		return nil
 	case "Account":
 		rel, ok := retrieved.(*Account)
 		if !ok {
@@ -902,11 +1131,15 @@ func buildPurchasePaymentPreloader() purchasePaymentPreloader {
 }
 
 type purchasePaymentThenLoader[Q orm.Loadable] struct {
-	Account  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Purchase func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PurchasePaymentFundingSnapshots func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Account                         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Purchase                        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildPurchasePaymentThenLoader[Q orm.Loadable]() purchasePaymentThenLoader[Q] {
+	type PurchasePaymentFundingSnapshotsLoadInterface interface {
+		LoadPurchasePaymentFundingSnapshots(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type AccountLoadInterface interface {
 		LoadAccount(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
@@ -915,6 +1148,12 @@ func buildPurchasePaymentThenLoader[Q orm.Loadable]() purchasePaymentThenLoader[
 	}
 
 	return purchasePaymentThenLoader[Q]{
+		PurchasePaymentFundingSnapshots: thenLoadBuilder[Q](
+			"PurchasePaymentFundingSnapshots",
+			func(ctx context.Context, exec bob.Executor, retrieved PurchasePaymentFundingSnapshotsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadPurchasePaymentFundingSnapshots(ctx, exec, mods...)
+			},
+		),
 		Account: thenLoadBuilder[Q](
 			"Account",
 			func(ctx context.Context, exec bob.Executor, retrieved AccountLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -928,6 +1167,75 @@ func buildPurchasePaymentThenLoader[Q orm.Loadable]() purchasePaymentThenLoader[
 			},
 		),
 	}
+}
+
+// LoadPurchasePaymentFundingSnapshots loads the purchasePayment's PurchasePaymentFundingSnapshots into the .R struct
+func (o *PurchasePayment) LoadPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.PurchasePaymentFundingSnapshots = nil
+	o.R.Loaded.PurchasePaymentFundingSnapshots = false
+
+	related, err := o.PurchasePaymentFundingSnapshots(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.PurchasePayment = o
+		rel.R.Loaded.PurchasePayment = true
+	}
+
+	o.R.PurchasePaymentFundingSnapshots = related
+	o.R.Loaded.PurchasePaymentFundingSnapshots = true
+	return nil
+}
+
+// LoadPurchasePaymentFundingSnapshots loads the purchasePayment's PurchasePaymentFundingSnapshots into the .R struct
+func (os PurchasePaymentSlice) LoadPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	purchasePaymentFundingSnapshots, err := os.PurchasePaymentFundingSnapshots(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.PurchasePaymentFundingSnapshots = nil
+		o.R.Loaded.PurchasePaymentFundingSnapshots = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range purchasePaymentFundingSnapshots {
+
+			if !(o.PurchaseID == rel.PurchaseID) {
+				continue
+			}
+
+			if !(o.LineNo == rel.PaymentLineNo) {
+				continue
+			}
+
+			rel.R.PurchasePayment = o
+			rel.R.Loaded.PurchasePayment = true
+
+			o.R.PurchasePaymentFundingSnapshots = append(o.R.PurchasePaymentFundingSnapshots, rel)
+		}
+	}
+
+	return nil
 }
 
 // LoadAccount loads the purchasePayment's Account into the .R struct
@@ -1062,10 +1370,185 @@ func (os PurchasePaymentSlice) LoadPurchase(ctx context.Context, exec bob.Execut
 	return nil
 }
 
+// purchasePaymentC is where relationship counts are stored.
+type purchasePaymentC struct {
+	PurchasePaymentFundingSnapshots *int64
+}
+
+// PreloadCount sets a count in the C struct by name
+func (o *PurchasePayment) PreloadCount(name string, count int64) error {
+	if o == nil {
+		return nil
+	}
+
+	switch name {
+	case "PurchasePaymentFundingSnapshots":
+		o.C.PurchasePaymentFundingSnapshots = &count
+	}
+	return nil
+}
+
+type purchasePaymentCountPreloader struct {
+	PurchasePaymentFundingSnapshots func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+}
+
+func buildPurchasePaymentCountPreloader() purchasePaymentCountPreloader {
+	return purchasePaymentCountPreloader{
+		PurchasePaymentFundingSnapshots: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*PurchasePayment]("PurchasePaymentFundingSnapshots", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = PurchasePayments.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(PurchasePaymentFundingSnapshots.NameAsExpr()),
+					sm.Where(psql.Quote(PurchasePaymentFundingSnapshots.Alias(), "purchase_id").EQ(psql.Quote(parent, "purchase_id"))),
+					sm.Where(psql.Quote(PurchasePaymentFundingSnapshots.Alias(), "payment_line_no").EQ(psql.Quote(parent, "line_no"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+	}
+}
+
+type purchasePaymentCountThenLoader[Q orm.Loadable] struct {
+	PurchasePaymentFundingSnapshots func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+}
+
+func buildPurchasePaymentCountThenLoader[Q orm.Loadable]() purchasePaymentCountThenLoader[Q] {
+	type PurchasePaymentFundingSnapshotsCountInterface interface {
+		LoadCountPurchasePaymentFundingSnapshots(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+
+	return purchasePaymentCountThenLoader[Q]{
+		PurchasePaymentFundingSnapshots: countThenLoadBuilder[Q](
+			"PurchasePaymentFundingSnapshots",
+			func(ctx context.Context, exec bob.Executor, retrieved PurchasePaymentFundingSnapshotsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountPurchasePaymentFundingSnapshots(ctx, exec, mods...)
+			},
+		),
+	}
+}
+
+// LoadCountPurchasePaymentFundingSnapshots loads the count of PurchasePaymentFundingSnapshots into the C struct
+func (o *PurchasePayment) LoadCountPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.PurchasePaymentFundingSnapshots(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.PurchasePaymentFundingSnapshots = &count
+	return nil
+}
+
+// LoadCountPurchasePaymentFundingSnapshots loads the count of PurchasePaymentFundingSnapshots for a slice in a single batch query
+func (os PurchasePaymentSlice) LoadCountPurchasePaymentFundingSnapshots(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkPurchaseID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkLineNo := make(pgtypes.Array[int32], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkPurchaseID = append(pkPurchaseID, o.PurchaseID)
+		pkLineNo = append(pkLineNo, o.LineNo)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		PurchaseID uuid.UUID
+
+		LineNo int32
+		Count  int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			PurchasePaymentFundingSnapshots.Columns.PurchaseID.As("purchase_id"),
+			PurchasePaymentFundingSnapshots.Columns.PaymentLineNo.As("line_no"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(PurchasePaymentFundingSnapshots.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "PurchaseID"),
+				psql.Quote("bob_rel_keys_src", "PaymentLineNo"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkPurchaseID), "uuid[]"),
+				psql.Cast(psql.Arg(pkLineNo), "integer[]"),
+			)).As("bob_rel_keys_src", "PurchaseID", "PaymentLineNo"),
+		)).As("bob_rel_keys").On(
+			PurchasePaymentFundingSnapshots.Columns.PurchaseID.EQ(psql.Quote("bob_rel_keys", "PurchaseID")),
+			PurchasePaymentFundingSnapshots.Columns.PaymentLineNo.EQ(psql.Quote("bob_rel_keys", "PaymentLineNo")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(PurchasePaymentFundingSnapshots.Columns.PurchaseID),
+		sm.GroupBy(PurchasePaymentFundingSnapshots.Columns.PaymentLineNo),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		PurchaseID uuid.UUID
+
+		LineNo int32
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			PurchaseID: r.PurchaseID,
+
+			LineNo: r.LineNo,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			PurchaseID: o.PurchaseID,
+
+			LineNo: o.LineNo,
+		}]
+		o.C.PurchasePaymentFundingSnapshots = &count
+	}
+
+	return nil
+}
+
 type purchasePaymentJoins[Q dialect.Joinable] struct {
-	typ      string
-	Account  modAs[Q, accountColumns]
-	Purchase modAs[Q, purchaseColumns]
+	typ                             string
+	PurchasePaymentFundingSnapshots modAs[Q, purchasePaymentFundingSnapshotColumns]
+	Account                         modAs[Q, accountColumns]
+	Purchase                        modAs[Q, purchaseColumns]
 }
 
 func (j purchasePaymentJoins[Q]) aliasedAs(alias string) purchasePaymentJoins[Q] {
@@ -1075,6 +1558,20 @@ func (j purchasePaymentJoins[Q]) aliasedAs(alias string) purchasePaymentJoins[Q]
 func buildPurchasePaymentJoins[Q dialect.Joinable](cols purchasePaymentColumns, typ string) purchasePaymentJoins[Q] {
 	return purchasePaymentJoins[Q]{
 		typ: typ,
+		PurchasePaymentFundingSnapshots: modAs[Q, purchasePaymentFundingSnapshotColumns]{
+			c: PurchasePaymentFundingSnapshots.Columns,
+			f: func(to purchasePaymentFundingSnapshotColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, PurchasePaymentFundingSnapshots.NameExpr().As(to.Alias())).On(
+						to.PurchaseID.EQ(cols.PurchaseID), to.PaymentLineNo.EQ(cols.LineNo),
+					))
+				}
+
+				return mods
+			},
+		},
 		Account: modAs[Q, accountColumns]{
 			c: Accounts.Columns,
 			f: func(to accountColumns) bob.Mod[Q] {

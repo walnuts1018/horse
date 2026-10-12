@@ -71,9 +71,16 @@ func (r *queryResolver) households(ctx context.Context) ([]*model.Household, err
 
 func (r *queryResolver) household(ctx context.Context, id string) (*model.Household, error) {
 	if _, err := requireMember(ctx, r.DB, id); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
-	return loadHousehold(ctx, r.DB, id)
+	household, err := loadHousehold(ctx, r.DB, id)
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
+	return household, err
 }
 
 func (r *queryResolver) allocationRules(ctx context.Context, householdID string) ([]*model.AllocationRule, error) {
@@ -156,16 +163,13 @@ func loadAllocationRule(ctx context.Context, db *pgxpool.Pool, ruleID string) (*
 	return result, nil
 }
 
-func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, first *int) (*model.PurchaseConnection, error) {
+func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after, before *string, first, last *int) (*model.PurchaseConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize := 50
-	if first != nil {
-		pageSize = *first
-	}
-	if pageSize < 1 || pageSize > 100 {
-		return nil, fmt.Errorf("%w: first must be between 1 and 100", ErrBadInput)
+	pageSize, backward, err := pageDirection(after, before, first, last)
+	if err != nil {
+		return nil, err
 	}
 	hhID, err := gofrsuuid.FromString(householdID)
 	if err != nil {
@@ -224,12 +228,14 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 	if err != nil {
 		return nil, err
 	}
-	if after != nil && *after != "" {
-		cursorID, err := gofrsuuid.FromString(*after)
+	if cursorID, err := cursorID(after, "Purchase"); err != nil {
+		return nil, err
+	} else if cursorID != nil {
+		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
 		if err != nil {
 			return nil, fmt.Errorf("parse purchase cursor: %w", err)
 		}
-		cursor, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.ID.EQ(psql.Arg(cursorID)), models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID))))).One(ctx, executor)
+		cursor, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.ID.EQ(psql.Arg(parsedCursorID)), models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID))))).One(ctx, executor)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -238,39 +244,70 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		}
 		filters = append(filters, psql.Or(models.Purchases.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.Purchases.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.Purchases.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
-	purchases, err := models.Purchases.Query(sm.Where(psql.And(filters...)), sm.OrderBy(models.Purchases.Columns.OccurredAt).Desc(), sm.OrderBy(models.Purchases.Columns.ID).Desc(), sm.Limit(pageSize+1)).All(ctx, executor)
+	if cursorID, err := cursorID(before, "Purchase"); err != nil {
+		return nil, err
+	} else if cursorID != nil {
+		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
+		if err != nil {
+			return nil, fmt.Errorf("parse purchase cursor: %w", err)
+		}
+		cursor, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.ID.EQ(psql.Arg(parsedCursorID)), models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID))))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, psql.Or(models.Purchases.Columns.OccurredAt.GT(psql.Arg(cursor.OccurredAt)), psql.And(models.Purchases.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.Purchases.Columns.ID.GT(psql.Arg(cursor.ID)))))
+	}
+	occurredAtOrder := sm.OrderBy(models.Purchases.Columns.OccurredAt).Desc()
+	IDOrder := sm.OrderBy(models.Purchases.Columns.ID).Desc()
+	if backward {
+		occurredAtOrder = sm.OrderBy(models.Purchases.Columns.OccurredAt)
+		IDOrder = sm.OrderBy(models.Purchases.Columns.ID)
+	}
+	purchases, err := models.Purchases.Query(sm.Where(psql.And(filters...)), occurredAtOrder, IDOrder, sm.Limit(pageSize+1)).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	hasNext := len(purchases) > pageSize
-	if hasNext {
+	hasExtra := len(purchases) > pageSize
+	if hasExtra {
 		purchases = purchases[:pageSize]
 	}
-	connection := &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0, len(purchases)), TotalCount: int(count), PageInfo: &model.PageInfo{HasNextPage: hasNext}}
+	if backward {
+		slices.Reverse(purchases)
+	}
+	pageInfo := &model.PageInfo{HasPreviousPage: backward && hasExtra, HasNextPage: !backward && hasExtra}
+	if !backward && after != nil && *after != "" {
+		pageInfo.HasPreviousPage = true
+	}
+	if backward && before != nil && *before != "" {
+		pageInfo.HasNextPage = true
+	}
+	connection := &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0, len(purchases)), TotalCount: int(count), PageInfo: pageInfo}
 	for _, row := range purchases {
 		purchase, err := loadPurchase(ctx, r.DB, row.ID.String())
 		if err != nil {
 			return nil, err
 		}
-		connection.Edges = append(connection.Edges, &model.PurchaseEdge{Cursor: row.ID.String(), Node: purchase})
+		connection.Edges = append(connection.Edges, &model.PurchaseEdge{Cursor: encodeCursor("Purchase", row.ID.String()), Node: purchase})
 	}
 	if len(purchases) > 0 {
-		end := purchases[len(purchases)-1].ID.String()
+		start := encodeCursor("Purchase", purchases[0].ID.String())
+		end := encodeCursor("Purchase", purchases[len(purchases)-1].ID.String())
+		connection.PageInfo.StartCursor = &start
 		connection.PageInfo.EndCursor = &end
 	}
 	return connection, nil
 }
 
-func (r *queryResolver) ledger(ctx context.Context, householdID string, after *string, first *int) (*model.LedgerConnection, error) {
+func (r *queryResolver) ledger(ctx context.Context, householdID string, after, before *string, first, last *int) (*model.LedgerConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize := 50
-	if first != nil {
-		pageSize = *first
-	}
-	if pageSize < 1 || pageSize > 100 {
-		return nil, fmt.Errorf("%w: first must be between 1 and 100", ErrBadInput)
+	pageSize, backward, err := pageDirection(after, before, first, last)
+	if err != nil {
+		return nil, err
 	}
 	hhID, err := gofrsuuid.FromString(householdID)
 	if err != nil {
@@ -282,12 +319,14 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after *s
 	if err != nil {
 		return nil, err
 	}
-	if after != nil && *after != "" {
-		cursorID, err := gofrsuuid.FromString(*after)
+	if cursorID, err := cursorID(after, "LedgerEntry"); err != nil {
+		return nil, err
+	} else if cursorID != nil {
+		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
 		if err != nil {
 			return nil, fmt.Errorf("parse ledger cursor: %w", err)
 		}
-		cursor, err := models.LedgerEntries.Query(sm.Where(psql.And(models.LedgerEntries.Columns.ID.EQ(psql.Arg(cursorID)), models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID))))).One(ctx, executor)
+		cursor, err := models.LedgerEntries.Query(sm.Where(psql.And(models.LedgerEntries.Columns.ID.EQ(psql.Arg(parsedCursorID)), models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID))))).One(ctx, executor)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -296,17 +335,49 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after *s
 		}
 		filters = append(filters, psql.Or(models.LedgerEntries.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.LedgerEntries.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.LedgerEntries.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
-	entries, err := models.LedgerEntries.Query(sm.Where(psql.And(filters...)), sm.OrderBy(models.LedgerEntries.Columns.OccurredAt).Desc(), sm.OrderBy(models.LedgerEntries.Columns.ID).Desc(), sm.Limit(pageSize+1)).All(ctx, executor)
+	if cursorID, err := cursorID(before, "LedgerEntry"); err != nil {
+		return nil, err
+	} else if cursorID != nil {
+		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
+		if err != nil {
+			return nil, fmt.Errorf("parse ledger cursor: %w", err)
+		}
+		cursor, err := models.LedgerEntries.Query(sm.Where(psql.And(models.LedgerEntries.Columns.ID.EQ(psql.Arg(parsedCursorID)), models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID))))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, psql.Or(models.LedgerEntries.Columns.OccurredAt.GT(psql.Arg(cursor.OccurredAt)), psql.And(models.LedgerEntries.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.LedgerEntries.Columns.ID.GT(psql.Arg(cursor.ID)))))
+	}
+	occurredAtOrder := sm.OrderBy(models.LedgerEntries.Columns.OccurredAt).Desc()
+	IDOrder := sm.OrderBy(models.LedgerEntries.Columns.ID).Desc()
+	if backward {
+		occurredAtOrder = sm.OrderBy(models.LedgerEntries.Columns.OccurredAt)
+		IDOrder = sm.OrderBy(models.LedgerEntries.Columns.ID)
+	}
+	entries, err := models.LedgerEntries.Query(sm.Where(psql.And(filters...)), occurredAtOrder, IDOrder, sm.Limit(pageSize+1)).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	hasNext := len(entries) > pageSize
-	if hasNext {
+	hasExtra := len(entries) > pageSize
+	if hasExtra {
 		entries = entries[:pageSize]
 	}
-	connection := &model.LedgerConnection{Edges: make([]*model.LedgerEdge, 0, len(entries)), TotalCount: int(count), PageInfo: &model.PageInfo{HasNextPage: hasNext}}
+	if backward {
+		slices.Reverse(entries)
+	}
+	pageInfo := &model.PageInfo{HasPreviousPage: backward && hasExtra, HasNextPage: !backward && hasExtra}
+	if !backward && after != nil && *after != "" {
+		pageInfo.HasPreviousPage = true
+	}
+	if backward && before != nil && *before != "" {
+		pageInfo.HasNextPage = true
+	}
+	connection := &model.LedgerConnection{Edges: make([]*model.LedgerEdge, 0, len(entries)), TotalCount: int(count), PageInfo: pageInfo}
 	for _, row := range entries {
-		entry := &model.LedgerEntry{ID: row.ID.String(), Kind: model.LedgerKind(row.Kind), Currency: "JPY", OccurredAt: timeString(row.OccurredAt), Description: row.Description, AmountYen: graphLong(row.AmountYen), CreatedAt: timeString(row.CreatedAt)}
+		entry := &model.LedgerEntryData{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, Currency: "JPY", OccurredAt: timeString(row.OccurredAt), Description: row.Description, AmountYen: graphLong(row.AmountYen), CreatedAt: timeString(row.CreatedAt)}
 		if row.FromMemberID.Valid {
 			v := row.FromMemberID.V.String()
 			entry.FromMemberID = &v
@@ -323,10 +394,16 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after *s
 			v := row.SourcePurchaseID.V.String()
 			entry.SourcePurchaseID = &v
 		}
-		connection.Edges = append(connection.Edges, &model.LedgerEdge{Cursor: entry.ID, Node: entry})
+		variant, err := ledgerEntryVariant(ctx, r.DB, entry)
+		if err != nil {
+			return nil, err
+		}
+		connection.Edges = append(connection.Edges, &model.LedgerEdge{Cursor: encodeCursor("LedgerEntry", entry.ID), Node: variant})
 	}
 	if len(entries) > 0 {
-		end := entries[len(entries)-1].ID.String()
+		start := encodeCursor("LedgerEntry", entries[0].ID.String())
+		end := encodeCursor("LedgerEntry", entries[len(entries)-1].ID.String())
+		connection.PageInfo.StartCursor = &start
 		connection.PageInfo.EndCursor = &end
 	}
 	return connection, nil

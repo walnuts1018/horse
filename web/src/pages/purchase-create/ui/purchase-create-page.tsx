@@ -21,8 +21,6 @@ import { z } from "zod";
 import { Popover } from "@base-ui/react/popover";
 import {
   makeIdempotencyKey,
-  purchasesQuery,
-  productSuggestionsQuery,
   readGraphql,
   type Connection,
   type CreatePurchaseInput,
@@ -30,6 +28,8 @@ import {
   type Purchase,
   type ProductSuggestion,
 } from "../../../shared/api";
+import { purchasesQuery } from "../../../entities/purchase";
+import { productSuggestionsQuery } from "../../../entities/product";
 import {
   enqueuePurchase,
   deletePurchaseDraft,

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<23aabc502f9b287726a40b94567745d4>>
+ * @generated SignedSource<<fd70ef4d5940ed8a6aba6b86ed715934>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type SetBudgetInput = {
   amountYen: any;
   baseRevision?: number | null | undefined;
@@ -23,16 +24,27 @@ export type SetBudgetMutation$variables = {
 };
 export type SetBudgetMutation$data = {
   readonly setBudget: {
-    readonly actualYen: any;
-    readonly amountYen: any;
-    readonly archived: boolean;
-    readonly categoryId: string | null | undefined;
-    readonly endsOn: string | null | undefined;
-    readonly id: string;
-    readonly name: string;
-    readonly remainingYen: any;
-    readonly revision: number;
-    readonly startsOn: string;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "SetBudgetSuccess";
+    readonly result: {
+      readonly actualYen: any;
+      readonly amountYen: any;
+      readonly archived: boolean;
+      readonly categoryId: string | null | undefined;
+      readonly endsOn: string | null | undefined;
+      readonly id: string;
+      readonly name: string;
+      readonly remainingYen: any;
+      readonly revision: number;
+      readonly startsOn: string;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type SetBudgetMutation = {
@@ -58,7 +70,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Budget",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "setBudget",
     "plural": false,
@@ -67,71 +79,117 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "categoryId",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Budget",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "categoryId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "name",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "amountYen",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "actualYen",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "remainingYen",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "startsOn",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "endsOn",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "archived",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "SetBudgetSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "name",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "amountYen",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "actualYen",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "remainingYen",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "startsOn",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "endsOn",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "archived",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -155,16 +213,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "12575e8d13214cd453b0aede81d90f5d",
+    "cacheID": "8d167c916dac1365cbd3152117f87928",
     "id": null,
     "metadata": {},
     "name": "SetBudgetMutation",
     "operationKind": "mutation",
-    "text": "mutation SetBudgetMutation(\n  $input: SetBudgetInput!\n) {\n  setBudget(input: $input) {\n    id\n    categoryId\n    name\n    amountYen\n    actualYen\n    remainingYen\n    startsOn\n    endsOn\n    archived\n    revision\n  }\n}\n"
+    "text": "mutation SetBudgetMutation(\n  $input: SetBudgetInput!\n) {\n  setBudget(input: $input) {\n    __typename\n    ... on SetBudgetSuccess {\n      result {\n        id\n        categoryId\n        name\n        amountYen\n        actualYen\n        remainingYen\n        startsOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "de75385485bd1302f61563dbac655510";
+(node as any).hash = "811abbf4a0750cf7be2d822b3462a29a";
 
 export default node;

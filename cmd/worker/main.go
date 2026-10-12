@@ -97,7 +97,6 @@ func run() error {
 			USDJPYRate:       usdJPY,
 			USDJPYRateSource: rateSource,
 			USDJPYRateAsOf:   rateAsOf,
-			Background:       true,
 		},
 		OCR: ingestion.OCR{Endpoint: os.Getenv("OCR_URL")},
 	}

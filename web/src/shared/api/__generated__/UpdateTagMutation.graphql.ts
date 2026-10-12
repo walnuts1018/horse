@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<7c25900b963e92581e39e581d4fd9e35>>
+ * @generated SignedSource<<884b63089f1afe4ce7f53b371d066968>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type UpdateTagInput = {
   baseRevision: number;
   name: string;
@@ -18,11 +19,22 @@ export type UpdateTagMutation$variables = {
 };
 export type UpdateTagMutation$data = {
   readonly updateTag: {
-    readonly archived: boolean;
-    readonly householdId: string;
-    readonly id: string;
-    readonly name: string;
-    readonly revision: number;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "UpdateTagSuccess";
+    readonly result: {
+      readonly archived: boolean;
+      readonly householdId: string;
+      readonly id: string;
+      readonly name: string;
+      readonly revision: number;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type UpdateTagMutation = {
@@ -48,7 +60,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Tag",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "updateTag",
     "plural": false,
@@ -57,36 +69,82 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "householdId",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Tag",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "householdId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "name",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "archived",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "UpdateTagSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "name",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "archived",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -110,16 +168,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "d634c6f73b3e882d9e928382b9be8941",
+    "cacheID": "53f56144ff963d1d24e27cadd1fc6685",
     "id": null,
     "metadata": {},
     "name": "UpdateTagMutation",
     "operationKind": "mutation",
-    "text": "mutation UpdateTagMutation(\n  $input: UpdateTagInput!\n) {\n  updateTag(input: $input) {\n    id\n    householdId\n    name\n    archived\n    revision\n  }\n}\n"
+    "text": "mutation UpdateTagMutation(\n  $input: UpdateTagInput!\n) {\n  updateTag(input: $input) {\n    __typename\n    ... on UpdateTagSuccess {\n      result {\n        id\n        householdId\n        name\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "f1ad082dab2626f6bc034467850c34d2";
+(node as any).hash = "2ddb7357caddef3d9340ec6f137b10e6";
 
 export default node;

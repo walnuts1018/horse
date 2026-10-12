@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -47,8 +48,8 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 	})
 
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: displayName})
-	resolver := (&Resolver{DB: db}).Mutation()
-	household, err := resolver.CreateHousehold(ctx, model.CreateHouseholdInput{Name: "idempotency integration"})
+	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
+	household, err := resolver.createHousehold(ctx, model.CreateHouseholdInput{Name: "idempotency integration"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,16 +60,16 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
 	})
-	pool, err := resolver.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Personal", Kind: model.PoolKindPersonal})
+	pool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Personal", Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.SetDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
+	if _, err := resolver.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
 
 	key := uuid.NewV7().String()
-	purchase, err := resolver.CreatePurchase(ctx, model.CreatePurchaseInput{
+	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: key,
 		HouseholdID:    household.ID,
 		OccurredAt:     "2026-10-13T10:00:00+09:00",
@@ -78,8 +79,18 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, err = resolver.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: key,
+		HouseholdID:    household.ID,
+		OccurredAt:     "2026-10-13T10:00:00+09:00",
+		Merchant:       "Idempotency test",
+		Items:          []*model.PurchaseItemInput{{Name: "test item", AmountYen: 101}},
+	})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("createPurchase with a reused key and different payload should conflict: %v", err)
+	}
 
-	posted, err := resolver.PostPurchase(ctx, purchase.ID, purchase.Revision, key)
+	posted, err := resolver.postPurchase(ctx, purchase.ID, purchase.Revision, key)
 	if err != nil {
 		t.Fatalf("postPurchase with the createPurchase key failed: %v", err)
 	}

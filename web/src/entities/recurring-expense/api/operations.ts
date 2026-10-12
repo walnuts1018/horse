@@ -1,0 +1,77 @@
+import { graphql } from "react-relay";
+
+export const recurringExpensesQuery = graphql`
+  query RecurringExpensesQuery($householdId: ID!, $includeArchived: Boolean) {
+    recurringExpenses(householdId: $householdId, includeArchived: $includeArchived) {
+      id
+      householdId
+      name
+      merchant
+      amountYen
+      currency
+      categoryId
+      paymentAccountId
+      cadence
+      startsOn
+      nextDueOn
+      endsOn
+      archived
+      revision
+    }
+  }
+`;
+
+export const setRecurringExpenseMutation = graphql`
+  mutation SetRecurringExpenseMutation($input: SetRecurringExpenseInput!) {
+    setRecurringExpense(input: $input) {
+      __typename
+      ... on SetRecurringExpenseSuccess {
+        result {
+          id
+          name
+          merchant
+          amountYen
+          categoryId
+          paymentAccountId
+          cadence
+          startsOn
+          nextDueOn
+          endsOn
+          archived
+          revision
+        }
+      }
+      ... on MutationError {
+        code
+        message
+      }
+    }
+  }
+`;
+
+export const archiveRecurringExpenseMutation = graphql`
+  mutation ArchiveRecurringExpenseMutation(
+    $expenseId: ID!
+    $baseRevision: Int!
+    $archived: Boolean!
+  ) {
+    archiveRecurringExpense(
+      expenseId: $expenseId
+      baseRevision: $baseRevision
+      archived: $archived
+    ) {
+      __typename
+      ... on ArchiveRecurringExpenseSuccess {
+        result {
+          id
+          archived
+          revision
+        }
+      }
+      ... on MutationError {
+        code
+        message
+      }
+    }
+  }
+`;

@@ -39,16 +39,13 @@ func parseUnmatchedCursor(cursor string) (unmatchedObservationCursor, error) {
 	return parsed, nil
 }
 
-func (r *queryResolver) unmatchedObservations(ctx context.Context, householdID string, from, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, first *int) (*model.UnmatchedObservationConnection, error) {
+func (r *queryResolver) unmatchedObservations(ctx context.Context, householdID string, from, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after, before *string, first, last *int) (*model.UnmatchedObservationConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize := 50
-	if first != nil {
-		pageSize = *first
-	}
-	if pageSize < 1 || pageSize > 100 {
-		return nil, fmt.Errorf("%w: first must be between 1 and 100", ErrBadInput)
+	pageSize, backward, err := pageDirection(after, before, first, last)
+	if err != nil {
+		return nil, err
 	}
 	var fromMonth, toMonth time.Time
 	if from != nil {
@@ -152,7 +149,7 @@ func (r *queryResolver) unmatchedObservations(ctx context.Context, householdID s
 		}
 	}
 	totalCount := len(items)
-	start := 0
+	start, end := 0, len(items)
 	if after != nil && *after != "" {
 		parsedCursor, err := parseUnmatchedCursor(*after)
 		if err != nil {
@@ -165,17 +162,36 @@ func (r *queryResolver) unmatchedObservations(ctx context.Context, householdID s
 		}
 		start = index + 1
 	}
-	if start > len(items) {
-		start = len(items)
+	if before != nil && *before != "" {
+		parsedCursor, err := parseUnmatchedCursor(*before)
+		if err != nil {
+			return nil, err
+		}
+		cursor := unmatchedCursor(parsedCursor.DocumentID, parsedCursor.SourceReference)
+		index := slices.Index(cursors, cursor)
+		if index < 0 {
+			return nil, ErrNotFound
+		}
+		end = index
 	}
-	end := min(start+pageSize, len(items))
-	edges := make([]*model.UnmatchedObservationEdge, 0, end-start)
-	for index := start; index < end; index++ {
+	if start > end {
+		return nil, fmt.Errorf("%w: cursor range is empty", ErrBadInput)
+	}
+	pageStart, pageEnd := start, end
+	if backward {
+		pageStart = max(start, end-pageSize)
+	} else {
+		pageEnd = min(end, start+pageSize)
+	}
+	edges := make([]*model.UnmatchedObservationEdge, 0, pageEnd-pageStart)
+	for index := pageStart; index < pageEnd; index++ {
 		edges = append(edges, &model.UnmatchedObservationEdge{Cursor: cursors[index], Node: items[index]})
 	}
-	pageInfo := &model.PageInfo{HasNextPage: end < len(items)}
-	if end > start {
-		endCursor := cursors[end-1]
+	pageInfo := &model.PageInfo{HasPreviousPage: pageStart > 0, HasNextPage: pageEnd < len(items)}
+	if len(edges) > 0 {
+		startCursor := cursors[pageStart]
+		endCursor := cursors[pageEnd-1]
+		pageInfo.StartCursor = &startCursor
 		pageInfo.EndCursor = &endCursor
 	}
 	return &model.UnmatchedObservationConnection{Edges: edges, PageInfo: pageInfo, TotalCount: totalCount}, nil

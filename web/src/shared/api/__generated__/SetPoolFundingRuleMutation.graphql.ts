@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5e2075002848857b2a1895618c5db4f0>>
+ * @generated SignedSource<<85d8f398325abef7d29789e0b1c00ddd>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type PoolKind = "PERSONAL" | "SHARED" | "%future added value";
 export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL" | "%future added value";
 export type SetPoolFundingRuleInput = {
@@ -27,16 +28,27 @@ export type SetPoolFundingRuleMutation$variables = {
 };
 export type SetPoolFundingRuleMutation$data = {
   readonly setPoolFundingRule: {
-    readonly fundingRuleVersion: number;
-    readonly fundingShares: ReadonlyArray<{
-      readonly memberId: string;
-      readonly memberName: string;
-      readonly weight: any;
-    }>;
-    readonly id: string;
-    readonly kind: PoolKind;
-    readonly ownerMemberId: string | null | undefined;
-    readonly settlementPolicy: SharedPoolSettlementPolicy | null | undefined;
+    readonly __typename: "MutationError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "SetPoolFundingRuleSuccess";
+    readonly result: {
+      readonly fundingRuleVersion: number;
+      readonly fundingShares: ReadonlyArray<{
+        readonly memberId: string;
+        readonly memberName: string;
+        readonly weight: any;
+      }>;
+      readonly id: string;
+      readonly kind: PoolKind;
+      readonly ownerMemberId: string | null | undefined;
+      readonly settlementPolicy: SharedPoolSettlementPolicy | null | undefined;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type SetPoolFundingRuleMutation = {
@@ -62,7 +74,7 @@ v1 = [
         "variableName": "input"
       }
     ],
-    "concreteType": "Pool",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "setPoolFundingRule",
     "plural": false,
@@ -71,68 +83,114 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "id",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "kind",
-        "storageKey": null
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Pool",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "kind",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "ownerMemberId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "fundingRuleVersion",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "settlementPolicy",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "PoolFundingShare",
+                "kind": "LinkedField",
+                "name": "fundingShares",
+                "plural": true,
+                "selections": [
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "memberId",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "memberName",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "weight",
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "SetPoolFundingRuleSuccess",
+        "abstractKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "ownerMemberId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "fundingRuleVersion",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "settlementPolicy",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "concreteType": "PoolFundingShare",
-        "kind": "LinkedField",
-        "name": "fundingShares",
-        "plural": true,
+        "kind": "InlineFragment",
         "selections": [
           {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "memberId",
+            "name": "code",
             "storageKey": null
           },
           {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "memberName",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "weight",
+            "name": "message",
             "storageKey": null
           }
         ],
-        "storageKey": null
+        "type": "MutationError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -156,16 +214,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "33b59139448e8a84bcafa7011e3565a6",
+    "cacheID": "4cffcc1fdf62c93d7b567abe034912ab",
     "id": null,
     "metadata": {},
     "name": "SetPoolFundingRuleMutation",
     "operationKind": "mutation",
-    "text": "mutation SetPoolFundingRuleMutation(\n  $input: SetPoolFundingRuleInput!\n) {\n  setPoolFundingRule(input: $input) {\n    id\n    kind\n    ownerMemberId\n    fundingRuleVersion\n    settlementPolicy\n    fundingShares {\n      memberId\n      memberName\n      weight\n    }\n  }\n}\n"
+    "text": "mutation SetPoolFundingRuleMutation(\n  $input: SetPoolFundingRuleInput!\n) {\n  setPoolFundingRule(input: $input) {\n    __typename\n    ... on SetPoolFundingRuleSuccess {\n      result {\n        id\n        kind\n        ownerMemberId\n        fundingRuleVersion\n        settlementPolicy\n        fundingShares {\n          memberId\n          memberName\n          weight\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "40887d51a4ac704a8ae6b598e88f66fc";
+(node as any).hash = "ae3c38169390325529246248ecd51981";
 
 export default node;

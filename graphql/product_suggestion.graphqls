@@ -1,0 +1,10 @@
+type ProductSuggestion {
+  concept: ProductConcept!
+  variant: ProductVariant!
+  matchedName: String!
+  score: Int!
+}
+
+extend type Query {
+  productSuggestions(householdId: ID! @nodeID(of: "Household"), query: String!, merchant: String, first: Int = 8): [ProductSuggestion!]!
+}
