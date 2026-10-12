@@ -105,7 +105,7 @@ Google Cloud Project、予算、認証のTerraform設定は作成・検証中で
 PDFファイルは公開ブラウザーから選択できず、原本プレビュー、領域選択、ページ切替、クロップ再解析は未検証である。
 
 口座分析のmutation後再取得と購入送信の修正を含む6cb5359では、`mise run web:check`、`mise run web:lint:fsd`、`mise run web:lint`、`mise run web:format:check`、`mise run web:build`が成功した。公開環境で送信待ち購入の同一冪等キー再送、再読み込み後の単一登録、口座残高分析の即時更新も確認した。
-2026年10月12日にメンバー負担スナップショット、未照合候補の検索、購入・品目単位切替えを追加したWeb差分について、Relay再生成では51件のreader、normalization、operation textを生成し、`mise run web:relay:validate`、`mise run web:check`、`mise run web:lint:fsd`、`mise run web:lint`、`mise run web:format:check`、`mise run web:build`が成功した。これらの変更は未コミットで公開環境へ未展開である。
+2026年10月12日にメンバー負担スナップショット、未照合候補の検索、購入・品目単位切替えを追加したWeb差分について、Relay再生成では51件のreader、normalization、operation textを生成し、`mise run web:relay:validate`、`mise run web:check`、`mise run web:lint:fsd`、`mise run web:lint`、`mise run web:format:check`、`mise run web:build`が成功した。変更は`7b10ede`までにpush済みで、CI artifactの公開と公開環境への配備を待っている。品目の単価推移に必要な数量・単価フィールドはAPIにないため未実装である。
 
 資金拠出設定と精算では、新規DB`horse_accounting_validation`へ全12マイグレーションを適用し、Goの全テストとlintが成功した。
 `TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce`で、拠出比率60対40の共用口座による1000円のA個人支出がAの400円とBの−400円の月次調整になること、締め後のpolicy変更がスナップショットを変更しないこと、翌月残高へ一度だけ繰り越すことを確認した。
