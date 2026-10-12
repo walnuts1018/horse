@@ -141,10 +141,11 @@ func (r *mutationResolver) revokeHouseholdInvitation(ctx context.Context, househ
 	}
 	if !invitationRow.RevokedAt.Valid {
 		revokedAt := time.Now()
-		if _, err := models.HouseholdInvitations.Update(
+		invitationRow, err = models.HouseholdInvitations.Update(
 			um.Where(models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(invitationRow.ID))),
 			um.SetCol("revoked_at").To(psql.Arg(revokedAt)),
-		).One(ctx, bobpgx.NewTx(tx, nil)); err != nil {
+		).One(ctx, bobpgx.NewTx(tx, nil))
+		if err != nil {
 			return nil, err
 		}
 		household, err := models.Households.Update(
