@@ -17,7 +17,6 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 )
 
@@ -25,8 +24,6 @@ type ObjectStore struct {
 	Client *s3.Client
 	Bucket string
 }
-
-const StorageEncryptionVersion = "sse-v1"
 
 func NewObjectStore(endpoint, bucket, accessKey, secretKey string) (*ObjectStore, error) {
 	u, err := url.Parse(endpoint)
@@ -67,31 +64,28 @@ func (s *ObjectStore) Put(ctx context.Context, householdID, mimeType string, dat
 		return "", "", errors.New("invalid household identifier")
 	}
 	hash := DocumentHash(data)
-	key := householdID + "/originals/" + StorageEncryptionVersion + "/" + hash
-	output, err := s.Client.PutObject(ctx, &s3.PutObjectInput{
+	key := householdID + "/originals/" + hash
+	_, err := s.Client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: new(s.Bucket), Key: new(key), Body: bytes.NewReader(data), ContentLength: new(int64(len(data))),
-		ContentType: new(mimeType), ServerSideEncryption: types.ServerSideEncryptionAes256, IfNoneMatch: new("*"),
+		ContentType: new(mimeType), IfNoneMatch: new("*"),
 		Metadata: map[string]string{"sha256": hash},
 	})
 	if err != nil {
 		var apiError smithy.APIError
 		if errors.As(err, &apiError) && apiError.ErrorCode() == "PreconditionFailed" {
-			if verifyErr := s.verifyExistingEncryptedObject(ctx, key, mimeType, hash, data); verifyErr == nil {
+			if verifyErr := s.verifyExistingObject(ctx, key, mimeType, hash, data); verifyErr == nil {
 				return key, hash, nil
 			}
 		}
 		return "", "", errors.New("store original document failed")
 	}
-	if output.ServerSideEncryption != types.ServerSideEncryptionAes256 {
-		return "", "", errors.New("object storage did not confirm required SSE-S3 encryption")
-	}
 	return key, hash, nil
 }
 
-func (s *ObjectStore) verifyExistingEncryptedObject(ctx context.Context, key, mimeType, hash string, data []byte) error {
+func (s *ObjectStore) verifyExistingObject(ctx context.Context, key, mimeType, hash string, data []byte) error {
 	head, err := s.Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: new(s.Bucket), Key: new(key)})
-	if err != nil || head.ServerSideEncryption != types.ServerSideEncryptionAes256 || head.Metadata["sha256"] != hash || head.ContentLength == nil || *head.ContentLength != int64(len(data)) {
-		return errors.New("existing object is not the same encrypted original")
+	if err != nil || head.Metadata["sha256"] != hash || head.ContentLength == nil || *head.ContentLength != int64(len(data)) {
+		return errors.New("existing object metadata does not match original content")
 	}
 	stored, err := s.Get(ctx, key, mimeType)
 	if err != nil || !bytes.Equal(stored.Data, data) {
@@ -109,11 +103,6 @@ func (s *ObjectStore) Get(ctx context.Context, key, mimeType string) (Document, 
 		closeErr := object.Body.Close()
 		return Document{}, errors.Join(errors.New("invalid original document"), closeErr)
 	}
-	encryptedVersion := strings.Contains(key, "/originals/"+StorageEncryptionVersion+"/")
-	if encryptedVersion && object.ServerSideEncryption != types.ServerSideEncryptionAes256 {
-		closeErr := object.Body.Close()
-		return Document{}, errors.Join(errors.New("original object is missing required SSE-S3 encryption"), closeErr)
-	}
 	data, readErr := io.ReadAll(io.LimitReader(object.Body, MaxDocumentBytes+1))
 	closeErr := object.Body.Close()
 	if readErr != nil || closeErr != nil {
@@ -122,8 +111,17 @@ func (s *ObjectStore) Get(ctx context.Context, key, mimeType string) (Document, 
 	if len(data) > MaxDocumentBytes {
 		return Document{}, errors.New("original document exceeds limit")
 	}
-	if encryptedVersion && DocumentHash(data) != key[strings.LastIndex(key, "/")+1:] {
-		return Document{}, errors.New("original document hash does not match object key")
+	if _, originalKey, ok := strings.Cut(key, "/originals/"); ok {
+		if suffix, found := strings.CutPrefix(originalKey, "sse-v1/"); found {
+			originalKey = suffix
+		}
+		storedHash, _, _ := strings.Cut(originalKey, "/")
+		if storedHash == "" {
+			storedHash = originalKey
+		}
+		if len(storedHash) == sha256.Size*2 && DocumentHash(data) != storedHash {
+			return Document{}, errors.New("original document hash does not match object key")
+		}
 	}
 	return Document{MIMEType: mimeType, Data: data}, nil
 }
