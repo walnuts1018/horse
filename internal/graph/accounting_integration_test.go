@@ -179,9 +179,29 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if _, err := models.Purchases.Delete(dm.Where(psql.Or(models.Purchases.Columns.ID.EQ(psql.Arg(conceptPurchase.ID)), models.Purchases.Columns.ID.EQ(psql.Arg(variantPurchase.ID)), models.Purchases.Columns.ID.EQ(psql.Arg(correctedPurchase.ID))))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	rules, err := apiResolver.Query().AllocationRules(ctx, householdID)
-	if err != nil || len(rules) != 4 {
+	pageSize := 2
+	rules, err := apiResolver.Query().AllocationRules(ctx, householdID, nil, &pageSize)
+	if err != nil || len(rules.Edges) != pageSize || rules.TotalCount != 4 || !rules.PageInfo.HasNextPage || rules.PageInfo.EndCursor == nil {
 		t.Fatalf("allocation rule query failed: rules=%#v error=%v", rules, err)
+	}
+	seenRuleIDs := make(map[string]struct{}, rules.TotalCount)
+	for _, edge := range rules.Edges {
+		seenRuleIDs[edge.Node.ID] = struct{}{}
+	}
+	for rules.PageInfo.HasNextPage {
+		rules, err = apiResolver.Query().AllocationRules(ctx, householdID, rules.PageInfo.EndCursor, &pageSize)
+		if err != nil {
+			t.Fatalf("allocation rule cursor query failed: %v", err)
+		}
+		for _, edge := range rules.Edges {
+			if _, exists := seenRuleIDs[edge.Node.ID]; exists {
+				t.Fatalf("allocation rule cursor returned a duplicate: %s", edge.Node.ID)
+			}
+			seenRuleIDs[edge.Node.ID] = struct{}{}
+		}
+	}
+	if len(seenRuleIDs) != 4 {
+		t.Fatalf("allocation rule pages returned %d unique rules; want 4", len(seenRuleIDs))
 	}
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T12:00:00Z", Merchant: "market", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: paymentAccount.ID, AmountYen: 500}},
@@ -817,9 +837,9 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if _, ok := ledgerNode.(model.LedgerEntry); !ok {
 		t.Fatalf("ledger node returned an unexpected value: %#v", ledgerNode)
 	}
-	loanBalances, err := (&Resolver{DB: db}).Query().LoanBalances(ctx, household.ID)
+	loanBalances, err := (&Resolver{DB: db}).Query().LoanBalances(ctx, household.ID, nil, nil)
 	loanNodeID, nodeIDErr := encodeNodeID("LoanBalance", *loan.TransferID)
-	if err != nil || nodeIDErr != nil || len(loanBalances) != 1 || loanBalances[0].ID != loanNodeID || loanBalances[0].BalanceYen != 0 || loanBalances[0].PrincipalYen != 5000 || loanBalances[0].RepaidYen != 5000 {
+	if err != nil || nodeIDErr != nil || len(loanBalances.Edges) != 1 || loanBalances.Edges[0].Node.ID != loanNodeID || loanBalances.Edges[0].Node.BalanceYen != 0 || loanBalances.Edges[0].Node.PrincipalYen != 5000 || loanBalances.Edges[0].Node.RepaidYen != 5000 {
 		t.Fatalf("loan balance was not settled: balances=%#v error=%v", loanBalances, err)
 	}
 	loanNode, err := (&Resolver{DB: db}).Query().Node(ctx, loanNodeID)

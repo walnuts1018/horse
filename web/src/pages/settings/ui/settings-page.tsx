@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Activity, ArrowLeftRight, Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import {
   readGraphql,
+  type Connection,
   type SharedPoolSettlementPolicy,
   type AllocationRule,
   type HouseholdInvitation,
@@ -113,6 +114,10 @@ export function SettingsPage({
   const [openingBalanceAt, setOpeningBalanceAt] = useState(localDateTime().slice(0, 10));
   const [categoryName, setCategoryName] = useState("");
   const [allocationRules, setAllocationRules] = useState<AllocationRule[]>([]);
+  const [allocationRulesCount, setAllocationRulesCount] = useState(0);
+  const [allocationRulesCursor, setAllocationRulesCursor] = useState<string | null>(null);
+  const [allocationRulesHasNextPage, setAllocationRulesHasNextPage] = useState(false);
+  const [allocationRulesPageLoading, setAllocationRulesPageLoading] = useState(false);
   const [ruleScope, setRuleScope] = useState<
     "CATEGORY" | "MERCHANT" | "PRODUCT" | "PRODUCT_VARIANT"
   >("CATEGORY");
@@ -141,6 +146,9 @@ export function SettingsPage({
   const [pending, setPending] = useState(false);
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
   const [invitations, setInvitations] = useState<HouseholdInvitation[]>([]);
+  const [invitationsCursor, setInvitationsCursor] = useState<string | null>(null);
+  const [invitationsHasNextPage, setInvitationsHasNextPage] = useState(false);
+  const [invitationsPageLoading, setInvitationsPageLoading] = useState(false);
   const [invitationLink, setInvitationLink] = useState("");
   const [issuedInvitationId, setIssuedInvitationId] = useState("");
   const [expiresInDays, setExpiresInDays] = useState("7");
@@ -211,21 +219,74 @@ export function SettingsPage({
   const [movementDescription, setMovementDescription] = useState("");
   const [movementDate, setMovementDate] = useState(localDateTime);
   const refreshRules = async () => {
-    const result = await readGraphql<{ allocationRules: AllocationRule[] }>(allocationRulesQuery, {
-      householdId: household.id,
-    });
-    setAllocationRules(result.allocationRules);
+    const result = await readGraphql<{ allocationRules: Connection<AllocationRule> }>(
+      allocationRulesQuery,
+      {
+        householdId: household.id,
+        first: 50,
+      },
+    );
+    setAllocationRules(result.allocationRules.edges.map((edge) => edge.node));
+    setAllocationRulesCount(result.allocationRules.totalCount);
+    setAllocationRulesCursor(result.allocationRules.pageInfo.endCursor ?? null);
+    setAllocationRulesHasNextPage(result.allocationRules.pageInfo.hasNextPage);
+  };
+  const loadMoreRules = async () => {
+    if (!allocationRulesCursor || allocationRulesPageLoading) return;
+    setAllocationRulesPageLoading(true);
+    try {
+      const result = await readGraphql<{ allocationRules: Connection<AllocationRule> }>(
+        allocationRulesQuery,
+        {
+          householdId: household.id,
+          after: allocationRulesCursor,
+          first: 50,
+        },
+      );
+      setAllocationRules((current) => [
+        ...current,
+        ...result.allocationRules.edges.map((edge) => edge.node),
+      ]);
+      setAllocationRulesCursor(result.allocationRules.pageInfo.endCursor ?? null);
+      setAllocationRulesHasNextPage(result.allocationRules.pageInfo.hasNextPage);
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setAllocationRulesPageLoading(false);
+    }
   };
   const refreshProducts = async () => {
     setCatalog(await readProductCatalog(household.id));
   };
   const refreshInvitations = async () => {
     if (!isOwner) return;
-    const result = await readGraphql<{ householdInvitations: HouseholdInvitation[] }>(
+    const result = await readGraphql<{ householdInvitations: Connection<HouseholdInvitation> }>(
       householdInvitationsQuery,
-      { householdId: household.id },
+      { householdId: household.id, first: 50 },
     );
-    setInvitations(result.householdInvitations);
+    setInvitations(result.householdInvitations.edges.map((edge) => edge.node));
+    setInvitationsCursor(result.householdInvitations.pageInfo.endCursor ?? null);
+    setInvitationsHasNextPage(result.householdInvitations.pageInfo.hasNextPage);
+  };
+  const loadMoreInvitations = async () => {
+    if (!invitationsCursor || invitationsPageLoading) return;
+    setInvitationsPageLoading(true);
+    try {
+      const result = await readGraphql<{ householdInvitations: Connection<HouseholdInvitation> }>(
+        householdInvitationsQuery,
+        { householdId: household.id, after: invitationsCursor, first: 50 },
+      );
+      setInvitations((current) => [
+        ...current,
+        ...result.householdInvitations.edges.map((edge) => edge.node),
+      ]);
+      setInvitationsCursor(result.householdInvitations.pageInfo.endCursor ?? null);
+      setInvitationsHasNextPage(result.householdInvitations.pageInfo.hasNextPage);
+    } catch (reason) {
+      onNotice((reason as Error).message);
+    } finally {
+      setInvitationsPageLoading(false);
+    }
   };
   const refreshPlanning = async () => {
     const [tagResult, budgetResult, recurringResult, movementResult, incomeResult, balanceResult] =
@@ -1344,7 +1405,7 @@ export function SettingsPage({
               <span className="eyebrow">自動負担</span>
               <h2>優先ルール</h2>
             </div>
-            <span className="count-badge">{allocationRules.length}</span>
+            <span className="count-badge">{allocationRulesCount}</span>
           </div>
           <div className="settings-rows">
             {allocationRules.map((rule) => (
@@ -1385,6 +1446,16 @@ export function SettingsPage({
               </div>
             ))}
           </div>
+          {allocationRulesHasNextPage && (
+            <button
+              className="text-button"
+              type="button"
+              disabled={allocationRulesPageLoading}
+              onClick={() => void loadMoreRules()}
+            >
+              {allocationRulesPageLoading ? "読み込み中" : "さらに表示"}
+            </button>
+          )}
           <form className="allocation-rule-form" onSubmit={saveRule}>
             <select
               value={ruleScope}
@@ -1681,6 +1752,16 @@ export function SettingsPage({
                 </div>
               ))}
             </div>
+            {invitationsHasNextPage && (
+              <button
+                className="text-button"
+                type="button"
+                disabled={invitationsPageLoading}
+                onClick={() => void loadMoreInvitations()}
+              >
+                {invitationsPageLoading ? "読み込み中" : "さらに表示"}
+              </button>
+            )}
           </section>
         )}
         <section className="panel settings-section">

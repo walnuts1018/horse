@@ -19,14 +19,24 @@ export const ledgerQuery = graphql`
 `;
 
 export const loanBalancesQuery = graphql`
-  query LoanBalancesQuery($householdId: ID!) {
-    loanBalances(householdId: $householdId) {
-      id
-      lenderMemberId
-      borrowerMemberId
-      principalYen
-      repaidYen
-      balanceYen
+  query LoanBalancesQuery($householdId: ID!, $after: String, $first: Int) {
+    loanBalances(householdId: $householdId, after: $after, first: $first) {
+      edges {
+        cursor
+        node {
+          id
+          lenderMemberId
+          borrowerMemberId
+          principalYen
+          repaidYen
+          balanceYen
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      totalCount
     }
   }
 `;

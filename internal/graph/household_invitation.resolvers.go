@@ -22,8 +22,12 @@ func (r *householdInvitationResolver) HouseholdID(ctx context.Context, obj *mode
 }
 
 // HouseholdInvitations is the resolver for the householdInvitations field.
-func (r *queryResolver) HouseholdInvitations(ctx context.Context, householdID string) ([]*model.HouseholdInvitation, error) {
-	return r.householdInvitations(ctx, householdID)
+func (r *queryResolver) HouseholdInvitations(ctx context.Context, householdID string, after *string, first *int) (*model.HouseholdInvitationConnection, error) {
+	pageSize := 50
+	if first != nil {
+		pageSize = *first
+	}
+	return r.householdInvitations(ctx, householdID, after, pageSize)
 }
 
 // HouseholdInvitation returns HouseholdInvitationResolver implementation.

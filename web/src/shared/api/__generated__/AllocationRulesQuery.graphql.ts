@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3978e8e10f8cd514292880c67a1c49c9>>
+ * @generated SignedSource<<13155522404b4de2b2a8756405a8e64d>>
  * @lightSyntaxTransform
  */
 
@@ -10,25 +10,37 @@
 import type { ConcreteRequest } from 'relay-runtime';
 export type AllocationRuleScope = "CATEGORY" | "MERCHANT" | "PRODUCT" | "PRODUCT_VARIANT" | "%future added value";
 export type AllocationRulesQuery$variables = {
+  after?: string | null | undefined;
+  first?: number | null | undefined;
   householdId: string;
 };
 export type AllocationRulesQuery$data = {
-  readonly allocationRules: ReadonlyArray<{
-    readonly allocations: ReadonlyArray<{
-      readonly amountYen: any | null | undefined;
-      readonly poolId: string;
-      readonly poolName: string | null | undefined;
-      readonly weight: any;
+  readonly allocationRules: {
+    readonly edges: ReadonlyArray<{
+      readonly cursor: string;
+      readonly node: {
+        readonly allocations: ReadonlyArray<{
+          readonly amountYen: any | null | undefined;
+          readonly poolId: string;
+          readonly poolName: string | null | undefined;
+          readonly weight: any;
+        }>;
+        readonly categoryId: string | null | undefined;
+        readonly householdId: string;
+        readonly id: string;
+        readonly merchant: string | null | undefined;
+        readonly productConceptId: string | null | undefined;
+        readonly productVariantId: string | null | undefined;
+        readonly revision: number;
+        readonly scope: AllocationRuleScope;
+      };
     }>;
-    readonly categoryId: string | null | undefined;
-    readonly householdId: string;
-    readonly id: string;
-    readonly merchant: string | null | undefined;
-    readonly productConceptId: string | null | undefined;
-    readonly productVariantId: string | null | undefined;
-    readonly revision: number;
-    readonly scope: AllocationRuleScope;
-  }>;
+    readonly pageInfo: {
+      readonly endCursor: string | null | undefined;
+      readonly hasNextPage: boolean;
+    };
+    readonly totalCount: number;
+  };
 };
 export type AllocationRulesQuery = {
   response: AllocationRulesQuery$data;
@@ -36,121 +48,200 @@ export type AllocationRulesQuery = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = [
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "householdId"
-  }
-],
-v1 = [
+var v0 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "after"
+},
+v1 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "first"
+},
+v2 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "householdId"
+},
+v3 = [
   {
     "alias": null,
     "args": [
+      {
+        "kind": "Variable",
+        "name": "after",
+        "variableName": "after"
+      },
+      {
+        "kind": "Variable",
+        "name": "first",
+        "variableName": "first"
+      },
       {
         "kind": "Variable",
         "name": "householdId",
         "variableName": "householdId"
       }
     ],
-    "concreteType": "AllocationRule",
+    "concreteType": "AllocationRuleConnection",
     "kind": "LinkedField",
     "name": "allocationRules",
-    "plural": true,
+    "plural": false,
     "selections": [
       {
         "alias": null,
         "args": null,
-        "kind": "ScalarField",
-        "name": "id",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "householdId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "scope",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "categoryId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "merchant",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "productConceptId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "productVariantId",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "revision",
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": null,
-        "concreteType": "Allocation",
+        "concreteType": "AllocationRuleEdge",
         "kind": "LinkedField",
-        "name": "allocations",
+        "name": "edges",
         "plural": true,
         "selections": [
           {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
-            "name": "poolId",
+            "name": "cursor",
             "storageKey": null
           },
           {
             "alias": null,
             "args": null,
-            "kind": "ScalarField",
-            "name": "poolName",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "weight",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "amountYen",
+            "concreteType": "AllocationRule",
+            "kind": "LinkedField",
+            "name": "node",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "householdId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "scope",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "categoryId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "merchant",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "productConceptId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "productVariantId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "Allocation",
+                "kind": "LinkedField",
+                "name": "allocations",
+                "plural": true,
+                "selections": [
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "poolId",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "poolName",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "weight",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "amountYen",
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
             "storageKey": null
           }
         ],
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "PageInfo",
+        "kind": "LinkedField",
+        "name": "pageInfo",
+        "plural": false,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "endCursor",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "hasNextPage",
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "totalCount",
         "storageKey": null
       }
     ],
@@ -159,32 +250,40 @@ v1 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": (v0/*:: as any*/),
+    "argumentDefinitions": [
+      (v0/*:: as any*/),
+      (v1/*:: as any*/),
+      (v2/*:: as any*/)
+    ],
     "kind": "Fragment",
     "metadata": null,
     "name": "AllocationRulesQuery",
-    "selections": (v1/*:: as any*/),
+    "selections": (v3/*:: as any*/),
     "type": "Query",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": (v0/*:: as any*/),
+    "argumentDefinitions": [
+      (v2/*:: as any*/),
+      (v0/*:: as any*/),
+      (v1/*:: as any*/)
+    ],
     "kind": "Operation",
     "name": "AllocationRulesQuery",
-    "selections": (v1/*:: as any*/)
+    "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "1ce449ad44faacc0cc9a0ca4dcba0990",
+    "cacheID": "4cee8287e1fdf631f3db8c966783a621",
     "id": null,
     "metadata": {},
     "name": "AllocationRulesQuery",
     "operationKind": "query",
-    "text": "query AllocationRulesQuery(\n  $householdId: ID!\n) {\n  allocationRules(householdId: $householdId) {\n    id\n    householdId\n    scope\n    categoryId\n    merchant\n    productConceptId\n    productVariantId\n    revision\n    allocations {\n      poolId\n      poolName\n      weight\n      amountYen\n    }\n  }\n}\n"
+    "text": "query AllocationRulesQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  allocationRules(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        scope\n        categoryId\n        merchant\n        productConceptId\n        productVariantId\n        revision\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "8b958181f1aad9e4ef277bb005a474dd";
+(node as any).hash = "9b70c076fc0e52254e81efa379724c2a";
 
 export default node;

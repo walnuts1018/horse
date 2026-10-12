@@ -300,6 +300,17 @@ type AllocationRule struct {
 
 func (AllocationRule) IsNode() {}
 
+type AllocationRuleConnection struct {
+	Edges      []*AllocationRuleEdge `json:"edges"`
+	PageInfo   *PageInfo             `json:"pageInfo"`
+	TotalCount int                   `json:"totalCount"`
+}
+
+type AllocationRuleEdge struct {
+	Cursor string          `json:"cursor"`
+	Node   *AllocationRule `json:"node"`
+}
+
 type ArchiveBudgetSuccess struct {
 	Result *Budget `json:"result"`
 }
@@ -782,6 +793,17 @@ type HouseholdInvitation struct {
 
 func (HouseholdInvitation) IsNode() {}
 
+type HouseholdInvitationConnection struct {
+	Edges      []*HouseholdInvitationEdge `json:"edges"`
+	PageInfo   *PageInfo                  `json:"pageInfo"`
+	TotalCount int                        `json:"totalCount"`
+}
+
+type HouseholdInvitationEdge struct {
+	Cursor string               `json:"cursor"`
+	Node   *HouseholdInvitation `json:"node"`
+}
+
 type LedgerConnection struct {
 	Edges      []*LedgerEdge `json:"edges"`
 	PageInfo   *PageInfo     `json:"pageInfo"`
@@ -804,6 +826,17 @@ type LoanBalance struct {
 }
 
 func (LoanBalance) IsNode() {}
+
+type LoanBalanceConnection struct {
+	Edges      []*LoanBalanceEdge `json:"edges"`
+	PageInfo   *PageInfo          `json:"pageInfo"`
+	TotalCount int                `json:"totalCount"`
+}
+
+type LoanBalanceEdge struct {
+	Cursor string       `json:"cursor"`
+	Node   *LoanBalance `json:"node"`
+}
 
 type Member struct {
 	ID          string `json:"id"`

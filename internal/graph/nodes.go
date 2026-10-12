@@ -186,13 +186,29 @@ func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.No
 			}
 		}
 		if kind == "HouseholdInvitation" {
-			invitations, err := r.householdInvitations(ctx, household.ID)
+			user, err := principal(ctx)
 			if err != nil {
 				return nil, err
 			}
-			if value := findValue(invitations, func(value *model.HouseholdInvitation) bool { return value.ID == id }); value != nil {
-				return value, nil
+			executor := bobpgx.NewPool(r.DB)
+			if err := requireHouseholdOwner(ctx, executor, household.ID, user.MemberID); err != nil {
+				return nil, err
 			}
+			invitationID, err := uuid.FromString(id)
+			if err != nil {
+				return nil, ErrNotFound
+			}
+			row, err := models.HouseholdInvitations.Query(sm.Where(psql.And(
+				models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(invitationID)),
+				models.HouseholdInvitations.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
+			))).One(ctx, executor)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			return householdInvitationModel(row, time.Now()), nil
 		}
 		if kind == "Tag" {
 			values, err := r.tags(ctx, household.ID, true)
@@ -232,7 +248,10 @@ func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.No
 			if err != nil {
 				return nil, err
 			}
-			entry := &model.LedgerEntryData{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, Currency: "JPY", OccurredAt: timeString(row.OccurredAt), Description: row.Description, AmountYen: graphLong(row.AmountYen), CreatedAt: timeString(row.CreatedAt)}
+			entry, err := loadLedgerEntry(ctx, r.DB, row.ID.String())
+			if err != nil {
+				return nil, err
+			}
 			return ledgerEntryVariant(ctx, r.DB, entry)
 		}
 		if kind == "AccountIncome" {

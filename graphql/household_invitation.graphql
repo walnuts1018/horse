@@ -16,6 +16,17 @@ type HouseholdInvitation implements Node {
   acceptedAt: String
 }
 
+type HouseholdInvitationEdge {
+  cursor: String!
+  node: HouseholdInvitation!
+}
+
+type HouseholdInvitationConnection {
+  edges: [HouseholdInvitationEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  householdInvitations(householdId: ID! @nodeID(of: "Household")): [HouseholdInvitation!]!
+  householdInvitations(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): HouseholdInvitationConnection!
 }

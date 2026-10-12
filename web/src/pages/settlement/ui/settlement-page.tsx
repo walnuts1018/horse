@@ -41,6 +41,9 @@ export function SettlementPage({ household }: { household: Household }) {
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [loans, setLoans] = useState<LoanBalance[]>([]);
+  const [loanCursor, setLoanCursor] = useState<string | null>(null);
+  const [loanHasNextPage, setLoanHasNextPage] = useState(false);
+  const [loanPageLoading, setLoanPageLoading] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [pending, setPending] = useState(false);
@@ -68,16 +71,40 @@ export function SettlementPage({ household }: { household: Household }) {
           householdId: household.id,
           first: 100,
         }),
-        readGraphql<{ loanBalances: LoanBalance[] }>(loanBalancesQuery, {
+        readGraphql<{ loanBalances: Connection<LoanBalance> }>(loanBalancesQuery, {
           householdId: household.id,
+          first: 50,
         }),
       ]);
       setSettlement(settlementData.settlement);
       setEntries(ledgerData.ledger.edges.map((edge) => edge.node));
-      setLoans(loanData.loanBalances);
+      setLoans(loanData.loanBalances.edges.map((edge) => edge.node));
+      setLoanCursor(loanData.loanBalances.pageInfo.endCursor ?? null);
+      setLoanHasNextPage(loanData.loanBalances.pageInfo.hasNextPage);
       setLoadError("");
     } catch (reason) {
       setLoadError((reason as Error).message);
+    }
+  };
+  const loadMoreLoans = async () => {
+    if (!loanCursor || loanPageLoading) return;
+    setLoanPageLoading(true);
+    try {
+      const result = await readGraphql<{ loanBalances: Connection<LoanBalance> }>(
+        loanBalancesQuery,
+        {
+          householdId: household.id,
+          after: loanCursor,
+          first: 50,
+        },
+      );
+      setLoans((current) => [...current, ...result.loanBalances.edges.map((edge) => edge.node)]);
+      setLoanCursor(result.loanBalances.pageInfo.endCursor ?? null);
+      setLoanHasNextPage(result.loanBalances.pageInfo.hasNextPage);
+    } catch (reason) {
+      setLoadError((reason as Error).message);
+    } finally {
+      setLoanPageLoading(false);
     }
   };
   useEffect(() => {
@@ -388,34 +415,46 @@ export function SettlementPage({ household }: { household: Household }) {
               </select>
             </label>
             {transferKind === "REPAYMENT" && (
-              <label>
-                貸付
-                <select
-                  required
-                  value={transferLoanId}
-                  onChange={(event) => {
-                    const loan = openLoans.find((row) => row.id === event.target.value);
-                    setTransferLoanId(event.target.value);
-                    if (loan) {
-                      setTransferFrom(loan.borrowerMemberId);
-                      setTransferTo(loan.lenderMemberId);
-                    }
-                    setError("");
-                  }}
-                >
-                  <option value="">貸付を選択</option>
-                  {openLoans.map((loan) => (
-                    <option key={loan.id} value={loan.id}>
-                      {household.members.find((member) => member.id === loan.borrowerMemberId)
-                        ?.displayName ?? "借主"}{" "}
-                      →{" "}
-                      {household.members.find((member) => member.id === loan.lenderMemberId)
-                        ?.displayName ?? "貸主"}{" "}
-                      {yen(loan.balanceYen)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <>
+                <label>
+                  貸付
+                  <select
+                    required
+                    value={transferLoanId}
+                    onChange={(event) => {
+                      const loan = openLoans.find((row) => row.id === event.target.value);
+                      setTransferLoanId(event.target.value);
+                      if (loan) {
+                        setTransferFrom(loan.borrowerMemberId);
+                        setTransferTo(loan.lenderMemberId);
+                      }
+                      setError("");
+                    }}
+                  >
+                    <option value="">貸付を選択</option>
+                    {openLoans.map((loan) => (
+                      <option key={loan.id} value={loan.id}>
+                        {household.members.find((member) => member.id === loan.borrowerMemberId)
+                          ?.displayName ?? "借主"}{" "}
+                        →{" "}
+                        {household.members.find((member) => member.id === loan.lenderMemberId)
+                          ?.displayName ?? "貸主"}{" "}
+                        {yen(loan.balanceYen)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {loanHasNextPage && (
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={loanPageLoading}
+                    onClick={() => void loadMoreLoans()}
+                  >
+                    {loanPageLoading ? "読み込み中" : "さらに貸付を表示"}
+                  </button>
+                )}
+              </>
             )}
             <label>
               {transferKind === "LOAN"

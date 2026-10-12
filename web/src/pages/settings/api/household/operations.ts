@@ -1,16 +1,26 @@
 import { graphql } from "react-relay";
 
 export const householdInvitationsQuery = graphql`
-  query HouseholdInvitationsQuery($householdId: ID!) {
-    householdInvitations(householdId: $householdId) {
-      id
-      householdId
-      role
-      status
-      expiresAt
-      createdAt
-      revokedAt
-      acceptedAt
+  query HouseholdInvitationsQuery($householdId: ID!, $after: String, $first: Int) {
+    householdInvitations(householdId: $householdId, after: $after, first: $first) {
+      edges {
+        cursor
+        node {
+          id
+          householdId
+          role
+          status
+          expiresAt
+          createdAt
+          revokedAt
+          acceptedAt
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      totalCount
     }
   }
 `;

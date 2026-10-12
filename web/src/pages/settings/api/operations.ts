@@ -1,22 +1,32 @@
 import { graphql } from "react-relay";
 
 export const allocationRulesQuery = graphql`
-  query AllocationRulesQuery($householdId: ID!) {
-    allocationRules(householdId: $householdId) {
-      id
-      householdId
-      scope
-      categoryId
-      merchant
-      productConceptId
-      productVariantId
-      revision
-      allocations {
-        poolId
-        poolName
-        weight
-        amountYen
+  query AllocationRulesQuery($householdId: ID!, $after: String, $first: Int) {
+    allocationRules(householdId: $householdId, after: $after, first: $first) {
+      edges {
+        cursor
+        node {
+          id
+          householdId
+          scope
+          categoryId
+          merchant
+          productConceptId
+          productVariantId
+          revision
+          allocations {
+            poolId
+            poolName
+            weight
+            amountYen
+          }
+        }
       }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      totalCount
     }
   }
 `;

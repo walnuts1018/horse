@@ -82,32 +82,79 @@ func (r *mutationResolver) createHouseholdInvitation(ctx context.Context, input 
 	}, nil
 }
 
-func (r *queryResolver) householdInvitations(ctx context.Context, householdID string) ([]*model.HouseholdInvitation, error) {
+func (r *queryResolver) householdInvitations(ctx context.Context, householdID string, after *string, first int) (*model.HouseholdInvitationConnection, error) {
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := requireHouseholdOwner(ctx, bobpgx.NewPool(r.DB), householdID, user.MemberID); err != nil {
+	executor := bobpgx.NewPool(r.DB)
+	if err := requireHouseholdOwner(ctx, executor, householdID, user.MemberID); err != nil {
 		return nil, err
 	}
-	rows, err := models.HouseholdInvitations.Query(
-		sm.Where(models.HouseholdInvitations.Columns.HouseholdID.EQ(psql.Arg(householdID))),
-		sm.OrderBy(models.HouseholdInvitations.Columns.CreatedAt).Desc(),
-		sm.OrderBy(models.HouseholdInvitations.Columns.ID),
-	).All(ctx, bobpgx.NewPool(r.DB))
+	pageSize, _, err := pageDirection(after, nil, &first, nil)
 	if err != nil {
 		return nil, err
 	}
-	invitations := make([]*model.HouseholdInvitation, 0)
-	for _, row := range rows {
-		invitation := &model.HouseholdInvitation{}
-		invitation.ID, invitation.HouseholdID, invitation.Role = row.ID.String(), row.HouseholdID.String(), row.Role
-		invitation.ExpiresAt, invitation.CreatedAt = timeString(row.ExpiresAt), timeString(row.CreatedAt)
-		invitation.RevokedAt, invitation.AcceptedAt = optionalTimeString(invitationTimePointer(row.RevokedAt)), optionalTimeString(invitationTimePointer(row.AcceptedAt))
-		invitation.Status = householdInvitationStatus(row.AcceptedAt, row.RevokedAt, row.ExpiresAt, time.Now())
-		invitations = append(invitations, invitation)
+	filters := []bob.Expression{models.HouseholdInvitations.Columns.HouseholdID.EQ(psql.Arg(householdID))}
+	count, err := models.HouseholdInvitations.Query(sm.Where(filters[0])).Count(ctx, executor)
+	if err != nil {
+		return nil, err
 	}
-	return invitations, nil
+	if id, err := cursorID(after, "HouseholdInvitation"); err != nil {
+		return nil, err
+	} else if id != nil {
+		parsedCursorID, err := gofrsuuid.FromString(*id)
+		if err != nil {
+			return nil, fmt.Errorf("parse household invitation cursor: %w", err)
+		}
+		cursor, err := models.HouseholdInvitations.Query(sm.Where(psql.And(
+			models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(parsedCursorID)),
+			models.HouseholdInvitations.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, psql.Or(
+			models.HouseholdInvitations.Columns.CreatedAt.LT(psql.Arg(cursor.CreatedAt)),
+			psql.And(models.HouseholdInvitations.Columns.CreatedAt.EQ(psql.Arg(cursor.CreatedAt)), models.HouseholdInvitations.Columns.ID.GT(psql.Arg(cursor.ID))),
+		))
+	}
+	rows, err := models.HouseholdInvitations.Query(
+		sm.Where(psql.And(filters...)),
+		sm.OrderBy(models.HouseholdInvitations.Columns.CreatedAt).Desc(),
+		sm.OrderBy(models.HouseholdInvitations.Columns.ID),
+		sm.Limit(pageSize+1),
+	).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	hasNextPage := len(rows) > pageSize
+	if hasNextPage {
+		rows = rows[:pageSize]
+	}
+	connection := &model.HouseholdInvitationConnection{Edges: make([]*model.HouseholdInvitationEdge, 0, len(rows)), TotalCount: int(count), PageInfo: &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: after != nil && *after != ""}}
+	for _, row := range rows {
+		invitation := householdInvitationModel(row, time.Now())
+		connection.Edges = append(connection.Edges, &model.HouseholdInvitationEdge{Cursor: encodeCursor("HouseholdInvitation", row.ID.String()), Node: invitation})
+	}
+	if len(rows) > 0 {
+		start, end := encodeCursor("HouseholdInvitation", rows[0].ID.String()), encodeCursor("HouseholdInvitation", rows[len(rows)-1].ID.String())
+		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &start, &end
+	}
+	return connection, nil
+}
+
+func householdInvitationModel(row *models.HouseholdInvitation, now time.Time) *model.HouseholdInvitation {
+	return &model.HouseholdInvitation{
+		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Role: row.Role,
+		ExpiresAt: timeString(row.ExpiresAt), CreatedAt: timeString(row.CreatedAt),
+		RevokedAt:  optionalTimeString(invitationTimePointer(row.RevokedAt)),
+		AcceptedAt: optionalTimeString(invitationTimePointer(row.AcceptedAt)),
+		Status:     householdInvitationStatus(row.AcceptedAt, row.RevokedAt, row.ExpiresAt, now),
+	}
 }
 
 func (r *mutationResolver) revokeHouseholdInvitation(ctx context.Context, householdID, invitationID string) (*model.HouseholdInvitation, error) {

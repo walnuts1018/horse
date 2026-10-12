@@ -12,6 +12,10 @@ import (
 )
 
 // LoanBalances is the resolver for the loanBalances field.
-func (r *queryResolver) LoanBalances(ctx context.Context, householdID string) ([]*model.LoanBalance, error) {
-	return r.loanBalances(ctx, householdID)
+func (r *queryResolver) LoanBalances(ctx context.Context, householdID string, after *string, first *int) (*model.LoanBalanceConnection, error) {
+	pageSize := 50
+	if first != nil {
+		pageSize = *first
+	}
+	return r.loanBalances(ctx, householdID, after, pageSize)
 }

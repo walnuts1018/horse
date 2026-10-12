@@ -111,14 +111,14 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 		t.Fatal("database must store only the SHA256 invitation token hash")
 	}
 	ownerQuery := (&Resolver{DB: db}).Query()
-	listed, err := ownerQuery.HouseholdInvitations(ownerCtx, household.ID)
-	if err != nil || len(listed) != 1 || listed[0].ID != active.Invitation.ID || listed[0].Status != model.HouseholdInvitationStatusPending {
+	listed, err := ownerQuery.HouseholdInvitations(ownerCtx, household.ID, nil, nil)
+	if err != nil || len(listed.Edges) != 1 || listed.Edges[0].Node.ID != active.Invitation.ID || listed.Edges[0].Node.Status != model.HouseholdInvitationStatusPending {
 		t.Fatalf("owner invitation list failed: invitations=%#v error=%v", listed, err)
 	}
-	if _, err := ownerQuery.HouseholdInvitations(memberCtx, household.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := ownerQuery.HouseholdInvitations(memberCtx, household.ID, nil, nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("non-owner must not list invitations: error=%v", err)
 	}
-	if _, err := ownerQuery.HouseholdInvitations(ownerCtx, otherHousehold.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := ownerQuery.HouseholdInvitations(ownerCtx, otherHousehold.ID, nil, nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("owner must not list another household's invitations: error=%v", err)
 	}
 	if _, err := resolver.createHouseholdInvitation(memberCtx, model.CreateHouseholdInvitationInput{HouseholdID: household.ID, ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano)}); !errors.Is(err, ErrNotFound) {
@@ -130,8 +130,8 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if _, err := resolver.acceptHouseholdInvitation(memberCtx, active.Token); err != nil {
 		t.Fatalf("valid invitation was not accepted: %v", err)
 	}
-	listed, err = ownerQuery.HouseholdInvitations(ownerCtx, household.ID)
-	if err != nil || len(listed) != 1 || listed[0].Status != model.HouseholdInvitationStatusAccepted {
+	listed, err = ownerQuery.HouseholdInvitations(ownerCtx, household.ID, nil, nil)
+	if err != nil || len(listed.Edges) != 1 || listed.Edges[0].Node.Status != model.HouseholdInvitationStatusAccepted {
 		t.Fatalf("accepted invitation status was not returned: invitations=%#v error=%v", listed, err)
 	}
 	householdUUID, _ := gofrsuuid.FromString(household.ID)
@@ -166,12 +166,13 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if _, err := resolver.acceptHouseholdInvitation(otherCtx, expired.Token); !errors.Is(err, ErrConflict) {
 		t.Fatalf("expired invitation must be rejected: error=%v", err)
 	}
-	listed, err = ownerQuery.HouseholdInvitations(ownerCtx, household.ID)
+	listed, err = ownerQuery.HouseholdInvitations(ownerCtx, household.ID, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	expiredStatusFound := false
-	for _, invitation := range listed {
+	for _, edge := range listed.Edges {
+		invitation := edge.Node
 		if invitation.ID == expired.Invitation.ID && invitation.Status == model.HouseholdInvitationStatusExpired {
 			expiredStatusFound = true
 			break
@@ -217,5 +218,14 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	}
 	if err != nil || acceptedAt.Valid {
 		t.Fatalf("membership conflict must not consume invitation: acceptedAt=%v error=%v", acceptedAt, err)
+	}
+	pageSize := 1
+	firstPage, err := ownerQuery.HouseholdInvitations(ownerCtx, household.ID, nil, &pageSize)
+	if err != nil || len(firstPage.Edges) != 1 || !firstPage.PageInfo.HasNextPage || firstPage.PageInfo.EndCursor == nil {
+		t.Fatalf("invitation connection first page failed: page=%#v error=%v", firstPage, err)
+	}
+	secondPage, err := ownerQuery.HouseholdInvitations(ownerCtx, household.ID, firstPage.PageInfo.EndCursor, &pageSize)
+	if err != nil || len(secondPage.Edges) != 1 || firstPage.Edges[0].Node.ID == secondPage.Edges[0].Node.ID {
+		t.Fatalf("invitation cursor did not continue: first=%#v second=%#v error=%v", firstPage, secondPage, err)
 	}
 }

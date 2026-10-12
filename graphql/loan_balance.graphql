@@ -8,6 +8,17 @@ type LoanBalance implements Node {
   createdAt: String!
 }
 
+type LoanBalanceEdge {
+  cursor: String!
+  node: LoanBalance!
+}
+
+type LoanBalanceConnection {
+  edges: [LoanBalanceEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  loanBalances(householdId: ID! @nodeID(of: "Household")): [LoanBalance!]!
+  loanBalances(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): LoanBalanceConnection!
 }

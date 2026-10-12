@@ -17,6 +17,17 @@ enum AllocationRuleScope {
   MERCHANT
 }
 
+type AllocationRuleEdge {
+  cursor: String!
+  node: AllocationRule!
+}
+
+type AllocationRuleConnection {
+  edges: [AllocationRuleEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  allocationRules(householdId: ID! @nodeID(of: "Household")): [AllocationRule!]!
+  allocationRules(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AllocationRuleConnection!
 }

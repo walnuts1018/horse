@@ -174,6 +174,17 @@ type ComplexityRoot struct {
 		Scope            func(childComplexity int) int
 	}
 
+	AllocationRuleConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	AllocationRuleEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
+
 	ArchiveBudgetSuccess struct {
 		Result func(childComplexity int) int
 	}
@@ -394,6 +405,17 @@ type ComplexityRoot struct {
 		Status      func(childComplexity int) int
 	}
 
+	HouseholdInvitationConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	HouseholdInvitationEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
+
 	LedgerConnection struct {
 		Edges      func(childComplexity int) int
 		PageInfo   func(childComplexity int) int
@@ -413,6 +435,17 @@ type ComplexityRoot struct {
 		LenderMemberID   func(childComplexity int) int
 		PrincipalYen     func(childComplexity int) int
 		RepaidYen        func(childComplexity int) int
+	}
+
+	LoanBalanceConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	LoanBalanceEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
 	}
 
 	Member struct {
@@ -650,13 +683,13 @@ type ComplexityRoot struct {
 		AccountBalances         func(childComplexity int, householdID string) int
 		AccountIncomes          func(childComplexity int, householdID string, after *string, first *int) int
 		AccountMovements        func(childComplexity int, householdID string, after *string, first *int) int
-		AllocationRules         func(childComplexity int, householdID string) int
+		AllocationRules         func(childComplexity int, householdID string, after *string, first *int) int
 		Budgets                 func(childComplexity int, householdID string, period string) int
 		Household               func(childComplexity int, id string) int
-		HouseholdInvitations    func(childComplexity int, householdID string) int
+		HouseholdInvitations    func(childComplexity int, householdID string, after *string, first *int) int
 		Households              func(childComplexity int) int
 		Ledger                  func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		LoanBalances            func(childComplexity int, householdID string) int
+		LoanBalances            func(childComplexity int, householdID string, after *string, first *int) int
 		MonthlyCategorySpending func(childComplexity int, householdID string, from string, to string) int
 		MonthlyMemberSpending   func(childComplexity int, householdID string, from string, to string) int
 		Node                    func(childComplexity int, id string) int
@@ -1075,13 +1108,13 @@ type QueryResolver interface {
 	AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from string, to string) (*model.AccountBalanceAnalysis, error)
 	AccountIncomes(ctx context.Context, householdID string, after *string, first *int) (*model.AccountIncomeConnection, error)
 	AccountMovements(ctx context.Context, householdID string, after *string, first *int) (*model.AccountMovementConnection, error)
-	AllocationRules(ctx context.Context, householdID string) ([]*model.AllocationRule, error)
+	AllocationRules(ctx context.Context, householdID string, after *string, first *int) (*model.AllocationRuleConnection, error)
 	Budgets(ctx context.Context, householdID string, period string) ([]*model.Budget, error)
 	Households(ctx context.Context) ([]*model.Household, error)
 	Household(ctx context.Context, id string) (*model.Household, error)
-	HouseholdInvitations(ctx context.Context, householdID string) ([]*model.HouseholdInvitation, error)
+	HouseholdInvitations(ctx context.Context, householdID string, after *string, first *int) (*model.HouseholdInvitationConnection, error)
 	Ledger(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.LedgerConnection, error)
-	LoanBalances(ctx context.Context, householdID string) ([]*model.LoanBalance, error)
+	LoanBalances(ctx context.Context, householdID string, after *string, first *int) (*model.LoanBalanceConnection, error)
 	MonthlyCategorySpending(ctx context.Context, householdID string, from string, to string) ([]*model.MonthlyCategorySpending, error)
 	MonthlyMemberSpending(ctx context.Context, householdID string, from string, to string) (*model.MonthlyMemberSpendingReport, error)
 	ProductCatalog(ctx context.Context, householdID string, after *string, first *int) (*model.ProductConceptConnection, error)
@@ -1531,6 +1564,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AllocationRule.Scope(childComplexity), true
+
+	case "AllocationRuleConnection.edges":
+		if e.ComplexityRoot.AllocationRuleConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AllocationRuleConnection.Edges(childComplexity), true
+	case "AllocationRuleConnection.pageInfo":
+		if e.ComplexityRoot.AllocationRuleConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AllocationRuleConnection.PageInfo(childComplexity), true
+	case "AllocationRuleConnection.totalCount":
+		if e.ComplexityRoot.AllocationRuleConnection.TotalCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AllocationRuleConnection.TotalCount(childComplexity), true
+
+	case "AllocationRuleEdge.cursor":
+		if e.ComplexityRoot.AllocationRuleEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AllocationRuleEdge.Cursor(childComplexity), true
+	case "AllocationRuleEdge.node":
+		if e.ComplexityRoot.AllocationRuleEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AllocationRuleEdge.Node(childComplexity), true
 
 	case "ArchiveBudgetSuccess.result":
 		if e.ComplexityRoot.ArchiveBudgetSuccess.Result == nil {
@@ -2172,6 +2237,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.HouseholdInvitation.Status(childComplexity), true
 
+	case "HouseholdInvitationConnection.edges":
+		if e.ComplexityRoot.HouseholdInvitationConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitationConnection.Edges(childComplexity), true
+	case "HouseholdInvitationConnection.pageInfo":
+		if e.ComplexityRoot.HouseholdInvitationConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitationConnection.PageInfo(childComplexity), true
+	case "HouseholdInvitationConnection.totalCount":
+		if e.ComplexityRoot.HouseholdInvitationConnection.TotalCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitationConnection.TotalCount(childComplexity), true
+
+	case "HouseholdInvitationEdge.cursor":
+		if e.ComplexityRoot.HouseholdInvitationEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitationEdge.Cursor(childComplexity), true
+	case "HouseholdInvitationEdge.node":
+		if e.ComplexityRoot.HouseholdInvitationEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdInvitationEdge.Node(childComplexity), true
+
 	case "LedgerConnection.edges":
 		if e.ComplexityRoot.LedgerConnection.Edges == nil {
 			break
@@ -2246,6 +2343,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.LoanBalance.RepaidYen(childComplexity), true
+
+	case "LoanBalanceConnection.edges":
+		if e.ComplexityRoot.LoanBalanceConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoanBalanceConnection.Edges(childComplexity), true
+	case "LoanBalanceConnection.pageInfo":
+		if e.ComplexityRoot.LoanBalanceConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoanBalanceConnection.PageInfo(childComplexity), true
+	case "LoanBalanceConnection.totalCount":
+		if e.ComplexityRoot.LoanBalanceConnection.TotalCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoanBalanceConnection.TotalCount(childComplexity), true
+
+	case "LoanBalanceEdge.cursor":
+		if e.ComplexityRoot.LoanBalanceEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoanBalanceEdge.Cursor(childComplexity), true
+	case "LoanBalanceEdge.node":
+		if e.ComplexityRoot.LoanBalanceEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoanBalanceEdge.Node(childComplexity), true
 
 	case "Member.displayName":
 		if e.ComplexityRoot.Member.DisplayName == nil {
@@ -3431,7 +3560,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.AllocationRules(childComplexity, args["householdId"].(string)), true
+		return e.ComplexityRoot.Query.AllocationRules(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
 	case "Query.budgets":
 		if e.ComplexityRoot.Query.Budgets == nil {
 			break
@@ -3464,7 +3593,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.HouseholdInvitations(childComplexity, args["householdId"].(string)), true
+		return e.ComplexityRoot.Query.HouseholdInvitations(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
 	case "Query.households":
 		if e.ComplexityRoot.Query.Households == nil {
 			break
@@ -3493,7 +3622,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.LoanBalances(childComplexity, args["householdId"].(string)), true
+		return e.ComplexityRoot.Query.LoanBalances(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
 	case "Query.monthlyCategorySpending":
 		if e.ComplexityRoot.Query.MonthlyCategorySpending == nil {
 			break
@@ -4635,8 +4764,19 @@ enum AllocationRuleScope {
   MERCHANT
 }
 
+type AllocationRuleEdge {
+  cursor: String!
+  node: AllocationRule!
+}
+
+type AllocationRuleConnection {
+  edges: [AllocationRuleEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  allocationRules(householdId: ID! @nodeID(of: "Household")): [AllocationRule!]!
+  allocationRules(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AllocationRuleConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/archive_budget_mutation.graphql", Input: `extend type Mutation {
@@ -5077,8 +5217,19 @@ type HouseholdInvitation implements Node {
   acceptedAt: String
 }
 
+type HouseholdInvitationEdge {
+  cursor: String!
+  node: HouseholdInvitation!
+}
+
+type HouseholdInvitationConnection {
+  edges: [HouseholdInvitationEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  householdInvitations(householdId: ID! @nodeID(of: "Household")): [HouseholdInvitation!]!
+  householdInvitations(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): HouseholdInvitationConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/ledger_entry.graphql", Input: `interface LedgerEntry implements Node {
@@ -5166,8 +5317,19 @@ extend type Query {
   createdAt: String!
 }
 
+type LoanBalanceEdge {
+  cursor: String!
+  node: LoanBalance!
+}
+
+type LoanBalanceConnection {
+  edges: [LoanBalanceEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  loanBalances(householdId: ID! @nodeID(of: "Household")): [LoanBalance!]!
+  loanBalances(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): LoanBalanceConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/member.graphql", Input: `type Member implements Node {
@@ -6197,6 +6359,28 @@ func (ec *executionContext) childFields_AllocationRule(ctx context.Context, fiel
 	return nil, fmt.Errorf("no field named %q was found under type AllocationRule", field.Name)
 }
 
+func (ec *executionContext) childFields_AllocationRuleConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_AllocationRuleConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_AllocationRuleConnection_pageInfo(ctx, field)
+	case "totalCount":
+		return ec.fieldContext_AllocationRuleConnection_totalCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AllocationRuleConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_AllocationRuleEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_AllocationRuleEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_AllocationRuleEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AllocationRuleEdge", field.Name)
+}
+
 func (ec *executionContext) childFields_Budget(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "id":
@@ -6307,6 +6491,28 @@ func (ec *executionContext) childFields_HouseholdInvitation(ctx context.Context,
 	return nil, fmt.Errorf("no field named %q was found under type HouseholdInvitation", field.Name)
 }
 
+func (ec *executionContext) childFields_HouseholdInvitationConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_HouseholdInvitationConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_HouseholdInvitationConnection_pageInfo(ctx, field)
+	case "totalCount":
+		return ec.fieldContext_HouseholdInvitationConnection_totalCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type HouseholdInvitationConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_HouseholdInvitationEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_HouseholdInvitationEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_HouseholdInvitationEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type HouseholdInvitationEdge", field.Name)
+}
+
 func (ec *executionContext) childFields_LedgerConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "edges":
@@ -6347,6 +6553,28 @@ func (ec *executionContext) childFields_LoanBalance(ctx context.Context, field g
 		return ec.fieldContext_LoanBalance_createdAt(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type LoanBalance", field.Name)
+}
+
+func (ec *executionContext) childFields_LoanBalanceConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_LoanBalanceConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_LoanBalanceConnection_pageInfo(ctx, field)
+	case "totalCount":
+		return ec.fieldContext_LoanBalanceConnection_totalCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type LoanBalanceConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_LoanBalanceEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_LoanBalanceEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_LoanBalanceEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type LoanBalanceEdge", field.Name)
 }
 
 func (ec *executionContext) childFields_Member(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -8200,6 +8428,22 @@ func (ec *executionContext) field_Query_allocationRules_args(ctx context.Context
 		return nil, err
 	}
 	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg2
 	return args, nil
 }
 
@@ -8322,6 +8566,22 @@ func (ec *executionContext) field_Query_householdInvitations_args(ctx context.Co
 		return nil, err
 	}
 	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg2
 	return args, nil
 }
 
@@ -8525,6 +8785,22 @@ func (ec *executionContext) field_Query_loanBalances_args(ctx context.Context, r
 		return nil, err
 	}
 	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg2
 	return args, nil
 }
 
@@ -11003,6 +11279,148 @@ func (ec *executionContext) fieldContext_AllocationRule_allocations(_ context.Co
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_Allocation(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AllocationRuleConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRuleConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AllocationRuleConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.AllocationRuleEdge) graphql.Marshaler {
+			return ec.marshalNAllocationRuleEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AllocationRuleConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AllocationRuleConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AllocationRuleEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AllocationRuleConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRuleConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AllocationRuleConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AllocationRuleConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AllocationRuleConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AllocationRuleConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRuleConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AllocationRuleConnection_totalCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AllocationRuleConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AllocationRuleConnection", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _AllocationRuleEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRuleEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AllocationRuleEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AllocationRuleEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AllocationRuleEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AllocationRuleEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRuleEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AllocationRuleEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AllocationRule) graphql.Marshaler {
+			return ec.marshalNAllocationRule2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRule(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AllocationRuleEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AllocationRuleEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AllocationRule(ctx, field)
 		},
 	}
 	return fc, nil
@@ -13533,6 +13951,148 @@ func (ec *executionContext) fieldContext_HouseholdInvitation_acceptedAt(_ contex
 	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _HouseholdInvitationConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitationConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitationConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.HouseholdInvitationEdge) graphql.Marshaler {
+			return ec.marshalNHouseholdInvitationEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitationConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HouseholdInvitationConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HouseholdInvitationEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HouseholdInvitationConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitationConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitationConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitationConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HouseholdInvitationConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HouseholdInvitationConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitationConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitationConnection_totalCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitationConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdInvitationConnection", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdInvitationEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitationEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitationEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitationEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdInvitationEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdInvitationEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitationEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdInvitationEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.HouseholdInvitation) graphql.Marshaler {
+			return ec.marshalNHouseholdInvitation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitation(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdInvitationEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HouseholdInvitationEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HouseholdInvitation(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _LedgerConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.LedgerConnection) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -13834,6 +14394,148 @@ func (ec *executionContext) _LoanBalance_createdAt(ctx context.Context, field gr
 }
 func (ec *executionContext) fieldContext_LoanBalance_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("LoanBalance", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _LoanBalanceConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalanceConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoanBalanceConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.LoanBalanceEdge) graphql.Marshaler {
+			return ec.marshalNLoanBalanceEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalanceEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoanBalanceConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "LoanBalanceConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_LoanBalanceEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _LoanBalanceConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalanceConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoanBalanceConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoanBalanceConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "LoanBalanceConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _LoanBalanceConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalanceConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoanBalanceConnection_totalCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoanBalanceConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoanBalanceConnection", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _LoanBalanceEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalanceEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoanBalanceEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoanBalanceEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LoanBalanceEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _LoanBalanceEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalanceEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LoanBalanceEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.LoanBalance) graphql.Marshaler {
+			return ec.marshalNLoanBalance2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalance(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LoanBalanceEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "LoanBalanceEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_LoanBalance(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _Member_id(ctx context.Context, field graphql.CollectedField, obj *model.Member) (ret graphql.Marshaler) {
@@ -18635,11 +19337,11 @@ func (ec *executionContext) _Query_allocationRules(ctx context.Context, field gr
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().AllocationRules(ctx, fc.Args["householdId"].(string))
+			return ec.Resolvers.Query().AllocationRules(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []*model.AllocationRule) graphql.Marshaler {
-			return ec.marshalNAllocationRule2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AllocationRuleConnection) graphql.Marshaler {
+			return ec.marshalNAllocationRuleConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleConnection(ctx, selections, v)
 		},
 		true,
 		true,
@@ -18652,7 +19354,7 @@ func (ec *executionContext) fieldContext_Query_allocationRules(ctx context.Conte
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_AllocationRule(ctx, field)
+			return ec.childFields_AllocationRuleConnection(ctx, field)
 		},
 	}
 	defer func() {
@@ -18799,11 +19501,11 @@ func (ec *executionContext) _Query_householdInvitations(ctx context.Context, fie
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().HouseholdInvitations(ctx, fc.Args["householdId"].(string))
+			return ec.Resolvers.Query().HouseholdInvitations(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []*model.HouseholdInvitation) graphql.Marshaler {
-			return ec.marshalNHouseholdInvitation2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.HouseholdInvitationConnection) graphql.Marshaler {
+			return ec.marshalNHouseholdInvitationConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationConnection(ctx, selections, v)
 		},
 		true,
 		true,
@@ -18816,7 +19518,7 @@ func (ec *executionContext) fieldContext_Query_householdInvitations(ctx context.
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_HouseholdInvitation(ctx, field)
+			return ec.childFields_HouseholdInvitationConnection(ctx, field)
 		},
 	}
 	defer func() {
@@ -18887,11 +19589,11 @@ func (ec *executionContext) _Query_loanBalances(ctx context.Context, field graph
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().LoanBalances(ctx, fc.Args["householdId"].(string))
+			return ec.Resolvers.Query().LoanBalances(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []*model.LoanBalance) graphql.Marshaler {
-			return ec.marshalNLoanBalance2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalanceᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.LoanBalanceConnection) graphql.Marshaler {
+			return ec.marshalNLoanBalanceConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalanceConnection(ctx, selections, v)
 		},
 		true,
 		true,
@@ -18904,7 +19606,7 @@ func (ec *executionContext) fieldContext_Query_loanBalances(ctx context.Context,
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_LoanBalance(ctx, field)
+			return ec.childFields_LoanBalanceConnection(ctx, field)
 		},
 	}
 	defer func() {
@@ -29928,6 +30630,97 @@ func (ec *executionContext) _AllocationRule(ctx context.Context, sel ast.Selecti
 	return out
 }
 
+var allocationRuleConnectionImplementors = []string{"AllocationRuleConnection"}
+
+func (ec *executionContext) _AllocationRuleConnection(ctx context.Context, sel ast.SelectionSet, obj *model.AllocationRuleConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, allocationRuleConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AllocationRuleConnection")
+		case "edges":
+			out.Values[i] = ec._AllocationRuleConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._AllocationRuleConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._AllocationRuleConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var allocationRuleEdgeImplementors = []string{"AllocationRuleEdge"}
+
+func (ec *executionContext) _AllocationRuleEdge(ctx context.Context, sel ast.SelectionSet, obj *model.AllocationRuleEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, allocationRuleEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AllocationRuleEdge")
+		case "cursor":
+			out.Values[i] = ec._AllocationRuleEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._AllocationRuleEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var archiveBudgetSuccessImplementors = []string{"ArchiveBudgetSuccess", "ArchiveBudgetResult"}
 
 func (ec *executionContext) _ArchiveBudgetSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.ArchiveBudgetSuccess) graphql.Marshaler {
@@ -32078,6 +32871,97 @@ func (ec *executionContext) _HouseholdInvitation(ctx context.Context, sel ast.Se
 	return out
 }
 
+var householdInvitationConnectionImplementors = []string{"HouseholdInvitationConnection"}
+
+func (ec *executionContext) _HouseholdInvitationConnection(ctx context.Context, sel ast.SelectionSet, obj *model.HouseholdInvitationConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, householdInvitationConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("HouseholdInvitationConnection")
+		case "edges":
+			out.Values[i] = ec._HouseholdInvitationConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._HouseholdInvitationConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._HouseholdInvitationConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var householdInvitationEdgeImplementors = []string{"HouseholdInvitationEdge"}
+
+func (ec *executionContext) _HouseholdInvitationEdge(ctx context.Context, sel ast.SelectionSet, obj *model.HouseholdInvitationEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, householdInvitationEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("HouseholdInvitationEdge")
+		case "cursor":
+			out.Values[i] = ec._HouseholdInvitationEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._HouseholdInvitationEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var ledgerConnectionImplementors = []string{"LedgerConnection"}
 
 func (ec *executionContext) _LedgerConnection(ctx context.Context, sel ast.SelectionSet, obj *model.LedgerConnection) graphql.Marshaler {
@@ -32213,6 +33097,97 @@ func (ec *executionContext) _LoanBalance(ctx context.Context, sel ast.SelectionS
 			}
 		case "createdAt":
 			out.Values[i] = ec._LoanBalance_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var loanBalanceConnectionImplementors = []string{"LoanBalanceConnection"}
+
+func (ec *executionContext) _LoanBalanceConnection(ctx context.Context, sel ast.SelectionSet, obj *model.LoanBalanceConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, loanBalanceConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LoanBalanceConnection")
+		case "edges":
+			out.Values[i] = ec._LoanBalanceConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._LoanBalanceConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._LoanBalanceConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var loanBalanceEdgeImplementors = []string{"LoanBalanceEdge"}
+
+func (ec *executionContext) _LoanBalanceEdge(ctx context.Context, sel ast.SelectionSet, obj *model.LoanBalanceEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, loanBalanceEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LoanBalanceEdge")
+		case "cursor":
+			out.Values[i] = ec._LoanBalanceEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._LoanBalanceEdge_node(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -38223,11 +39198,31 @@ func (ec *executionContext) unmarshalNAllocationInput2ᚖgithubᚗcomᚋwalnuts1
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNAllocationRule2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AllocationRule) graphql.Marshaler {
+func (ec *executionContext) marshalNAllocationRule2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRule(ctx context.Context, sel ast.SelectionSet, v *model.AllocationRule) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AllocationRule(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAllocationRuleConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleConnection(ctx context.Context, sel ast.SelectionSet, v *model.AllocationRuleConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AllocationRuleConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAllocationRuleEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AllocationRuleEdge) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNAllocationRule2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRule(ctx, sel, v[i])
+		return ec.marshalNAllocationRuleEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleEdge(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -38239,14 +39234,14 @@ func (ec *executionContext) marshalNAllocationRule2ᚕᚖgithubᚗcomᚋwalnuts1
 	return ret
 }
 
-func (ec *executionContext) marshalNAllocationRule2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRule(ctx context.Context, sel ast.SelectionSet, v *model.AllocationRule) graphql.Marshaler {
+func (ec *executionContext) marshalNAllocationRuleEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleEdge(ctx context.Context, sel ast.SelectionSet, v *model.AllocationRuleEdge) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
-	return ec._AllocationRule(ctx, sel, v)
+	return ec._AllocationRuleEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNAllocationRuleScope2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleScope(ctx context.Context, v any) (model.AllocationRuleScope, error) {
@@ -38598,11 +39593,31 @@ func (ec *executionContext) marshalNHousehold2ᚖgithubᚗcomᚋwalnuts1018ᚋho
 	return ec._Household(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNHouseholdInvitation2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.HouseholdInvitation) graphql.Marshaler {
+func (ec *executionContext) marshalNHouseholdInvitation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitation(ctx context.Context, sel ast.SelectionSet, v *model.HouseholdInvitation) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._HouseholdInvitation(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNHouseholdInvitationConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationConnection(ctx context.Context, sel ast.SelectionSet, v *model.HouseholdInvitationConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._HouseholdInvitationConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNHouseholdInvitationEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.HouseholdInvitationEdge) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNHouseholdInvitation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitation(ctx, sel, v[i])
+		return ec.marshalNHouseholdInvitationEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationEdge(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -38614,14 +39629,14 @@ func (ec *executionContext) marshalNHouseholdInvitation2ᚕᚖgithubᚗcomᚋwal
 	return ret
 }
 
-func (ec *executionContext) marshalNHouseholdInvitation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitation(ctx context.Context, sel ast.SelectionSet, v *model.HouseholdInvitation) graphql.Marshaler {
+func (ec *executionContext) marshalNHouseholdInvitationEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationEdge(ctx context.Context, sel ast.SelectionSet, v *model.HouseholdInvitationEdge) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
-	return ec._HouseholdInvitation(ctx, sel, v)
+	return ec._HouseholdInvitationEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNHouseholdInvitationStatus2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdInvitationStatus(ctx context.Context, v any) (model.HouseholdInvitationStatus, error) {
@@ -38741,11 +39756,31 @@ func (ec *executionContext) marshalNLedgerEntry2githubᚗcomᚋwalnuts1018ᚋhor
 	return ec._LedgerEntry(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNLoanBalance2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalanceᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.LoanBalance) graphql.Marshaler {
+func (ec *executionContext) marshalNLoanBalance2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalance(ctx context.Context, sel ast.SelectionSet, v *model.LoanBalance) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._LoanBalance(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNLoanBalanceConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalanceConnection(ctx context.Context, sel ast.SelectionSet, v *model.LoanBalanceConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._LoanBalanceConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNLoanBalanceEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalanceEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.LoanBalanceEdge) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNLoanBalance2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalance(ctx, sel, v[i])
+		return ec.marshalNLoanBalanceEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalanceEdge(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -38757,14 +39792,14 @@ func (ec *executionContext) marshalNLoanBalance2ᚕᚖgithubᚗcomᚋwalnuts1018
 	return ret
 }
 
-func (ec *executionContext) marshalNLoanBalance2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalance(ctx context.Context, sel ast.SelectionSet, v *model.LoanBalance) graphql.Marshaler {
+func (ec *executionContext) marshalNLoanBalanceEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalanceEdge(ctx context.Context, sel ast.SelectionSet, v *model.LoanBalanceEdge) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
-	return ec._LoanBalance(ctx, sel, v)
+	return ec._LoanBalanceEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx context.Context, v any) (model.Long, error) {
