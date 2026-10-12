@@ -2,18 +2,24 @@ package graph
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/im"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/graph/model"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-type productDB interface {
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-	QueryRow(context.Context, string, ...any) pgx.Row
-}
+type productDB = bob.Executor
 
 func normalizeProductText(value string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
@@ -34,14 +40,28 @@ func (r *mutationResolver) createProductConcept(ctx context.Context, input model
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var householdID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM households WHERE id=$1 FOR SHARE`, input.HouseholdID).Scan(&householdID); errors.Is(err, pgx.ErrNoRows) {
+	householdUUID, _ := gofrsuuid.FromString(input.HouseholdID)
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForShare()).One(ctx, bobpgx.NewTx(tx, nil)); errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
 	id := newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO product_concepts(id,household_id,name,normalized_name,category_id) VALUES ($1,$2,$3,$4,$5)`, id, input.HouseholdID, name, normalized, input.CategoryID); err != nil {
+	idUUID, _ := gofrsuuid.FromString(id)
+	var categoryID *gofrsuuid.UUID
+	if input.CategoryID != nil {
+		categoryValue, parseErr := gofrsuuid.FromString(*input.CategoryID)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		categoryID = &categoryValue
+	}
+	categoryValue := sql.Null[gofrsuuid.UUID]{}
+	if categoryID != nil {
+		categoryValue = sql.Null[gofrsuuid.UUID]{V: *categoryID, Valid: true}
+	}
+	conceptFields := &models.ProductConceptSetter{ID: &idUUID, HouseholdID: &householdUUID, Name: &name, NormalizedName: &normalized, CategoryID: &categoryValue}
+	if _, err := models.ProductConcepts.Insert(conceptFields).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "product.concept.created", id, 1, []string{"name", "categoryId"}, user.MemberID); err != nil {
@@ -50,7 +70,7 @@ func (r *mutationResolver) createProductConcept(ctx context.Context, input model
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return loadProductConcept(ctx, r.DB, id)
+	return loadProductConcept(ctx, bobpgx.NewPool(r.DB), id)
 }
 
 func (r *mutationResolver) createProductVariant(ctx context.Context, input model.CreateProductVariantInput) (*model.ProductVariant, error) {
@@ -69,21 +89,27 @@ func (r *mutationResolver) createProductVariant(ctx context.Context, input model
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var lockedHouseholdID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM households WHERE id=$1 FOR SHARE`, input.HouseholdID).Scan(&lockedHouseholdID); errors.Is(err, pgx.ErrNoRows) {
+	householdUUID, _ := gofrsuuid.FromString(input.HouseholdID)
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForShare()).One(ctx, bobpgx.NewTx(tx, nil)); errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_concepts WHERE id=$1 AND household_id=$2 AND NOT archived)`, input.ConceptID, input.HouseholdID).Scan(&exists); err != nil {
+	conceptUUID, _ := gofrsuuid.FromString(input.ConceptID)
+	if _, err := models.ProductConcepts.Query(sm.Where(psql.And(models.ProductConcepts.Columns.ID.EQ(psql.Arg(conceptUUID)), models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductConcepts.Columns.Archived)))).One(ctx, bobpgx.NewTx(tx, nil)); errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
 		return nil, err
 	}
-	if !exists {
-		return nil, ErrNotFound
-	}
 	id := newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO product_variants(id,household_id,concept_id,name,normalized_name,brand,package_size,barcode) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, id, input.HouseholdID, input.ConceptID, name, normalized, brand, packageSize, nullableTrimmed(input.Barcode)); err != nil {
+	idUUID, _ := gofrsuuid.FromString(id)
+	barcode := nullableTrimmed(input.Barcode)
+	barcodeValue := sql.Null[string]{}
+	if barcodeString, ok := barcode.(string); ok {
+		barcodeValue = sql.Null[string]{V: barcodeString, Valid: true}
+	}
+	conceptVariant := &models.ProductVariantSetter{ID: &idUUID, HouseholdID: &householdUUID, ConceptID: &conceptUUID, Name: &name, NormalizedName: &normalized, Brand: &brand, PackageSize: &packageSize, Barcode: &barcodeValue}
+	if _, err := models.ProductVariants.Insert(conceptVariant).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "product.variant.created", id, 1, []string{"name", "conceptId"}, user.MemberID); err != nil {
@@ -92,7 +118,7 @@ func (r *mutationResolver) createProductVariant(ctx context.Context, input model
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return loadProductVariant(ctx, r.DB, id)
+	return loadProductVariant(ctx, bobpgx.NewPool(r.DB), id)
 }
 
 func (r *mutationResolver) setProductAlias(ctx context.Context, input model.SetProductAliasInput) (*model.ProductAlias, error) {
@@ -110,38 +136,54 @@ func (r *mutationResolver) setProductAlias(ctx context.Context, input model.SetP
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var lockedHouseholdID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM households WHERE id=$1 FOR UPDATE`, input.HouseholdID).Scan(&lockedHouseholdID); errors.Is(err, pgx.ErrNoRows) {
+	householdUUID, _ := gofrsuuid.FromString(input.HouseholdID)
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForUpdate()).One(ctx, bobpgx.NewTx(tx, nil)); errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	var variantExists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_variants WHERE household_id=$1 AND id=$2 AND NOT archived)`, input.HouseholdID, input.VariantID).Scan(&variantExists); err != nil {
-		return nil, err
-	}
-	if !variantExists {
+	variantUUID, _ := gofrsuuid.FromString(input.VariantID)
+	if _, err := models.ProductVariants.Query(sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)), psql.Not(models.ProductVariants.Columns.Archived)))).One(ctx, bobpgx.NewTx(tx, nil)); errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
 	}
 	var aliasID string
 	if err := upsertProductAlias(ctx, tx, input.HouseholdID, input.VariantID, merchantKey, alias, normalizedAlias, &aliasID); err != nil {
 		return nil, err
 	}
-	var revision int64
-	if err := tx.QueryRow(ctx, `SELECT revision FROM product_aliases WHERE id=$1`, aliasID).Scan(&revision); err != nil {
+	aliasUUID, _ := gofrsuuid.FromString(aliasID)
+	aliasRow, err := models.ProductAliases.Query(sm.Where(models.ProductAliases.Columns.ID.EQ(psql.Arg(aliasUUID)))).One(ctx, bobpgx.NewTx(tx, nil))
+	if err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "product.alias.learned", aliasID, revision, []string{"alias", "variantId", "merchant"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "product.alias.learned", aliasID, aliasRow.Revision, []string{"alias", "variantId", "merchant"}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return loadProductAlias(ctx, r.DB, aliasID)
+	return loadProductAlias(ctx, bobpgx.NewPool(r.DB), aliasID)
 }
 
 func upsertProductAlias(ctx context.Context, tx pgx.Tx, householdID, variantID, merchantKey, alias, normalizedAlias string, aliasID *string) error {
-	return tx.QueryRow(ctx, `INSERT INTO product_aliases(id,household_id,variant_id,merchant_key,alias_text,normalized_alias) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (household_id,merchant_key,normalized_alias) DO UPDATE SET variant_id=EXCLUDED.variant_id,alias_text=EXCLUDED.alias_text,revision=product_aliases.revision+1,updated_at=now() RETURNING id::text`, newID(), householdID, variantID, merchantKey, alias, normalizedAlias).Scan(aliasID)
+	idValue, _ := gofrsuuid.FromString(newID())
+	householdValue, _ := gofrsuuid.FromString(householdID)
+	variantValue, _ := gofrsuuid.FromString(variantID)
+	row, err := models.ProductAliases.Insert(
+		&models.ProductAliasSetter{ID: &idValue, HouseholdID: &householdValue, VariantID: &variantValue, MerchantKey: &merchantKey, AliasText: &alias, NormalizedAlias: &normalizedAlias},
+		im.OnConflict("household_id", "merchant_key", "normalized_alias").DoUpdate(
+			im.SetCol("variant_id").To(im.Excluded("variant_id")),
+			im.SetCol("alias_text").To(im.Excluded("alias_text")),
+			im.SetCol("revision").To(models.ProductAliases.Columns.Revision.Plus(psql.Arg(1))),
+			im.SetCol("updated_at").To(psql.F("now")),
+		),
+	).One(ctx, bobpgx.NewTx(tx, nil))
+	if err != nil {
+		return err
+	}
+	*aliasID = row.ID.String()
+	return nil
 }
 
 func trimOptional(value *string) string {
@@ -163,34 +205,25 @@ func nullableTrimmed(value *string) any {
 }
 
 func loadProductConcept(ctx context.Context, db productDB, conceptID string) (*model.ProductConcept, error) {
-	var concept model.ProductConcept
-	var revision int64
-	if err := db.QueryRow(ctx, `SELECT id::text,household_id::text,name,normalized_name,category_id::text,archived,revision FROM product_concepts WHERE id=$1`, conceptID).Scan(&concept.ID, &concept.HouseholdID, &concept.Name, &concept.NormalizedName, &concept.CategoryID, &concept.Archived, &revision); errors.Is(err, pgx.ErrNoRows) {
+	conceptUUID, _ := gofrsuuid.FromString(conceptID)
+	row, err := models.ProductConcepts.Query(sm.Where(models.ProductConcepts.Columns.ID.EQ(psql.Arg(conceptUUID)))).One(ctx, db)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	concept.Revision = int(revision)
-	rows, err := db.Query(ctx, `SELECT id::text FROM product_variants WHERE household_id=$1 AND concept_id=$2 ORDER BY normalized_name,id`, concept.HouseholdID, conceptID)
+	concept := model.ProductConcept{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Name: row.Name, NormalizedName: row.NormalizedName, Archived: row.Archived, Revision: int(row.Revision)}
+	if row.CategoryID.Valid {
+		categoryID := row.CategoryID.V.String()
+		concept.CategoryID = &categoryID
+	}
+	rows, err := models.ProductVariants.Query(sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(row.HouseholdID)), models.ProductVariants.Columns.ConceptID.EQ(psql.Arg(conceptUUID)))), sm.OrderBy(models.ProductVariants.Columns.NormalizedName), sm.OrderBy(models.ProductVariants.Columns.ID)).All(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	concept.Variants = make([]*model.ProductVariant, 0, len(ids))
-	for _, id := range ids {
-		variant, err := loadProductVariant(ctx, db, id)
+	concept.Variants = make([]*model.ProductVariant, 0, len(rows))
+	for _, variantRow := range rows {
+		variant, err := loadProductVariant(ctx, db, variantRow.ID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -200,34 +233,24 @@ func loadProductConcept(ctx context.Context, db productDB, conceptID string) (*m
 }
 
 func loadProductVariant(ctx context.Context, db productDB, variantID string) (*model.ProductVariant, error) {
-	var variant model.ProductVariant
-	var revision int64
-	if err := db.QueryRow(ctx, `SELECT id::text,household_id::text,concept_id::text,name,normalized_name,brand,package_size,barcode,archived,revision FROM product_variants WHERE id=$1`, variantID).Scan(&variant.ID, &variant.HouseholdID, &variant.ConceptID, &variant.Name, &variant.NormalizedName, &variant.Brand, &variant.PackageSize, &variant.Barcode, &variant.Archived, &revision); errors.Is(err, pgx.ErrNoRows) {
+	variantUUID, _ := gofrsuuid.FromString(variantID)
+	row, err := models.ProductVariants.Query(sm.Where(models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)))).One(ctx, db)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	variant.Revision = int(revision)
-	rows, err := db.Query(ctx, `SELECT id::text FROM product_aliases WHERE household_id=$1 AND variant_id=$2 ORDER BY merchant_key,normalized_alias`, variant.HouseholdID, variant.ID)
+	variant := model.ProductVariant{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), ConceptID: row.ConceptID.String(), Name: row.Name, NormalizedName: row.NormalizedName, Brand: row.Brand, PackageSize: row.PackageSize, Archived: row.Archived, Revision: int(row.Revision)}
+	if row.Barcode.Valid {
+		variant.Barcode = &row.Barcode.V
+	}
+	rows, err := models.ProductAliases.Query(sm.Where(psql.And(models.ProductAliases.Columns.HouseholdID.EQ(psql.Arg(row.HouseholdID)), models.ProductAliases.Columns.VariantID.EQ(psql.Arg(row.ID)))), sm.OrderBy(models.ProductAliases.Columns.MerchantKey), sm.OrderBy(models.ProductAliases.Columns.NormalizedAlias)).All(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	variant.Aliases = make([]*model.ProductAlias, 0, len(ids))
-	for _, id := range ids {
-		alias, err := loadProductAlias(ctx, db, id)
+	variant.Aliases = make([]*model.ProductAlias, 0, len(rows))
+	for _, aliasRow := range rows {
+		alias, err := loadProductAlias(ctx, db, aliasRow.ID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -237,41 +260,28 @@ func loadProductVariant(ctx context.Context, db productDB, variantID string) (*m
 }
 
 func loadProductAlias(ctx context.Context, db productDB, aliasID string) (*model.ProductAlias, error) {
-	var alias model.ProductAlias
-	var revision int64
-	if err := db.QueryRow(ctx, `SELECT id::text,household_id::text,variant_id::text,merchant_key,alias_text,normalized_alias,revision FROM product_aliases WHERE id=$1`, aliasID).Scan(&alias.ID, &alias.HouseholdID, &alias.VariantID, &alias.MerchantKey, &alias.Alias, &alias.NormalizedAlias, &revision); errors.Is(err, pgx.ErrNoRows) {
+	aliasUUID, _ := gofrsuuid.FromString(aliasID)
+	row, err := models.ProductAliases.Query(sm.Where(models.ProductAliases.Columns.ID.EQ(psql.Arg(aliasUUID)))).One(ctx, db)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	alias.Revision = int(revision)
-	return &alias, nil
+	return &model.ProductAlias{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), VariantID: row.VariantID.String(), MerchantKey: row.MerchantKey, Alias: row.AliasText, NormalizedAlias: row.NormalizedAlias, Revision: int(row.Revision)}, nil
 }
 
 func (r *queryResolver) productCatalog(ctx context.Context, householdID string) ([]*model.ProductConcept, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	rows, err := r.DB.Query(ctx, `SELECT id::text FROM product_concepts WHERE household_id=$1 ORDER BY normalized_name,id`, householdID)
+	householdUUID, _ := gofrsuuid.FromString(householdID)
+	rows, err := models.ProductConcepts.Query(sm.Where(models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID))), sm.OrderBy(models.ProductConcepts.Columns.NormalizedName), sm.OrderBy(models.ProductConcepts.Columns.ID)).All(ctx, bobpgx.NewPool(r.DB))
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	result := make([]*model.ProductConcept, 0, len(ids))
-	for _, id := range ids {
-		concept, err := loadProductConcept(ctx, r.DB, id)
+	result := make([]*model.ProductConcept, 0, len(rows))
+	for _, conceptRow := range rows {
+		concept, err := loadProductConcept(ctx, bobpgx.NewPool(r.DB), conceptRow.ID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -299,62 +309,83 @@ func (r *queryResolver) productSuggestions(ctx context.Context, householdID, que
 	if merchant != nil {
 		merchantKey = normalizeMerchant(*merchant)
 	}
-	pattern := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(searchKey) + "%"
-	rows, err := r.DB.Query(ctx, `
-		SELECT v.id::text,c.id::text,COALESCE(alias.alias_text,v.name),
-			CASE
-				WHEN alias.normalized_alias=$2 THEN 100
-				WHEN v.normalized_name=$2 THEN 95
-				WHEN c.normalized_name=$2 THEN 90
-				WHEN alias.normalized_alias LIKE $2||'%' THEN 80
-				WHEN v.normalized_name LIKE $2||'%' THEN 75
-				WHEN c.normalized_name LIKE $2||'%' THEN 70
-				ELSE 50
-			END AS score
-		FROM product_variants v
-		JOIN product_concepts c ON c.household_id=v.household_id AND c.id=v.concept_id
-		LEFT JOIN LATERAL (
-			SELECT pa.alias_text,pa.normalized_alias FROM product_aliases pa
-			WHERE pa.household_id=v.household_id AND pa.variant_id=v.id AND pa.merchant_key=$3
-				AND $3<>'' AND pa.normalized_alias ILIKE $4 ESCAPE '\'
-			ORDER BY (pa.normalized_alias=$2) DESC,pa.revision DESC LIMIT 1
-		) alias ON true
-		WHERE v.household_id=$1 AND NOT v.archived AND NOT c.archived
-			AND (v.normalized_name ILIKE $4 ESCAPE '\' OR c.normalized_name ILIKE $4 ESCAPE '\' OR alias.normalized_alias IS NOT NULL)
-		ORDER BY score DESC,c.normalized_name,v.normalized_name,v.id LIMIT $5`, householdID, searchKey, merchantKey, pattern, pageSize)
+	householdUUID, _ := gofrsuuid.FromString(householdID)
+	variantRows, err := models.ProductVariants.Query(
+		sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductVariants.Columns.Archived))),
+		sm.OrderBy(models.ProductVariants.Columns.NormalizedName), sm.OrderBy(models.ProductVariants.Columns.ID),
+	).All(ctx, bobpgx.NewPool(r.DB))
 	if err != nil {
 		return nil, err
 	}
-	type suggestionRow struct {
-		variantID string
-		conceptID string
-		matched   string
-		score     int
+	type suggestion struct {
+		item                                *model.ProductSuggestion
+		conceptName, variantName, variantID string
 	}
-	items := make([]suggestionRow, 0)
-	for rows.Next() {
-		var item suggestionRow
-		if err := rows.Scan(&item.variantID, &item.conceptID, &item.matched, &item.score); err != nil {
-			rows.Close()
+	items := make([]suggestion, 0, len(variantRows))
+	for _, variantRow := range variantRows {
+		variant, err := loadProductVariant(ctx, bobpgx.NewPool(r.DB), variantRow.ID.String())
+		if err != nil {
 			return nil, err
 		}
-		items = append(items, item)
+		concept, err := loadProductConcept(ctx, bobpgx.NewPool(r.DB), variant.ConceptID)
+		if err != nil {
+			return nil, err
+		}
+		if concept.Archived {
+			continue
+		}
+		matchedAlias := (*model.ProductAlias)(nil)
+		if merchantKey != "" {
+			for _, alias := range variant.Aliases {
+				matchesSearch := alias.MerchantKey == merchantKey && strings.Contains(alias.NormalizedAlias, searchKey)
+				isExactMatch := alias.NormalizedAlias == searchKey
+				previousIsExactMatch := matchedAlias != nil && matchedAlias.NormalizedAlias == searchKey
+				if matchesSearch && (matchedAlias == nil || isExactMatch && !previousIsExactMatch || isExactMatch == previousIsExactMatch && alias.Revision > matchedAlias.Revision) {
+					matchedAlias = alias
+				}
+			}
+		}
+		if !strings.Contains(variant.NormalizedName, searchKey) && !strings.Contains(concept.NormalizedName, searchKey) && matchedAlias == nil {
+			continue
+		}
+		matched, score := variant.Name, 50
+		if matchedAlias != nil {
+			matched = matchedAlias.Alias
+		}
+		switch {
+		case matchedAlias != nil && matchedAlias.NormalizedAlias == searchKey:
+			score = 100
+		case variant.NormalizedName == searchKey:
+			score = 95
+		case concept.NormalizedName == searchKey:
+			score = 90
+		case matchedAlias != nil && strings.HasPrefix(matchedAlias.NormalizedAlias, searchKey):
+			score = 80
+		case strings.HasPrefix(variant.NormalizedName, searchKey):
+			score = 75
+		case strings.HasPrefix(concept.NormalizedName, searchKey):
+			score = 70
+		}
+		items = append(items, suggestion{item: &model.ProductSuggestion{Concept: concept, Variant: variant, MatchedName: matched, Score: score}, conceptName: concept.NormalizedName, variantName: variant.NormalizedName, variantID: variant.ID})
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].item.Score != items[j].item.Score {
+			return items[i].item.Score > items[j].item.Score
+		}
+		if items[i].conceptName != items[j].conceptName {
+			return items[i].conceptName < items[j].conceptName
+		}
+		if items[i].variantName != items[j].variantName {
+			return items[i].variantName < items[j].variantName
+		}
+		return items[i].variantID < items[j].variantID
+	})
+	if len(items) > pageSize {
+		items = items[:pageSize]
 	}
 	result := make([]*model.ProductSuggestion, 0, len(items))
 	for _, item := range items {
-		concept, err := loadProductConcept(ctx, r.DB, item.conceptID)
-		if err != nil {
-			return nil, err
-		}
-		variant, err := loadProductVariant(ctx, r.DB, item.variantID)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, &model.ProductSuggestion{Concept: concept, Variant: variant, MatchedName: item.matched, Score: item.score})
+		result = append(result, item.item)
 	}
 	return result, nil
 }

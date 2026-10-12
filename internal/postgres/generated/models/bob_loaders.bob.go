@@ -23,6 +23,7 @@ type preloaders struct {
 	AllocationRuleWeight allocationRuleWeightPreloader
 	AllocationRule       allocationRulePreloader
 	Category             categoryPreloader
+	CorrectionPayment    correctionPaymentPreloader
 	Correction           correctionPreloader
 	DocumentConfirmation documentConfirmationPreloader
 	EvidenceLink         evidenceLinkPreloader
@@ -48,7 +49,9 @@ type preloaders struct {
 	ProductCorrection    productCorrectionPreloader
 	ProductVariant       productVariantPreloader
 	PurchaseItem         purchaseItemPreloader
+	PurchasePayment      purchasePaymentPreloader
 	Purchase             purchasePreloader
+	SettlementAdjustment settlementAdjustmentPreloader
 	SettlementLine       settlementLinePreloader
 	SettlementRun        settlementRunPreloader
 	SourceDocument       sourceDocumentPreloader
@@ -63,6 +66,7 @@ func getPreloaders() preloaders {
 		AllocationRuleWeight: buildAllocationRuleWeightPreloader(),
 		AllocationRule:       buildAllocationRulePreloader(),
 		Category:             buildCategoryPreloader(),
+		CorrectionPayment:    buildCorrectionPaymentPreloader(),
 		Correction:           buildCorrectionPreloader(),
 		DocumentConfirmation: buildDocumentConfirmationPreloader(),
 		EvidenceLink:         buildEvidenceLinkPreloader(),
@@ -88,7 +92,9 @@ func getPreloaders() preloaders {
 		ProductCorrection:    buildProductCorrectionPreloader(),
 		ProductVariant:       buildProductVariantPreloader(),
 		PurchaseItem:         buildPurchaseItemPreloader(),
+		PurchasePayment:      buildPurchasePaymentPreloader(),
 		Purchase:             buildPurchasePreloader(),
+		SettlementAdjustment: buildSettlementAdjustmentPreloader(),
 		SettlementLine:       buildSettlementLinePreloader(),
 		SettlementRun:        buildSettlementRunPreloader(),
 		SourceDocument:       buildSourceDocumentPreloader(),
@@ -109,6 +115,7 @@ type thenLoaders[Q orm.Loadable] struct {
 	AllocationRuleWeight allocationRuleWeightThenLoader[Q]
 	AllocationRule       allocationRuleThenLoader[Q]
 	Category             categoryThenLoader[Q]
+	CorrectionPayment    correctionPaymentThenLoader[Q]
 	Correction           correctionThenLoader[Q]
 	DocumentConfirmation documentConfirmationThenLoader[Q]
 	EvidenceLink         evidenceLinkThenLoader[Q]
@@ -134,7 +141,9 @@ type thenLoaders[Q orm.Loadable] struct {
 	ProductCorrection    productCorrectionThenLoader[Q]
 	ProductVariant       productVariantThenLoader[Q]
 	PurchaseItem         purchaseItemThenLoader[Q]
+	PurchasePayment      purchasePaymentThenLoader[Q]
 	Purchase             purchaseThenLoader[Q]
+	SettlementAdjustment settlementAdjustmentThenLoader[Q]
 	SettlementLine       settlementLineThenLoader[Q]
 	SettlementRun        settlementRunThenLoader[Q]
 	SourceDocument       sourceDocumentThenLoader[Q]
@@ -149,6 +158,7 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		AllocationRuleWeight: buildAllocationRuleWeightThenLoader[Q](),
 		AllocationRule:       buildAllocationRuleThenLoader[Q](),
 		Category:             buildCategoryThenLoader[Q](),
+		CorrectionPayment:    buildCorrectionPaymentThenLoader[Q](),
 		Correction:           buildCorrectionThenLoader[Q](),
 		DocumentConfirmation: buildDocumentConfirmationThenLoader[Q](),
 		EvidenceLink:         buildEvidenceLinkThenLoader[Q](),
@@ -174,7 +184,9 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		ProductCorrection:    buildProductCorrectionThenLoader[Q](),
 		ProductVariant:       buildProductVariantThenLoader[Q](),
 		PurchaseItem:         buildPurchaseItemThenLoader[Q](),
+		PurchasePayment:      buildPurchasePaymentThenLoader[Q](),
 		Purchase:             buildPurchaseThenLoader[Q](),
+		SettlementAdjustment: buildSettlementAdjustmentThenLoader[Q](),
 		SettlementLine:       buildSettlementLineThenLoader[Q](),
 		SettlementRun:        buildSettlementRunThenLoader[Q](),
 		SourceDocument:       buildSourceDocumentThenLoader[Q](),

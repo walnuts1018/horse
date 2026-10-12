@@ -52,6 +52,28 @@ func TestCalculateExpenseAdjustmentsRejectsUnconfiguredOwnership(t *testing.T) {
 	}
 }
 
+func TestSplitFundingExpenseKeepsResponsibilityAcrossMultiplePayments(t *testing.T) {
+	items := []FundingExpenseItem{{Amount: 101, Allocations: []PoolAmount{{PoolID: "shared", Amount: 101}}}}
+	payments := []FundingPayment{{ID: "account-a", PoolID: "personal-a", Amount: 60}, {ID: "account-b", PoolID: "personal-b", Amount: 41}}
+
+	got, err := SplitFundingExpense(items, payments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Items[0].Amount+got[1].Items[0].Amount != 101 {
+		t.Fatalf("split does not preserve item total: %#v", got)
+	}
+	for _, expense := range got {
+		var total int64
+		for _, allocation := range expense.Items[0].Allocations {
+			total += allocation.Amount
+		}
+		if total != expense.Items[0].Amount {
+			t.Fatalf("payment source %q has mismatched allocation total: %#v", expense.PaymentPoolID, expense.Items[0])
+		}
+	}
+}
+
 func assertAdjustments(t *testing.T, got []ExpenseAdjustment, adjustments, advances map[string]int64) {
 	t.Helper()
 	if len(got) != len(adjustments)+len(advances) {

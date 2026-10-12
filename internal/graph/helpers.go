@@ -1,9 +1,12 @@
 package graph
 
 import (
+	"cmp"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"uuid"
@@ -11,6 +14,8 @@ import (
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/domain"
@@ -27,8 +32,18 @@ func requireMember(ctx context.Context, db *pgxpool.Pool, householdID string) (a
 	if err != nil {
 		return auth.Principal{}, err
 	}
-	var member bool
-	err = db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM household_members WHERE household_id = $1 AND member_id = $2)`, householdID, user.MemberID).Scan(&member)
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return auth.Principal{}, fmt.Errorf("parse household id: %w", err)
+	}
+	memberUUID, err := gofrsuuid.FromString(user.MemberID)
+	if err != nil {
+		return auth.Principal{}, fmt.Errorf("parse member id: %w", err)
+	}
+	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberUUID)),
+	))).Exists(ctx, bobpgx.NewPool(db))
 	if err != nil {
 		return auth.Principal{}, err
 	}
@@ -58,7 +73,7 @@ func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*
 		return nil, fmt.Errorf("parse household id: %w", err)
 	}
 	household, err := models.FindHousehold(ctx, bobpgx.NewPool(db), id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
@@ -69,208 +84,327 @@ func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*
 		Revision: int(household.Revision), CreatedAt: timeString(household.CreatedAt), UpdatedAt: timeString(household.UpdatedAt),
 	}
 	allocationVersion := household.DefaultAllocationVersion
+	executor := bobpgx.NewPool(db)
 	result.Members = make([]*model.Member, 0)
-	rows, err := db.Query(ctx, `SELECT m.id::text, m.display_name, hm.role FROM household_members hm JOIN members m ON m.id = hm.member_id WHERE hm.household_id = $1 ORDER BY hm.joined_at, m.id`, householdID)
+	householdMembers, err := models.HouseholdMembers.Query(
+		sm.Where(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(id))),
+		sm.OrderBy(models.HouseholdMembers.Columns.JoinedAt),
+		sm.OrderBy(models.HouseholdMembers.Columns.MemberID),
+	).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		member := &model.Member{}
-		if err := rows.Scan(&member.ID, &member.DisplayName, &member.Role); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		result.Members = append(result.Members, member)
+	if err := householdMembers.LoadMember(ctx, executor); err != nil {
+		return nil, err
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+	for _, householdMember := range householdMembers {
+		result.Members = append(result.Members, &model.Member{
+			ID: householdMember.MemberID.String(), DisplayName: householdMember.R.Member.DisplayName, Role: householdMember.Role,
+		})
+	}
+	pools, err := models.Pools.Query(
+		sm.Where(models.Pools.Columns.HouseholdID.EQ(psql.Arg(id))),
+		sm.OrderBy(models.Pools.Columns.CreatedAt),
+		sm.OrderBy(models.Pools.Columns.ID),
+	).All(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
 	result.Pools = make([]*model.Pool, 0)
-	rows, err = db.Query(ctx, `SELECT p.id::text, p.name, p.kind, COALESCE(d.weight, 0), p.funding_rule_version FROM pools p LEFT JOIN allocation_defaults d ON d.household_id = p.household_id AND d.pool_id = p.id AND d.version = $2 WHERE p.household_id = $1 ORDER BY p.created_at, p.id`, householdID, allocationVersion)
+	defaults, err := models.AllocationDefaults.Query(sm.Where(psql.And(
+		models.AllocationDefaults.Columns.HouseholdID.EQ(psql.Arg(id)),
+		models.AllocationDefaults.Columns.Version.EQ(psql.Arg(allocationVersion)),
+	))).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		pool := &model.Pool{}
-		if err := rows.Scan(&pool.ID, &pool.Name, &pool.Kind, &pool.DefaultShareWeight, &pool.FundingRuleVersion); err != nil {
-			rows.Close()
-			return nil, err
+	defaultWeightByPool := make(map[gofrsuuid.UUID]int64, len(defaults))
+	for _, allocation := range defaults {
+		defaultWeightByPool[allocation.PoolID] = allocation.Weight
+	}
+	poolByID := make(map[gofrsuuid.UUID]*model.Pool, len(pools))
+	for _, pool := range pools {
+		value := &model.Pool{
+			ID: pool.ID.String(), Name: pool.Name, Kind: model.PoolKind(pool.Kind),
+			DefaultShareWeight: graphLong(defaultWeightByPool[pool.ID]),
+			FundingRuleVersion: int(pool.FundingRuleVersion), FundingShares: make([]*model.PoolFundingShare, 0),
 		}
-		result.Pools = append(result.Pools, pool)
+		result.Pools = append(result.Pools, value)
+		poolByID[pool.ID] = value
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	fundingRows, err := db.Query(ctx, `SELECT r.pool_id::text,r.owner_member_id::text,r.settlement_policy,s.member_id::text,s.weight,m.display_name FROM pool_funding_rules r LEFT JOIN pool_funding_shares s ON s.household_id=r.household_id AND s.pool_id=r.pool_id AND s.version=r.version LEFT JOIN members m ON m.id=s.member_id JOIN pools p ON p.household_id=r.household_id AND p.id=r.pool_id AND p.funding_rule_version=r.version WHERE r.household_id=$1 ORDER BY r.pool_id,s.member_id`, householdID)
+	fundingRules, err := models.PoolFundingRules.Query(sm.Where(models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(id)))).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	poolByID := make(map[string]*model.Pool, len(result.Pools))
-	for _, pool := range result.Pools {
-		pool.FundingShares = make([]*model.PoolFundingShare, 0)
-		poolByID[pool.ID] = pool
-	}
-	for fundingRows.Next() {
-		var poolID string
-		var owner, policy, memberID, memberName *string
-		var weight *int64
-		if err := fundingRows.Scan(&poolID, &owner, &policy, &memberID, &weight, &memberName); err != nil {
-			fundingRows.Close()
-			return nil, err
-		}
-		pool := poolByID[poolID]
-		if owner != nil {
-			pool.OwnerMemberID = owner
-		}
-		if policy != nil {
-			value := model.SharedPoolSettlementPolicy(*policy)
-			pool.SettlementPolicy = &value
-		}
-		if memberID != nil {
-			pool.FundingShares = append(pool.FundingShares, &model.PoolFundingShare{MemberID: *memberID, MemberName: *memberName, Weight: graphLong(*weight)})
-		}
-	}
-	fundingRows.Close()
-	if err := fundingRows.Err(); err != nil {
+	fundingShares, err := models.PoolFundingShares.Query(sm.Where(models.PoolFundingShares.Columns.HouseholdID.EQ(psql.Arg(id)))).All(ctx, executor)
+	if err != nil {
 		return nil, err
+	}
+	memberNameByID := make(map[gofrsuuid.UUID]string, len(householdMembers))
+	for _, householdMember := range householdMembers {
+		memberNameByID[householdMember.MemberID] = householdMember.R.Member.DisplayName
+	}
+	activeRules := make(map[gofrsuuid.UUID]*models.PoolFundingRule)
+	for _, rule := range fundingRules {
+		if pool := poolByID[rule.PoolID]; pool != nil && int64(pool.FundingRuleVersion) == int64(rule.Version) {
+			activeRules[rule.PoolID] = rule
+		}
+	}
+	for _, rule := range activeRules {
+		pool := poolByID[rule.PoolID]
+		if rule.OwnerMemberID.Valid {
+			owner := rule.OwnerMemberID.V.String()
+			pool.OwnerMemberID = &owner
+		}
+		if rule.SettlementPolicy.Valid {
+			policy := model.SharedPoolSettlementPolicy(rule.SettlementPolicy.V)
+			pool.SettlementPolicy = &policy
+		}
+	}
+	slices.SortFunc(fundingShares, func(left, right *models.PoolFundingShare) int {
+		if comparison := cmp.Compare(left.PoolID.String(), right.PoolID.String()); comparison != 0 {
+			return comparison
+		}
+		return cmp.Compare(left.MemberID.String(), right.MemberID.String())
+	})
+	for _, share := range fundingShares {
+		rule := activeRules[share.PoolID]
+		pool := poolByID[share.PoolID]
+		if rule == nil || pool == nil || share.Version != rule.Version {
+			continue
+		}
+		pool.FundingShares = append(pool.FundingShares, &model.PoolFundingShare{
+			MemberID: share.MemberID.String(), MemberName: memberNameByID[share.MemberID], Weight: graphLong(share.Weight),
+		})
 	}
 	result.Accounts = make([]*model.Account, 0)
-	rows, err = db.Query(ctx, `SELECT id::text, name, kind, pool_id::text FROM accounts WHERE household_id = $1 ORDER BY created_at, id`, householdID)
+	accounts, err := models.Accounts.Query(
+		sm.Where(models.Accounts.Columns.HouseholdID.EQ(psql.Arg(id))),
+		sm.OrderBy(models.Accounts.Columns.CreatedAt),
+		sm.OrderBy(models.Accounts.Columns.ID),
+	).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		account := &model.Account{}
-		if err := rows.Scan(&account.ID, &account.Name, &account.Kind, &account.PoolID); err != nil {
-			rows.Close()
-			return nil, err
+	for _, storedAccount := range accounts {
+		account := &model.Account{ID: storedAccount.ID.String(), Name: storedAccount.Name, Kind: model.AccountKind(storedAccount.Kind)}
+		if storedAccount.PoolID.Valid {
+			poolID := storedAccount.PoolID.V.String()
+			account.PoolID = &poolID
 		}
 		result.Accounts = append(result.Accounts, account)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
 	result.Categories = make([]*model.Category, 0)
-	rows, err = db.Query(ctx, `SELECT id::text, name, parent_id::text, archived FROM categories WHERE household_id = $1 ORDER BY name, id`, householdID)
+	categories, err := models.Categories.Query(
+		sm.Where(models.Categories.Columns.HouseholdID.EQ(psql.Arg(id))),
+		sm.OrderBy(models.Categories.Columns.Name),
+		sm.OrderBy(models.Categories.Columns.ID),
+	).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		category := &model.Category{}
-		if err := rows.Scan(&category.ID, &category.Name, &category.ParentID, &category.Archived); err != nil {
-			rows.Close()
-			return nil, err
+	for _, storedCategory := range categories {
+		category := &model.Category{ID: storedCategory.ID.String(), Name: storedCategory.Name, Archived: storedCategory.Archived}
+		if storedCategory.ParentID.Valid {
+			parentID := storedCategory.ParentID.V.String()
+			category.ParentID = &parentID
 		}
 		result.Categories = append(result.Categories, category)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
 	result.DefaultAllocation = make([]*model.Allocation, 0)
-	rows, err = db.Query(ctx, `SELECT d.pool_id::text, p.name, d.weight FROM allocation_defaults d JOIN pools p ON p.id = d.pool_id WHERE d.household_id = $1 AND d.version = $2 ORDER BY p.id`, householdID, allocationVersion)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		allocation := &model.Allocation{}
-		if err := rows.Scan(&allocation.PoolID, &allocation.PoolName, &allocation.Weight); err != nil {
-			rows.Close()
-			return nil, err
+	for _, allocation := range defaults {
+		pool := poolByID[allocation.PoolID]
+		if pool == nil {
+			continue
 		}
-		result.DefaultAllocation = append(result.DefaultAllocation, allocation)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
+		poolName := pool.Name
+		result.DefaultAllocation = append(result.DefaultAllocation, &model.Allocation{
+			PoolID: pool.ID, PoolName: &poolName, Weight: graphLong(allocation.Weight),
+		})
 	}
 	return &result, nil
 }
 
 func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*model.Purchase, error) {
-	var result model.Purchase
-	var occurredAt, createdAt, updatedAt time.Time
-	var revision int64
-	var total int64
-	err := db.QueryRow(ctx, `SELECT p.id::text, p.household_id::text, p.occurred_at, p.merchant, p.payment_account_id::text, p.revision, p.status, p.created_at, p.updated_at, COALESCE(sum(i.amount_yen), 0) FROM purchases p LEFT JOIN purchase_items i ON i.purchase_id = p.id WHERE p.id = $1 GROUP BY p.id`, purchaseID).Scan(&result.ID, &result.HouseholdID, &occurredAt, &result.Merchant, &result.PaymentAccountID, &revision, &result.Status, &createdAt, &updatedAt, &total)
-	if errors.Is(err, pgx.ErrNoRows) {
+	id, err := gofrsuuid.FromString(purchaseID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	executor := bobpgx.NewPool(db)
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(id)))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	result.OccurredAt, result.CreatedAt, result.UpdatedAt = timeString(occurredAt), timeString(createdAt), timeString(updatedAt)
-	result.Revision, result.Currency = int(revision), "JPY"
-	result.TotalYen = graphLong(total)
-	result.Items = make([]*model.PurchaseItem, 0)
-	rows, err := db.Query(ctx, `SELECT id::text,name,amount_yen,category_id::text,product_variant_id::text,revision FROM purchase_items WHERE purchase_id=$1 ORDER BY created_at,id`, purchaseID)
+	result := &model.Purchase{
+		ID: purchase.ID.String(), HouseholdID: purchase.HouseholdID.String(),
+		OccurredAt: timeString(purchase.OccurredAt), Merchant: purchase.Merchant,
+		Revision: int(purchase.Revision), Status: model.PurchaseStatus(purchase.Status), Currency: "JPY",
+		CreatedAt: timeString(purchase.CreatedAt), UpdatedAt: timeString(purchase.UpdatedAt),
+		Items: make([]*model.PurchaseItem, 0), PaymentAllocations: make([]*model.PurchasePayment, 0),
+		Corrections: make([]*model.PurchaseCorrection, 0),
+	}
+	if purchase.PaymentAccountID.Valid {
+		paymentAccountID := purchase.PaymentAccountID.V.String()
+		result.PaymentAccountID = &paymentAccountID
+	}
+	items, err := models.PurchaseItems.Query(
+		sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),
+		sm.OrderBy(models.PurchaseItems.Columns.CreatedAt),
+		sm.OrderBy(models.PurchaseItems.Columns.ID),
+	).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		item := &model.PurchaseItem{Currency: "JPY", Allocations: make([]*model.Allocation, 0)}
-		var amount, itemRevision int64
-		if err := rows.Scan(&item.ID, &item.Name, &amount, &item.CategoryID, &item.ProductVariantID, &itemRevision); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		item.AmountYen = graphLong(amount)
-		item.Revision = int(itemRevision)
-		allocations, err := db.Query(ctx, `SELECT a.pool_id::text, p.name, a.weight, a.amount_yen FROM item_allocations a JOIN pools p ON p.id = a.pool_id WHERE a.item_id = $1 ORDER BY p.id`, item.ID)
+	allocationsByItem := make(map[gofrsuuid.UUID]models.ItemAllocationSlice, len(items))
+	for _, item := range items {
+		allocations, err := models.ItemAllocations.Query(sm.Where(psql.And(
+			models.ItemAllocations.Columns.HouseholdID.EQ(psql.Arg(item.HouseholdID)),
+			models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(item.PurchaseID)),
+			models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(item.ID)),
+		))).All(ctx, executor)
 		if err != nil {
-			rows.Close()
 			return nil, err
 		}
-		for allocations.Next() {
-			allocation := &model.Allocation{}
-			var weight, allocated int64
-			if err := allocations.Scan(&allocation.PoolID, &allocation.PoolName, &weight, &allocated); err != nil {
-				allocations.Close()
-				rows.Close()
-				return nil, err
+		allocationsByItem[item.ID] = allocations
+	}
+	for _, allocations := range allocationsByItem {
+		if err := allocations.LoadPool(ctx, executor); err != nil {
+			return nil, err
+		}
+	}
+	var total int64
+	for _, storedItem := range items {
+		item := &model.PurchaseItem{
+			ID: storedItem.ID.String(), Name: storedItem.Name, AmountYen: graphLong(storedItem.AmountYen),
+			Revision: int(storedItem.Revision), Currency: "JPY", Allocations: make([]*model.Allocation, 0),
+		}
+		if storedItem.CategoryID.Valid {
+			categoryID := storedItem.CategoryID.V.String()
+			item.CategoryID = &categoryID
+		}
+		if storedItem.ProductVariantID.Valid {
+			variantID := storedItem.ProductVariantID.V.String()
+			item.ProductVariantID = &variantID
+		}
+		var ok bool
+		total, ok = checkedAdd(total, storedItem.AmountYen)
+		if !ok {
+			return nil, fmt.Errorf("purchase %s total exceeds int64", purchaseID)
+		}
+		for _, storedAllocation := range allocationsByItem[storedItem.ID] {
+			poolName := storedAllocation.R.Pool.Name
+			allocation := &model.Allocation{
+				PoolID: storedAllocation.PoolID.String(), PoolName: &poolName,
+				Weight: graphLong(storedAllocation.Weight),
 			}
-			allocation.Weight = graphLong(weight)
-			amount := graphLong(allocated)
+			amount := graphLong(storedAllocation.AmountYen)
 			allocation.AmountYen = &amount
 			item.Allocations = append(item.Allocations, allocation)
 		}
-		allocations.Close()
-		if err := allocations.Err(); err != nil {
-			rows.Close()
-			return nil, err
-		}
 		result.Items = append(result.Items, item)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if result.PaymentAccountID != nil {
-		account := &model.Account{}
-		if err := db.QueryRow(ctx, `SELECT id::text, name, kind, pool_id::text FROM accounts WHERE id = $1`, *result.PaymentAccountID).Scan(&account.ID, &account.Name, &account.Kind, &account.PoolID); err != nil {
+	result.TotalYen = graphLong(total)
+	if purchase.PaymentAccountID.Valid {
+		if err := purchase.LoadAccount(ctx, executor); err != nil {
 			return nil, err
 		}
-		result.PaymentAccount = account
+		result.PaymentAccount = graphAccount(purchase.R.Account)
 	}
-	return &result, nil
-}
-
-func loadWeights(ctx context.Context, tx pgx.Tx, householdID string, version int64) ([]domain.Weight, error) {
-	rows, err := tx.Query(ctx, `SELECT pool_id::text, weight FROM allocation_defaults WHERE household_id = $1 AND version = $2 ORDER BY pool_id`, householdID, version)
+	paymentRows, err := models.PurchasePayments.Query(
+		sm.Where(models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),
+		sm.OrderBy(models.PurchasePayments.Columns.LineNo),
+	).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	weights := make([]domain.Weight, 0)
-	for rows.Next() {
-		var weight domain.Weight
-		if err := rows.Scan(&weight.PoolID, &weight.Value); err != nil {
+	if err := paymentRows.LoadAccount(ctx, executor); err != nil {
+		return nil, err
+	}
+	for _, storedPayment := range paymentRows {
+		result.PaymentAllocations = append(result.PaymentAllocations, &model.PurchasePayment{
+			PaymentAccountID: storedPayment.AccountID.String(), AmountYen: graphLong(storedPayment.AmountYen),
+			Account: graphAccount(storedPayment.R.Account),
+		})
+	}
+	if len(result.PaymentAllocations) == 0 && result.PaymentAccountID != nil {
+		account := result.PaymentAccount
+		result.PaymentAllocations = append(result.PaymentAllocations, &model.PurchasePayment{PaymentAccountID: *result.PaymentAccountID, Account: account, AmountYen: graphLong(total)})
+	}
+	correctionRows, err := models.Corrections.Query(
+		sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),
+		sm.OrderBy(models.Corrections.Columns.CreatedAt),
+		sm.OrderBy(models.Corrections.Columns.ID),
+	).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if err := correctionRows.LoadJournal(ctx, executor); err != nil {
+		return nil, err
+	}
+	for _, storedCorrection := range correctionRows {
+		correction := &model.PurchaseCorrection{
+			ID: storedCorrection.ID.String(), AmountDeltaYen: graphLong(storedCorrection.AmountDeltaYen),
+			Reason: storedCorrection.Reason, OccurredAt: timeString(storedCorrection.R.Journal.OccurredAt),
+			SettlementMonth: accountingPeriod(purchase.OccurredAt), PaymentAllocations: make([]*model.PurchasePayment, 0),
+		}
+		if storedCorrection.ItemID.Valid {
+			itemID := storedCorrection.ItemID.V.String()
+			correction.ItemID = &itemID
+		}
+		if storedCorrection.EffectivePeriod.Valid {
+			correction.SettlementMonth = storedCorrection.EffectivePeriod.V
+		}
+		payments, err := models.CorrectionPayments.Query(
+			sm.Where(models.CorrectionPayments.Columns.CorrectionID.EQ(psql.Arg(storedCorrection.ID))),
+			sm.OrderBy(models.CorrectionPayments.Columns.LineNo),
+		).All(ctx, executor)
+		if err != nil {
 			return nil, err
 		}
-		weights = append(weights, weight)
+		if err := payments.LoadAccount(ctx, executor); err != nil {
+			return nil, err
+		}
+		for _, storedPayment := range payments {
+			correction.PaymentAllocations = append(correction.PaymentAllocations, &model.PurchasePayment{
+				PaymentAccountID: storedPayment.AccountID.String(), AmountYen: graphLong(storedPayment.AmountYen),
+				Account: graphAccount(storedPayment.R.Account),
+			})
+		}
+		result.Corrections = append(result.Corrections, correction)
 	}
-	return weights, rows.Err()
+	return result, nil
+}
+
+func graphAccount(account *models.Account) *model.Account {
+	if account == nil {
+		return nil
+	}
+	result := &model.Account{ID: account.ID.String(), Name: account.Name, Kind: model.AccountKind(account.Kind)}
+	if account.PoolID.Valid {
+		poolID := account.PoolID.V.String()
+		result.PoolID = &poolID
+	}
+	return result
+}
+
+func loadWeights(ctx context.Context, tx pgx.Tx, householdID string, version int64) ([]domain.Weight, error) {
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, err
+	}
+	defaults, err := models.AllocationDefaults.Query(sm.Where(psql.And(
+		models.AllocationDefaults.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.AllocationDefaults.Columns.Version.EQ(psql.Arg(version)),
+	)), sm.OrderBy(models.AllocationDefaults.Columns.PoolID)).All(ctx, bobpgx.NewTx(tx, nil))
+	if err != nil {
+		return nil, err
+	}
+	weights := make([]domain.Weight, 0, len(defaults))
+	for _, allocation := range defaults {
+		weights = append(weights, domain.Weight{PoolID: allocation.PoolID.String(), Value: allocation.Weight})
+	}
+	return weights, nil
 }

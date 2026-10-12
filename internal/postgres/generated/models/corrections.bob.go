@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -26,17 +27,20 @@ import (
 
 // Correction is an object representing the database table.
 type Correction struct {
-	ID             uuid.UUID           `db:"id,pk" `
-	HouseholdID    uuid.UUID           `db:"household_id" `
-	PurchaseID     uuid.UUID           `db:"purchase_id" `
-	ItemID         sql.Null[uuid.UUID] `db:"item_id" `
-	AmountDeltaYen int64               `db:"amount_delta_yen" `
-	Reason         string              `db:"reason" `
-	JournalID      uuid.UUID           `db:"journal_id" `
-	CreatedBy      uuid.UUID           `db:"created_by" `
-	CreatedAt      time.Time           `db:"created_at" `
+	ID              uuid.UUID           `db:"id,pk" `
+	HouseholdID     uuid.UUID           `db:"household_id" `
+	PurchaseID      uuid.UUID           `db:"purchase_id" `
+	ItemID          sql.Null[uuid.UUID] `db:"item_id" `
+	AmountDeltaYen  int64               `db:"amount_delta_yen" `
+	Reason          string              `db:"reason" `
+	JournalID       uuid.UUID           `db:"journal_id" `
+	CreatedBy       uuid.UUID           `db:"created_by" `
+	CreatedAt       time.Time           `db:"created_at" `
+	EffectivePeriod sql.Null[string]    `db:"effective_period" `
 
 	R correctionR `db:"-" `
+
+	C correctionC `db:"-" `
 }
 
 // CorrectionSlice is an alias for a slice of pointers to Correction.
@@ -51,11 +55,13 @@ type CorrectionsQuery = *psql.ViewQuery[*Correction, CorrectionSlice]
 
 // correctionR is where relationships are stored.
 type correctionR struct {
-	CreatedByMember *Member       // corrections.corrections_created_by_fkey
-	Household       *Household    // corrections.corrections_household_id_fkey
-	Purchase        *Purchase     // corrections.corrections_household_id_purchase_id_fkey
-	Journal         *Journal      // corrections.corrections_journal_id_fkey
-	PurchaseItem    *PurchaseItem // corrections.corrections_purchase_id_item_id_fkey
+	CorrectionPayments CorrectionPaymentSlice // correction_payments.correction_payments_correction_id_fkey
+	CreatedByMember    *Member                // corrections.corrections_created_by_fkey
+	AccountingPeriod   *AccountingPeriod      // corrections.corrections_effective_period_fk
+	Household          *Household             // corrections.corrections_household_id_fkey
+	Purchase           *Purchase              // corrections.corrections_household_id_purchase_id_fkey
+	Journal            *Journal               // corrections.corrections_journal_id_fkey
+	PurchaseItem       *PurchaseItem          // corrections.corrections_purchase_id_item_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -64,16 +70,18 @@ type correctionR struct {
 
 // correctionRLoaded tracks which relationships on Correction have been loaded.
 type correctionRLoaded struct {
-	CreatedByMember bool // corrections.corrections_created_by_fkey
-	Household       bool // corrections.corrections_household_id_fkey
-	Purchase        bool // corrections.corrections_household_id_purchase_id_fkey
-	Journal         bool // corrections.corrections_journal_id_fkey
-	PurchaseItem    bool // corrections.corrections_purchase_id_item_id_fkey
+	CorrectionPayments bool // correction_payments.correction_payments_correction_id_fkey
+	CreatedByMember    bool // corrections.corrections_created_by_fkey
+	AccountingPeriod   bool // corrections.corrections_effective_period_fk
+	Household          bool // corrections.corrections_household_id_fkey
+	Purchase           bool // corrections.corrections_household_id_purchase_id_fkey
+	Journal            bool // corrections.corrections_journal_id_fkey
+	PurchaseItem       bool // corrections.corrections_purchase_id_item_id_fkey
 }
 
 func buildCorrectionColumns(tableName string) correctionColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "purchase_id", "item_id", "amount_delta_yen", "reason", "journal_id", "created_by", "created_at",
+		"id", "household_id", "purchase_id", "item_id", "amount_delta_yen", "reason", "journal_id", "created_by", "created_at", "effective_period",
 	)
 
 	if tableName != "" {
@@ -81,32 +89,34 @@ func buildCorrectionColumns(tableName string) correctionColumns {
 	}
 
 	return correctionColumns{
-		ColumnsExpr:    columnsExpr,
-		tableAlias:     tableName,
-		ID:             buildCorrectionColumn(tableName, "id"),
-		HouseholdID:    buildCorrectionColumn(tableName, "household_id"),
-		PurchaseID:     buildCorrectionColumn(tableName, "purchase_id"),
-		ItemID:         buildCorrectionColumn(tableName, "item_id"),
-		AmountDeltaYen: buildCorrectionColumn(tableName, "amount_delta_yen"),
-		Reason:         buildCorrectionColumn(tableName, "reason"),
-		JournalID:      buildCorrectionColumn(tableName, "journal_id"),
-		CreatedBy:      buildCorrectionColumn(tableName, "created_by"),
-		CreatedAt:      buildCorrectionColumn(tableName, "created_at"),
+		ColumnsExpr:     columnsExpr,
+		tableAlias:      tableName,
+		ID:              buildCorrectionColumn(tableName, "id"),
+		HouseholdID:     buildCorrectionColumn(tableName, "household_id"),
+		PurchaseID:      buildCorrectionColumn(tableName, "purchase_id"),
+		ItemID:          buildCorrectionColumn(tableName, "item_id"),
+		AmountDeltaYen:  buildCorrectionColumn(tableName, "amount_delta_yen"),
+		Reason:          buildCorrectionColumn(tableName, "reason"),
+		JournalID:       buildCorrectionColumn(tableName, "journal_id"),
+		CreatedBy:       buildCorrectionColumn(tableName, "created_by"),
+		CreatedAt:       buildCorrectionColumn(tableName, "created_at"),
+		EffectivePeriod: buildCorrectionColumn(tableName, "effective_period"),
 	}
 }
 
 type correctionColumns struct {
 	expr.ColumnsExpr
-	tableAlias     string
-	ID             correctionColumn
-	HouseholdID    correctionColumn
-	PurchaseID     correctionColumn
-	ItemID         correctionColumn
-	AmountDeltaYen correctionColumn
-	Reason         correctionColumn
-	JournalID      correctionColumn
-	CreatedBy      correctionColumn
-	CreatedAt      correctionColumn
+	tableAlias      string
+	ID              correctionColumn
+	HouseholdID     correctionColumn
+	PurchaseID      correctionColumn
+	ItemID          correctionColumn
+	AmountDeltaYen  correctionColumn
+	Reason          correctionColumn
+	JournalID       correctionColumn
+	CreatedBy       correctionColumn
+	CreatedAt       correctionColumn
+	EffectivePeriod correctionColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -152,19 +162,20 @@ func (c correctionColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type CorrectionSetter struct {
-	ID             *uuid.UUID           `db:"id,pk" `
-	HouseholdID    *uuid.UUID           `db:"household_id" `
-	PurchaseID     *uuid.UUID           `db:"purchase_id" `
-	ItemID         *sql.Null[uuid.UUID] `db:"item_id" `
-	AmountDeltaYen *int64               `db:"amount_delta_yen" `
-	Reason         *string              `db:"reason" `
-	JournalID      *uuid.UUID           `db:"journal_id" `
-	CreatedBy      *uuid.UUID           `db:"created_by" `
-	CreatedAt      *time.Time           `db:"created_at" `
+	ID              *uuid.UUID           `db:"id,pk" `
+	HouseholdID     *uuid.UUID           `db:"household_id" `
+	PurchaseID      *uuid.UUID           `db:"purchase_id" `
+	ItemID          *sql.Null[uuid.UUID] `db:"item_id" `
+	AmountDeltaYen  *int64               `db:"amount_delta_yen" `
+	Reason          *string              `db:"reason" `
+	JournalID       *uuid.UUID           `db:"journal_id" `
+	CreatedBy       *uuid.UUID           `db:"created_by" `
+	CreatedAt       *time.Time           `db:"created_at" `
+	EffectivePeriod *sql.Null[string]    `db:"effective_period" `
 }
 
 func (s CorrectionSetter) SetColumns() []string {
-	vals := make([]string, 0, 9)
+	vals := make([]string, 0, 10)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -191,6 +202,9 @@ func (s CorrectionSetter) SetColumns() []string {
 	}
 	if s.CreatedAt != nil {
 		vals = append(vals, "created_at")
+	}
+	if s.EffectivePeriod != nil {
+		vals = append(vals, "effective_period")
 	}
 	return vals
 }
@@ -267,6 +281,15 @@ func (s CorrectionSetter) Overwrite(t *Correction) {
 				return *new(time.Time)
 			}
 			return *s.CreatedAt
+		}()
+	}
+	if s.EffectivePeriod != nil {
+		t.EffectivePeriod = func() sql.Null[string] {
+			if s.EffectivePeriod == nil {
+				return *new(sql.Null[string])
+			}
+			v := s.EffectivePeriod
+			return *v
 		}()
 	}
 }
@@ -368,6 +391,17 @@ func (s *CorrectionSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.CreatedAt
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.EffectivePeriod == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[string] {
+				if s.EffectivePeriod == nil {
+					return *new(sql.Null[string])
+				}
+				v := s.EffectivePeriod
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -376,7 +410,7 @@ func (s CorrectionSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s CorrectionSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 9)
+	exprs := make([]bob.Expression, 0, 10)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -441,6 +475,13 @@ func (s CorrectionSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.EffectivePeriod != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "effective_period")...),
+			psql.Arg(s.EffectivePeriod),
+		}})
+	}
+
 	return exprs
 }
 
@@ -451,7 +492,7 @@ func correctionScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc, 
 		idx int
 		dst func(o *Correction) any
 	}
-	targets := make([]target, 0, 9)
+	targets := make([]target, 0, 10)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -472,6 +513,8 @@ func correctionScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc, 
 			targets = append(targets, target{i, func(o *Correction) any { return &o.CreatedBy }})
 		case "created_at":
 			targets = append(targets, target{i, func(o *Correction) any { return &o.CreatedAt }})
+		case "effective_period":
+			targets = append(targets, target{i, func(o *Correction) any { return &o.EffectivePeriod }})
 		}
 	}
 
@@ -747,6 +790,29 @@ func (o CorrectionSlice) ReloadAll(ctx context.Context, exec bob.Executor) error
 	return nil
 }
 
+// CorrectionPayments starts a query for related objects on correction_payments
+func (o *Correction) CorrectionPayments(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionPaymentsQuery {
+	return CorrectionPayments.Query(append(mods,
+		sm.Where(CorrectionPayments.Columns.CorrectionID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os CorrectionSlice) CorrectionPayments(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionPaymentsQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return CorrectionPayments.Query(append(mods,
+		sm.Where(CorrectionPayments.Columns.CorrectionID.EQ(PKArgExpr)),
+	)...)
+}
+
 // CreatedByMember starts a query for related objects on members
 func (o *Correction) CreatedByMember(mods ...bob.Mod[*dialect.SelectQuery]) MembersQuery {
 	return Members.Query(append(mods,
@@ -774,6 +840,35 @@ func (os CorrectionSlice) CreatedByMember(mods ...bob.Mod[*dialect.SelectQuery])
 
 	return Members.Query(append(mods,
 		sm.Where(Members.Columns.ID.EQ(PKArgExpr)),
+	)...)
+}
+
+// AccountingPeriod starts a query for related objects on accounting_periods
+func (o *Correction) AccountingPeriod(mods ...bob.Mod[*dialect.SelectQuery]) AccountingPeriodsQuery {
+	return AccountingPeriods.Query(append(mods,
+		sm.Where(AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(AccountingPeriods.Columns.Period.EQ(psql.Arg(o.EffectivePeriod))),
+	)...)
+}
+
+func (os CorrectionSlice) AccountingPeriod(mods ...bob.Mod[*dialect.SelectQuery]) AccountingPeriodsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkEffectivePeriod := make(pgtypes.Array[sql.Null[string]], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkEffectivePeriod = append(pkEffectivePeriod, o.EffectivePeriod)
+	}
+
+	return AccountingPeriods.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "Period")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkEffectivePeriod), "text[]"))).As("bob_rel_keys_src", "HouseholdID", "Period"),
+		)).As("bob_rel_keys").On(AccountingPeriods.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), AccountingPeriods.Columns.Period.EQ(psql.Quote("bob_rel_keys", "Period"))),
 	)...)
 }
 
@@ -895,6 +990,76 @@ func (os CorrectionSlice) PurchaseItem(mods ...bob.Mod[*dialect.SelectQuery]) Pu
 	)...)
 }
 
+func insertCorrectionCorrectionPayments0(ctx context.Context, exec bob.Executor, correctionPayments1 []*CorrectionPaymentSetter, correction0 *Correction) (CorrectionPaymentSlice, error) {
+	for i := range correctionPayments1 {
+		correctionPayments1[i].CorrectionID = func() *uuid.UUID { return &correction0.ID }()
+	}
+
+	ret, err := CorrectionPayments.Insert(bob.ToMods(correctionPayments1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertCorrectionCorrectionPayments0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachCorrectionCorrectionPayments0(ctx context.Context, exec bob.Executor, count int, correctionPayments1 CorrectionPaymentSlice, correction0 *Correction) (CorrectionPaymentSlice, error) {
+	setter := &CorrectionPaymentSetter{
+		CorrectionID: func() *uuid.UUID { return &correction0.ID }(),
+	}
+
+	err := correctionPayments1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachCorrectionCorrectionPayments0: %w", err)
+	}
+
+	return correctionPayments1, nil
+}
+
+func (correction0 *Correction) InsertCorrectionPayments(ctx context.Context, exec bob.Executor, related ...*CorrectionPaymentSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	correctionPayments1, err := insertCorrectionCorrectionPayments0(ctx, exec, related, correction0)
+	if err != nil {
+		return err
+	}
+
+	correction0.R.CorrectionPayments = append(correction0.R.CorrectionPayments, correctionPayments1...)
+
+	for _, rel := range correctionPayments1 {
+		rel.R.Correction = correction0
+		rel.R.Loaded.Correction = true
+	}
+	return nil
+}
+
+func (correction0 *Correction) AttachCorrectionPayments(ctx context.Context, exec bob.Executor, related ...*CorrectionPayment) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	correctionPayments1 := CorrectionPaymentSlice(related)
+
+	_, err = attachCorrectionCorrectionPayments0(ctx, exec, len(related), correctionPayments1, correction0)
+	if err != nil {
+		return err
+	}
+
+	correction0.R.CorrectionPayments = append(correction0.R.CorrectionPayments, correctionPayments1...)
+
+	for _, rel := range related {
+		rel.R.Correction = correction0
+		rel.R.Loaded.Correction = true
+	}
+
+	return nil
+}
+
 func attachCorrectionCreatedByMember0(ctx context.Context, exec bob.Executor, count int, correction0 *Correction, member1 *Member) (*Correction, error) {
 	setter := &CorrectionSetter{
 		CreatedBy: func() *uuid.UUID { return &member1.ID }(),
@@ -941,6 +1106,57 @@ func (correction0 *Correction) AttachCreatedByMember(ctx context.Context, exec b
 	correction0.R.Loaded.CreatedByMember = true
 
 	member1.R.CreatedByCorrections = append(member1.R.CreatedByCorrections, correction0)
+
+	return nil
+}
+
+func attachCorrectionAccountingPeriod0(ctx context.Context, exec bob.Executor, count int, correction0 *Correction, accountingPeriod1 *AccountingPeriod) (*Correction, error) {
+	setter := &CorrectionSetter{
+		HouseholdID:     func() *uuid.UUID { return &accountingPeriod1.HouseholdID }(),
+		EffectivePeriod: func() *sql.Null[string] { v := sql.Null[string]{V: accountingPeriod1.Period, Valid: true}; return &v }(),
+	}
+
+	err := correction0.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachCorrectionAccountingPeriod0: %w", err)
+	}
+
+	return correction0, nil
+}
+
+func (correction0 *Correction) InsertAccountingPeriod(ctx context.Context, exec bob.Executor, related *AccountingPeriodSetter) error {
+	var err error
+
+	accountingPeriod1, err := AccountingPeriods.Insert(related).One(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("inserting related objects: %w", err)
+	}
+
+	_, err = attachCorrectionAccountingPeriod0(ctx, exec, 1, correction0, accountingPeriod1)
+	if err != nil {
+		return err
+	}
+
+	correction0.R.AccountingPeriod = accountingPeriod1
+	correction0.R.Loaded.AccountingPeriod = true
+
+	accountingPeriod1.R.Corrections = append(accountingPeriod1.R.Corrections, correction0)
+
+	return nil
+}
+
+func (correction0 *Correction) AttachAccountingPeriod(ctx context.Context, exec bob.Executor, accountingPeriod1 *AccountingPeriod) error {
+	var err error
+
+	_, err = attachCorrectionAccountingPeriod0(ctx, exec, 1, correction0, accountingPeriod1)
+	if err != nil {
+		return err
+	}
+
+	correction0.R.AccountingPeriod = accountingPeriod1
+	correction0.R.Loaded.AccountingPeriod = true
+
+	accountingPeriod1.R.Corrections = append(accountingPeriod1.R.Corrections, correction0)
 
 	return nil
 }
@@ -1148,17 +1364,18 @@ func (correction0 *Correction) AttachPurchaseItem(ctx context.Context, exec bob.
 }
 
 type correctionWhere[Q psql.Filterable] struct {
-	cols           correctionColumns
-	ID             psql.WhereMod[Q, uuid.UUID]
-	HouseholdID    psql.WhereMod[Q, uuid.UUID]
-	PurchaseID     psql.WhereMod[Q, uuid.UUID]
-	ItemID         psql.WhereNullMod[Q, uuid.UUID]
-	AmountDeltaYen psql.WhereMod[Q, int64]
-	Reason         psql.WhereMod[Q, string]
-	JournalID      psql.WhereMod[Q, uuid.UUID]
-	CreatedBy      psql.WhereMod[Q, uuid.UUID]
-	CreatedAt      psql.WhereMod[Q, time.Time]
-	R              correctionWhereR[Q]
+	cols            correctionColumns
+	ID              psql.WhereMod[Q, uuid.UUID]
+	HouseholdID     psql.WhereMod[Q, uuid.UUID]
+	PurchaseID      psql.WhereMod[Q, uuid.UUID]
+	ItemID          psql.WhereNullMod[Q, uuid.UUID]
+	AmountDeltaYen  psql.WhereMod[Q, int64]
+	Reason          psql.WhereMod[Q, string]
+	JournalID       psql.WhereMod[Q, uuid.UUID]
+	CreatedBy       psql.WhereMod[Q, uuid.UUID]
+	CreatedAt       psql.WhereMod[Q, time.Time]
+	EffectivePeriod psql.WhereNullMod[Q, string]
+	R               correctionWhereR[Q]
 }
 
 func (correctionWhere[Q]) AliasedAs(alias string) correctionWhere[Q] {
@@ -1167,17 +1384,18 @@ func (correctionWhere[Q]) AliasedAs(alias string) correctionWhere[Q] {
 
 func buildCorrectionWhere[Q psql.Filterable](cols correctionColumns) correctionWhere[Q] {
 	return correctionWhere[Q]{
-		cols:           cols,
-		ID:             psql.Where[Q, uuid.UUID](cols.ID.Expression),
-		HouseholdID:    psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
-		PurchaseID:     psql.Where[Q, uuid.UUID](cols.PurchaseID.Expression),
-		ItemID:         psql.WhereNull[Q, uuid.UUID](cols.ItemID.Expression),
-		AmountDeltaYen: psql.Where[Q, int64](cols.AmountDeltaYen.Expression),
-		Reason:         psql.Where[Q, string](cols.Reason.Expression),
-		JournalID:      psql.Where[Q, uuid.UUID](cols.JournalID.Expression),
-		CreatedBy:      psql.Where[Q, uuid.UUID](cols.CreatedBy.Expression),
-		CreatedAt:      psql.Where[Q, time.Time](cols.CreatedAt.Expression),
-		R:              correctionWhereR[Q]{cols: cols},
+		cols:            cols,
+		ID:              psql.Where[Q, uuid.UUID](cols.ID.Expression),
+		HouseholdID:     psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		PurchaseID:      psql.Where[Q, uuid.UUID](cols.PurchaseID.Expression),
+		ItemID:          psql.WhereNull[Q, uuid.UUID](cols.ItemID.Expression),
+		AmountDeltaYen:  psql.Where[Q, int64](cols.AmountDeltaYen.Expression),
+		Reason:          psql.Where[Q, string](cols.Reason.Expression),
+		JournalID:       psql.Where[Q, uuid.UUID](cols.JournalID.Expression),
+		CreatedBy:       psql.Where[Q, uuid.UUID](cols.CreatedBy.Expression),
+		CreatedAt:       psql.Where[Q, time.Time](cols.CreatedAt.Expression),
+		EffectivePeriod: psql.WhereNull[Q, string](cols.EffectivePeriod.Expression),
+		R:               correctionWhereR[Q]{cols: cols},
 	}
 }
 
@@ -1186,6 +1404,20 @@ func buildCorrectionWhere[Q psql.Filterable](cols correctionColumns) correctionW
 // R struct — so they cannot collide with column-based filter fields.
 type correctionWhereR[Q psql.Filterable] struct {
 	cols correctionColumns
+}
+
+// HasCorrectionPayments filters parents that have a matching CorrectionPayments using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to CorrectionPayments).
+func (w correctionWhereR[Q]) HasCorrectionPayments(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(CorrectionPayments.NameExpr()),
+		sm.Where(CorrectionPayments.Columns.CorrectionID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
 // HasCreatedByMember filters parents that have a matching CreatedByMember using a
@@ -1197,6 +1429,21 @@ func (w correctionWhereR[Q]) HasCreatedByMember(filters ...bob.Mod[*dialect.Sele
 		sm.Columns(psql.Raw("1")),
 		sm.From(Members.NameExpr()),
 		sm.Where(Members.Columns.ID.EQ(w.cols.CreatedBy)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasAccountingPeriod filters parents that have a matching AccountingPeriod using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to AccountingPeriods).
+func (w correctionWhereR[Q]) HasAccountingPeriod(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(AccountingPeriods.NameExpr()),
+		sm.Where(AccountingPeriods.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(AccountingPeriods.Columns.Period.EQ(w.cols.EffectivePeriod)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -1260,12 +1507,150 @@ func (w correctionWhereR[Q]) HasPurchaseItem(filters ...bob.Mod[*dialect.SelectQ
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// NULL-tolerant scan buffer for correctionScanMapperNullable:
+// on a LEFT JOIN miss every column comes back NULL, so each field uses the
+// nullable version of the column type even when the column itself is NOT NULL.
+type correctionPreloadBuf struct {
+	ID              sql.Null[uuid.UUID]
+	HouseholdID     sql.Null[uuid.UUID]
+	PurchaseID      sql.Null[uuid.UUID]
+	ItemID          sql.Null[uuid.UUID]
+	AmountDeltaYen  sql.Null[int64]
+	Reason          sql.Null[string]
+	JournalID       sql.Null[uuid.UUID]
+	CreatedBy       sql.Null[uuid.UUID]
+	CreatedAt       sql.Null[time.Time]
+	EffectivePeriod sql.Null[string]
+}
+
+// correctionScanMapperNullable maps the preloaded correction
+// columns (prefixed with the runtime join alias) without reflection, while
+// keeping the LEFT JOIN semantics of the reflection-based mapper: a row whose
+// prefixed columns are all NULL yields nil (no child), and NULL values never
+// error, they just leave the zero value in the field.
+func correctionScanMapperNullable(prefix string) scan.Mapper[*Correction] {
+	return func(ctx context.Context, cols []string) (scan.BeforeFunc, func(any) (*Correction, error)) {
+		// resolve the column names once per query, not per row
+		type target struct {
+			idx int
+			dst func(b *correctionPreloadBuf) any
+		}
+		targets := make([]target, 0, 10)
+		for i, col := range cols {
+			name, ok := strings.CutPrefix(col, prefix)
+			if !ok {
+				continue
+			}
+			switch name {
+			case "id":
+				targets = append(targets, target{i, func(b *correctionPreloadBuf) any { return &b.ID }})
+			case "household_id":
+				targets = append(targets, target{i, func(b *correctionPreloadBuf) any { return &b.HouseholdID }})
+			case "purchase_id":
+				targets = append(targets, target{i, func(b *correctionPreloadBuf) any { return &b.PurchaseID }})
+			case "item_id":
+				targets = append(targets, target{i, func(b *correctionPreloadBuf) any { return &b.ItemID }})
+			case "amount_delta_yen":
+				targets = append(targets, target{i, func(b *correctionPreloadBuf) any { return &b.AmountDeltaYen }})
+			case "reason":
+				targets = append(targets, target{i, func(b *correctionPreloadBuf) any { return &b.Reason }})
+			case "journal_id":
+				targets = append(targets, target{i, func(b *correctionPreloadBuf) any { return &b.JournalID }})
+			case "created_by":
+				targets = append(targets, target{i, func(b *correctionPreloadBuf) any { return &b.CreatedBy }})
+			case "created_at":
+				targets = append(targets, target{i, func(b *correctionPreloadBuf) any { return &b.CreatedAt }})
+			case "effective_period":
+				targets = append(targets, target{i, func(b *correctionPreloadBuf) any { return &b.EffectivePeriod }})
+			}
+		}
+
+		// One scratch buffer reused for every row: before -> scan -> after runs
+		// synchronously per row, the scheduled columns are fully overwritten each
+		// row, and unselected columns stay zero, so a single buffer preserves the
+		// per-row NULL semantics without allocating a buffer per parent row. The
+		// returned child (o below) is always freshly allocated, so buf never
+		// escapes past the after func.
+		buf := new(correctionPreloadBuf)
+		return func(row *scan.Row) (any, error) {
+				for _, t := range targets {
+					row.ScheduleScanByIndex(t.idx, t.dst(buf))
+				}
+				return buf, nil
+			}, func(link any) (*Correction, error) {
+				buf := link.(*correctionPreloadBuf)
+
+				// Same rule as the reflection mapper's row validator: the child
+				// exists only if at least one of its columns is not NULL. Columns
+				// not selected by the query are never scanned and stay invalid,
+				// so this check also matches when only a subset is selected.
+				if !(buf.ID.Valid) &&
+					!(buf.HouseholdID.Valid) &&
+					!(buf.PurchaseID.Valid) &&
+					!(buf.ItemID.Valid) &&
+					!(buf.AmountDeltaYen.Valid) &&
+					!(buf.Reason.Valid) &&
+					!(buf.JournalID.Valid) &&
+					!(buf.CreatedBy.Valid) &&
+					!(buf.CreatedAt.Valid) &&
+					!(buf.EffectivePeriod.Valid) {
+					return nil, nil
+				}
+
+				o := new(Correction)
+				if buf.ID.Valid {
+					o.ID = buf.ID.V
+				}
+				if buf.HouseholdID.Valid {
+					o.HouseholdID = buf.HouseholdID.V
+				}
+				if buf.PurchaseID.Valid {
+					o.PurchaseID = buf.PurchaseID.V
+				}
+				o.ItemID = buf.ItemID
+				if buf.AmountDeltaYen.Valid {
+					o.AmountDeltaYen = buf.AmountDeltaYen.V
+				}
+				if buf.Reason.Valid {
+					o.Reason = buf.Reason.V
+				}
+				if buf.JournalID.Valid {
+					o.JournalID = buf.JournalID.V
+				}
+				if buf.CreatedBy.Valid {
+					o.CreatedBy = buf.CreatedBy.V
+				}
+				if buf.CreatedAt.Valid {
+					o.CreatedAt = buf.CreatedAt.V
+				}
+				o.EffectivePeriod = buf.EffectivePeriod
+				return o, nil
+			}
+	}
+}
+
 func (o *Correction) Preload(name string, retrieved any) error {
 	if o == nil {
 		return nil
 	}
 
 	switch name {
+	case "CorrectionPayments":
+		rels, ok := retrieved.(CorrectionPaymentSlice)
+		if !ok {
+			return fmt.Errorf("correction cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.CorrectionPayments = rels
+		o.R.Loaded.CorrectionPayments = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Correction = o
+				rel.R.Loaded.Correction = true
+			}
+		}
+		return nil
 	case "CreatedByMember":
 		rel, ok := retrieved.(*Member)
 		if !ok {
@@ -1277,6 +1662,19 @@ func (o *Correction) Preload(name string, retrieved any) error {
 
 		if rel != nil {
 			rel.R.CreatedByCorrections = CorrectionSlice{o}
+		}
+		return nil
+	case "AccountingPeriod":
+		rel, ok := retrieved.(*AccountingPeriod)
+		if !ok {
+			return fmt.Errorf("correction cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.AccountingPeriod = rel
+		o.R.Loaded.AccountingPeriod = true
+
+		if rel != nil {
+			rel.R.Corrections = CorrectionSlice{o}
 		}
 		return nil
 	case "Household":
@@ -1337,11 +1735,12 @@ func (o *Correction) Preload(name string, retrieved any) error {
 }
 
 type correctionPreloader struct {
-	CreatedByMember func(...psql.PreloadOption) psql.Preloader
-	Household       func(...psql.PreloadOption) psql.Preloader
-	Purchase        func(...psql.PreloadOption) psql.Preloader
-	Journal         func(...psql.PreloadOption) psql.Preloader
-	PurchaseItem    func(...psql.PreloadOption) psql.Preloader
+	CreatedByMember  func(...psql.PreloadOption) psql.Preloader
+	AccountingPeriod func(...psql.PreloadOption) psql.Preloader
+	Household        func(...psql.PreloadOption) psql.Preloader
+	Purchase         func(...psql.PreloadOption) psql.Preloader
+	Journal          func(...psql.PreloadOption) psql.Preloader
+	PurchaseItem     func(...psql.PreloadOption) psql.Preloader
 }
 
 func buildCorrectionPreloader() correctionPreloader {
@@ -1358,6 +1757,19 @@ func buildCorrectionPreloader() correctionPreloader {
 					},
 				},
 			}, Members.Columns.Names(), memberScanMapperNullable, opts...)
+		},
+		AccountingPeriod: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*AccountingPeriod, AccountingPeriodSlice](psql.PreloadRel{
+				Name: "AccountingPeriod",
+				Sides: []psql.PreloadSide{
+					{
+						From:        Corrections,
+						To:          AccountingPeriods,
+						FromColumns: []string{"household_id", "effective_period"},
+						ToColumns:   []string{"household_id", "period"},
+					},
+				},
+			}, AccountingPeriods.Columns.Names(), accountingPeriodScanMapperNullable, opts...)
 		},
 		Household: func(opts ...psql.PreloadOption) psql.Preloader {
 			return psql.Preload[*Household, HouseholdSlice](psql.PreloadRel{
@@ -1415,16 +1827,24 @@ func buildCorrectionPreloader() correctionPreloader {
 }
 
 type correctionThenLoader[Q orm.Loadable] struct {
-	CreatedByMember func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Household       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Purchase        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Journal         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	PurchaseItem    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CorrectionPayments func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByMember    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AccountingPeriod   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Household          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Purchase           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Journal            func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PurchaseItem       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildCorrectionThenLoader[Q orm.Loadable]() correctionThenLoader[Q] {
+	type CorrectionPaymentsLoadInterface interface {
+		LoadCorrectionPayments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type CreatedByMemberLoadInterface interface {
 		LoadCreatedByMember(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type AccountingPeriodLoadInterface interface {
+		LoadAccountingPeriod(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type HouseholdLoadInterface interface {
 		LoadHousehold(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -1440,10 +1860,22 @@ func buildCorrectionThenLoader[Q orm.Loadable]() correctionThenLoader[Q] {
 	}
 
 	return correctionThenLoader[Q]{
+		CorrectionPayments: thenLoadBuilder[Q](
+			"CorrectionPayments",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionPaymentsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCorrectionPayments(ctx, exec, mods...)
+			},
+		),
 		CreatedByMember: thenLoadBuilder[Q](
 			"CreatedByMember",
 			func(ctx context.Context, exec bob.Executor, retrieved CreatedByMemberLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCreatedByMember(ctx, exec, mods...)
+			},
+		),
+		AccountingPeriod: thenLoadBuilder[Q](
+			"AccountingPeriod",
+			func(ctx context.Context, exec bob.Executor, retrieved AccountingPeriodLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadAccountingPeriod(ctx, exec, mods...)
 			},
 		),
 		Household: thenLoadBuilder[Q](
@@ -1471,6 +1903,80 @@ func buildCorrectionThenLoader[Q orm.Loadable]() correctionThenLoader[Q] {
 			},
 		),
 	}
+}
+
+// LoadCorrectionPayments loads the correction's CorrectionPayments into the .R struct
+func (o *Correction) LoadCorrectionPayments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.CorrectionPayments = nil
+	o.R.Loaded.CorrectionPayments = false
+
+	related, err := o.CorrectionPayments(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Correction = o
+		rel.R.Loaded.Correction = true
+	}
+
+	o.R.CorrectionPayments = related
+	o.R.Loaded.CorrectionPayments = true
+	return nil
+}
+
+// LoadCorrectionPayments loads the correction's CorrectionPayments into the .R struct
+func (os CorrectionSlice) LoadCorrectionPayments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	correctionPayments, err := os.CorrectionPayments(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.CorrectionPayments = nil
+		o.R.Loaded.CorrectionPayments = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	correctionByKey := make(map[uuid.UUID][]*Correction, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		correctionByKey[o.ID] = append(correctionByKey[o.ID], o)
+	}
+
+	for _, rel := range correctionPayments {
+
+		owners, ok := correctionByKey[rel.CorrectionID]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			rel.R.Correction = o
+			rel.R.Loaded.Correction = true
+
+			o.R.CorrectionPayments = append(o.R.CorrectionPayments, rel)
+
+		}
+	}
+
+	return nil
 }
 
 // LoadCreatedByMember loads the correction's CreatedByMember into the .R struct
@@ -1542,6 +2048,75 @@ func (os CorrectionSlice) LoadCreatedByMember(ctx context.Context, exec bob.Exec
 
 			o.R.CreatedByMember = rel
 
+		}
+	}
+
+	return nil
+}
+
+// LoadAccountingPeriod loads the correction's AccountingPeriod into the .R struct
+func (o *Correction) LoadAccountingPeriod(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.AccountingPeriod = nil
+	o.R.Loaded.AccountingPeriod = false
+
+	related, err := o.AccountingPeriod(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.Corrections = CorrectionSlice{o}
+
+	o.R.AccountingPeriod = related
+	o.R.Loaded.AccountingPeriod = true
+	return nil
+}
+
+// LoadAccountingPeriod loads the correction's AccountingPeriod into the .R struct
+func (os CorrectionSlice) LoadAccountingPeriod(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	accountingPeriods, err := os.AccountingPeriod(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.AccountingPeriod = nil
+		o.R.Loaded.AccountingPeriod = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range accountingPeriods {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.EffectivePeriod.Valid {
+				continue
+			}
+
+			if !(o.EffectivePeriod.Valid && o.EffectivePeriod.V == rel.Period) {
+				continue
+			}
+
+			rel.R.Corrections = append(rel.R.Corrections, o)
+
+			o.R.AccountingPeriod = rel
+			break
 		}
 	}
 
@@ -1833,13 +2408,157 @@ func (os CorrectionSlice) LoadPurchaseItem(ctx context.Context, exec bob.Executo
 	return nil
 }
 
+// correctionC is where relationship counts are stored.
+type correctionC struct {
+	CorrectionPayments *int64
+}
+
+// PreloadCount sets a count in the C struct by name
+func (o *Correction) PreloadCount(name string, count int64) error {
+	if o == nil {
+		return nil
+	}
+
+	switch name {
+	case "CorrectionPayments":
+		o.C.CorrectionPayments = &count
+	}
+	return nil
+}
+
+type correctionCountPreloader struct {
+	CorrectionPayments func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+}
+
+func buildCorrectionCountPreloader() correctionCountPreloader {
+	return correctionCountPreloader{
+		CorrectionPayments: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Correction]("CorrectionPayments", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Corrections.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(CorrectionPayments.NameAsExpr()),
+					sm.Where(psql.Quote(CorrectionPayments.Alias(), "correction_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+	}
+}
+
+type correctionCountThenLoader[Q orm.Loadable] struct {
+	CorrectionPayments func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+}
+
+func buildCorrectionCountThenLoader[Q orm.Loadable]() correctionCountThenLoader[Q] {
+	type CorrectionPaymentsCountInterface interface {
+		LoadCountCorrectionPayments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+
+	return correctionCountThenLoader[Q]{
+		CorrectionPayments: countThenLoadBuilder[Q](
+			"CorrectionPayments",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionPaymentsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountCorrectionPayments(ctx, exec, mods...)
+			},
+		),
+	}
+}
+
+// LoadCountCorrectionPayments loads the count of CorrectionPayments into the C struct
+func (o *Correction) LoadCountCorrectionPayments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.CorrectionPayments(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.CorrectionPayments = &count
+	return nil
+}
+
+// LoadCountCorrectionPayments loads the count of CorrectionPayments for a slice in a single batch query
+func (os CorrectionSlice) LoadCountCorrectionPayments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			CorrectionPayments.Columns.CorrectionID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(CorrectionPayments.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.Where(CorrectionPayments.Columns.CorrectionID.EQ(PKArgExpr)),
+		// GROUP BY fk columns
+		sm.GroupBy(CorrectionPayments.Columns.CorrectionID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Single-column FK: direct map lookup
+	countMap := make(map[uuid.UUID]int64, len(results))
+	for _, r := range results {
+		countMap[r.ID] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[o.ID]
+		o.C.CorrectionPayments = &count
+	}
+
+	return nil
+}
+
 type correctionJoins[Q dialect.Joinable] struct {
-	typ             string
-	CreatedByMember modAs[Q, memberColumns]
-	Household       modAs[Q, householdColumns]
-	Purchase        modAs[Q, purchaseColumns]
-	Journal         modAs[Q, journalColumns]
-	PurchaseItem    modAs[Q, purchaseItemColumns]
+	typ                string
+	CorrectionPayments modAs[Q, correctionPaymentColumns]
+	CreatedByMember    modAs[Q, memberColumns]
+	AccountingPeriod   modAs[Q, accountingPeriodColumns]
+	Household          modAs[Q, householdColumns]
+	Purchase           modAs[Q, purchaseColumns]
+	Journal            modAs[Q, journalColumns]
+	PurchaseItem       modAs[Q, purchaseItemColumns]
 }
 
 func (j correctionJoins[Q]) aliasedAs(alias string) correctionJoins[Q] {
@@ -1849,6 +2568,20 @@ func (j correctionJoins[Q]) aliasedAs(alias string) correctionJoins[Q] {
 func buildCorrectionJoins[Q dialect.Joinable](cols correctionColumns, typ string) correctionJoins[Q] {
 	return correctionJoins[Q]{
 		typ: typ,
+		CorrectionPayments: modAs[Q, correctionPaymentColumns]{
+			c: CorrectionPayments.Columns,
+			f: func(to correctionPaymentColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, CorrectionPayments.NameExpr().As(to.Alias())).On(
+						to.CorrectionID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
 		CreatedByMember: modAs[Q, memberColumns]{
 			c: Members.Columns,
 			f: func(to memberColumns) bob.Mod[Q] {
@@ -1857,6 +2590,20 @@ func buildCorrectionJoins[Q dialect.Joinable](cols correctionColumns, typ string
 				{
 					mods = append(mods, dialect.Join[Q](typ, Members.NameExpr().As(to.Alias())).On(
 						to.ID.EQ(cols.CreatedBy),
+					))
+				}
+
+				return mods
+			},
+		},
+		AccountingPeriod: modAs[Q, accountingPeriodColumns]{
+			c: AccountingPeriods.Columns,
+			f: func(to accountingPeriodColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, AccountingPeriods.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.Period.EQ(cols.EffectivePeriod),
 					))
 				}
 

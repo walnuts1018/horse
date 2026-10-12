@@ -4,13 +4,21 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	gofrsuuid "github.com/gofrs/uuid/v5"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/im"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/stephenafamo/bob/dialect/psql/um"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/graph/model"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 const maxInvitationLifetime = 30 * 24 * time.Hour
@@ -39,19 +47,29 @@ func (r *mutationResolver) createHouseholdInvitation(ctx context.Context, input 
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	if err := requireHouseholdOwner(ctx, tx, input.HouseholdID, user.MemberID); err != nil {
+	if err := requireHouseholdOwner(ctx, bobpgx.NewTx(tx, nil), input.HouseholdID, user.MemberID); err != nil {
 		return nil, err
 	}
 	id := newID()
 	var createdAt, storedExpiresAt time.Time
-	err = tx.QueryRow(ctx, `INSERT INTO household_invitations(id, household_id, token_hash, expires_at, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING created_at, expires_at`, id, input.HouseholdID, tokenHash[:], expiresAt, user.MemberID).Scan(&createdAt, &storedExpiresAt)
+	idValue, _ := gofrsuuid.FromString(id)
+	householdValue, _ := gofrsuuid.FromString(input.HouseholdID)
+	createdBy, _ := gofrsuuid.FromString(user.MemberID)
+	expiresValue, hashValue := expiresAt, tokenHash[:]
+	createdInvitation, err := models.HouseholdInvitations.Insert(&models.HouseholdInvitationSetter{ID: &idValue, HouseholdID: &householdValue, TokenHash: &hashValue, ExpiresAt: &expiresValue, CreatedBy: &createdBy}).One(ctx, bobpgx.NewTx(tx, nil))
 	if err != nil {
 		return nil, err
 	}
-	var revision int64
-	if err := tx.QueryRow(ctx, `UPDATE households SET revision = revision + 1, updated_at = now() WHERE id = $1 RETURNING revision`, input.HouseholdID).Scan(&revision); err != nil {
+	createdAt, storedExpiresAt = createdInvitation.CreatedAt, createdInvitation.ExpiresAt
+	household, err := models.Households.Update(
+		um.Where(models.Households.Columns.ID.EQ(psql.Arg(input.HouseholdID))),
+		um.SetCol("revision").To(models.Households.Columns.Revision.Plus(psql.Arg(1))),
+		um.SetCol("updated_at").To(psql.F("now")),
+	).One(ctx, bobpgx.NewTx(tx, nil))
+	if err != nil {
 		return nil, err
 	}
+	revision := household.Revision
 	if err := writeEvent(ctx, tx, input.HouseholdID, "household.invitation.created", id, revision, []string{"invitations"}, user.MemberID); err != nil {
 		return nil, err
 	}
@@ -69,28 +87,24 @@ func (r *queryResolver) householdInvitations(ctx context.Context, householdID st
 	if err != nil {
 		return nil, err
 	}
-	if err := requireHouseholdOwner(ctx, r.DB, householdID, user.MemberID); err != nil {
+	if err := requireHouseholdOwner(ctx, bobpgx.NewPool(r.DB), householdID, user.MemberID); err != nil {
 		return nil, err
 	}
-	rows, err := r.DB.Query(ctx, `SELECT id::text, household_id::text, role, expires_at, created_at, revoked_at, accepted_at FROM household_invitations WHERE household_id = $1 ORDER BY created_at DESC, id`, householdID)
+	rows, err := models.HouseholdInvitations.Query(
+		sm.Where(models.HouseholdInvitations.Columns.HouseholdID.EQ(psql.Arg(householdID))),
+		sm.OrderBy(models.HouseholdInvitations.Columns.CreatedAt).Desc(),
+		sm.OrderBy(models.HouseholdInvitations.Columns.ID),
+	).All(ctx, bobpgx.NewPool(r.DB))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	invitations := make([]*model.HouseholdInvitation, 0)
-	for rows.Next() {
+	for _, row := range rows {
 		invitation := &model.HouseholdInvitation{}
-		var expiresAt, createdAt time.Time
-		var revokedAt, acceptedAt *time.Time
-		if err := rows.Scan(&invitation.ID, &invitation.HouseholdID, &invitation.Role, &expiresAt, &createdAt, &revokedAt, &acceptedAt); err != nil {
-			return nil, err
-		}
-		invitation.ExpiresAt, invitation.CreatedAt = timeString(expiresAt), timeString(createdAt)
-		invitation.RevokedAt, invitation.AcceptedAt = optionalTimeString(revokedAt), optionalTimeString(acceptedAt)
+		invitation.ID, invitation.HouseholdID, invitation.Role = row.ID.String(), row.HouseholdID.String(), row.Role
+		invitation.ExpiresAt, invitation.CreatedAt = timeString(row.ExpiresAt), timeString(row.CreatedAt)
+		invitation.RevokedAt, invitation.AcceptedAt = optionalTimeString(invitationTimePointer(row.RevokedAt)), optionalTimeString(invitationTimePointer(row.AcceptedAt))
 		invitations = append(invitations, invitation)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	return invitations, nil
 }
@@ -105,39 +119,51 @@ func (r *mutationResolver) revokeHouseholdInvitation(ctx context.Context, househ
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	if err := requireHouseholdOwner(ctx, tx, householdID, user.MemberID); err != nil {
+	if err := requireHouseholdOwner(ctx, bobpgx.NewTx(tx, nil), householdID, user.MemberID); err != nil {
 		return nil, err
 	}
-	var invitation model.HouseholdInvitation
-	var expiresAt, createdAt time.Time
-	var revokedAt, acceptedAt *time.Time
-	err = tx.QueryRow(ctx, `SELECT id::text, household_id::text, role, expires_at, created_at, revoked_at, accepted_at FROM household_invitations WHERE id = $1 AND household_id = $2 FOR UPDATE`, invitationID, householdID).Scan(&invitation.ID, &invitation.HouseholdID, &invitation.Role, &expiresAt, &createdAt, &revokedAt, &acceptedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	invitationRow, err := models.HouseholdInvitations.Query(
+		sm.Where(psql.And(
+			models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(invitationID)),
+			models.HouseholdInvitations.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		)),
+		sm.ForUpdate(),
+	).One(ctx, bobpgx.NewTx(tx, nil))
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	if acceptedAt != nil {
+	if invitationRow.AcceptedAt.Valid {
 		return nil, ErrConflict
 	}
-	if revokedAt == nil {
-		if err := tx.QueryRow(ctx, `UPDATE household_invitations SET revoked_at = now() WHERE id = $1 RETURNING revoked_at`, invitationID).Scan(&revokedAt); err != nil {
+	if !invitationRow.RevokedAt.Valid {
+		revokedAt := time.Now()
+		if _, err := models.HouseholdInvitations.Update(
+			um.Where(models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(invitationRow.ID))),
+			um.SetCol("revoked_at").To(psql.Arg(revokedAt)),
+		).One(ctx, bobpgx.NewTx(tx, nil)); err != nil {
 			return nil, err
 		}
-		var revision int64
-		if err := tx.QueryRow(ctx, `UPDATE households SET revision = revision + 1, updated_at = now() WHERE id = $1 RETURNING revision`, householdID).Scan(&revision); err != nil {
+		household, err := models.Households.Update(
+			um.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))),
+			um.SetCol("revision").To(models.Households.Columns.Revision.Plus(psql.Arg(1))),
+			um.SetCol("updated_at").To(psql.F("now")),
+		).One(ctx, bobpgx.NewTx(tx, nil))
+		if err != nil {
 			return nil, err
 		}
-		if err := writeEvent(ctx, tx, householdID, "household.invitation.revoked", invitationID, revision, []string{"invitations"}, user.MemberID); err != nil {
+		if err := writeEvent(ctx, tx, householdID, "household.invitation.revoked", invitationID, household.Revision, []string{"invitations"}, user.MemberID); err != nil {
 			return nil, err
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	invitation.ExpiresAt, invitation.CreatedAt = timeString(expiresAt), timeString(createdAt)
-	invitation.RevokedAt, invitation.AcceptedAt = optionalTimeString(revokedAt), optionalTimeString(acceptedAt)
+	invitation := model.HouseholdInvitation{ID: invitationRow.ID.String(), HouseholdID: invitationRow.HouseholdID.String(), Role: invitationRow.Role}
+	invitation.ExpiresAt, invitation.CreatedAt = timeString(invitationRow.ExpiresAt), timeString(invitationRow.CreatedAt)
+	invitation.RevokedAt, invitation.AcceptedAt = optionalTimeString(invitationTimePointer(invitationRow.RevokedAt)), optionalTimeString(invitationTimePointer(invitationRow.AcceptedAt))
 	return &invitation, nil
 }
 
@@ -156,42 +182,61 @@ func (r *mutationResolver) acceptHouseholdInvitation(ctx context.Context, token 
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var invitationID, householdID string
-	var isExpired bool
-	var revokedAt, acceptedAt *time.Time
-	err = tx.QueryRow(ctx, `SELECT id::text, household_id::text, expires_at <= now(), revoked_at, accepted_at FROM household_invitations WHERE token_hash = $1 FOR UPDATE`, tokenHash[:]).Scan(&invitationID, &householdID, &isExpired, &revokedAt, &acceptedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	invitationRow, err := models.HouseholdInvitations.Query(
+		sm.Where(models.HouseholdInvitations.Columns.TokenHash.EQ(psql.Arg(tokenHash[:]))),
+		sm.ForUpdate(),
+	).One(ctx, bobpgx.NewTx(tx, nil))
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	if revokedAt != nil || acceptedAt != nil || isExpired {
+	if invitationRow.RevokedAt.Valid || invitationRow.AcceptedAt.Valid || !invitationRow.ExpiresAt.After(time.Now()) {
 		return nil, ErrConflict
 	}
-	var alreadyMember bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM household_members WHERE household_id = $1 AND member_id = $2)`, householdID, user.MemberID).Scan(&alreadyMember); err != nil {
+	householdID := invitationRow.HouseholdID.String()
+	_, err = models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(invitationRow.HouseholdID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(user.MemberID)),
+	))).One(ctx, bobpgx.NewTx(tx, nil))
+	if err == nil {
+		return nil, ErrConflict
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	if alreadyMember {
-		return nil, ErrConflict
-	}
-	var joinedMemberID string
-	err = tx.QueryRow(ctx, `INSERT INTO household_members(household_id, member_id, role) VALUES ($1, $2, 'MEMBER') ON CONFLICT (household_id, member_id) DO NOTHING RETURNING member_id::text`, householdID, user.MemberID).Scan(&joinedMemberID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	memberUUID, _ := gofrsuuid.FromString(user.MemberID)
+	householdUUID := invitationRow.HouseholdID
+	role := "MEMBER"
+	_, err = models.HouseholdMembers.Insert(
+		&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberUUID, Role: &role},
+		im.OnConflict("household_id", "member_id").DoNothing(),
+	).One(ctx, bobpgx.NewTx(tx, nil))
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrConflict
 	}
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE household_invitations SET accepted_by = $2, accepted_at = now() WHERE id = $1`, invitationID, user.MemberID); err != nil {
+	acceptedBy, _ := gofrsuuid.FromString(user.MemberID)
+	acceptedAt := time.Now()
+	if _, err := models.HouseholdInvitations.Update(
+		um.Where(models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(invitationRow.ID))),
+		um.SetCol("accepted_by").To(psql.Arg(acceptedBy)),
+		um.SetCol("accepted_at").To(psql.Arg(acceptedAt)),
+	).One(ctx, bobpgx.NewTx(tx, nil)); err != nil {
 		return nil, err
 	}
-	var revision int64
-	if err := tx.QueryRow(ctx, `UPDATE households SET revision = revision + 1, updated_at = now() WHERE id = $1 RETURNING revision`, householdID).Scan(&revision); err != nil {
+	household, err := models.Households.Update(
+		um.Where(models.Households.Columns.ID.EQ(psql.Arg(invitationRow.HouseholdID))),
+		um.SetCol("revision").To(models.Households.Columns.Revision.Plus(psql.Arg(1))),
+		um.SetCol("updated_at").To(psql.F("now")),
+	).One(ctx, bobpgx.NewTx(tx, nil))
+	if err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, householdID, "household.member.joined", user.MemberID, revision, []string{"members"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, householdID, "household.member.joined", user.MemberID, household.Revision, []string{"members"}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -200,23 +245,28 @@ func (r *mutationResolver) acceptHouseholdInvitation(ctx context.Context, token 
 	return loadHousehold(ctx, r.DB, householdID)
 }
 
-type householdRoleQuerier interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}
-
-func requireHouseholdOwner(ctx context.Context, db householdRoleQuerier, householdID, memberID string) error {
-	var role string
-	err := db.QueryRow(ctx, `SELECT role FROM household_members WHERE household_id = $1 AND member_id = $2 FOR SHARE`, householdID, memberID).Scan(&role)
-	if errors.Is(err, pgx.ErrNoRows) {
+func requireHouseholdOwner(ctx context.Context, db bob.Executor, householdID, memberID string) error {
+	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+	)), sm.ForShare()).One(ctx, db)
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
 		return err
 	}
-	if role != "OWNER" {
+	if member.Role != "OWNER" {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func invitationTimePointer(value sql.Null[time.Time]) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	return &value.V
 }
 
 func optionalTimeString(value *time.Time) *string {

@@ -1,12 +1,19 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json/v2"
 	"errors"
 	"net/http"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/ingestion"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
@@ -15,9 +22,18 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
 		return
 	}
-	var householdID, hash, kind string
-	var payload []byte
-	err = s.db.QueryRow(r.Context(), `SELECT d.household_id::text,d.sha256,d.source_kind,j.result FROM source_documents d JOIN household_members hm ON hm.household_id=d.household_id AND hm.member_id=$2 JOIN LATERAL (SELECT result FROM extraction_jobs WHERE source_document_id=d.id AND status='succeeded' ORDER BY version DESC LIMIT 1) j ON true WHERE d.id=$1`, r.PathValue("id"), principal.MemberID).Scan(&householdID, &hash, &kind, &payload)
+	documentID, err := gofrsuuid.FromString(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	memberID, err := gofrsuuid.FromString(principal.MemberID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	executor := bobpgx.NewPool(s.db)
+	document, err := documentForMember(r.Context(), executor, documentID, memberID, false)
 	if errors.Is(err, pgx.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -26,12 +42,29 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
 		return
 	}
+	job, err := models.ExtractionJobs.Query(sm.Where(psql.And(
+		models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
+		models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
+	)), sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(), sm.Limit(1)).One(r.Context(), executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
+		return
+	}
+	if !job.Result.Valid {
+		http.Error(w, "invalid extraction result", http.StatusInternalServerError)
+		return
+	}
+	payload := job.Result.V.Val
 	var verified ingestion.Verification
 	if err := json.Unmarshal(payload, &verified); err != nil {
 		http.Error(w, "invalid extraction result", http.StatusInternalServerError)
 		return
 	}
-	incoming := ingestion.SourceObservations(r.PathValue("id"), hash, kind, verified)
+	incoming := ingestion.SourceObservations(document.ID.String(), document.Sha256, document.SourceKind, verified)
 	truncated := false
 	if reference := r.URL.Query().Get("sourceReference"); reference != "" {
 		selected := make([]ingestion.Observation, 0, 1)
@@ -47,34 +80,89 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 		truncated = true
 	}
 	// 候補検索は確定した購入へ自動統合せず、同じ家庭の直近原本との照合結果を返す。
-	rows, err := s.db.Query(r.Context(), `SELECT d.id::text,d.sha256,d.source_kind,j.result FROM source_documents d JOIN LATERAL (SELECT result FROM extraction_jobs WHERE source_document_id=d.id AND status='succeeded' ORDER BY version DESC LIMIT 1) j ON true WHERE d.household_id=$1 AND d.id<>$2 ORDER BY d.created_at DESC,d.id DESC LIMIT 100`, householdID, r.PathValue("id"))
+	successfulJobs, err := models.ExtractionJobs.Query(sm.Where(psql.And(
+		models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+		models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
+	))).All(r.Context(), executor)
 	if err != nil {
 		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
-	existing := make([]ingestion.Observation, 0)
-	for rows.Next() {
-		var documentID string
-		if err := rows.Scan(&documentID, &hash, &kind, &payload); err != nil {
+	eligibleDocuments := make(map[gofrsuuid.UUID]struct{}, len(successfulJobs))
+	for _, successfulJob := range successfulJobs {
+		eligibleDocuments[successfulJob.SourceDocumentID] = struct{}{}
+	}
+	documentIDs := make([]bob.Expression, 0, len(eligibleDocuments))
+	for id := range eligibleDocuments {
+		if id != document.ID {
+			documentIDs = append(documentIDs, psql.Arg(id))
+		}
+	}
+	var documents models.SourceDocumentSlice
+	if len(documentIDs) > 0 {
+		documents, err = models.SourceDocuments.Query(
+			sm.Where(psql.And(
+				models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+				models.SourceDocuments.Columns.ID.In(documentIDs...),
+			)),
+			sm.OrderBy(models.SourceDocuments.Columns.CreatedAt).Desc(),
+			sm.OrderBy(models.SourceDocuments.Columns.ID).Desc(),
+			sm.Limit(100),
+		).All(r.Context(), executor)
+		if err != nil {
 			http.Error(w, "observation lookup failed", http.StatusInternalServerError)
 			return
 		}
-		verified = ingestion.Verification{}
-		if err := json.Unmarshal(payload, &verified); err != nil {
+	}
+	if len(documents) == 0 {
+		documents = models.SourceDocumentSlice{}
+	}
+	documentIDArgs := make([]bob.Expression, 0, len(documents))
+	for _, document := range documents {
+		documentIDArgs = append(documentIDArgs, psql.Arg(document.ID))
+	}
+	var jobs models.ExtractionJobSlice
+	if len(documents) > 0 {
+		jobs, err = models.ExtractionJobs.Query(
+			sm.Where(psql.And(
+				models.ExtractionJobs.Columns.SourceDocumentID.In(documentIDArgs...),
+				models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
+			)),
+			sm.OrderBy(models.ExtractionJobs.Columns.SourceDocumentID),
+			sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
+		).All(r.Context(), executor)
+		if err != nil {
+			http.Error(w, "observation lookup failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	jobsByDocument := make(map[gofrsuuid.UUID]*models.ExtractionJob, len(documents))
+	for _, extractionJob := range jobs {
+		if _, ok := jobsByDocument[extractionJob.SourceDocumentID]; !ok {
+			jobsByDocument[extractionJob.SourceDocumentID] = extractionJob
+		}
+	}
+	existing := make([]ingestion.Observation, 0)
+	for _, existingDocument := range documents {
+		extractionJob, ok := jobsByDocument[existingDocument.ID]
+		if !ok {
+			continue
+		}
+		if !extractionJob.Result.Valid {
 			http.Error(w, "invalid extraction result", http.StatusInternalServerError)
 			return
 		}
-		existing = append(existing, ingestion.SourceObservations(documentID, hash, kind, verified)...)
+		verified = ingestion.Verification{}
+		if err := json.Unmarshal(extractionJob.Result.V.Val, &verified); err != nil {
+			http.Error(w, "invalid extraction result", http.StatusInternalServerError)
+			return
+		}
+		existing = append(existing, ingestion.SourceObservations(existingDocument.ID.String(), existingDocument.Sha256, existingDocument.SourceKind, verified)...)
 		if len(existing) > 5000 {
 			existing = existing[:5000]
 			truncated = true
 			break
 		}
-	}
-	if err := rows.Err(); err != nil {
-		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
-		return
 	}
 	type candidate struct {
 		SourceReference string            `json:"sourceReference"`

@@ -2,6 +2,8 @@ package graph
 
 import (
 	"context"
+	"database/sql"
+	stdjson "encoding/json"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -9,10 +11,20 @@ import (
 	"strings"
 	"time"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/im"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/stephenafamo/bob/dialect/psql/um"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/graph/model"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 const maxMoney int64 = 1_000_000_000_000
@@ -32,10 +44,17 @@ func (r *mutationResolver) createHousehold(ctx context.Context, input model.Crea
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	householdID := newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO households(id, name) VALUES ($1, $2)`, householdID, name); err != nil {
+	householdUUID := generatedUUID(householdID)
+	userUUID, err := gofrsuuid.FromString(user.MemberID)
+	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO household_members(household_id, member_id, role) VALUES ($1, $2, 'OWNER')`, householdID, user.MemberID); err != nil {
+	executor := bobpgx.NewTx(tx, nil)
+	if _, err := models.Households.Insert(&models.HouseholdSetter{ID: &householdUUID, Name: &name}).Exec(ctx, executor); err != nil {
+		return nil, err
+	}
+	ownerRole := "OWNER"
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &userUUID, Role: &ownerRole}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	for _, memberName := range input.MemberNames {
@@ -45,14 +64,15 @@ func (r *mutationResolver) createHousehold(ctx context.Context, input model.Crea
 		}
 		placeholderID := newID()
 		placeholderSubject := "invite:" + placeholderID
-		if _, err := tx.Exec(ctx, `INSERT INTO members(id, oidc_subject, display_name) VALUES ($1, $2, $3)`, placeholderID, placeholderSubject, memberName); err != nil {
+		placeholderUUID := generatedUUID(placeholderID)
+		if _, err := models.Members.Insert(&models.MemberSetter{ID: &placeholderUUID, OidcSubject: &placeholderSubject, DisplayName: &memberName}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO household_members(household_id, member_id) VALUES ($1, $2)`, householdID, placeholderID); err != nil {
+		if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &placeholderUUID}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO household_events(household_id, type, entity_id, revision, changed_fields, actor_id) VALUES ($1, 'household.created', $1, 1, '[]'::jsonb, $2)`, householdID, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, householdID, "household.created", householdID, 1, []string{}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -75,25 +95,58 @@ func (r *mutationResolver) createPool(ctx context.Context, input model.CreatePoo
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var version int64
-	if err := tx.QueryRow(ctx, `SELECT default_allocation_version FROM households WHERE id = $1 FOR UPDATE`, input.HouseholdID).Scan(&version); err != nil {
+	householdUUID, err := gofrsuuid.FromString(input.HouseholdID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	householdRow, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForUpdate()).One(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
+	version := int64(householdRow.DefaultAllocationVersion)
 	poolID := newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO pools(id, household_id, name, kind) VALUES ($1, $2, $3, $4)`, poolID, input.HouseholdID, name, input.Kind); err != nil {
+	poolUUID := generatedUUID(poolID)
+	poolKind := string(input.Kind)
+	if _, err := models.Pools.Insert(&models.PoolSetter{ID: &poolUUID, HouseholdID: &householdUUID, Name: &name, Kind: &poolKind}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO pool_funding_rules(household_id,pool_id,version,created_by) VALUES($1,$2,1,$3)`, input.HouseholdID, poolID, user.MemberID); err != nil {
+	initialFundingVersion := int32(1)
+	createdByUUID, err := gofrsuuid.FromString(user.MemberID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := models.PoolFundingRules.Insert(&models.PoolFundingRuleSetter{HouseholdID: &householdUUID, PoolID: &poolUUID, Version: &initialFundingVersion, CreatedBy: &createdByUUID}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	newVersion := version + 1
-	if _, err := tx.Exec(ctx, `INSERT INTO allocation_defaults(household_id, version, pool_id, weight) SELECT household_id, $3, pool_id, weight FROM allocation_defaults WHERE household_id = $1 AND version = $2`, input.HouseholdID, version, newVersion); err != nil {
+	oldDefaults, err := models.AllocationDefaults.Query(sm.Where(psql.And(
+		models.AllocationDefaults.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.AllocationDefaults.Columns.Version.EQ(psql.Arg(version)),
+	))).All(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO allocation_defaults(household_id, version, pool_id, weight) VALUES ($1, $2, $3, 1)`, input.HouseholdID, newVersion, poolID); err != nil {
+	newVersionValue := newVersion
+	for _, oldDefault := range oldDefaults {
+		poolIDValue, weightValue := oldDefault.PoolID, oldDefault.Weight
+		if _, err := models.AllocationDefaults.Insert(&models.AllocationDefaultSetter{
+			HouseholdID: &householdUUID, Version: &newVersionValue, PoolID: &poolIDValue, Weight: &weightValue,
+		}).Exec(ctx, executor); err != nil {
+			return nil, err
+		}
+	}
+	defaultWeight := int64(1)
+	if _, err := models.AllocationDefaults.Insert(&models.AllocationDefaultSetter{
+		HouseholdID: &householdUUID, Version: &newVersionValue, PoolID: &poolUUID, Weight: &defaultWeight,
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE households SET default_allocation_version = $2, revision = revision + 1, updated_at = now() WHERE id = $1`, input.HouseholdID, newVersion); err != nil {
+	newUpdatedAt := time.Now().UTC()
+	newRevision := householdRow.Revision + 1
+	if _, err := models.Households.Update((&models.HouseholdSetter{
+		DefaultAllocationVersion: &newVersionValue, Revision: &newRevision, UpdatedAt: &newUpdatedAt,
+	}).UpdateMod(), um.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "pool.created", poolID, newVersion, []string{"name", "kind"}, user.MemberID); err != nil {
@@ -129,7 +182,21 @@ func (r *mutationResolver) createAccount(ctx context.Context, input model.Create
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	if _, err := tx.Exec(ctx, `INSERT INTO accounts(id, household_id, pool_id, name, kind) VALUES ($1, $2, $3, $4, $5)`, id, input.HouseholdID, input.PoolID, name, input.Kind); err != nil {
+	idUUID := generatedUUID(id)
+	householdUUID, parseErr := gofrsuuid.FromString(input.HouseholdID)
+	if parseErr != nil {
+		return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
+	}
+	var poolValue sql.Null[gofrsuuid.UUID]
+	if input.PoolID != nil {
+		poolUUID, parseErr := gofrsuuid.FromString(*input.PoolID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid pool id", ErrBadInput)
+		}
+		poolValue = sql.Null[gofrsuuid.UUID]{V: poolUUID, Valid: true}
+	}
+	accountKind := string(input.Kind)
+	if _, err := models.Accounts.Insert(&models.AccountSetter{ID: &idUUID, HouseholdID: &householdUUID, PoolID: &poolValue, Name: &name, Kind: &accountKind}).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "account.created", id, 1, []string{"name", "kind", "poolId"}, user.MemberID); err != nil {
@@ -156,7 +223,20 @@ func (r *mutationResolver) createCategory(ctx context.Context, input model.Creat
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	if _, err := tx.Exec(ctx, `INSERT INTO categories(id, household_id, parent_id, name) VALUES ($1, $2, $3, $4)`, id, input.HouseholdID, input.ParentID, name); err != nil {
+	idUUID := generatedUUID(id)
+	householdUUID, parseErr := gofrsuuid.FromString(input.HouseholdID)
+	if parseErr != nil {
+		return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
+	}
+	var parentValue sql.Null[gofrsuuid.UUID]
+	if input.ParentID != nil {
+		parentUUID, parseErr := gofrsuuid.FromString(*input.ParentID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid parent category id", ErrBadInput)
+		}
+		parentValue = sql.Null[gofrsuuid.UUID]{V: parentUUID, Valid: true}
+	}
+	if _, err := models.Categories.Insert(&models.CategorySetter{ID: &idUUID, HouseholdID: &householdUUID, ParentID: &parentValue, Name: &name}).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "category.created", id, 1, []string{"name", "parentId"}, user.MemberID); err != nil {
@@ -169,12 +249,17 @@ func (r *mutationResolver) createCategory(ctx context.Context, input model.Creat
 }
 
 func (r *mutationResolver) setCategoryArchived(ctx context.Context, categoryID string, archived bool) (*model.Category, error) {
-	var householdID string
-	if err := r.DB.QueryRow(ctx, `SELECT household_id::text FROM categories WHERE id = $1`, categoryID).Scan(&householdID); errors.Is(err, pgx.ErrNoRows) {
+	categoryUUID, err := gofrsuuid.FromString(categoryID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid category id", ErrBadInput)
+	}
+	categoryRow, err := models.Categories.Query(sm.Where(models.Categories.Columns.ID.EQ(psql.Arg(categoryUUID)))).One(ctx, bobpgx.NewPool(r.DB))
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
+	householdID := categoryRow.HouseholdID.String()
 	user, err := requireMember(ctx, r.DB, householdID)
 	if err != nil {
 		return nil, err
@@ -184,16 +269,24 @@ func (r *mutationResolver) setCategoryArchived(ctx context.Context, categoryID s
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var name string
-	var parentID *string
-	var currentArchived bool
-	if err := tx.QueryRow(ctx, `SELECT name, parent_id::text, archived FROM categories WHERE id = $1 AND household_id = $2 FOR UPDATE`, categoryID, householdID).Scan(&name, &parentID, &currentArchived); errors.Is(err, pgx.ErrNoRows) {
+	householdUUID := categoryRow.HouseholdID
+	categoryRow, err = models.Categories.Query(sm.Where(psql.And(
+		models.Categories.Columns.ID.EQ(psql.Arg(categoryUUID)),
+		models.Categories.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+	)), sm.ForUpdate()).One(ctx, bobpgx.NewTx(tx, nil))
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	if currentArchived != archived {
-		if _, err := tx.Exec(ctx, `UPDATE categories SET archived = $2 WHERE id = $1`, categoryID, archived); err != nil {
+	name := categoryRow.Name
+	var parentID *string
+	if categoryRow.ParentID.Valid {
+		parent := categoryRow.ParentID.V.String()
+		parentID = &parent
+	}
+	if categoryRow.Archived != archived {
+		if _, err := models.Categories.Update((&models.CategorySetter{Archived: &archived}).UpdateMod(), um.Where(models.Categories.Columns.ID.EQ(psql.Arg(categoryUUID)))).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
 			return nil, err
 		}
 		eventType := "category.unarchived"
@@ -227,26 +320,47 @@ func (r *mutationResolver) setDefaultAllocation(ctx context.Context, input model
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var version int64
-	if err := tx.QueryRow(ctx, `SELECT default_allocation_version FROM households WHERE id = $1 FOR UPDATE`, input.HouseholdID).Scan(&version); err != nil {
+	householdUUID, err := gofrsuuid.FromString(input.HouseholdID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	householdRow, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForUpdate()).One(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
+	version := int64(householdRow.DefaultAllocationVersion)
 	for _, weight := range weights {
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pools WHERE household_id = $1 AND id = $2)`, input.HouseholdID, weight.PoolID).Scan(&exists); err != nil {
-			return nil, err
+		poolUUID, parseErr := gofrsuuid.FromString(weight.PoolID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid pool id", ErrBadInput)
 		}
-		if !exists {
+		_, err := models.Pools.Query(sm.Where(psql.And(
+			models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.Pools.Columns.ID.EQ(psql.Arg(poolUUID)),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
 	newVersion := version + 1
+	newVersionValue := newVersion
 	for _, weight := range weights {
-		if _, err := tx.Exec(ctx, `INSERT INTO allocation_defaults(household_id, version, pool_id, weight) VALUES ($1, $2, $3, $4)`, input.HouseholdID, newVersion, weight.PoolID, weight.Value); err != nil {
+		poolUUID, _ := gofrsuuid.FromString(weight.PoolID)
+		weightValue := weight.Value
+		if _, err := models.AllocationDefaults.Insert(&models.AllocationDefaultSetter{
+			HouseholdID: &householdUUID, Version: &newVersionValue, PoolID: &poolUUID, Weight: &weightValue,
+		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE households SET default_allocation_version = $2, revision = revision + 1, updated_at = now() WHERE id = $1`, input.HouseholdID, newVersion); err != nil {
+	newRevision, updatedAt := householdRow.Revision+1, time.Now().UTC()
+	if _, err := models.Households.Update((&models.HouseholdSetter{
+		DefaultAllocationVersion: &newVersionValue, Revision: &newRevision, UpdatedAt: &updatedAt,
+	}).UpdateMod(), um.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "allocation.default.updated", input.HouseholdID, newVersion, []string{"defaultAllocation"}, user.MemberID); err != nil {
@@ -291,65 +405,121 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var lockedHouseholdID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM households WHERE id = $1 FOR UPDATE`, input.HouseholdID).Scan(&lockedHouseholdID); errors.Is(err, pgx.ErrNoRows) {
+	householdUUID, err := gofrsuuid.FromString(input.HouseholdID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
 	for _, weight := range weights {
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pools WHERE household_id = $1 AND id = $2)`, input.HouseholdID, weight.PoolID).Scan(&exists); err != nil {
-			return nil, err
+		poolUUID, parseErr := gofrsuuid.FromString(weight.PoolID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid pool id", ErrBadInput)
 		}
-		if !exists {
+		_, err := models.Pools.Query(sm.Where(psql.And(
+			models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.Pools.Columns.ID.EQ(psql.Arg(poolUUID)),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
+		if err != nil {
+			return nil, err
+		}
 	}
-	for _, reference := range []struct {
-		table string
-		id    *string
-	}{{"categories", input.CategoryID}, {"product_concepts", input.ProductConceptID}, {"product_variants", input.ProductVariantID}} {
-		if reference.id == nil {
+	for _, referenceID := range []*string{input.CategoryID, input.ProductConceptID, input.ProductVariantID} {
+		if referenceID == nil {
 			continue
 		}
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM `+reference.table+` WHERE household_id=$1 AND id=$2)`, input.HouseholdID, *reference.id).Scan(&exists); err != nil {
-			return nil, err
-		}
-		if !exists {
-			return nil, ErrNotFound
+		if _, err := gofrsuuid.FromString(*referenceID); err != nil {
+			return nil, fmt.Errorf("%w: invalid allocation rule reference id", ErrBadInput)
 		}
 	}
-	var ruleID string
-	var revision int64
 	if input.CategoryID != nil {
-		err = tx.QueryRow(ctx, `SELECT id::text, revision FROM allocation_rules WHERE household_id = $1 AND category_id = $2 FOR UPDATE`, input.HouseholdID, *input.CategoryID).Scan(&ruleID, &revision)
-	} else if input.Merchant != nil {
-		err = tx.QueryRow(ctx, `SELECT id::text, revision FROM allocation_rules WHERE household_id = $1 AND merchant_key = $2 FOR UPDATE`, input.HouseholdID, merchantKey).Scan(&ruleID, &revision)
-	} else if input.ProductConceptID != nil {
-		err = tx.QueryRow(ctx, `SELECT id::text,revision FROM allocation_rules WHERE household_id=$1 AND product_concept_id=$2 FOR UPDATE`, input.HouseholdID, *input.ProductConceptID).Scan(&ruleID, &revision)
-	} else {
-		err = tx.QueryRow(ctx, `SELECT id::text,revision FROM allocation_rules WHERE household_id=$1 AND product_variant_id=$2 FOR UPDATE`, input.HouseholdID, *input.ProductVariantID).Scan(&ruleID, &revision)
+		id := generatedUUID(*input.CategoryID)
+		if _, err := models.Categories.Query(sm.Where(psql.And(models.Categories.Columns.ID.EQ(psql.Arg(id)), models.Categories.Columns.HouseholdID.EQ(psql.Arg(householdUUID))))).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		} else if err != nil {
+			return nil, err
+		}
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		ruleID, revision = newID(), 1
-		if _, err := tx.Exec(ctx, `INSERT INTO allocation_rules(id,household_id,category_id,merchant_key,product_concept_id,product_variant_id,revision) VALUES ($1,$2,$3,$4,$5,$6,$7)`, ruleID, input.HouseholdID, input.CategoryID, nullableMerchantKey(input.Merchant, merchantKey), input.ProductConceptID, input.ProductVariantID, revision); err != nil {
+	if input.ProductConceptID != nil {
+		id := generatedUUID(*input.ProductConceptID)
+		if _, err := models.ProductConcepts.Query(sm.Where(psql.And(models.ProductConcepts.Columns.ID.EQ(psql.Arg(id)), models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID))))).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		} else if err != nil {
 			return nil, err
 		}
-	} else if err != nil {
-		return nil, err
+	}
+	if input.ProductVariantID != nil {
+		id := generatedUUID(*input.ProductVariantID)
+		if _, err := models.ProductVariants.Query(sm.Where(psql.And(models.ProductVariants.Columns.ID.EQ(psql.Arg(id)), models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID))))).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	var ruleRow *models.AllocationRule
+	var ruleErr error
+	if input.CategoryID != nil {
+		id := generatedUUID(*input.CategoryID)
+		ruleRow, ruleErr = models.AllocationRules.Query(sm.Where(psql.And(models.AllocationRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.AllocationRules.Columns.CategoryID.EQ(psql.Arg(id)))), sm.ForUpdate()).One(ctx, executor)
+	} else if input.Merchant != nil {
+		ruleRow, ruleErr = models.AllocationRules.Query(sm.Where(psql.And(models.AllocationRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.AllocationRules.Columns.MerchantKey.EQ(psql.Arg(merchantKey)))), sm.ForUpdate()).One(ctx, executor)
+	} else if input.ProductConceptID != nil {
+		id := generatedUUID(*input.ProductConceptID)
+		ruleRow, ruleErr = models.AllocationRules.Query(sm.Where(psql.And(models.AllocationRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.AllocationRules.Columns.ProductConceptID.EQ(psql.Arg(id)))), sm.ForUpdate()).One(ctx, executor)
 	} else {
-		revision++
-		if _, err := tx.Exec(ctx, `UPDATE allocation_rules SET revision = $2, updated_at = now() WHERE id = $1`, ruleID, revision); err != nil {
+		id := generatedUUID(*input.ProductVariantID)
+		ruleRow, ruleErr = models.AllocationRules.Query(sm.Where(psql.And(models.AllocationRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.AllocationRules.Columns.ProductVariantID.EQ(psql.Arg(id)))), sm.ForUpdate()).One(ctx, executor)
+	}
+	ruleID, revision := "", int64(1)
+	if errors.Is(ruleErr, sql.ErrNoRows) {
+		ruleID = newID()
+		ruleUUID := generatedUUID(ruleID)
+		categoryValue, conceptValue, variantValue := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
+		merchantValue := sql.Null[string]{}
+		if input.CategoryID != nil {
+			categoryValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.CategoryID), Valid: true}
+		}
+		if input.ProductConceptID != nil {
+			conceptValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.ProductConceptID), Valid: true}
+		}
+		if input.ProductVariantID != nil {
+			variantValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.ProductVariantID), Valid: true}
+		}
+		if input.Merchant != nil {
+			merchantValue = sql.Null[string]{V: merchantKey, Valid: true}
+		}
+		if _, err := models.AllocationRules.Insert(&models.AllocationRuleSetter{
+			ID: &ruleUUID, HouseholdID: &householdUUID, CategoryID: &categoryValue, MerchantKey: &merchantValue,
+			ProductConceptID: &conceptValue, ProductVariantID: &variantValue, Revision: &revision,
+		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM allocation_rule_weights WHERE rule_id = $1`, ruleID); err != nil {
+	} else {
+		if ruleErr != nil {
+			return nil, ruleErr
+		}
+		ruleUUID := ruleRow.ID
+		ruleID, revision = ruleUUID.String(), ruleRow.Revision+1
+		updatedAt := time.Now().UTC()
+		if _, err := models.AllocationRules.Update((&models.AllocationRuleSetter{Revision: &revision, UpdatedAt: &updatedAt}).UpdateMod(), um.Where(models.AllocationRules.Columns.ID.EQ(psql.Arg(ruleUUID)))).Exec(ctx, executor); err != nil {
+			return nil, err
+		}
+		if _, err := models.AllocationRuleWeights.Delete(dm.Where(models.AllocationRuleWeights.Columns.RuleID.EQ(psql.Arg(ruleUUID)))).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
 	for _, weight := range weights {
-		if _, err := tx.Exec(ctx, `INSERT INTO allocation_rule_weights(household_id, rule_id, pool_id, weight) VALUES ($1,$2,$3,$4)`, input.HouseholdID, ruleID, weight.PoolID, weight.Value); err != nil {
+		poolUUID, _ := gofrsuuid.FromString(weight.PoolID)
+		ruleUUID := generatedUUID(ruleID)
+		weightValue := weight.Value
+		if _, err := models.AllocationRuleWeights.Insert(&models.AllocationRuleWeightSetter{HouseholdID: &householdUUID, RuleID: &ruleUUID, PoolID: &poolUUID, Weight: &weightValue}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
@@ -376,44 +546,80 @@ func normalizeMerchant(value string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
 }
 
-func nullableMerchantKey(merchant *string, normalized string) any {
-	if merchant == nil {
+func allocationRuleWeights(ctx context.Context, tx pgx.Tx, householdID string, categoryID, productVariantID *string, merchant string) ([]domain.Weight, *string, int64, error) {
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	var candidates []*models.AllocationRule
+	appendRule := func(expression psql.Expression) error {
+		rule, err := models.AllocationRules.Query(sm.Where(psql.And(models.AllocationRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), expression))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		candidates = append(candidates, rule)
 		return nil
 	}
-	return normalized
-}
-
-func allocationRuleWeights(ctx context.Context, tx pgx.Tx, householdID string, categoryID, productVariantID *string, merchant string) ([]domain.Weight, *string, int64, error) {
-	var ruleID string
-	var revision int64
-	err := tx.QueryRow(ctx, `SELECT ar.id::text,ar.revision FROM allocation_rules ar LEFT JOIN product_variants pv ON pv.household_id=ar.household_id AND pv.id=$3::uuid WHERE ar.household_id=$1 AND (($3::uuid IS NOT NULL AND ar.product_variant_id=$3::uuid) OR (pv.concept_id IS NOT NULL AND ar.product_concept_id=pv.concept_id) OR ($2::uuid IS NOT NULL AND ar.category_id=$2::uuid) OR ($4<>'' AND ar.merchant_key=$4)) ORDER BY CASE WHEN $3::uuid IS NOT NULL AND ar.product_variant_id=$3::uuid THEN 0 WHEN pv.concept_id IS NOT NULL AND ar.product_concept_id=pv.concept_id THEN 1 WHEN $2::uuid IS NOT NULL AND ar.category_id=$2::uuid THEN 2 WHEN $4<>'' AND ar.merchant_key=$4 THEN 3 ELSE 4 END,ar.id LIMIT 1`, householdID, categoryID, productVariantID, merchant).Scan(&ruleID, &revision)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil, 0, nil
-	}
-	if err != nil {
-		return nil, nil, 0, err
-	}
-	rows, err := tx.Query(ctx, `SELECT pool_id::text, weight FROM allocation_rule_weights WHERE rule_id = $1 ORDER BY pool_id`, ruleID)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-	weights := make([]domain.Weight, 0)
-	for rows.Next() {
-		var weight domain.Weight
-		if err := rows.Scan(&weight.PoolID, &weight.Value); err != nil {
-			rows.Close()
+	var conceptID *gofrsuuid.UUID
+	if productVariantID != nil {
+		variantUUID, parseErr := gofrsuuid.FromString(*productVariantID)
+		if parseErr != nil {
+			return nil, nil, 0, parseErr
+		}
+		variant, variantErr := models.ProductVariants.Query(sm.Where(psql.And(
+			models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)),
+		))).One(ctx, executor)
+		if variantErr == nil {
+			concept := variant.ConceptID
+			conceptID = &concept
+		} else if variantErr != nil && !errors.Is(variantErr, sql.ErrNoRows) {
+			return nil, nil, 0, variantErr
+		}
+		if err := appendRule(models.AllocationRules.Columns.ProductVariantID.EQ(psql.Arg(variantUUID))); err != nil {
 			return nil, nil, 0, err
 		}
-		weights = append(weights, weight)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+	if conceptID != nil {
+		if err := appendRule(models.AllocationRules.Columns.ProductConceptID.EQ(psql.Arg(*conceptID))); err != nil {
+			return nil, nil, 0, err
+		}
+	}
+	if categoryID != nil {
+		categoryUUID, parseErr := gofrsuuid.FromString(*categoryID)
+		if parseErr != nil {
+			return nil, nil, 0, parseErr
+		}
+		if err := appendRule(models.AllocationRules.Columns.CategoryID.EQ(psql.Arg(categoryUUID))); err != nil {
+			return nil, nil, 0, err
+		}
+	}
+	if merchant != "" {
+		if err := appendRule(models.AllocationRules.Columns.MerchantKey.EQ(psql.Arg(merchant))); err != nil {
+			return nil, nil, 0, err
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, nil, 0, nil
+	}
+	rule := candidates[0]
+	weightsRows, err := models.AllocationRuleWeights.Query(sm.Where(models.AllocationRuleWeights.Columns.RuleID.EQ(psql.Arg(rule.ID))), sm.OrderBy(models.AllocationRuleWeights.Columns.PoolID)).All(ctx, executor)
+	if err != nil {
 		return nil, nil, 0, err
+	}
+	weights := make([]domain.Weight, 0, len(weightsRows))
+	for _, row := range weightsRows {
+		weights = append(weights, domain.Weight{PoolID: row.PoolID.String(), Value: row.Weight})
 	}
 	if len(weights) == 0 {
 		return nil, nil, 0, errors.New("allocation rule has no weights")
 	}
-	return weights, &ruleID, revision, nil
+	ruleID := rule.ID.String()
+	return weights, &ruleID, rule.Revision, nil
 }
 
 func (r *mutationResolver) createPurchase(ctx context.Context, input model.CreatePurchaseInput) (*model.Purchase, error) {
@@ -442,31 +648,46 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	if len(merchant) > 240 {
 		return nil, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
 	}
+	if len(input.PaymentAllocations) > 0 && input.PaymentAccountID != nil {
+		return nil, fmt.Errorf("%w: use paymentAllocations or paymentAccountId, not both", ErrBadInput)
+	}
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var existingID *string
-	err = tx.QueryRow(ctx, `SELECT resource_id::text FROM idempotency_keys WHERE household_id = $1 AND key = $2 AND operation = 'createPurchase'`, input.HouseholdID, input.IdempotencyKey).Scan(&existingID)
-	if err == nil && existingID != nil {
+	householdUUID, err := gofrsuuid.FromString(input.HouseholdID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	key, operation := input.IdempotencyKey, "createPurchase"
+	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
+		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(key)),
+		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
+	))).One(ctx, executor)
+	if err == nil {
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
-		return loadPurchase(ctx, r.DB, *existingID)
+		return loadPurchase(ctx, r.DB, existing.ResourceID.V.String())
 	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 	period := accountingPeriod(occurredAt)
-	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, input.HouseholdID, period); err != nil {
+	if err := ensureAccountingPeriod(ctx, executor, householdUUID, period); err != nil {
 		return nil, err
 	}
-	var periodStatus string
-	if err := tx.QueryRow(ctx, `SELECT status FROM accounting_periods WHERE household_id = $1 AND period = $2 FOR UPDATE`, input.HouseholdID, period).Scan(&periodStatus); err != nil {
+	periodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
-	if periodStatus == "CLOSED" {
+	if periodRow.Status == "CLOSED" {
 		return nil, fmt.Errorf("%w: accounting period is closed", ErrConflict)
 	}
 	if input.SourceDocumentID != nil {
@@ -477,33 +698,39 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 		if len(sourceReference) > 256 {
 			return nil, fmt.Errorf("%w: source reference is too long", ErrBadInput)
 		}
-		var documentHouseholdID string
-		err := tx.QueryRow(ctx, `SELECT household_id::text FROM source_documents WHERE id = $1 FOR UPDATE`, *input.SourceDocumentID).Scan(&documentHouseholdID)
-		if errors.Is(err, pgx.ErrNoRows) {
+		documentUUID, parseErr := gofrsuuid.FromString(*input.SourceDocumentID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid source document id", ErrBadInput)
+		}
+		document, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(documentUUID))), sm.ForUpdate()).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		if err != nil {
 			return nil, err
 		}
-		if documentHouseholdID != input.HouseholdID {
+		if document.HouseholdID != householdUUID {
 			return nil, ErrNotFound
 		}
-		var confirmedPurchaseID string
-		err = tx.QueryRow(ctx, `SELECT purchase_id::text FROM document_confirmations WHERE source_document_id = $1 AND source_reference = $2`, *input.SourceDocumentID, sourceReference).Scan(&confirmedPurchaseID)
-		if err == nil {
+		confirmation, confirmationErr := models.DocumentConfirmations.Query(sm.Where(psql.And(
+			models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)),
+			models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(sourceReference)),
+		))).One(ctx, executor)
+		if confirmationErr == nil {
 			if err := tx.Rollback(ctx); err != nil {
 				return nil, err
 			}
-			return loadPurchase(ctx, r.DB, confirmedPurchaseID)
+			return loadPurchase(ctx, r.DB, confirmation.PurchaseID.String())
 		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return nil, err
+		if !errors.Is(confirmationErr, sql.ErrNoRows) {
+			return nil, confirmationErr
 		}
 	}
-	var ruleVersion int64
-	if err := tx.QueryRow(ctx, `SELECT default_allocation_version FROM households WHERE id = $1 FOR SHARE`, input.HouseholdID).Scan(&ruleVersion); err != nil {
+	householdRow, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForShare()).One(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
+	ruleVersion := householdRow.DefaultAllocationVersion
 	defaults, err := loadWeights(ctx, tx, input.HouseholdID, ruleVersion)
 	if err != nil {
 		return nil, err
@@ -513,7 +740,24 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	}
 	merchantRuleKey := normalizeMerchant(merchant)
 	purchaseID := newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO purchases(id, household_id, occurred_at, merchant, payment_account_id, status, allocation_rule_version, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, purchaseID, input.HouseholdID, occurredAt, merchant, input.PaymentAccountID, status, ruleVersion, user.MemberID); err != nil {
+	purchaseUUID := generatedUUID(purchaseID)
+	createdBy, err := gofrsuuid.FromString(user.MemberID)
+	if err != nil {
+		return nil, err
+	}
+	var legacyAccount sql.Null[gofrsuuid.UUID]
+	if input.PaymentAccountID != nil {
+		accountUUID, parseErr := gofrsuuid.FromString(*input.PaymentAccountID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid payment account id", ErrBadInput)
+		}
+		legacyAccount = sql.Null[gofrsuuid.UUID]{V: accountUUID, Valid: true}
+	}
+	purchaseStatus := string(status)
+	if _, err := models.Purchases.Insert(&models.PurchaseSetter{
+		ID: &purchaseUUID, HouseholdID: &householdUUID, OccurredAt: &occurredAt, Merchant: &merchant,
+		PaymentAccountID: &legacyAccount, Status: &purchaseStatus, AllocationRuleVersion: &ruleVersion, CreatedBy: &createdBy,
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	for _, itemInput := range input.Items {
@@ -522,13 +766,40 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 		}
 		categoryID := itemInput.CategoryID
 		if itemInput.ProductVariantID != nil {
-			var productCategoryID *string
-			err := tx.QueryRow(ctx, `SELECT c.category_id::text FROM product_variants v JOIN product_concepts c ON c.id=v.concept_id WHERE v.id=$1 AND v.household_id=$2 AND NOT v.archived AND NOT c.archived`, *itemInput.ProductVariantID, input.HouseholdID).Scan(&productCategoryID)
-			if errors.Is(err, pgx.ErrNoRows) {
+			variantUUID, parseErr := gofrsuuid.FromString(*itemInput.ProductVariantID)
+			if parseErr != nil {
+				return nil, fmt.Errorf("%w: invalid product variant id", ErrBadInput)
+			}
+			variant, err := models.ProductVariants.Query(sm.Where(psql.And(
+				models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)),
+				models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			))).One(ctx, executor)
+			if errors.Is(err, sql.ErrNoRows) {
 				return nil, ErrNotFound
 			}
 			if err != nil {
 				return nil, err
+			}
+			if variant.Archived {
+				return nil, ErrNotFound
+			}
+			concept, err := models.ProductConcepts.Query(sm.Where(psql.And(
+				models.ProductConcepts.Columns.ID.EQ(psql.Arg(variant.ConceptID)),
+				models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			))).One(ctx, executor)
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrNotFound
+			}
+			if err != nil {
+				return nil, err
+			}
+			if concept.Archived {
+				return nil, ErrNotFound
+			}
+			var productCategoryID *string
+			if concept.CategoryID.Valid {
+				id := concept.CategoryID.V.String()
+				productCategoryID = &id
 			}
 			if categoryID == nil {
 				categoryID = productCategoryID
@@ -558,16 +829,48 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 			return nil, fmt.Errorf("%w: %w", ErrBadInput, err)
 		}
 		itemID := newID()
-		if _, err := tx.Exec(ctx, `INSERT INTO purchase_items(id,household_id,purchase_id,name,amount_yen,category_id,product_variant_id,allocation_override) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, itemID, input.HouseholdID, purchaseID, strings.TrimSpace(itemInput.Name), int64(itemInput.AmountYen), categoryID, itemInput.ProductVariantID, allocationOverride); err != nil {
+		itemUUID := generatedUUID(itemID)
+		itemName, itemAmount := strings.TrimSpace(itemInput.Name), int64(itemInput.AmountYen)
+		var categoryValue, variantValue sql.Null[gofrsuuid.UUID]
+		if categoryID != nil {
+			categoryValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*categoryID), Valid: true}
+		}
+		if itemInput.ProductVariantID != nil {
+			variantValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*itemInput.ProductVariantID), Valid: true}
+		}
+		if _, err := models.PurchaseItems.Insert(&models.PurchaseItemSetter{
+			ID: &itemUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, Name: &itemName,
+			AmountYen: &itemAmount, CategoryID: &categoryValue, ProductVariantID: &variantValue, AllocationOverride: &allocationOverride,
+		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 		for _, allocation := range allocated {
-			if _, err := tx.Exec(ctx, `INSERT INTO item_allocations(household_id, purchase_id, item_id, pool_id, weight, amount_yen, rule_version, rule_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, input.HouseholdID, purchaseID, itemID, allocation.PoolID, allocation.Weight, allocation.Amount, appliedRuleVersion, appliedRuleID); err != nil {
+			poolUUID := generatedUUID(allocation.PoolID)
+			var ruleUUID sql.Null[gofrsuuid.UUID]
+			if appliedRuleID != nil {
+				ruleUUID = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*appliedRuleID), Valid: true}
+			}
+			if _, err := models.ItemAllocations.Insert(&models.ItemAllocationSetter{
+				HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, ItemID: &itemUUID, PoolID: &poolUUID,
+				Weight: &allocation.Weight, AmountYen: &allocation.Amount, RuleVersion: &appliedRuleVersion, RuleID: &ruleUUID,
+			}).Exec(ctx, executor); err != nil {
 				return nil, err
 			}
 		}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO idempotency_keys(household_id, key, operation, resource_id) VALUES ($1, $2, 'createPurchase', $3)`, input.HouseholdID, input.IdempotencyKey, purchaseID); err != nil {
+	if len(input.PaymentAllocations) > 0 {
+		payments, err := validatePurchasePaymentInputs(ctx, tx, input.HouseholdID, input.PaymentAllocations)
+		if err != nil {
+			return nil, err
+		}
+		if err := replacePurchasePaymentRows(ctx, tx, input.HouseholdID, purchaseID, payments); err != nil {
+			return nil, err
+		}
+	}
+	purchaseResource := sql.Null[gofrsuuid.UUID]{V: purchaseUUID, Valid: true}
+	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
+		HouseholdID: &householdUUID, Key: &key, Operation: &operation, ResourceID: &purchaseResource,
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if input.SourceDocumentID != nil {
@@ -575,14 +878,22 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 		if input.SourceReference != nil {
 			sourceReference = *input.SourceReference
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO document_confirmations(source_document_id, source_reference, household_id, purchase_id, created_by) VALUES ($1, $2, $3, $4, $5)`, *input.SourceDocumentID, sourceReference, input.HouseholdID, purchaseID, user.MemberID); err != nil {
+		documentUUID := generatedUUID(*input.SourceDocumentID)
+		if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{
+			SourceDocumentID: &documentUUID, SourceReference: &sourceReference, HouseholdID: &householdUUID,
+			PurchaseID: &purchaseUUID, CreatedBy: &createdBy,
+		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO evidence_links(household_id, source_document_id, purchase_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, input.HouseholdID, *input.SourceDocumentID, purchaseID); err != nil {
+		if _, err := psql.Insert(
+			im.Into(psql.Quote("evidence_links"), "household_id", "source_document_id", "purchase_id"),
+			im.Values(psql.Arg(householdUUID, documentUUID, purchaseUUID)),
+			im.OnConflict().DoNothing(),
+		).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO household_events(household_id, type, entity_id, revision, changed_fields, actor_id) VALUES ($1, 'purchase.created', $2, 1, '[]'::jsonb, $3)`, input.HouseholdID, purchaseID, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "purchase.created", purchaseID, 1, []string{}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -605,89 +916,348 @@ func allocationWeights(inputs []*model.AllocationInput) ([]domain.Weight, error)
 	return weights, nil
 }
 
+func validatePurchasePaymentInputs(ctx context.Context, tx pgx.Tx, householdID string, inputs []*model.PurchasePaymentInput) ([]model.PurchasePaymentInput, error) {
+	result := make([]model.PurchasePaymentInput, 0, len(inputs))
+	seen := make(map[string]struct{}, len(inputs))
+	for _, input := range inputs {
+		if input == nil || input.PaymentAccountID == "" || input.AmountYen <= 0 || int64(input.AmountYen) > maxMoney {
+			return nil, fmt.Errorf("%w: payment allocations require an account and positive amount", ErrBadInput)
+		}
+		if _, exists := seen[input.PaymentAccountID]; exists {
+			return nil, fmt.Errorf("%w: payment account may appear only once", ErrBadInput)
+		}
+		seen[input.PaymentAccountID] = struct{}{}
+		householdUUID, parseErr := gofrsuuid.FromString(householdID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
+		}
+		accountUUID, parseErr := gofrsuuid.FromString(input.PaymentAccountID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid payment account id", ErrBadInput)
+		}
+		_, err := models.Accounts.Query(sm.Where(psql.And(
+			models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.Accounts.Columns.ID.EQ(psql.Arg(accountUUID)),
+		))).One(ctx, bobpgx.NewTx(tx, nil))
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, *input)
+	}
+	return result, nil
+}
+
+func replacePurchasePaymentRows(ctx context.Context, tx pgx.Tx, householdID, purchaseID string, payments []model.PurchasePaymentInput) error {
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return err
+	}
+	purchaseUUID, err := gofrsuuid.FromString(purchaseID)
+	if err != nil {
+		return err
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	if _, err := models.PurchasePayments.Delete(dm.Where(psql.And(
+		models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+	))).Exec(ctx, executor); err != nil {
+		return err
+	}
+	for index, payment := range payments {
+		accountUUID, err := gofrsuuid.FromString(payment.PaymentAccountID)
+		if err != nil {
+			return err
+		}
+		lineNo, amount := int32(index+1), int64(payment.AmountYen)
+		if _, err := models.PurchasePayments.Insert(&models.PurchasePaymentSetter{
+			HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, LineNo: &lineNo, AccountID: &accountUUID, AmountYen: &amount,
+		}).Exec(ctx, executor); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func purchasePayments(ctx context.Context, tx pgx.Tx, householdID, purchaseID string, legacyAccountID *string, total int64) ([]model.PurchasePaymentInput, error) {
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, err
+	}
+	purchaseUUID, err := gofrsuuid.FromString(purchaseID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := models.PurchasePayments.Query(sm.Where(psql.And(
+		models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+	)), sm.OrderBy(models.PurchasePayments.Columns.LineNo)).All(ctx, bobpgx.NewTx(tx, nil))
+	if err != nil {
+		return nil, err
+	}
+	payments := make([]model.PurchasePaymentInput, 0, len(rows))
+	var paid int64
+	for _, row := range rows {
+		payment := model.PurchasePaymentInput{PaymentAccountID: row.AccountID.String(), AmountYen: graphLong(row.AmountYen)}
+		var ok bool
+		paid, ok = checkedAdd(paid, row.AmountYen)
+		if !ok {
+			return nil, fmt.Errorf("%w: payment total is too large", ErrBadInput)
+		}
+		payments = append(payments, payment)
+	}
+	if len(payments) == 0 && legacyAccountID != nil {
+		payments = append(payments, model.PurchasePaymentInput{PaymentAccountID: *legacyAccountID, AmountYen: graphLong(total)})
+		paid = total
+	}
+	if len(payments) > 0 && paid != total {
+		return nil, fmt.Errorf("%w: payment allocations must equal purchase total", ErrBadInput)
+	}
+	return payments, nil
+}
+
+func correctionAllocationWeights(ctx context.Context, tx pgx.Tx, purchaseID string, itemID *string) ([]domain.Weight, error) {
+	purchaseUUID, err := gofrsuuid.FromString(purchaseID)
+	if err != nil {
+		return nil, err
+	}
+	var rows models.ItemAllocationSlice
+	executor := bobpgx.NewTx(tx, nil)
+	if itemID != nil {
+		itemUUID, parseErr := gofrsuuid.FromString(*itemID)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		rows, err = models.ItemAllocations.Query(sm.Where(psql.And(
+			models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+			models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(itemUUID)),
+		))).All(ctx, executor)
+	} else {
+		rows, err = models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+	}
+	if err != nil {
+		return nil, err
+	}
+	poolTotals := make(map[string]int64)
+	for _, row := range rows {
+		value := row.AmountYen
+		if itemID != nil {
+			value = row.Weight
+		}
+		poolID := row.PoolID.String()
+		var ok bool
+		poolTotals[poolID], ok = checkedAdd(poolTotals[poolID], value)
+		if !ok {
+			return nil, fmt.Errorf("%w: allocation total is too large", ErrBadInput)
+		}
+	}
+	weights := make([]domain.Weight, 0, len(poolTotals))
+	for poolID, amount := range poolTotals {
+		if amount > 0 {
+			weights = append(weights, domain.Weight{PoolID: poolID, Value: amount})
+		}
+	}
+	slices.SortFunc(weights, func(a, b domain.Weight) int { return strings.Compare(a.PoolID, b.PoolID) })
+	if len(weights) == 0 {
+		return nil, fmt.Errorf("%w: purchase has no saved allocation", ErrBadInput)
+	}
+	return weights, nil
+}
+
+func sameAllocationWeights(inputs []*model.AllocationInput, saved []domain.Weight) bool {
+	if len(inputs) != len(saved) {
+		return false
+	}
+	requested := make(map[string]int64, len(inputs))
+	for _, input := range inputs {
+		if input == nil || input.PoolID == "" || input.Weight <= 0 {
+			return false
+		}
+		if _, exists := requested[input.PoolID]; exists {
+			return false
+		}
+		requested[input.PoolID] = int64(input.Weight)
+	}
+	for _, weight := range saved {
+		if requested[weight.PoolID] != weight.Value {
+			return false
+		}
+	}
+	return true
+}
+
 func lockAccountingPeriods(ctx context.Context, tx pgx.Tx, householdID string, periods ...string) error {
 	slices.Sort(periods)
 	periods = slices.Compact(periods)
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return fmt.Errorf("%w: invalid household id", ErrBadInput)
+	}
+	executor := bobpgx.NewTx(tx, nil)
 	for _, period := range periods {
-		if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id,period,status,revision) VALUES ($1,$2,'OPEN',0) ON CONFLICT (household_id,period) DO NOTHING`, householdID, period); err != nil {
+		if err := ensureAccountingPeriod(ctx, executor, householdUUID, period); err != nil {
 			return err
 		}
-		var status string
-		if err := tx.QueryRow(ctx, `SELECT status FROM accounting_periods WHERE household_id=$1 AND period=$2 FOR UPDATE`, householdID, period).Scan(&status); err != nil {
+		row, err := models.AccountingPeriods.Query(sm.Where(psql.And(
+			models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
+		)), sm.ForUpdate()).One(ctx, executor)
+		if err != nil {
 			return err
 		}
-		if status == "CLOSED" {
+		if row.Status == "CLOSED" {
 			return fmt.Errorf("%w: accounting period is closed", ErrConflict)
 		}
 	}
 	return nil
 }
 
+func ensureAccountingPeriod(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, period string) error {
+	status := "OPEN"
+	revision := int64(0)
+	_, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
+		HouseholdID: &householdID, Period: &period, Status: &status, Revision: &revision,
+	}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, executor)
+	return err
+}
+
 func syncPostedPurchaseAccounting(ctx context.Context, tx pgx.Tx, purchaseID string) error {
-	var householdID string
-	var occurredAt time.Time
-	var merchant string
-	var paymentAccountID *string
-	if err := tx.QueryRow(ctx, `SELECT household_id::text,occurred_at,merchant,payment_account_id::text FROM purchases WHERE id=$1`, purchaseID).Scan(&householdID, &occurredAt, &merchant, &paymentAccountID); err != nil {
+	purchaseUUID, err := gofrsuuid.FromString(purchaseID)
+	if err != nil {
 		return err
 	}
-	var journalID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM journals WHERE household_id=$1 AND source_kind='PURCHASE' AND source_id=$2`, householdID, purchaseID).Scan(&journalID); err != nil {
+	executor := bobpgx.NewTx(tx, nil)
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID)))).One(ctx, executor)
+	if err != nil {
+		return err
+	}
+	householdID := purchase.HouseholdID.String()
+	occurredAt, merchant := purchase.OccurredAt, purchase.Merchant
+	var paymentAccountID *string
+	if purchase.PaymentAccountID.Valid {
+		id := purchase.PaymentAccountID.V.String()
+		paymentAccountID = &id
+	}
+	journal, err := models.Journals.Query(sm.Where(psql.And(
+		models.Journals.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+		models.Journals.Columns.SourceKind.EQ(psql.Arg("PURCHASE")),
+		models.Journals.Columns.SourceID.EQ(psql.Arg(purchaseUUID)),
+	))).One(ctx, executor)
+	if err != nil {
+		return err
+	}
+	items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+	if err != nil {
 		return err
 	}
 	var total int64
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(amount_yen),0) FROM purchase_items WHERE purchase_id=$1`, purchaseID).Scan(&total); err != nil {
-		return err
+	for _, item := range items {
+		var ok bool
+		total, ok = checkedAdd(total, item.AmountYen)
+		if !ok {
+			return fmt.Errorf("%w: purchase total is too large", ErrBadInput)
+		}
 	}
 	if total <= 0 {
 		return fmt.Errorf("%w: purchase total must be greater than zero", ErrBadInput)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE journals SET occurred_at=$2 WHERE id=$1`, journalID, occurredAt); err != nil {
+	if _, err := models.Journals.Update((&models.JournalSetter{OccurredAt: &occurredAt}).UpdateMod(), um.Where(models.Journals.Columns.ID.EQ(psql.Arg(journal.ID)))).Exec(ctx, executor); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM journal_entries WHERE journal_id=$1`, journalID); err != nil {
+	if _, err := models.JournalEntries.Delete(dm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(journal.ID)))).Exec(ctx, executor); err != nil {
 		return err
 	}
-	rows, err := tx.Query(ctx, `SELECT pool_id::text,sum(amount_yen) FROM item_allocations WHERE purchase_id=$1 GROUP BY pool_id ORDER BY pool_id`, purchaseID)
+	allocations, err := models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
 	if err != nil {
 		return err
 	}
 	type purchaseShare struct {
-		poolID string
+		poolID gofrsuuid.UUID
 		amount int64
 	}
-	shares := make([]purchaseShare, 0)
-	for rows.Next() {
-		var share purchaseShare
-		if err := rows.Scan(&share.poolID, &share.amount); err != nil {
-			rows.Close()
-			return err
+	sharesByPool := make(map[gofrsuuid.UUID]int64)
+	for _, allocation := range allocations {
+		var ok bool
+		sharesByPool[allocation.PoolID], ok = checkedAdd(sharesByPool[allocation.PoolID], allocation.AmountYen)
+		if !ok {
+			return fmt.Errorf("%w: purchase allocation total is too large", ErrBadInput)
 		}
-		shares = append(shares, share)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
+	shares := make([]purchaseShare, 0, len(sharesByPool))
+	for poolID, amount := range sharesByPool {
+		shares = append(shares, purchaseShare{poolID: poolID, amount: amount})
 	}
+	slices.SortFunc(shares, func(a, b purchaseShare) int { return strings.Compare(a.poolID.String(), b.poolID.String()) })
 	lineNo := 1
 	for _, share := range shares {
 		if share.amount == 0 {
 			continue
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO journal_entries(journal_id,line_no,pool_id,debit_yen,memo) VALUES ($1,$2,$3,$4,'Purchase allocation')`, journalID, lineNo, share.poolID, share.amount); err != nil {
+		lineNoValue := int32(lineNo)
+		zero := int64(0)
+		poolValue := sql.Null[gofrsuuid.UUID]{V: share.poolID, Valid: true}
+		memo := "Purchase allocation"
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journal.ID, LineNo: &lineNoValue, AccountID: new(sql.Null[gofrsuuid.UUID]),
+			PoolID: &poolValue, MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &share.amount, CreditYen: &zero, Memo: &memo,
+		}).Exec(ctx, executor); err != nil {
 			return err
 		}
 		lineNo++
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO journal_entries(journal_id,line_no,account_id,credit_yen,memo) VALUES ($1,$2,$3,$4,'Payment')`, journalID, lineNo, paymentAccountID, total); err != nil {
+	payments, err := purchasePayments(ctx, tx, householdID, purchaseID, paymentAccountID, total)
+	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE ledger_entries SET occurred_at=$2,description=$3,amount_yen=$4 WHERE household_id=$5 AND source_purchase_id=$1`, purchaseID, occurredAt, merchant, total, householdID)
-	return err
+	if len(payments) == 0 {
+		lineNoValue := int32(lineNo)
+		zero := int64(0)
+		memo := "Payment"
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journal.ID, LineNo: &lineNoValue, AccountID: new(sql.Null[gofrsuuid.UUID]),
+			PoolID: new(sql.Null[gofrsuuid.UUID]), MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &zero, CreditYen: &total, Memo: &memo,
+		}).Exec(ctx, executor); err != nil {
+			return err
+		}
+	} else {
+		for _, payment := range payments {
+			accountUUID, parseErr := gofrsuuid.FromString(payment.PaymentAccountID)
+			if parseErr != nil {
+				return parseErr
+			}
+			lineNoValue := int32(lineNo)
+			amount, zero := int64(payment.AmountYen), int64(0)
+			memo := "Payment"
+			accountValue := sql.Null[gofrsuuid.UUID]{V: accountUUID, Valid: true}
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journal.ID, LineNo: &lineNoValue, AccountID: &accountValue,
+				PoolID: new(sql.Null[gofrsuuid.UUID]), MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &zero, CreditYen: &amount, Memo: &memo,
+			}).Exec(ctx, executor); err != nil {
+				return err
+			}
+			lineNo++
+		}
+	}
+	ledgers, err := models.LedgerEntries.Query(sm.Where(psql.And(
+		models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+		models.LedgerEntries.Columns.SourcePurchaseID.EQ(psql.Arg(purchaseUUID)),
+	))).All(ctx, executor)
+	if err != nil {
+		return err
+	}
+	for _, ledger := range ledgers {
+		if _, err := models.LedgerEntries.Update((&models.LedgerEntrySetter{
+			OccurredAt: &occurredAt, Description: &merchant, AmountYen: &total,
+		}).UpdateMod(), um.Where(models.LedgerEntries.Columns.ID.EQ(psql.Arg(ledger.ID)))).Exec(ctx, executor); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *mutationResolver) updatePurchase(ctx context.Context, input model.UpdatePurchaseInput) (*model.Purchase, error) {
-	var householdID, status string
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
@@ -697,15 +1267,20 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var observedHouseholdID string
-	var observedOccurredAt time.Time
-	err = tx.QueryRow(ctx, `SELECT household_id::text,occurred_at FROM purchases WHERE id=$1`, input.PurchaseID).Scan(&observedHouseholdID, &observedOccurredAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	purchaseUUID, err := gofrsuuid.FromString(input.PurchaseID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	observedPurchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID)))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	observedHouseholdID := observedPurchase.HouseholdID.String()
+	observedOccurredAt := observedPurchase.OccurredAt
 	if _, err := requireMember(ctx, r.DB, observedHouseholdID); err != nil {
 		return nil, err
 	}
@@ -719,33 +1294,31 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 	if err := lockAccountingPeriods(ctx, tx, observedHouseholdID, accountingPeriod(observedOccurredAt), accountingPeriod(targetOccurredAt)); err != nil {
 		return nil, err
 	}
-	var revision int64
-	var fieldRevisions []byte
-	var currentOccurredAt time.Time
-	err = tx.QueryRow(ctx, `SELECT household_id::text, status, occurred_at, revision, field_revisions FROM purchases WHERE id = $1 FOR UPDATE`, input.PurchaseID).Scan(&householdID, &status, &currentOccurredAt, &revision, &fieldRevisions)
-	if errors.Is(err, pgx.ErrNoRows) {
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID))), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	if householdID != observedHouseholdID || !currentOccurredAt.Equal(observedOccurredAt) {
+	householdID := purchase.HouseholdID.String()
+	status := purchase.Status
+	if householdID != observedHouseholdID || !purchase.OccurredAt.Equal(observedOccurredAt) {
 		return nil, ErrConflict
 	}
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	var lockedHouseholdID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM households WHERE id = $1 FOR SHARE`, householdID).Scan(&lockedHouseholdID); err != nil {
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(purchase.HouseholdID))), sm.ForShare()).One(ctx, executor); err != nil {
 		return nil, err
 	}
 	if status != string(model.PurchaseStatusDraft) && status != string(model.PurchaseStatusPosted) {
 		return nil, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 	}
-	if input.BaseRevision > int(revision) {
+	if input.BaseRevision > int(purchase.Revision) {
 		return nil, ErrConflict
 	}
-	if err := validateChangedFields(input.ChangedFields, "occurredAt", "merchant", "paymentAccountId"); err != nil {
+	if err := validateChangedFields(input.ChangedFields, "occurredAt", "merchant", "paymentAccountId", "paymentAllocations"); err != nil {
 		return nil, err
 	}
 	for _, field := range input.ChangedFields {
@@ -758,47 +1331,116 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 			if input.Patch == nil || input.Patch.Merchant == nil {
 				return nil, fmt.Errorf("%w: changed field has no value", ErrBadInput)
 			}
+		case "paymentAllocations":
+			if input.Patch == nil || input.Patch.PaymentAllocations == nil {
+				return nil, fmt.Errorf("%w: changed field has no value", ErrBadInput)
+			}
 		}
 	}
-	if input.Patch != nil && (input.Patch.OccurredAt != nil && !slices.Contains(input.ChangedFields, "occurredAt") || input.Patch.Merchant != nil && !slices.Contains(input.ChangedFields, "merchant") || input.Patch.PaymentAccountID != nil && !slices.Contains(input.ChangedFields, "paymentAccountId")) {
+	if input.Patch != nil && (input.Patch.OccurredAt != nil && !slices.Contains(input.ChangedFields, "occurredAt") || input.Patch.Merchant != nil && !slices.Contains(input.ChangedFields, "merchant") || input.Patch.PaymentAccountID != nil && !slices.Contains(input.ChangedFields, "paymentAccountId") || input.Patch.PaymentAllocations != nil && !slices.Contains(input.ChangedFields, "paymentAllocations")) {
 		return nil, fmt.Errorf("%w: patch contains fields missing from changedFields", ErrBadInput)
 	}
-	conflict, err := valuesConflict(fieldRevisions, input.BaseRevision, input.ChangedFields)
+	if slices.Contains(input.ChangedFields, "paymentAllocations") && slices.Contains(input.ChangedFields, "paymentAccountId") {
+		return nil, fmt.Errorf("%w: paymentAllocations and paymentAccountId cannot be changed together", ErrBadInput)
+	}
+	conflict, err := valuesConflict(purchase.FieldRevisions.Val, input.BaseRevision, input.ChangedFields)
 	if err != nil {
 		return nil, err
 	}
 	if conflict {
 		return nil, ErrConflict
 	}
-	newRevision := revision + 1
-	updatedFields, err := setFieldRevisions(fieldRevisions, input.ChangedFields, newRevision)
+	newRevision := purchase.Revision + 1
+	updatedFields, err := setFieldRevisions(purchase.FieldRevisions.Val, input.ChangedFields, newRevision)
 	if err != nil {
 		return nil, err
 	}
-	var occurredAt any
-	var merchant any
-	var accountID any
 	updateAccountID := slices.Contains(input.ChangedFields, "paymentAccountId")
+	updatePayments := slices.Contains(input.ChangedFields, "paymentAllocations")
+	paymentAccountID := purchase.PaymentAccountID
+	if updateAccountID {
+		paymentAccountID = sql.Null[gofrsuuid.UUID]{}
+	}
 	if input.Patch != nil {
 		if slices.Contains(input.ChangedFields, "occurredAt") {
-			parsed, err := parseTime(*input.Patch.OccurredAt)
+			occurredAt, err := parseTime(*input.Patch.OccurredAt)
 			if err != nil {
 				return nil, err
 			}
-			occurredAt = parsed
+			purchase.OccurredAt = occurredAt
 		}
 		if slices.Contains(input.ChangedFields, "merchant") {
 			value := strings.TrimSpace(*input.Patch.Merchant)
 			if len(value) > 240 {
 				return nil, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
 			}
-			merchant = value
+			purchase.Merchant = value
 		}
 		if updateAccountID && input.Patch.PaymentAccountID != nil {
-			accountID = *input.Patch.PaymentAccountID
+			paymentAccountUUID, err := gofrsuuid.FromString(*input.Patch.PaymentAccountID)
+			if err != nil {
+				return nil, err
+			}
+			paymentAccountID = sql.Null[gofrsuuid.UUID]{V: paymentAccountUUID, Valid: true}
+			if _, err := models.PurchasePayments.Delete(dm.Where(psql.And(
+				models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+				models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+			))).Exec(ctx, executor); err != nil {
+				return nil, err
+			}
+		}
+		if updatePayments {
+			payments, err := validatePurchasePaymentInputs(ctx, tx, householdID, input.Patch.PaymentAllocations)
+			if err != nil {
+				return nil, err
+			}
+			items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+			if err != nil {
+				return nil, err
+			}
+			var total int64
+			for _, item := range items {
+				var ok bool
+				total, ok = checkedAdd(total, item.AmountYen)
+				if !ok {
+					return nil, fmt.Errorf("%w: purchase total is too large", ErrBadInput)
+				}
+			}
+			if status == string(model.PurchaseStatusPosted) {
+				var paid int64
+				for _, payment := range payments {
+					var ok bool
+					paid, ok = checkedAdd(paid, int64(payment.AmountYen))
+					if !ok {
+						return nil, fmt.Errorf("%w: payment total is too large", ErrBadInput)
+					}
+				}
+				if paid != total {
+					return nil, fmt.Errorf("%w: payment allocations must equal purchase total", ErrBadInput)
+				}
+			}
+			if len(payments) > 0 {
+				paymentAccountUUID, err := gofrsuuid.FromString(payments[0].PaymentAccountID)
+				if err != nil {
+					return nil, err
+				}
+				paymentAccountID = sql.Null[gofrsuuid.UUID]{V: paymentAccountUUID, Valid: true}
+			} else {
+				paymentAccountID = sql.Null[gofrsuuid.UUID]{}
+			}
+			if err := replacePurchasePaymentRows(ctx, tx, householdID, input.PurchaseID, payments); err != nil {
+				return nil, err
+			}
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE purchases SET occurred_at = COALESCE($2, occurred_at), merchant = COALESCE($3, merchant), payment_account_id = CASE WHEN $7 THEN $4::uuid ELSE payment_account_id END, revision = $5, field_revisions = $6, updated_at = now() WHERE id = $1`, input.PurchaseID, occurredAt, merchant, accountID, newRevision, updatedFields, updateAccountID); err != nil {
+	fieldRevisions := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(updatedFields)}
+	if _, err := models.Purchases.Update((&models.PurchaseSetter{
+		OccurredAt: &purchase.OccurredAt, Merchant: &purchase.Merchant, PaymentAccountID: &paymentAccountID,
+		Revision: &newRevision, FieldRevisions: &fieldRevisions,
+	}).UpdateMod(),
+		um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID))),
+		um.SetCol("updated_at").To(psql.F("now")),
+	).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if status == string(model.PurchaseStatusPosted) {
@@ -825,41 +1467,83 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var householdID, purchaseID, status, name, merchant string
-	var amount int64
-	var revision, ruleVersion int64
-	var categoryID, productVariantID *string
-	var allocationOverride bool
-	var fieldRevisions []byte
-	var observedOccurredAt time.Time
-	err = tx.QueryRow(ctx, `SELECT i.household_id::text,i.purchase_id::text,p.status,p.occurred_at,i.name,i.amount_yen,i.category_id::text,i.product_variant_id::text,i.revision,i.field_revisions,p.allocation_rule_version,p.merchant,i.allocation_override FROM purchase_items i JOIN purchases p ON p.id=i.purchase_id WHERE i.id=$1`, input.ItemID).Scan(&householdID, &purchaseID, &status, &observedOccurredAt, &name, &amount, &categoryID, &productVariantID, &revision, &fieldRevisions, &ruleVersion, &merchant, &allocationOverride)
-	if errors.Is(err, pgx.ErrNoRows) {
+	itemUUID, err := gofrsuuid.FromString(input.ItemID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	observedItem, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	if err := observedItem.LoadPurchase(ctx, executor); err != nil {
+		return nil, err
+	}
+	if observedItem.R.Purchase == nil {
+		return nil, ErrNotFound
+	}
+	observedPurchase := observedItem.R.Purchase
+	householdID := observedItem.HouseholdID.String()
+	purchaseID := observedItem.PurchaseID.String()
+	observedOccurredAt := observedPurchase.OccurredAt
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
+		return nil, err
+	}
+	household, err := models.Households.Query(
+		sm.Where(models.Households.Columns.ID.EQ(psql.Arg(observedItem.HouseholdID))),
+		sm.ForShare(),
+	).One(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
 	if err := lockAccountingPeriods(ctx, tx, householdID, accountingPeriod(observedOccurredAt)); err != nil {
 		return nil, err
 	}
-	var lockedOccurredAt time.Time
-	err = tx.QueryRow(ctx, `SELECT p.status,p.occurred_at,i.name,i.amount_yen,i.category_id::text,i.product_variant_id::text,i.revision,i.field_revisions,p.allocation_rule_version,p.merchant,i.allocation_override FROM purchase_items i JOIN purchases p ON p.id=i.purchase_id WHERE i.id=$1 AND i.purchase_id=$2 FOR UPDATE OF i,p`, input.ItemID, purchaseID).Scan(&status, &lockedOccurredAt, &name, &amount, &categoryID, &productVariantID, &revision, &fieldRevisions, &ruleVersion, &merchant, &allocationOverride)
-	if errors.Is(err, pgx.ErrNoRows) {
+	purchaseUUID := observedItem.PurchaseID
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID))), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	if !lockedOccurredAt.Equal(observedOccurredAt) {
+	item, err := models.PurchaseItems.Query(sm.Where(psql.And(
+		models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)),
+		models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !purchase.OccurredAt.Equal(observedOccurredAt) {
 		return nil, ErrConflict
 	}
+	status := purchase.Status
 	if status != string(model.PurchaseStatusDraft) && status != string(model.PurchaseStatusPosted) {
 		return nil, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 	}
-	if input.BaseRevision > int(revision) {
+	name, amount := item.Name, item.AmountYen
+	var categoryID *string
+	if item.CategoryID.Valid {
+		category := item.CategoryID.V.String()
+		categoryID = &category
+	}
+	var productVariantID *string
+	if item.ProductVariantID.Valid {
+		variant := item.ProductVariantID.V.String()
+		productVariantID = &variant
+	}
+	allocationOverride := item.AllocationOverride
+	revision := item.Revision
+	fieldRevisions := item.FieldRevisions.Val
+	merchant := purchase.Merchant
+	ruleVersion := household.DefaultAllocationVersion
+	if input.BaseRevision > int(item.Revision) {
 		return nil, ErrConflict
 	}
 	if err := validateChangedFields(input.ChangedFields, "name", "amountYen", "categoryId", "productVariantId", "allocations"); err != nil {
@@ -887,7 +1571,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if input.ProductLearning != nil && !slices.Contains(input.ChangedFields, "productVariantId") {
 		return nil, fmt.Errorf("%w: product learning requires a product variant change", ErrBadInput)
 	}
-	conflict, err := valuesConflict(fieldRevisions, input.BaseRevision, input.ChangedFields)
+	conflict, err := valuesConflict(item.FieldRevisions.Val, input.BaseRevision, input.ChangedFields)
 	if err != nil {
 		return nil, err
 	}
@@ -924,11 +1608,25 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 		return nil, fmt.Errorf("%w: invalid product learning scope", ErrBadInput)
 	}
 	if updateProductVariantID && newProductVariantID != nil {
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_variants v JOIN product_concepts c ON c.id=v.concept_id WHERE v.id=$1 AND v.household_id=$2 AND NOT v.archived AND NOT c.archived)`, *newProductVariantID, householdID).Scan(&exists); err != nil {
+		variantUUID, err := gofrsuuid.FromString(*newProductVariantID)
+		if err != nil {
+			return nil, ErrNotFound
+		}
+		variant, err := models.ProductVariants.Query(sm.Where(psql.And(
+			models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)),
+			models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(observedItem.HouseholdID)),
+			models.ProductVariants.Columns.Archived.EQ(psql.Arg(false)),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
 			return nil, err
 		}
-		if !exists {
+		if err := variant.LoadProductConcept(ctx, executor); err != nil {
+			return nil, err
+		}
+		if variant.R.ProductConcept == nil || variant.R.ProductConcept.Archived {
 			return nil, ErrNotFound
 		}
 	}
@@ -948,26 +1646,23 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			weights, err = loadWeights(ctx, tx, householdID, ruleVersion)
 		}
 	} else {
-		rows, queryErr := tx.Query(ctx, `SELECT pool_id::text, weight, rule_id::text, rule_version FROM item_allocations WHERE item_id = $1 ORDER BY pool_id`, input.ItemID)
+		allocations, queryErr := models.ItemAllocations.Query(
+			sm.Where(models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(itemUUID))),
+			sm.OrderBy(models.ItemAllocations.Columns.PoolID),
+		).All(ctx, executor)
 		if queryErr != nil {
 			return nil, queryErr
 		}
-		for rows.Next() {
-			var weight domain.Weight
-			var ruleID *string
-			var version int64
-			if err := rows.Scan(&weight.PoolID, &weight.Value, &ruleID, &version); err != nil {
-				rows.Close()
-				return nil, err
-			}
+		for _, allocation := range allocations {
+			weight := domain.Weight{PoolID: allocation.PoolID.String(), Value: allocation.Weight}
 			if len(weights) == 0 {
-				appliedRuleID, appliedRuleVersion = ruleID, version
+				if allocation.RuleID.Valid {
+					ruleID := allocation.RuleID.V.String()
+					appliedRuleID = &ruleID
+				}
+				appliedRuleVersion = allocation.RuleVersion
 			}
 			weights = append(weights, weight)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return nil, err
 		}
 		if len(weights) == 0 {
 			weights, err = loadWeights(ctx, tx, householdID, ruleVersion)
@@ -991,18 +1686,57 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 		if variantKey == "" || len(variantName) > 240 {
 			return nil, fmt.Errorf("%w: invalid normalized product name", ErrBadInput)
 		}
-		if _, err := tx.Exec(ctx, `UPDATE product_variants SET name=$2,normalized_name=$3,revision=revision+1,updated_at=now() WHERE id=$1 AND household_id=$4`, *newProductVariantID, variantName, variantKey, householdID); err != nil {
+		variantUUID, err := gofrsuuid.FromString(*newProductVariantID)
+		if err != nil {
+			return nil, ErrNotFound
+		}
+		householdUUID := observedItem.HouseholdID
+		if _, err := models.ProductVariants.Update((&models.ProductVariantSetter{
+			Name: &variantName, NormalizedName: &variantKey,
+		}).UpdateMod(),
+			um.Where(psql.And(
+				models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)),
+				models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			)),
+			um.SetCol("revision").To(models.ProductVariants.Columns.Revision.Plus(psql.Arg(int64(1)))),
+			um.SetCol("updated_at").To(psql.F("now")),
+		).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
-		var productRevision int64
-		if err := tx.QueryRow(ctx, `SELECT revision FROM product_variants WHERE id=$1`, *newProductVariantID).Scan(&productRevision); err != nil {
+		variant, err := models.ProductVariants.Query(sm.Where(models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)))).One(ctx, executor)
+		if err != nil {
 			return nil, err
 		}
-		if err := writeEvent(ctx, tx, householdID, "product.variant.renamed", *newProductVariantID, productRevision, []string{"name"}, user.MemberID); err != nil {
+		if err := writeEvent(ctx, tx, householdID, "product.variant.renamed", *newProductVariantID, variant.Revision, []string{"name"}, user.MemberID); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE purchase_items SET name=$2,amount_yen=$3,category_id=CASE WHEN $8 THEN $4::uuid ELSE category_id END,product_variant_id=CASE WHEN $9 THEN $10::uuid ELSE product_variant_id END,allocation_override=$5,revision=$6,field_revisions=$7,updated_at=now() WHERE id=$1`, input.ItemID, newName, newAmount, newCategory, newAllocationOverride, newRevision, updatedFields, updateCategoryID, updateProductVariantID, newProductVariantID); err != nil {
+	itemName, itemAmount := newName, newAmount
+	categoryValue := sql.Null[gofrsuuid.UUID]{}
+	if newCategory != nil {
+		categoryUUID, err := gofrsuuid.FromString(*newCategory)
+		if err != nil {
+			return nil, ErrNotFound
+		}
+		categoryValue = sql.Null[gofrsuuid.UUID]{V: categoryUUID, Valid: true}
+	}
+	variantValue := sql.Null[gofrsuuid.UUID]{}
+	if newProductVariantID != nil {
+		variantUUID, err := gofrsuuid.FromString(*newProductVariantID)
+		if err != nil {
+			return nil, ErrNotFound
+		}
+		variantValue = sql.Null[gofrsuuid.UUID]{V: variantUUID, Valid: true}
+	}
+	fieldRevisionValue := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(updatedFields)}
+	if _, err := models.PurchaseItems.Update((&models.PurchaseItemSetter{
+		Name: &itemName, AmountYen: &itemAmount, CategoryID: &categoryValue,
+		ProductVariantID: &variantValue, AllocationOverride: &newAllocationOverride,
+		Revision: &newRevision, FieldRevisions: &fieldRevisionValue,
+	}).UpdateMod(),
+		um.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID))),
+		um.SetCol("updated_at").To(psql.F("now")),
+	).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if updateProductVariantID && newProductVariantID != nil {
@@ -1015,27 +1749,65 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			if err := upsertProductAlias(ctx, tx, householdID, *newProductVariantID, merchantKey, name, normalizeProductText(name), &aliasID); err != nil {
 				return nil, err
 			}
-			var aliasRevision int64
-			if err := tx.QueryRow(ctx, `SELECT revision FROM product_aliases WHERE id=$1`, aliasID).Scan(&aliasRevision); err != nil {
+			aliasUUID, err := gofrsuuid.FromString(aliasID)
+			if err != nil {
+				return nil, ErrNotFound
+			}
+			alias, err := models.ProductAliases.Query(sm.Where(models.ProductAliases.Columns.ID.EQ(psql.Arg(aliasUUID)))).One(ctx, executor)
+			if err != nil {
 				return nil, err
 			}
-			if err := writeEvent(ctx, tx, householdID, "product.alias.learned", aliasID, aliasRevision, []string{"alias", "variantId", "merchant"}, user.MemberID); err != nil {
+			if err := writeEvent(ctx, tx, householdID, "product.alias.learned", aliasID, alias.Revision, []string{"alias", "variantId", "merchant"}, user.MemberID); err != nil {
 				return nil, err
 			}
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO product_corrections(id,household_id,purchase_id,item_id,raw_name,previous_product_variant_id,product_variant_id,learning_scope,merchant_key,actor_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, newID(), householdID, purchaseID, input.ItemID, name, productVariantID, *newProductVariantID, learningScope, merchantKey, user.MemberID); err != nil {
+		correctionUUID := generatedUUID(newID())
+		variantUUID, err := gofrsuuid.FromString(*newProductVariantID)
+		if err != nil {
+			return nil, ErrNotFound
+		}
+		actorUUID, err := gofrsuuid.FromString(user.MemberID)
+		if err != nil {
+			return nil, err
+		}
+		var previousVariant sql.Null[gofrsuuid.UUID]
+		if productVariantID != nil {
+			previousUUID, err := gofrsuuid.FromString(*productVariantID)
+			if err != nil {
+				return nil, ErrNotFound
+			}
+			previousVariant = sql.Null[gofrsuuid.UUID]{V: previousUUID, Valid: true}
+		}
+		correctionScope := string(learningScope)
+		if _, err := models.ProductCorrections.Insert(&models.ProductCorrectionSetter{
+			ID: &correctionUUID, HouseholdID: &observedItem.HouseholdID, PurchaseID: &purchaseUUID,
+			ItemID: &itemUUID, RawName: &name, PreviousProductVariantID: &previousVariant,
+			ProductVariantID: &variantUUID, LearningScope: &correctionScope, MerchantKey: &merchantKey, ActorID: &actorUUID,
+		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM item_allocations WHERE item_id = $1`, input.ItemID); err != nil {
+	if _, err := models.ItemAllocations.Delete(dm.Where(models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(itemUUID)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	for _, allocation := range allocated {
-		if _, err := tx.Exec(ctx, `INSERT INTO item_allocations(household_id, purchase_id, item_id, pool_id, weight, amount_yen, rule_version, rule_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, householdID, purchaseID, input.ItemID, allocation.PoolID, allocation.Weight, allocation.Amount, appliedRuleVersion, appliedRuleID); err != nil {
+		poolUUID := generatedUUID(allocation.PoolID)
+		var ruleUUID sql.Null[gofrsuuid.UUID]
+		if appliedRuleID != nil {
+			ruleUUID = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*appliedRuleID), Valid: true}
+		}
+		if _, err := models.ItemAllocations.Insert(&models.ItemAllocationSetter{
+			HouseholdID: &observedItem.HouseholdID, PurchaseID: &purchaseUUID, ItemID: &itemUUID,
+			PoolID: &poolUUID, Weight: &allocation.Weight, AmountYen: &allocation.Amount,
+			RuleVersion: &appliedRuleVersion, RuleID: &ruleUUID,
+		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE purchases SET revision = revision + 1, updated_at = now() WHERE id = $1`, purchaseID); err != nil {
+	if _, err := models.Purchases.Update(um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID))),
+		um.SetCol("revision").To(models.Purchases.Columns.Revision.Plus(psql.Arg(int64(1)))),
+		um.SetCol("updated_at").To(psql.F("now")),
+	).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, householdID, "purchase.item.updated", input.ItemID, newRevision, input.ChangedFields, user.MemberID); err != nil {
@@ -1049,11 +1821,11 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	purchase, err := loadPurchase(ctx, r.DB, purchaseID)
+	loadedPurchase, err := loadPurchase(ctx, r.DB, purchaseID)
 	if err != nil {
 		return nil, err
 	}
-	for _, item := range purchase.Items {
+	for _, item := range loadedPurchase.Items {
 		if item.ID == input.ItemID {
 			return item, nil
 		}
@@ -1074,47 +1846,65 @@ func (r *mutationResolver) postPurchase(ctx context.Context, purchaseID string, 
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var householdID string
-	var occurredAt time.Time
-	if err := tx.QueryRow(ctx, `SELECT household_id::text, occurred_at FROM purchases WHERE id = $1`, purchaseID).Scan(&householdID, &occurredAt); errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNotFound
-	} else if err != nil {
-		return nil, err
+	purchaseUUID, err := gofrsuuid.FromString(purchaseID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid purchase id", ErrBadInput)
 	}
-	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
-		return nil, err
-	}
-	var existingID *string
-	err = tx.QueryRow(ctx, `SELECT resource_id::text FROM idempotency_keys WHERE household_id = $1 AND key = $2 AND operation = 'postPurchase'`, householdID, idempotencyKey).Scan(&existingID)
-	if err == nil && existingID != nil {
-		if err := tx.Rollback(ctx); err != nil {
-			return nil, err
-		}
-		return loadPurchase(ctx, r.DB, *existingID)
-	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, err
-	}
-	period := accountingPeriod(occurredAt)
-	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, householdID, period); err != nil {
-		return nil, err
-	}
-	var periodStatus string
-	if err := tx.QueryRow(ctx, `SELECT status FROM accounting_periods WHERE household_id = $1 AND period = $2 FOR UPDATE`, householdID, period).Scan(&periodStatus); err != nil {
-		return nil, err
-	}
-	if periodStatus == "CLOSED" {
-		return nil, fmt.Errorf("%w: accounting period is closed", ErrConflict)
-	}
-	var status string
-	var revision int64
-	var paymentAccountID *string
-	err = tx.QueryRow(ctx, `SELECT status, occurred_at, revision, payment_account_id::text FROM purchases WHERE id = $1 FOR UPDATE`, purchaseID).Scan(&status, &occurredAt, &revision, &paymentAccountID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	executor := bobpgx.NewTx(tx, nil)
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID)))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+	householdUUID, householdID := purchase.HouseholdID, purchase.HouseholdID.String()
+	occurredAt := purchase.OccurredAt
+	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
+		return nil, err
+	}
+	operation := "postPurchase"
+	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
+		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(idempotencyKey)),
+		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
+	))).One(ctx, executor)
+	if err == nil {
+		if err := tx.Rollback(ctx); err != nil {
+			return nil, err
+		}
+		return loadPurchase(ctx, r.DB, existing.ResourceID.V.String())
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	period := accountingPeriod(occurredAt)
+	if err := ensureAccountingPeriod(ctx, executor, householdUUID, period); err != nil {
+		return nil, err
+	}
+	periodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if periodRow.Status == "CLOSED" {
+		return nil, fmt.Errorf("%w: accounting period is closed", ErrConflict)
+	}
+	purchase, err = models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID))), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	status, revision := purchase.Status, purchase.Revision
+	occurredAt = purchase.OccurredAt
+	var paymentAccountID *string
+	if purchase.PaymentAccountID.Valid {
+		id := purchase.PaymentAccountID.V.String()
+		paymentAccountID = &id
 	}
 	if accountingPeriod(occurredAt) != period {
 		return nil, ErrConflict
@@ -1125,63 +1915,122 @@ func (r *mutationResolver) postPurchase(ctx context.Context, purchaseID string, 
 	if status != string(model.PurchaseStatusDraft) {
 		return nil, fmt.Errorf("%w: purchase is already posted", ErrConflict)
 	}
-	var total int64
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(amount_yen), 0) FROM purchase_items WHERE purchase_id = $1`, purchaseID).Scan(&total); err != nil {
+	items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+	if err != nil {
 		return nil, err
+	}
+	var total int64
+	for _, item := range items {
+		var ok bool
+		total, ok = checkedAdd(total, item.AmountYen)
+		if !ok {
+			return nil, fmt.Errorf("%w: purchase total is too large", ErrBadInput)
+		}
 	}
 	if total <= 0 {
 		return nil, fmt.Errorf("%w: purchase total must be greater than zero", ErrBadInput)
 	}
 	journalID, ledgerID := newID(), newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO journals(id, household_id, source_kind, source_id, idempotency_key, occurred_at, created_by) VALUES ($1, $2, 'PURCHASE', $3, $4, $5, $6)`, journalID, householdID, purchaseID, idempotencyKey, occurredAt, user.MemberID); err != nil {
+	journalUUID, ledgerUUID := generatedUUID(journalID), generatedUUID(ledgerID)
+	actorUUID, err := gofrsuuid.FromString(user.MemberID)
+	if err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(ctx, `SELECT pool_id::text, sum(amount_yen) FROM item_allocations WHERE purchase_id = $1 GROUP BY pool_id ORDER BY pool_id`, purchaseID)
+	purchaseSource := "PURCHASE"
+	if _, err := models.Journals.Insert(&models.JournalSetter{
+		ID: &journalUUID, HouseholdID: &householdUUID, SourceKind: &purchaseSource, SourceID: &purchaseUUID,
+		IdempotencyKey: &idempotencyKey, OccurredAt: &occurredAt, CreatedBy: &actorUUID,
+	}).Exec(ctx, executor); err != nil {
+		return nil, err
+	}
+	allocations, err := models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
 	type purchaseShare struct {
-		poolID string
+		poolID gofrsuuid.UUID
 		amount int64
 	}
-	shares := make([]purchaseShare, 0)
-	for rows.Next() {
-		var share purchaseShare
-		if err := rows.Scan(&share.poolID, &share.amount); err != nil {
-			rows.Close()
-			return nil, err
+	shareAmounts := make(map[gofrsuuid.UUID]int64)
+	for _, allocation := range allocations {
+		var ok bool
+		shareAmounts[allocation.PoolID], ok = checkedAdd(shareAmounts[allocation.PoolID], allocation.AmountYen)
+		if !ok {
+			return nil, fmt.Errorf("%w: purchase allocation total is too large", ErrBadInput)
 		}
-		shares = append(shares, share)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
+	shares := make([]purchaseShare, 0, len(shareAmounts))
+	for poolID, amount := range shareAmounts {
+		shares = append(shares, purchaseShare{poolID: poolID, amount: amount})
 	}
+	slices.SortFunc(shares, func(a, b purchaseShare) int { return strings.Compare(a.poolID.String(), b.poolID.String()) })
 	lineNo := 1
 	for _, share := range shares {
 		if share.amount == 0 {
 			continue
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO journal_entries(journal_id, line_no, pool_id, debit_yen, memo) VALUES ($1, $2, $3, $4, 'Purchase allocation')`, journalID, lineNo, share.poolID, share.amount); err != nil {
+		lineNoValue, zero := int32(lineNo), int64(0)
+		poolValue := sql.Null[gofrsuuid.UUID]{V: share.poolID, Valid: true}
+		memo := "Purchase allocation"
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journalUUID, LineNo: &lineNoValue, AccountID: new(sql.Null[gofrsuuid.UUID]),
+			PoolID: &poolValue, MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &share.amount, CreditYen: &zero, Memo: &memo,
+		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 		lineNo++
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO journal_entries(journal_id, line_no, account_id, credit_yen, memo) VALUES ($1, $2, $3, $4, 'Payment')`, journalID, lineNo, paymentAccountID, total); err != nil {
+	payments, err := purchasePayments(ctx, tx, householdID, purchaseID, paymentAccountID, total)
+	if err != nil {
 		return nil, err
 	}
-	var merchant string
-	if err := tx.QueryRow(ctx, `SELECT merchant FROM purchases WHERE id = $1`, purchaseID).Scan(&merchant); err != nil {
-		return nil, err
+	if len(payments) == 0 {
+		lineNoValue, zero := int32(lineNo), int64(0)
+		memo := "Payment"
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journalUUID, LineNo: &lineNoValue, AccountID: new(sql.Null[gofrsuuid.UUID]),
+			PoolID: new(sql.Null[gofrsuuid.UUID]), MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &zero, CreditYen: &total, Memo: &memo,
+		}).Exec(ctx, executor); err != nil {
+			return nil, err
+		}
+	} else {
+		for _, payment := range payments {
+			accountUUID, parseErr := gofrsuuid.FromString(payment.PaymentAccountID)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			lineNoValue, zero, amount := int32(lineNo), int64(0), int64(payment.AmountYen)
+			memo := "Payment"
+			accountValue := sql.Null[gofrsuuid.UUID]{V: accountUUID, Valid: true}
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &lineNoValue, AccountID: &accountValue,
+				PoolID: new(sql.Null[gofrsuuid.UUID]), MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &zero, CreditYen: &amount, Memo: &memo,
+			}).Exec(ctx, executor); err != nil {
+				return nil, err
+			}
+			lineNo++
+		}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO ledger_entries(id, household_id, journal_id, kind, occurred_at, description, amount_yen, pool_id, source_purchase_id) VALUES ($1, $2, $3, 'PURCHASE', $4, $5, $6, NULL, $7)`, ledgerID, householdID, journalID, occurredAt, merchant, total, purchaseID); err != nil {
+	merchant := purchase.Merchant
+	purchaseLedgerKind := "PURCHASE"
+	noUUID := sql.Null[gofrsuuid.UUID]{}
+	if _, err := models.LedgerEntries.Insert(&models.LedgerEntrySetter{
+		ID: &ledgerUUID, HouseholdID: &householdUUID, JournalID: &journalUUID, Kind: &purchaseLedgerKind,
+		OccurredAt: &occurredAt, Description: &merchant, AmountYen: &total, PoolID: &noUUID,
+		SourcePurchaseID: &sql.Null[gofrsuuid.UUID]{V: purchaseUUID, Valid: true},
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	newRevision := revision + 1
-	if _, err := tx.Exec(ctx, `UPDATE purchases SET status = 'POSTED', revision = $2, updated_at = now() WHERE id = $1`, purchaseID, newRevision); err != nil {
+	posted := string(model.PurchaseStatusPosted)
+	updatedAt := time.Now().UTC()
+	if _, err := models.Purchases.Update((&models.PurchaseSetter{Status: &posted, Revision: &newRevision, UpdatedAt: &updatedAt}).UpdateMod(), um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO idempotency_keys(household_id, key, operation, resource_id) VALUES ($1, $2, 'postPurchase', $3)`, householdID, idempotencyKey, purchaseID); err != nil {
+	purchaseResource := sql.Null[gofrsuuid.UUID]{V: purchaseUUID, Valid: true}
+	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
+		HouseholdID: &householdUUID, Key: &idempotencyKey, Operation: &operation, ResourceID: &purchaseResource,
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, householdID, "purchase.posted", purchaseID, newRevision, []string{"status"}, user.MemberID); err != nil {
@@ -1208,8 +2057,24 @@ func (r *mutationResolver) recordFunding(ctx context.Context, input model.Record
 	if err := verifyHouseholdMember(ctx, r.DB, input.HouseholdID, input.MemberID); err != nil {
 		return nil, err
 	}
-	var poolExists bool
-	if err := r.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pools WHERE household_id = $1 AND id = $2)`, input.HouseholdID, input.PoolID).Scan(&poolExists); err != nil {
+	householdID, err := gofrsuuid.FromString(input.HouseholdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	memberID, err := gofrsuuid.FromString(input.MemberID)
+	if err != nil {
+		return nil, fmt.Errorf("parse member id: %w", err)
+	}
+	poolID, err := gofrsuuid.FromString(input.PoolID)
+	if err != nil {
+		return nil, fmt.Errorf("parse pool id: %w", err)
+	}
+	executor := bobpgx.NewPool(r.DB)
+	poolExists, err := models.Pools.Query(sm.Where(psql.And(
+		models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.Pools.Columns.ID.EQ(psql.Arg(poolID)),
+	))).Exists(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
 	if !poolExists {
@@ -1220,89 +2085,177 @@ func (r *mutationResolver) recordFunding(ctx context.Context, input model.Record
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var existingID *string
-	err = tx.QueryRow(ctx, `SELECT resource_id::text FROM idempotency_keys WHERE household_id = $1 AND key = $2 AND operation = 'recordFunding'`, input.HouseholdID, input.IdempotencyKey).Scan(&existingID)
-	if err == nil && existingID != nil {
+	transactionExecutor := bobpgx.NewTx(tx, nil)
+	operation := "recordFunding"
+	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
+		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(input.IdempotencyKey)),
+		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
+	))).One(ctx, transactionExecutor)
+	if err == nil && existing.ResourceID.Valid {
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
-		return loadLedgerEntry(ctx, r.DB, *existingID)
+		return loadLedgerEntry(ctx, r.DB, existing.ResourceID.V.String())
 	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 	period := accountingPeriod(occurredAt)
-	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, input.HouseholdID, period); err != nil {
+	if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
+		HouseholdID: &householdID, Period: &period, Status: new("OPEN"), Revision: new(int64(0)),
+	}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	var periodStatus string
-	if err := tx.QueryRow(ctx, `SELECT status FROM accounting_periods WHERE household_id = $1 AND period = $2 FOR UPDATE`, input.HouseholdID, period).Scan(&periodStatus); err != nil {
+	periodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
+	)), sm.ForUpdate()).One(ctx, transactionExecutor)
+	if err != nil {
 		return nil, err
 	}
-	if periodStatus == "CLOSED" {
+	if periodRow.Status == "CLOSED" {
 		return nil, fmt.Errorf("%w: accounting period is closed", ErrConflict)
 	}
-	var scheduleID *string
-	err = tx.QueryRow(ctx, `SELECT id::text FROM funding_schedules WHERE household_id = $1 AND member_id = $2 AND pool_id = $3 AND active ORDER BY created_at DESC LIMIT 1`, input.HouseholdID, input.MemberID, input.PoolID).Scan(&scheduleID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	schedules, err := models.FundingSchedules.Query(sm.Where(psql.And(
+		models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.FundingSchedules.Columns.MemberID.EQ(psql.Arg(memberID)),
+		models.FundingSchedules.Columns.PoolID.EQ(psql.Arg(poolID)),
+		models.FundingSchedules.Columns.Active.EQ(psql.Arg(true)),
+	)), sm.OrderBy(models.FundingSchedules.Columns.CreatedAt).Desc(), sm.Limit(1)).All(ctx, transactionExecutor)
+	if err != nil {
 		return nil, err
 	}
-	obligationID := newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO funding_obligations(id, household_id, schedule_id, member_id, pool_id, period, amount_yen, paid_yen) VALUES ($1, $2, $3, $4, $5, $6, 0, $7) ON CONFLICT (household_id, member_id, pool_id, period) DO UPDATE SET paid_yen = funding_obligations.paid_yen + EXCLUDED.paid_yen`, obligationID, input.HouseholdID, scheduleID, input.MemberID, input.PoolID, period, int64(input.AmountYen)); err != nil {
+	var scheduleID sql.Null[gofrsuuid.UUID]
+	if len(schedules) > 0 {
+		scheduleID = sql.Null[gofrsuuid.UUID]{V: schedules[0].ID, Valid: true}
+	}
+	obligationUUID := generatedUUID(newID())
+	amount := int64(input.AmountYen)
+	if _, err := models.FundingObligations.Insert(&models.FundingObligationSetter{
+		ID: &obligationUUID, HouseholdID: &householdID, ScheduleID: &scheduleID, MemberID: &memberID,
+		PoolID: &poolID, Period: &period, AmountYen: new(int64(0)), PaidYen: &amount,
+	}, im.OnConflict("household_id", "member_id", "pool_id", "period").DoUpdate(
+		im.SetCol("paid_yen").To(psql.Quote("funding_obligations", "paid_yen").Plus(im.Excluded("paid_yen"))),
+	)).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	journalID, ledgerID := newID(), newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO journals(id, household_id, source_kind, source_id, idempotency_key, occurred_at, created_by) VALUES ($1, $2, 'FUNDING', $3, $4, $5, $6)`, journalID, input.HouseholdID, ledgerID, input.IdempotencyKey, occurredAt, user.MemberID); err != nil {
+	journalUUID, ledgerUUID := generatedUUID(newID()), generatedUUID(newID())
+	sourceKind := string(model.LedgerKindFunding)
+	if _, err := models.Journals.Insert(&models.JournalSetter{
+		ID: &journalUUID, HouseholdID: &householdID, SourceKind: &sourceKind, SourceID: &ledgerUUID,
+		IdempotencyKey: &input.IdempotencyKey, OccurredAt: &occurredAt, CreatedBy: &memberID,
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO journal_entries(journal_id, line_no, pool_id, debit_yen, memo) VALUES ($1, 1, $2, $3, 'Pool funding'), ($1, 2, $2, $3, 'Member contribution')`, journalID, input.PoolID, int64(input.AmountYen)); err != nil {
+	poolReference := sql.Null[gofrsuuid.UUID]{V: poolID, Valid: true}
+	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+		JournalID: &journalUUID, LineNo: new(int32(1)), PoolID: &poolReference, DebitYen: &amount, Memo: new("Pool funding"),
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE journal_entries SET debit_yen = 0, credit_yen = $2 WHERE journal_id = $1 AND line_no = 2`, journalID, int64(input.AmountYen)); err != nil {
+	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+		JournalID: &journalUUID, LineNo: new(int32(2)), PoolID: &poolReference, DebitYen: new(int64(0)), CreditYen: &amount, Memo: new("Member contribution"),
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO ledger_entries(id, household_id, journal_id, kind, occurred_at, description, amount_yen, from_member_id, pool_id) VALUES ($1, $2, $3, 'FUNDING', $4, 'Pool funding', $5, $6, $7)`, ledgerID, input.HouseholdID, journalID, occurredAt, int64(input.AmountYen), input.MemberID, input.PoolID); err != nil {
+	memberReference := sql.Null[gofrsuuid.UUID]{V: memberID, Valid: true}
+	if _, err := models.LedgerEntries.Insert(&models.LedgerEntrySetter{
+		ID: &ledgerUUID, HouseholdID: &householdID, JournalID: &journalUUID, Kind: new(string(model.LedgerKindFunding)),
+		OccurredAt: &occurredAt, Description: new("Pool funding"), AmountYen: &amount,
+		FromMemberID: &memberReference, PoolID: &poolReference,
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO idempotency_keys(household_id, key, operation, resource_id) VALUES ($1, $2, 'recordFunding', $3)`, input.HouseholdID, input.IdempotencyKey, ledgerID); err != nil {
+	resourceID := sql.Null[gofrsuuid.UUID]{V: ledgerUUID, Valid: true}
+	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
+		HouseholdID: &householdID, Key: &input.IdempotencyKey, Operation: &operation, ResourceID: &resourceID,
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "funding.recorded", ledgerID, 1, []string{"amountYen"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "funding.recorded", ledgerUUID.String(), 1, []string{"amountYen"}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return loadLedgerEntry(ctx, r.DB, ledgerID)
+	return loadLedgerEntry(ctx, r.DB, ledgerUUID.String())
 }
 
-func verifyHouseholdMember(ctx context.Context, db interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}, householdID, memberID string) error {
-	var exists bool
-	if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM household_members WHERE household_id = $1 AND member_id = $2)`, householdID, memberID).Scan(&exists); err != nil {
-		return err
+func verifyHouseholdMember(ctx context.Context, db *pgxpool.Pool, householdID, memberID string) error {
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return fmt.Errorf("%w: invalid household id", ErrBadInput)
 	}
-	if !exists {
+	memberUUID, err := gofrsuuid.FromString(memberID)
+	if err != nil {
+		return fmt.Errorf("%w: invalid member id", ErrBadInput)
+	}
+	_, err = models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberUUID)),
+	))).One(ctx, bobpgx.NewPool(db))
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
+	}
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
 func loadLedgerEntry(ctx context.Context, db *pgxpool.Pool, entryID string) (*model.LedgerEntry, error) {
-	var result model.LedgerEntry
-	var amount int64
-	var occurredAt, createdAt time.Time
-	err := db.QueryRow(ctx, `SELECT id::text, kind, occurred_at, description, amount_yen, from_member_id::text, to_member_id::text, pool_id::text, source_purchase_id::text, created_at FROM ledger_entries WHERE id = $1`, entryID).Scan(&result.ID, &result.Kind, &occurredAt, &result.Description, &amount, &result.FromMemberID, &result.ToMemberID, &result.PoolID, &result.SourcePurchaseID, &createdAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	entryUUID, err := gofrsuuid.FromString(entryID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid ledger entry id", ErrBadInput)
+	}
+	row, err := models.LedgerEntries.Query(sm.Where(models.LedgerEntries.Columns.ID.EQ(psql.Arg(entryUUID)))).One(ctx, bobpgx.NewPool(db))
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	result.AmountYen, result.Currency = graphLong(amount), "JPY"
-	result.OccurredAt, result.CreatedAt = timeString(occurredAt), timeString(createdAt)
-	return &result, nil
+	result := &model.LedgerEntry{
+		ID: row.ID.String(), Kind: model.LedgerKind(row.Kind), OccurredAt: timeString(row.OccurredAt),
+		Description: row.Description, AmountYen: graphLong(row.AmountYen), Currency: "JPY", CreatedAt: timeString(row.CreatedAt),
+	}
+	if row.FromMemberID.Valid {
+		value := row.FromMemberID.V.String()
+		result.FromMemberID = &value
+	}
+	if row.ToMemberID.Valid {
+		value := row.ToMemberID.V.String()
+		result.ToMemberID = &value
+	}
+	if row.PoolID.Valid {
+		value := row.PoolID.V.String()
+		result.PoolID = &value
+	}
+	if row.SourcePurchaseID.Valid {
+		value := row.SourcePurchaseID.V.String()
+		result.SourcePurchaseID = &value
+	}
+	transfer, transferErr := models.Transfers.Query(sm.Where(models.Transfers.Columns.LedgerEntryID.EQ(psql.Arg(row.ID)))).One(ctx, bobpgx.NewPool(db))
+	if transferErr == nil {
+		transferID := transfer.ID.String()
+		result.TransferID = &transferID
+		if transfer.LoanID.Valid {
+			loanID := transfer.LoanID.V.String()
+			result.LoanID = &loanID
+		}
+	} else if !errors.Is(transferErr, sql.ErrNoRows) {
+		return nil, transferErr
+	}
+	if result.LoanID == nil && result.Kind == model.LedgerKindTransfer && result.TransferID != nil {
+		if transferErr != nil {
+			return nil, transferErr
+		}
+		if transfer.Kind == string(model.TransferKindLoan) {
+			result.LoanID = result.TransferID
+		}
+	}
+	return result, nil
 }
 
 func (r *mutationResolver) recordTransfer(ctx context.Context, input model.RecordTransferInput) (*model.LedgerEntry, error) {
@@ -1332,74 +2285,265 @@ func (r *mutationResolver) recordTransfer(ctx context.Context, input model.Recor
 	if input.Kind != model.TransferKindRepayment && input.LoanID != nil {
 		return nil, fmt.Errorf("%w: loanId is only valid for a repayment", ErrBadInput)
 	}
+	var paymentPoolID *gofrsuuid.UUID
+	var paymentPoolKind string
+	var paymentAccountUUID *gofrsuuid.UUID
+	if input.PaymentAccountID != nil {
+		accountID, err := gofrsuuid.FromString(*input.PaymentAccountID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid payment account id", ErrBadInput)
+		}
+		householdID, err := gofrsuuid.FromString(input.HouseholdID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
+		}
+		poolExecutor := bobpgx.NewPool(r.DB)
+		paymentAccountUUID = &accountID
+		account, err := models.Accounts.Query(sm.Where(psql.And(
+			models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.Accounts.Columns.ID.EQ(psql.Arg(accountID)),
+		))).One(ctx, poolExecutor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !account.PoolID.Valid {
+			return nil, fmt.Errorf("%w: payment account is not assigned to a pool", ErrBadInput)
+		}
+		pool, err := models.Pools.Query(sm.Where(psql.And(
+			models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.Pools.Columns.ID.EQ(psql.Arg(account.PoolID.V)),
+		))).One(ctx, poolExecutor)
+		if err != nil {
+			return nil, err
+		}
+		paymentPoolID = &account.PoolID.V
+		paymentPoolKind = pool.Kind
+		if pool.Kind == string(model.PoolKindPersonal) {
+			fundingRule, err := models.PoolFundingRules.Query(sm.Where(psql.And(
+				models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+				models.PoolFundingRules.Columns.PoolID.EQ(psql.Arg(pool.ID)),
+				models.PoolFundingRules.Columns.Version.EQ(psql.Arg(pool.FundingRuleVersion)),
+			))).One(ctx, poolExecutor)
+			if err != nil {
+				return nil, err
+			}
+			fromMemberID, err := gofrsuuid.FromString(input.FromMemberID)
+			if err != nil {
+				return nil, fmt.Errorf("%w: invalid source member id", ErrBadInput)
+			}
+			if !fundingRule.OwnerMemberID.Valid || fundingRule.OwnerMemberID.V != fromMemberID {
+				return nil, fmt.Errorf("%w: personal payment account must belong to the source member", ErrBadInput)
+			}
+		}
+	}
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var existingID *string
-	err = tx.QueryRow(ctx, `SELECT resource_id::text FROM idempotency_keys WHERE household_id = $1 AND key = $2 AND operation = 'recordTransfer'`, input.HouseholdID, input.IdempotencyKey).Scan(&existingID)
-	if err == nil && existingID != nil {
+	transactionExecutor := bobpgx.NewTx(tx, nil)
+	householdID, err := gofrsuuid.FromString(input.HouseholdID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
+	}
+	key := input.IdempotencyKey
+	operation := "recordTransfer"
+	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
+		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(key)),
+		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
+	))).One(ctx, transactionExecutor)
+	if err == nil {
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
-		return loadLedgerEntry(ctx, r.DB, *existingID)
+		return loadLedgerEntry(ctx, r.DB, existing.ResourceID.V.String())
 	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 	period := accountingPeriod(occurredAt)
-	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, input.HouseholdID, period); err != nil {
+	periodStatusValue := "OPEN"
+	periodRevision := int64(0)
+	if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
+		HouseholdID: &householdID, Period: &period, Status: &periodStatusValue, Revision: &periodRevision,
+	}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	var periodStatus string
-	if err := tx.QueryRow(ctx, `SELECT status FROM accounting_periods WHERE household_id = $1 AND period = $2 FOR UPDATE`, input.HouseholdID, period).Scan(&periodStatus); err != nil {
+	periodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
+	)), sm.ForUpdate()).One(ctx, transactionExecutor)
+	if err != nil {
 		return nil, err
 	}
-	if periodStatus == "CLOSED" {
+	if periodRow.Status == "CLOSED" {
 		return nil, fmt.Errorf("%w: accounting period is closed", ErrConflict)
 	}
-	var loanID any
+	var loanID *gofrsuuid.UUID
 	if input.Kind == model.TransferKindRepayment {
-		var lenderID, borrowerID string
-		var originalAmount int64
-		if err := tx.QueryRow(ctx, `SELECT from_member_id::text, to_member_id::text, amount_yen FROM transfers WHERE id = $1 AND household_id = $2 AND kind = 'LOAN' FOR UPDATE`, *input.LoanID, input.HouseholdID).Scan(&lenderID, &borrowerID, &originalAmount); err != nil {
+		loanUUID, parseErr := gofrsuuid.FromString(*input.LoanID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: invalid loan id", ErrBadInput)
+		}
+		loan, err := models.Transfers.Query(sm.Where(psql.And(
+			models.Transfers.Columns.ID.EQ(psql.Arg(loanUUID)),
+			models.Transfers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.Transfers.Columns.Kind.EQ(psql.Arg("LOAN")),
+		)), sm.ForUpdate()).One(ctx, transactionExecutor)
+		if err != nil {
 			return nil, ErrNotFound
 		}
-		if input.FromMemberID != borrowerID || input.ToMemberID != lenderID {
+		fromMemberID, fromErr := gofrsuuid.FromString(input.FromMemberID)
+		toMemberID, toErr := gofrsuuid.FromString(input.ToMemberID)
+		if fromErr != nil || toErr != nil {
+			return nil, fmt.Errorf("%w: invalid transfer member id", ErrBadInput)
+		}
+		if fromMemberID != loan.ToMemberID || toMemberID != loan.FromMemberID {
 			return nil, fmt.Errorf("%w: repayment direction does not match the loan", ErrBadInput)
 		}
-		var repaid int64
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(amount_yen), 0) FROM transfers WHERE loan_id = $1 AND kind = 'REPAYMENT'`, *input.LoanID).Scan(&repaid); err != nil {
+		repayments, err := models.Transfers.Query(sm.Where(psql.And(
+			models.Transfers.Columns.LoanID.EQ(psql.Arg(loanUUID)),
+			models.Transfers.Columns.Kind.EQ(psql.Arg("REPAYMENT")),
+		))).All(ctx, transactionExecutor)
+		if err != nil {
 			return nil, err
 		}
-		if int64(input.AmountYen) > originalAmount-repaid {
+		var repaid int64
+		for _, repayment := range repayments {
+			var ok bool
+			repaid, ok = checkedAdd(repaid, repayment.AmountYen)
+			if !ok {
+				return nil, fmt.Errorf("%w: repayment total is too large", ErrBadInput)
+			}
+		}
+		if int64(input.AmountYen) > loan.AmountYen-repaid {
 			return nil, fmt.Errorf("%w: repayment exceeds the outstanding loan", ErrBadInput)
 		}
-		loanID = *input.LoanID
+		loanID = &loanUUID
 	}
 	transferID, journalID, ledgerID := newID(), newID(), newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO journals(id, household_id, source_kind, source_id, idempotency_key, occurred_at, created_by) VALUES ($1, $2, 'TRANSFER', $3, $4, $5, $6)`, journalID, input.HouseholdID, transferID, input.IdempotencyKey, occurredAt, user.MemberID); err != nil {
+	transferUUID, _ := gofrsuuid.FromString(transferID)
+	journalUUID, _ := gofrsuuid.FromString(journalID)
+	ledgerUUID, _ := gofrsuuid.FromString(ledgerID)
+	actorUUID, err := gofrsuuid.FromString(user.MemberID)
+	if err != nil {
+		return nil, err
+	}
+	sourceKind := "TRANSFER"
+	if _, err := models.Journals.Insert(&models.JournalSetter{
+		ID: &journalUUID, HouseholdID: &householdID, SourceKind: &sourceKind, SourceID: &transferUUID,
+		IdempotencyKey: &key, OccurredAt: &occurredAt, CreatedBy: &actorUUID,
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
 	amount := int64(input.AmountYen)
-	if _, err := tx.Exec(ctx, `INSERT INTO journal_entries(journal_id, line_no, member_id, debit_yen, memo) VALUES ($1, 1, $2, $3, $4), ($1, 2, $5, $3, $6)`, journalID, input.ToMemberID, amount, string(input.Kind), input.FromMemberID, string(input.Kind)); err != nil {
+	fromMemberUUID, err := gofrsuuid.FromString(input.FromMemberID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid source member id", ErrBadInput)
+	}
+	toMemberUUID, err := gofrsuuid.FromString(input.ToMemberID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid destination member id", ErrBadInput)
+	}
+	lineOne, lineTwo := int32(1), int32(2)
+	kindMemo := string(input.Kind)
+	noAccount, noPool := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
+	fromMember, toMember := sql.Null[gofrsuuid.UUID]{V: fromMemberUUID, Valid: true}, sql.Null[gofrsuuid.UUID]{V: toMemberUUID, Valid: true}
+	zero := int64(0)
+	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+		JournalID: &journalUUID, LineNo: &lineOne, AccountID: &noAccount, PoolID: &noPool, MemberID: &toMember,
+		DebitYen: &amount, CreditYen: &zero, Memo: &kindMemo,
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE journal_entries SET debit_yen = 0, credit_yen = $2 WHERE journal_id = $1 AND line_no = 2`, journalID, amount); err != nil {
+	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+		JournalID: &journalUUID, LineNo: &lineTwo, AccountID: &noAccount, PoolID: &noPool, MemberID: &fromMember,
+		DebitYen: &zero, CreditYen: &amount, Memo: &kindMemo,
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
+	}
+	if input.PaymentAccountID != nil {
+		accountUUID, parseErr := gofrsuuid.FromString(*input.PaymentAccountID)
+		if parseErr != nil || paymentPoolID == nil {
+			return nil, fmt.Errorf("%w: invalid payment account", ErrBadInput)
+		}
+		lineThree, lineFour := int32(3), int32(4)
+		settlementMemo, paymentMemo := "Transfer settlement", "Transfer payment"
+		poolValue, accountValue := sql.Null[gofrsuuid.UUID]{V: *paymentPoolID, Valid: true}, sql.Null[gofrsuuid.UUID]{V: accountUUID, Valid: true}
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journalUUID, LineNo: &lineThree, AccountID: &noAccount, PoolID: &poolValue, MemberID: &noPool,
+			DebitYen: &zero, CreditYen: &amount, Memo: &settlementMemo,
+		}).Exec(ctx, transactionExecutor); err != nil {
+			return nil, err
+		}
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journalUUID, LineNo: &lineFour, AccountID: &accountValue, PoolID: &noPool, MemberID: &noPool,
+			DebitYen: &amount, CreditYen: &zero, Memo: &paymentMemo,
+		}).Exec(ctx, transactionExecutor); err != nil {
+			return nil, err
+		}
 	}
 	description := strings.TrimSpace(input.Description)
 	if description == "" {
 		description = string(input.Kind)
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO ledger_entries(id, household_id, journal_id, kind, occurred_at, description, amount_yen, from_member_id, to_member_id) VALUES ($1, $2, $3, 'TRANSFER', $4, $5, $6, $7, $8)`, ledgerID, input.HouseholdID, journalID, occurredAt, description, amount, input.FromMemberID, input.ToMemberID); err != nil {
+	transferLedgerKind := "TRANSFER"
+	if _, err := models.LedgerEntries.Insert(&models.LedgerEntrySetter{
+		ID: &ledgerUUID, HouseholdID: &householdID, JournalID: &journalUUID, Kind: &transferLedgerKind,
+		OccurredAt: &occurredAt, Description: &description, AmountYen: &amount,
+		FromMemberID: &fromMember, ToMemberID: &toMember,
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO transfers(id, household_id, ledger_entry_id, from_member_id, to_member_id, kind, amount_yen, description, loan_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, transferID, input.HouseholdID, ledgerID, input.FromMemberID, input.ToMemberID, input.Kind, amount, description, loanID); err != nil {
+	transferKind := string(input.Kind)
+	loanValue := sql.Null[gofrsuuid.UUID]{}
+	if loanID != nil {
+		loanValue = sql.Null[gofrsuuid.UUID]{V: *loanID, Valid: true}
+	}
+	paymentAccountValue := sql.Null[gofrsuuid.UUID]{}
+	if input.PaymentAccountID != nil {
+		paymentAccountValue = sql.Null[gofrsuuid.UUID]{V: *paymentAccountUUID, Valid: true}
+	}
+	if _, err := models.Transfers.Insert(&models.TransferSetter{
+		ID: &transferUUID, HouseholdID: &householdID, LedgerEntryID: &ledgerUUID,
+		FromMemberID: &fromMemberUUID, ToMemberID: &toMemberUUID, Kind: &transferKind,
+		AmountYen: &amount, Description: &description, LoanID: &loanValue, PaymentAccountID: &paymentAccountValue,
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO idempotency_keys(household_id, key, operation, resource_id) VALUES ($1, $2, 'recordTransfer', $3)`, input.HouseholdID, input.IdempotencyKey, ledgerID); err != nil {
+	if input.Kind == model.TransferKindAdvance || input.Kind == model.TransferKindLoan || input.Kind == model.TransferKindRepayment {
+		adjustments := []struct {
+			memberID string
+			amount   int64
+		}{{memberID: input.FromMemberID, amount: -amount}, {memberID: input.ToMemberID, amount: amount}}
+		if input.Kind == model.TransferKindRepayment && paymentPoolKind == string(model.PoolKindShared) {
+			adjustments = []struct {
+				memberID string
+				amount   int64
+			}{{memberID: input.ToMemberID, amount: amount}}
+		}
+		for _, adjustment := range adjustments {
+			adjustmentID, _ := gofrsuuid.FromString(newID())
+			memberUUID, parseErr := gofrsuuid.FromString(adjustment.memberID)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			if _, err := models.SettlementAdjustments.Insert(&models.SettlementAdjustmentSetter{
+				ID: &adjustmentID, HouseholdID: &householdID, Period: &period, MemberID: &memberUUID,
+				SourceKind: &transferKind, SourceID: &transferUUID, AmountYen: &adjustment.amount,
+			}).Exec(ctx, transactionExecutor); err != nil {
+				return nil, err
+			}
+		}
+	}
+	ledgerResource := sql.Null[gofrsuuid.UUID]{V: ledgerUUID, Valid: true}
+	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
+		HouseholdID: &householdID, Key: &key, Operation: &operation, ResourceID: &ledgerResource,
+	}).Exec(ctx, transactionExecutor); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "transfer.recorded", ledgerID, 1, []string{"amountYen", "kind"}, user.MemberID); err != nil {
@@ -1423,7 +2567,7 @@ func (r *mutationResolver) setFundingSchedule(ctx context.Context, input model.S
 	if err != nil {
 		return false, err
 	}
-	var end any
+	var end sql.Null[time.Time]
 	if input.EndsOn != nil {
 		parsed, err := parseDate(*input.EndsOn)
 		if err != nil {
@@ -1432,37 +2576,77 @@ func (r *mutationResolver) setFundingSchedule(ctx context.Context, input model.S
 		if parsed.Before(start) {
 			return false, fmt.Errorf("%w: schedule end precedes start", ErrBadInput)
 		}
-		end = parsed
+		end = sql.Null[time.Time]{V: parsed, Valid: true}
 	}
 	if err := verifyHouseholdMember(ctx, r.DB, input.HouseholdID, input.MemberID); err != nil {
 		return false, err
 	}
-	var poolExists bool
-	if err := r.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pools WHERE household_id = $1 AND id = $2)`, input.HouseholdID, input.PoolID).Scan(&poolExists); err != nil {
-		return false, err
-	}
-	if !poolExists {
+	householdUUID, poolUUID := generatedUUID(input.HouseholdID), generatedUUID(input.PoolID)
+	if _, err := models.Pools.Query(sm.Where(psql.And(
+		models.Pools.Columns.ID.EQ(psql.Arg(poolUUID)),
+		models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+	))).One(ctx, bobpgx.NewPool(r.DB)); errors.Is(err, sql.ErrNoRows) {
 		return false, ErrNotFound
+	} else if err != nil {
+		return false, err
 	}
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var lockedHouseholdID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM households WHERE id=$1 FOR UPDATE`, input.HouseholdID).Scan(&lockedHouseholdID); errors.Is(err, pgx.ErrNoRows) {
+	executor := bobpgx.NewTx(tx, nil)
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 		return false, ErrNotFound
 	} else if err != nil {
 		return false, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE funding_schedules SET ends_on = LEAST(COALESCE(ends_on, $4::date - 1), $4::date - 1), active = false WHERE household_id = $1 AND member_id = $2 AND pool_id = $3 AND active AND starts_on < $4`, input.HouseholdID, input.MemberID, input.PoolID, start); err != nil {
+	memberUUID := generatedUUID(input.MemberID)
+	priorDay := start.AddDate(0, 0, -1)
+	schedules, err := models.FundingSchedules.Query(sm.Where(psql.And(
+		models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.FundingSchedules.Columns.MemberID.EQ(psql.Arg(memberUUID)),
+		models.FundingSchedules.Columns.PoolID.EQ(psql.Arg(poolUUID)),
+		models.FundingSchedules.Columns.Active.EQ(psql.Arg(true)),
+		models.FundingSchedules.Columns.StartsOn.LT(psql.Arg(start)),
+	))).All(ctx, executor)
+	if err != nil {
 		return false, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE funding_schedules SET active = false WHERE household_id = $1 AND member_id = $2 AND pool_id = $3 AND active`, input.HouseholdID, input.MemberID, input.PoolID); err != nil {
+	for _, schedule := range schedules {
+		endDate := priorDay
+		if schedule.EndsOn.Valid && schedule.EndsOn.V.Before(endDate) {
+			endDate = schedule.EndsOn.V
+		}
+		endValue := sql.Null[time.Time]{V: endDate, Valid: true}
+		active := false
+		if _, err := models.FundingSchedules.Update((&models.FundingScheduleSetter{EndsOn: &endValue, Active: &active}).UpdateMod(), um.Where(models.FundingSchedules.Columns.ID.EQ(psql.Arg(schedule.ID)))).Exec(ctx, executor); err != nil {
+			return false, err
+		}
+	}
+	activeSchedules, err := models.FundingSchedules.Query(sm.Where(psql.And(
+		models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.FundingSchedules.Columns.MemberID.EQ(psql.Arg(memberUUID)),
+		models.FundingSchedules.Columns.PoolID.EQ(psql.Arg(poolUUID)),
+		models.FundingSchedules.Columns.Active.EQ(psql.Arg(true)),
+	))).All(ctx, executor)
+	if err != nil {
 		return false, err
+	}
+	active := false
+	for _, schedule := range activeSchedules {
+		if _, err := models.FundingSchedules.Update((&models.FundingScheduleSetter{Active: &active}).UpdateMod(), um.Where(models.FundingSchedules.Columns.ID.EQ(psql.Arg(schedule.ID)))).Exec(ctx, executor); err != nil {
+			return false, err
+		}
 	}
 	scheduleID := newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO funding_schedules(id, household_id, member_id, pool_id, amount_yen, cadence, starts_on, ends_on) VALUES ($1, $2, $3, $4, $5, 'MONTHLY', $6, $7)`, scheduleID, input.HouseholdID, input.MemberID, input.PoolID, int64(input.AmountYen), start, end); err != nil {
+	scheduleUUID := generatedUUID(scheduleID)
+	amountYen := int64(input.AmountYen)
+	cadence := input.Cadence
+	if _, err := models.FundingSchedules.Insert(&models.FundingScheduleSetter{
+		ID: &scheduleUUID, HouseholdID: &householdUUID, MemberID: &memberUUID, PoolID: &poolUUID,
+		AmountYen: &amountYen, Cadence: &cadence, StartsOn: &start, EndsOn: &end,
+	}).Exec(ctx, executor); err != nil {
 		return false, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "funding.schedule.updated", scheduleID, 1, []string{"amountYen", "startsOn", "endsOn"}, user.MemberID); err != nil {
@@ -1486,85 +2670,133 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var lockedHouseholdID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM households WHERE id=$1 FOR UPDATE`, input.HouseholdID).Scan(&lockedHouseholdID); errors.Is(err, pgx.ErrNoRows) {
+	householdUUID := generatedUUID(input.HouseholdID)
+	executor := bobpgx.NewTx(tx, nil)
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, input.HouseholdID, input.Period); err != nil {
+	openStatus, zeroRevision := "OPEN", int64(0)
+	if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
+		HouseholdID: &householdUUID, Period: &input.Period, Status: &openStatus, Revision: &zeroRevision,
+	}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	var status string
-	var revision int64
-	if err := tx.QueryRow(ctx, `SELECT status, revision FROM accounting_periods WHERE household_id = $1 AND period = $2 FOR UPDATE`, input.HouseholdID, input.Period).Scan(&status, &revision); err != nil {
+	periodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(input.Period)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
-	if status == "CLOSED" {
+	if periodRow.Status == "CLOSED" {
 		return nil, ErrConflict
 	}
-	if revision != int64(input.ExpectedRevision) {
+	if periodRow.Revision != int64(input.ExpectedRevision) {
 		return nil, ErrConflict
 	}
-	var drafts int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM purchases WHERE household_id=$1 AND status='DRAFT' AND occurred_at >= $2 AND occurred_at < $3`, input.HouseholdID, periodStart, periodEnd).Scan(&drafts); err != nil {
+	purchases, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.Purchases.Columns.Status.EQ(psql.Arg(string(model.PurchaseStatusDraft))),
+		models.Purchases.Columns.OccurredAt.GTE(psql.Arg(periodStart)),
+		models.Purchases.Columns.OccurredAt.LT(psql.Arg(periodEnd)),
+	))).All(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
-	if drafts != 0 {
+	if len(purchases) != 0 {
 		return nil, fmt.Errorf("%w: post or remove draft purchases before closing the period", ErrConflict)
 	}
-	schedules, err := tx.Query(ctx, `SELECT id::text, member_id::text, pool_id::text, amount_yen FROM funding_schedules WHERE household_id = $1 AND (active OR ends_on IS NOT NULL) AND cadence = 'MONTHLY' AND starts_on < $3 AND (ends_on IS NULL OR ends_on >= $2)`, input.HouseholdID, periodStart, periodEnd)
+	schedules, err := models.FundingSchedules.Query(sm.Where(psql.And(
+		models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		psql.Or(
+			models.FundingSchedules.Columns.Active.EQ(psql.Arg(true)),
+			models.FundingSchedules.Columns.EndsOn.IsNotNull(),
+		),
+		models.FundingSchedules.Columns.Cadence.EQ(psql.Arg("MONTHLY")),
+		models.FundingSchedules.Columns.StartsOn.LT(psql.Arg(periodEnd)),
+		psql.Or(
+			models.FundingSchedules.Columns.EndsOn.IsNull(),
+			models.FundingSchedules.Columns.EndsOn.GTE(psql.Arg(periodStart)),
+		),
+	))).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	type schedule struct {
-		id, memberID, poolID string
-		amount               int64
-	}
-	items := make([]schedule, 0)
-	for schedules.Next() {
-		var item schedule
-		if err := schedules.Scan(&item.id, &item.memberID, &item.poolID, &item.amount); err != nil {
-			schedules.Close()
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	schedules.Close()
-	if err := schedules.Err(); err != nil {
-		return nil, err
-	}
-	for _, item := range items {
-		if _, err := tx.Exec(ctx, `INSERT INTO funding_obligations(id, household_id, schedule_id, member_id, pool_id, period, amount_yen) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (household_id, member_id, pool_id, period) DO UPDATE SET schedule_id = EXCLUDED.schedule_id, amount_yen = EXCLUDED.amount_yen`, newID(), input.HouseholdID, item.id, item.memberID, item.poolID, input.Period, item.amount); err != nil {
+	for _, item := range schedules {
+		scheduleID := sql.Null[gofrsuuid.UUID]{V: item.ID, Valid: true}
+		if _, err := models.FundingObligations.Insert(&models.FundingObligationSetter{
+			ID: func() *gofrsuuid.UUID { id := generatedUUID(newID()); return &id }(), HouseholdID: &householdUUID, ScheduleID: &scheduleID,
+			MemberID: &item.MemberID, PoolID: &item.PoolID, Period: &input.Period, AmountYen: &item.AmountYen,
+		}, im.OnConflict("household_id", "member_id", "pool_id", "period").DoUpdate(
+			im.SetCol("schedule_id").To(im.Excluded("schedule_id")),
+			im.SetCol("amount_yen").To(im.Excluded("amount_yen")),
+		)).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
-	rules, err := poolFundingRules(ctx, tx, input.HouseholdID)
+	rules, err := poolFundingRules(ctx, executor, input.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
-	lines, err := calculateSettlementPreviewWithRules(ctx, tx, input.HouseholdID, input.Period, rules)
+	lines, err := calculateSettlementPreviewWithRules(ctx, executor, input.HouseholdID, input.Period, rules)
 	if err != nil {
 		return nil, err
 	}
 	settlementID := newID()
-	newRevision := revision + 1
+	newRevision := periodRow.Revision + 1
 	fundingSnapshot, err := json.Marshal(rules)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO settlement_runs(id, household_id, period, revision, status, created_by, funding_snapshot) VALUES ($1, $2, $3, $4, 'CLOSED', $5, $6)`, settlementID, input.HouseholdID, input.Period, newRevision, user.MemberID, fundingSnapshot); err != nil {
+	settlementUUID, userUUID := generatedUUID(settlementID), generatedUUID(user.MemberID)
+	closedStatus := "CLOSED"
+	snapshot := types.JSON[stdjson.RawMessage]{Val: fundingSnapshot}
+	if _, err := models.SettlementRuns.Insert(&models.SettlementRunSetter{
+		ID: &settlementUUID, HouseholdID: &householdUUID, Period: &input.Period, Revision: &newRevision,
+		Status: &closedStatus, CreatedBy: &userUUID, FundingSnapshot: &snapshot,
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	for _, line := range lines {
-		if _, err := tx.Exec(ctx, `INSERT INTO settlement_lines(settlement_run_id, member_id, scheduled_yen, paid_yen, carry_yen, monthly_adjustment_yen, advance_credit_yen, amount_due_yen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, settlementID, line.MemberID, int64(line.ScheduledYen), int64(line.PaidYen), int64(line.CarryYen), int64(line.MonthlyAdjustmentYen), int64(line.AdvanceCreditYen), int64(line.AmountDueYen)); err != nil {
+		memberUUID := generatedUUID(line.MemberID)
+		scheduled, paid := int64(line.ScheduledYen), int64(line.PaidYen)
+		carry, monthlyAdjustment := int64(line.CarryYen), int64(line.MonthlyAdjustmentYen)
+		advanceCredit, amountDue := int64(line.AdvanceCreditYen), int64(line.AmountDueYen)
+		if _, err := models.SettlementLines.Insert(&models.SettlementLineSetter{
+			SettlementRunID: &settlementUUID, MemberID: &memberUUID, ScheduledYen: &scheduled, PaidYen: &paid,
+			CarryYen: &carry, MonthlyAdjustmentYen: &monthlyAdjustment, AdvanceCreditYen: &advanceCredit, AmountDueYen: &amountDue,
+		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE purchases SET status = 'CLOSED', revision = revision + 1, updated_at = now() WHERE household_id = $1 AND status = 'POSTED' AND occurred_at >= $2 AND occurred_at < $3`, input.HouseholdID, periodStart, periodEnd); err != nil {
+	postedStatus := string(model.PurchaseStatusPosted)
+	closedPurchaseStatus := string(model.PurchaseStatusClosed)
+	updatedAt := time.Now()
+	postedPurchases, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.Purchases.Columns.Status.EQ(psql.Arg(postedStatus)),
+		models.Purchases.Columns.OccurredAt.GTE(psql.Arg(periodStart)),
+		models.Purchases.Columns.OccurredAt.LT(psql.Arg(periodEnd)),
+	))).All(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE accounting_periods SET status = 'CLOSED', revision = $3, closed_by = $4, closed_at = now() WHERE household_id = $1 AND period = $2`, input.HouseholdID, input.Period, newRevision, user.MemberID); err != nil {
+	for _, purchase := range postedPurchases {
+		revision := purchase.Revision + 1
+		if _, err := models.Purchases.Update((&models.PurchaseSetter{Status: &closedPurchaseStatus, Revision: &revision, UpdatedAt: &updatedAt}).UpdateMod(), um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchase.ID)))).Exec(ctx, executor); err != nil {
+			return nil, err
+		}
+	}
+	closedBy := sql.Null[gofrsuuid.UUID]{V: userUUID, Valid: true}
+	closedAt := sql.Null[time.Time]{V: updatedAt, Valid: true}
+	if _, err := models.AccountingPeriods.Update((&models.AccountingPeriodSetter{
+		Status: &closedStatus, Revision: &newRevision, ClosedBy: &closedBy, ClosedAt: &closedAt,
+	}).UpdateMod(), um.Where(psql.And(
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(input.Period)),
+	))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "period.closed", settlementID, newRevision, []string{"status"}, user.MemberID); err != nil {
@@ -1585,68 +2817,130 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	if delta == 0 || delta > maxMoney || delta < -maxMoney || strings.TrimSpace(input.Reason) == "" || input.IdempotencyKey == "" {
 		return nil, fmt.Errorf("%w: invalid correction", ErrBadInput)
 	}
-	weights, err := allocationWeights(input.Allocations)
-	if err != nil {
-		return nil, err
-	}
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var period string
-	err = tx.QueryRow(ctx, `SELECT to_char(occurred_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM') FROM purchases WHERE id = $1 AND household_id = $2`, input.PurchaseID, input.HouseholdID).Scan(&period)
-	if errors.Is(err, pgx.ErrNoRows) {
+	executor := bobpgx.NewTx(tx, nil)
+	householdUUID, purchaseUUID := generatedUUID(input.HouseholdID), generatedUUID(input.PurchaseID)
+	purchaseRow, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID)),
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO accounting_periods(household_id, period, status, revision) VALUES ($1, $2, 'OPEN', 0) ON CONFLICT (household_id, period) DO NOTHING`, input.HouseholdID, period); err != nil {
-		return nil, err
-	}
-	var periodStatus string
-	if err := tx.QueryRow(ctx, `SELECT status FROM accounting_periods WHERE household_id = $1 AND period = $2 FOR UPDATE`, input.HouseholdID, period).Scan(&periodStatus); err != nil {
-		return nil, err
-	}
-	if periodStatus != "CLOSED" {
-		return nil, fmt.Errorf("%w: close the period before correcting a purchase", ErrBadInput)
-	}
-	var status string
-	var lockedPeriod string
-	err = tx.QueryRow(ctx, `SELECT status, to_char(occurred_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM') FROM purchases WHERE id = $1 AND household_id = $2 FOR UPDATE`, input.PurchaseID, input.HouseholdID).Scan(&status, &lockedPeriod)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	if lockedPeriod != period {
-		return nil, ErrConflict
-	}
-	if status == string(model.PurchaseStatusDraft) {
+	if purchaseRow.Status == string(model.PurchaseStatusDraft) {
 		return nil, fmt.Errorf("%w: corrections require a posted purchase", ErrBadInput)
 	}
-	var itemID any
-	if input.ItemID != nil {
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM purchase_items WHERE id = $1 AND purchase_id = $2)`, *input.ItemID, input.PurchaseID).Scan(&exists); err != nil {
+	originalPeriod := accountingPeriod(purchaseRow.OccurredAt)
+	if err := ensureAccountingPeriod(ctx, executor, householdUUID, originalPeriod); err != nil {
+		return nil, err
+	}
+	originalPeriodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(originalPeriod)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	effectivePeriod := originalPeriod
+	correctionAt := time.Now()
+	if originalPeriodRow.Status == "CLOSED" {
+		effectivePeriod = accountingPeriod(correctionAt)
+		if err := lockAccountingPeriods(ctx, tx, input.HouseholdID, effectivePeriod); err != nil {
 			return nil, err
 		}
-		if !exists {
-			return nil, ErrNotFound
-		}
-		itemID = *input.ItemID
 	}
-	var existingID *string
-	err = tx.QueryRow(ctx, `SELECT resource_id::text FROM idempotency_keys WHERE household_id = $1 AND key = $2 AND operation = 'correctPurchase'`, input.HouseholdID, input.IdempotencyKey).Scan(&existingID)
-	if err == nil && existingID != nil {
+	if originalPeriodRow.Status != "OPEN" && originalPeriodRow.Status != "CLOSED" {
+		return nil, fmt.Errorf("%w: invalid accounting period state", ErrConflict)
+	}
+	effectivePeriodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(effectivePeriod)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if effectivePeriodRow.Status == "CLOSED" {
+		return nil, fmt.Errorf("%w: correction period is closed", ErrConflict)
+	}
+	var itemUUIDValue sql.Null[gofrsuuid.UUID]
+	if input.ItemID != nil {
+		itemUUID := generatedUUID(*input.ItemID)
+		if _, err := models.PurchaseItems.Query(sm.Where(psql.And(
+			models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)),
+			models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+		))).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		} else if err != nil {
+			return nil, err
+		}
+		itemUUIDValue = sql.Null[gofrsuuid.UUID]{V: itemUUID, Valid: true}
+	}
+	weights, err := correctionAllocationWeights(ctx, tx, input.PurchaseID, input.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	if len(input.Allocations) > 0 && !sameAllocationWeights(input.Allocations, weights) {
+		return nil, fmt.Errorf("%w: corrections must use the saved purchase allocation", ErrBadInput)
+	}
+	if delta < 0 {
+		var refundable int64
+		if input.ItemID != nil {
+			itemUUID := generatedUUID(*input.ItemID)
+			item, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)))).One(ctx, executor)
+			if err != nil {
+				return nil, err
+			}
+			refundable = item.AmountYen
+			corrections, err := models.Corrections.Query(sm.Where(psql.And(
+				models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+				models.Corrections.Columns.ItemID.EQ(psql.Arg(sql.Null[gofrsuuid.UUID]{V: itemUUID, Valid: true})),
+			))).All(ctx, executor)
+			if err != nil {
+				return nil, err
+			}
+			for _, correction := range corrections {
+				refundable += correction.AmountDeltaYen
+			}
+		} else {
+			items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+			if err != nil {
+				return nil, err
+			}
+			for _, item := range items {
+				refundable += item.AmountYen
+			}
+			corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+			if err != nil {
+				return nil, err
+			}
+			for _, correction := range corrections {
+				refundable += correction.AmountDeltaYen
+			}
+		}
+		if -delta > refundable {
+			return nil, fmt.Errorf("%w: refund exceeds the remaining purchase amount", ErrBadInput)
+		}
+	}
+	operation := "correctPurchase"
+	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
+		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(input.IdempotencyKey)),
+		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
+	))).One(ctx, executor)
+	if err == nil && existing.ResourceID.Valid {
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
 		return loadPurchase(ctx, r.DB, input.PurchaseID)
 	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 	shares, err := domain.Allocate(abs(delta), weights)
@@ -1654,37 +2948,222 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		return nil, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
 	correctionID, journalID, ledgerID := newID(), newID(), newID()
-	if _, err := tx.Exec(ctx, `INSERT INTO journals(id, household_id, source_kind, source_id, idempotency_key, occurred_at, created_by) VALUES ($1, $2, 'CORRECTION', $3, $4, now(), $5)`, journalID, input.HouseholdID, correctionID, input.IdempotencyKey, user.MemberID); err != nil {
+	correctionUUID, journalUUID, ledgerUUID := generatedUUID(correctionID), generatedUUID(journalID), generatedUUID(ledgerID)
+	userUUID := generatedUUID(user.MemberID)
+	sourceKind := "CORRECTION"
+	if _, err := models.Journals.Insert(&models.JournalSetter{
+		ID: &journalUUID, HouseholdID: &householdUUID, SourceKind: &sourceKind, SourceID: &correctionUUID,
+		IdempotencyKey: &input.IdempotencyKey, OccurredAt: &correctionAt, CreatedBy: &userUUID,
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	lineNo := 1
+	lineNo := int32(1)
+	noAccount, noPool := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
 	for _, share := range shares {
 		if share.Amount == 0 {
 			continue
 		}
 		if delta > 0 {
-			if _, err := tx.Exec(ctx, `INSERT INTO journal_entries(journal_id, line_no, pool_id, debit_yen, memo) VALUES ($1, $2, $3, $4, $5)`, journalID, lineNo, share.PoolID, share.Amount, input.Reason); err != nil {
+			poolUUID := generatedUUID(share.PoolID)
+			zero := int64(0)
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &lineNo, AccountID: &noAccount,
+				PoolID: &sql.Null[gofrsuuid.UUID]{V: poolUUID, Valid: true}, MemberID: &noPool,
+				DebitYen: &share.Amount, CreditYen: &zero, Memo: &input.Reason,
+			}).Exec(ctx, executor); err != nil {
 				return nil, err
 			}
-		} else if _, err := tx.Exec(ctx, `INSERT INTO journal_entries(journal_id, line_no, pool_id, credit_yen, memo) VALUES ($1, $2, $3, $4, $5)`, journalID, lineNo, share.PoolID, share.Amount, input.Reason); err != nil {
-			return nil, err
+		} else {
+			poolUUID := generatedUUID(share.PoolID)
+			zero := int64(0)
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &lineNo, AccountID: &noAccount,
+				PoolID: &sql.Null[gofrsuuid.UUID]{V: poolUUID, Valid: true}, MemberID: &noPool,
+				DebitYen: &zero, CreditYen: &share.Amount, Memo: &input.Reason,
+			}).Exec(ctx, executor); err != nil {
+				return nil, err
+			}
 		}
 		lineNo++
 	}
-	if delta > 0 {
-		if _, err := tx.Exec(ctx, `INSERT INTO journal_entries(journal_id, line_no, credit_yen, memo) VALUES ($1, $2, $3, 'Correction offset')`, journalID, lineNo, delta); err != nil {
+	var payments []model.PurchasePaymentInput
+	if len(input.PaymentAllocations) > 0 {
+		payments, err = validatePurchasePaymentInputs(ctx, tx, input.HouseholdID, input.PaymentAllocations)
+		if err != nil {
 			return nil, err
 		}
-	} else if _, err := tx.Exec(ctx, `INSERT INTO journal_entries(journal_id, line_no, debit_yen, memo) VALUES ($1, $2, $3, 'Correction offset')`, journalID, lineNo, -delta); err != nil {
+		var paid int64
+		for _, payment := range payments {
+			var ok bool
+			paid, ok = checkedAdd(paid, int64(payment.AmountYen))
+			if !ok {
+				return nil, fmt.Errorf("%w: payment total is too large", ErrBadInput)
+			}
+		}
+		if paid != abs(delta) {
+			return nil, fmt.Errorf("%w: correction payments must equal the correction amount", ErrBadInput)
+		}
+	} else {
+		items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		var originalTotal int64
+		for _, item := range items {
+			originalTotal += item.AmountYen
+		}
+		var originalAccountID *string
+		if purchaseRow.PaymentAccountID.Valid {
+			accountID := purchaseRow.PaymentAccountID.V.String()
+			originalAccountID = &accountID
+		}
+		payments, err = purchasePayments(ctx, tx, input.HouseholdID, input.PurchaseID, originalAccountID, originalTotal)
+		if err != nil {
+			return nil, err
+		}
+		if len(payments) > 0 {
+			weights := make([]domain.Weight, 0, len(payments))
+			for _, payment := range payments {
+				weights = append(weights, domain.Weight{PoolID: payment.PaymentAccountID, Value: int64(payment.AmountYen)})
+			}
+			allocatedPayments, err := domain.Allocate(abs(delta), weights)
+			if err != nil {
+				return nil, err
+			}
+			payments = payments[:0]
+			for _, payment := range allocatedPayments {
+				if payment.Amount > 0 {
+					payments = append(payments, model.PurchasePaymentInput{PaymentAccountID: payment.PoolID, AmountYen: graphLong(payment.Amount)})
+				}
+			}
+		}
+	}
+	if len(payments) == 0 {
+		memo := "Correction offset"
+		zero := int64(0)
+		noMember := sql.Null[gofrsuuid.UUID]{}
+		if delta > 0 {
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &lineNo, AccountID: &noAccount, PoolID: &noPool, MemberID: &noMember,
+				DebitYen: &zero, CreditYen: &delta, Memo: &memo,
+			}).Exec(ctx, executor); err != nil {
+				return nil, err
+			}
+		} else {
+			debit := -delta
+			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+				JournalID: &journalUUID, LineNo: &lineNo, AccountID: &noAccount, PoolID: &noPool, MemberID: &noMember,
+				DebitYen: &debit, CreditYen: &zero, Memo: &memo,
+			}).Exec(ctx, executor); err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		for _, payment := range payments {
+			accountUUID := generatedUUID(payment.PaymentAccountID)
+			noPool, noMember := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
+			zero := int64(0)
+			memo := "Correction payment"
+			paymentAmount := int64(payment.AmountYen)
+			setter := &models.JournalEntrySetter{JournalID: &journalUUID, LineNo: &lineNo,
+				AccountID: &sql.Null[gofrsuuid.UUID]{V: accountUUID, Valid: true}, PoolID: &noPool, MemberID: &noMember,
+				DebitYen: &zero, CreditYen: &zero, Memo: &memo}
+			if delta > 0 {
+				setter.CreditYen = &paymentAmount
+			} else {
+				setter.DebitYen = &paymentAmount
+			}
+			if _, err := models.JournalEntries.Insert(setter).Exec(ctx, executor); err != nil {
+				return nil, err
+			}
+			lineNo++
+		}
+	}
+	correctionLedgerKind := "CORRECTION"
+	noMemberValue := sql.Null[gofrsuuid.UUID]{}
+	purchaseValue := sql.Null[gofrsuuid.UUID]{V: purchaseUUID, Valid: true}
+	amount := abs(delta)
+	if _, err := models.LedgerEntries.Insert(&models.LedgerEntrySetter{
+		ID: &ledgerUUID, HouseholdID: &householdUUID, JournalID: &journalUUID, Kind: &correctionLedgerKind,
+		OccurredAt: &correctionAt, Description: &input.Reason, AmountYen: &amount,
+		FromMemberID: &noMemberValue, ToMemberID: &noMemberValue, PoolID: &noMemberValue, SourcePurchaseID: &purchaseValue,
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO ledger_entries(id, household_id, journal_id, kind, occurred_at, description, amount_yen, source_purchase_id) VALUES ($1, $2, $3, 'CORRECTION', now(), $4, $5, $6)`, ledgerID, input.HouseholdID, journalID, input.Reason, abs(delta), input.PurchaseID); err != nil {
+	if _, err := models.Corrections.Insert(&models.CorrectionSetter{
+		ID: &correctionUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, ItemID: &itemUUIDValue,
+		AmountDeltaYen: &delta, Reason: &input.Reason, JournalID: &journalUUID, CreatedBy: &userUUID,
+		EffectivePeriod: &sql.Null[string]{V: effectivePeriod, Valid: true},
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO corrections(id, household_id, purchase_id, item_id, amount_delta_yen, reason, journal_id, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, correctionID, input.HouseholdID, input.PurchaseID, itemID, delta, input.Reason, journalID, user.MemberID); err != nil {
-		return nil, err
+	for index, payment := range payments {
+		accountUUID := generatedUUID(payment.PaymentAccountID)
+		line := int32(index + 1)
+		paymentAmount := int64(payment.AmountYen)
+		if _, err := models.CorrectionPayments.Insert(&models.CorrectionPaymentSetter{
+			CorrectionID: &correctionUUID, LineNo: &line, AccountID: &accountUUID, AmountYen: &paymentAmount,
+		}).Exec(ctx, executor); err != nil {
+			return nil, err
+		}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO idempotency_keys(household_id, key, operation, resource_id) VALUES ($1, $2, 'correctPurchase', $3)`, input.HouseholdID, input.IdempotencyKey, ledgerID); err != nil {
+	if len(payments) > 0 {
+		correctionItems := []domain.FundingExpenseItem{{Amount: abs(delta)}}
+		for _, share := range shares {
+			correctionItems[0].Allocations = append(correctionItems[0].Allocations, domain.PoolAmount{PoolID: share.PoolID, Amount: share.Amount})
+		}
+		fundingPayments := make([]domain.FundingPayment, 0, len(payments))
+		for _, payment := range payments {
+			accountUUID := generatedUUID(payment.PaymentAccountID)
+			account, err := models.Accounts.Query(sm.Where(psql.And(
+				models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+				models.Accounts.Columns.ID.EQ(psql.Arg(accountUUID)),
+			))).One(ctx, executor)
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrNotFound
+			}
+			if err != nil {
+				return nil, err
+			}
+			if account.PoolID.Valid {
+				fundingPayments = append(fundingPayments, domain.FundingPayment{ID: payment.PaymentAccountID, PoolID: account.PoolID.V.String(), Amount: int64(payment.AmountYen)})
+			}
+		}
+		if len(fundingPayments) == len(payments) {
+			fundingExpenses, err := domain.SplitFundingExpense(correctionItems, fundingPayments)
+			if err != nil {
+				return nil, err
+			}
+			rules, err := poolFundingRules(ctx, bobpgx.NewTx(tx, nil), input.HouseholdID)
+			if err != nil {
+				return nil, err
+			}
+			changes, err := domain.CalculateExpenseAdjustments(fundingExpenses, rules)
+			if err != nil {
+				return nil, err
+			}
+			for _, change := range changes {
+				amount := change.MonthlyAdjustmentYen - change.AdvanceCreditYen
+				if delta < 0 {
+					amount = -amount
+				}
+				if amount == 0 {
+					continue
+				}
+				adjustmentID, memberUUID := generatedUUID(newID()), generatedUUID(change.MemberID)
+				if _, err := models.SettlementAdjustments.Insert(&models.SettlementAdjustmentSetter{
+					ID: &adjustmentID, HouseholdID: &householdUUID, Period: &effectivePeriod, MemberID: &memberUUID,
+					SourceKind: &sourceKind, SourceID: &correctionUUID, AmountYen: &amount,
+				}).Exec(ctx, executor); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	ledgerResource := sql.Null[gofrsuuid.UUID]{V: ledgerUUID, Valid: true}
+	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
+		HouseholdID: &householdUUID, Key: &input.IdempotencyKey, Operation: &operation, ResourceID: &ledgerResource,
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "purchase.corrected", input.PurchaseID, 1, []string{"correction"}, user.MemberID); err != nil {
@@ -1704,12 +3183,34 @@ func abs(value int64) int64 {
 }
 
 func writeEvent(ctx context.Context, tx pgx.Tx, householdID, eventType, entityID string, revision int64, fields []string, actorID string) error {
-	encoded, err := json.Marshal(fields)
+	encoded, err := stdjson.Marshal(fields)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO household_events(household_id, type, entity_id, revision, changed_fields, actor_id) VALUES ($1, $2, $3, $4, $5, $6)`, householdID, eventType, entityID, revision, encoded, actorID)
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return fmt.Errorf("parse event household id: %w", err)
+	}
+	entityUUID, err := gofrsuuid.FromString(entityID)
+	if err != nil {
+		return fmt.Errorf("parse event entity id: %w", err)
+	}
+	actorUUID, err := gofrsuuid.FromString(actorID)
+	if err != nil {
+		return fmt.Errorf("parse event actor id: %w", err)
+	}
+	changedFields := types.JSON[stdjson.RawMessage]{Val: encoded}
+	actor := sql.Null[gofrsuuid.UUID]{V: actorUUID, Valid: true}
+	_, err = models.HouseholdEvents.Insert(&models.HouseholdEventSetter{
+		HouseholdID: &householdUUID, Type: &eventType, EntityID: &entityUUID, Revision: &revision,
+		ChangedFields: &changedFields, ActorID: &actor,
+	}).Exec(ctx, bobpgx.NewTx(tx, nil))
 	return err
+}
+
+func generatedUUID(value string) gofrsuuid.UUID {
+	id, _ := gofrsuuid.FromString(value)
+	return id
 }
 
 func setFieldRevisions(current []byte, fields []string, revision int64) ([]byte, error) {

@@ -26,15 +26,16 @@ import (
 
 // Transfer is an object representing the database table.
 type Transfer struct {
-	ID            uuid.UUID           `db:"id,pk" `
-	HouseholdID   uuid.UUID           `db:"household_id" `
-	LedgerEntryID uuid.UUID           `db:"ledger_entry_id" `
-	FromMemberID  uuid.UUID           `db:"from_member_id" `
-	ToMemberID    uuid.UUID           `db:"to_member_id" `
-	Kind          string              `db:"kind" `
-	AmountYen     int64               `db:"amount_yen" `
-	Description   string              `db:"description" `
-	LoanID        sql.Null[uuid.UUID] `db:"loan_id" `
+	ID               uuid.UUID           `db:"id,pk" `
+	HouseholdID      uuid.UUID           `db:"household_id" `
+	LedgerEntryID    uuid.UUID           `db:"ledger_entry_id" `
+	FromMemberID     uuid.UUID           `db:"from_member_id" `
+	ToMemberID       uuid.UUID           `db:"to_member_id" `
+	Kind             string              `db:"kind" `
+	AmountYen        int64               `db:"amount_yen" `
+	Description      string              `db:"description" `
+	LoanID           sql.Null[uuid.UUID] `db:"loan_id" `
+	PaymentAccountID sql.Null[uuid.UUID] `db:"payment_account_id" `
 
 	R transferR `db:"-" `
 
@@ -58,6 +59,7 @@ type transferR struct {
 	LedgerEntry      *LedgerEntry  // transfers.transfers_ledger_entry_id_fkey
 	Loan             *Transfer     // transfers.transfers_loan_id_fkey
 	ReverseLoans     TransferSlice // transfers.transfers_loan_id_fkey__self_join_reverse
+	Account          *Account      // transfers.transfers_payment_account_fk
 	ToMemberMember   *Member       // transfers.transfers_to_member_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
@@ -72,12 +74,13 @@ type transferRLoaded struct {
 	LedgerEntry      bool // transfers.transfers_ledger_entry_id_fkey
 	Loan             bool // transfers.transfers_loan_id_fkey
 	ReverseLoans     bool // transfers.transfers_loan_id_fkey__self_join_reverse
+	Account          bool // transfers.transfers_payment_account_fk
 	ToMemberMember   bool // transfers.transfers_to_member_id_fkey
 }
 
 func buildTransferColumns(tableName string) transferColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "ledger_entry_id", "from_member_id", "to_member_id", "kind", "amount_yen", "description", "loan_id",
+		"id", "household_id", "ledger_entry_id", "from_member_id", "to_member_id", "kind", "amount_yen", "description", "loan_id", "payment_account_id",
 	)
 
 	if tableName != "" {
@@ -85,32 +88,34 @@ func buildTransferColumns(tableName string) transferColumns {
 	}
 
 	return transferColumns{
-		ColumnsExpr:   columnsExpr,
-		tableAlias:    tableName,
-		ID:            buildTransferColumn(tableName, "id"),
-		HouseholdID:   buildTransferColumn(tableName, "household_id"),
-		LedgerEntryID: buildTransferColumn(tableName, "ledger_entry_id"),
-		FromMemberID:  buildTransferColumn(tableName, "from_member_id"),
-		ToMemberID:    buildTransferColumn(tableName, "to_member_id"),
-		Kind:          buildTransferColumn(tableName, "kind"),
-		AmountYen:     buildTransferColumn(tableName, "amount_yen"),
-		Description:   buildTransferColumn(tableName, "description"),
-		LoanID:        buildTransferColumn(tableName, "loan_id"),
+		ColumnsExpr:      columnsExpr,
+		tableAlias:       tableName,
+		ID:               buildTransferColumn(tableName, "id"),
+		HouseholdID:      buildTransferColumn(tableName, "household_id"),
+		LedgerEntryID:    buildTransferColumn(tableName, "ledger_entry_id"),
+		FromMemberID:     buildTransferColumn(tableName, "from_member_id"),
+		ToMemberID:       buildTransferColumn(tableName, "to_member_id"),
+		Kind:             buildTransferColumn(tableName, "kind"),
+		AmountYen:        buildTransferColumn(tableName, "amount_yen"),
+		Description:      buildTransferColumn(tableName, "description"),
+		LoanID:           buildTransferColumn(tableName, "loan_id"),
+		PaymentAccountID: buildTransferColumn(tableName, "payment_account_id"),
 	}
 }
 
 type transferColumns struct {
 	expr.ColumnsExpr
-	tableAlias    string
-	ID            transferColumn
-	HouseholdID   transferColumn
-	LedgerEntryID transferColumn
-	FromMemberID  transferColumn
-	ToMemberID    transferColumn
-	Kind          transferColumn
-	AmountYen     transferColumn
-	Description   transferColumn
-	LoanID        transferColumn
+	tableAlias       string
+	ID               transferColumn
+	HouseholdID      transferColumn
+	LedgerEntryID    transferColumn
+	FromMemberID     transferColumn
+	ToMemberID       transferColumn
+	Kind             transferColumn
+	AmountYen        transferColumn
+	Description      transferColumn
+	LoanID           transferColumn
+	PaymentAccountID transferColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -156,19 +161,20 @@ func (c transferColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type TransferSetter struct {
-	ID            *uuid.UUID           `db:"id,pk" `
-	HouseholdID   *uuid.UUID           `db:"household_id" `
-	LedgerEntryID *uuid.UUID           `db:"ledger_entry_id" `
-	FromMemberID  *uuid.UUID           `db:"from_member_id" `
-	ToMemberID    *uuid.UUID           `db:"to_member_id" `
-	Kind          *string              `db:"kind" `
-	AmountYen     *int64               `db:"amount_yen" `
-	Description   *string              `db:"description" `
-	LoanID        *sql.Null[uuid.UUID] `db:"loan_id" `
+	ID               *uuid.UUID           `db:"id,pk" `
+	HouseholdID      *uuid.UUID           `db:"household_id" `
+	LedgerEntryID    *uuid.UUID           `db:"ledger_entry_id" `
+	FromMemberID     *uuid.UUID           `db:"from_member_id" `
+	ToMemberID       *uuid.UUID           `db:"to_member_id" `
+	Kind             *string              `db:"kind" `
+	AmountYen        *int64               `db:"amount_yen" `
+	Description      *string              `db:"description" `
+	LoanID           *sql.Null[uuid.UUID] `db:"loan_id" `
+	PaymentAccountID *sql.Null[uuid.UUID] `db:"payment_account_id" `
 }
 
 func (s TransferSetter) SetColumns() []string {
-	vals := make([]string, 0, 9)
+	vals := make([]string, 0, 10)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -195,6 +201,9 @@ func (s TransferSetter) SetColumns() []string {
 	}
 	if s.LoanID != nil {
 		vals = append(vals, "loan_id")
+	}
+	if s.PaymentAccountID != nil {
+		vals = append(vals, "payment_account_id")
 	}
 	return vals
 }
@@ -270,6 +279,15 @@ func (s TransferSetter) Overwrite(t *Transfer) {
 				return *new(sql.Null[uuid.UUID])
 			}
 			v := s.LoanID
+			return *v
+		}()
+	}
+	if s.PaymentAccountID != nil {
+		t.PaymentAccountID = func() sql.Null[uuid.UUID] {
+			if s.PaymentAccountID == nil {
+				return *new(sql.Null[uuid.UUID])
+			}
+			v := s.PaymentAccountID
 			return *v
 		}()
 	}
@@ -372,6 +390,17 @@ func (s *TransferSetter) Apply(q *dialect.InsertQuery) {
 				v := s.LoanID
 				return *v
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.PaymentAccountID == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[uuid.UUID] {
+				if s.PaymentAccountID == nil {
+					return *new(sql.Null[uuid.UUID])
+				}
+				v := s.PaymentAccountID
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -380,7 +409,7 @@ func (s TransferSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s TransferSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 9)
+	exprs := make([]bob.Expression, 0, 10)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -445,6 +474,13 @@ func (s TransferSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.PaymentAccountID != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "payment_account_id")...),
+			psql.Arg(s.PaymentAccountID),
+		}})
+	}
+
 	return exprs
 }
 
@@ -455,7 +491,7 @@ func transferScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc, fu
 		idx int
 		dst func(o *Transfer) any
 	}
-	targets := make([]target, 0, 9)
+	targets := make([]target, 0, 10)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -476,6 +512,8 @@ func transferScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc, fu
 			targets = append(targets, target{i, func(o *Transfer) any { return &o.Description }})
 		case "loan_id":
 			targets = append(targets, target{i, func(o *Transfer) any { return &o.LoanID }})
+		case "payment_account_id":
+			targets = append(targets, target{i, func(o *Transfer) any { return &o.PaymentAccountID }})
 		}
 	}
 
@@ -887,6 +925,35 @@ func (os TransferSlice) ReverseLoans(mods ...bob.Mod[*dialect.SelectQuery]) Tran
 	)...)
 }
 
+// Account starts a query for related objects on accounts
+func (o *Transfer) Account(mods ...bob.Mod[*dialect.SelectQuery]) AccountsQuery {
+	return Accounts.Query(append(mods,
+		sm.Where(Accounts.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(Accounts.Columns.ID.EQ(psql.Arg(o.PaymentAccountID))),
+	)...)
+}
+
+func (os TransferSlice) Account(mods ...bob.Mod[*dialect.SelectQuery]) AccountsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkPaymentAccountID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPaymentAccountID = append(pkPaymentAccountID, o.PaymentAccountID)
+	}
+
+	return Accounts.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkPaymentAccountID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(Accounts.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Accounts.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
+	)...)
+}
+
 // ToMemberMember starts a query for related objects on members
 func (o *Transfer) ToMemberMember(mods ...bob.Mod[*dialect.SelectQuery]) MembersQuery {
 	return Members.Query(append(mods,
@@ -1189,6 +1256,57 @@ func (transfer0 *Transfer) AttachReverseLoans(ctx context.Context, exec bob.Exec
 	return nil
 }
 
+func attachTransferAccount0(ctx context.Context, exec bob.Executor, count int, transfer0 *Transfer, account1 *Account) (*Transfer, error) {
+	setter := &TransferSetter{
+		HouseholdID:      func() *uuid.UUID { return &account1.HouseholdID }(),
+		PaymentAccountID: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: account1.ID, Valid: true}; return &v }(),
+	}
+
+	err := transfer0.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachTransferAccount0: %w", err)
+	}
+
+	return transfer0, nil
+}
+
+func (transfer0 *Transfer) InsertAccount(ctx context.Context, exec bob.Executor, related *AccountSetter) error {
+	var err error
+
+	account1, err := Accounts.Insert(related).One(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("inserting related objects: %w", err)
+	}
+
+	_, err = attachTransferAccount0(ctx, exec, 1, transfer0, account1)
+	if err != nil {
+		return err
+	}
+
+	transfer0.R.Account = account1
+	transfer0.R.Loaded.Account = true
+
+	account1.R.Transfers = append(account1.R.Transfers, transfer0)
+
+	return nil
+}
+
+func (transfer0 *Transfer) AttachAccount(ctx context.Context, exec bob.Executor, account1 *Account) error {
+	var err error
+
+	_, err = attachTransferAccount0(ctx, exec, 1, transfer0, account1)
+	if err != nil {
+		return err
+	}
+
+	transfer0.R.Account = account1
+	transfer0.R.Loaded.Account = true
+
+	account1.R.Transfers = append(account1.R.Transfers, transfer0)
+
+	return nil
+}
+
 func attachTransferToMemberMember0(ctx context.Context, exec bob.Executor, count int, transfer0 *Transfer, member1 *Member) (*Transfer, error) {
 	setter := &TransferSetter{
 		ToMemberID: func() *uuid.UUID { return &member1.ID }(),
@@ -1240,17 +1358,18 @@ func (transfer0 *Transfer) AttachToMemberMember(ctx context.Context, exec bob.Ex
 }
 
 type transferWhere[Q psql.Filterable] struct {
-	cols          transferColumns
-	ID            psql.WhereMod[Q, uuid.UUID]
-	HouseholdID   psql.WhereMod[Q, uuid.UUID]
-	LedgerEntryID psql.WhereMod[Q, uuid.UUID]
-	FromMemberID  psql.WhereMod[Q, uuid.UUID]
-	ToMemberID    psql.WhereMod[Q, uuid.UUID]
-	Kind          psql.WhereMod[Q, string]
-	AmountYen     psql.WhereMod[Q, int64]
-	Description   psql.WhereMod[Q, string]
-	LoanID        psql.WhereNullMod[Q, uuid.UUID]
-	R             transferWhereR[Q]
+	cols             transferColumns
+	ID               psql.WhereMod[Q, uuid.UUID]
+	HouseholdID      psql.WhereMod[Q, uuid.UUID]
+	LedgerEntryID    psql.WhereMod[Q, uuid.UUID]
+	FromMemberID     psql.WhereMod[Q, uuid.UUID]
+	ToMemberID       psql.WhereMod[Q, uuid.UUID]
+	Kind             psql.WhereMod[Q, string]
+	AmountYen        psql.WhereMod[Q, int64]
+	Description      psql.WhereMod[Q, string]
+	LoanID           psql.WhereNullMod[Q, uuid.UUID]
+	PaymentAccountID psql.WhereNullMod[Q, uuid.UUID]
+	R                transferWhereR[Q]
 }
 
 func (transferWhere[Q]) AliasedAs(alias string) transferWhere[Q] {
@@ -1259,17 +1378,18 @@ func (transferWhere[Q]) AliasedAs(alias string) transferWhere[Q] {
 
 func buildTransferWhere[Q psql.Filterable](cols transferColumns) transferWhere[Q] {
 	return transferWhere[Q]{
-		cols:          cols,
-		ID:            psql.Where[Q, uuid.UUID](cols.ID.Expression),
-		HouseholdID:   psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
-		LedgerEntryID: psql.Where[Q, uuid.UUID](cols.LedgerEntryID.Expression),
-		FromMemberID:  psql.Where[Q, uuid.UUID](cols.FromMemberID.Expression),
-		ToMemberID:    psql.Where[Q, uuid.UUID](cols.ToMemberID.Expression),
-		Kind:          psql.Where[Q, string](cols.Kind.Expression),
-		AmountYen:     psql.Where[Q, int64](cols.AmountYen.Expression),
-		Description:   psql.Where[Q, string](cols.Description.Expression),
-		LoanID:        psql.WhereNull[Q, uuid.UUID](cols.LoanID.Expression),
-		R:             transferWhereR[Q]{cols: cols},
+		cols:             cols,
+		ID:               psql.Where[Q, uuid.UUID](cols.ID.Expression),
+		HouseholdID:      psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		LedgerEntryID:    psql.Where[Q, uuid.UUID](cols.LedgerEntryID.Expression),
+		FromMemberID:     psql.Where[Q, uuid.UUID](cols.FromMemberID.Expression),
+		ToMemberID:       psql.Where[Q, uuid.UUID](cols.ToMemberID.Expression),
+		Kind:             psql.Where[Q, string](cols.Kind.Expression),
+		AmountYen:        psql.Where[Q, int64](cols.AmountYen.Expression),
+		Description:      psql.Where[Q, string](cols.Description.Expression),
+		LoanID:           psql.WhereNull[Q, uuid.UUID](cols.LoanID.Expression),
+		PaymentAccountID: psql.WhereNull[Q, uuid.UUID](cols.PaymentAccountID.Expression),
+		R:                transferWhereR[Q]{cols: cols},
 	}
 }
 
@@ -1356,6 +1476,21 @@ func (w transferWhereR[Q]) HasReverseLoans(filters ...bob.Mod[*dialect.SelectQue
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasAccount filters parents that have a matching Account using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to Accounts).
+func (w transferWhereR[Q]) HasAccount(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(Accounts.NameExpr()),
+		sm.Where(Accounts.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(Accounts.Columns.ID.EQ(w.cols.PaymentAccountID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasToMemberMember filters parents that have a matching ToMemberMember using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -1374,15 +1509,16 @@ func (w transferWhereR[Q]) HasToMemberMember(filters ...bob.Mod[*dialect.SelectQ
 // on a LEFT JOIN miss every column comes back NULL, so each field uses the
 // nullable version of the column type even when the column itself is NOT NULL.
 type transferPreloadBuf struct {
-	ID            sql.Null[uuid.UUID]
-	HouseholdID   sql.Null[uuid.UUID]
-	LedgerEntryID sql.Null[uuid.UUID]
-	FromMemberID  sql.Null[uuid.UUID]
-	ToMemberID    sql.Null[uuid.UUID]
-	Kind          sql.Null[string]
-	AmountYen     sql.Null[int64]
-	Description   sql.Null[string]
-	LoanID        sql.Null[uuid.UUID]
+	ID               sql.Null[uuid.UUID]
+	HouseholdID      sql.Null[uuid.UUID]
+	LedgerEntryID    sql.Null[uuid.UUID]
+	FromMemberID     sql.Null[uuid.UUID]
+	ToMemberID       sql.Null[uuid.UUID]
+	Kind             sql.Null[string]
+	AmountYen        sql.Null[int64]
+	Description      sql.Null[string]
+	LoanID           sql.Null[uuid.UUID]
+	PaymentAccountID sql.Null[uuid.UUID]
 }
 
 // transferScanMapperNullable maps the preloaded transfer
@@ -1397,7 +1533,7 @@ func transferScanMapperNullable(prefix string) scan.Mapper[*Transfer] {
 			idx int
 			dst func(b *transferPreloadBuf) any
 		}
-		targets := make([]target, 0, 9)
+		targets := make([]target, 0, 10)
 		for i, col := range cols {
 			name, ok := strings.CutPrefix(col, prefix)
 			if !ok {
@@ -1422,6 +1558,8 @@ func transferScanMapperNullable(prefix string) scan.Mapper[*Transfer] {
 				targets = append(targets, target{i, func(b *transferPreloadBuf) any { return &b.Description }})
 			case "loan_id":
 				targets = append(targets, target{i, func(b *transferPreloadBuf) any { return &b.LoanID }})
+			case "payment_account_id":
+				targets = append(targets, target{i, func(b *transferPreloadBuf) any { return &b.PaymentAccountID }})
 			}
 		}
 
@@ -1452,7 +1590,8 @@ func transferScanMapperNullable(prefix string) scan.Mapper[*Transfer] {
 					!(buf.Kind.Valid) &&
 					!(buf.AmountYen.Valid) &&
 					!(buf.Description.Valid) &&
-					!(buf.LoanID.Valid) {
+					!(buf.LoanID.Valid) &&
+					!(buf.PaymentAccountID.Valid) {
 					return nil, nil
 				}
 
@@ -1482,6 +1621,7 @@ func transferScanMapperNullable(prefix string) scan.Mapper[*Transfer] {
 					o.Description = buf.Description.V
 				}
 				o.LoanID = buf.LoanID
+				o.PaymentAccountID = buf.PaymentAccountID
 				return o, nil
 			}
 	}
@@ -1562,6 +1702,19 @@ func (o *Transfer) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "Account":
+		rel, ok := retrieved.(*Account)
+		if !ok {
+			return fmt.Errorf("transfer cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.Account = rel
+		o.R.Loaded.Account = true
+
+		if rel != nil {
+			rel.R.Transfers = TransferSlice{o}
+		}
+		return nil
 	case "ToMemberMember":
 		rel, ok := retrieved.(*Member)
 		if !ok {
@@ -1585,6 +1738,7 @@ type transferPreloader struct {
 	Household        func(...psql.PreloadOption) psql.Preloader
 	LedgerEntry      func(...psql.PreloadOption) psql.Preloader
 	Loan             func(...psql.PreloadOption) psql.Preloader
+	Account          func(...psql.PreloadOption) psql.Preloader
 	ToMemberMember   func(...psql.PreloadOption) psql.Preloader
 }
 
@@ -1642,6 +1796,19 @@ func buildTransferPreloader() transferPreloader {
 				},
 			}, Transfers.Columns.Names(), transferScanMapperNullable, opts...)
 		},
+		Account: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*Account, AccountSlice](psql.PreloadRel{
+				Name: "Account",
+				Sides: []psql.PreloadSide{
+					{
+						From:        Transfers,
+						To:          Accounts,
+						FromColumns: []string{"household_id", "payment_account_id"},
+						ToColumns:   []string{"household_id", "id"},
+					},
+				},
+			}, Accounts.Columns.Names(), accountScanMapperNullable, opts...)
+		},
 		ToMemberMember: func(opts ...psql.PreloadOption) psql.Preloader {
 			return psql.Preload[*Member, MemberSlice](psql.PreloadRel{
 				Name: "ToMemberMember",
@@ -1664,6 +1831,7 @@ type transferThenLoader[Q orm.Loadable] struct {
 	LedgerEntry      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Loan             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ReverseLoans     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Account          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ToMemberMember   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
@@ -1682,6 +1850,9 @@ func buildTransferThenLoader[Q orm.Loadable]() transferThenLoader[Q] {
 	}
 	type ReverseLoansLoadInterface interface {
 		LoadReverseLoans(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type AccountLoadInterface interface {
+		LoadAccount(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type ToMemberMemberLoadInterface interface {
 		LoadToMemberMember(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -1716,6 +1887,12 @@ func buildTransferThenLoader[Q orm.Loadable]() transferThenLoader[Q] {
 			"ReverseLoans",
 			func(ctx context.Context, exec bob.Executor, retrieved ReverseLoansLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadReverseLoans(ctx, exec, mods...)
+			},
+		),
+		Account: thenLoadBuilder[Q](
+			"Account",
+			func(ctx context.Context, exec bob.Executor, retrieved AccountLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadAccount(ctx, exec, mods...)
 			},
 		),
 		ToMemberMember: thenLoadBuilder[Q](
@@ -2112,6 +2289,75 @@ func (os TransferSlice) LoadReverseLoans(ctx context.Context, exec bob.Executor,
 	return nil
 }
 
+// LoadAccount loads the transfer's Account into the .R struct
+func (o *Transfer) LoadAccount(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.Account = nil
+	o.R.Loaded.Account = false
+
+	related, err := o.Account(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.Transfers = TransferSlice{o}
+
+	o.R.Account = related
+	o.R.Loaded.Account = true
+	return nil
+}
+
+// LoadAccount loads the transfer's Account into the .R struct
+func (os TransferSlice) LoadAccount(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	accounts, err := os.Account(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.Account = nil
+		o.R.Loaded.Account = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range accounts {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.PaymentAccountID.Valid {
+				continue
+			}
+
+			if !(o.PaymentAccountID.Valid && o.PaymentAccountID.V == rel.ID) {
+				continue
+			}
+
+			rel.R.Transfers = append(rel.R.Transfers, o)
+
+			o.R.Account = rel
+			break
+		}
+	}
+
+	return nil
+}
+
 // LoadToMemberMember loads the transfer's ToMemberMember into the .R struct
 func (o *Transfer) LoadToMemberMember(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -2336,6 +2582,7 @@ type transferJoins[Q dialect.Joinable] struct {
 	LedgerEntry      modAs[Q, ledgerEntryColumns]
 	Loan             modAs[Q, transferColumns]
 	ReverseLoans     modAs[Q, transferColumns]
+	Account          modAs[Q, accountColumns]
 	ToMemberMember   modAs[Q, memberColumns]
 }
 
@@ -2410,6 +2657,20 @@ func buildTransferJoins[Q dialect.Joinable](cols transferColumns, typ string) tr
 				{
 					mods = append(mods, dialect.Join[Q](typ, Transfers.NameExpr().As(to.Alias())).On(
 						to.LoanID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		Account: modAs[Q, accountColumns]{
+			c: Accounts.Columns,
+			f: func(to accountColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, Accounts.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.PaymentAccountID),
 					))
 				}
 

@@ -45,7 +45,14 @@ type FundingExpenseItem struct {
 
 type FundingExpense struct {
 	PaymentPoolID string
+	PaidAmount    int64
 	Items         []FundingExpenseItem
+}
+
+type FundingPayment struct {
+	ID     string
+	PoolID string
+	Amount int64
 }
 
 type ExpenseAdjustment struct {
@@ -118,7 +125,14 @@ func CalculateExpenseAdjustments(expenses []FundingExpense, rules map[string]Poo
 				return nil, ErrInvalidFundingExpense
 			}
 		}
-		if total == 0 {
+		paidAmount := expense.PaidAmount
+		if paidAmount == 0 {
+			paidAmount = total
+		}
+		if paidAmount < 0 {
+			return nil, ErrInvalidFundingExpense
+		}
+		if total == 0 && paidAmount == 0 {
 			continue
 		}
 		if paymentRule.Kind == FundingPoolPersonal {
@@ -132,7 +146,7 @@ func CalculateExpenseAdjustments(expenses []FundingExpense, rules map[string]Poo
 				}
 				change := -burden
 				if memberID == paymentRule.OwnerMemberID {
-					change, exists = subtractInt64(total, burden)
+					change, exists = subtractInt64(paidAmount, burden)
 					if !exists {
 						return nil, ErrInvalidFundingExpense
 					}
@@ -150,7 +164,7 @@ func CalculateExpenseAdjustments(expenses []FundingExpense, rules map[string]Poo
 			if _, exists := responsibilities[paymentRule.OwnerMemberID]; !exists {
 				adjustment := adjustments[paymentRule.OwnerMemberID]
 				adjustment.MemberID = paymentRule.OwnerMemberID
-				adjustment.AdvanceCreditYen, exists = addInt64(adjustment.AdvanceCreditYen, total)
+				adjustment.AdvanceCreditYen, exists = addInt64(adjustment.AdvanceCreditYen, paidAmount)
 				if !exists {
 					return nil, ErrInvalidFundingExpense
 				}
@@ -167,7 +181,7 @@ func CalculateExpenseAdjustments(expenses []FundingExpense, rules map[string]Poo
 		}
 		switch paymentRule.SettlementPolicy {
 		case SettlementBalanceToStandard:
-			baseline, err := Allocate(total, paymentShares)
+			baseline, err := Allocate(paidAmount, paymentShares)
 			if err != nil {
 				return nil, err
 			}
@@ -206,6 +220,95 @@ func CalculateExpenseAdjustments(expenses []FundingExpense, rules map[string]Poo
 	slices.SortFunc(result, func(left, right ExpenseAdjustment) int {
 		return cmpString(left.MemberID, right.MemberID)
 	})
+	return result, nil
+}
+
+// SplitFundingExpenseは購入の負担配賦を決済元の金額比で分割します。
+func SplitFundingExpense(items []FundingExpenseItem, payments []FundingPayment) ([]FundingExpense, error) {
+	if len(items) == 0 || len(payments) == 0 {
+		return nil, ErrInvalidFundingExpense
+	}
+	weights := make([]Weight, 0, len(payments))
+	seen := make(map[string]struct{}, len(payments))
+	var paymentTotal int64
+	for _, payment := range payments {
+		if payment.ID == "" || payment.PoolID == "" || payment.Amount <= 0 {
+			return nil, ErrInvalidFundingExpense
+		}
+		if _, exists := seen[payment.ID]; exists {
+			return nil, ErrInvalidFundingExpense
+		}
+		seen[payment.ID] = struct{}{}
+		weights = append(weights, Weight{PoolID: payment.ID, Value: payment.Amount})
+		var ok bool
+		paymentTotal, ok = addInt64(paymentTotal, payment.Amount)
+		if !ok {
+			return nil, ErrInvalidFundingExpense
+		}
+	}
+	result := make([]FundingExpense, len(payments))
+	for index, payment := range payments {
+		result[index].PaymentPoolID = payment.PoolID
+		result[index].PaidAmount = payment.Amount
+	}
+	var itemsTotal int64
+	for _, item := range items {
+		if item.Amount < 0 || len(item.Allocations) == 0 {
+			return nil, ErrInvalidFundingExpense
+		}
+		var itemTotal int64
+		perPayment := make([]map[string]int64, len(payments))
+		for index := range perPayment {
+			perPayment[index] = make(map[string]int64, len(item.Allocations))
+		}
+		for _, allocation := range item.Allocations {
+			if allocation.PoolID == "" || allocation.Amount < 0 {
+				return nil, ErrInvalidFundingExpense
+			}
+			var ok bool
+			itemTotal, ok = addInt64(itemTotal, allocation.Amount)
+			if !ok {
+				return nil, ErrInvalidFundingExpense
+			}
+			parts, err := Allocate(allocation.Amount, weights)
+			if err != nil {
+				return nil, err
+			}
+			for _, part := range parts {
+				for index, payment := range payments {
+					if payment.ID == part.PoolID {
+						perPayment[index][allocation.PoolID] = part.Amount
+						break
+					}
+				}
+			}
+		}
+		if itemTotal != item.Amount || item.Amount > paymentTotal {
+			return nil, ErrInvalidFundingExpense
+		}
+		var ok bool
+		itemsTotal, ok = addInt64(itemsTotal, item.Amount)
+		if !ok {
+			return nil, ErrInvalidFundingExpense
+		}
+		for index := range payments {
+			allocations := make([]PoolAmount, 0, len(perPayment[index]))
+			var amount int64
+			for poolID, allocated := range perPayment[index] {
+				allocations = append(allocations, PoolAmount{PoolID: poolID, Amount: allocated})
+				var ok bool
+				amount, ok = addInt64(amount, allocated)
+				if !ok {
+					return nil, ErrInvalidFundingExpense
+				}
+			}
+			slices.SortFunc(allocations, func(left, right PoolAmount) int { return cmpString(left.PoolID, right.PoolID) })
+			result[index].Items = append(result[index].Items, FundingExpenseItem{Amount: amount, Allocations: allocations})
+		}
+	}
+	if itemsTotal != paymentTotal {
+		return nil, ErrInvalidFundingExpense
+	}
 	return result, nil
 }
 

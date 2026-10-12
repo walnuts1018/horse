@@ -96,6 +96,15 @@ var Corrections = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		EffectivePeriod: column{
+			Name:      "effective_period",
+			DBType:    "text",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: correctionIndexes{
 		CorrectionsPkey: index{
@@ -130,6 +139,15 @@ var Corrections = Table[
 			},
 			ForeignTable:   "members",
 			ForeignColumns: []string{"id"},
+		},
+		CorrectionsCorrectionsEffectivePeriodFK: foreignKey{
+			constraint: constraint{
+				Name:    "corrections.corrections_effective_period_fk",
+				Columns: []string{"household_id", "effective_period"},
+				Comment: "",
+			},
+			ForeignTable:   "accounting_periods",
+			ForeignColumns: []string{"household_id", "period"},
 		},
 		CorrectionsCorrectionsHouseholdIDFkey: foreignKey{
 			constraint: constraint{
@@ -173,20 +191,21 @@ var Corrections = Table[
 }
 
 type correctionColumns struct {
-	ID             column
-	HouseholdID    column
-	PurchaseID     column
-	ItemID         column
-	AmountDeltaYen column
-	Reason         column
-	JournalID      column
-	CreatedBy      column
-	CreatedAt      column
+	ID              column
+	HouseholdID     column
+	PurchaseID      column
+	ItemID          column
+	AmountDeltaYen  column
+	Reason          column
+	JournalID       column
+	CreatedBy       column
+	CreatedAt       column
+	EffectivePeriod column
 }
 
 func (c correctionColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.PurchaseID, c.ItemID, c.AmountDeltaYen, c.Reason, c.JournalID, c.CreatedBy, c.CreatedAt,
+		c.ID, c.HouseholdID, c.PurchaseID, c.ItemID, c.AmountDeltaYen, c.Reason, c.JournalID, c.CreatedBy, c.CreatedAt, c.EffectivePeriod,
 	}
 }
 
@@ -202,6 +221,7 @@ func (i correctionIndexes) AsSlice() []index {
 
 type correctionForeignKeys struct {
 	CorrectionsCorrectionsCreatedByFkey             foreignKey
+	CorrectionsCorrectionsEffectivePeriodFK         foreignKey
 	CorrectionsCorrectionsHouseholdIDFkey           foreignKey
 	CorrectionsCorrectionsHouseholdIDPurchaseIDFkey foreignKey
 	CorrectionsCorrectionsJournalIDFkey             foreignKey
@@ -210,7 +230,7 @@ type correctionForeignKeys struct {
 
 func (f correctionForeignKeys) AsSlice() []foreignKey {
 	return []foreignKey{
-		f.CorrectionsCorrectionsCreatedByFkey, f.CorrectionsCorrectionsHouseholdIDFkey, f.CorrectionsCorrectionsHouseholdIDPurchaseIDFkey, f.CorrectionsCorrectionsJournalIDFkey, f.CorrectionsCorrectionsPurchaseIDItemIDFkey,
+		f.CorrectionsCorrectionsCreatedByFkey, f.CorrectionsCorrectionsEffectivePeriodFK, f.CorrectionsCorrectionsHouseholdIDFkey, f.CorrectionsCorrectionsHouseholdIDPurchaseIDFkey, f.CorrectionsCorrectionsJournalIDFkey, f.CorrectionsCorrectionsPurchaseIDItemIDFkey,
 	}
 }
 

@@ -1,15 +1,24 @@
 package graph
 
 import (
+	"cmp"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
-	"time"
+	"slices"
 
-	"github.com/jackc/pgx/v5"
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/graph/model"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
+
+func queryExecutor(db *pgxpool.Pool) bob.Executor { return bobpgx.NewPool(db) }
 
 func (r *queryResolver) viewer(ctx context.Context) (*model.Viewer, error) {
 	user, err := principal(ctx)
@@ -17,25 +26,16 @@ func (r *queryResolver) viewer(ctx context.Context) (*model.Viewer, error) {
 		return nil, err
 	}
 	result := &model.Viewer{ID: user.MemberID, Subject: user.Subject, DisplayName: user.DisplayName, Households: make([]*model.Household, 0)}
-	rows, err := r.DB.Query(ctx, `SELECT household_id::text FROM household_members WHERE member_id = $1 ORDER BY joined_at`, user.MemberID)
+	memberID, err := gofrsuuid.FromString(user.MemberID)
+	if err != nil {
+		return nil, fmt.Errorf("parse member id: %w", err)
+	}
+	memberships, err := models.HouseholdMembers.Query(sm.Where(models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID))), sm.OrderBy(models.HouseholdMembers.Columns.JoinedAt)).All(ctx, queryExecutor(r.DB))
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	for _, id := range ids {
-		household, err := loadHousehold(ctx, r.DB, id)
+	for _, membership := range memberships {
+		household, err := loadHousehold(ctx, r.DB, membership.HouseholdID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -49,26 +49,17 @@ func (r *queryResolver) households(ctx context.Context) ([]*model.Household, err
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.DB.Query(ctx, `SELECT household_id::text FROM household_members WHERE member_id = $1 ORDER BY joined_at`, user.MemberID)
+	memberID, err := gofrsuuid.FromString(user.MemberID)
+	if err != nil {
+		return nil, fmt.Errorf("parse member id: %w", err)
+	}
+	memberships, err := models.HouseholdMembers.Query(sm.Where(models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID))), sm.OrderBy(models.HouseholdMembers.Columns.JoinedAt)).All(ctx, queryExecutor(r.DB))
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	result := make([]*model.Household, 0, len(ids))
-	for _, id := range ids {
-		household, err := loadHousehold(ctx, r.DB, id)
+	result := make([]*model.Household, 0, len(memberships))
+	for _, membership := range memberships {
+		household, err := loadHousehold(ctx, r.DB, membership.HouseholdID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -88,71 +79,80 @@ func (r *queryResolver) allocationRules(ctx context.Context, householdID string)
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	rows, err := r.DB.Query(ctx, `SELECT id::text FROM allocation_rules WHERE household_id = $1 ORDER BY category_id NULLS LAST, merchant_key`, householdID)
+	parsedID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	rules, err := models.AllocationRules.Query(sm.Where(models.AllocationRules.Columns.HouseholdID.EQ(psql.Arg(parsedID))), sm.OrderBy(models.AllocationRules.Columns.CategoryID).NullsLast(), sm.OrderBy(models.AllocationRules.Columns.MerchantKey)).All(ctx, queryExecutor(r.DB))
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	result := make([]*model.AllocationRule, 0, len(ids))
-	for _, id := range ids {
-		rule, err := loadAllocationRule(ctx, r.DB, id)
+	result := make([]*model.AllocationRule, 0, len(rules))
+	for _, rule := range rules {
+		loaded, err := loadAllocationRule(ctx, r.DB, rule.ID.String())
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, rule)
+		result = append(result, loaded)
 	}
 	return result, nil
 }
 
 func loadAllocationRule(ctx context.Context, db *pgxpool.Pool, ruleID string) (*model.AllocationRule, error) {
-	var result model.AllocationRule
-	var categoryID *string
-	var merchant *string
-	var productConceptID, productVariantID *string
-	var revision int64
-	if err := db.QueryRow(ctx, `SELECT id::text,household_id::text,category_id::text,merchant_key,product_concept_id::text,product_variant_id::text,revision FROM allocation_rules WHERE id=$1`, ruleID).Scan(&result.ID, &result.HouseholdID, &categoryID, &merchant, &productConceptID, &productVariantID, &revision); errors.Is(err, pgx.ErrNoRows) {
+	id, err := gofrsuuid.FromString(ruleID)
+	if err != nil {
+		return nil, fmt.Errorf("parse allocation rule id: %w", err)
+	}
+	executor := queryExecutor(db)
+	rule, err := models.AllocationRules.Query(sm.Where(models.AllocationRules.Columns.ID.EQ(psql.Arg(id)))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
-	} else if err != nil {
-		return nil, err
 	}
-	result.CategoryID, result.Merchant, result.ProductConceptID, result.ProductVariantID, result.Revision = categoryID, merchant, productConceptID, productVariantID, int(revision)
-	if productVariantID != nil {
-		result.Scope = model.AllocationRuleScopeProductVariant
-	} else if productConceptID != nil {
-		result.Scope = model.AllocationRuleScopeProduct
-	} else if categoryID != nil {
-		result.Scope = model.AllocationRuleScopeCategory
-	} else {
-		result.Scope = model.AllocationRuleScopeMerchant
-	}
-	rows, err := db.Query(ctx, `SELECT w.pool_id::text, p.name, w.weight FROM allocation_rule_weights w JOIN pools p ON p.id = w.pool_id WHERE w.rule_id = $1 ORDER BY w.pool_id`, ruleID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result.Allocations = make([]*model.Allocation, 0)
-	for rows.Next() {
-		allocation := &model.Allocation{}
-		var weight int64
-		if err := rows.Scan(&allocation.PoolID, &allocation.PoolName, &weight); err != nil {
-			return nil, err
-		}
-		allocation.Weight = graphLong(weight)
-		result.Allocations = append(result.Allocations, allocation)
+	result := &model.AllocationRule{ID: rule.ID.String(), HouseholdID: rule.HouseholdID.String(), Revision: int(rule.Revision)}
+	if rule.CategoryID.Valid {
+		value := rule.CategoryID.V.String()
+		result.CategoryID = &value
 	}
-	return &result, rows.Err()
+	if rule.MerchantKey.Valid {
+		result.Merchant = &rule.MerchantKey.V
+	}
+	if rule.ProductConceptID.Valid {
+		value := rule.ProductConceptID.V.String()
+		result.ProductConceptID = &value
+	}
+	if rule.ProductVariantID.Valid {
+		value := rule.ProductVariantID.V.String()
+		result.ProductVariantID = &value
+	}
+	switch {
+	case result.ProductVariantID != nil:
+		result.Scope = model.AllocationRuleScopeProductVariant
+	case result.ProductConceptID != nil:
+		result.Scope = model.AllocationRuleScopeProduct
+	case result.CategoryID != nil:
+		result.Scope = model.AllocationRuleScopeCategory
+	default:
+		result.Scope = model.AllocationRuleScopeMerchant
+	}
+	weights, err := models.AllocationRuleWeights.Query(sm.Where(models.AllocationRuleWeights.Columns.RuleID.EQ(psql.Arg(id))), sm.OrderBy(models.AllocationRuleWeights.Columns.PoolID)).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if err := weights.LoadPool(ctx, executor); err != nil {
+		return nil, err
+	}
+	result.Allocations = make([]*model.Allocation, 0, len(weights))
+	for _, weight := range weights {
+		if weight.R.Pool == nil {
+			return nil, fmt.Errorf("allocation rule weight %s has no pool", weight.PoolID)
+		}
+		poolName := weight.R.Pool.Name
+		result.Allocations = append(result.Allocations, &model.Allocation{PoolID: weight.PoolID.String(), PoolName: &poolName, Weight: graphLong(weight.Weight)})
+	}
+	return result, nil
 }
 
 func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to, after *string, first *int) (*model.PurchaseConnection, error) {
@@ -166,60 +166,62 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 	if pageSize < 1 || pageSize > 100 {
 		return nil, fmt.Errorf("%w: first must be between 1 and 100", ErrBadInput)
 	}
-	var fromValue, toValue any
+	hhID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	filters := []bob.Expression{models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID))}
 	if from != nil {
-		parsed, err := parseTime(*from)
+		value, err := parseTime(*from)
 		if err != nil {
 			return nil, err
 		}
-		fromValue = parsed
+		filters = append(filters, models.Purchases.Columns.OccurredAt.GTE(psql.Arg(value)))
 	}
 	if to != nil {
-		parsed, err := parseTime(*to)
+		value, err := parseTime(*to)
 		if err != nil {
 			return nil, err
 		}
-		toValue = parsed
+		filters = append(filters, models.Purchases.Columns.OccurredAt.LT(psql.Arg(value)))
 	}
-	var afterValue any
-	if after != nil && *after != "" {
-		afterValue = *after
-	}
-	var count int
-	if err := r.DB.QueryRow(ctx, `SELECT count(*) FROM purchases p WHERE p.household_id = $1 AND ($2::timestamptz IS NULL OR p.occurred_at >= $2) AND ($3::timestamptz IS NULL OR p.occurred_at < $3)`, householdID, fromValue, toValue).Scan(&count); err != nil {
-		return nil, err
-	}
-	rows, err := r.DB.Query(ctx, `SELECT p.id::text FROM purchases p WHERE p.household_id = $1 AND ($2::timestamptz IS NULL OR p.occurred_at >= $2) AND ($3::timestamptz IS NULL OR p.occurred_at < $3) AND ($4::uuid IS NULL OR (p.occurred_at, p.id) < (SELECT q.occurred_at, q.id FROM purchases q WHERE q.id = $4 AND q.household_id = $1)) ORDER BY p.occurred_at DESC, p.id DESC LIMIT $5`, householdID, fromValue, toValue, afterValue, pageSize+1)
+	executor := queryExecutor(r.DB)
+	count, err := models.Purchases.Query(sm.Where(psql.And(filters...))).Count(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0, pageSize+1)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
+	if after != nil && *after != "" {
+		cursorID, err := gofrsuuid.FromString(*after)
+		if err != nil {
+			return nil, fmt.Errorf("parse purchase cursor: %w", err)
 		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	hasNext := len(ids) > pageSize
-	if hasNext {
-		ids = ids[:pageSize]
-	}
-	connection := &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0, len(ids)), TotalCount: count, PageInfo: &model.PageInfo{HasNextPage: hasNext}}
-	for _, id := range ids {
-		purchase, err := loadPurchase(ctx, r.DB, id)
+		cursor, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.ID.EQ(psql.Arg(cursorID)), models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID))))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		if err != nil {
 			return nil, err
 		}
-		connection.Edges = append(connection.Edges, &model.PurchaseEdge{Cursor: id, Node: purchase})
+		filters = append(filters, psql.Or(models.Purchases.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.Purchases.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.Purchases.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
-	if len(ids) > 0 {
-		end := ids[len(ids)-1]
+	purchases, err := models.Purchases.Query(sm.Where(psql.And(filters...)), sm.OrderBy(models.Purchases.Columns.OccurredAt).Desc(), sm.OrderBy(models.Purchases.Columns.ID).Desc(), sm.Limit(pageSize+1)).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	hasNext := len(purchases) > pageSize
+	if hasNext {
+		purchases = purchases[:pageSize]
+	}
+	connection := &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0, len(purchases)), TotalCount: int(count), PageInfo: &model.PageInfo{HasNextPage: hasNext}}
+	for _, row := range purchases {
+		purchase, err := loadPurchase(ctx, r.DB, row.ID.String())
+		if err != nil {
+			return nil, err
+		}
+		connection.Edges = append(connection.Edges, &model.PurchaseEdge{Cursor: row.ID.String(), Node: purchase})
+	}
+	if len(purchases) > 0 {
+		end := purchases[len(purchases)-1].ID.String()
 		connection.PageInfo.EndCursor = &end
 	}
 	return connection, nil
@@ -236,49 +238,61 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after *s
 	if pageSize < 1 || pageSize > 100 {
 		return nil, fmt.Errorf("%w: first must be between 1 and 100", ErrBadInput)
 	}
-	var cursor any
-	if after != nil && *after != "" {
-		cursor = *after
+	hhID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
 	}
-	var count int
-	if err := r.DB.QueryRow(ctx, `SELECT count(*) FROM ledger_entries WHERE household_id = $1`, householdID).Scan(&count); err != nil {
-		return nil, err
-	}
-	rows, err := r.DB.Query(ctx, `SELECT id::text, kind, occurred_at, description, amount_yen, from_member_id::text, to_member_id::text, pool_id::text, source_purchase_id::text, created_at FROM ledger_entries WHERE household_id = $1 AND ($2::uuid IS NULL OR (occurred_at, id) < (SELECT q.occurred_at, q.id FROM ledger_entries q WHERE q.id = $2 AND q.household_id = $1)) ORDER BY occurred_at DESC, id DESC LIMIT $3`, householdID, cursor, pageSize+1)
+	executor := queryExecutor(r.DB)
+	filters := []bob.Expression{models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID))}
+	count, err := models.LedgerEntries.Query(sm.Where(models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID)))).Count(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	type row struct {
-		entry      *model.LedgerEntry
-		occurredAt time.Time
-	}
-	entries := make([]row, 0, pageSize+1)
-	for rows.Next() {
-		entry := &model.LedgerEntry{Currency: "JPY"}
-		var occurredAt, createdAt time.Time
-		var amount int64
-		if err := rows.Scan(&entry.ID, &entry.Kind, &occurredAt, &entry.Description, &amount, &entry.FromMemberID, &entry.ToMemberID, &entry.PoolID, &entry.SourcePurchaseID, &createdAt); err != nil {
-			rows.Close()
+	if after != nil && *after != "" {
+		cursorID, err := gofrsuuid.FromString(*after)
+		if err != nil {
+			return nil, fmt.Errorf("parse ledger cursor: %w", err)
+		}
+		cursor, err := models.LedgerEntries.Query(sm.Where(psql.And(models.LedgerEntries.Columns.ID.EQ(psql.Arg(cursorID)), models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID))))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
 			return nil, err
 		}
-		entry.AmountYen = graphLong(amount)
-		entry.OccurredAt, entry.CreatedAt = timeString(occurredAt), timeString(createdAt)
-		entries = append(entries, row{entry: entry, occurredAt: occurredAt})
+		filters = append(filters, psql.Or(models.LedgerEntries.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.LedgerEntries.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.LedgerEntries.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+	entries, err := models.LedgerEntries.Query(sm.Where(psql.And(filters...)), sm.OrderBy(models.LedgerEntries.Columns.OccurredAt).Desc(), sm.OrderBy(models.LedgerEntries.Columns.ID).Desc(), sm.Limit(pageSize+1)).All(ctx, executor)
+	if err != nil {
 		return nil, err
 	}
 	hasNext := len(entries) > pageSize
 	if hasNext {
 		entries = entries[:pageSize]
 	}
-	connection := &model.LedgerConnection{Edges: make([]*model.LedgerEdge, 0, len(entries)), TotalCount: count, PageInfo: &model.PageInfo{HasNextPage: hasNext}}
-	for _, entry := range entries {
-		connection.Edges = append(connection.Edges, &model.LedgerEdge{Cursor: entry.entry.ID, Node: entry.entry})
+	connection := &model.LedgerConnection{Edges: make([]*model.LedgerEdge, 0, len(entries)), TotalCount: int(count), PageInfo: &model.PageInfo{HasNextPage: hasNext}}
+	for _, row := range entries {
+		entry := &model.LedgerEntry{ID: row.ID.String(), Kind: model.LedgerKind(row.Kind), Currency: "JPY", OccurredAt: timeString(row.OccurredAt), Description: row.Description, AmountYen: graphLong(row.AmountYen), CreatedAt: timeString(row.CreatedAt)}
+		if row.FromMemberID.Valid {
+			v := row.FromMemberID.V.String()
+			entry.FromMemberID = &v
+		}
+		if row.ToMemberID.Valid {
+			v := row.ToMemberID.V.String()
+			entry.ToMemberID = &v
+		}
+		if row.PoolID.Valid {
+			v := row.PoolID.V.String()
+			entry.PoolID = &v
+		}
+		if row.SourcePurchaseID.Valid {
+			v := row.SourcePurchaseID.V.String()
+			entry.SourcePurchaseID = &v
+		}
+		connection.Edges = append(connection.Edges, &model.LedgerEdge{Cursor: entry.ID, Node: entry})
 	}
 	if len(entries) > 0 {
-		end := entries[len(entries)-1].entry.ID
+		end := entries[len(entries)-1].ID.String()
 		connection.PageInfo.EndCursor = &end
 	}
 	return connection, nil
@@ -291,34 +305,43 @@ func (r *queryResolver) settlement(ctx context.Context, householdID, period stri
 	if _, err := parseAccountingPeriod(period); err != nil {
 		return nil, fmt.Errorf("%w: period must use YYYY-MM", ErrBadInput)
 	}
-	var closedRevision int64
-	var closedAt time.Time
-	err := r.DB.QueryRow(ctx, `SELECT revision, created_at FROM settlement_runs WHERE household_id = $1 AND period = $2 AND status = 'CLOSED' ORDER BY revision DESC LIMIT 1`, householdID, period).Scan(&closedRevision, &closedAt)
-	if err == nil {
-		result := &model.Settlement{Period: period, Status: "CLOSED", Revision: int(closedRevision), Lines: make([]*model.SettlementLine, 0)}
-		created := timeString(closedAt)
-		result.CreatedAt = &created
-		rows, err := r.DB.Query(ctx, `SELECT sl.member_id::text, m.display_name, sl.scheduled_yen, sl.paid_yen, sl.carry_yen, sl.monthly_adjustment_yen, sl.advance_credit_yen, sl.amount_due_yen FROM settlement_lines sl JOIN settlement_runs sr ON sr.id = sl.settlement_run_id JOIN members m ON m.id = sl.member_id WHERE sr.household_id = $1 AND sr.period = $2 AND sr.revision = $3 ORDER BY m.display_name`, householdID, period, closedRevision)
+	hhID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	executor := queryExecutor(r.DB)
+	runs, err := models.SettlementRuns.Query(sm.Where(psql.And(models.SettlementRuns.Columns.HouseholdID.EQ(psql.Arg(hhID)), models.SettlementRuns.Columns.Period.EQ(psql.Arg(period)), models.SettlementRuns.Columns.Status.EQ(psql.Arg("CLOSED")))), sm.OrderBy(models.SettlementRuns.Columns.Revision).Desc(), sm.Limit(1)).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if len(runs) > 0 {
+		run := runs[0]
+		lines, err := models.SettlementLines.Query(sm.Where(models.SettlementLines.Columns.SettlementRunID.EQ(psql.Arg(run.ID)))).All(ctx, executor)
 		if err != nil {
 			return nil, err
 		}
-		for rows.Next() {
-			line := &model.SettlementLine{}
-			if err := rows.Scan(&line.MemberID, &line.MemberName, &line.ScheduledYen, &line.PaidYen, &line.CarryYen, &line.MonthlyAdjustmentYen, &line.AdvanceCreditYen, &line.AmountDueYen); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			line.PriorBalanceYen = line.CarryYen
-			result.Lines = append(result.Lines, line)
+		members, err := models.HouseholdMembers.Query(sm.Where(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(hhID)))).All(ctx, executor)
+		if err != nil {
+			return nil, err
 		}
-		rows.Close()
-		return result, rows.Err()
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, err
+		if err := members.LoadMember(ctx, executor); err != nil {
+			return nil, err
+		}
+		names := make(map[gofrsuuid.UUID]string, len(members))
+		for _, member := range members {
+			names[member.MemberID] = member.R.Member.DisplayName
+		}
+		slices.SortFunc(lines, func(a, b *models.SettlementLine) int { return cmp.Compare(names[a.MemberID], names[b.MemberID]) })
+		result := &model.Settlement{Period: period, Status: "CLOSED", Revision: int(run.Revision), Lines: make([]*model.SettlementLine, 0, len(lines))}
+		created := timeString(run.CreatedAt)
+		result.CreatedAt = &created
+		for _, line := range lines {
+			result.Lines = append(result.Lines, &model.SettlementLine{MemberID: line.MemberID.String(), MemberName: names[line.MemberID], ScheduledYen: graphLong(line.ScheduledYen), PaidYen: graphLong(line.PaidYen), CarryYen: graphLong(line.CarryYen), PriorBalanceYen: graphLong(line.CarryYen), MonthlyAdjustmentYen: graphLong(line.MonthlyAdjustmentYen), AdvanceCreditYen: graphLong(line.AdvanceCreditYen), AmountDueYen: graphLong(line.AmountDueYen)})
+		}
+		return result, nil
 	}
 	result := &model.Settlement{Period: period, Status: "OPEN", Revision: 0, Lines: make([]*model.SettlementLine, 0)}
-	settlement, err := calculateSettlementPreview(ctx, r.DB, householdID, period)
+	settlement, err := calculateSettlementPreview(ctx, queryExecutor(r.DB), householdID, period)
 	if err != nil {
 		return nil, err
 	}
@@ -340,40 +363,172 @@ func (r *queryResolver) monthlyCategorySpending(ctx context.Context, householdID
 	if err != nil || toMonth.Before(fromMonth) || toMonth.After(fromMonth.AddDate(10, 0, 0)) {
 		return nil, fmt.Errorf("%w: to must be within ten years after from", ErrBadInput)
 	}
-	endExclusive := toMonth.AddDate(0, 1, 0)
-	rows, err := r.DB.Query(ctx, `
-		WITH spending AS (
-			SELECT date_trunc('month', p.occurred_at AT TIME ZONE 'Asia/Tokyo')::date AS period, i.category_id, sum(i.amount_yen)::bigint AS amount_yen
-			FROM purchases p
-			JOIN purchase_items i ON i.purchase_id = p.id
-			WHERE p.household_id = $1 AND p.status IN ('POSTED', 'CLOSED') AND p.occurred_at >= $2 AND p.occurred_at < $3
-			GROUP BY 1, 2
-			UNION ALL
-			SELECT date_trunc('month', p.occurred_at AT TIME ZONE 'Asia/Tokyo')::date AS period, i.category_id, sum(c.amount_delta_yen)::bigint AS amount_yen
-			FROM corrections c
-			JOIN purchases p ON p.id = c.purchase_id
-			LEFT JOIN purchase_items i ON i.id = c.item_id
-			WHERE c.household_id = $1 AND p.occurred_at >= $2 AND p.occurred_at < $3
-			GROUP BY 1, 2
-		)
-		SELECT to_char(s.period, 'YYYY-MM'), s.category_id::text, c.name, sum(s.amount_yen)::bigint
-		FROM spending s
-		LEFT JOIN categories c ON c.id = s.category_id
-		GROUP BY s.period, s.category_id, c.name
-		ORDER BY s.period DESC, c.name NULLS LAST, s.category_id`, householdID, fromMonth, endExclusive)
+	hhID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	start := fromMonth.UTC()
+	end := toMonth.AddDate(0, 1, 0).UTC()
+	executor := queryExecutor(r.DB)
+	purchases, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID)), models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)), models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)))), sm.OrderBy(models.Purchases.Columns.OccurredAt)).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := make([]*model.MonthlyCategorySpending, 0)
-	for rows.Next() {
-		entry := &model.MonthlyCategorySpending{}
-		var amount int64
-		if err := rows.Scan(&entry.Period, &entry.CategoryID, &entry.CategoryName, &amount); err != nil {
+	type spendingKey struct {
+		period      string
+		categoryID  gofrsuuid.UUID
+		hasCategory bool
+	}
+	amounts := make(map[spendingKey]int64)
+	categoryNames := make(map[gofrsuuid.UUID]string)
+	for _, purchase := range purchases {
+		if purchase.Status != "POSTED" && purchase.Status != "CLOSED" {
+			continue
+		}
+		items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)))).All(ctx, executor)
+		if err != nil {
 			return nil, err
 		}
-		entry.AmountYen = graphLong(amount)
+		itemsByID := make(map[gofrsuuid.UUID]*models.PurchaseItem, len(items))
+		for _, item := range items {
+			itemsByID[item.ID] = item
+			key := spendingKey{period: accountingPeriod(purchase.OccurredAt)}
+			if item.CategoryID.Valid {
+				key.categoryID = item.CategoryID.V
+				key.hasCategory = true
+			}
+			amounts[key] += item.AmountYen
+		}
+		corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		for _, correction := range corrections {
+			key := spendingKey{period: accountingPeriod(purchase.OccurredAt)}
+			if correction.ItemID.Valid {
+				if item := itemsByID[correction.ItemID.V]; item != nil && item.CategoryID.Valid {
+					key.categoryID = item.CategoryID.V
+					key.hasCategory = true
+				}
+			}
+			amounts[key] += correction.AmountDeltaYen
+		}
+	}
+	categories, err := models.Categories.Query().All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	for _, category := range categories {
+		categoryNames[category.ID] = category.Name
+	}
+	keys := make([]spendingKey, 0, len(amounts))
+	for key := range amounts {
+		keys = append(keys, key)
+	}
+	slices.SortFunc(keys, func(a, b spendingKey) int {
+		if n := cmp.Compare(b.period, a.period); n != 0 {
+			return n
+		}
+		if !a.hasCategory && b.hasCategory {
+			return 1
+		}
+		if a.hasCategory && !b.hasCategory {
+			return -1
+		}
+		if !a.hasCategory {
+			return 0
+		}
+		if n := cmp.Compare(categoryNames[a.categoryID], categoryNames[b.categoryID]); n != 0 {
+			return n
+		}
+		return cmp.Compare(a.categoryID.String(), b.categoryID.String())
+	})
+	result := make([]*model.MonthlyCategorySpending, 0, len(keys))
+	for _, key := range keys {
+		entry := &model.MonthlyCategorySpending{Period: key.period, AmountYen: graphLong(amounts[key])}
+		if key.hasCategory {
+			id := key.categoryID.String()
+			name := categoryNames[key.categoryID]
+			entry.CategoryID = &id
+			entry.CategoryName = &name
+		}
 		result = append(result, entry)
 	}
-	return result, rows.Err()
+	return result, nil
+}
+
+func (r *queryResolver) purchaseCorrections(ctx context.Context, purchaseID string) ([]*model.PurchaseCorrection, error) {
+	id, err := gofrsuuid.FromString(purchaseID)
+	if err != nil {
+		return nil, fmt.Errorf("parse purchase id: %w", err)
+	}
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(id)))).One(ctx, queryExecutor(r.DB))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if _, err := requireMember(ctx, r.DB, purchase.HouseholdID.String()); err != nil {
+		return nil, err
+	}
+	loaded, err := loadPurchase(ctx, r.DB, purchaseID)
+	if err != nil {
+		return nil, err
+	}
+	return loaded.Corrections, nil
+}
+
+func (r *queryResolver) loanBalances(ctx context.Context, householdID string) ([]*model.LoanBalance, error) {
+	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
+		return nil, err
+	}
+	hhID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	executor := queryExecutor(r.DB)
+	transfers, err := models.Transfers.Query(sm.Where(models.Transfers.Columns.HouseholdID.EQ(psql.Arg(hhID)))).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	repaidByLoan := make(map[gofrsuuid.UUID]int64)
+	for _, transfer := range transfers {
+		if transfer.Kind == "REPAYMENT" && transfer.LoanID.Valid {
+			repaidByLoan[transfer.LoanID.V] += transfer.AmountYen
+		}
+	}
+	loans := make([]*models.Transfer, 0)
+	for _, transfer := range transfers {
+		if transfer.Kind == "LOAN" {
+			loans = append(loans, transfer)
+		}
+	}
+	ledgerEntries, err := models.LedgerEntries.Query(sm.Where(models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID)))).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	ledgerByID := make(map[gofrsuuid.UUID]*models.LedgerEntry, len(ledgerEntries))
+	for _, entry := range ledgerEntries {
+		ledgerByID[entry.ID] = entry
+	}
+	slices.SortFunc(loans, func(a, b *models.Transfer) int {
+		left, right := ledgerByID[a.LedgerEntryID], ledgerByID[b.LedgerEntryID]
+		if left != nil && right != nil {
+			if n := right.CreatedAt.Compare(left.CreatedAt); n != 0 {
+				return n
+			}
+		}
+		return cmp.Compare(a.ID.String(), b.ID.String())
+	})
+	result := make([]*model.LoanBalance, 0, len(loans))
+	for _, loan := range loans {
+		ledger := ledgerByID[loan.LedgerEntryID]
+		if ledger == nil {
+			return nil, fmt.Errorf("loan transfer %s has no ledger entry", loan.ID)
+		}
+		balance := &model.LoanBalance{LoanID: loan.ID.String(), LenderMemberID: loan.FromMemberID.String(), BorrowerMemberID: loan.ToMemberID.String(), PrincipalYen: graphLong(loan.AmountYen), RepaidYen: graphLong(repaidByLoan[loan.ID]), BalanceYen: graphLong(loan.AmountYen - repaidByLoan[loan.ID]), CreatedAt: timeString(ledger.CreatedAt)}
+		result = append(result, balance)
+	}
+	return result, nil
 }

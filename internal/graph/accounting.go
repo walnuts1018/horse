@@ -1,21 +1,28 @@
 package graph
 
 import (
+	"cmp"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
 	"slices"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	gofrsuuid "github.com/gofrs/uuid/v5"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/stephenafamo/bob/dialect/psql/um"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/graph/model"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 type accountingDB interface {
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-	QueryRow(context.Context, string, ...any) pgx.Row
+	bob.Executor
 }
 
 var accountingLocation = time.FixedZone("JST", 9*60*60)
@@ -31,66 +38,98 @@ func (r *mutationResolver) setPoolFundingRule(ctx context.Context, input model.S
 	if err != nil {
 		return nil, err
 	}
+	householdID, err := gofrsuuid.FromString(input.HouseholdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	poolID, err := gofrsuuid.FromString(input.PoolID)
+	if err != nil {
+		return nil, fmt.Errorf("parse pool id: %w", err)
+	}
+	userID, err := gofrsuuid.FromString(user.MemberID)
+	if err != nil {
+		return nil, fmt.Errorf("parse member id: %w", err)
+	}
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	var lockedHouseholdID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM households WHERE id=$1 FOR UPDATE`, input.HouseholdID).Scan(&lockedHouseholdID); errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNotFound
-	} else if err != nil {
-		return nil, err
-	}
-	var kind string
-	var version int
-	err = tx.QueryRow(ctx, `SELECT kind, funding_rule_version FROM pools WHERE household_id=$1 AND id=$2 FOR UPDATE`, input.HouseholdID, input.PoolID).Scan(&kind, &version)
-	if errors.Is(err, pgx.ErrNoRows) {
+	executor := bobpgx.NewTx(tx, nil)
+	household, err := models.Households.Query(
+		sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))),
+		sm.ForUpdate(),
+	).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	if version != input.ExpectedVersion {
+	pool, err := models.Pools.Query(sm.Where(psql.And(
+		models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.Pools.Columns.ID.EQ(psql.Arg(poolID)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if int(pool.FundingRuleVersion) != input.ExpectedVersion {
 		return nil, ErrConflict
 	}
-	var owner any
-	var policy any
-	shares := make(map[string]int64, len(input.FundingShares))
-	if kind == string(model.PoolKindPersonal) {
+	shares := make(map[gofrsuuid.UUID]int64, len(input.FundingShares))
+	var ownerID sql.Null[gofrsuuid.UUID]
+	var settlementPolicy sql.Null[string]
+	if pool.Kind == string(model.PoolKindPersonal) {
 		if input.OwnerMemberID == nil || *input.OwnerMemberID == "" || input.SettlementPolicy != nil || len(input.FundingShares) != 0 {
 			return nil, fmt.Errorf("%w: personal pools require one owner and no funding shares", ErrBadInput)
 		}
-		var member bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM household_members WHERE household_id=$1 AND member_id=$2)`, input.HouseholdID, *input.OwnerMemberID).Scan(&member); err != nil {
+		ownerUUID, err := gofrsuuid.FromString(*input.OwnerMemberID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid owner member id", ErrBadInput)
+		}
+		member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+			models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(ownerUUID)),
+		))).Exists(ctx, executor)
+		if err != nil {
 			return nil, err
 		}
 		if !member {
 			return nil, fmt.Errorf("%w: owner must belong to the household", ErrBadInput)
 		}
-		owner = *input.OwnerMemberID
-	} else if kind == string(model.PoolKindShared) {
+		ownerID = sql.Null[gofrsuuid.UUID]{V: ownerUUID, Valid: true}
+	} else if pool.Kind == string(model.PoolKindShared) {
 		if input.OwnerMemberID != nil || input.SettlementPolicy == nil || !input.SettlementPolicy.IsValid() || len(input.FundingShares) == 0 {
 			return nil, fmt.Errorf("%w: shared pools require funding shares and a settlement policy", ErrBadInput)
 		}
-		policy = string(*input.SettlementPolicy)
+		settlementPolicy = sql.Null[string]{V: string(*input.SettlementPolicy), Valid: true}
 		var total int64
 		for _, share := range input.FundingShares {
 			if share == nil || share.MemberID == "" || share.Weight <= 0 {
 				return nil, fmt.Errorf("%w: funding shares require positive weights", ErrBadInput)
 			}
-			if _, exists := shares[share.MemberID]; exists {
+			memberID, err := gofrsuuid.FromString(share.MemberID)
+			if err != nil {
+				return nil, fmt.Errorf("%w: invalid funding share member id", ErrBadInput)
+			}
+			if _, exists := shares[memberID]; exists {
 				return nil, fmt.Errorf("%w: duplicate funding share member", ErrBadInput)
 			}
 			if int64(share.Weight) > math.MaxInt64-total {
 				return nil, fmt.Errorf("%w: funding share total is too large", ErrBadInput)
 			}
 			total += int64(share.Weight)
-			shares[share.MemberID] = int64(share.Weight)
+			shares[memberID] = int64(share.Weight)
 		}
 		for memberID := range shares {
-			var member bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM household_members WHERE household_id=$1 AND member_id=$2)`, input.HouseholdID, memberID).Scan(&member); err != nil {
+			member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+				models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+				models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+			))).Exists(ctx, executor)
+			if err != nil {
 				return nil, err
 			}
 			if !member {
@@ -100,19 +139,41 @@ func (r *mutationResolver) setPoolFundingRule(ctx context.Context, input model.S
 	} else {
 		return nil, fmt.Errorf("%w: invalid pool kind", ErrBadInput)
 	}
-	newVersion := version + 1
-	if _, err := tx.Exec(ctx, `INSERT INTO pool_funding_rules(household_id,pool_id,version,owner_member_id,settlement_policy,created_by) VALUES($1,$2,$3,$4,$5,$6)`, input.HouseholdID, input.PoolID, newVersion, owner, policy, user.MemberID); err != nil {
+	if pool.FundingRuleVersion == math.MaxInt32 {
+		return nil, fmt.Errorf("%w: funding rule version is exhausted", ErrBadInput)
+	}
+	newVersion := pool.FundingRuleVersion + 1
+	if _, err := models.PoolFundingRules.Insert(&models.PoolFundingRuleSetter{
+		HouseholdID: &householdID, PoolID: &poolID, Version: &newVersion,
+		OwnerMemberID: &ownerID, SettlementPolicy: &settlementPolicy, CreatedBy: &userID,
+	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	for memberID, weight := range shares {
-		if _, err := tx.Exec(ctx, `INSERT INTO pool_funding_shares(household_id,pool_id,version,member_id,weight) VALUES($1,$2,$3,$4,$5)`, input.HouseholdID, input.PoolID, newVersion, memberID, weight); err != nil {
+	memberIDs := make([]gofrsuuid.UUID, 0, len(shares))
+	for memberID := range shares {
+		memberIDs = append(memberIDs, memberID)
+	}
+	slices.SortFunc(memberIDs, func(left, right gofrsuuid.UUID) int { return cmp.Compare(left.String(), right.String()) })
+	for _, memberID := range memberIDs {
+		weight := shares[memberID]
+		if _, err := models.PoolFundingShares.Insert(&models.PoolFundingShareSetter{
+			HouseholdID: &householdID, PoolID: &poolID, Version: &newVersion, MemberID: &memberID, Weight: &weight,
+		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE pools SET funding_rule_version=$3 WHERE household_id=$1 AND id=$2`, input.HouseholdID, input.PoolID, newVersion); err != nil {
+	if _, err := models.Pools.Update((&models.PoolSetter{FundingRuleVersion: &newVersion}).UpdateMod(), um.Where(psql.And(
+		models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.Pools.Columns.ID.EQ(psql.Arg(poolID)),
+	))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE households SET revision=revision+1,updated_at=now() WHERE id=$1`, input.HouseholdID); err != nil {
+	updatedAt := time.Now()
+	householdRevision, ok := checkedAdd(household.Revision, 1)
+	if !ok {
+		return nil, fmt.Errorf("%w: household revision is exhausted", ErrBadInput)
+	}
+	if _, err := models.Households.Update((&models.HouseholdSetter{Revision: &householdRevision, UpdatedAt: &updatedAt}).UpdateMod(), um.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "pool.funding_rule.updated", input.PoolID, int64(newVersion), []string{"ownerMemberId", "fundingShares", "settlementPolicy"}, user.MemberID); err != nil {
@@ -121,61 +182,73 @@ func (r *mutationResolver) setPoolFundingRule(ctx context.Context, input model.S
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	household, err := loadHousehold(ctx, r.DB, input.HouseholdID)
+	householdResult, err := loadHousehold(ctx, r.DB, input.HouseholdID)
 	if err != nil {
 		return nil, err
 	}
-	for _, pool := range household.Pools {
-		if pool.ID == input.PoolID {
-			return pool, nil
+	for _, resultPool := range householdResult.Pools {
+		if resultPool.ID == input.PoolID {
+			return resultPool, nil
 		}
 	}
 	return nil, ErrNotFound
 }
 
-func poolFundingRules(ctx context.Context, db interface {
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-}, householdID string) (map[string]domain.PoolFundingRule, error) {
-	rows, err := db.Query(ctx, `SELECT p.id::text,p.kind,p.funding_rule_version,r.owner_member_id::text,r.settlement_policy FROM pools p LEFT JOIN pool_funding_rules r ON r.household_id=p.household_id AND r.pool_id=p.id AND r.version=p.funding_rule_version WHERE p.household_id=$1 ORDER BY p.id`, householdID)
+func poolFundingRules(ctx context.Context, db accountingDB, householdID string) (map[string]domain.PoolFundingRule, error) {
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	pools, err := models.Pools.Query(sm.Where(models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	rules := make(map[string]domain.PoolFundingRule)
-	for rows.Next() {
-		var rule domain.PoolFundingRule
-		var owner, policy *string
-		if err := rows.Scan(&rule.PoolID, &rule.Kind, &rule.Version, &owner, &policy); err != nil {
-			rows.Close()
-			return nil, err
+	versionByPool := make(map[gofrsuuid.UUID]int32, len(pools))
+	rules := make(map[string]domain.PoolFundingRule, len(pools))
+	for _, pool := range pools {
+		id := pool.ID.String()
+		versionByPool[pool.ID] = pool.FundingRuleVersion
+		rules[id] = domain.PoolFundingRule{PoolID: id, Kind: pool.Kind, Version: int(pool.FundingRuleVersion)}
+	}
+	fundingRules, err := models.PoolFundingRules.Query(sm.Where(models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	for _, storedRule := range fundingRules {
+		if versionByPool[storedRule.PoolID] != storedRule.Version {
+			continue
 		}
-		if owner != nil {
-			rule.OwnerMemberID = *owner
+		rule := rules[storedRule.PoolID.String()]
+		if storedRule.OwnerMemberID.Valid {
+			rule.OwnerMemberID = storedRule.OwnerMemberID.V.String()
 		}
-		if policy != nil {
-			rule.SettlementPolicy = *policy
+		if storedRule.SettlementPolicy.Valid {
+			rule.SettlementPolicy = storedRule.SettlementPolicy.V
 		}
 		rules[rule.PoolID] = rule
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	shares, err := db.Query(ctx, `SELECT s.pool_id::text,s.member_id::text,s.weight FROM pool_funding_shares s JOIN pools p ON p.household_id=s.household_id AND p.id=s.pool_id AND p.funding_rule_version=s.version WHERE s.household_id=$1 ORDER BY s.pool_id,s.member_id`, householdID)
+	fundingShares, err := models.PoolFundingShares.Query(sm.Where(models.PoolFundingShares.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	defer shares.Close()
-	for shares.Next() {
-		var poolID, memberID string
-		var weight int64
-		if err := shares.Scan(&poolID, &memberID, &weight); err != nil {
-			return nil, err
+	slices.SortFunc(fundingShares, func(left, right *models.PoolFundingShare) int {
+		if comparison := cmp.Compare(left.PoolID.String(), right.PoolID.String()); comparison != 0 {
+			return comparison
 		}
-		rule := rules[poolID]
-		rule.FundingShares = append(rule.FundingShares, domain.MemberWeight{MemberID: memberID, Weight: weight})
-		rules[poolID] = rule
+		if comparison := cmp.Compare(left.Version, right.Version); comparison != 0 {
+			return comparison
+		}
+		return cmp.Compare(left.MemberID.String(), right.MemberID.String())
+	})
+	for _, share := range fundingShares {
+		if versionByPool[share.PoolID] != share.Version {
+			continue
+		}
+		rule := rules[share.PoolID.String()]
+		rule.FundingShares = append(rule.FundingShares, domain.MemberWeight{MemberID: share.MemberID.String(), Weight: share.Weight})
+		rules[rule.PoolID] = rule
 	}
-	return rules, shares.Err()
+	return rules, nil
 }
 
 func calculatePeriodAccounting(ctx context.Context, db accountingDB, householdID, period string, rules map[string]domain.PoolFundingRule) ([]domain.SettlementAmount, error) {
@@ -184,29 +257,32 @@ func calculatePeriodAccounting(ctx context.Context, db accountingDB, householdID
 		return nil, fmt.Errorf("%w: period must use YYYY-MM", ErrBadInput)
 	}
 	end := start.AddDate(0, 1, 0)
-	inputs := make([]domain.SettlementInput, 0)
-	memberIndex := make(map[string]int)
-	rows, err := db.Query(ctx, `SELECT m.id::text,m.display_name FROM household_members hm JOIN members m ON m.id=hm.member_id WHERE hm.household_id=$1 ORDER BY hm.joined_at,m.id`, householdID)
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	householdMembers, err := models.HouseholdMembers.Query(
+		sm.Where(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID))),
+		sm.OrderBy(models.HouseholdMembers.Columns.JoinedAt),
+		sm.OrderBy(models.HouseholdMembers.Columns.MemberID),
+	).All(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		var input domain.SettlementInput
-		if err := rows.Scan(&input.MemberID, &input.MemberName); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		memberIndex[input.MemberID] = len(inputs)
-		inputs = append(inputs, input)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+	if err := householdMembers.LoadMember(ctx, db); err != nil {
 		return nil, err
 	}
-	if err := addFundingAmounts(ctx, db, householdID, period, start, end, inputs, memberIndex); err != nil {
+	inputs := make([]domain.SettlementInput, 0, len(householdMembers))
+	memberIndex := make(map[string]int, len(householdMembers))
+	for _, householdMember := range householdMembers {
+		memberID := householdMember.MemberID.String()
+		memberIndex[memberID] = len(inputs)
+		inputs = append(inputs, domain.SettlementInput{MemberID: memberID, MemberName: householdMember.R.Member.DisplayName})
+	}
+	if err := addFundingAmounts(ctx, db, householdUUID, period, start, end, inputs, memberIndex); err != nil {
 		return nil, err
 	}
-	expenses, err := loadFundingExpenses(ctx, db, householdID, start, end)
+	expenses, err := loadFundingExpenses(ctx, db, householdUUID, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -229,52 +305,104 @@ func calculatePeriodAccounting(ctx context.Context, db accountingDB, householdID
 			return nil, domain.ErrInvalidFundingExpense
 		}
 	}
+	adjustments, err := models.SettlementAdjustments.Query(sm.Where(psql.And(
+		models.SettlementAdjustments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.SettlementAdjustments.Columns.Period.EQ(psql.Arg(period)),
+	))).All(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(adjustments, func(left, right *models.SettlementAdjustment) int {
+		return cmp.Compare(left.MemberID.String(), right.MemberID.String())
+	})
+	for _, adjustment := range adjustments {
+		index, found := memberIndex[adjustment.MemberID.String()]
+		if !found {
+			return nil, domain.ErrInvalidSettlement
+		}
+		inputs[index].MonthlyAdjustmentYen, found = checkedAdd(inputs[index].MonthlyAdjustmentYen, adjustment.AmountYen)
+		if !found {
+			return nil, domain.ErrInvalidSettlement
+		}
+	}
 	return domain.CalculateSettlement(inputs)
 }
 
-func addFundingAmounts(ctx context.Context, db accountingDB, householdID, period string, start, end time.Time, inputs []domain.SettlementInput, memberIndex map[string]int) error {
+func addFundingAmounts(ctx context.Context, db accountingDB, householdUUID gofrsuuid.UUID, period string, start, end time.Time, inputs []domain.SettlementInput, memberIndex map[string]int) error {
 	type fundingKey struct{ memberID, poolID string }
 	type funding struct{ scheduled, paid int64 }
 	amounts := make(map[fundingKey]funding)
-	rows, err := db.Query(ctx, `SELECT member_id::text,pool_id::text,amount_yen,paid_yen FROM funding_obligations WHERE household_id=$1 AND period=$2`, householdID, period)
+	obligations, err := models.FundingObligations.Query(sm.Where(psql.And(
+		models.FundingObligations.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.FundingObligations.Columns.Period.EQ(psql.Arg(period)),
+	))).All(ctx, db)
 	if err != nil {
 		return err
 	}
-	for rows.Next() {
-		var key fundingKey
-		var value funding
-		if err := rows.Scan(&key.memberID, &key.poolID, &value.scheduled, &value.paid); err != nil {
-			rows.Close()
-			return err
-		}
-		amounts[key] = value
+	for _, obligation := range obligations {
+		key := fundingKey{memberID: obligation.MemberID.String(), poolID: obligation.PoolID.String()}
+		amounts[key] = funding{scheduled: obligation.AmountYen, paid: obligation.PaidYen}
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	schedules, err := db.Query(ctx, `SELECT member_id::text,pool_id::text,sum(amount_yen)::bigint FROM funding_schedules WHERE household_id=$1 AND (active OR ends_on IS NOT NULL) AND cadence='MONTHLY' AND starts_on<$3 AND (ends_on IS NULL OR ends_on >= $2) GROUP BY member_id,pool_id`, householdID, start, end)
+	schedules, err := models.FundingSchedules.Query(sm.Where(psql.And(
+		models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.FundingSchedules.Columns.Cadence.EQ(psql.Arg("MONTHLY")),
+		psql.Or(
+			models.FundingSchedules.Columns.Active.EQ(psql.Arg(true)),
+			models.FundingSchedules.Columns.EndsOn.IsNotNull(),
+		),
+		models.FundingSchedules.Columns.StartsOn.LT(psql.Arg(end)),
+		psql.Or(
+			models.FundingSchedules.Columns.EndsOn.IsNull(),
+			models.FundingSchedules.Columns.EndsOn.GTE(psql.Arg(start)),
+		),
+	))).All(ctx, db)
 	if err != nil {
 		return err
 	}
-	for schedules.Next() {
-		var key fundingKey
-		var scheduled int64
-		if err := schedules.Scan(&key.memberID, &key.poolID, &scheduled); err != nil {
-			schedules.Close()
-			return err
+	slices.SortFunc(schedules, func(left, right *models.FundingSchedule) int {
+		if comparison := cmp.Compare(left.MemberID.String(), right.MemberID.String()); comparison != 0 {
+			return comparison
 		}
+		return cmp.Compare(left.PoolID.String(), right.PoolID.String())
+	})
+	scheduleAmounts := make(map[fundingKey]int64)
+	for _, schedule := range schedules {
+		key := fundingKey{memberID: schedule.MemberID.String(), poolID: schedule.PoolID.String()}
+		var ok bool
+		scheduleAmounts[key], ok = checkedAdd(scheduleAmounts[key], schedule.AmountYen)
+		if !ok {
+			return domain.ErrInvalidSettlement
+		}
+	}
+	scheduleKeys := make([]fundingKey, 0, len(scheduleAmounts))
+	for key := range scheduleAmounts {
+		scheduleKeys = append(scheduleKeys, key)
+	}
+	slices.SortFunc(scheduleKeys, func(left, right fundingKey) int {
+		if comparison := cmp.Compare(left.memberID, right.memberID); comparison != 0 {
+			return comparison
+		}
+		return cmp.Compare(left.poolID, right.poolID)
+	})
+	for _, key := range scheduleKeys {
 		value := amounts[key]
-		if scheduled > value.scheduled {
-			value.scheduled = scheduled
+		if scheduleAmounts[key] > value.scheduled {
+			value.scheduled = scheduleAmounts[key]
 		}
 		amounts[key] = value
 	}
-	schedules.Close()
-	if err := schedules.Err(); err != nil {
-		return err
+	keys := make([]fundingKey, 0, len(amounts))
+	for key := range amounts {
+		keys = append(keys, key)
 	}
-	for key, amount := range amounts {
+	slices.SortFunc(keys, func(left, right fundingKey) int {
+		if comparison := cmp.Compare(left.memberID, right.memberID); comparison != 0 {
+			return comparison
+		}
+		return cmp.Compare(left.poolID, right.poolID)
+	})
+	for _, key := range keys {
+		amount := amounts[key]
 		index, exists := memberIndex[key.memberID]
 		if !exists {
 			return domain.ErrInvalidSettlement
@@ -292,58 +420,105 @@ func addFundingAmounts(ctx context.Context, db accountingDB, householdID, period
 	return nil
 }
 
-func loadFundingExpenses(ctx context.Context, db accountingDB, householdID string, start, end time.Time) ([]domain.FundingExpense, error) {
-	rows, err := db.Query(ctx, `SELECT p.id::text,a.pool_id::text,i.id::text,i.amount_yen,ia.pool_id::text,ia.amount_yen FROM purchases p JOIN accounts a ON a.household_id=p.household_id AND a.id=p.payment_account_id JOIN purchase_items i ON i.household_id=p.household_id AND i.purchase_id=p.id JOIN item_allocations ia ON ia.household_id=i.household_id AND ia.purchase_id=i.purchase_id AND ia.item_id=i.id WHERE p.household_id=$1 AND a.pool_id IS NOT NULL AND p.status IN ('POSTED','CLOSED') AND p.occurred_at >= $2 AND p.occurred_at < $3 ORDER BY p.id,i.id,ia.pool_id`, householdID, start, end)
+func loadFundingExpenses(ctx context.Context, db accountingDB, householdUUID gofrsuuid.UUID, start, end time.Time) ([]domain.FundingExpense, error) {
+	purchases, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.Purchases.Columns.Status.In(psql.Arg(string(model.PurchaseStatusPosted)), psql.Arg(string(model.PurchaseStatusClosed))),
+		models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)),
+		models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)),
+	))).All(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	type itemKey struct{ purchaseID, itemID string }
-	expenseByID := make(map[string]*domain.FundingExpense)
-	itemsByID := make(map[itemKey]*domain.FundingExpenseItem)
-	for rows.Next() {
-		var purchaseID, paymentPoolID, itemID, allocationPoolID string
-		var amount, allocated int64
-		if err := rows.Scan(&purchaseID, &paymentPoolID, &itemID, &amount, &allocationPoolID, &allocated); err != nil {
-			rows.Close()
+	slices.SortFunc(purchases, func(left, right *models.Purchase) int {
+		return cmp.Compare(left.ID.String(), right.ID.String())
+	})
+	expenses := make([]domain.FundingExpense, 0, len(purchases))
+	for _, purchase := range purchases {
+		items, err := models.PurchaseItems.Query(
+			sm.Where(psql.And(
+				models.PurchaseItems.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+				models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
+			)),
+			sm.OrderBy(models.PurchaseItems.Columns.ID),
+		).All(ctx, db)
+		if err != nil {
 			return nil, err
 		}
-		expense := expenseByID[purchaseID]
-		if expense == nil {
-			expense = &domain.FundingExpense{PaymentPoolID: paymentPoolID}
-			expenseByID[purchaseID] = expense
+		if len(items) == 0 {
+			continue
 		}
-		key := itemKey{purchaseID: purchaseID, itemID: itemID}
-		item := itemsByID[key]
-		if item == nil {
-			item = &domain.FundingExpenseItem{Amount: amount}
-			itemsByID[key] = item
+		payments, err := models.PurchasePayments.Query(
+			sm.Where(models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),
+			sm.OrderBy(models.PurchasePayments.Columns.LineNo),
+		).All(ctx, db)
+		if err != nil {
+			return nil, err
 		}
-		item.Allocations = append(item.Allocations, domain.PoolAmount{PoolID: allocationPoolID, Amount: allocated})
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	purchaseIDs := make([]string, 0, len(expenseByID))
-	itemIDsByPurchase := make(map[string][]string)
-	for purchaseID := range expenseByID {
-		purchaseIDs = append(purchaseIDs, purchaseID)
-	}
-	slices.Sort(purchaseIDs)
-	for key := range itemsByID {
-		itemIDsByPurchase[key.purchaseID] = append(itemIDsByPurchase[key.purchaseID], key.itemID)
-	}
-	for purchaseID, itemIDs := range itemIDsByPurchase {
-		slices.Sort(itemIDs)
-		for _, itemID := range itemIDs {
-			expenseByID[purchaseID].Items = append(expenseByID[purchaseID].Items, *itemsByID[itemKey{purchaseID: purchaseID, itemID: itemID}])
+		storedPayments := make([]domain.FundingPayment, 0, len(payments))
+		if len(payments) == 0 {
+			if !purchase.PaymentAccountID.Valid {
+				continue
+			}
+			account, err := models.Accounts.Query(sm.Where(psql.And(
+				models.Accounts.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+				models.Accounts.Columns.ID.EQ(psql.Arg(purchase.PaymentAccountID.V)),
+			))).One(ctx, db)
+			if err != nil {
+				return nil, err
+			}
+			if !account.PoolID.Valid {
+				continue
+			}
+			var amount int64
+			for _, item := range items {
+				var ok bool
+				amount, ok = checkedAdd(amount, item.AmountYen)
+				if !ok {
+					return nil, domain.ErrInvalidFundingExpense
+				}
+			}
+			storedPayments = append(storedPayments, domain.FundingPayment{ID: account.ID.String(), PoolID: account.PoolID.V.String(), Amount: amount})
+		} else {
+			if err := payments.LoadAccount(ctx, db); err != nil {
+				return nil, err
+			}
+			hasOutOfPoolAccount := false
+			for _, payment := range payments {
+				account := payment.R.Account
+				if account == nil || !account.PoolID.Valid {
+					hasOutOfPoolAccount = true
+					break
+				}
+				storedPayments = append(storedPayments, domain.FundingPayment{ID: account.ID.String(), PoolID: account.PoolID.V.String(), Amount: payment.AmountYen})
+			}
+			if hasOutOfPoolAccount {
+				continue
+			}
 		}
+		fundingItems := make([]domain.FundingExpenseItem, 0, len(items))
+		for _, item := range items {
+			allocations, err := models.ItemAllocations.Query(sm.Where(psql.And(
+				models.ItemAllocations.Columns.HouseholdID.EQ(psql.Arg(item.HouseholdID)),
+				models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(item.PurchaseID)),
+				models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(item.ID)),
+			)), sm.OrderBy(models.ItemAllocations.Columns.PoolID)).All(ctx, db)
+			if err != nil {
+				return nil, err
+			}
+			allocationItems := make([]domain.PoolAmount, 0, len(allocations))
+			for _, allocation := range allocations {
+				allocationItems = append(allocationItems, domain.PoolAmount{PoolID: allocation.PoolID.String(), Amount: allocation.AmountYen})
+			}
+			fundingItems = append(fundingItems, domain.FundingExpenseItem{Amount: item.AmountYen, Allocations: allocationItems})
+		}
+		split, err := domain.SplitFundingExpense(fundingItems, storedPayments)
+		if err != nil {
+			return nil, fmt.Errorf("purchase %s: %w", purchase.ID, err)
+		}
+		expenses = append(expenses, split...)
 	}
-	result := make([]domain.FundingExpense, 0, len(expenseByID))
-	for _, purchaseID := range purchaseIDs {
-		result = append(result, *expenseByID[purchaseID])
-	}
-	return result, nil
+	return expenses, nil
 }
 
 func checkedAdd(left, right int64) (int64, bool) {
@@ -366,28 +541,37 @@ func calculateSettlementPreviewWithRules(ctx context.Context, db accountingDB, h
 	if err != nil {
 		return nil, fmt.Errorf("%w: period must use YYYY-MM", ErrBadInput)
 	}
-	var closedPeriod *string
-	closedRows, err := db.Query(ctx, `SELECT sr.period,sl.member_id::text,sl.amount_due_yen FROM settlement_runs sr JOIN settlement_lines sl ON sl.settlement_run_id=sr.id WHERE sr.household_id=$1 AND sr.status='CLOSED' AND sr.period=(SELECT max(period) FROM settlement_runs WHERE household_id=$1 AND status='CLOSED' AND period < $2) AND sr.revision=(SELECT max(revision) FROM settlement_runs WHERE household_id=$1 AND status='CLOSED' AND period=sr.period)`, householdID, period)
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	runs, err := models.SettlementRuns.Query(sm.Where(psql.And(
+		models.SettlementRuns.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.SettlementRuns.Columns.Status.EQ(psql.Arg("CLOSED")),
+		models.SettlementRuns.Columns.Period.LT(psql.Arg(period)),
+	))).All(ctx, db)
 	if err != nil {
 		return nil, err
 	}
+	slices.SortFunc(runs, func(left, right *models.SettlementRun) int {
+		if comparison := cmp.Compare(right.Period, left.Period); comparison != 0 {
+			return comparison
+		}
+		return cmp.Compare(right.Revision, left.Revision)
+	})
+	var closedPeriod *string
 	carry := make(map[string]int64)
-	for closedRows.Next() {
-		var month, memberID string
-		var amount int64
-		if err := closedRows.Scan(&month, &memberID, &amount); err != nil {
-			closedRows.Close()
+	if len(runs) > 0 {
+		latestRun := runs[0]
+		periodCopy := latestRun.Period
+		closedPeriod = &periodCopy
+		lines, err := models.SettlementLines.Query(sm.Where(models.SettlementLines.Columns.SettlementRunID.EQ(psql.Arg(latestRun.ID)))).All(ctx, db)
+		if err != nil {
 			return nil, err
 		}
-		if closedPeriod == nil || month > *closedPeriod {
-			monthCopy := month
-			closedPeriod = &monthCopy
+		for _, line := range lines {
+			carry[line.MemberID.String()] = line.AmountDueYen
 		}
-		carry[memberID] = amount
-	}
-	closedRows.Close()
-	if err := closedRows.Err(); err != nil {
-		return nil, err
 	}
 	firstOpen := target
 	if closedPeriod != nil {
@@ -397,13 +581,33 @@ func calculateSettlementPreviewWithRules(ctx context.Context, db accountingDB, h
 		}
 		firstOpen = closedMonth.AddDate(0, 1, 0)
 	} else {
-		var earliest *string
-		err := db.QueryRow(ctx, `SELECT min(month) FROM (SELECT period AS month FROM funding_obligations WHERE household_id=$1 UNION SELECT to_char(starts_on,'YYYY-MM') FROM funding_schedules WHERE household_id=$1 UNION SELECT to_char(occurred_at AT TIME ZONE 'Asia/Tokyo','YYYY-MM') FROM purchases WHERE household_id=$1 AND status IN ('POSTED','CLOSED')) activity`, householdID).Scan(&earliest)
+		earliest := ""
+		obligations, err := models.FundingObligations.Query(sm.Where(models.FundingObligations.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, db)
 		if err != nil {
 			return nil, err
 		}
-		if earliest != nil {
-			firstOpen, err = parseAccountingPeriod(*earliest)
+		for _, obligation := range obligations {
+			earliest = earlierPeriod(earliest, obligation.Period)
+		}
+		schedules, err := models.FundingSchedules.Query(sm.Where(models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, db)
+		if err != nil {
+			return nil, err
+		}
+		for _, schedule := range schedules {
+			earliest = earlierPeriod(earliest, accountingPeriod(schedule.StartsOn))
+		}
+		purchases, err := models.Purchases.Query(sm.Where(psql.And(
+			models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.Purchases.Columns.Status.In(psql.Arg(string(model.PurchaseStatusPosted)), psql.Arg(string(model.PurchaseStatusClosed))),
+		))).All(ctx, db)
+		if err != nil {
+			return nil, err
+		}
+		for _, purchase := range purchases {
+			earliest = earlierPeriod(earliest, accountingPeriod(purchase.OccurredAt))
+		}
+		if earliest != "" {
+			firstOpen, err = parseAccountingPeriod(earliest)
 			if err != nil {
 				return nil, err
 			}
@@ -438,4 +642,11 @@ func calculateSettlementPreviewWithRules(ctx context.Context, db accountingDB, h
 		current[index].AmountDueYen = amountDue
 	}
 	return current, nil
+}
+
+func earlierPeriod(current, candidate string) string {
+	if current == "" || candidate < current {
+		return candidate
+	}
+	return current
 }

@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"database/sql"
+	stdjson "encoding/json"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -11,8 +13,17 @@ import (
 	"time"
 	"uuid"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	psqldialect "github.com/stephenafamo/bob/dialect/psql/dialect"
+	"github.com/stephenafamo/bob/dialect/psql/im"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/ingestion"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 type documentResponse struct {
@@ -59,8 +70,21 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid source kind", http.StatusBadRequest)
 		return
 	}
-	var member bool
-	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM household_members WHERE household_id = $1 AND member_id = $2)`, householdID, principal.MemberID).Scan(&member); err != nil || !member {
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		http.Error(w, "household not found", http.StatusNotFound)
+		return
+	}
+	memberID, err := gofrsuuid.FromString(principal.MemberID)
+	if err != nil {
+		http.Error(w, "household not found", http.StatusNotFound)
+		return
+	}
+	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+	))).Exists(r.Context(), bobpgx.NewPool(s.db))
+	if err != nil || !member {
 		http.Error(w, "household not found", http.StatusNotFound)
 		return
 	}
@@ -99,19 +123,29 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(r.Context())) }()
-	id := uuid.NewV7().String()
-	var insertedID string
-	err = tx.QueryRow(r.Context(), `INSERT INTO source_documents(id, household_id, sha256, object_key, mime_type, source_kind, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (household_id, sha256) DO NOTHING RETURNING id::text`, id, householdID, hash, key, mimeType, sourceKind, principal.MemberID).Scan(&insertedID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	id, err := gofrsuuid.FromString(uuid.NewV7().String())
+	if err != nil {
+		http.Error(w, "document registration failed", http.StatusInternalServerError)
+		return
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	document, err := models.SourceDocuments.Insert(
+		&models.SourceDocumentSetter{ID: &id, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &key, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberID},
+		im.OnConflict("household_id", "sha256").DoNothing(),
+	).One(r.Context(), executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		existingDocument, lookupErr := models.SourceDocuments.Query(sm.Where(psql.And(
+			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.SourceDocuments.Columns.Sha256.EQ(psql.Arg(hash)),
+		))).One(r.Context(), executor)
 		var existing documentResponse
-		var encoded []byte
-		err = tx.QueryRow(r.Context(), `SELECT d.id::text,d.household_id::text,d.sha256,d.mime_type,d.source_kind,COALESCE(j.status,'queued'),COALESCE(j.id::text,''),COALESCE(j.result,'null'::jsonb),d.created_at FROM source_documents d LEFT JOIN LATERAL (SELECT id,status,result FROM extraction_jobs WHERE source_document_id=d.id ORDER BY version DESC LIMIT 1) j ON true WHERE d.household_id=$1 AND d.sha256=$2`, householdID, hash).Scan(&existing.ID, &existing.HouseholdID, &existing.SHA256, &existing.MIMEType, &existing.SourceKind, &existing.Status, &existing.JobID, &encoded, &existing.CreatedAt)
+		if lookupErr == nil {
+			existing, lookupErr = s.documentResponse(r.Context(), executor, existingDocument)
+		}
+		err = lookupErr
 		if err != nil {
 			http.Error(w, "document lookup failed", http.StatusInternalServerError)
 			return
-		}
-		if err := json.Unmarshal(encoded, &existing.Result); err != nil {
-			existing.Result = nil
 		}
 		existing.Duplicate = true
 		_ = tx.Rollback(context.WithoutCancel(r.Context()))
@@ -122,13 +156,22 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
-	jobID := uuid.NewV7().String()
+	jobID, err := gofrsuuid.FromString(uuid.NewV7().String())
+	if err != nil {
+		http.Error(w, "document registration failed", http.StatusInternalServerError)
+		return
+	}
 	request, err := json.Marshal(map[string]any{"hints": hints})
 	if err != nil {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
-	if _, err := tx.Exec(r.Context(), `INSERT INTO extraction_jobs(id, household_id, source_document_id, version, status, request) VALUES ($1,$2,$3,1,'queued',$4::jsonb)`, jobID, householdID, insertedID, string(request)); err != nil {
+	requestJSON := types.JSON[stdjson.RawMessage]{Val: request}
+	version := int32(1)
+	status := "queued"
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
+		ID: &jobID, HouseholdID: &householdUUID, SourceDocumentID: &document.ID, Version: &version, Status: &status, Request: &requestJSON,
+	}).Exec(r.Context(), executor); err != nil {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
@@ -137,11 +180,66 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Queue != nil {
-		if err := s.cfg.Queue.Publish(r.Context(), jobID); err != nil {
-			s.logger.WarnContext(r.Context(), "extraction job notification failed", "job_id", jobID, "error", err)
+		if err := s.cfg.Queue.Publish(r.Context(), jobID.String()); err != nil {
+			s.logger.WarnContext(r.Context(), "extraction job notification failed", "job_id", jobID.String(), "error", err)
 		}
 	}
-	writeJSON(w, http.StatusAccepted, documentResponse{ID: insertedID, HouseholdID: householdID, SHA256: hash, MIMEType: mimeType, SourceKind: sourceKind, Status: "queued", JobID: jobID, CreatedAt: time.Now().UTC()})
+	writeJSON(w, http.StatusAccepted, documentResponse{ID: document.ID.String(), HouseholdID: householdID, SHA256: hash, MIMEType: mimeType, SourceKind: sourceKind, Status: "queued", JobID: jobID.String(), CreatedAt: document.CreatedAt})
+}
+
+func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, document *models.SourceDocument) (documentResponse, error) {
+	result := documentResponse{
+		ID: document.ID.String(), HouseholdID: document.HouseholdID.String(),
+		SHA256: document.Sha256, MIMEType: document.MimeType, SourceKind: document.SourceKind,
+		Status: "queued", CreatedAt: document.CreatedAt,
+	}
+	job, err := models.ExtractionJobs.Query(
+		sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID))),
+		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
+		sm.Limit(1),
+	).One(ctx, exec)
+	if errors.Is(err, sql.ErrNoRows) {
+		return result, nil
+	}
+	if err != nil {
+		return documentResponse{}, err
+	}
+	result.Status = job.Status
+	result.JobID = job.ID.String()
+	if job.Result.Valid {
+		var decoded any
+		if err := json.Unmarshal(job.Result.V.Val, &decoded); err == nil {
+			result.Result = decoded
+		}
+	}
+	return result, nil
+}
+
+func documentForMember(ctx context.Context, exec bob.Executor, documentID, memberID gofrsuuid.UUID, lock bool) (*models.SourceDocument, error) {
+	mods := []bob.Mod[*psqldialect.SelectQuery]{
+		sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(documentID))),
+	}
+	if lock {
+		mods = append(mods, sm.ForUpdate())
+	}
+	document, err := models.SourceDocuments.Query(mods...).One(ctx, exec)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, pgx.ErrNoRows
+		}
+		return nil, err
+	}
+	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+	))).Exists(ctx, exec)
+	if err != nil {
+		return nil, err
+	}
+	if !member {
+		return nil, pgx.ErrNoRows
+	}
+	return document, nil
 }
 
 func (s *Server) document(w http.ResponseWriter, r *http.Request) {
@@ -150,8 +248,17 @@ func (s *Server) document(w http.ResponseWriter, r *http.Request) {
 		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
 		return
 	}
-	var result documentResponse
-	err = s.db.QueryRow(r.Context(), `SELECT d.id::text,d.household_id::text,d.sha256,d.mime_type,d.source_kind,COALESCE(j.status,'queued'),COALESCE(j.id::text,''),COALESCE(j.result,'null'::jsonb),d.created_at FROM source_documents d JOIN household_members hm ON hm.household_id=d.household_id AND hm.member_id=$2 LEFT JOIN LATERAL (SELECT id,status,result FROM extraction_jobs WHERE source_document_id=d.id ORDER BY version DESC LIMIT 1) j ON true WHERE d.id=$1`, r.PathValue("id"), principal.MemberID).Scan(&result.ID, &result.HouseholdID, &result.SHA256, &result.MIMEType, &result.SourceKind, &result.Status, &result.JobID, &result.Result, &result.CreatedAt)
+	documentID, err := gofrsuuid.FromString(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	memberID, err := gofrsuuid.FromString(principal.MemberID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	storedDocument, err := documentForMember(r.Context(), bobpgx.NewPool(s.db), documentID, memberID, false)
 	if errors.Is(err, pgx.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -160,11 +267,10 @@ func (s *Server) document(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
 	}
-	if encoded, ok := result.Result.([]byte); ok && len(encoded) > 0 {
-		var decoded any
-		if err := json.Unmarshal(encoded, &decoded); err == nil {
-			result.Result = decoded
-		}
+	result, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), storedDocument)
+	if err != nil {
+		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		return
 	}
 	if err := s.loadDocumentConfirmations(r.Context(), &result); err != nil {
 		http.Error(w, "document confirmation lookup failed", http.StatusInternalServerError)
@@ -174,20 +280,31 @@ func (s *Server) document(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loadDocumentConfirmations(ctx context.Context, document *documentResponse) error {
-	rows, err := s.db.Query(ctx, `SELECT source_reference,purchase_id::text FROM document_confirmations WHERE source_document_id=$1 AND household_id=$2 ORDER BY source_reference`, document.ID, document.HouseholdID)
+	documentID, err := gofrsuuid.FromString(document.ID)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	document.Confirmations = make([]documentConfirmation, 0)
-	for rows.Next() {
-		var confirmation documentConfirmation
-		if err := rows.Scan(&confirmation.SourceReference, &confirmation.PurchaseID); err != nil {
-			return err
-		}
-		document.Confirmations = append(document.Confirmations, confirmation)
+	householdID, err := gofrsuuid.FromString(document.HouseholdID)
+	if err != nil {
+		return err
 	}
-	return rows.Err()
+	confirmations, err := models.DocumentConfirmations.Query(
+		sm.Where(psql.And(
+			models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentID)),
+			models.DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		)),
+		sm.OrderBy(models.DocumentConfirmations.Columns.SourceReference),
+	).All(ctx, bobpgx.NewPool(s.db))
+	if err != nil {
+		return err
+	}
+	document.Confirmations = make([]documentConfirmation, 0)
+	for _, confirmation := range confirmations {
+		document.Confirmations = append(document.Confirmations, documentConfirmation{
+			SourceReference: confirmation.SourceReference, PurchaseID: confirmation.PurchaseID.String(),
+		})
+	}
+	return nil
 }
 
 func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
@@ -197,8 +314,21 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	householdID := r.URL.Query().Get("householdId")
-	var member bool
-	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM household_members WHERE household_id=$1 AND member_id=$2)`, householdID, principal.MemberID).Scan(&member); err != nil || !member {
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	memberID, err := gofrsuuid.FromString(principal.MemberID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+	))).Exists(r.Context(), bobpgx.NewPool(s.db))
+	if err != nil || !member {
 		http.NotFound(w, r)
 		return
 	}
@@ -217,34 +347,55 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var cursor any
+	var cursor *models.SourceDocument
 	if after != "" {
-		cursor = after
+		cursorID, err := gofrsuuid.FromString(after)
+		if err != nil {
+			http.Error(w, "invalid cursor", http.StatusBadRequest)
+			return
+		}
+		cursor, err = models.SourceDocuments.Query(sm.Where(psql.And(
+			models.SourceDocuments.Columns.ID.EQ(psql.Arg(cursorID)),
+			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		))).One(r.Context(), bobpgx.NewPool(s.db))
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusOK, map[string]any{"documents": []documentResponse{}, "nextCursor": nil})
+			return
+		}
+		if err != nil {
+			http.Error(w, "document lookup failed", http.StatusInternalServerError)
+			return
+		}
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT d.id::text,d.household_id::text,d.sha256,d.mime_type,d.source_kind,COALESCE(j.status,'queued'),COALESCE(j.id::text,''),COALESCE(j.result,'null'::jsonb),d.created_at FROM source_documents d LEFT JOIN LATERAL (SELECT id,status,result FROM extraction_jobs WHERE source_document_id=d.id ORDER BY version DESC LIMIT 1) j ON true WHERE d.household_id=$1 AND ($2::uuid IS NULL OR (d.created_at,d.id)<(SELECT cursor.created_at,cursor.id FROM source_documents cursor WHERE cursor.id=$2 AND cursor.household_id=$1)) ORDER BY d.created_at DESC,d.id DESC LIMIT $3`, householdID, cursor, limit+1)
+	documentMods := []bob.Mod[*psqldialect.SelectQuery]{
+		sm.Where(models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdUUID))),
+		sm.OrderBy(models.SourceDocuments.Columns.CreatedAt).Desc(),
+		sm.OrderBy(models.SourceDocuments.Columns.ID).Desc(),
+		sm.Limit(limit + 1),
+	}
+	if cursor != nil {
+		documentMods = append(documentMods, sm.Where(psql.Or(
+			models.SourceDocuments.Columns.CreatedAt.LT(psql.Arg(cursor.CreatedAt)),
+			psql.And(
+				models.SourceDocuments.Columns.CreatedAt.EQ(psql.Arg(cursor.CreatedAt)),
+				models.SourceDocuments.Columns.ID.LT(psql.Arg(cursor.ID)),
+			),
+		)))
+	}
+	storedDocuments, err := models.SourceDocuments.Query(documentMods...).All(r.Context(), bobpgx.NewPool(s.db))
 	if err != nil {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 	result := make([]documentResponse, 0, limit+1)
-	for rows.Next() {
-		var item documentResponse
-		var encoded []byte
-		if err := rows.Scan(&item.ID, &item.HouseholdID, &item.SHA256, &item.MIMEType, &item.SourceKind, &item.Status, &item.JobID, &encoded, &item.CreatedAt); err != nil {
+	for _, storedDocument := range storedDocuments {
+		item, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), storedDocument)
+		if err != nil {
 			http.Error(w, "document lookup failed", http.StatusInternalServerError)
 			return
 		}
-		if err := json.Unmarshal(encoded, &item.Result); err != nil {
-			item.Result = nil
-		}
 		result = append(result, item)
 	}
-	if err := rows.Err(); err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
-		return
-	}
-	rows.Close()
 	for i := range result {
 		if err := s.loadDocumentConfirmations(r.Context(), &result[i]); err != nil {
 			http.Error(w, "document confirmation lookup failed", http.StatusInternalServerError)
@@ -289,8 +440,18 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(r.Context())) }()
-	var householdID string
-	err = tx.QueryRow(r.Context(), `SELECT d.household_id::text FROM source_documents d JOIN household_members hm ON hm.household_id=d.household_id AND hm.member_id=$2 WHERE d.id=$1 FOR UPDATE OF d`, r.PathValue("id"), principal.MemberID).Scan(&householdID)
+	documentID, err := gofrsuuid.FromString(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	memberID, err := gofrsuuid.FromString(principal.MemberID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	document, err := documentForMember(r.Context(), executor, documentID, memberID, true)
 	if errors.Is(err, pgx.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -299,14 +460,16 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
 	}
-	var latestStatus string
-	var latestVersion int64
-	err = tx.QueryRow(r.Context(), `SELECT status,version FROM extraction_jobs WHERE source_document_id=$1 ORDER BY version DESC LIMIT 1 FOR UPDATE`, r.PathValue("id")).Scan(&latestStatus, &latestVersion)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	latestJob, err := models.ExtractionJobs.Query(
+		sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID))),
+		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
+		sm.Limit(1), sm.ForUpdate(),
+	).One(r.Context(), executor)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "extraction status lookup failed", http.StatusInternalServerError)
 		return
 	}
-	if latestStatus == "queued" || latestStatus == "running" {
+	if latestJob != nil && (latestJob.Status == "queued" || latestJob.Status == "running") {
 		http.Error(w, "extraction is already running", http.StatusConflict)
 		return
 	}
@@ -315,8 +478,20 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
 		return
 	}
-	jobID := uuid.NewV7().String()
-	if _, err := tx.Exec(r.Context(), `INSERT INTO extraction_jobs(id,household_id,source_document_id,version,status,request) VALUES ($1,$2,$3,$4,'queued',$5::jsonb)`, jobID, householdID, r.PathValue("id"), latestVersion+1, string(request)); err != nil {
+	jobID, err := gofrsuuid.FromString(uuid.NewV7().String())
+	if err != nil {
+		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+		return
+	}
+	version := int32(1)
+	if latestJob != nil {
+		version = latestJob.Version + 1
+	}
+	status := "queued"
+	requestJSON := types.JSON[stdjson.RawMessage]{Val: request}
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
+		ID: &jobID, HouseholdID: &document.HouseholdID, SourceDocumentID: &document.ID, Version: &version, Status: &status, Request: &requestJSON,
+	}).Exec(r.Context(), executor); err != nil {
 		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
 		return
 	}
@@ -325,11 +500,11 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Queue != nil {
-		if err := s.cfg.Queue.Publish(r.Context(), jobID); err != nil {
-			s.logger.WarnContext(r.Context(), "extraction job notification failed", "job_id", jobID, "error", err)
+		if err := s.cfg.Queue.Publish(r.Context(), jobID.String()); err != nil {
+			s.logger.WarnContext(r.Context(), "extraction job notification failed", "job_id", jobID.String(), "error", err)
 		}
 	}
-	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": jobID, "status": "queued"})
+	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": jobID.String(), "status": "queued"})
 }
 
 func (s *Server) documentContent(w http.ResponseWriter, r *http.Request) {
@@ -342,8 +517,17 @@ func (s *Server) documentContent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document storage is unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	var householdID, key, mimeType string
-	err = s.db.QueryRow(r.Context(), `SELECT d.household_id::text,d.object_key,d.mime_type FROM source_documents d JOIN household_members hm ON hm.household_id=d.household_id AND hm.member_id=$2 WHERE d.id=$1`, r.PathValue("id"), principal.MemberID).Scan(&householdID, &key, &mimeType)
+	documentID, err := gofrsuuid.FromString(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	memberID, err := gofrsuuid.FromString(principal.MemberID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	document, err := documentForMember(r.Context(), bobpgx.NewPool(s.db), documentID, memberID, false)
 	if errors.Is(err, pgx.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -352,7 +536,7 @@ func (s *Server) documentContent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
 	}
-	doc, err := s.cfg.Store.Get(r.Context(), key, mimeType)
+	doc, err := s.cfg.Store.Get(r.Context(), document.ObjectKey, document.MimeType)
 	if err != nil {
 		http.Error(w, "document unavailable", http.StatusBadGateway)
 		return
@@ -389,8 +573,18 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(r.Context())) }()
-	var householdID string
-	err = tx.QueryRow(r.Context(), `SELECT d.household_id::text FROM source_documents d JOIN household_members hm ON hm.household_id=d.household_id AND hm.member_id=$2 WHERE d.id=$1 FOR UPDATE OF d`, r.PathValue("id"), principal.MemberID).Scan(&householdID)
+	documentID, err := gofrsuuid.FromString(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	memberID, err := gofrsuuid.FromString(principal.MemberID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	document, err := documentForMember(r.Context(), executor, documentID, memberID, true)
 	if errors.Is(err, pgx.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -399,8 +593,16 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
 		return
 	}
-	var purchaseRevision int64
-	if err := tx.QueryRow(r.Context(), `SELECT revision FROM purchases WHERE id=$1 AND household_id=$2`, input.PurchaseID, householdID).Scan(&purchaseRevision); errors.Is(err, pgx.ErrNoRows) {
+	purchaseID, err := gofrsuuid.FromString(input.PurchaseID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	purchase, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)),
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+	))).One(r.Context(), executor)
+	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {
@@ -408,8 +610,16 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if input.ItemID != nil {
-		var exists bool
-		if err := tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM purchase_items WHERE id=$1 AND purchase_id=$2)`, *input.ItemID, input.PurchaseID).Scan(&exists); err != nil {
+		itemID, err := gofrsuuid.FromString(*input.ItemID)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		exists, err := models.PurchaseItems.Query(sm.Where(psql.And(
+			models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemID)),
+			models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseID)),
+		))).Exists(r.Context(), executor)
+		if err != nil {
 			http.Error(w, "purchase item lookup failed", http.StatusInternalServerError)
 			return
 		}
@@ -418,30 +628,45 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var confirmedPurchaseID string
-	err = tx.QueryRow(r.Context(), `SELECT purchase_id::text FROM document_confirmations WHERE source_document_id=$1 AND source_reference=$2`, r.PathValue("id"), input.SourceReference).Scan(&confirmedPurchaseID)
-	if err == nil && confirmedPurchaseID != input.PurchaseID {
+	confirmation, err := models.DocumentConfirmations.Query(sm.Where(psql.And(
+		models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
+		models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(input.SourceReference)),
+	))).One(r.Context(), executor)
+	if err == nil && confirmation.PurchaseID != purchase.ID {
 		http.Error(w, "document is already confirmed for another purchase", http.StatusConflict)
 		return
 	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
 		return
 	}
-	if _, err := tx.Exec(r.Context(), `INSERT INTO document_confirmations(source_document_id,source_reference,household_id,purchase_id,created_by) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (source_document_id,source_reference) DO NOTHING`, r.PathValue("id"), input.SourceReference, householdID, input.PurchaseID, principal.MemberID); err != nil {
+	if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{
+		SourceDocumentID: &document.ID, SourceReference: &input.SourceReference,
+		HouseholdID: &document.HouseholdID, PurchaseID: &purchase.ID, CreatedBy: &memberID,
+	}, im.OnConflict("source_document_id", "source_reference").DoNothing()).Exec(r.Context(), executor); err != nil {
 		http.Error(w, "document confirmation failed", http.StatusConflict)
 		return
 	}
 	var region any
 	observation := []byte(`{}`)
 	if input.SourceItemIndex != nil {
-		var payload []byte
-		if err := tx.QueryRow(r.Context(), `SELECT result FROM extraction_jobs WHERE id=$1 AND source_document_id=$2 AND household_id=$3 AND status='succeeded'`, *input.ObservationJobID, r.PathValue("id"), householdID).Scan(&payload); err != nil {
+		observationJobID, err := gofrsuuid.FromString(*input.ObservationJobID)
+		if err != nil {
+			http.Error(w, "observation not found", http.StatusNotFound)
+			return
+		}
+		job, err := models.ExtractionJobs.Query(sm.Where(psql.And(
+			models.ExtractionJobs.Columns.ID.EQ(psql.Arg(observationJobID)),
+			models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
+			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
+		))).One(r.Context(), executor)
+		if err != nil || !job.Result.Valid {
 			http.Error(w, "observation not found", http.StatusNotFound)
 			return
 		}
 		var verified ingestion.Verification
-		if err := json.Unmarshal(payload, &verified); err != nil || *input.SourceItemIndex >= len(verified.Receipt.Items) {
+		if err := json.Unmarshal(job.Result.V.Val, &verified); err != nil || *input.SourceItemIndex >= len(verified.Receipt.Items) {
 			http.Error(w, "invalid source item index", http.StatusBadRequest)
 			return
 		}
@@ -460,11 +685,42 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 			region = string(encoded)
 		}
 	}
-	if _, err := tx.Exec(r.Context(), `INSERT INTO evidence_links(household_id,source_document_id,purchase_id,item_id,evidence_region,observation) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb) ON CONFLICT DO NOTHING`, householdID, r.PathValue("id"), input.PurchaseID, input.ItemID, region, string(observation)); err != nil {
+	var itemID sql.Null[gofrsuuid.UUID]
+	if input.ItemID != nil {
+		itemIDUUID, err := gofrsuuid.FromString(*input.ItemID)
+		if err != nil {
+			http.Error(w, "evidence link failed", http.StatusBadRequest)
+			return
+		}
+		itemID = sql.Null[gofrsuuid.UUID]{V: itemIDUUID, Valid: true}
+	}
+	var evidenceRegion sql.Null[types.JSON[stdjson.RawMessage]]
+	if region != nil {
+		encoded, ok := region.(string)
+		if !ok {
+			http.Error(w, "evidence encoding failed", http.StatusInternalServerError)
+			return
+		}
+		evidenceRegion = sql.Null[types.JSON[stdjson.RawMessage]]{
+			V: types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(encoded)}, Valid: true,
+		}
+	}
+	observationJSON := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(observation)}
+	if _, err := psql.Insert(
+		im.Into(psql.Quote("evidence_links"), "household_id", "source_document_id", "purchase_id", "item_id", "evidence_region", "observation"),
+		im.Values(psql.Arg(document.HouseholdID, document.ID, purchase.ID, itemID, evidenceRegion, observationJSON)),
+		im.OnConflict().DoNothing(),
+	).Exec(r.Context(), executor); err != nil {
 		http.Error(w, "evidence link failed", http.StatusBadRequest)
 		return
 	}
-	if _, err := tx.Exec(r.Context(), `INSERT INTO household_events(household_id,type,entity_id,revision,changed_fields,actor_id) VALUES ($1,'evidence.linked',$2,$3,'["evidence"]'::jsonb,$4)`, householdID, r.PathValue("id"), purchaseRevision, principal.MemberID); err != nil {
+	eventType := "evidence.linked"
+	changedFields := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`["evidence"]`)}
+	actorID := sql.Null[gofrsuuid.UUID]{V: memberID, Valid: true}
+	if _, err := models.HouseholdEvents.Insert(&models.HouseholdEventSetter{
+		HouseholdID: &document.HouseholdID, Type: &eventType, EntityID: &document.ID,
+		Revision: &purchase.Revision, ChangedFields: &changedFields, ActorID: &actorID,
+	}).Exec(r.Context(), executor); err != nil {
 		http.Error(w, "evidence event failed", http.StatusInternalServerError)
 		return
 	}

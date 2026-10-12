@@ -4,15 +4,23 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"os"
 	"testing"
 	"time"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/stephenafamo/bob/dialect/psql/um"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/graph/model"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 func TestHouseholdInvitationLifecycle(t *testing.T) {
@@ -32,12 +40,16 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 
 	ownerID, memberID, otherID := newID(), newID(), newID()
 	for id, name := range map[string]string{ownerID: "Owner", memberID: "Member", otherID: "Other"} {
-		if _, err := db.Exec(ctx, `INSERT INTO members(id, oidc_subject, display_name) VALUES ($1, $2, $3)`, id, "invitation-test:"+id, name); err != nil {
+		memberUUID, _ := gofrsuuid.FromString(id)
+		subject := "invitation-test:" + id
+		if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &subject, DisplayName: &name}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	defer func() {
-		_, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id IN ($1, $2, $3)`, ownerID, memberID, otherID)
+		_, _ = models.Members.Delete(dm.Where(psql.Or(
+			models.Members.Columns.ID.EQ(psql.Arg(ownerID)), models.Members.Columns.ID.EQ(psql.Arg(memberID)), models.Members.Columns.ID.EQ(psql.Arg(otherID)),
+		))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
 
 	resolver := (&Resolver{DB: db}).Mutation()
@@ -48,13 +60,17 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = db.Exec(context.Background(), `DELETE FROM households WHERE id = $1`, household.ID) }()
+	defer func() {
+		householdUUID, _ := gofrsuuid.FromString(household.ID)
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
 	otherHousehold, err := resolver.CreateHousehold(otherCtx, model.CreateHouseholdInput{Name: "other-invitation-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = db.Exec(context.Background(), `DELETE FROM households WHERE id = $1`, otherHousehold.ID)
+		householdUUID, _ := gofrsuuid.FromString(otherHousehold.ID)
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
 	var placeholderID string
 	for _, member := range household.Members {
@@ -85,9 +101,12 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	}
 	expectedHash := sha256.Sum256(rawToken)
 	var storedHash []byte
-	if err := db.QueryRow(ctx, `SELECT token_hash FROM household_invitations WHERE id = $1`, active.Invitation.ID).Scan(&storedHash); err != nil {
+	activeID, _ := gofrsuuid.FromString(active.Invitation.ID)
+	storedInvitation, err := models.HouseholdInvitations.Query(sm.Where(models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(activeID)))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
 		t.Fatal(err)
 	}
+	storedHash = storedInvitation.TokenHash
 	if !bytes.Equal(storedHash, expectedHash[:]) {
 		t.Fatal("database must store only the SHA256 invitation token hash")
 	}
@@ -111,12 +130,20 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if _, err := resolver.AcceptHouseholdInvitation(memberCtx, active.Token); err != nil {
 		t.Fatalf("valid invitation was not accepted: %v", err)
 	}
-	var memberCount int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM household_members WHERE household_id = $1 AND member_id = $2 AND role = 'MEMBER'`, household.ID, memberID).Scan(&memberCount); err != nil || memberCount != 1 {
+	householdUUID, _ := gofrsuuid.FromString(household.ID)
+	memberUUID, _ := gofrsuuid.FromString(memberID)
+	memberRows, err := models.HouseholdMembers.Query(sm.Where(psql.And(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberUUID)), models.HouseholdMembers.Columns.Role.EQ(psql.S("MEMBER"))))).All(ctx, bobpgx.NewPool(db))
+	memberCount := len(memberRows)
+	if err != nil || memberCount != 1 {
 		t.Fatalf("accepted user membership was not created: count=%d error=%v", memberCount, err)
 	}
-	var placeholderExists bool
-	if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM household_members WHERE household_id = $1 AND member_id = $2)`, household.ID, placeholderID).Scan(&placeholderExists); err != nil || !placeholderExists {
+	placeholderUUID, _ := gofrsuuid.FromString(placeholderID)
+	_, placeholderErr := models.HouseholdMembers.Query(sm.Where(psql.And(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(placeholderUUID))))).One(ctx, bobpgx.NewPool(db))
+	placeholderExists := placeholderErr == nil
+	if placeholderErr != nil && !errors.Is(placeholderErr, sql.ErrNoRows) {
+		t.Fatal(placeholderErr)
+	}
+	if !placeholderExists {
 		t.Fatalf("joining user must not replace historical placeholder membership: exists=%v error=%v", placeholderExists, err)
 	}
 	if _, err := resolver.AcceptHouseholdInvitation(memberCtx, active.Token); !errors.Is(err, ErrConflict) {
@@ -127,7 +154,9 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	}
 
 	expired := createInvitation(time.Now().Add(24 * time.Hour))
-	if _, err := db.Exec(ctx, `UPDATE household_invitations SET expires_at = now() - interval '1 second' WHERE id = $1`, expired.Invitation.ID); err != nil {
+	expiredID, _ := gofrsuuid.FromString(expired.Invitation.ID)
+	expiredAt := time.Now().Add(-time.Second)
+	if _, err := models.HouseholdInvitations.Update(um.Where(models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(expiredID))), um.SetCol("expires_at").To(psql.Arg(expiredAt))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolver.AcceptHouseholdInvitation(otherCtx, expired.Token); !errors.Is(err, ErrConflict) {
@@ -146,17 +175,25 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	}
 
 	duplicate := createInvitation(time.Now().Add(24 * time.Hour))
-	if _, err := db.Exec(ctx, `INSERT INTO household_members(household_id, member_id) VALUES ($1, $2)`, household.ID, otherID); err != nil {
+	otherUUID, _ := gofrsuuid.FromString(otherID)
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &otherUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolver.AcceptHouseholdInvitation(otherCtx, duplicate.Token); !errors.Is(err, ErrConflict) {
 		t.Fatalf("existing member must not be inserted twice: error=%v", err)
 	}
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM household_members WHERE household_id = $1 AND member_id = $2`, household.ID, otherID).Scan(&memberCount); err != nil || memberCount != 1 {
+	otherRows, err := models.HouseholdMembers.Query(sm.Where(psql.And(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(otherUUID))))).All(ctx, bobpgx.NewPool(db))
+	memberCount = len(otherRows)
+	if err != nil || memberCount != 1 {
 		t.Fatalf("existing member row changed: count=%d error=%v", memberCount, err)
 	}
-	var acceptedAt *time.Time
-	if err := db.QueryRow(ctx, `SELECT accepted_at FROM household_invitations WHERE id = $1`, duplicate.Invitation.ID).Scan(&acceptedAt); err != nil || acceptedAt != nil {
+	duplicateID, _ := gofrsuuid.FromString(duplicate.Invitation.ID)
+	duplicateRow, err := models.HouseholdInvitations.Query(sm.Where(models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(duplicateID)))).One(ctx, bobpgx.NewPool(db))
+	var acceptedAt sql.Null[time.Time]
+	if err == nil {
+		acceptedAt = duplicateRow.AcceptedAt
+	}
+	if err != nil || acceptedAt.Valid {
 		t.Fatalf("membership conflict must not consume invitation: acceptedAt=%v error=%v", acceptedAt, err)
 	}
 }

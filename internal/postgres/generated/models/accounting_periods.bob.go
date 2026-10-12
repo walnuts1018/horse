@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -34,6 +35,8 @@ type AccountingPeriod struct {
 	ClosedAt    sql.Null[time.Time] `db:"closed_at" `
 
 	R accountingPeriodR `db:"-" `
+
+	C accountingPeriodC `db:"-" `
 }
 
 // AccountingPeriodSlice is an alias for a slice of pointers to AccountingPeriod.
@@ -48,8 +51,10 @@ type AccountingPeriodsQuery = *psql.ViewQuery[*AccountingPeriod, AccountingPerio
 
 // accountingPeriodR is where relationships are stored.
 type accountingPeriodR struct {
-	ClosedByMember *Member    // accounting_periods.accounting_periods_closed_by_fkey
-	Household      *Household // accounting_periods.accounting_periods_household_id_fkey
+	ClosedByMember        *Member                   // accounting_periods.accounting_periods_closed_by_fkey
+	Household             *Household                // accounting_periods.accounting_periods_household_id_fkey
+	Corrections           CorrectionSlice           // corrections.corrections_effective_period_fk
+	SettlementAdjustments SettlementAdjustmentSlice // settlement_adjustments.settlement_adjustments_household_id_period_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -58,8 +63,10 @@ type accountingPeriodR struct {
 
 // accountingPeriodRLoaded tracks which relationships on AccountingPeriod have been loaded.
 type accountingPeriodRLoaded struct {
-	ClosedByMember bool // accounting_periods.accounting_periods_closed_by_fkey
-	Household      bool // accounting_periods.accounting_periods_household_id_fkey
+	ClosedByMember        bool // accounting_periods.accounting_periods_closed_by_fkey
+	Household             bool // accounting_periods.accounting_periods_household_id_fkey
+	Corrections           bool // corrections.corrections_effective_period_fk
+	SettlementAdjustments bool // settlement_adjustments.settlement_adjustments_household_id_period_fkey
 }
 
 func buildAccountingPeriodColumns(tableName string) accountingPeriodColumns {
@@ -705,6 +712,64 @@ func (os AccountingPeriodSlice) Household(mods ...bob.Mod[*dialect.SelectQuery])
 	)...)
 }
 
+// Corrections starts a query for related objects on corrections
+func (o *AccountingPeriod) Corrections(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionsQuery {
+	return Corrections.Query(append(mods,
+		sm.Where(Corrections.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(Corrections.Columns.EffectivePeriod.EQ(psql.Arg(o.Period))),
+	)...)
+}
+
+func (os AccountingPeriodSlice) Corrections(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkPeriod := make(pgtypes.Array[string], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPeriod = append(pkPeriod, o.Period)
+	}
+
+	return Corrections.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "EffectivePeriod")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkPeriod), "text[]"))).As("bob_rel_keys_src", "HouseholdID", "EffectivePeriod"),
+		)).As("bob_rel_keys").On(Corrections.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Corrections.Columns.EffectivePeriod.EQ(psql.Quote("bob_rel_keys", "EffectivePeriod"))),
+	)...)
+}
+
+// SettlementAdjustments starts a query for related objects on settlement_adjustments
+func (o *AccountingPeriod) SettlementAdjustments(mods ...bob.Mod[*dialect.SelectQuery]) SettlementAdjustmentsQuery {
+	return SettlementAdjustments.Query(append(mods,
+		sm.Where(SettlementAdjustments.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(SettlementAdjustments.Columns.Period.EQ(psql.Arg(o.Period))),
+	)...)
+}
+
+func (os AccountingPeriodSlice) SettlementAdjustments(mods ...bob.Mod[*dialect.SelectQuery]) SettlementAdjustmentsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkPeriod := make(pgtypes.Array[string], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPeriod = append(pkPeriod, o.Period)
+	}
+
+	return SettlementAdjustments.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "Period")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkPeriod), "text[]"))).As("bob_rel_keys_src", "HouseholdID", "Period"),
+		)).As("bob_rel_keys").On(SettlementAdjustments.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), SettlementAdjustments.Columns.Period.EQ(psql.Quote("bob_rel_keys", "Period"))),
+	)...)
+}
+
 func attachAccountingPeriodClosedByMember0(ctx context.Context, exec bob.Executor, count int, accountingPeriod0 *AccountingPeriod, member1 *Member) (*AccountingPeriod, error) {
 	setter := &AccountingPeriodSetter{
 		ClosedBy: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: member1.ID, Valid: true}; return &v }(),
@@ -805,6 +870,150 @@ func (accountingPeriod0 *AccountingPeriod) AttachHousehold(ctx context.Context, 
 	return nil
 }
 
+func insertAccountingPeriodCorrections0(ctx context.Context, exec bob.Executor, corrections1 []*CorrectionSetter, accountingPeriod0 *AccountingPeriod) (CorrectionSlice, error) {
+	for i := range corrections1 {
+		corrections1[i].HouseholdID = func() *uuid.UUID { return &accountingPeriod0.HouseholdID }()
+		corrections1[i].EffectivePeriod = func() *sql.Null[string] { v := sql.Null[string]{V: accountingPeriod0.Period, Valid: true}; return &v }()
+	}
+
+	ret, err := Corrections.Insert(bob.ToMods(corrections1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertAccountingPeriodCorrections0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachAccountingPeriodCorrections0(ctx context.Context, exec bob.Executor, count int, corrections1 CorrectionSlice, accountingPeriod0 *AccountingPeriod) (CorrectionSlice, error) {
+	setter := &CorrectionSetter{
+		HouseholdID:     func() *uuid.UUID { return &accountingPeriod0.HouseholdID }(),
+		EffectivePeriod: func() *sql.Null[string] { v := sql.Null[string]{V: accountingPeriod0.Period, Valid: true}; return &v }(),
+	}
+
+	err := corrections1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachAccountingPeriodCorrections0: %w", err)
+	}
+
+	return corrections1, nil
+}
+
+func (accountingPeriod0 *AccountingPeriod) InsertCorrections(ctx context.Context, exec bob.Executor, related ...*CorrectionSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	corrections1, err := insertAccountingPeriodCorrections0(ctx, exec, related, accountingPeriod0)
+	if err != nil {
+		return err
+	}
+
+	accountingPeriod0.R.Corrections = append(accountingPeriod0.R.Corrections, corrections1...)
+
+	for _, rel := range corrections1 {
+		rel.R.AccountingPeriod = accountingPeriod0
+		rel.R.Loaded.AccountingPeriod = true
+	}
+	return nil
+}
+
+func (accountingPeriod0 *AccountingPeriod) AttachCorrections(ctx context.Context, exec bob.Executor, related ...*Correction) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	corrections1 := CorrectionSlice(related)
+
+	_, err = attachAccountingPeriodCorrections0(ctx, exec, len(related), corrections1, accountingPeriod0)
+	if err != nil {
+		return err
+	}
+
+	accountingPeriod0.R.Corrections = append(accountingPeriod0.R.Corrections, corrections1...)
+
+	for _, rel := range related {
+		rel.R.AccountingPeriod = accountingPeriod0
+		rel.R.Loaded.AccountingPeriod = true
+	}
+
+	return nil
+}
+
+func insertAccountingPeriodSettlementAdjustments0(ctx context.Context, exec bob.Executor, settlementAdjustments1 []*SettlementAdjustmentSetter, accountingPeriod0 *AccountingPeriod) (SettlementAdjustmentSlice, error) {
+	for i := range settlementAdjustments1 {
+		settlementAdjustments1[i].HouseholdID = func() *uuid.UUID { return &accountingPeriod0.HouseholdID }()
+		settlementAdjustments1[i].Period = func() *string { return &accountingPeriod0.Period }()
+	}
+
+	ret, err := SettlementAdjustments.Insert(bob.ToMods(settlementAdjustments1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertAccountingPeriodSettlementAdjustments0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachAccountingPeriodSettlementAdjustments0(ctx context.Context, exec bob.Executor, count int, settlementAdjustments1 SettlementAdjustmentSlice, accountingPeriod0 *AccountingPeriod) (SettlementAdjustmentSlice, error) {
+	setter := &SettlementAdjustmentSetter{
+		HouseholdID: func() *uuid.UUID { return &accountingPeriod0.HouseholdID }(),
+		Period:      func() *string { return &accountingPeriod0.Period }(),
+	}
+
+	err := settlementAdjustments1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachAccountingPeriodSettlementAdjustments0: %w", err)
+	}
+
+	return settlementAdjustments1, nil
+}
+
+func (accountingPeriod0 *AccountingPeriod) InsertSettlementAdjustments(ctx context.Context, exec bob.Executor, related ...*SettlementAdjustmentSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	settlementAdjustments1, err := insertAccountingPeriodSettlementAdjustments0(ctx, exec, related, accountingPeriod0)
+	if err != nil {
+		return err
+	}
+
+	accountingPeriod0.R.SettlementAdjustments = append(accountingPeriod0.R.SettlementAdjustments, settlementAdjustments1...)
+
+	for _, rel := range settlementAdjustments1 {
+		rel.R.AccountingPeriod = accountingPeriod0
+		rel.R.Loaded.AccountingPeriod = true
+	}
+	return nil
+}
+
+func (accountingPeriod0 *AccountingPeriod) AttachSettlementAdjustments(ctx context.Context, exec bob.Executor, related ...*SettlementAdjustment) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	settlementAdjustments1 := SettlementAdjustmentSlice(related)
+
+	_, err = attachAccountingPeriodSettlementAdjustments0(ctx, exec, len(related), settlementAdjustments1, accountingPeriod0)
+	if err != nil {
+		return err
+	}
+
+	accountingPeriod0.R.SettlementAdjustments = append(accountingPeriod0.R.SettlementAdjustments, settlementAdjustments1...)
+
+	for _, rel := range related {
+		rel.R.AccountingPeriod = accountingPeriod0
+		rel.R.Loaded.AccountingPeriod = true
+	}
+
+	return nil
+}
+
 type accountingPeriodWhere[Q psql.Filterable] struct {
 	cols        accountingPeriodColumns
 	HouseholdID psql.WhereMod[Q, uuid.UUID]
@@ -868,6 +1077,130 @@ func (w accountingPeriodWhereR[Q]) HasHousehold(filters ...bob.Mod[*dialect.Sele
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasCorrections filters parents that have a matching Corrections using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to Corrections).
+func (w accountingPeriodWhereR[Q]) HasCorrections(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(Corrections.NameExpr()),
+		sm.Where(Corrections.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(Corrections.Columns.EffectivePeriod.EQ(w.cols.Period)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasSettlementAdjustments filters parents that have a matching SettlementAdjustments using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to SettlementAdjustments).
+func (w accountingPeriodWhereR[Q]) HasSettlementAdjustments(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(SettlementAdjustments.NameExpr()),
+		sm.Where(SettlementAdjustments.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(SettlementAdjustments.Columns.Period.EQ(w.cols.Period)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// NULL-tolerant scan buffer for accountingPeriodScanMapperNullable:
+// on a LEFT JOIN miss every column comes back NULL, so each field uses the
+// nullable version of the column type even when the column itself is NOT NULL.
+type accountingPeriodPreloadBuf struct {
+	HouseholdID sql.Null[uuid.UUID]
+	Period      sql.Null[string]
+	Status      sql.Null[string]
+	Revision    sql.Null[int64]
+	ClosedBy    sql.Null[uuid.UUID]
+	ClosedAt    sql.Null[time.Time]
+}
+
+// accountingPeriodScanMapperNullable maps the preloaded accountingPeriod
+// columns (prefixed with the runtime join alias) without reflection, while
+// keeping the LEFT JOIN semantics of the reflection-based mapper: a row whose
+// prefixed columns are all NULL yields nil (no child), and NULL values never
+// error, they just leave the zero value in the field.
+func accountingPeriodScanMapperNullable(prefix string) scan.Mapper[*AccountingPeriod] {
+	return func(ctx context.Context, cols []string) (scan.BeforeFunc, func(any) (*AccountingPeriod, error)) {
+		// resolve the column names once per query, not per row
+		type target struct {
+			idx int
+			dst func(b *accountingPeriodPreloadBuf) any
+		}
+		targets := make([]target, 0, 6)
+		for i, col := range cols {
+			name, ok := strings.CutPrefix(col, prefix)
+			if !ok {
+				continue
+			}
+			switch name {
+			case "household_id":
+				targets = append(targets, target{i, func(b *accountingPeriodPreloadBuf) any { return &b.HouseholdID }})
+			case "period":
+				targets = append(targets, target{i, func(b *accountingPeriodPreloadBuf) any { return &b.Period }})
+			case "status":
+				targets = append(targets, target{i, func(b *accountingPeriodPreloadBuf) any { return &b.Status }})
+			case "revision":
+				targets = append(targets, target{i, func(b *accountingPeriodPreloadBuf) any { return &b.Revision }})
+			case "closed_by":
+				targets = append(targets, target{i, func(b *accountingPeriodPreloadBuf) any { return &b.ClosedBy }})
+			case "closed_at":
+				targets = append(targets, target{i, func(b *accountingPeriodPreloadBuf) any { return &b.ClosedAt }})
+			}
+		}
+
+		// One scratch buffer reused for every row: before -> scan -> after runs
+		// synchronously per row, the scheduled columns are fully overwritten each
+		// row, and unselected columns stay zero, so a single buffer preserves the
+		// per-row NULL semantics without allocating a buffer per parent row. The
+		// returned child (o below) is always freshly allocated, so buf never
+		// escapes past the after func.
+		buf := new(accountingPeriodPreloadBuf)
+		return func(row *scan.Row) (any, error) {
+				for _, t := range targets {
+					row.ScheduleScanByIndex(t.idx, t.dst(buf))
+				}
+				return buf, nil
+			}, func(link any) (*AccountingPeriod, error) {
+				buf := link.(*accountingPeriodPreloadBuf)
+
+				// Same rule as the reflection mapper's row validator: the child
+				// exists only if at least one of its columns is not NULL. Columns
+				// not selected by the query are never scanned and stay invalid,
+				// so this check also matches when only a subset is selected.
+				if !(buf.HouseholdID.Valid) &&
+					!(buf.Period.Valid) &&
+					!(buf.Status.Valid) &&
+					!(buf.Revision.Valid) &&
+					!(buf.ClosedBy.Valid) &&
+					!(buf.ClosedAt.Valid) {
+					return nil, nil
+				}
+
+				o := new(AccountingPeriod)
+				if buf.HouseholdID.Valid {
+					o.HouseholdID = buf.HouseholdID.V
+				}
+				if buf.Period.Valid {
+					o.Period = buf.Period.V
+				}
+				if buf.Status.Valid {
+					o.Status = buf.Status.V
+				}
+				if buf.Revision.Valid {
+					o.Revision = buf.Revision.V
+				}
+				o.ClosedBy = buf.ClosedBy
+				o.ClosedAt = buf.ClosedAt
+				return o, nil
+			}
+	}
+}
+
 func (o *AccountingPeriod) Preload(name string, retrieved any) error {
 	if o == nil {
 		return nil
@@ -898,6 +1231,38 @@ func (o *AccountingPeriod) Preload(name string, retrieved any) error {
 
 		if rel != nil {
 			rel.R.AccountingPeriods = AccountingPeriodSlice{o}
+		}
+		return nil
+	case "Corrections":
+		rels, ok := retrieved.(CorrectionSlice)
+		if !ok {
+			return fmt.Errorf("accountingPeriod cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.Corrections = rels
+		o.R.Loaded.Corrections = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.AccountingPeriod = o
+				rel.R.Loaded.AccountingPeriod = true
+			}
+		}
+		return nil
+	case "SettlementAdjustments":
+		rels, ok := retrieved.(SettlementAdjustmentSlice)
+		if !ok {
+			return fmt.Errorf("accountingPeriod cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.SettlementAdjustments = rels
+		o.R.Loaded.SettlementAdjustments = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.AccountingPeriod = o
+				rel.R.Loaded.AccountingPeriod = true
+			}
 		}
 		return nil
 	default:
@@ -942,8 +1307,10 @@ func buildAccountingPeriodPreloader() accountingPeriodPreloader {
 }
 
 type accountingPeriodThenLoader[Q orm.Loadable] struct {
-	ClosedByMember func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Household      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ClosedByMember        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Household             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Corrections           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementAdjustments func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildAccountingPeriodThenLoader[Q orm.Loadable]() accountingPeriodThenLoader[Q] {
@@ -952,6 +1319,12 @@ func buildAccountingPeriodThenLoader[Q orm.Loadable]() accountingPeriodThenLoade
 	}
 	type HouseholdLoadInterface interface {
 		LoadHousehold(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type CorrectionsLoadInterface interface {
+		LoadCorrections(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type SettlementAdjustmentsLoadInterface interface {
+		LoadSettlementAdjustments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return accountingPeriodThenLoader[Q]{
@@ -965,6 +1338,18 @@ func buildAccountingPeriodThenLoader[Q orm.Loadable]() accountingPeriodThenLoade
 			"Household",
 			func(ctx context.Context, exec bob.Executor, retrieved HouseholdLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadHousehold(ctx, exec, mods...)
+			},
+		),
+		Corrections: thenLoadBuilder[Q](
+			"Corrections",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCorrections(ctx, exec, mods...)
+			},
+		),
+		SettlementAdjustments: thenLoadBuilder[Q](
+			"SettlementAdjustments",
+			func(ctx context.Context, exec bob.Executor, retrieved SettlementAdjustmentsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadSettlementAdjustments(ctx, exec, mods...)
 			},
 		),
 	}
@@ -1125,10 +1510,469 @@ func (os AccountingPeriodSlice) LoadHousehold(ctx context.Context, exec bob.Exec
 	return nil
 }
 
+// LoadCorrections loads the accountingPeriod's Corrections into the .R struct
+func (o *AccountingPeriod) LoadCorrections(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.Corrections = nil
+	o.R.Loaded.Corrections = false
+
+	related, err := o.Corrections(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.AccountingPeriod = o
+		rel.R.Loaded.AccountingPeriod = true
+	}
+
+	o.R.Corrections = related
+	o.R.Loaded.Corrections = true
+	return nil
+}
+
+// LoadCorrections loads the accountingPeriod's Corrections into the .R struct
+func (os AccountingPeriodSlice) LoadCorrections(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	corrections, err := os.Corrections(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.Corrections = nil
+		o.R.Loaded.Corrections = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range corrections {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !rel.EffectivePeriod.Valid {
+				continue
+			}
+			if !(rel.EffectivePeriod.Valid && o.Period == rel.EffectivePeriod.V) {
+				continue
+			}
+
+			rel.R.AccountingPeriod = o
+			rel.R.Loaded.AccountingPeriod = true
+
+			o.R.Corrections = append(o.R.Corrections, rel)
+		}
+	}
+
+	return nil
+}
+
+// LoadSettlementAdjustments loads the accountingPeriod's SettlementAdjustments into the .R struct
+func (o *AccountingPeriod) LoadSettlementAdjustments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.SettlementAdjustments = nil
+	o.R.Loaded.SettlementAdjustments = false
+
+	related, err := o.SettlementAdjustments(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.AccountingPeriod = o
+		rel.R.Loaded.AccountingPeriod = true
+	}
+
+	o.R.SettlementAdjustments = related
+	o.R.Loaded.SettlementAdjustments = true
+	return nil
+}
+
+// LoadSettlementAdjustments loads the accountingPeriod's SettlementAdjustments into the .R struct
+func (os AccountingPeriodSlice) LoadSettlementAdjustments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	settlementAdjustments, err := os.SettlementAdjustments(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.SettlementAdjustments = nil
+		o.R.Loaded.SettlementAdjustments = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range settlementAdjustments {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.Period == rel.Period) {
+				continue
+			}
+
+			rel.R.AccountingPeriod = o
+			rel.R.Loaded.AccountingPeriod = true
+
+			o.R.SettlementAdjustments = append(o.R.SettlementAdjustments, rel)
+		}
+	}
+
+	return nil
+}
+
+// accountingPeriodC is where relationship counts are stored.
+type accountingPeriodC struct {
+	Corrections           *int64
+	SettlementAdjustments *int64
+}
+
+// PreloadCount sets a count in the C struct by name
+func (o *AccountingPeriod) PreloadCount(name string, count int64) error {
+	if o == nil {
+		return nil
+	}
+
+	switch name {
+	case "Corrections":
+		o.C.Corrections = &count
+	case "SettlementAdjustments":
+		o.C.SettlementAdjustments = &count
+	}
+	return nil
+}
+
+type accountingPeriodCountPreloader struct {
+	Corrections           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	SettlementAdjustments func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+}
+
+func buildAccountingPeriodCountPreloader() accountingPeriodCountPreloader {
+	return accountingPeriodCountPreloader{
+		Corrections: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*AccountingPeriod]("Corrections", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = AccountingPeriods.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(Corrections.NameAsExpr()),
+					sm.Where(psql.Quote(Corrections.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(Corrections.Alias(), "effective_period").EQ(psql.Quote(parent, "period"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+		SettlementAdjustments: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*AccountingPeriod]("SettlementAdjustments", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = AccountingPeriods.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(SettlementAdjustments.NameAsExpr()),
+					sm.Where(psql.Quote(SettlementAdjustments.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(SettlementAdjustments.Alias(), "period").EQ(psql.Quote(parent, "period"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+	}
+}
+
+type accountingPeriodCountThenLoader[Q orm.Loadable] struct {
+	Corrections           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementAdjustments func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+}
+
+func buildAccountingPeriodCountThenLoader[Q orm.Loadable]() accountingPeriodCountThenLoader[Q] {
+	type CorrectionsCountInterface interface {
+		LoadCountCorrections(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type SettlementAdjustmentsCountInterface interface {
+		LoadCountSettlementAdjustments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+
+	return accountingPeriodCountThenLoader[Q]{
+		Corrections: countThenLoadBuilder[Q](
+			"Corrections",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountCorrections(ctx, exec, mods...)
+			},
+		),
+		SettlementAdjustments: countThenLoadBuilder[Q](
+			"SettlementAdjustments",
+			func(ctx context.Context, exec bob.Executor, retrieved SettlementAdjustmentsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountSettlementAdjustments(ctx, exec, mods...)
+			},
+		),
+	}
+}
+
+// LoadCountCorrections loads the count of Corrections into the C struct
+func (o *AccountingPeriod) LoadCountCorrections(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.Corrections(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.Corrections = &count
+	return nil
+}
+
+// LoadCountCorrections loads the count of Corrections for a slice in a single batch query
+func (os AccountingPeriodSlice) LoadCountCorrections(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkPeriod := make(pgtypes.Array[string], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPeriod = append(pkPeriod, o.Period)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		Period string
+		Count  int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			Corrections.Columns.HouseholdID.As("household_id"),
+			Corrections.Columns.EffectivePeriod.As("period"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(Corrections.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "EffectivePeriod"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkPeriod), "text[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "EffectivePeriod"),
+		)).As("bob_rel_keys").On(
+			Corrections.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			Corrections.Columns.EffectivePeriod.EQ(psql.Quote("bob_rel_keys", "EffectivePeriod")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(Corrections.Columns.HouseholdID),
+		sm.GroupBy(Corrections.Columns.EffectivePeriod),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		Period string
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			Period: r.Period,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			Period: o.Period,
+		}]
+		o.C.Corrections = &count
+	}
+
+	return nil
+}
+
+// LoadCountSettlementAdjustments loads the count of SettlementAdjustments into the C struct
+func (o *AccountingPeriod) LoadCountSettlementAdjustments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.SettlementAdjustments(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.SettlementAdjustments = &count
+	return nil
+}
+
+// LoadCountSettlementAdjustments loads the count of SettlementAdjustments for a slice in a single batch query
+func (os AccountingPeriodSlice) LoadCountSettlementAdjustments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkPeriod := make(pgtypes.Array[string], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPeriod = append(pkPeriod, o.Period)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		Period string
+		Count  int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			SettlementAdjustments.Columns.HouseholdID.As("household_id"),
+			SettlementAdjustments.Columns.Period.As("period"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(SettlementAdjustments.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "Period"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkPeriod), "text[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "Period"),
+		)).As("bob_rel_keys").On(
+			SettlementAdjustments.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			SettlementAdjustments.Columns.Period.EQ(psql.Quote("bob_rel_keys", "Period")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(SettlementAdjustments.Columns.HouseholdID),
+		sm.GroupBy(SettlementAdjustments.Columns.Period),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		Period string
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			Period: r.Period,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			Period: o.Period,
+		}]
+		o.C.SettlementAdjustments = &count
+	}
+
+	return nil
+}
+
 type accountingPeriodJoins[Q dialect.Joinable] struct {
-	typ            string
-	ClosedByMember modAs[Q, memberColumns]
-	Household      modAs[Q, householdColumns]
+	typ                   string
+	ClosedByMember        modAs[Q, memberColumns]
+	Household             modAs[Q, householdColumns]
+	Corrections           modAs[Q, correctionColumns]
+	SettlementAdjustments modAs[Q, settlementAdjustmentColumns]
 }
 
 func (j accountingPeriodJoins[Q]) aliasedAs(alias string) accountingPeriodJoins[Q] {
@@ -1160,6 +2004,34 @@ func buildAccountingPeriodJoins[Q dialect.Joinable](cols accountingPeriodColumns
 				{
 					mods = append(mods, dialect.Join[Q](typ, Households.NameExpr().As(to.Alias())).On(
 						to.ID.EQ(cols.HouseholdID),
+					))
+				}
+
+				return mods
+			},
+		},
+		Corrections: modAs[Q, correctionColumns]{
+			c: Corrections.Columns,
+			f: func(to correctionColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, Corrections.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.EffectivePeriod.EQ(cols.Period),
+					))
+				}
+
+				return mods
+			},
+		},
+		SettlementAdjustments: modAs[Q, settlementAdjustmentColumns]{
+			c: SettlementAdjustments.Columns,
+			f: func(to settlementAdjustmentColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, SettlementAdjustments.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.Period.EQ(cols.Period),
 					))
 				}
 

@@ -54,13 +54,14 @@ type ClosePeriodInput struct {
 }
 
 type CorrectPurchaseInput struct {
-	HouseholdID    string             `json:"householdId"`
-	PurchaseID     string             `json:"purchaseId"`
-	ItemID         *string            `json:"itemId,omitempty"`
-	AmountDeltaYen Long               `json:"amountDeltaYen"`
-	Reason         string             `json:"reason"`
-	Allocations    []*AllocationInput `json:"allocations"`
-	IdempotencyKey string             `json:"idempotencyKey"`
+	HouseholdID        string                  `json:"householdId"`
+	PurchaseID         string                  `json:"purchaseId"`
+	ItemID             *string                 `json:"itemId,omitempty"`
+	AmountDeltaYen     Long                    `json:"amountDeltaYen"`
+	Reason             string                  `json:"reason"`
+	Allocations        []*AllocationInput      `json:"allocations,omitempty"`
+	PaymentAllocations []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
+	IdempotencyKey     string                  `json:"idempotencyKey"`
 }
 
 type CreateAccountInput struct {
@@ -108,15 +109,16 @@ type CreateProductVariantInput struct {
 }
 
 type CreatePurchaseInput struct {
-	IdempotencyKey   string               `json:"idempotencyKey"`
-	HouseholdID      string               `json:"householdId"`
-	OccurredAt       string               `json:"occurredAt"`
-	Merchant         string               `json:"merchant"`
-	PaymentAccountID *string              `json:"paymentAccountId,omitempty"`
-	SourceDocumentID *string              `json:"sourceDocumentId,omitempty"`
-	SourceReference  *string              `json:"sourceReference,omitempty"`
-	Items            []*PurchaseItemInput `json:"items"`
-	Status           *PurchaseStatus      `json:"status,omitempty"`
+	IdempotencyKey     string                  `json:"idempotencyKey"`
+	HouseholdID        string                  `json:"householdId"`
+	OccurredAt         string                  `json:"occurredAt"`
+	Merchant           string                  `json:"merchant"`
+	PaymentAccountID   *string                 `json:"paymentAccountId,omitempty"`
+	PaymentAllocations []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
+	SourceDocumentID   *string                 `json:"sourceDocumentId,omitempty"`
+	SourceReference    *string                 `json:"sourceReference,omitempty"`
+	Items              []*PurchaseItemInput    `json:"items"`
+	Status             *PurchaseStatus         `json:"status,omitempty"`
 }
 
 type CreatedHouseholdInvitation struct {
@@ -169,7 +171,19 @@ type LedgerEntry struct {
 	ToMemberID       *string    `json:"toMemberId,omitempty"`
 	PoolID           *string    `json:"poolId,omitempty"`
 	SourcePurchaseID *string    `json:"sourcePurchaseId,omitempty"`
+	TransferID       *string    `json:"transferId,omitempty"`
+	LoanID           *string    `json:"loanId,omitempty"`
 	CreatedAt        string     `json:"createdAt"`
+}
+
+type LoanBalance struct {
+	LoanID           string `json:"loanId"`
+	LenderMemberID   string `json:"lenderMemberId"`
+	BorrowerMemberID string `json:"borrowerMemberId"`
+	PrincipalYen     Long   `json:"principalYen"`
+	RepaidYen        Long   `json:"repaidYen"`
+	BalanceYen       Long   `json:"balanceYen"`
+	CreatedAt        string `json:"createdAt"`
 }
 
 type Member struct {
@@ -258,25 +272,37 @@ type ProductVariant struct {
 }
 
 type Purchase struct {
-	ID               string          `json:"id"`
-	HouseholdID      string          `json:"householdId"`
-	OccurredAt       string          `json:"occurredAt"`
-	Merchant         string          `json:"merchant"`
-	PaymentAccountID *string         `json:"paymentAccountId,omitempty"`
-	PaymentAccount   *Account        `json:"paymentAccount,omitempty"`
-	Items            []*PurchaseItem `json:"items"`
-	TotalYen         Long            `json:"totalYen"`
-	Currency         string          `json:"currency"`
-	Revision         int             `json:"revision"`
-	Status           PurchaseStatus  `json:"status"`
-	CreatedAt        string          `json:"createdAt"`
-	UpdatedAt        string          `json:"updatedAt"`
+	ID                 string                `json:"id"`
+	HouseholdID        string                `json:"householdId"`
+	OccurredAt         string                `json:"occurredAt"`
+	Merchant           string                `json:"merchant"`
+	PaymentAccountID   *string               `json:"paymentAccountId,omitempty"`
+	PaymentAccount     *Account              `json:"paymentAccount,omitempty"`
+	PaymentAllocations []*PurchasePayment    `json:"paymentAllocations"`
+	Items              []*PurchaseItem       `json:"items"`
+	Corrections        []*PurchaseCorrection `json:"corrections"`
+	TotalYen           Long                  `json:"totalYen"`
+	Currency           string                `json:"currency"`
+	Revision           int                   `json:"revision"`
+	Status             PurchaseStatus        `json:"status"`
+	CreatedAt          string                `json:"createdAt"`
+	UpdatedAt          string                `json:"updatedAt"`
 }
 
 type PurchaseConnection struct {
 	Edges      []*PurchaseEdge `json:"edges"`
 	PageInfo   *PageInfo       `json:"pageInfo"`
 	TotalCount int             `json:"totalCount"`
+}
+
+type PurchaseCorrection struct {
+	ID                 string             `json:"id"`
+	ItemID             *string            `json:"itemId,omitempty"`
+	AmountDeltaYen     Long               `json:"amountDeltaYen"`
+	Reason             string             `json:"reason"`
+	OccurredAt         string             `json:"occurredAt"`
+	SettlementMonth    string             `json:"settlementMonth"`
+	PaymentAllocations []*PurchasePayment `json:"paymentAllocations"`
 }
 
 type PurchaseEdge struct {
@@ -304,9 +330,21 @@ type PurchaseItemInput struct {
 }
 
 type PurchasePatch struct {
-	OccurredAt       *string `json:"occurredAt,omitempty"`
-	Merchant         *string `json:"merchant,omitempty"`
-	PaymentAccountID *string `json:"paymentAccountId,omitempty"`
+	OccurredAt         *string                 `json:"occurredAt,omitempty"`
+	Merchant           *string                 `json:"merchant,omitempty"`
+	PaymentAccountID   *string                 `json:"paymentAccountId,omitempty"`
+	PaymentAllocations []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
+}
+
+type PurchasePayment struct {
+	PaymentAccountID string   `json:"paymentAccountId"`
+	Account          *Account `json:"account,omitempty"`
+	AmountYen        Long     `json:"amountYen"`
+}
+
+type PurchasePaymentInput struct {
+	PaymentAccountID string `json:"paymentAccountId"`
+	AmountYen        Long   `json:"amountYen"`
 }
 
 type Query struct {
@@ -322,15 +360,16 @@ type RecordFundingInput struct {
 }
 
 type RecordTransferInput struct {
-	HouseholdID    string       `json:"householdId"`
-	FromMemberID   string       `json:"fromMemberId"`
-	ToMemberID     string       `json:"toMemberId"`
-	Kind           TransferKind `json:"kind"`
-	LoanID         *string      `json:"loanId,omitempty"`
-	AmountYen      Long         `json:"amountYen"`
-	OccurredAt     string       `json:"occurredAt"`
-	Description    string       `json:"description"`
-	IdempotencyKey string       `json:"idempotencyKey"`
+	HouseholdID      string       `json:"householdId"`
+	FromMemberID     string       `json:"fromMemberId"`
+	ToMemberID       string       `json:"toMemberId"`
+	Kind             TransferKind `json:"kind"`
+	LoanID           *string      `json:"loanId,omitempty"`
+	PaymentAccountID *string      `json:"paymentAccountId,omitempty"`
+	AmountYen        Long         `json:"amountYen"`
+	OccurredAt       string       `json:"occurredAt"`
+	Description      string       `json:"description"`
+	IdempotencyKey   string       `json:"idempotencyKey"`
 }
 
 type SetAllocationRuleInput struct {

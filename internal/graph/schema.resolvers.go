@@ -166,6 +166,16 @@ func (r *queryResolver) Purchases(ctx context.Context, householdID string, from 
 	return r.purchases(ctx, householdID, from, to, after, first)
 }
 
+// PurchaseCorrections is the resolver for the purchaseCorrections field.
+func (r *queryResolver) PurchaseCorrections(ctx context.Context, purchaseID string) ([]*model.PurchaseCorrection, error) {
+	return r.purchaseCorrections(ctx, purchaseID)
+}
+
+// LoanBalances is the resolver for the loanBalances field.
+func (r *queryResolver) LoanBalances(ctx context.Context, householdID string) ([]*model.LoanBalance, error) {
+	return r.loanBalances(ctx, householdID)
+}
+
 // Ledger is the resolver for the ledger field.
 func (r *queryResolver) Ledger(ctx context.Context, householdID string, after *string, first *int) (*model.LedgerConnection, error) {
 	return r.ledger(ctx, householdID, after, first)

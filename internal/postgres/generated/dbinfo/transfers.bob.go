@@ -96,6 +96,15 @@ var Transfers = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		PaymentAccountID: column{
+			Name:      "payment_account_id",
+			DBType:    "uuid",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: transferIndexes{
 		TransfersPkey: index{
@@ -175,6 +184,15 @@ var Transfers = Table[
 			ForeignTable:   "transfers",
 			ForeignColumns: []string{"id"},
 		},
+		TransfersTransfersPaymentAccountFK: foreignKey{
+			constraint: constraint{
+				Name:    "transfers.transfers_payment_account_fk",
+				Columns: []string{"household_id", "payment_account_id"},
+				Comment: "",
+			},
+			ForeignTable:   "accounts",
+			ForeignColumns: []string{"household_id", "id"},
+		},
 		TransfersTransfersToMemberIDFkey: foreignKey{
 			constraint: constraint{
 				Name:    "transfers.transfers_to_member_id_fkey",
@@ -230,20 +248,21 @@ var Transfers = Table[
 }
 
 type transferColumns struct {
-	ID            column
-	HouseholdID   column
-	LedgerEntryID column
-	FromMemberID  column
-	ToMemberID    column
-	Kind          column
-	AmountYen     column
-	Description   column
-	LoanID        column
+	ID               column
+	HouseholdID      column
+	LedgerEntryID    column
+	FromMemberID     column
+	ToMemberID       column
+	Kind             column
+	AmountYen        column
+	Description      column
+	LoanID           column
+	PaymentAccountID column
 }
 
 func (c transferColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.LedgerEntryID, c.FromMemberID, c.ToMemberID, c.Kind, c.AmountYen, c.Description, c.LoanID,
+		c.ID, c.HouseholdID, c.LedgerEntryID, c.FromMemberID, c.ToMemberID, c.Kind, c.AmountYen, c.Description, c.LoanID, c.PaymentAccountID,
 	}
 }
 
@@ -263,12 +282,13 @@ type transferForeignKeys struct {
 	TransfersTransfersHouseholdIDFkey   foreignKey
 	TransfersTransfersLedgerEntryIDFkey foreignKey
 	TransfersTransfersLoanIDFkey        foreignKey
+	TransfersTransfersPaymentAccountFK  foreignKey
 	TransfersTransfersToMemberIDFkey    foreignKey
 }
 
 func (f transferForeignKeys) AsSlice() []foreignKey {
 	return []foreignKey{
-		f.TransfersTransfersFromMemberIDFkey, f.TransfersTransfersHouseholdIDFkey, f.TransfersTransfersLedgerEntryIDFkey, f.TransfersTransfersLoanIDFkey, f.TransfersTransfersToMemberIDFkey,
+		f.TransfersTransfersFromMemberIDFkey, f.TransfersTransfersHouseholdIDFkey, f.TransfersTransfersLedgerEntryIDFkey, f.TransfersTransfersLoanIDFkey, f.TransfersTransfersPaymentAccountFK, f.TransfersTransfersToMemberIDFkey,
 	}
 }
 

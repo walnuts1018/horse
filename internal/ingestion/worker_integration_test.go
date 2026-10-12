@@ -3,14 +3,23 @@ package ingestion
 import (
 	"bytes"
 	"context"
+	stdjson "encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/stephenafamo/bob/dialect/psql/um"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 type testDocumentStore map[string]Document
@@ -28,7 +37,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	db, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
@@ -39,28 +48,50 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	}
 
 	memberID, householdID := testUUID(t), testUUID(t)
-	if _, err := db.Exec(ctx, `INSERT INTO members(id,oidc_subject,display_name) VALUES($1,$2,'Worker test')`, memberID, "worker-test:"+memberID); err != nil {
+	executor := bobpgx.NewPool(db)
+	memberUUID, householdUUID := parseTestUUID(t, memberID), parseTestUUID(t, householdID)
+	memberSubject, memberName := "worker-test:"+memberID, "Worker test"
+	if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &memberSubject, DisplayName: &memberName}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO households(id,name) VALUES($1,'Worker integration')`, householdID); err != nil {
+	householdName := "Worker integration"
+	if _, err := models.Households.Insert(&models.HouseholdSetter{ID: &householdUUID, Name: &householdName}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO household_members(household_id,member_id,role) VALUES($1,$2,'OWNER')`, householdID, memberID); err != nil {
+	ownerRole := "OWNER"
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberUUID, Role: &ownerRole}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = db.Exec(context.Background(), `DELETE FROM households WHERE id=$1`, householdID)
-		_, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, memberID)
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), executor)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), executor)
 	}()
 
 	store := testDocumentStore{}
 	insertJob := func(sourceKind, mimeType, objectKey string, attempt, failureCount int) string {
 		t.Helper()
 		documentID, jobID := testUUID(t), testUUID(t)
-		if _, err := db.Exec(ctx, `INSERT INTO source_documents(id,household_id,sha256,object_key,mime_type,source_kind,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)`, documentID, householdID, testUUID(t), objectKey, mimeType, sourceKind, memberID); err != nil {
+		documentUUID, jobUUID := parseTestUUID(t, documentID), parseTestUUID(t, jobID)
+		hash, creatorUUID := testUUID(t), memberUUID
+		if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
+			ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &objectKey,
+			MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &creatorUUID,
+		}).Exec(ctx, executor); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(ctx, `INSERT INTO extraction_jobs(id,household_id,source_document_id,status,attempt,failure_count) VALUES($1,$2,$3,'queued',$4,$5)`, jobID, householdID, documentID, attempt, failureCount); err != nil {
+		status := "queued"
+		attemptValue, err := postgresInt32(attempt, "extraction attempt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		failureCountValue, err := postgresInt32(failureCount, "extraction failure count")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
+			ID: &jobUUID, HouseholdID: &householdUUID, SourceDocumentID: &documentUUID, Status: &status,
+			Attempt: &attemptValue, FailureCount: &failureCountValue,
+		}).Exec(ctx, executor); err != nil {
 			t.Fatal(err)
 		}
 		return jobID
@@ -92,17 +123,18 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		if err != nil || !processed {
 			t.Fatalf("spend-cap job was not processed: processed=%v error=%v", processed, err)
 		}
-		var status, errorCode string
-		var attempt, failureCount int
-		var availableInSeconds float64
-		if err := db.QueryRow(ctx, `SELECT status,error_code,attempt,failure_count,extract(epoch FROM available_at-now()) FROM extraction_jobs WHERE id=$1`, spendCapJob).Scan(&status, &errorCode, &attempt, &failureCount, &availableInSeconds); err != nil {
+		spendCap, err := loadTestJob(ctx, executor, spendCapJob)
+		if err != nil {
 			t.Fatal(err)
 		}
+		status, errorCode := spendCap.Status, spendCap.ErrorCode.V
+		attempt, failureCount := int(spendCap.Attempt), int(spendCap.FailureCount)
+		availableInSeconds := time.Until(spendCap.AvailableAt).Seconds()
 		if status != "queued" || errorCode != "spend_cap_reached" || attempt != expectedAttempt || failureCount != 4 || availableInSeconds < 30*60 {
 			t.Fatalf("spend cap must keep the source queued without consuming ordinary failures: status=%q error=%q attempt=%d failures=%d availableIn=%.0fs", status, errorCode, attempt, failureCount, availableInSeconds)
 		}
 		if expectedAttempt < 11 {
-			if _, err := db.Exec(ctx, `UPDATE extraction_jobs SET available_at=now() WHERE id=$1`, spendCapJob); err != nil {
+			if err := updateTestJob(ctx, executor, spendCapJob, &models.ExtractionJobSetter{AvailableAt: new(time.Time)}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -110,9 +142,9 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	if err := worker.RecoverExhausted(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var heldStatus string
-	if err := db.QueryRow(ctx, `SELECT status FROM extraction_jobs WHERE id=$1`, spendCapJob).Scan(&heldStatus); err != nil || heldStatus != "queued" {
-		t.Fatalf("exhaustion recovery must not fail a queued spend-cap job: status=%q error=%v", heldStatus, err)
+	held, err := loadTestJob(ctx, executor, spendCapJob)
+	if err != nil || held.Status != "queued" {
+		t.Fatalf("exhaustion recovery must not fail a queued spend-cap job: status=%q error=%v", held.Status, err)
 	}
 
 	temporary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -131,11 +163,11 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		if err != nil || !processed {
 			t.Fatalf("ordinary provider failure was not processed: processed=%v error=%v", processed, err)
 		}
-		var status string
-		var gotAttempt, failureCount int
-		if err := db.QueryRow(ctx, `SELECT status,attempt,failure_count FROM extraction_jobs WHERE id=$1`, ordinaryFailureJob).Scan(&status, &gotAttempt, &failureCount); err != nil {
+		failedJob, err := loadTestJob(ctx, executor, ordinaryFailureJob)
+		if err != nil {
 			t.Fatal(err)
 		}
+		status, gotAttempt, failureCount := failedJob.Status, int(failedJob.Attempt), int(failedJob.FailureCount)
 		wantStatus := "queued"
 		if attempt == 5 {
 			wantStatus = "failed"
@@ -144,7 +176,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 			t.Fatalf("ordinary failures must consume the separate retry budget: status=%q attempt=%d failures=%d want=%q/%d", status, gotAttempt, failureCount, wantStatus, attempt)
 		}
 		if attempt < 5 {
-			if _, err := db.Exec(ctx, `UPDATE extraction_jobs SET available_at=now() WHERE id=$1`, ordinaryFailureJob); err != nil {
+			if err := updateTestJob(ctx, executor, ordinaryFailureJob, &models.ExtractionJobSetter{AvailableAt: new(time.Time)}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -157,11 +189,11 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	if err != nil || processed {
 		t.Fatalf("disabled worker must leave Gemini documents unclaimed: processed=%v error=%v", processed, err)
 	}
-	var pausedStatus string
-	var pausedAttempt, pausedFailures int
-	if err := db.QueryRow(ctx, `SELECT status,attempt,failure_count FROM extraction_jobs WHERE id=$1`, pausedJob).Scan(&pausedStatus, &pausedAttempt, &pausedFailures); err != nil {
+	paused, err := loadTestJob(ctx, executor, pausedJob)
+	if err != nil {
 		t.Fatal(err)
 	}
+	pausedStatus, pausedAttempt, pausedFailures := paused.Status, int(paused.Attempt), int(paused.FailureCount)
 	if pausedStatus != "queued" || pausedAttempt != 0 || pausedFailures != 0 {
 		t.Fatalf("disabled job state changed: status=%q attempt=%d failures=%d", pausedStatus, pausedAttempt, pausedFailures)
 	}
@@ -172,15 +204,45 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	if err != nil || !processed {
 		t.Fatalf("disabled worker must process deterministic CSV imports: processed=%v error=%v", processed, err)
 	}
-	var csvStatus string
-	var csvAttempt int
-	var csvResult []byte
-	if err := db.QueryRow(ctx, `SELECT status,attempt,result FROM extraction_jobs WHERE id=$1`, csvJob).Scan(&csvStatus, &csvAttempt, &csvResult); err != nil {
+	csv, err := loadTestJob(ctx, executor, csvJob)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if csvStatus != "succeeded" || csvAttempt != 1 || !bytes.Contains(csvResult, []byte(`"transactionId": "tx-1"`)) {
-		t.Fatalf("CSV import did not complete deterministically while Gemini was disabled: status=%q attempt=%d result=%s", csvStatus, csvAttempt, csvResult)
+	csvResult, err := stdjson.Marshal(csv.Result.V.Val)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if csv.Status != "succeeded" || csv.Attempt != 1 || !bytes.Contains(csvResult, []byte(`"transactionId":"tx-1"`)) {
+		t.Fatalf("CSV import did not complete deterministically while Gemini was disabled: status=%q attempt=%d result=%s", csv.Status, csv.Attempt, csvResult)
+	}
+}
+
+func parseTestUUID(t *testing.T, value string) uuid.UUID {
+	t.Helper()
+	parsed, err := uuid.FromString(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parsed
+}
+
+func loadTestJob(ctx context.Context, executor bob.Executor, jobID string) (*models.ExtractionJob, error) {
+	id, err := uuid.FromString(jobID)
+	if err != nil {
+		return nil, err
+	}
+	return models.ExtractionJobs.Query(sm.Where(models.ExtractionJobs.Columns.ID.EQ(psql.Arg(id)))).One(ctx, executor)
+}
+
+func updateTestJob(ctx context.Context, executor bob.Executor, jobID string, setter *models.ExtractionJobSetter) error {
+	id, err := uuid.FromString(jobID)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	setter.AvailableAt = &now
+	_, err = models.ExtractionJobs.Update(setter.UpdateMod(), um.Where(models.ExtractionJobs.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor)
+	return err
 }
 
 func testUUID(t *testing.T) string {

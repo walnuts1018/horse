@@ -36,6 +36,7 @@ type joins[Q dialect.Joinable] struct {
 	AllocationRuleWeights joinSet[allocationRuleWeightJoins[Q]]
 	AllocationRules       joinSet[allocationRuleJoins[Q]]
 	Categories            joinSet[categoryJoins[Q]]
+	CorrectionPayments    joinSet[correctionPaymentJoins[Q]]
 	Corrections           joinSet[correctionJoins[Q]]
 	DocumentConfirmations joinSet[documentConfirmationJoins[Q]]
 	EvidenceLinks         joinSet[evidenceLinkJoins[Q]]
@@ -61,7 +62,9 @@ type joins[Q dialect.Joinable] struct {
 	ProductCorrections    joinSet[productCorrectionJoins[Q]]
 	ProductVariants       joinSet[productVariantJoins[Q]]
 	PurchaseItems         joinSet[purchaseItemJoins[Q]]
+	PurchasePayments      joinSet[purchasePaymentJoins[Q]]
 	Purchases             joinSet[purchaseJoins[Q]]
+	SettlementAdjustments joinSet[settlementAdjustmentJoins[Q]]
 	SettlementLines       joinSet[settlementLineJoins[Q]]
 	SettlementRuns        joinSet[settlementRunJoins[Q]]
 	SourceDocuments       joinSet[sourceDocumentJoins[Q]]
@@ -84,6 +87,7 @@ func getJoins[Q dialect.Joinable]() joins[Q] {
 		AllocationRuleWeights: buildJoinSet[allocationRuleWeightJoins[Q]](AllocationRuleWeights.Columns, buildAllocationRuleWeightJoins),
 		AllocationRules:       buildJoinSet[allocationRuleJoins[Q]](AllocationRules.Columns, buildAllocationRuleJoins),
 		Categories:            buildJoinSet[categoryJoins[Q]](Categories.Columns, buildCategoryJoins),
+		CorrectionPayments:    buildJoinSet[correctionPaymentJoins[Q]](CorrectionPayments.Columns, buildCorrectionPaymentJoins),
 		Corrections:           buildJoinSet[correctionJoins[Q]](Corrections.Columns, buildCorrectionJoins),
 		DocumentConfirmations: buildJoinSet[documentConfirmationJoins[Q]](DocumentConfirmations.Columns, buildDocumentConfirmationJoins),
 		EvidenceLinks:         buildJoinSet[evidenceLinkJoins[Q]](EvidenceLinks.Columns, buildEvidenceLinkJoins),
@@ -109,7 +113,9 @@ func getJoins[Q dialect.Joinable]() joins[Q] {
 		ProductCorrections:    buildJoinSet[productCorrectionJoins[Q]](ProductCorrections.Columns, buildProductCorrectionJoins),
 		ProductVariants:       buildJoinSet[productVariantJoins[Q]](ProductVariants.Columns, buildProductVariantJoins),
 		PurchaseItems:         buildJoinSet[purchaseItemJoins[Q]](PurchaseItems.Columns, buildPurchaseItemJoins),
+		PurchasePayments:      buildJoinSet[purchasePaymentJoins[Q]](PurchasePayments.Columns, buildPurchasePaymentJoins),
 		Purchases:             buildJoinSet[purchaseJoins[Q]](Purchases.Columns, buildPurchaseJoins),
+		SettlementAdjustments: buildJoinSet[settlementAdjustmentJoins[Q]](SettlementAdjustments.Columns, buildSettlementAdjustmentJoins),
 		SettlementLines:       buildJoinSet[settlementLineJoins[Q]](SettlementLines.Columns, buildSettlementLineJoins),
 		SettlementRuns:        buildJoinSet[settlementRunJoins[Q]](SettlementRuns.Columns, buildSettlementRunJoins),
 		SourceDocuments:       buildJoinSet[sourceDocumentJoins[Q]](SourceDocuments.Columns, buildSourceDocumentJoins),

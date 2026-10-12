@@ -64,6 +64,7 @@ type purchaseR struct {
 	EvidenceLinks         EvidenceLinkSlice         // evidence_links.evidence_links_household_id_purchase_id_fkey
 	LedgerEntries         LedgerEntrySlice          // ledger_entries.ledger_entries_household_id_source_purchase_id_fkey
 	PurchaseItems         PurchaseItemSlice         // purchase_items.purchase_items_household_id_purchase_id_fkey
+	PurchasePayments      PurchasePaymentSlice      // purchase_payments.purchase_payments_household_id_purchase_id_fkey
 	CreatedByMember       *Member                   // purchases.purchases_created_by_fkey
 	Household             *Household                // purchases.purchases_household_id_fkey
 	Account               *Account                  // purchases.purchases_household_id_payment_account_id_fkey
@@ -80,6 +81,7 @@ type purchaseRLoaded struct {
 	EvidenceLinks         bool // evidence_links.evidence_links_household_id_purchase_id_fkey
 	LedgerEntries         bool // ledger_entries.ledger_entries_household_id_source_purchase_id_fkey
 	PurchaseItems         bool // purchase_items.purchase_items_household_id_purchase_id_fkey
+	PurchasePayments      bool // purchase_payments.purchase_payments_household_id_purchase_id_fkey
 	CreatedByMember       bool // purchases.purchases_created_by_fkey
 	Household             bool // purchases.purchases_household_id_fkey
 	Account               bool // purchases.purchases_household_id_payment_account_id_fkey
@@ -1005,6 +1007,35 @@ func (os PurchaseSlice) PurchaseItems(mods ...bob.Mod[*dialect.SelectQuery]) Pur
 	)...)
 }
 
+// PurchasePayments starts a query for related objects on purchase_payments
+func (o *Purchase) PurchasePayments(mods ...bob.Mod[*dialect.SelectQuery]) PurchasePaymentsQuery {
+	return PurchasePayments.Query(append(mods,
+		sm.Where(PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os PurchaseSlice) PurchasePayments(mods ...bob.Mod[*dialect.SelectQuery]) PurchasePaymentsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return PurchasePayments.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "PurchaseID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "PurchaseID"),
+		)).As("bob_rel_keys").On(PurchasePayments.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), PurchasePayments.Columns.PurchaseID.EQ(psql.Quote("bob_rel_keys", "PurchaseID"))),
+	)...)
+}
+
 // CreatedByMember starts a query for related objects on members
 func (o *Purchase) CreatedByMember(mods ...bob.Mod[*dialect.SelectQuery]) MembersQuery {
 	return Members.Query(append(mods,
@@ -1382,6 +1413,78 @@ func (purchase0 *Purchase) AttachPurchaseItems(ctx context.Context, exec bob.Exe
 	return nil
 }
 
+func insertPurchasePurchasePayments0(ctx context.Context, exec bob.Executor, purchasePayments1 []*PurchasePaymentSetter, purchase0 *Purchase) (PurchasePaymentSlice, error) {
+	for i := range purchasePayments1 {
+		purchasePayments1[i].HouseholdID = func() *uuid.UUID { return &purchase0.HouseholdID }()
+		purchasePayments1[i].PurchaseID = func() *uuid.UUID { return &purchase0.ID }()
+	}
+
+	ret, err := PurchasePayments.Insert(bob.ToMods(purchasePayments1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertPurchasePurchasePayments0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachPurchasePurchasePayments0(ctx context.Context, exec bob.Executor, count int, purchasePayments1 PurchasePaymentSlice, purchase0 *Purchase) (PurchasePaymentSlice, error) {
+	setter := &PurchasePaymentSetter{
+		HouseholdID: func() *uuid.UUID { return &purchase0.HouseholdID }(),
+		PurchaseID:  func() *uuid.UUID { return &purchase0.ID }(),
+	}
+
+	err := purchasePayments1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachPurchasePurchasePayments0: %w", err)
+	}
+
+	return purchasePayments1, nil
+}
+
+func (purchase0 *Purchase) InsertPurchasePayments(ctx context.Context, exec bob.Executor, related ...*PurchasePaymentSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	purchasePayments1, err := insertPurchasePurchasePayments0(ctx, exec, related, purchase0)
+	if err != nil {
+		return err
+	}
+
+	purchase0.R.PurchasePayments = append(purchase0.R.PurchasePayments, purchasePayments1...)
+
+	for _, rel := range purchasePayments1 {
+		rel.R.Purchase = purchase0
+		rel.R.Loaded.Purchase = true
+	}
+	return nil
+}
+
+func (purchase0 *Purchase) AttachPurchasePayments(ctx context.Context, exec bob.Executor, related ...*PurchasePayment) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	purchasePayments1 := PurchasePaymentSlice(related)
+
+	_, err = attachPurchasePurchasePayments0(ctx, exec, len(related), purchasePayments1, purchase0)
+	if err != nil {
+		return err
+	}
+
+	purchase0.R.PurchasePayments = append(purchase0.R.PurchasePayments, purchasePayments1...)
+
+	for _, rel := range related {
+		rel.R.Purchase = purchase0
+		rel.R.Loaded.Purchase = true
+	}
+
+	return nil
+}
+
 func attachPurchaseCreatedByMember0(ctx context.Context, exec bob.Executor, count int, purchase0 *Purchase, member1 *Member) (*Purchase, error) {
 	setter := &PurchaseSetter{
 		CreatedBy: func() *uuid.UUID { return &member1.ID }(),
@@ -1655,6 +1758,21 @@ func (w purchaseWhereR[Q]) HasPurchaseItems(filters ...bob.Mod[*dialect.SelectQu
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasPurchasePayments filters parents that have a matching PurchasePayments using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to PurchasePayments).
+func (w purchaseWhereR[Q]) HasPurchasePayments(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(PurchasePayments.NameExpr()),
+		sm.Where(PurchasePayments.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(PurchasePayments.Columns.PurchaseID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasCreatedByMember filters parents that have a matching CreatedByMember using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -1922,6 +2040,22 @@ func (o *Purchase) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "PurchasePayments":
+		rels, ok := retrieved.(PurchasePaymentSlice)
+		if !ok {
+			return fmt.Errorf("purchase cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.PurchasePayments = rels
+		o.R.Loaded.PurchasePayments = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Purchase = o
+				rel.R.Loaded.Purchase = true
+			}
+		}
+		return nil
 	case "CreatedByMember":
 		rel, ok := retrieved.(*Member)
 		if !ok {
@@ -2022,6 +2156,7 @@ type purchaseThenLoader[Q orm.Loadable] struct {
 	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	LedgerEntries         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	PurchaseItems         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PurchasePayments      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByMember       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Household             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Account               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -2042,6 +2177,9 @@ func buildPurchaseThenLoader[Q orm.Loadable]() purchaseThenLoader[Q] {
 	}
 	type PurchaseItemsLoadInterface interface {
 		LoadPurchaseItems(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type PurchasePaymentsLoadInterface interface {
+		LoadPurchasePayments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type CreatedByMemberLoadInterface interface {
 		LoadCreatedByMember(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -2082,6 +2220,12 @@ func buildPurchaseThenLoader[Q orm.Loadable]() purchaseThenLoader[Q] {
 			"PurchaseItems",
 			func(ctx context.Context, exec bob.Executor, retrieved PurchaseItemsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadPurchaseItems(ctx, exec, mods...)
+			},
+		),
+		PurchasePayments: thenLoadBuilder[Q](
+			"PurchasePayments",
+			func(ctx context.Context, exec bob.Executor, retrieved PurchasePaymentsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadPurchasePayments(ctx, exec, mods...)
 			},
 		),
 		CreatedByMember: thenLoadBuilder[Q](
@@ -2453,6 +2597,75 @@ func (os PurchaseSlice) LoadPurchaseItems(ctx context.Context, exec bob.Executor
 	return nil
 }
 
+// LoadPurchasePayments loads the purchase's PurchasePayments into the .R struct
+func (o *Purchase) LoadPurchasePayments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.PurchasePayments = nil
+	o.R.Loaded.PurchasePayments = false
+
+	related, err := o.PurchasePayments(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Purchase = o
+		rel.R.Loaded.Purchase = true
+	}
+
+	o.R.PurchasePayments = related
+	o.R.Loaded.PurchasePayments = true
+	return nil
+}
+
+// LoadPurchasePayments loads the purchase's PurchasePayments into the .R struct
+func (os PurchaseSlice) LoadPurchasePayments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	purchasePayments, err := os.PurchasePayments(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.PurchasePayments = nil
+		o.R.Loaded.PurchasePayments = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range purchasePayments {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.ID == rel.PurchaseID) {
+				continue
+			}
+
+			rel.R.Purchase = o
+			rel.R.Loaded.Purchase = true
+
+			o.R.PurchasePayments = append(o.R.PurchasePayments, rel)
+		}
+	}
+
+	return nil
+}
+
 // LoadCreatedByMember loads the purchase's CreatedByMember into the .R struct
 func (o *Purchase) LoadCreatedByMember(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -2679,6 +2892,7 @@ type purchaseC struct {
 	EvidenceLinks         *int64
 	LedgerEntries         *int64
 	PurchaseItems         *int64
+	PurchasePayments      *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -2698,6 +2912,8 @@ func (o *Purchase) PreloadCount(name string, count int64) error {
 		o.C.LedgerEntries = &count
 	case "PurchaseItems":
 		o.C.PurchaseItems = &count
+	case "PurchasePayments":
+		o.C.PurchasePayments = &count
 	}
 	return nil
 }
@@ -2708,6 +2924,7 @@ type purchaseCountPreloader struct {
 	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	LedgerEntries         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	PurchaseItems         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	PurchasePayments      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildPurchaseCountPreloader() purchaseCountPreloader {
@@ -2802,6 +3019,24 @@ func buildPurchaseCountPreloader() purchaseCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		PurchasePayments: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Purchase]("PurchasePayments", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Purchases.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(PurchasePayments.NameAsExpr()),
+					sm.Where(psql.Quote(PurchasePayments.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(PurchasePayments.Alias(), "purchase_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 	}
 }
 
@@ -2811,6 +3046,7 @@ type purchaseCountThenLoader[Q orm.Loadable] struct {
 	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	LedgerEntries         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	PurchaseItems         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	PurchasePayments      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildPurchaseCountThenLoader[Q orm.Loadable]() purchaseCountThenLoader[Q] {
@@ -2828,6 +3064,9 @@ func buildPurchaseCountThenLoader[Q orm.Loadable]() purchaseCountThenLoader[Q] {
 	}
 	type PurchaseItemsCountInterface interface {
 		LoadCountPurchaseItems(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type PurchasePaymentsCountInterface interface {
+		LoadCountPurchasePayments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return purchaseCountThenLoader[Q]{
@@ -2859,6 +3098,12 @@ func buildPurchaseCountThenLoader[Q orm.Loadable]() purchaseCountThenLoader[Q] {
 			"PurchaseItems",
 			func(ctx context.Context, exec bob.Executor, retrieved PurchaseItemsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountPurchaseItems(ctx, exec, mods...)
+			},
+		),
+		PurchasePayments: countThenLoadBuilder[Q](
+			"PurchasePayments",
+			func(ctx context.Context, exec bob.Executor, retrieved PurchasePaymentsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountPurchasePayments(ctx, exec, mods...)
 			},
 		),
 	}
@@ -3414,6 +3659,116 @@ func (os PurchaseSlice) LoadCountPurchaseItems(ctx context.Context, exec bob.Exe
 	return nil
 }
 
+// LoadCountPurchasePayments loads the count of PurchasePayments into the C struct
+func (o *Purchase) LoadCountPurchasePayments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.PurchasePayments(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.PurchasePayments = &count
+	return nil
+}
+
+// LoadCountPurchasePayments loads the count of PurchasePayments for a slice in a single batch query
+func (os PurchaseSlice) LoadCountPurchasePayments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			PurchasePayments.Columns.HouseholdID.As("household_id"),
+			PurchasePayments.Columns.PurchaseID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(PurchasePayments.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "PurchaseID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "PurchaseID"),
+		)).As("bob_rel_keys").On(
+			PurchasePayments.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			PurchasePayments.Columns.PurchaseID.EQ(psql.Quote("bob_rel_keys", "PurchaseID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(PurchasePayments.Columns.HouseholdID),
+		sm.GroupBy(PurchasePayments.Columns.PurchaseID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.PurchasePayments = &count
+	}
+
+	return nil
+}
+
 type purchaseJoins[Q dialect.Joinable] struct {
 	typ                   string
 	Corrections           modAs[Q, correctionColumns]
@@ -3421,6 +3776,7 @@ type purchaseJoins[Q dialect.Joinable] struct {
 	EvidenceLinks         modAs[Q, evidenceLinkColumns]
 	LedgerEntries         modAs[Q, ledgerEntryColumns]
 	PurchaseItems         modAs[Q, purchaseItemColumns]
+	PurchasePayments      modAs[Q, purchasePaymentColumns]
 	CreatedByMember       modAs[Q, memberColumns]
 	Household             modAs[Q, householdColumns]
 	Account               modAs[Q, accountColumns]
@@ -3496,6 +3852,20 @@ func buildPurchaseJoins[Q dialect.Joinable](cols purchaseColumns, typ string) pu
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, PurchaseItems.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.PurchaseID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		PurchasePayments: modAs[Q, purchasePaymentColumns]{
+			c: PurchasePayments.Columns,
+			f: func(to purchasePaymentColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, PurchasePayments.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.HouseholdID), to.PurchaseID.EQ(cols.ID),
 					))
 				}

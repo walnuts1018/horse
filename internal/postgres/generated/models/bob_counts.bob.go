@@ -21,86 +21,94 @@ var (
 )
 
 type preloadCounts struct {
-	Account         accountCountPreloader
-	AllocationRule  allocationRuleCountPreloader
-	Category        categoryCountPreloader
-	FundingSchedule fundingScheduleCountPreloader
-	HouseholdMember householdMemberCountPreloader
-	Household       householdCountPreloader
-	Journal         journalCountPreloader
-	Member          memberCountPreloader
-	PoolFundingRule poolFundingRuleCountPreloader
-	Pool            poolCountPreloader
-	ProductConcept  productConceptCountPreloader
-	ProductVariant  productVariantCountPreloader
-	PurchaseItem    purchaseItemCountPreloader
-	Purchase        purchaseCountPreloader
-	SettlementRun   settlementRunCountPreloader
-	SourceDocument  sourceDocumentCountPreloader
-	Transfer        transferCountPreloader
+	AccountingPeriod accountingPeriodCountPreloader
+	Account          accountCountPreloader
+	AllocationRule   allocationRuleCountPreloader
+	Category         categoryCountPreloader
+	Correction       correctionCountPreloader
+	FundingSchedule  fundingScheduleCountPreloader
+	HouseholdMember  householdMemberCountPreloader
+	Household        householdCountPreloader
+	Journal          journalCountPreloader
+	Member           memberCountPreloader
+	PoolFundingRule  poolFundingRuleCountPreloader
+	Pool             poolCountPreloader
+	ProductConcept   productConceptCountPreloader
+	ProductVariant   productVariantCountPreloader
+	PurchaseItem     purchaseItemCountPreloader
+	Purchase         purchaseCountPreloader
+	SettlementRun    settlementRunCountPreloader
+	SourceDocument   sourceDocumentCountPreloader
+	Transfer         transferCountPreloader
 }
 
 func getPreloadCount() preloadCounts {
 	return preloadCounts{
-		Account:         buildAccountCountPreloader(),
-		AllocationRule:  buildAllocationRuleCountPreloader(),
-		Category:        buildCategoryCountPreloader(),
-		FundingSchedule: buildFundingScheduleCountPreloader(),
-		HouseholdMember: buildHouseholdMemberCountPreloader(),
-		Household:       buildHouseholdCountPreloader(),
-		Journal:         buildJournalCountPreloader(),
-		Member:          buildMemberCountPreloader(),
-		PoolFundingRule: buildPoolFundingRuleCountPreloader(),
-		Pool:            buildPoolCountPreloader(),
-		ProductConcept:  buildProductConceptCountPreloader(),
-		ProductVariant:  buildProductVariantCountPreloader(),
-		PurchaseItem:    buildPurchaseItemCountPreloader(),
-		Purchase:        buildPurchaseCountPreloader(),
-		SettlementRun:   buildSettlementRunCountPreloader(),
-		SourceDocument:  buildSourceDocumentCountPreloader(),
-		Transfer:        buildTransferCountPreloader(),
+		AccountingPeriod: buildAccountingPeriodCountPreloader(),
+		Account:          buildAccountCountPreloader(),
+		AllocationRule:   buildAllocationRuleCountPreloader(),
+		Category:         buildCategoryCountPreloader(),
+		Correction:       buildCorrectionCountPreloader(),
+		FundingSchedule:  buildFundingScheduleCountPreloader(),
+		HouseholdMember:  buildHouseholdMemberCountPreloader(),
+		Household:        buildHouseholdCountPreloader(),
+		Journal:          buildJournalCountPreloader(),
+		Member:           buildMemberCountPreloader(),
+		PoolFundingRule:  buildPoolFundingRuleCountPreloader(),
+		Pool:             buildPoolCountPreloader(),
+		ProductConcept:   buildProductConceptCountPreloader(),
+		ProductVariant:   buildProductVariantCountPreloader(),
+		PurchaseItem:     buildPurchaseItemCountPreloader(),
+		Purchase:         buildPurchaseCountPreloader(),
+		SettlementRun:    buildSettlementRunCountPreloader(),
+		SourceDocument:   buildSourceDocumentCountPreloader(),
+		Transfer:         buildTransferCountPreloader(),
 	}
 }
 
 type thenLoadCounts[Q orm.Loadable] struct {
-	Account         accountCountThenLoader[Q]
-	AllocationRule  allocationRuleCountThenLoader[Q]
-	Category        categoryCountThenLoader[Q]
-	FundingSchedule fundingScheduleCountThenLoader[Q]
-	HouseholdMember householdMemberCountThenLoader[Q]
-	Household       householdCountThenLoader[Q]
-	Journal         journalCountThenLoader[Q]
-	Member          memberCountThenLoader[Q]
-	PoolFundingRule poolFundingRuleCountThenLoader[Q]
-	Pool            poolCountThenLoader[Q]
-	ProductConcept  productConceptCountThenLoader[Q]
-	ProductVariant  productVariantCountThenLoader[Q]
-	PurchaseItem    purchaseItemCountThenLoader[Q]
-	Purchase        purchaseCountThenLoader[Q]
-	SettlementRun   settlementRunCountThenLoader[Q]
-	SourceDocument  sourceDocumentCountThenLoader[Q]
-	Transfer        transferCountThenLoader[Q]
+	AccountingPeriod accountingPeriodCountThenLoader[Q]
+	Account          accountCountThenLoader[Q]
+	AllocationRule   allocationRuleCountThenLoader[Q]
+	Category         categoryCountThenLoader[Q]
+	Correction       correctionCountThenLoader[Q]
+	FundingSchedule  fundingScheduleCountThenLoader[Q]
+	HouseholdMember  householdMemberCountThenLoader[Q]
+	Household        householdCountThenLoader[Q]
+	Journal          journalCountThenLoader[Q]
+	Member           memberCountThenLoader[Q]
+	PoolFundingRule  poolFundingRuleCountThenLoader[Q]
+	Pool             poolCountThenLoader[Q]
+	ProductConcept   productConceptCountThenLoader[Q]
+	ProductVariant   productVariantCountThenLoader[Q]
+	PurchaseItem     purchaseItemCountThenLoader[Q]
+	Purchase         purchaseCountThenLoader[Q]
+	SettlementRun    settlementRunCountThenLoader[Q]
+	SourceDocument   sourceDocumentCountThenLoader[Q]
+	Transfer         transferCountThenLoader[Q]
 }
 
 func getThenLoadCount[Q orm.Loadable]() thenLoadCounts[Q] {
 	return thenLoadCounts[Q]{
-		Account:         buildAccountCountThenLoader[Q](),
-		AllocationRule:  buildAllocationRuleCountThenLoader[Q](),
-		Category:        buildCategoryCountThenLoader[Q](),
-		FundingSchedule: buildFundingScheduleCountThenLoader[Q](),
-		HouseholdMember: buildHouseholdMemberCountThenLoader[Q](),
-		Household:       buildHouseholdCountThenLoader[Q](),
-		Journal:         buildJournalCountThenLoader[Q](),
-		Member:          buildMemberCountThenLoader[Q](),
-		PoolFundingRule: buildPoolFundingRuleCountThenLoader[Q](),
-		Pool:            buildPoolCountThenLoader[Q](),
-		ProductConcept:  buildProductConceptCountThenLoader[Q](),
-		ProductVariant:  buildProductVariantCountThenLoader[Q](),
-		PurchaseItem:    buildPurchaseItemCountThenLoader[Q](),
-		Purchase:        buildPurchaseCountThenLoader[Q](),
-		SettlementRun:   buildSettlementRunCountThenLoader[Q](),
-		SourceDocument:  buildSourceDocumentCountThenLoader[Q](),
-		Transfer:        buildTransferCountThenLoader[Q](),
+		AccountingPeriod: buildAccountingPeriodCountThenLoader[Q](),
+		Account:          buildAccountCountThenLoader[Q](),
+		AllocationRule:   buildAllocationRuleCountThenLoader[Q](),
+		Category:         buildCategoryCountThenLoader[Q](),
+		Correction:       buildCorrectionCountThenLoader[Q](),
+		FundingSchedule:  buildFundingScheduleCountThenLoader[Q](),
+		HouseholdMember:  buildHouseholdMemberCountThenLoader[Q](),
+		Household:        buildHouseholdCountThenLoader[Q](),
+		Journal:          buildJournalCountThenLoader[Q](),
+		Member:           buildMemberCountThenLoader[Q](),
+		PoolFundingRule:  buildPoolFundingRuleCountThenLoader[Q](),
+		Pool:             buildPoolCountThenLoader[Q](),
+		ProductConcept:   buildProductConceptCountThenLoader[Q](),
+		ProductVariant:   buildProductVariantCountThenLoader[Q](),
+		PurchaseItem:     buildPurchaseItemCountThenLoader[Q](),
+		Purchase:         buildPurchaseCountThenLoader[Q](),
+		SettlementRun:    buildSettlementRunCountThenLoader[Q](),
+		SourceDocument:   buildSourceDocumentCountThenLoader[Q](),
+		Transfer:         buildTransferCountThenLoader[Q](),
 	}
 }
 

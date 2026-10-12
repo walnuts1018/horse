@@ -23,6 +23,7 @@ func Where[Q psql.Filterable]() struct {
 	AllocationRuleWeights allocationRuleWeightWhere[Q]
 	AllocationRules       allocationRuleWhere[Q]
 	Categories            categoryWhere[Q]
+	CorrectionPayments    correctionPaymentWhere[Q]
 	Corrections           correctionWhere[Q]
 	DocumentConfirmations documentConfirmationWhere[Q]
 	EvidenceLinks         evidenceLinkWhere[Q]
@@ -49,7 +50,9 @@ func Where[Q psql.Filterable]() struct {
 	ProductCorrections    productCorrectionWhere[Q]
 	ProductVariants       productVariantWhere[Q]
 	PurchaseItems         purchaseItemWhere[Q]
+	PurchasePayments      purchasePaymentWhere[Q]
 	Purchases             purchaseWhere[Q]
+	SettlementAdjustments settlementAdjustmentWhere[Q]
 	SettlementLines       settlementLineWhere[Q]
 	SettlementRuns        settlementRunWhere[Q]
 	SourceDocuments       sourceDocumentWhere[Q]
@@ -62,6 +65,7 @@ func Where[Q psql.Filterable]() struct {
 		AllocationRuleWeights allocationRuleWeightWhere[Q]
 		AllocationRules       allocationRuleWhere[Q]
 		Categories            categoryWhere[Q]
+		CorrectionPayments    correctionPaymentWhere[Q]
 		Corrections           correctionWhere[Q]
 		DocumentConfirmations documentConfirmationWhere[Q]
 		EvidenceLinks         evidenceLinkWhere[Q]
@@ -88,7 +92,9 @@ func Where[Q psql.Filterable]() struct {
 		ProductCorrections    productCorrectionWhere[Q]
 		ProductVariants       productVariantWhere[Q]
 		PurchaseItems         purchaseItemWhere[Q]
+		PurchasePayments      purchasePaymentWhere[Q]
 		Purchases             purchaseWhere[Q]
+		SettlementAdjustments settlementAdjustmentWhere[Q]
 		SettlementLines       settlementLineWhere[Q]
 		SettlementRuns        settlementRunWhere[Q]
 		SourceDocuments       sourceDocumentWhere[Q]
@@ -100,6 +106,7 @@ func Where[Q psql.Filterable]() struct {
 		AllocationRuleWeights: buildAllocationRuleWeightWhere[Q](AllocationRuleWeights.Columns),
 		AllocationRules:       buildAllocationRuleWhere[Q](AllocationRules.Columns),
 		Categories:            buildCategoryWhere[Q](Categories.Columns),
+		CorrectionPayments:    buildCorrectionPaymentWhere[Q](CorrectionPayments.Columns),
 		Corrections:           buildCorrectionWhere[Q](Corrections.Columns),
 		DocumentConfirmations: buildDocumentConfirmationWhere[Q](DocumentConfirmations.Columns),
 		EvidenceLinks:         buildEvidenceLinkWhere[Q](EvidenceLinks.Columns),
@@ -126,7 +133,9 @@ func Where[Q psql.Filterable]() struct {
 		ProductCorrections:    buildProductCorrectionWhere[Q](ProductCorrections.Columns),
 		ProductVariants:       buildProductVariantWhere[Q](ProductVariants.Columns),
 		PurchaseItems:         buildPurchaseItemWhere[Q](PurchaseItems.Columns),
+		PurchasePayments:      buildPurchasePaymentWhere[Q](PurchasePayments.Columns),
 		Purchases:             buildPurchaseWhere[Q](Purchases.Columns),
+		SettlementAdjustments: buildSettlementAdjustmentWhere[Q](SettlementAdjustments.Columns),
 		SettlementLines:       buildSettlementLineWhere[Q](SettlementLines.Columns),
 		SettlementRuns:        buildSettlementRunWhere[Q](SettlementRuns.Columns),
 		SourceDocuments:       buildSourceDocumentWhere[Q](SourceDocuments.Columns),

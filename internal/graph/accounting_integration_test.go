@@ -8,9 +8,15 @@ import (
 
 	"uuid"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/graph/model"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
@@ -18,7 +24,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	db, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
@@ -29,13 +35,15 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	}
 	memberA, memberB := uuid.NewV7().String(), uuid.NewV7().String()
 	for id, name := range map[string]string{memberA: "A", memberB: "B"} {
-		if _, err := db.Exec(ctx, `INSERT INTO members(id,oidc_subject,display_name) VALUES ($1,$2,$3)`, id, "integration:"+id, name); err != nil {
+		memberUUID, _ := gofrsuuid.FromString(id)
+		subject := "integration:" + id
+		if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &subject, DisplayName: &name}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	defer func() {
-		_, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, memberA)
-		_, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, memberB)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "integration:" + memberA, DisplayName: "A"})
 	apiResolver := &Resolver{DB: db}
@@ -45,8 +53,12 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatal(err)
 	}
 	householdID := household.ID
-	defer func() { _, _ = db.Exec(context.Background(), `DELETE FROM households WHERE id=$1`, householdID) }()
-	if _, err := db.Exec(ctx, `INSERT INTO household_members(household_id,member_id) VALUES ($1,$2)`, householdID, memberB); err != nil {
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
+	householdUUID, _ := gofrsuuid.FromString(householdID)
+	memberBUUID, _ := gofrsuuid.FromString(memberB)
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberBUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
 	poolA, err := resolver.CreatePool(ctx, model.CreatePoolInput{HouseholdID: householdID, Name: "A", Kind: model.PoolKindPersonal})
@@ -142,11 +154,13 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || len(suggestions) == 0 || suggestions[0].Variant.Name != canonicalName {
 		t.Fatalf("corrected canonical variant name was not searchable: suggestions=%#v error=%v", suggestions, err)
 	}
-	var correctionCount int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM product_corrections WHERE item_id=$1`, learnedItem.ID).Scan(&correctionCount); err != nil || correctionCount != 2 {
+	learnedItemUUID, _ := gofrsuuid.FromString(learnedItem.ID)
+	corrections, err := models.ProductCorrections.Query(sm.Where(models.ProductCorrections.Columns.ItemID.EQ(psql.Arg(learnedItemUUID)))).All(ctx, bobpgx.NewPool(db))
+	correctionCount := len(corrections)
+	if err != nil || correctionCount != 2 {
 		t.Fatalf("product correction learning was not recorded: count=%d error=%v", correctionCount, err)
 	}
-	if _, err := db.Exec(ctx, `DELETE FROM purchases WHERE id IN ($1,$2,$3)`, conceptPurchase.ID, variantPurchase.ID, correctedPurchase.ID); err != nil {
+	if _, err := models.Purchases.Delete(dm.Where(psql.Or(models.Purchases.Columns.ID.EQ(psql.Arg(conceptPurchase.ID)), models.Purchases.Columns.ID.EQ(psql.Arg(variantPurchase.ID)), models.Purchases.Columns.ID.EQ(psql.Arg(correctedPurchase.ID))))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
 	rules, err := apiResolver.Query().AllocationRules(ctx, householdID)
@@ -163,23 +177,37 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if purchase.Items[0].Allocations[0].AmountYen == nil || *purchase.Items[0].Allocations[0].AmountYen != 125 || purchase.Items[0].Allocations[1].AmountYen == nil || *purchase.Items[0].Allocations[1].AmountYen != 375 {
 		t.Fatalf("category rule should precede merchant and household defaults: %#v", purchase.Items[0].Allocations)
 	}
+	purchaseItemUUID, _ := gofrsuuid.FromString(purchase.Items[0].ID)
+	allocations, err := models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(purchaseItemUUID))), sm.OrderBy(models.ItemAllocations.Columns.PoolID)).All(ctx, bobpgx.NewPool(db))
 	var appliedRuleID *string
 	var appliedRuleRevision int64
-	if err := db.QueryRow(ctx, `SELECT rule_id::text, rule_version FROM item_allocations WHERE item_id=$1 ORDER BY pool_id LIMIT 1`, purchase.Items[0].ID).Scan(&appliedRuleID, &appliedRuleRevision); err != nil || appliedRuleID == nil || *appliedRuleID != categoryRule.ID || appliedRuleRevision != 1 {
+	if len(allocations) > 0 && allocations[0].RuleID.Valid {
+		ruleID := allocations[0].RuleID.V.String()
+		appliedRuleID = &ruleID
+		appliedRuleRevision = allocations[0].RuleVersion
+	}
+	if err != nil || len(allocations) == 0 || appliedRuleID == nil || *appliedRuleID != categoryRule.ID || appliedRuleRevision != 1 {
 		t.Fatalf("category rule snapshot metadata mismatch: id=%v revision=%d error=%v", appliedRuleID, appliedRuleRevision, err)
 	}
 	updatedCategoryRule, err := resolver.SetAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, CategoryID: &category.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 3}, {PoolID: poolB.ID, Weight: 2}}})
 	if err != nil || updatedCategoryRule.Revision != categoryRule.Revision+1 {
 		t.Fatalf("category rule revision did not advance: rule=%#v error=%v", updatedCategoryRule, err)
 	}
-	if err := db.QueryRow(ctx, `SELECT rule_id::text, rule_version FROM item_allocations WHERE item_id=$1 ORDER BY pool_id LIMIT 1`, purchase.Items[0].ID).Scan(&appliedRuleID, &appliedRuleRevision); err != nil || appliedRuleID == nil || *appliedRuleID != categoryRule.ID || appliedRuleRevision != 1 {
+	allocations, err = models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(purchaseItemUUID))), sm.OrderBy(models.ItemAllocations.Columns.PoolID)).All(ctx, bobpgx.NewPool(db))
+	appliedRuleID = nil
+	if len(allocations) > 0 && allocations[0].RuleID.Valid {
+		ruleID := allocations[0].RuleID.V.String()
+		appliedRuleID = &ruleID
+		appliedRuleRevision = allocations[0].RuleVersion
+	}
+	if err != nil || len(allocations) == 0 || appliedRuleID == nil || *appliedRuleID != categoryRule.ID || appliedRuleRevision != 1 {
 		t.Fatalf("changing a rule rewrote the stored snapshot metadata: id=%v revision=%d error=%v", appliedRuleID, appliedRuleRevision, err)
 	}
 	merchantOnlyPurchase, err := resolver.CreatePurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T12:01:00Z", Merchant: "Market", Items: []*model.PurchaseItemInput{{Name: "merchant rule item", AmountYen: 500}}})
 	if err != nil || merchantOnlyPurchase.Items[0].Allocations[0].AmountYen == nil || *merchantOnlyPurchase.Items[0].Allocations[0].AmountYen != 400 || merchantOnlyPurchase.Items[0].Allocations[1].AmountYen == nil || *merchantOnlyPurchase.Items[0].Allocations[1].AmountYen != 100 {
 		t.Fatalf("merchant rule should apply when no category rule matches: purchase=%#v error=%v", merchantOnlyPurchase, err)
 	}
-	if _, err := db.Exec(ctx, `DELETE FROM purchases WHERE id=$1`, merchantOnlyPurchase.ID); err != nil {
+	if _, err := models.Purchases.Delete(dm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(merchantOnlyPurchase.ID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
 	if purchase.Items[0].Allocations[0].AmountYen == nil || *purchase.Items[0].Allocations[0].AmountYen != 125 || purchase.Items[0].Allocations[1].AmountYen == nil || *purchase.Items[0].Allocations[1].AmountYen != 375 {
@@ -191,8 +219,10 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || updatedItem.AmountYen != 500 {
 		t.Fatalf("amount and allocation update failed: item=%#v error=%v", updatedItem, err)
 	}
-	var isOverride bool
-	if err := db.QueryRow(ctx, `SELECT allocation_override FROM purchase_items WHERE id=$1`, updatedItem.ID).Scan(&isOverride); err != nil || !isOverride {
+	updatedItemUUID, _ := gofrsuuid.FromString(updatedItem.ID)
+	purchaseItemRow, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(updatedItemUUID)))).One(ctx, bobpgx.NewPool(db))
+	isOverride := err == nil && purchaseItemRow.AllocationOverride
+	if err != nil || !isOverride {
 		t.Fatalf("explicit item weights were not marked as an override: value=%v error=%v", isOverride, err)
 	}
 	invalidAmount := model.Long(900)
@@ -201,9 +231,13 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err == nil {
 		t.Fatal("invalid allocation update should fail")
 	}
-	var persistedAmount int64
-	var allocationTotal int64
-	if err := db.QueryRow(ctx, `SELECT i.amount_yen, sum(a.amount_yen) FROM purchase_items i JOIN item_allocations a ON a.item_id=i.id WHERE i.id=$1 GROUP BY i.amount_yen`, updatedItem.ID).Scan(&persistedAmount, &allocationTotal); err != nil || persistedAmount != 500 || allocationTotal != 500 {
+	persistedItem, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(updatedItemUUID)))).One(ctx, bobpgx.NewPool(db))
+	persistedAmount, allocationTotal := persistedItem.AmountYen, int64(0)
+	allocationRows, allocationErr := models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(updatedItemUUID)))).All(ctx, bobpgx.NewPool(db))
+	for _, allocation := range allocationRows {
+		allocationTotal += allocation.AmountYen
+	}
+	if err != nil || allocationErr != nil || persistedAmount != 500 || allocationTotal != 500 {
 		t.Fatalf("failed update was not rolled back atomically: amount=%d allocated=%d error=%v", persistedAmount, allocationTotal, err)
 	}
 	merchant := "market changed"
@@ -223,7 +257,10 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("unexpected allocation snapshot: %#v", purchase.Items)
 	}
 	documentID := uuid.NewV7().String()
-	if _, err := db.Exec(ctx, `INSERT INTO source_documents(id,household_id,sha256,object_key,mime_type,source_kind,created_by) VALUES ($1,$2,$3,$4,'image/jpeg','receipt',$5)`, documentID, householdID, "hash-"+documentID, householdID+"/originals/"+documentID, memberA); err != nil {
+	documentUUID, _ := gofrsuuid.FromString(documentID)
+	memberAUUID, _ := gofrsuuid.FromString(memberA)
+	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, householdID+"/originals/"+documentID, "image/jpeg", "receipt"
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberAUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
 	fromSource := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &documentID, OccurredAt: "2026-04-20T12:00:00Z", Merchant: "source", Items: []*model.PurchaseItemInput{{Name: "milk", AmountYen: 250}}}
@@ -261,17 +298,19 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if _, err := resolver.PostPurchase(ctx, confirmed.ID, confirmed.Revision, uuid.NewV7().String()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `DELETE FROM document_confirmations WHERE source_document_id=$1 AND source_reference=$2`, documentID, rowReference); err != nil {
+	if _, err := models.DocumentConfirmations.Delete(dm.Where(psql.And(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)), models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(rowReference))))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `DELETE FROM evidence_links WHERE purchase_id=$1`, rowPurchase.ID); err != nil {
+	rowPurchaseUUID, _ := gofrsuuid.FromString(rowPurchase.ID)
+	if _, err := psql.Delete(dm.From(models.EvidenceLinks.NameExpr()), dm.Where(models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(rowPurchaseUUID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `DELETE FROM purchases WHERE id=$1`, rowPurchase.ID); err != nil {
+	if _, err := models.Purchases.Delete(dm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(rowPurchaseUUID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	var confirmedPurchases int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM purchases WHERE household_id=$1`, householdID).Scan(&confirmedPurchases); err != nil || confirmedPurchases != 2 {
+	confirmedRows, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, bobpgx.NewPool(db))
+	confirmedPurchases := len(confirmedRows)
+	if err != nil || confirmedPurchases != 2 {
 		t.Fatalf("source replay created a duplicate purchase: count=%d error=%v", confirmedPurchases, err)
 	}
 	if _, err := resolver.RecordFunding(ctx, model.RecordFundingInput{HouseholdID: householdID, MemberID: memberA, PoolID: poolA.ID, AmountYen: 6000, OccurredAt: "2026-04-15T10:00:00Z", IdempotencyKey: uuid.NewV7().String()}); err != nil {
@@ -298,35 +337,64 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || postedItem.CategoryID != nil {
 		t.Fatalf("explicit null category should clear the category: item=%#v error=%v", postedItem, err)
 	}
-	var categoryIsNull bool
-	var uncategorizedAllocationTotal int64
-	if err := db.QueryRow(ctx, `SELECT i.category_id IS NULL,sum(a.amount_yen) FROM purchase_items i JOIN item_allocations a ON a.item_id=i.id WHERE i.id=$1 GROUP BY i.category_id`, postedItem.ID).Scan(&categoryIsNull, &uncategorizedAllocationTotal); err != nil || !categoryIsNull || uncategorizedAllocationTotal != 700 {
+	postedItemUUID, _ := gofrsuuid.FromString(postedItem.ID)
+	postedItemRow, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(postedItemUUID)))).One(ctx, bobpgx.NewPool(db))
+	postedAllocationRows, allocationErr := models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(postedItemUUID)))).All(ctx, bobpgx.NewPool(db))
+	categoryIsNull, uncategorizedAllocationTotal := !postedItemRow.CategoryID.Valid, int64(0)
+	for _, allocation := range postedAllocationRows {
+		uncategorizedAllocationTotal += allocation.AmountYen
+	}
+	if err != nil || allocationErr != nil || !categoryIsNull || uncategorizedAllocationTotal != 700 {
 		t.Fatalf("category clearing changed the allocation total: categoryIsNull=%v allocated=%d error=%v", categoryIsNull, uncategorizedAllocationTotal, err)
 	}
 	postedItem, err = resolver.UpdatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: postedItem.ID, BaseRevision: postedItem.Revision, CategoryID: &category.ID, ChangedFields: []string{"categoryId"}})
 	if err != nil || postedItem.CategoryID == nil || *postedItem.CategoryID != category.ID {
 		t.Fatalf("category restoration should succeed after clearing: item=%#v error=%v", postedItem, err)
 	}
-	var ledgerDescription string
+	postedPurchaseUUID, _ := gofrsuuid.FromString(postedPurchase.ID)
+	ledgerRows, err := models.LedgerEntries.Query(sm.Where(models.LedgerEntries.Columns.SourcePurchaseID.EQ(psql.Arg(postedPurchaseUUID)))).All(ctx, bobpgx.NewPool(db))
+	var ledgerDescription, ledgerOccurredAt string
 	var ledgerAmount int64
-	var ledgerOccurredAt string
-	if err := db.QueryRow(ctx, `SELECT description,amount_yen,to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM ledger_entries WHERE source_purchase_id=$1`, postedPurchase.ID).Scan(&ledgerDescription, &ledgerAmount, &ledgerOccurredAt); err != nil || ledgerDescription != postedMerchant || ledgerAmount != 700 || ledgerOccurredAt != postedOccurredAt {
+	if len(ledgerRows) > 0 {
+		ledgerDescription, ledgerAmount, ledgerOccurredAt = ledgerRows[0].Description, ledgerRows[0].AmountYen, ledgerRows[0].OccurredAt.UTC().Format("2006-01-02T15:04:05Z")
+	}
+	if err != nil || len(ledgerRows) != 1 || ledgerDescription != postedMerchant || ledgerAmount != 700 || ledgerOccurredAt != postedOccurredAt {
 		t.Fatalf("posted purchase ledger was not updated atomically: description=%q amount=%d occurredAt=%q error=%v", ledgerDescription, ledgerAmount, ledgerOccurredAt, err)
 	}
+	journals, err := models.Journals.Query(sm.Where(models.Journals.Columns.SourceID.EQ(psql.Arg(postedPurchaseUUID)))).All(ctx, bobpgx.NewPool(db))
+	var journalEntries models.JournalEntrySlice
+	if len(journals) > 0 {
+		journalEntries, err = models.JournalEntries.Query(sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(journals[0].ID)))).All(ctx, bobpgx.NewPool(db))
+	}
 	var journalDebits, journalCredits int64
-	if err := db.QueryRow(ctx, `SELECT sum(debit_yen),sum(credit_yen) FROM journal_entries je JOIN journals j ON j.id=je.journal_id WHERE j.source_id=$1`, postedPurchase.ID).Scan(&journalDebits, &journalCredits); err != nil || journalDebits != 700 || journalCredits != 700 {
+	for _, entry := range journalEntries {
+		journalDebits += entry.DebitYen
+		journalCredits += entry.CreditYen
+	}
+	if err != nil || len(journals) != 1 || journalDebits != 700 || journalCredits != 700 {
 		t.Fatalf("posted purchase journal was not updated atomically: debit=%d credit=%d error=%v", journalDebits, journalCredits, err)
 	}
 	var journalAccountID string
-	if err := db.QueryRow(ctx, `SELECT je.account_id::text FROM journal_entries je JOIN journals j ON j.id=je.journal_id WHERE j.source_id=$1 AND je.credit_yen>0`, postedPurchase.ID).Scan(&journalAccountID); err != nil || journalAccountID != paymentAccount.ID {
+	for _, entry := range journalEntries {
+		if entry.CreditYen > 0 && entry.AccountID.Valid {
+			journalAccountID = entry.AccountID.V.String()
+			break
+		}
+	}
+	if err != nil || journalAccountID != paymentAccount.ID {
 		t.Fatalf("posted purchase payment account was not updated: account=%q error=%v", journalAccountID, err)
 	}
 	postedPurchase, err = resolver.UpdatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: postedPurchase.ID, BaseRevision: postedPurchase.Revision, Patch: &model.PurchasePatch{}, ChangedFields: []string{"paymentAccountId"}})
 	if err != nil || postedPurchase.PaymentAccountID != nil {
 		t.Fatalf("explicit null payment account should clear the account: purchase=%#v error=%v", postedPurchase, err)
 	}
-	var accountIsNull bool
-	if err := db.QueryRow(ctx, `SELECT account_id IS NULL FROM journal_entries je JOIN journals j ON j.id=je.journal_id WHERE j.source_id=$1 AND je.credit_yen>0`, postedPurchase.ID).Scan(&accountIsNull); err != nil || !accountIsNull {
+	journals, err = models.Journals.Query(sm.Where(models.Journals.Columns.SourceID.EQ(psql.Arg(postedPurchaseUUID)))).All(ctx, bobpgx.NewPool(db))
+	accountIsNull := false
+	if len(journals) > 0 {
+		journalEntries, err = models.JournalEntries.Query(sm.Where(psql.And(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(journals[0].ID)), models.JournalEntries.Columns.CreditYen.GT(psql.Arg(0))))).All(ctx, bobpgx.NewPool(db))
+		accountIsNull = len(journalEntries) > 0 && !journalEntries[0].AccountID.Valid
+	}
+	if err != nil || !accountIsNull {
 		t.Fatalf("cleared payment account remained in the posted journal: accountIsNull=%v error=%v", accountIsNull, err)
 	}
 	settlement, err := resolver.ClosePeriod(ctx, model.ClosePeriodInput{HouseholdID: householdID, Period: "2026-04", ExpectedRevision: 0})
@@ -374,13 +442,15 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 	}
 	memberA, memberB := uuid.NewV7().String(), uuid.NewV7().String()
 	for id, name := range map[string]string{memberA: "A", memberB: "B"} {
-		if _, err := db.Exec(ctx, `INSERT INTO members(id,oidc_subject,display_name) VALUES ($1,$2,$3)`, id, "settlement-integration:"+id, name); err != nil {
+		memberUUID, _ := gofrsuuid.FromString(id)
+		subject := "settlement-integration:" + id
+		if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &subject, DisplayName: &name}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	defer func() {
-		_, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, memberA)
-		_, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, memberB)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "settlement-integration:" + memberA, DisplayName: "A"})
 	apiResolver := &Resolver{DB: db}
@@ -389,8 +459,12 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = db.Exec(context.Background(), `DELETE FROM households WHERE id=$1`, household.ID) }()
-	if _, err := db.Exec(ctx, `INSERT INTO household_members(household_id,member_id) VALUES($1,$2)`, household.ID, memberB); err != nil {
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
+	householdUUID, _ := gofrsuuid.FromString(household.ID)
+	memberBUUID, _ := gofrsuuid.FromString(memberB)
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberBUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
 	personalA, err := mutation.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "A wallet", Kind: model.PoolKindPersonal})
@@ -458,6 +532,122 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 	}
 }
 
+func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := t.Context()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+	memberA, memberB := uuid.NewV7().String(), uuid.NewV7().String()
+	for id, name := range map[string]string{memberA: "Lender", memberB: "Borrower"} {
+		memberUUID, _ := gofrsuuid.FromString(id)
+		subject := "shared-repayment:" + id
+		if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &subject, DisplayName: &name}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
+	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "shared-repayment:" + memberA, DisplayName: "Lender"})
+	resolver := (&Resolver{DB: db}).Mutation()
+	household, err := resolver.CreateHousehold(ctx, model.CreateHouseholdInput{Name: "shared repayment"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
+	householdUUID, _ := gofrsuuid.FromString(household.ID)
+	memberBUUID, _ := gofrsuuid.FromString(memberB)
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberBUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	sharedPool, err := resolver.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Shared", Kind: model.PoolKindShared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.SetPoolFundingRule(ctx, model.SetPoolFundingRuleInput{
+		HouseholdID: household.ID, PoolID: sharedPool.ID,
+		FundingShares:    []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 50}, {MemberID: memberB, Weight: 50}},
+		SettlementPolicy: new(model.SharedPoolSettlementPolicyBalanceToStandard), ExpectedVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sharedAccount, err := resolver.CreateAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Shared account", Kind: model.AccountKindCard, PoolID: &sharedPool.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loan, err := resolver.RecordTransfer(ctx, model.RecordTransferInput{
+		HouseholdID: household.ID, FromMemberID: memberA, ToMemberID: memberB, Kind: model.TransferKindLoan,
+		AmountYen: 5000, OccurredAt: "2026-06-10T12:00:00Z", Description: "Loan", IdempotencyKey: uuid.NewV7().String(),
+	})
+	if err != nil || loan.TransferID == nil {
+		t.Fatalf("loan transfer failed: transfer=%#v error=%v", loan, err)
+	}
+	if _, err := resolver.RecordFunding(ctx, model.RecordFundingInput{
+		HouseholdID: household.ID, MemberID: memberB, PoolID: sharedPool.ID, AmountYen: 5000,
+		OccurredAt: "2026-06-12T12:00:00Z", IdempotencyKey: uuid.NewV7().String(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	repayment, err := resolver.RecordTransfer(ctx, model.RecordTransferInput{
+		HouseholdID: household.ID, FromMemberID: memberB, ToMemberID: memberA, Kind: model.TransferKindRepayment,
+		LoanID: loan.TransferID, PaymentAccountID: &sharedAccount.ID, AmountYen: 5000,
+		OccurredAt: "2026-06-11T12:00:00Z", Description: "Shared repayment", IdempotencyKey: uuid.NewV7().String(),
+	})
+	if err != nil || repayment.TransferID == nil {
+		t.Fatalf("shared-pool repayment failed: transfer=%#v error=%v", repayment, err)
+	}
+	loanBalances, err := (&Resolver{DB: db}).Query().LoanBalances(ctx, household.ID)
+	if err != nil || len(loanBalances) != 1 || loanBalances[0].LoanID != *loan.TransferID || loanBalances[0].BalanceYen != 0 || loanBalances[0].PrincipalYen != 5000 || loanBalances[0].RepaidYen != 5000 {
+		t.Fatalf("loan balance was not settled: balances=%#v error=%v", loanBalances, err)
+	}
+	settlement, err := (&Resolver{DB: db}).Query().Settlement(ctx, household.ID, "2026-06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(settlement.Lines) != 2 {
+		t.Fatalf("expected two member settlement lines: %#v", settlement.Lines)
+	}
+	linesByMember := settlementByMember(t, settlement.Lines)
+	borrowerLine := linesByMember[memberB]
+	if borrowerLine == nil || borrowerLine.MonthlyAdjustmentYen != 5000 || borrowerLine.PaidYen != 5000 || borrowerLine.AmountDueYen != 0 {
+		t.Fatalf("borrower funding should cover the shared repayment obligation: %#v", borrowerLine)
+	}
+	lenderLine := linesByMember[memberA]
+	if lenderLine == nil || lenderLine.MonthlyAdjustmentYen != 0 || lenderLine.AmountDueYen != 0 {
+		t.Fatalf("shared repayment should settle the lender adjustment: %#v", lenderLine)
+	}
+	repaymentUUID, _ := gofrsuuid.FromString(*repayment.TransferID)
+	journals, err := models.Journals.Query(sm.Where(models.Journals.Columns.SourceID.EQ(psql.Arg(repaymentUUID)))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(journals) != 1 {
+		t.Fatalf("repayment journal was not created: journals=%#v error=%v", journals, err)
+	}
+	entries, err := models.JournalEntries.Query(sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(journals[0].ID))), sm.OrderBy(models.JournalEntries.Columns.LineNo)).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(entries) != 4 {
+		t.Fatalf("repayment journal has unexpected entries: entries=%#v error=%v", entries, err)
+	}
+	sharedPoolUUID, _ := gofrsuuid.FromString(sharedPool.ID)
+	sharedAccountUUID, _ := gofrsuuid.FromString(sharedAccount.ID)
+	poolCredit, accountDebit := entries[2], entries[3]
+	if poolCredit.LineNo != 3 || poolCredit.DebitYen != 0 || poolCredit.CreditYen != 5000 || !poolCredit.PoolID.Valid || poolCredit.PoolID.V != sharedPoolUUID || poolCredit.AccountID.Valid {
+		t.Fatalf("repayment journal pool credit columns mismatch: %#v", poolCredit)
+	}
+	if accountDebit.LineNo != 4 || accountDebit.DebitYen != 5000 || accountDebit.CreditYen != 0 || !accountDebit.AccountID.Valid || accountDebit.AccountID.V != sharedAccountUUID || accountDebit.PoolID.Valid {
+		t.Fatalf("repayment journal account debit columns mismatch: %#v", accountDebit)
+	}
+}
+
 func settlementByMember(t *testing.T, lines []*model.SettlementLine) map[string]*model.SettlementLine {
 	t.Helper()
 	result := make(map[string]*model.SettlementLine, len(lines))
@@ -482,10 +672,14 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	memberID := uuid.NewV7().String()
-	if _, err := db.Exec(ctx, `INSERT INTO members(id,oidc_subject,display_name) VALUES($1,$2,'JST')`, memberID, "period-boundary:"+memberID); err != nil {
+	memberUUID, _ := gofrsuuid.FromString(memberID)
+	subject, displayName := "period-boundary:"+memberID, "JST"
+	if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &subject, DisplayName: &displayName}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, memberID) }()
+	defer func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: "period-boundary:" + memberID, DisplayName: "JST"})
 	apiResolver := &Resolver{DB: db}
 	mutation := apiResolver.Mutation()
@@ -493,7 +687,9 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = db.Exec(context.Background(), `DELETE FROM households WHERE id=$1`, household.ID) }()
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
 	pool, err := mutation.CreatePool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Personal", Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
@@ -535,20 +731,14 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 	if len(october.Lines) != 1 || october.Lines[0].ScheduledYen != 700 {
 		t.Fatalf("October schedule was missing at its Japan-time start: %#v", october.Lines)
 	}
-	var statuses []string
-	rows, err := db.Query(ctx, `SELECT status FROM purchases WHERE household_id=$1 ORDER BY occurred_at`, household.ID)
+	purchaseRows, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.HouseholdID.EQ(psql.Arg(household.ID))), sm.OrderBy(models.Purchases.Columns.OccurredAt)).All(ctx, bobpgx.NewPool(db))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for rows.Next() {
-		var status string
-		if err := rows.Scan(&status); err != nil {
-			rows.Close()
-			t.Fatal(err)
-		}
-		statuses = append(statuses, status)
+	statuses := make([]string, 0, len(purchaseRows))
+	for _, row := range purchaseRows {
+		statuses = append(statuses, row.Status)
 	}
-	rows.Close()
 	if len(statuses) != 2 || statuses[0] != "CLOSED" || statuses[1] != "POSTED" {
 		t.Fatalf("period close crossed the Japan-time boundary: %#v", statuses)
 	}

@@ -65,6 +65,7 @@ type memberR struct {
 	CreatedByPoolFundingRules      PoolFundingRuleSlice      // pool_funding_rules.pool_funding_rules_created_by_fkey
 	ActorProductCorrections        ProductCorrectionSlice    // product_corrections.product_corrections_actor_id_fkey
 	CreatedByPurchases             PurchaseSlice             // purchases.purchases_created_by_fkey
+	SettlementAdjustments          SettlementAdjustmentSlice // settlement_adjustments.settlement_adjustments_member_id_fkey
 	SettlementLines                SettlementLineSlice       // settlement_lines.settlement_lines_member_id_fkey
 	CreatedBySettlementRuns        SettlementRunSlice        // settlement_runs.settlement_runs_created_by_fkey
 	CreatedBySourceDocuments       SourceDocumentSlice       // source_documents.source_documents_created_by_fkey
@@ -94,6 +95,7 @@ type memberRLoaded struct {
 	CreatedByPoolFundingRules      bool // pool_funding_rules.pool_funding_rules_created_by_fkey
 	ActorProductCorrections        bool // product_corrections.product_corrections_actor_id_fkey
 	CreatedByPurchases             bool // purchases.purchases_created_by_fkey
+	SettlementAdjustments          bool // settlement_adjustments.settlement_adjustments_member_id_fkey
 	SettlementLines                bool // settlement_lines.settlement_lines_member_id_fkey
 	CreatedBySettlementRuns        bool // settlement_runs.settlement_runs_created_by_fkey
 	CreatedBySourceDocuments       bool // source_documents.source_documents_created_by_fkey
@@ -975,6 +977,29 @@ func (os MemberSlice) CreatedByPurchases(mods ...bob.Mod[*dialect.SelectQuery]) 
 
 	return Purchases.Query(append(mods,
 		sm.Where(Purchases.Columns.CreatedBy.EQ(PKArgExpr)),
+	)...)
+}
+
+// SettlementAdjustments starts a query for related objects on settlement_adjustments
+func (o *Member) SettlementAdjustments(mods ...bob.Mod[*dialect.SelectQuery]) SettlementAdjustmentsQuery {
+	return SettlementAdjustments.Query(append(mods,
+		sm.Where(SettlementAdjustments.Columns.MemberID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os MemberSlice) SettlementAdjustments(mods ...bob.Mod[*dialect.SelectQuery]) SettlementAdjustmentsQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return SettlementAdjustments.Query(append(mods,
+		sm.Where(SettlementAdjustments.Columns.MemberID.EQ(PKArgExpr)),
 	)...)
 }
 
@@ -2213,6 +2238,76 @@ func (member0 *Member) AttachCreatedByPurchases(ctx context.Context, exec bob.Ex
 	return nil
 }
 
+func insertMemberSettlementAdjustments0(ctx context.Context, exec bob.Executor, settlementAdjustments1 []*SettlementAdjustmentSetter, member0 *Member) (SettlementAdjustmentSlice, error) {
+	for i := range settlementAdjustments1 {
+		settlementAdjustments1[i].MemberID = func() *uuid.UUID { return &member0.ID }()
+	}
+
+	ret, err := SettlementAdjustments.Insert(bob.ToMods(settlementAdjustments1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertMemberSettlementAdjustments0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachMemberSettlementAdjustments0(ctx context.Context, exec bob.Executor, count int, settlementAdjustments1 SettlementAdjustmentSlice, member0 *Member) (SettlementAdjustmentSlice, error) {
+	setter := &SettlementAdjustmentSetter{
+		MemberID: func() *uuid.UUID { return &member0.ID }(),
+	}
+
+	err := settlementAdjustments1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachMemberSettlementAdjustments0: %w", err)
+	}
+
+	return settlementAdjustments1, nil
+}
+
+func (member0 *Member) InsertSettlementAdjustments(ctx context.Context, exec bob.Executor, related ...*SettlementAdjustmentSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	settlementAdjustments1, err := insertMemberSettlementAdjustments0(ctx, exec, related, member0)
+	if err != nil {
+		return err
+	}
+
+	member0.R.SettlementAdjustments = append(member0.R.SettlementAdjustments, settlementAdjustments1...)
+
+	for _, rel := range settlementAdjustments1 {
+		rel.R.Member = member0
+		rel.R.Loaded.Member = true
+	}
+	return nil
+}
+
+func (member0 *Member) AttachSettlementAdjustments(ctx context.Context, exec bob.Executor, related ...*SettlementAdjustment) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	settlementAdjustments1 := SettlementAdjustmentSlice(related)
+
+	_, err = attachMemberSettlementAdjustments0(ctx, exec, len(related), settlementAdjustments1, member0)
+	if err != nil {
+		return err
+	}
+
+	member0.R.SettlementAdjustments = append(member0.R.SettlementAdjustments, settlementAdjustments1...)
+
+	for _, rel := range related {
+		rel.R.Member = member0
+		rel.R.Loaded.Member = true
+	}
+
+	return nil
+}
+
 func insertMemberSettlementLines0(ctx context.Context, exec bob.Executor, settlementLines1 []*SettlementLineSetter, member0 *Member) (SettlementLineSlice, error) {
 	for i := range settlementLines1 {
 		settlementLines1[i].MemberID = func() *uuid.UUID { return &member0.ID }()
@@ -2818,6 +2913,20 @@ func (w memberWhereR[Q]) HasCreatedByPurchases(filters ...bob.Mod[*dialect.Selec
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasSettlementAdjustments filters parents that have a matching SettlementAdjustments using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to SettlementAdjustments).
+func (w memberWhereR[Q]) HasSettlementAdjustments(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(SettlementAdjustments.NameExpr()),
+		sm.Where(SettlementAdjustments.Columns.MemberID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasSettlementLines filters parents that have a matching SettlementLines using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -3234,6 +3343,22 @@ func (o *Member) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "SettlementAdjustments":
+		rels, ok := retrieved.(SettlementAdjustmentSlice)
+		if !ok {
+			return fmt.Errorf("member cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.SettlementAdjustments = rels
+		o.R.Loaded.SettlementAdjustments = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Member = o
+				rel.R.Loaded.Member = true
+			}
+		}
+		return nil
 	case "SettlementLines":
 		rels, ok := retrieved.(SettlementLineSlice)
 		if !ok {
@@ -3342,6 +3467,7 @@ type memberThenLoader[Q orm.Loadable] struct {
 	CreatedByPoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ActorProductCorrections        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByPurchases             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementAdjustments          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SettlementLines                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedBySettlementRuns        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedBySourceDocuments       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -3397,6 +3523,9 @@ func buildMemberThenLoader[Q orm.Loadable]() memberThenLoader[Q] {
 	}
 	type CreatedByPurchasesLoadInterface interface {
 		LoadCreatedByPurchases(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type SettlementAdjustmentsLoadInterface interface {
+		LoadSettlementAdjustments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type SettlementLinesLoadInterface interface {
 		LoadSettlementLines(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -3509,6 +3638,12 @@ func buildMemberThenLoader[Q orm.Loadable]() memberThenLoader[Q] {
 			"CreatedByPurchases",
 			func(ctx context.Context, exec bob.Executor, retrieved CreatedByPurchasesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCreatedByPurchases(ctx, exec, mods...)
+			},
+		),
+		SettlementAdjustments: thenLoadBuilder[Q](
+			"SettlementAdjustments",
+			func(ctx context.Context, exec bob.Executor, retrieved SettlementAdjustmentsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadSettlementAdjustments(ctx, exec, mods...)
 			},
 		),
 		SettlementLines: thenLoadBuilder[Q](
@@ -4748,6 +4883,80 @@ func (os MemberSlice) LoadCreatedByPurchases(ctx context.Context, exec bob.Execu
 	return nil
 }
 
+// LoadSettlementAdjustments loads the member's SettlementAdjustments into the .R struct
+func (o *Member) LoadSettlementAdjustments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.SettlementAdjustments = nil
+	o.R.Loaded.SettlementAdjustments = false
+
+	related, err := o.SettlementAdjustments(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Member = o
+		rel.R.Loaded.Member = true
+	}
+
+	o.R.SettlementAdjustments = related
+	o.R.Loaded.SettlementAdjustments = true
+	return nil
+}
+
+// LoadSettlementAdjustments loads the member's SettlementAdjustments into the .R struct
+func (os MemberSlice) LoadSettlementAdjustments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	settlementAdjustments, err := os.SettlementAdjustments(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.SettlementAdjustments = nil
+		o.R.Loaded.SettlementAdjustments = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	memberByKey := make(map[uuid.UUID][]*Member, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		memberByKey[o.ID] = append(memberByKey[o.ID], o)
+	}
+
+	for _, rel := range settlementAdjustments {
+
+		owners, ok := memberByKey[rel.MemberID]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			rel.R.Member = o
+			rel.R.Loaded.Member = true
+
+			o.R.SettlementAdjustments = append(o.R.SettlementAdjustments, rel)
+
+		}
+	}
+
+	return nil
+}
+
 // LoadSettlementLines loads the member's SettlementLines into the .R struct
 func (o *Member) LoadSettlementLines(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -5136,6 +5345,7 @@ type memberC struct {
 	CreatedByPoolFundingRules      *int64
 	ActorProductCorrections        *int64
 	CreatedByPurchases             *int64
+	SettlementAdjustments          *int64
 	SettlementLines                *int64
 	CreatedBySettlementRuns        *int64
 	CreatedBySourceDocuments       *int64
@@ -5182,6 +5392,8 @@ func (o *Member) PreloadCount(name string, count int64) error {
 		o.C.ActorProductCorrections = &count
 	case "CreatedByPurchases":
 		o.C.CreatedByPurchases = &count
+	case "SettlementAdjustments":
+		o.C.SettlementAdjustments = &count
 	case "SettlementLines":
 		o.C.SettlementLines = &count
 	case "CreatedBySettlementRuns":
@@ -5213,6 +5425,7 @@ type memberCountPreloader struct {
 	CreatedByPoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	ActorProductCorrections        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	CreatedByPurchases             func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	SettlementAdjustments          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	SettlementLines                func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	CreatedBySettlementRuns        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	CreatedBySourceDocuments       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
@@ -5494,6 +5707,23 @@ func buildMemberCountPreloader() memberCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		SettlementAdjustments: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Member]("SettlementAdjustments", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Members.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(SettlementAdjustments.NameAsExpr()),
+					sm.Where(psql.Quote(SettlementAdjustments.Alias(), "member_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		SettlementLines: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*Member]("SettlementLines", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -5599,6 +5829,7 @@ type memberCountThenLoader[Q orm.Loadable] struct {
 	CreatedByPoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ActorProductCorrections        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByPurchases             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementAdjustments          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SettlementLines                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedBySettlementRuns        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedBySourceDocuments       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -5654,6 +5885,9 @@ func buildMemberCountThenLoader[Q orm.Loadable]() memberCountThenLoader[Q] {
 	}
 	type CreatedByPurchasesCountInterface interface {
 		LoadCountCreatedByPurchases(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type SettlementAdjustmentsCountInterface interface {
+		LoadCountSettlementAdjustments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type SettlementLinesCountInterface interface {
 		LoadCountSettlementLines(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -5766,6 +6000,12 @@ func buildMemberCountThenLoader[Q orm.Loadable]() memberCountThenLoader[Q] {
 			"CreatedByPurchases",
 			func(ctx context.Context, exec bob.Executor, retrieved CreatedByPurchasesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountCreatedByPurchases(ctx, exec, mods...)
+			},
+		),
+		SettlementAdjustments: countThenLoadBuilder[Q](
+			"SettlementAdjustments",
+			func(ctx context.Context, exec bob.Executor, retrieved SettlementAdjustmentsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountSettlementAdjustments(ctx, exec, mods...)
 			},
 		),
 		SettlementLines: countThenLoadBuilder[Q](
@@ -7065,6 +7305,85 @@ func (os MemberSlice) LoadCountCreatedByPurchases(ctx context.Context, exec bob.
 	return nil
 }
 
+// LoadCountSettlementAdjustments loads the count of SettlementAdjustments into the C struct
+func (o *Member) LoadCountSettlementAdjustments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.SettlementAdjustments(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.SettlementAdjustments = &count
+	return nil
+}
+
+// LoadCountSettlementAdjustments loads the count of SettlementAdjustments for a slice in a single batch query
+func (os MemberSlice) LoadCountSettlementAdjustments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			SettlementAdjustments.Columns.MemberID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(SettlementAdjustments.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.Where(SettlementAdjustments.Columns.MemberID.EQ(PKArgExpr)),
+		// GROUP BY fk columns
+		sm.GroupBy(SettlementAdjustments.Columns.MemberID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Single-column FK: direct map lookup
+	countMap := make(map[uuid.UUID]int64, len(results))
+	for _, r := range results {
+		countMap[r.ID] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[o.ID]
+		o.C.SettlementAdjustments = &count
+	}
+
+	return nil
+}
+
 // LoadCountSettlementLines loads the count of SettlementLines into the C struct
 func (o *Member) LoadCountSettlementLines(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -7478,6 +7797,7 @@ type memberJoins[Q dialect.Joinable] struct {
 	CreatedByPoolFundingRules      modAs[Q, poolFundingRuleColumns]
 	ActorProductCorrections        modAs[Q, productCorrectionColumns]
 	CreatedByPurchases             modAs[Q, purchaseColumns]
+	SettlementAdjustments          modAs[Q, settlementAdjustmentColumns]
 	SettlementLines                modAs[Q, settlementLineColumns]
 	CreatedBySettlementRuns        modAs[Q, settlementRunColumns]
 	CreatedBySourceDocuments       modAs[Q, sourceDocumentColumns]
@@ -7710,6 +8030,20 @@ func buildMemberJoins[Q dialect.Joinable](cols memberColumns, typ string) member
 				{
 					mods = append(mods, dialect.Join[Q](typ, Purchases.NameExpr().As(to.Alias())).On(
 						to.CreatedBy.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		SettlementAdjustments: modAs[Q, settlementAdjustmentColumns]{
+			c: SettlementAdjustments.Columns,
+			f: func(to settlementAdjustmentColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, SettlementAdjustments.NameExpr().As(to.Alias())).On(
+						to.MemberID.EQ(cols.ID),
 					))
 				}
 

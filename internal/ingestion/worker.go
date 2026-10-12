@@ -2,15 +2,26 @@ package ingestion
 
 import (
 	"context"
+	"database/sql"
+	stdjson "encoding/json"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"time"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/stephenafamo/bob/dialect/psql/um"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -42,27 +53,89 @@ type job struct {
 	Version      int64
 }
 
+func postgresInt32(value int, field string) (int32, error) {
+	if value < math.MinInt32 || value > math.MaxInt32 {
+		return 0, fmt.Errorf("%s exceeds PostgreSQL integer range", field)
+	}
+	return int32(value), nil
+}
+
 // RunOneは期限切れの実行も引き継ぎ、attemptをフェンスとして遅延したWorkerの結果上書きを防ぐ。
 func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 	claimCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	var j job
-	err := w.DB.QueryRow(claimCtx, `WITH next AS (
-	 SELECT id FROM extraction_jobs WHERE ($1='' OR id::text=$1)
-	 AND ($2 OR EXISTS (SELECT 1 FROM source_documents enabled_doc WHERE enabled_doc.id=extraction_jobs.source_document_id AND enabled_doc.household_id=extraction_jobs.household_id AND enabled_doc.mime_type='text/csv' AND enabled_doc.source_kind IN ('card','bank')))
-	 AND failure_count<5 AND status='queued' AND available_at<=now()
-	 ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT 1
-	), claimed AS (
-	 UPDATE extraction_jobs SET status='running',attempt=attempt+1,updated_at=now(),error_code=NULL
-	 WHERE id IN (SELECT id FROM next) RETURNING *
-	)
-	SELECT j.id::text,j.household_id::text,j.source_document_id::text,d.object_key,d.mime_type,d.source_kind,j.request,j.result,j.attempt,j.failure_count,j.version
-	FROM claimed j JOIN source_documents d ON d.id=j.source_document_id AND d.household_id=j.household_id`, jobID, w.GeminiEnabled).Scan(&j.ID, &j.HouseholdID, &j.SourceID, &j.ObjectKey, &j.MIMEType, &j.SourceKind, &j.Request, &j.Previous, &j.Attempt, &j.FailureCount, &j.Version)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
+	tx, err := w.DB.Begin(claimCtx)
 	if err != nil {
+		return false, fmt.Errorf("begin extraction claim: %w", err)
+	}
+	executor := bobpgx.NewTx(tx, nil)
+	defer func() {
+		if err := tx.Rollback(claimCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("Rollback extraction claim failed")
+		}
+	}()
+	var candidate *models.ExtractionJob
+	var document *models.SourceDocument
+	skipped := make([]bob.Expression, 0)
+	for {
+		conditions := []bob.Expression{
+			models.ExtractionJobs.Columns.FailureCount.LT(psql.Arg(5)),
+			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("queued")),
+			models.ExtractionJobs.Columns.AvailableAt.LTE(psql.Arg(time.Now())),
+		}
+		if jobID != "" {
+			id, parseErr := gofrsuuid.FromString(jobID)
+			if parseErr != nil {
+				return false, fmt.Errorf("claim extraction job: %w", parseErr)
+			}
+			conditions = append(conditions, models.ExtractionJobs.Columns.ID.EQ(psql.Arg(id)))
+		}
+		if len(skipped) > 0 {
+			conditions = append(conditions, models.ExtractionJobs.Columns.ID.NotIn(skipped...))
+		}
+		candidate, err = models.ExtractionJobs.Query(
+			sm.Where(psql.And(conditions...)),
+			sm.OrderBy(models.ExtractionJobs.Columns.AvailableAt),
+			sm.OrderBy(models.ExtractionJobs.Columns.ID),
+			sm.ForUpdate().SkipLocked(), sm.Limit(1),
+		).One(claimCtx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		if err != nil {
+			return false, fmt.Errorf("claim extraction job: %w", err)
+		}
+		document, err = models.SourceDocuments.Query(sm.Where(psql.And(
+			models.SourceDocuments.Columns.ID.EQ(psql.Arg(candidate.SourceDocumentID)),
+			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(candidate.HouseholdID)),
+		))).One(claimCtx, executor)
+		if err != nil {
+			return false, fmt.Errorf("load extraction document: %w", err)
+		}
+		if w.GeminiEnabled || document.MimeType == "text/csv" && (document.SourceKind == "card" || document.SourceKind == "bank") {
+			break
+		}
+		skipped = append(skipped, psql.Arg(candidate.ID))
+	}
+	nextStatus := "running"
+	nextAttempt := candidate.Attempt + 1
+	updatedAt := time.Now().UTC()
+	noErrorCode := sql.Null[string]{}
+	if err := candidate.Update(claimCtx, executor, &models.ExtractionJobSetter{
+		Status: &nextStatus, Attempt: &nextAttempt, UpdatedAt: &updatedAt, ErrorCode: &noErrorCode,
+	}); err != nil {
 		return false, fmt.Errorf("claim extraction job: %w", err)
+	}
+	if err := tx.Commit(claimCtx); err != nil {
+		return false, fmt.Errorf("commit extraction claim: %w", err)
+	}
+	j := job{
+		ID: candidate.ID.String(), HouseholdID: candidate.HouseholdID.String(), SourceID: candidate.SourceDocumentID.String(),
+		ObjectKey: document.ObjectKey, MIMEType: document.MimeType, SourceKind: document.SourceKind,
+		Request: candidate.Request.Val, Attempt: int(candidate.Attempt), FailureCount: int(candidate.FailureCount), Version: int64(candidate.Version),
+	}
+	if candidate.Result.Valid {
+		j.Previous = candidate.Result.V.Val
 	}
 	ctx, span := otel.Tracer("horse/ingestion").Start(ctx, "extract.document")
 	defer span.End()
@@ -88,11 +161,59 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 		if marshalErr != nil {
 			return true, fmt.Errorf("encode failed extraction runs: %w", marshalErr)
 		}
-		if len(result.Runs) > 0 {
-			_, err = w.DB.Exec(finishCtx, `UPDATE extraction_jobs SET status=$3,error_code=$4,result=jsonb_set(COALESCE(result,'{}'::jsonb),'{runs}',COALESCE(result->'runs','[]'::jsonb) || $5::jsonb,true),failure_count=$6,available_at=now()+($7 * interval '1 second'),updated_at=now() WHERE id=$1 AND status='running' AND attempt=$2`, j.ID, j.Attempt, status, workerErrorCode(extractErr), string(payload), failureCount, retryDelay(extractErr, j.Attempt).Seconds())
-		} else {
-			_, err = w.DB.Exec(finishCtx, `UPDATE extraction_jobs SET status=$3,error_code=$4,failure_count=$5,available_at=now()+($6 * interval '1 second'),updated_at=now() WHERE id=$1 AND status='running' AND attempt=$2`, j.ID, j.Attempt, status, workerErrorCode(extractErr), failureCount, retryDelay(extractErr, j.Attempt).Seconds())
+		jobUUID, parseErr := gofrsuuid.FromString(j.ID)
+		if parseErr != nil {
+			return true, fmt.Errorf("record extraction failure: %w", parseErr)
 		}
+		attempt, err := postgresInt32(j.Attempt, "extraction attempt")
+		if err != nil {
+			return true, err
+		}
+		failureCountValue, err := postgresInt32(failureCount, "extraction failure count")
+		if err != nil {
+			return true, err
+		}
+		updatedStatus := status
+		code := sql.Null[string]{V: workerErrorCode(extractErr), Valid: true}
+		updatedAt := time.Now().UTC()
+		availableAt := updatedAt.Add(retryDelay(extractErr, j.Attempt))
+		setter := models.ExtractionJobSetter{
+			Status: &updatedStatus, ErrorCode: &code, FailureCount: &failureCountValue,
+			AvailableAt: &availableAt, UpdatedAt: &updatedAt,
+		}
+		if len(result.Runs) > 0 {
+			previous := make(map[string]stdjson.RawMessage)
+			if len(j.Previous) > 0 {
+				if err := stdjson.Unmarshal(j.Previous, &previous); err != nil {
+					previous = make(map[string]stdjson.RawMessage)
+				}
+			}
+			var existingRuns []stdjson.RawMessage
+			_ = stdjson.Unmarshal(previous["runs"], &existingRuns)
+			var newRuns []stdjson.RawMessage
+			if err := stdjson.Unmarshal(payload, &newRuns); err != nil {
+				return true, fmt.Errorf("decode failed extraction runs: %w", err)
+			}
+			existingRuns = append(existingRuns, newRuns...)
+			encodedRuns, err := stdjson.Marshal(existingRuns)
+			if err != nil {
+				return true, fmt.Errorf("encode failed extraction runs: %w", err)
+			}
+			previous["runs"] = encodedRuns
+			encodedResult, err := stdjson.Marshal(previous)
+			if err != nil {
+				return true, fmt.Errorf("encode failed extraction result: %w", err)
+			}
+			resultValue := sql.Null[types.JSON[stdjson.RawMessage]]{
+				V: types.JSON[stdjson.RawMessage]{Val: encodedResult}, Valid: true,
+			}
+			setter.Result = &resultValue
+		}
+		_, err = models.ExtractionJobs.Update(setter.UpdateMod(), um.Where(psql.And(
+			models.ExtractionJobs.Columns.ID.EQ(psql.Arg(jobUUID)),
+			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("running")),
+			models.ExtractionJobs.Columns.Attempt.EQ(psql.Arg(attempt)),
+		))).Exec(finishCtx, bobpgx.NewPool(w.DB))
 		if err != nil {
 			return true, fmt.Errorf("record extraction failure: %w", err)
 		}
@@ -103,30 +224,65 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 	if err != nil {
 		return true, fmt.Errorf("encode extraction result: %w", err)
 	}
-	tx, err := w.DB.Begin(finishCtx)
+	finishTx, err := w.DB.Begin(finishCtx)
 	if err != nil {
 		return true, fmt.Errorf("begin extraction completion: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(finishCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		if err := finishTx.Rollback(finishCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 			slog.Error("Rollback extraction completion failed")
 		}
 	}()
-	updated, err := tx.Exec(finishCtx, `UPDATE extraction_jobs SET status='succeeded',result=$3::jsonb,error_code=NULL,updated_at=now() WHERE id=$1 AND status='running' AND attempt=$2`, j.ID, j.Attempt, string(payload))
+	jobUUID, err := gofrsuuid.FromString(j.ID)
 	if err != nil {
 		return true, fmt.Errorf("save extraction result: %w", err)
 	}
-	if updated.RowsAffected() == 0 {
+	attempt, err := postgresInt32(j.Attempt, "extraction attempt")
+	if err != nil {
+		return true, err
+	}
+	status := "succeeded"
+	completionAt := time.Now().UTC()
+	completionErrorCode := sql.Null[string]{}
+	resultValue := sql.Null[types.JSON[stdjson.RawMessage]]{
+		V: types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(payload)}, Valid: true,
+	}
+	updated, err := models.ExtractionJobs.Update((&models.ExtractionJobSetter{
+		Status: &status, Result: &resultValue, ErrorCode: &completionErrorCode, UpdatedAt: &completionAt,
+	}).UpdateMod(), um.Where(psql.And(
+		models.ExtractionJobs.Columns.ID.EQ(psql.Arg(jobUUID)),
+		models.ExtractionJobs.Columns.Status.EQ(psql.Arg("running")),
+		models.ExtractionJobs.Columns.Attempt.EQ(psql.Arg(attempt)),
+	))).Exec(finishCtx, bobpgx.NewTx(finishTx, nil))
+	if err != nil {
+		return true, fmt.Errorf("save extraction result: %w", err)
+	}
+	if updated == 0 {
 		return true, nil
 	}
 	event, err := json.Marshal(map[string]any{"jobId": j.ID, "sourceDocumentId": j.SourceID, "status": "succeeded", "balanced": result.Balanced})
 	if err != nil {
 		return true, fmt.Errorf("encode extraction event: %w", err)
 	}
-	if _, err := tx.Exec(finishCtx, `INSERT INTO household_events(household_id,type,entity_id,revision,changed_fields,payload) VALUES($1,'receipt.extraction.updated',$2,$3,'["status","result"]'::jsonb,$4::jsonb)`, j.HouseholdID, j.SourceID, j.Version, string(event)); err != nil {
+	householdUUID, err := gofrsuuid.FromString(j.HouseholdID)
+	if err != nil {
 		return true, fmt.Errorf("record extraction event: %w", err)
 	}
-	if err := tx.Commit(finishCtx); err != nil {
+	sourceUUID, err := gofrsuuid.FromString(j.SourceID)
+	if err != nil {
+		return true, fmt.Errorf("record extraction event: %w", err)
+	}
+	eventType := "receipt.extraction.updated"
+	jVersion := int64(j.Version)
+	changedFields := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`["status","result"]`)}
+	eventPayload := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(event)}
+	if _, err := models.HouseholdEvents.Insert(&models.HouseholdEventSetter{
+		HouseholdID: &householdUUID, Type: &eventType, EntityID: &sourceUUID, Revision: &jVersion,
+		ChangedFields: &changedFields, Payload: &eventPayload,
+	}).Exec(finishCtx, bobpgx.NewTx(finishTx, nil)); err != nil {
+		return true, fmt.Errorf("record extraction event: %w", err)
+	}
+	if err := finishTx.Commit(finishCtx); err != nil {
 		return true, fmt.Errorf("commit extraction result: %w", err)
 	}
 	span.SetAttributes(attribute.Bool("extraction.balanced", result.Balanced), attribute.Int("extraction.issue_count", len(result.Issues)))
@@ -251,8 +407,44 @@ func betterVerification(candidate, current Verification) bool {
 }
 
 func (w *Worker) RecoverExhausted(ctx context.Context) error {
-	_, err := w.DB.Exec(ctx, `UPDATE extraction_jobs SET failure_count=failure_count+1,status=CASE WHEN failure_count+1>=5 THEN 'failed' ELSE 'queued' END,error_code=CASE WHEN failure_count+1>=5 THEN 'retry_exhausted' ELSE 'worker_interrupted' END,available_at=CASE WHEN failure_count+1>=5 THEN available_at ELSE now() END,updated_at=now() WHERE status='running' AND updated_at<now()-interval '35 minutes'`)
-	return err
+	cutoff := time.Now().Add(-35 * time.Minute)
+	tx, err := w.DB.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin stale extraction recovery: %w", err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			slog.Error("Rollback stale extraction recovery failed")
+		}
+	}()
+	executor := bobpgx.NewTx(tx, nil)
+	staleJobs, err := models.ExtractionJobs.Query(sm.Where(psql.And(
+		models.ExtractionJobs.Columns.Status.EQ(psql.Arg("running")),
+		models.ExtractionJobs.Columns.UpdatedAt.LT(psql.Arg(cutoff)),
+	)), sm.ForUpdate()).All(ctx, executor)
+	if err != nil {
+		return fmt.Errorf("load stale extraction jobs: %w", err)
+	}
+	now := time.Now().UTC()
+	for _, staleJob := range staleJobs {
+		failureCount := staleJob.FailureCount + 1
+		status, errorCode := "queued", "worker_interrupted"
+		availableAt := now
+		if failureCount >= 5 {
+			status, errorCode, availableAt = "failed", "retry_exhausted", staleJob.AvailableAt
+		}
+		failureCode := sql.Null[string]{V: errorCode, Valid: true}
+		if err := staleJob.Update(ctx, executor, &models.ExtractionJobSetter{
+			FailureCount: &failureCount, Status: &status, ErrorCode: &failureCode,
+			AvailableAt: &availableAt, UpdatedAt: &now,
+		}); err != nil {
+			return fmt.Errorf("recover stale extraction job: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit stale extraction recovery: %w", err)
+	}
+	return nil
 }
 
 func supportsProReview(mimeType string) bool {

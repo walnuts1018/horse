@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
+	stdjson "encoding/json"
 	"encoding/json/v2"
 	"io"
 	"log/slog"
@@ -13,11 +15,28 @@ import (
 	"testing"
 	"time"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/stephenafamo/bob/dialect/psql/um"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/ingestion"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 	"uuid"
 )
+
+func mustIntegrationUUID(t *testing.T, value string) gofrsuuid.UUID {
+	t.Helper()
+	parsed, err := gofrsuuid.FromString(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parsed
+}
 
 func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
@@ -34,29 +53,42 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	nonMemberID, ownerID, householdID, documentID := uuid.NewV7().String(), uuid.NewV7().String(), uuid.NewV7().String(), uuid.NewV7().String()
+	nonMemberUUID := mustIntegrationUUID(t, nonMemberID)
+	ownerUUID := mustIntegrationUUID(t, ownerID)
+	householdUUID := mustIntegrationUUID(t, householdID)
+	documentUUID := mustIntegrationUUID(t, documentID)
+	executor := bobpgx.NewPool(db)
 	for _, member := range []struct{ id, subject string }{{nonMemberID, "access-test:non-member"}, {ownerID, "access-test:owner"}} {
-		if _, err := db.Exec(ctx, `INSERT INTO members(id,oidc_subject,display_name) VALUES ($1,$2,$3)`, member.id, member.subject, member.subject); err != nil {
+		memberID := mustIntegrationUUID(t, member.id)
+		if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberID, OidcSubject: &member.subject, DisplayName: &member.subject}).Exec(ctx, executor); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO households(id,name) VALUES ($1,'access test')`, householdID); err != nil {
+	householdName := "access test"
+	if _, err := models.Households.Insert(&models.HouseholdSetter{ID: &householdUUID, Name: &householdName}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO household_members(household_id,member_id,role) VALUES ($1,$2,'OWNER')`, householdID, ownerID); err != nil {
+	role := "OWNER"
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &ownerUUID, Role: &role}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO source_documents(id,household_id,sha256,object_key,mime_type,source_kind,created_by) VALUES ($1,$2,$3,$4,'image/jpeg','receipt',$5)`, documentID, householdID, "access-test:"+documentID, householdID+"/originals/"+documentID, ownerID); err != nil {
+	documentHash := "access-test:" + documentID
+	objectKey := householdID + "/originals/" + documentID
+	mimeType, sourceKind := "image/jpeg", "receipt"
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &documentHash, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &ownerUUID}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
 	cookieValue := "integration-session-" + uuid.NewV7().String()
 	cookieHash := sha256.Sum256([]byte(cookieValue))
-	if _, err := db.Exec(ctx, `INSERT INTO oidc_sessions(token_hash,member_id,expiry) VALUES ($1,$2,now()+interval '10 minutes')`, cookieHash[:], nonMemberID); err != nil {
+	cookieHashBytes := cookieHash[:]
+	nonMemberExpiry := time.Now().Add(10 * time.Minute)
+	if _, err := models.OidcSessions.Insert(&models.OidcSessionSetter{TokenHash: &cookieHashBytes, MemberID: &nonMemberUUID, Expiry: &nonMemberExpiry}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = db.Exec(context.Background(), `DELETE FROM households WHERE id=$1`, householdID)
-		_, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, nonMemberID)
-		_, _ = db.Exec(context.Background(), `DELETE FROM members WHERE id=$1`, ownerID)
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), executor)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(nonMemberUUID)))).Exec(context.Background(), executor)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(ownerUUID)))).Exec(context.Background(), executor)
 	}()
 
 	var issuerURL string
@@ -102,10 +134,17 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 
 	purchaseID, itemID, jobID := uuid.NewV7().String(), uuid.NewV7().String(), uuid.NewV7().String()
-	if _, err := db.Exec(ctx, `INSERT INTO purchases(id,household_id,occurred_at,allocation_rule_version,created_by) VALUES ($1,$2,$3,1,$4)`, purchaseID, householdID, time.Now(), ownerID); err != nil {
+	purchaseUUID := mustIntegrationUUID(t, purchaseID)
+	itemUUID := mustIntegrationUUID(t, itemID)
+	jobUUID := mustIntegrationUUID(t, jobID)
+	occurredAt := time.Now()
+	ruleVersion := int64(1)
+	if _, err := models.Purchases.Insert(&models.PurchaseSetter{ID: &purchaseUUID, HouseholdID: &householdUUID, OccurredAt: &occurredAt, AllocationRuleVersion: &ruleVersion, CreatedBy: &ownerUUID}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO purchase_items(id,household_id,purchase_id,name,amount_yen) VALUES ($1,$2,$3,'test item',0)`, itemID, householdID, purchaseID); err != nil {
+	itemName := "test item"
+	itemAmount := int64(0)
+	if _, err := models.PurchaseItems.Insert(&models.PurchaseItemSetter{ID: &itemUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, Name: &itemName, AmountYen: &itemAmount}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
 	verification := ingestion.Verification{Receipt: ingestion.Receipt{Items: []ingestion.Item{{PrintedName: "printed item", Name: "test item", Region: &ingestion.Region{Top: 0.1, Left: 0.2, Bottom: 0.3, Right: 0.8}}}}}
@@ -113,7 +152,9 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO extraction_jobs(id,household_id,source_document_id,status,result) VALUES ($1,$2,$3,'succeeded',$4::jsonb)`, jobID, householdID, documentID, string(payload)); err != nil {
+	jobStatus := "succeeded"
+	jobResult := sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: payload}, Valid: true}
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &jobUUID, HouseholdID: &householdUUID, SourceDocumentID: &documentUUID, Status: &jobStatus, Result: &jobResult}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/documents/" + documentID + "/matches", "/documents?householdId=" + householdID} {
@@ -135,7 +176,9 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 
 	ownerCookie := "integration-owner-" + uuid.NewV7().String()
 	ownerHash := sha256.Sum256([]byte(ownerCookie))
-	if _, err := db.Exec(ctx, `INSERT INTO oidc_sessions(token_hash,member_id,expiry) VALUES ($1,$2,now()+interval '10 minutes')`, ownerHash[:], ownerID); err != nil {
+	ownerHashBytes := ownerHash[:]
+	ownerExpiry := time.Now().Add(10 * time.Minute)
+	if _, err := models.OidcSessions.Insert(&models.OidcSessionSetter{TokenHash: &ownerHashBytes, MemberID: &ownerUUID, Expiry: &ownerExpiry}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
 	confirm := func(index int) *httptest.ResponseRecorder {
@@ -154,15 +197,16 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if response := confirm(1); response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid observation index accepted: %d %s", response.Code, response.Body.String())
 	}
-	var confirmations int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM document_confirmations WHERE source_document_id=$1`, documentID).Scan(&confirmations); err != nil || confirmations != 0 {
-		t.Fatalf("invalid evidence confirmation persisted: %d %v", confirmations, err)
+	confirmations, err := models.DocumentConfirmations.Query(sm.Where(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)))).All(ctx, executor)
+	if err != nil || len(confirmations) != 0 {
+		t.Fatalf("invalid evidence confirmation persisted: %d %v", len(confirmations), err)
 	}
 	if response := confirm(0); response.Code != http.StatusOK {
 		t.Fatalf("evidence link failed: %d %s", response.Code, response.Body.String())
 	}
 	// 解析結果の更新後も、確認した観測と原本座標は証拠に保存された状態を保つ。
-	if _, err := db.Exec(ctx, `UPDATE extraction_jobs SET result='{}'::jsonb WHERE id=$1`, jobID); err != nil {
+	emptyResult := sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`{}`)}, Valid: true}
+	if _, err := models.ExtractionJobs.Update((models.ExtractionJobSetter{Result: &emptyResult}).UpdateMod(), um.Where(models.ExtractionJobs.Columns.ID.EQ(psql.Arg(jobUUID)))).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
 	evidenceRequest = httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseID+"/evidence", nil)
