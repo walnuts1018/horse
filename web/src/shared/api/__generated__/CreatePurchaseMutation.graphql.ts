@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<99be9d39706b25b4f530672c698ab718>>
+ * @generated SignedSource<<4459dbd2f413d6ba3c4b8aa7d09a1dbe>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN" | "%future added value";
 export type PurchaseStatus = "CLOSED" | "DRAFT" | "POSTED" | "%future added value";
 export type CreatePurchaseInput = {
   householdId: string;
@@ -15,6 +16,7 @@ export type CreatePurchaseInput = {
   items: ReadonlyArray<PurchaseItemInput>;
   merchant: string;
   occurredAt: string;
+  origin?: PurchaseOrigin | null | undefined;
   paymentAccountId?: string | null | undefined;
   paymentAllocations?: ReadonlyArray<PurchasePaymentInput> | null | undefined;
   sourceDocumentId?: string | null | undefined;

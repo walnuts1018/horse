@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   budgetsQuery,
   monthlyCategorySpendingQuery,
+  monthlyMemberSpendingQuery,
   recurringExpensesQuery,
   readGraphql,
   type Household,
@@ -41,26 +42,25 @@ const nextMonth = (month: string) => {
 };
 
 type Dimension = "category" | "merchant" | "item" | "pool" | "account" | "member";
+type PurchaseDimension = Exclude<Dimension, "category" | "member">;
 type AnalyticsRow = { id: string; name: string; amount: number; count: number };
 type MonthlyEntry = { month: string; id: string; amount: number };
 
 function purchaseDimensions(purchases: Purchase[], household: Household) {
-  const rows: Record<Exclude<Dimension, "category">, Map<string, AnalyticsRow>> = {
+  const rows: Record<PurchaseDimension, Map<string, AnalyticsRow>> = {
     merchant: new Map(),
     item: new Map(),
     pool: new Map(),
     account: new Map(),
-    member: new Map(),
   };
-  const monthly: Record<Exclude<Dimension, "category">, MonthlyEntry[]> = {
+  const monthly: Record<PurchaseDimension, MonthlyEntry[]> = {
     merchant: [],
     item: [],
     pool: [],
     account: [],
-    member: [],
   };
   const add = (
-    dimension: Exclude<Dimension, "category">,
+    dimension: PurchaseDimension,
     id: string,
     name: string,
     amount: number,
@@ -71,28 +71,6 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
     row.count += 1;
     rows[dimension].set(id, row);
     monthly[dimension].push({ month, id, amount });
-  };
-  const addMemberAmount = (poolId: string, amount: number, month: string) => {
-    const pool = household.pools.find((candidate) => candidate.id === poolId);
-    if (pool?.kind === "PERSONAL" && pool.ownerMemberId) {
-      const member = household.members.find((candidate) => candidate.id === pool.ownerMemberId);
-      add("member", pool.ownerMemberId, member?.displayName ?? "メンバー", amount, month);
-      return;
-    }
-    if (pool?.kind === "SHARED" && pool.fundingShares.length > 0) {
-      const weightTotal = sum(pool.fundingShares.map((share) => share.weight));
-      let distributed = 0;
-      pool.fundingShares.forEach((share, index) => {
-        const memberAmount =
-          index === pool.fundingShares.length - 1
-            ? amount - distributed
-            : Math.round((amount * share.weight) / Math.max(1, weightTotal));
-        distributed += memberAmount;
-        add("member", share.memberId, share.memberName, memberAmount, month);
-      });
-      return;
-    }
-    add("member", "__unassigned", "配賦未設定", amount, month);
   };
   for (const purchase of purchases) {
     if (purchase.status !== "POSTED" && purchase.status !== "CLOSED") continue;
@@ -106,9 +84,6 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
     );
     for (const item of purchase.items) {
       add("item", item.productVariantId ?? item.name, item.name, item.amountYen, month);
-      if (item.allocations.length === 0) {
-        add("member", "__unassigned", "配賦未設定", item.amountYen, month);
-      }
       for (const allocation of item.allocations) {
         const pool = household.pools.find((candidate) => candidate.id === allocation.poolId);
         const amount =
@@ -124,27 +99,7 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
           amount,
           month,
         );
-        addMemberAmount(allocation.poolId, amount, month);
       }
-    }
-    const itemsById = new Map(purchase.items.map((item) => [item.id, item]));
-    for (const correction of purchase.corrections ?? []) {
-      if (!correction.itemId) continue;
-      const item = itemsById.get(correction.itemId);
-      if (!item) continue;
-      const allocations = item.allocations;
-      const weightTotal = sum(allocations.map((allocation) => allocation.weight));
-      let distributed = 0;
-      allocations.forEach((allocation, index) => {
-        const amount =
-          index === allocations.length - 1
-            ? correction.amountDeltaYen - distributed
-            : Math.round(
-                (correction.amountDeltaYen * allocation.weight) / Math.max(1, weightTotal),
-              );
-        distributed += amount;
-        addMemberAmount(allocation.poolId, amount, month);
-      });
     }
     const payments = purchase.paymentAllocations?.length
       ? purchase.paymentAllocations
@@ -192,6 +147,12 @@ export function AnalysisPage({ household }: { household: Household }) {
   >([]);
   const [spendingLoading, setSpendingLoading] = useState(true);
   const [spendingError, setSpendingError] = useState("");
+  const [memberSpending, setMemberSpending] = useState<
+    Array<{ period: string; memberId: string; memberName: string; amountYen: number }>
+  >([]);
+  const [hasUnattributedPurchases, setHasUnattributedPurchases] = useState(false);
+  const [memberSpendingLoading, setMemberSpendingLoading] = useState(false);
+  const [memberSpendingError, setMemberSpendingError] = useState("");
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [budgetError, setBudgetError] = useState("");
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
@@ -212,6 +173,42 @@ export function AnalysisPage({ household }: { household: Household }) {
       active = false;
     };
   }, [household.id, months[0], finalMonth]);
+  useEffect(() => {
+    if (dimension !== "member") {
+      setMemberSpendingLoading(false);
+      setMemberSpendingError("");
+      return;
+    }
+    let active = true;
+    setMemberSpendingLoading(true);
+    setMemberSpendingError("");
+    setHasUnattributedPurchases(false);
+    void readGraphql<{
+      monthlyMemberSpending: {
+        items: Array<{
+          period: string;
+          memberId: string;
+          memberName: string;
+          amountYen: number;
+        }>;
+        hasUnattributedPurchases: boolean;
+      };
+    }>(monthlyMemberSpendingQuery, {
+      householdId: household.id,
+      from: months[0],
+      to: finalMonth,
+    })
+      .then((result) => {
+        if (!active) return;
+        setMemberSpending(result.monthlyMemberSpending.items);
+        setHasUnattributedPurchases(result.monthlyMemberSpending.hasUnattributedPurchases);
+      })
+      .catch((reason) => active && setMemberSpendingError((reason as Error).message))
+      .finally(() => active && setMemberSpendingLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [dimension, household.id, months[0], finalMonth]);
   useEffect(() => {
     let active = true;
     setBudgetError("");
@@ -256,19 +253,45 @@ export function AnalysisPage({ household }: { household: Household }) {
       }, new Map<string, AnalyticsRow>())
       .values(),
   ).sort((a, b) => b.amount - a.amount);
+  const members = Array.from(
+    memberSpending
+      .reduce((totals, entry) => {
+        const current = totals.get(entry.memberId) ?? {
+          id: entry.memberId,
+          name: entry.memberName,
+          amount: 0,
+          count: 0,
+        };
+        current.amount += entry.amountYen;
+        current.count += 1;
+        totals.set(entry.memberId, current);
+        return totals;
+      }, new Map<string, AnalyticsRow>())
+      .values(),
+  );
   const selectedRows =
-    dimension === "category" ? categories : Array.from(data.rows[dimension].values());
+    dimension === "category"
+      ? categories
+      : dimension === "member"
+        ? members
+        : Array.from(data.rows[dimension].values());
   const rows = selectedRows.sort((a, b) => b.amount - a.amount).slice(0, 8);
   const monthly = months.map((month) => ({
     month,
     amount:
       dimension === "category"
         ? sum(spending.filter((entry) => entry.period === month).map((entry) => entry.amountYen))
-        : sum(
-            data.monthly[dimension]
-              .filter((entry) => entry.month === month)
-              .map((entry) => entry.amount),
-          ),
+        : dimension === "member"
+          ? sum(
+              memberSpending
+                .filter((entry) => entry.period === month)
+                .map((entry) => entry.amountYen),
+            )
+          : sum(
+              data.monthly[dimension]
+                .filter((entry) => entry.month === month)
+                .map((entry) => entry.amount),
+            ),
   }));
   const total = sum(monthly.map((row) => row.amount));
   const displayedPeriodCount = months.length;
@@ -282,8 +305,10 @@ export function AnalysisPage({ household }: { household: Household }) {
     account: "決済元",
     member: "メンバー負担",
   };
-  const isLoading = loading || loadingMore || spendingLoading;
-  const loadError = error || moreError || spendingError || budgetError || recurringError;
+  const isLoading =
+    loading || loadingMore || spendingLoading || (dimension === "member" && memberSpendingLoading);
+  const loadError =
+    error || moreError || spendingError || budgetError || recurringError || memberSpendingError;
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
@@ -447,7 +472,12 @@ export function AnalysisPage({ household }: { household: Household }) {
             <div>
               <span className="eyebrow">月別推移</span>
               <h2>{labels[dimension]}の支出</h2>
-              {dimension === "member" && <small>共用分は現在の負担比率で按分</small>}
+              {dimension === "member" && (
+                <small>
+                  購入時の負担スナップショット
+                  {hasUnattributedPurchases && " · 履歴不明の購入を含みません"}
+                </small>
+              )}
             </div>
             <span className="chart-legend">
               <i />

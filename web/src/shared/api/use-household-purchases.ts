@@ -6,7 +6,13 @@ type PurchasePage = Connection<Purchase>;
 export function useHouseholdPurchases(
   householdId: string,
   first = 100,
-  options: { from?: string; to?: string; loadAll?: boolean } = {},
+  options: {
+    from?: string;
+    to?: string;
+    origin?: Purchase["origin"];
+    hasEvidence?: boolean;
+    loadAll?: boolean;
+  } = {},
 ) {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +29,7 @@ export function useHouseholdPurchases(
   const pageSetKey = useRef("");
 
   const refresh = useCallback(async () => {
-    const key = `${householdId}:${first}:${options.from ?? ""}:${options.to ?? ""}`;
+    const key = `${householdId}:${first}:${options.from ?? ""}:${options.to ?? ""}:${options.origin ?? ""}:${options.hasEvidence ?? ""}`;
     const pagesToRestore = pageSetKey.current === key ? loadedPages.current : 1;
     pageSetKey.current = key;
     const currentGeneration = ++generation.current;
@@ -46,6 +52,8 @@ export function useHouseholdPurchases(
           after,
           from: options.from,
           to: options.to,
+          origin: options.origin,
+          hasEvidence: options.hasEvidence,
         });
         if (generation.current !== currentGeneration) return;
         const page: PurchasePage = result.purchases;
@@ -78,7 +86,7 @@ export function useHouseholdPurchases(
         setLoadingMore(false);
       }
     }
-  }, [householdId, first, options.from, options.to]);
+  }, [householdId, first, options.from, options.to, options.origin, options.hasEvidence]);
 
   const loadMore = useCallback(async () => {
     if (!cursor.current || requestInProgress.current || !hasNextPage) return;
@@ -94,6 +102,8 @@ export function useHouseholdPurchases(
         after,
         from: options.from,
         to: options.to,
+        origin: options.origin,
+        hasEvidence: options.hasEvidence,
       });
       if (generation.current !== currentGeneration) return;
       const page = result.purchases;
@@ -119,7 +129,15 @@ export function useHouseholdPurchases(
         setLoadingMore(false);
       }
     }
-  }, [first, hasNextPage, householdId, options.from, options.to]);
+  }, [
+    first,
+    hasNextPage,
+    householdId,
+    options.from,
+    options.to,
+    options.origin,
+    options.hasEvidence,
+  ]);
 
   useEffect(() => {
     void refresh();

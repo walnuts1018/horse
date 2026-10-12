@@ -115,6 +115,9 @@ export type Purchase = {
   householdId: string;
   occurredAt: string;
   merchant: string;
+  origin: "AI" | "MANUAL" | "UNKNOWN";
+  hasEvidence: boolean;
+  sourceKinds: string[];
   paymentAccountId?: string | null;
   paymentAccount?: Account | null;
   paymentAllocations?: PurchasePayment[];
@@ -131,6 +134,7 @@ export type CreatePurchaseInput = {
   householdId: string;
   occurredAt: string;
   merchant: string;
+  origin?: "AI" | "MANUAL" | "UNKNOWN";
   paymentAccountId: string | null;
   paymentAllocations?: PurchasePaymentInput[];
   items: Array<{
@@ -143,6 +147,21 @@ export type CreatePurchaseInput = {
 };
 export type PurchasePaymentInput = { paymentAccountId: string; amountYen: number };
 export type PurchasePayment = PurchasePaymentInput & { account?: Account | null };
+export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN";
+export type SourceKind = "RECEIPT" | "ORDER" | "EMAIL" | "CARD" | "BANK";
+export type UnmatchedObservationState = "UNMATCHED" | "CONFIRMED";
+export type UnmatchedObservation = {
+  documentId: string;
+  sourceReference: string;
+  purchaseId?: string | null;
+  sourceKind: SourceKind;
+  state: UnmatchedObservationState;
+  merchant: string;
+  occurredAt?: string | null;
+  amountYen: number;
+  orderId: string;
+  transactionId: string;
+};
 export type PurchaseCorrection = {
   id: string;
   itemId?: string | null;
@@ -425,8 +444,24 @@ export const householdsQuery = graphql`
 `;
 
 export const purchasesQuery = graphql`
-  query PurchasesQuery($householdId: ID!, $from: String, $to: String, $after: String, $first: Int) {
-    purchases(householdId: $householdId, from: $from, to: $to, after: $after, first: $first) {
+  query PurchasesQuery(
+    $householdId: ID!
+    $from: String
+    $to: String
+    $origin: PurchaseOrigin
+    $hasEvidence: Boolean
+    $after: String
+    $first: Int
+  ) {
+    purchases(
+      householdId: $householdId
+      from: $from
+      to: $to
+      origin: $origin
+      hasEvidence: $hasEvidence
+      after: $after
+      first: $first
+    ) {
       edges {
         cursor
         node {
@@ -434,6 +469,9 @@ export const purchasesQuery = graphql`
           householdId
           occurredAt
           merchant
+          origin
+          hasEvidence
+          sourceKinds
           paymentAccountId
           paymentAccount {
             id
@@ -502,6 +540,49 @@ export const purchasesQuery = graphql`
   }
 `;
 
+export const unmatchedObservationsQuery = graphql`
+  query UnmatchedObservationsQuery(
+    $householdId: ID!
+    $from: String
+    $to: String
+    $sourceKind: SourceKind
+    $state: UnmatchedObservationState
+    $after: String
+    $first: Int
+  ) {
+    unmatchedObservations(
+      householdId: $householdId
+      from: $from
+      to: $to
+      sourceKind: $sourceKind
+      state: $state
+      after: $after
+      first: $first
+    ) {
+      edges {
+        cursor
+        node {
+          documentId
+          sourceReference
+          purchaseId
+          sourceKind
+          state
+          merchant
+          occurredAt
+          amountYen
+          orderId
+          transactionId
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      totalCount
+    }
+  }
+`;
+
 export const settlementQuery = graphql`
   query SettlementQuery($householdId: ID!, $period: String!) {
     settlement(householdId: $householdId, period: $period) {
@@ -529,6 +610,20 @@ export const monthlyCategorySpendingQuery = graphql`
       categoryId
       categoryName
       amountYen
+    }
+  }
+`;
+
+export const monthlyMemberSpendingQuery = graphql`
+  query MonthlyMemberSpendingQuery($householdId: ID!, $from: String!, $to: String!) {
+    monthlyMemberSpending(householdId: $householdId, from: $from, to: $to) {
+      items {
+        period
+        memberId
+        memberName
+        amountYen
+      }
+      hasUnattributedPurchases
     }
   }
 `;

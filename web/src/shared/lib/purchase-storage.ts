@@ -101,10 +101,13 @@ function migrateOutbox(value: unknown, key: IDBValidKey): PurchaseOutboxEntry | 
 }
 
 function normalizePurchaseInput(input: CreatePurchaseInput): CreatePurchaseInput {
-  if (input.paymentAllocations?.length && input.paymentAccountId) {
-    return { ...input, paymentAccountId: null };
-  }
-  return input;
+  return {
+    ...input,
+    origin: input.origin ?? "MANUAL",
+    ...(input.paymentAllocations?.length && input.paymentAccountId
+      ? { paymentAccountId: null }
+      : {}),
+  };
 }
 
 function openDatabase() {

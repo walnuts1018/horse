@@ -404,6 +404,7 @@ export function PurchaseCreatePage({
         householdId: household.id,
         occurredAt: new Date(occurredAt).toISOString(),
         merchant: merchant.trim(),
+        origin: "MANUAL",
         paymentAccountId: null,
         paymentAllocations: paymentRows.map((payment) => ({
           paymentAccountId: payment.paymentAccountId,

@@ -550,6 +550,7 @@ export function ImportsPage({
         input: {
           idempotencyKey: makeIdempotencyKey(),
           householdId: household.id,
+          origin: "AI",
           sourceDocumentId: document.id,
           occurredAt: receipt?.purchasedAt
             ? new Date(receipt.purchasedAt).toISOString()
@@ -615,6 +616,7 @@ export function ImportsPage({
         input: {
           idempotencyKey: makeIdempotencyKey(),
           householdId: household.id,
+          origin: "AI",
           sourceDocumentId: document.id,
           sourceReference: reference,
           occurredAt: new Date(entry.occurredAt).toISOString(),

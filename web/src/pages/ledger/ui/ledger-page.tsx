@@ -18,9 +18,11 @@ import {
   type ProductConcept,
   type PurchasePaymentInput,
   type Tag,
+  type SourceKind,
+  type UnmatchedObservationState,
 } from "../../../shared/api";
 import { EmptyState, InlineError } from "../../../shared/ui";
-import { useHouseholdPurchases } from "../../../shared/api";
+import { useHouseholdPurchases, useUnmatchedObservations } from "../../../shared/api";
 
 type PurchaseEvidence = {
   documentId: string;
@@ -46,6 +48,7 @@ const purchaseMonth = (occurredAt: string) =>
   }).format(new Date(occurredAt));
 
 export function LedgerPage({ household, onAdd }: { household: Household; onAdd: () => void }) {
+  const [recordMode, setRecordMode] = useState<"purchases" | "observations">("purchases");
   const [search, setSearch] = useState("");
   const [fromMonth, setFromMonth] = useState("");
   const [toMonth, setToMonth] = useState("");
@@ -53,6 +56,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   const [poolFilter, setPoolFilter] = useState("");
   const [accountFilter, setAccountFilter] = useState("");
   const [tagFilter, setTagFilter] = useState("");
+  const [originFilter, setOriginFilter] = useState<Purchase["origin"] | "">("");
+  const [evidenceFilter, setEvidenceFilter] = useState("");
+  const [observationSourceFilter, setObservationSourceFilter] = useState<SourceKind | "">("");
+  const [observationStateFilter, setObservationStateFilter] = useState<
+    UnmatchedObservationState | ""
+  >("UNMATCHED");
   const [minimumAmount, setMinimumAmount] = useState("");
   const [maximumAmount, setMaximumAmount] = useState("");
   const filtersActive = Boolean(
@@ -63,6 +72,8 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     poolFilter ||
     accountFilter ||
     tagFilter ||
+    originFilter ||
+    evidenceFilter ||
     minimumAmount ||
     maximumAmount,
   );
@@ -76,7 +87,19 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     totalCount,
     loadMore,
     refresh,
-  } = useHouseholdPurchases(household.id, 100, { loadAll: filtersActive });
+  } = useHouseholdPurchases(household.id, 100, {
+    origin: recordMode === "purchases" ? originFilter || undefined : undefined,
+    hasEvidence:
+      recordMode === "purchases" && evidenceFilter !== "" ? evidenceFilter === "true" : undefined,
+    loadAll: recordMode === "purchases" && filtersActive,
+  });
+  const unmatched = useUnmatchedObservations(household.id, {
+    enabled: recordMode === "observations",
+    from: fromMonth || undefined,
+    to: toMonth || undefined,
+    sourceKind: observationSourceFilter || undefined,
+    state: observationStateFilter || undefined,
+  });
   const [selectedItems, setSelectedItems] = useState<Set<string>>(() => new Set());
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkAllocationsActive, setBulkAllocationsActive] = useState(false);
@@ -663,14 +686,16 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         </button>
       </div>
       <div className="ledger-controls">
-        <label className="input-with-icon">
-          <Search size={16} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="店名、品名で検索"
-          />
-        </label>
+        {recordMode === "purchases" && (
+          <label className="input-with-icon">
+            <Search size={16} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="店名、品名で検索"
+            />
+          </label>
+        )}
         <label className="select-filter">
           <span>開始</span>
           <input
@@ -690,80 +715,158 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           />
         </label>
         <div className="record-count">
-          {filtered.length}件表示 · {purchases.length}/{totalCount}件読込
+          {recordMode === "purchases"
+            ? `${filtered.length}件表示 · ${purchases.length}/${totalCount}件読込`
+            : `${unmatched.observations.length}/${unmatched.totalCount}件表示`}
         </div>
       </div>
       <div className="ledger-filters">
         <label className="select-filter">
-          <span>カテゴリ</span>
+          <span>表示</span>
           <select
-            value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value)}
+            value={recordMode}
+            onChange={(event) => {
+              const mode = event.target.value as "purchases" | "observations";
+              setRecordMode(mode);
+              if (mode === "observations") setSelectedItems(new Set());
+            }}
           >
-            <option value="">すべて</option>
-            <option value="__uncategorized">未分類</option>
-            {household.categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
+            <option value="purchases">購入履歴</option>
+            <option value="observations">照合候補</option>
           </select>
         </label>
-        <label className="select-filter">
-          <span>負担先</span>
-          <select value={poolFilter} onChange={(event) => setPoolFilter(event.target.value)}>
-            <option value="">すべて</option>
-            {household.pools.map((pool) => (
-              <option key={pool.id} value={pool.id}>
-                {pool.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="select-filter">
-          <span>決済元</span>
-          <select value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}>
-            <option value="">すべて</option>
-            {household.accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="select-filter">
-          <span>タグ</span>
-          <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
-            <option value="">すべて</option>
-            {tags
-              .filter((tag) => !tag.archived)
-              .map((tag) => (
-                <option key={tag.id} value={tag.id}>
-                  {tag.name}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label className="select-filter">
-          <span>金額</span>
-          <input
-            aria-label="最低金額"
-            type="number"
-            min="0"
-            placeholder="下限"
-            value={minimumAmount}
-            onChange={(event) => setMinimumAmount(event.target.value)}
-          />
-          <span>〜</span>
-          <input
-            aria-label="最高金額"
-            type="number"
-            min="0"
-            placeholder="上限"
-            value={maximumAmount}
-            onChange={(event) => setMaximumAmount(event.target.value)}
-          />
-        </label>
+        {recordMode === "purchases" ? (
+          <>
+            <label className="select-filter">
+              <span>入力元</span>
+              <select
+                value={originFilter}
+                onChange={(event) => setOriginFilter(event.target.value as Purchase["origin"] | "")}
+              >
+                <option value="">すべて</option>
+                <option value="AI">AI入力</option>
+                <option value="MANUAL">手入力</option>
+                <option value="UNKNOWN">不明</option>
+              </select>
+            </label>
+            <label className="select-filter">
+              <span>原本</span>
+              <select
+                value={evidenceFilter}
+                onChange={(event) => setEvidenceFilter(event.target.value)}
+              >
+                <option value="">すべて</option>
+                <option value="true">あり</option>
+                <option value="false">なし</option>
+              </select>
+            </label>
+            <label className="select-filter">
+              <span>カテゴリ</span>
+              <select
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value)}
+              >
+                <option value="">すべて</option>
+                <option value="__uncategorized">未分類</option>
+                {household.categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="select-filter">
+              <span>負担先</span>
+              <select value={poolFilter} onChange={(event) => setPoolFilter(event.target.value)}>
+                <option value="">すべて</option>
+                {household.pools.map((pool) => (
+                  <option key={pool.id} value={pool.id}>
+                    {pool.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="select-filter">
+              <span>決済元</span>
+              <select
+                value={accountFilter}
+                onChange={(event) => setAccountFilter(event.target.value)}
+              >
+                <option value="">すべて</option>
+                {household.accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="select-filter">
+              <span>タグ</span>
+              <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+                <option value="">すべて</option>
+                {tags
+                  .filter((tag) => !tag.archived)
+                  .map((tag) => (
+                    <option key={tag.id} value={tag.id}>
+                      {tag.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="select-filter">
+              <span>金額</span>
+              <input
+                aria-label="最低金額"
+                type="number"
+                min="0"
+                placeholder="下限"
+                value={minimumAmount}
+                onChange={(event) => setMinimumAmount(event.target.value)}
+              />
+              <span>〜</span>
+              <input
+                aria-label="最高金額"
+                type="number"
+                min="0"
+                placeholder="上限"
+                value={maximumAmount}
+                onChange={(event) => setMaximumAmount(event.target.value)}
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="select-filter">
+              <span>状態</span>
+              <select
+                value={observationStateFilter}
+                onChange={(event) =>
+                  setObservationStateFilter(event.target.value as UnmatchedObservationState | "")
+                }
+              >
+                <option value="UNMATCHED">未照合</option>
+                <option value="CONFIRMED">照合済み</option>
+                <option value="">すべて</option>
+              </select>
+            </label>
+            <label className="select-filter">
+              <span>入力元</span>
+              <select
+                value={observationSourceFilter}
+                onChange={(event) =>
+                  setObservationSourceFilter(event.target.value as SourceKind | "")
+                }
+              >
+                <option value="">すべて</option>
+                <option value="RECEIPT">レシート</option>
+                <option value="ORDER">注文</option>
+                <option value="EMAIL">メール</option>
+                <option value="CARD">カード</option>
+                <option value="BANK">銀行</option>
+              </select>
+            </label>
+          </>
+        )}
       </div>
       {selectedCount > 0 && (
         <section className="panel ledger-bulk-actions" aria-label="選択品目の一括編集">
@@ -948,586 +1051,667 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           </div>
         </section>
       )}
-      <section className="panel ledger-list">
-        {loading || (filtersActive && loadingMore) ? (
-          <div className="skeleton-list">
-            <i />
-            <i />
-            <i />
-          </div>
-        ) : error ? (
-          <InlineError message={error} />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={<BookOpen />}
-            title="買い物が見つかりません"
-            action="買い物を追加"
-            onClick={onAdd}
-          />
-        ) : (
-          filtered.map((purchase) => (
-            <div
-              key={purchase.id}
-              className={`ledger-entry ${expanded === purchase.id ? "ledger-expanded" : ""}`}
-            >
-              <button
-                className="ledger-purchase"
-                onClick={() => setExpanded(expanded === purchase.id ? null : purchase.id)}
+      {recordMode === "observations" && (
+        <section className="panel ledger-list">
+          {unmatched.loading ? (
+            <div className="skeleton-list">
+              <i />
+              <i />
+              <i />
+            </div>
+          ) : unmatched.error ? (
+            <InlineError message={unmatched.error} />
+          ) : unmatched.observations.length === 0 ? (
+            <div className="empty-state compact">
+              <BookOpen />
+              <span>照合候補がありません</span>
+            </div>
+          ) : (
+            unmatched.observations.map((observation) => (
+              <div
+                className="ledger-entry"
+                key={`${observation.documentId}-${observation.sourceReference}`}
               >
-                <div className="merchant-icon">{purchase.merchant?.slice(0, 1) || "買"}</div>
+                <div className="merchant-icon">{observation.sourceKind.slice(0, 1)}</div>
                 <div className="purchase-description">
-                  <b>{purchase.merchant || "店舗未入力"}</b>
+                  <b>{observation.merchant || "店舗未入力"}</b>
                   <span>
-                    {new Date(purchase.occurredAt).toLocaleString("ja-JP", {
-                      month: "numeric",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}{" "}
-                    · {purchase.items.length}品目 ·{" "}
-                    {purchase.paymentAllocations?.length
-                      ? purchase.paymentAllocations
-                          .map((payment) => {
-                            const accountName =
-                              payment.account?.name ??
-                              household.accounts.find(
-                                (account) => account.id === payment.paymentAccountId,
-                              )?.name ??
-                              "決済元";
-                            return `${accountName} ${yen(payment.amountYen)}`;
-                          })
-                          .join(" / ")
-                      : (purchase.paymentAccount?.name ?? "決済元未設定")}
+                    {observation.sourceKind} · {observation.sourceReference}
+                    {observation.orderId ? ` · 注文 ${observation.orderId}` : ""}
+                    {observation.transactionId ? ` · 取引 ${observation.transactionId}` : ""}
                   </span>
                 </div>
                 <div className="purchase-meta">
-                  <b>{yen(purchase.totalYen)}</b>
-                  <span>{purchase.status === "CLOSED" ? "締め済み" : "記録済み"}</span>
+                  <b>{yen(observation.amountYen)}</b>
+                  <span>{observation.state === "CONFIRMED" ? "照合済み" : "未照合"}</span>
                 </div>
-                {expanded === purchase.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                <a
+                  href={`/documents/${encodeURIComponent(observation.documentId)}/content`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  原本を開く
+                </a>
+              </div>
+            ))
+          )}
+          {unmatched.moreError && <InlineError message={unmatched.moreError} />}
+          {unmatched.hasNextPage && (
+            <div className="ledger-more">
+              <button
+                className="button button-soft"
+                disabled={unmatched.loadingMore}
+                onClick={() => void unmatched.loadMore()}
+              >
+                {unmatched.loadingMore ? "読み込み中" : "さらに読み込む"}
               </button>
-              {expanded === purchase.id && (
-                <div className="expanded-items">
-                  {(purchaseEvidence.length > 0 || evidenceError) && (
-                    <section className="panel ledger-evidence-panel">
-                      <div className="panel-heading">
-                        <div>
-                          <span className="eyebrow">購入の証拠</span>
-                          <h3>{purchaseEvidence.length}件</h3>
-                        </div>
-                      </div>
-                      {evidenceError && <InlineError message={evidenceError} />}
-                      {purchaseEvidence.map((entry, index) => {
-                        const linkedItem = purchase.items.find((item) => item.id === entry.itemId);
-                        return (
-                          <div
-                            className="ledger-evidence-entry"
-                            key={`${entry.documentId}-${entry.itemId ?? "purchase"}-${index}`}
-                          >
-                            <a
-                              href={`/documents/${encodeURIComponent(entry.documentId)}/content`}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {entry.sourceKind} · {linkedItem?.name ?? "購入全体"}を開く
-                            </a>
-                            {entry.mimeType.startsWith("image/") && (
-                              <div className="evidence-image-stage">
-                                <img
-                                  src={`/documents/${encodeURIComponent(entry.documentId)}/content`}
-                                  alt={`${entry.sourceKind}の原本`}
-                                />
-                                {entry.region && (
-                                  <button
-                                    type="button"
-                                    className={`evidence-region ${highlightedEvidenceItem === entry.itemId ? "evidence-region-selected" : ""}`}
-                                    style={{
-                                      top: `${entry.region.top * 100}%`,
-                                      left: `${entry.region.left * 100}%`,
-                                      width: `${(entry.region.right - entry.region.left) * 100}%`,
-                                      height: `${(entry.region.bottom - entry.region.top) * 100}%`,
-                                    }}
-                                    aria-label={`${linkedItem?.name ?? "購入"}の原本位置`}
-                                    onClick={() => setHighlightedEvidenceItem(entry.itemId ?? null)}
-                                  />
-                                )}
-                              </div>
-                            )}
-                            {entry.mimeType === "application/pdf" && (
-                              <iframe
-                                className="evidence-pdf-preview"
-                                title="証拠原本"
-                                src={`/documents/${encodeURIComponent(entry.documentId)}/content`}
-                              />
-                            )}
-                            {linkedItem && <span>品目 {linkedItem.name}</span>}
-                          </div>
-                        );
-                      })}
-                    </section>
-                  )}
-                  {editing === purchase.id && purchaseDraft ? (
-                    <form
-                      className="purchase-edit-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void savePurchase(purchase);
-                      }}
-                    >
-                      <input
-                        aria-label="店名"
-                        value={purchaseDraft.merchant}
-                        onChange={(event) =>
-                          setPurchaseDraft({ ...purchaseDraft, merchant: event.target.value })
-                        }
-                      />
-                      <input
-                        aria-label="購入日時"
-                        type="datetime-local"
-                        value={purchaseDraft.occurredAt}
-                        onChange={(event) =>
-                          setPurchaseDraft({ ...purchaseDraft, occurredAt: event.target.value })
-                        }
-                      />
-                      <div className="purchase-edit-payments">
-                        <b>決済内訳</b>
-                        {purchaseDraft.paymentAllocations.map((payment, index) => (
-                          <div className="purchase-edit-payment-row" key={index}>
-                            <select
-                              aria-label={`決済元 ${index + 1}`}
-                              value={payment.paymentAccountId}
-                              onChange={(event) =>
-                                setPurchaseDraft({
-                                  ...purchaseDraft,
-                                  paymentAllocations: purchaseDraft.paymentAllocations.map(
-                                    (row, rowIndex) =>
-                                      rowIndex === index
-                                        ? { ...row, paymentAccountId: event.target.value }
-                                        : row,
-                                  ),
-                                })
-                              }
-                            >
-                              <option value="">決済元を選択</option>
-                              {household.accounts.map((account) => (
-                                <option key={account.id} value={account.id}>
-                                  {account.name}
-                                </option>
-                              ))}
-                            </select>
-                            <input
-                              aria-label={`決済額 ${index + 1}`}
-                              inputMode="numeric"
-                              value={payment.amountYen}
-                              onChange={(event) =>
-                                setPurchaseDraft({
-                                  ...purchaseDraft,
-                                  paymentAllocations: purchaseDraft.paymentAllocations.map(
-                                    (row, rowIndex) =>
-                                      rowIndex === index
-                                        ? {
-                                            ...row,
-                                            amountYen: event.target.value.replace(/\D/g, ""),
-                                          }
-                                        : row,
-                                  ),
-                                })
-                              }
-                            />
-                            <button
-                              className="row-remove"
-                              type="button"
-                              aria-label={`決済元 ${index + 1} を削除`}
-                              onClick={() =>
-                                setPurchaseDraft({
-                                  ...purchaseDraft,
-                                  paymentAllocations: purchaseDraft.paymentAllocations.filter(
-                                    (_, rowIndex) => rowIndex !== index,
-                                  ),
-                                })
-                              }
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
-                        <button
-                          className="text-button"
-                          type="button"
-                          onClick={() =>
-                            setPurchaseDraft({
-                              ...purchaseDraft,
-                              paymentAllocations: [
-                                ...purchaseDraft.paymentAllocations,
-                                { paymentAccountId: "", amountYen: "" },
-                              ],
+            </div>
+          )}
+        </section>
+      )}
+      {recordMode === "purchases" && (
+        <section className="panel ledger-list">
+          {loading || (filtersActive && loadingMore) ? (
+            <div className="skeleton-list">
+              <i />
+              <i />
+              <i />
+            </div>
+          ) : error ? (
+            <InlineError message={error} />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={<BookOpen />}
+              title="買い物が見つかりません"
+              action="買い物を追加"
+              onClick={onAdd}
+            />
+          ) : (
+            filtered.map((purchase) => (
+              <div
+                key={purchase.id}
+                className={`ledger-entry ${expanded === purchase.id ? "ledger-expanded" : ""}`}
+              >
+                <button
+                  className="ledger-purchase"
+                  onClick={() => setExpanded(expanded === purchase.id ? null : purchase.id)}
+                >
+                  <div className="merchant-icon">{purchase.merchant?.slice(0, 1) || "買"}</div>
+                  <div className="purchase-description">
+                    <b>{purchase.merchant || "店舗未入力"}</b>
+                    <span>
+                      {new Date(purchase.occurredAt).toLocaleString("ja-JP", {
+                        month: "numeric",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}{" "}
+                      · {purchase.items.length}品目 ·{" "}
+                      {purchase.paymentAllocations?.length
+                        ? purchase.paymentAllocations
+                            .map((payment) => {
+                              const accountName =
+                                payment.account?.name ??
+                                household.accounts.find(
+                                  (account) => account.id === payment.paymentAccountId,
+                                )?.name ??
+                                "決済元";
+                              return `${accountName} ${yen(payment.amountYen)}`;
                             })
+                            .join(" / ")
+                        : (purchase.paymentAccount?.name ?? "決済元未設定")}
+                    </span>
+                  </div>
+                  <div className="purchase-meta">
+                    <b>{yen(purchase.totalYen)}</b>
+                    <span>
+                      {purchase.status === "CLOSED" ? "締め済み" : "記録済み"} ·{" "}
+                      {purchase.origin === "AI"
+                        ? "AI入力"
+                        : purchase.origin === "MANUAL"
+                          ? "手入力"
+                          : "入力元不明"}
+                      {purchase.hasEvidence ? " · 原本あり" : " · 原本なし"}
+                    </span>
+                  </div>
+                  {expanded === purchase.id ? (
+                    <ChevronDown size={16} />
+                  ) : (
+                    <ChevronRight size={16} />
+                  )}
+                </button>
+                {expanded === purchase.id && (
+                  <div className="expanded-items">
+                    {(purchaseEvidence.length > 0 || evidenceError) && (
+                      <section className="panel ledger-evidence-panel">
+                        <div className="panel-heading">
+                          <div>
+                            <span className="eyebrow">購入の証拠</span>
+                            <h3>{purchaseEvidence.length}件</h3>
+                          </div>
+                        </div>
+                        {evidenceError && <InlineError message={evidenceError} />}
+                        {purchaseEvidence.map((entry, index) => {
+                          const linkedItem = purchase.items.find(
+                            (item) => item.id === entry.itemId,
+                          );
+                          return (
+                            <div
+                              className="ledger-evidence-entry"
+                              key={`${entry.documentId}-${entry.itemId ?? "purchase"}-${index}`}
+                            >
+                              <a
+                                href={`/documents/${encodeURIComponent(entry.documentId)}/content`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {entry.sourceKind} · {linkedItem?.name ?? "購入全体"}を開く
+                              </a>
+                              {entry.mimeType.startsWith("image/") && (
+                                <div className="evidence-image-stage">
+                                  <img
+                                    src={`/documents/${encodeURIComponent(entry.documentId)}/content`}
+                                    alt={`${entry.sourceKind}の原本`}
+                                  />
+                                  {entry.region && (
+                                    <button
+                                      type="button"
+                                      className={`evidence-region ${highlightedEvidenceItem === entry.itemId ? "evidence-region-selected" : ""}`}
+                                      style={{
+                                        top: `${entry.region.top * 100}%`,
+                                        left: `${entry.region.left * 100}%`,
+                                        width: `${(entry.region.right - entry.region.left) * 100}%`,
+                                        height: `${(entry.region.bottom - entry.region.top) * 100}%`,
+                                      }}
+                                      aria-label={`${linkedItem?.name ?? "購入"}の原本位置`}
+                                      onClick={() =>
+                                        setHighlightedEvidenceItem(entry.itemId ?? null)
+                                      }
+                                    />
+                                  )}
+                                </div>
+                              )}
+                              {entry.mimeType === "application/pdf" && (
+                                <iframe
+                                  className="evidence-pdf-preview"
+                                  title="証拠原本"
+                                  src={`/documents/${encodeURIComponent(entry.documentId)}/content`}
+                                />
+                              )}
+                              {linkedItem && <span>品目 {linkedItem.name}</span>}
+                            </div>
+                          );
+                        })}
+                      </section>
+                    )}
+                    {editing === purchase.id && purchaseDraft ? (
+                      <form
+                        className="purchase-edit-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void savePurchase(purchase);
+                        }}
+                      >
+                        <input
+                          aria-label="店名"
+                          value={purchaseDraft.merchant}
+                          onChange={(event) =>
+                            setPurchaseDraft({ ...purchaseDraft, merchant: event.target.value })
+                          }
+                        />
+                        <input
+                          aria-label="購入日時"
+                          type="datetime-local"
+                          value={purchaseDraft.occurredAt}
+                          onChange={(event) =>
+                            setPurchaseDraft({ ...purchaseDraft, occurredAt: event.target.value })
+                          }
+                        />
+                        <div className="purchase-edit-payments">
+                          <b>決済内訳</b>
+                          {purchaseDraft.paymentAllocations.map((payment, index) => (
+                            <div className="purchase-edit-payment-row" key={index}>
+                              <select
+                                aria-label={`決済元 ${index + 1}`}
+                                value={payment.paymentAccountId}
+                                onChange={(event) =>
+                                  setPurchaseDraft({
+                                    ...purchaseDraft,
+                                    paymentAllocations: purchaseDraft.paymentAllocations.map(
+                                      (row, rowIndex) =>
+                                        rowIndex === index
+                                          ? { ...row, paymentAccountId: event.target.value }
+                                          : row,
+                                    ),
+                                  })
+                                }
+                              >
+                                <option value="">決済元を選択</option>
+                                {household.accounts.map((account) => (
+                                  <option key={account.id} value={account.id}>
+                                    {account.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                aria-label={`決済額 ${index + 1}`}
+                                inputMode="numeric"
+                                value={payment.amountYen}
+                                onChange={(event) =>
+                                  setPurchaseDraft({
+                                    ...purchaseDraft,
+                                    paymentAllocations: purchaseDraft.paymentAllocations.map(
+                                      (row, rowIndex) =>
+                                        rowIndex === index
+                                          ? {
+                                              ...row,
+                                              amountYen: event.target.value.replace(/\D/g, ""),
+                                            }
+                                          : row,
+                                    ),
+                                  })
+                                }
+                              />
+                              <button
+                                className="row-remove"
+                                type="button"
+                                aria-label={`決済元 ${index + 1} を削除`}
+                                onClick={() =>
+                                  setPurchaseDraft({
+                                    ...purchaseDraft,
+                                    paymentAllocations: purchaseDraft.paymentAllocations.filter(
+                                      (_, rowIndex) => rowIndex !== index,
+                                    ),
+                                  })
+                                }
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            className="text-button"
+                            type="button"
+                            onClick={() =>
+                              setPurchaseDraft({
+                                ...purchaseDraft,
+                                paymentAllocations: [
+                                  ...purchaseDraft.paymentAllocations,
+                                  { paymentAccountId: "", amountYen: "" },
+                                ],
+                              })
+                            }
+                          >
+                            <Plus size={14} />
+                            決済元を追加
+                          </button>
+                          <small>
+                            差額{" "}
+                            {yen(
+                              purchase.totalYen -
+                                purchaseDraft.paymentAllocations.reduce(
+                                  (total, payment) => total + Number(payment.amountYen || 0),
+                                  0,
+                                ),
+                            )}
+                          </small>
+                        </div>
+                        <div className="edit-actions">
+                          <button
+                            type="button"
+                            className="button button-soft"
+                            onClick={() => setEditing(null)}
+                          >
+                            キャンセル
+                          </button>
+                          <button className="button button-primary">買い物を保存</button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button className="text-button" onClick={() => startEditing(purchase)}>
+                        買い物を編集
+                      </button>
+                    )}
+                    {(purchase.corrections ?? []).map((correction) => (
+                      <div className="purchase-correction-entry" key={correction.id}>
+                        <span>{correction.itemId ? "品目返品" : "購入訂正"}</span>
+                        <b
+                          className={
+                            correction.amountDeltaYen < 0 ? "settlement-credit" : undefined
                           }
                         >
-                          <Plus size={14} />
-                          決済元を追加
-                        </button>
-                        <small>
-                          差額{" "}
-                          {yen(
-                            purchase.totalYen -
-                              purchaseDraft.paymentAllocations.reduce(
-                                (total, payment) => total + Number(payment.amountYen || 0),
-                                0,
-                              ),
-                          )}
-                        </small>
+                          {yen(correction.amountDeltaYen)}
+                        </b>
+                        <small>{correction.reason}</small>
                       </div>
-                      <div className="edit-actions">
-                        <button
-                          type="button"
-                          className="button button-soft"
-                          onClick={() => setEditing(null)}
-                        >
-                          キャンセル
-                        </button>
-                        <button className="button button-primary">買い物を保存</button>
-                      </div>
-                    </form>
-                  ) : (
-                    <button className="text-button" onClick={() => startEditing(purchase)}>
-                      買い物を編集
-                    </button>
-                  )}
-                  {(purchase.corrections ?? []).map((correction) => (
-                    <div className="purchase-correction-entry" key={correction.id}>
-                      <span>{correction.itemId ? "品目返品" : "購入訂正"}</span>
-                      <b
-                        className={correction.amountDeltaYen < 0 ? "settlement-credit" : undefined}
+                    ))}
+                    {purchase.items.map((item) => (
+                      <div
+                        className={`expanded-item ${highlightedEvidenceItem === item.id ? "evidence-item-highlighted" : ""}`}
+                        key={item.id}
                       >
-                        {yen(correction.amountDeltaYen)}
-                      </b>
-                      <small>{correction.reason}</small>
-                    </div>
-                  ))}
-                  {purchase.items.map((item) => (
-                    <div
-                      className={`expanded-item ${highlightedEvidenceItem === item.id ? "evidence-item-highlighted" : ""}`}
-                      key={item.id}
-                    >
-                      <input
-                        className="item-select"
-                        type="checkbox"
-                        aria-label={`${item.name}を選択`}
-                        checked={selectedItems.has(item.id)}
-                        onChange={() => toggleItem(item.id)}
-                        disabled={editing === purchase.id || bulkPending}
-                      />
-                      {editing === purchase.id ? (
-                        <>
-                          <input
-                            aria-label="品名"
-                            value={itemDrafts[item.id]?.name ?? item.name}
-                            onChange={(event) =>
-                              setItemDrafts((current) => ({
-                                ...current,
-                                [item.id]: { ...current[item.id], name: event.target.value },
-                              }))
-                            }
-                          />
-                          <select
-                            aria-label="カテゴリ"
-                            value={itemDrafts[item.id]?.categoryId ?? item.categoryId ?? ""}
-                            onChange={(event) =>
-                              setItemDrafts((current) => ({
-                                ...current,
-                                [item.id]: { ...current[item.id], categoryId: event.target.value },
-                              }))
-                            }
-                          >
-                            <option value="">未分類</option>
-                            {household.categories
-                              .filter((category) => !category.archived)
-                              .map((category) => (
-                                <option key={category.id} value={category.id}>
-                                  {category.name}
-                                </option>
-                              ))}
-                          </select>
-                          <select
-                            aria-label="正規商品"
-                            value={
-                              itemDrafts[item.id]?.productVariantId ?? item.productVariantId ?? ""
-                            }
-                            onChange={(event) =>
-                              setItemDrafts((current) => ({
-                                ...current,
-                                [item.id]: {
-                                  ...current[item.id],
-                                  productVariantId: event.target.value,
-                                  variantName:
-                                    catalog
-                                      .flatMap((concept) => concept.variants)
-                                      .find((variant) => variant.id === event.target.value)?.name ??
-                                    "",
-                                },
-                              }))
-                            }
-                          >
-                            <option value="">商品未選択</option>
-                            {catalog.flatMap((concept) =>
-                              concept.variants
-                                .filter((variant) => !variant.archived)
-                                .map((variant) => (
-                                  <option key={variant.id} value={variant.id}>
-                                    {concept.name} · {variant.name}
+                        <input
+                          className="item-select"
+                          type="checkbox"
+                          aria-label={`${item.name}を選択`}
+                          checked={selectedItems.has(item.id)}
+                          onChange={() => toggleItem(item.id)}
+                          disabled={editing === purchase.id || bulkPending}
+                        />
+                        {editing === purchase.id ? (
+                          <>
+                            <input
+                              aria-label="品名"
+                              value={itemDrafts[item.id]?.name ?? item.name}
+                              onChange={(event) =>
+                                setItemDrafts((current) => ({
+                                  ...current,
+                                  [item.id]: { ...current[item.id], name: event.target.value },
+                                }))
+                              }
+                            />
+                            <select
+                              aria-label="カテゴリ"
+                              value={itemDrafts[item.id]?.categoryId ?? item.categoryId ?? ""}
+                              onChange={(event) =>
+                                setItemDrafts((current) => ({
+                                  ...current,
+                                  [item.id]: {
+                                    ...current[item.id],
+                                    categoryId: event.target.value,
+                                  },
+                                }))
+                              }
+                            >
+                              <option value="">未分類</option>
+                              {household.categories
+                                .filter((category) => !category.archived)
+                                .map((category) => (
+                                  <option key={category.id} value={category.id}>
+                                    {category.name}
                                   </option>
-                                )),
-                            )}
-                          </select>
-                          {itemDrafts[item.id]?.productVariantId !==
-                            (item.productVariantId ?? "") &&
-                            itemDrafts[item.id]?.productVariantId && (
-                              <>
-                                <select
-                                  aria-label="商品名の学習範囲"
-                                  value={itemDrafts[item.id]?.productLearning ?? "ITEM_ONLY"}
-                                  onChange={(event) =>
-                                    setItemDrafts((current) => ({
-                                      ...current,
-                                      [item.id]: {
-                                        ...current[item.id],
-                                        productLearning: event.target.value as
-                                          | "ITEM_ONLY"
-                                          | "VARIANT_NAME"
-                                          | "MERCHANT_ALIAS",
-                                      },
-                                    }))
-                                  }
-                                >
-                                  <option value="ITEM_ONLY">この品目だけ</option>
-                                  <option value="VARIANT_NAME">バリエーション名として学習</option>
-                                  <option value="MERCHANT_ALIAS">この店の別表記として学習</option>
-                                </select>
-                                {itemDrafts[item.id]?.productLearning === "VARIANT_NAME" && (
-                                  <input
-                                    aria-label="バリエーション名"
-                                    value={itemDrafts[item.id]?.variantName ?? ""}
+                                ))}
+                            </select>
+                            <select
+                              aria-label="正規商品"
+                              value={
+                                itemDrafts[item.id]?.productVariantId ?? item.productVariantId ?? ""
+                              }
+                              onChange={(event) =>
+                                setItemDrafts((current) => ({
+                                  ...current,
+                                  [item.id]: {
+                                    ...current[item.id],
+                                    productVariantId: event.target.value,
+                                    variantName:
+                                      catalog
+                                        .flatMap((concept) => concept.variants)
+                                        .find((variant) => variant.id === event.target.value)
+                                        ?.name ?? "",
+                                  },
+                                }))
+                              }
+                            >
+                              <option value="">商品未選択</option>
+                              {catalog.flatMap((concept) =>
+                                concept.variants
+                                  .filter((variant) => !variant.archived)
+                                  .map((variant) => (
+                                    <option key={variant.id} value={variant.id}>
+                                      {concept.name} · {variant.name}
+                                    </option>
+                                  )),
+                              )}
+                            </select>
+                            {itemDrafts[item.id]?.productVariantId !==
+                              (item.productVariantId ?? "") &&
+                              itemDrafts[item.id]?.productVariantId && (
+                                <>
+                                  <select
+                                    aria-label="商品名の学習範囲"
+                                    value={itemDrafts[item.id]?.productLearning ?? "ITEM_ONLY"}
                                     onChange={(event) =>
                                       setItemDrafts((current) => ({
                                         ...current,
                                         [item.id]: {
                                           ...current[item.id],
-                                          variantName: event.target.value,
+                                          productLearning: event.target.value as
+                                            | "ITEM_ONLY"
+                                            | "VARIANT_NAME"
+                                            | "MERCHANT_ALIAS",
                                         },
                                       }))
                                     }
-                                    placeholder="バリエーション名"
-                                  />
-                                )}
-                              </>
-                            )}
-                          <input
-                            aria-label="金額"
-                            inputMode="numeric"
-                            value={itemDrafts[item.id]?.amountYen ?? String(item.amountYen)}
-                            onChange={(event) =>
-                              setItemDrafts((current) => ({
-                                ...current,
-                                [item.id]: {
-                                  ...current[item.id],
-                                  amountYen: event.target.value.replace(/\D/g, ""),
-                                },
-                              }))
-                            }
-                          />
-                          <button
-                            className="text-button"
-                            type="button"
-                            onClick={() => void saveItem(purchase, item)}
-                          >
-                            品目を保存
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span>{item.name}</span>
-                          <span>
-                            {household.categories.find(
-                              (category) => category.id === item.categoryId,
-                            )?.name ?? "未分類"}
-                          </span>
-                          <b>{yen(item.amountYen)}</b>
-                          <span>
-                            {item.allocations
-                              .map(
-                                (allocation) =>
-                                  `${allocation.poolName ?? household.pools.find((pool) => pool.id === allocation.poolId)?.name ?? ""} ${allocation.weight}`,
-                              )
-                              .join(" / ")}
-                          </span>
-                          {item.tags.length > 0 && (
-                            <span className="item-tag-list">
-                              {item.tags.map((tag) => (
-                                <i key={tag.id}>{tag.name}</i>
-                              ))}
-                            </span>
-                          )}
-                        </>
-                      )}
-                      {editing !== purchase.id &&
-                        (() => {
-                          const priorRefunds = (purchase.corrections ?? [])
-                            .filter((correction) => correction.itemId === item.id)
-                            .reduce((total, correction) => total + correction.amountDeltaYen, 0);
-                          const remaining = item.amountYen + priorRefunds;
-                          const isTarget =
-                            correctionTarget?.purchaseId === purchase.id &&
-                            correctionTarget.itemId === item.id;
-                          return isTarget ? (
-                            <form
-                              className="purchase-correction-form"
-                              onSubmit={(event) => {
-                                event.preventDefault();
-                                void submitCorrection(purchase, item);
-                              }}
-                            >
-                              <b>{item.name}の返品</b>
-                              <span>残額 {yen(Math.max(0, remaining))}</span>
-                              <label>
-                                返金額
-                                <input
-                                  aria-label="返金額"
-                                  inputMode="numeric"
-                                  value={refundAmount}
-                                  max={remaining}
-                                  onChange={(event) =>
-                                    setRefundAmount(event.target.value.replace(/\D/g, ""))
-                                  }
-                                  required
-                                />
-                              </label>
-                              <label>
-                                理由
-                                <input
-                                  aria-label="返品理由"
-                                  value={refundReason}
-                                  onChange={(event) => setRefundReason(event.target.value)}
-                                  required
-                                />
-                              </label>
-                              {refundPayments.length === 0 ? (
-                                <span>返金先なし</span>
-                              ) : (
-                                <div className="refund-payment-list">
-                                  {refundPayments.map((payment, index) => (
-                                    <div className="refund-payment-row" key={payment.key}>
-                                      <select
-                                        aria-label={`返金先 ${index + 1}`}
-                                        value={payment.paymentAccountId}
-                                        onChange={(event) =>
-                                          setRefundPayments((current) =>
-                                            current.map((row) =>
-                                              row.key === payment.key
-                                                ? { ...row, paymentAccountId: event.target.value }
-                                                : row,
-                                            ),
-                                          )
-                                        }
-                                      >
-                                        <option value="">口座を選択</option>
-                                        {household.accounts.map((account) => (
-                                          <option key={account.id} value={account.id}>
-                                            {account.name}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <input
-                                        aria-label={`返金額 ${index + 1}`}
-                                        inputMode="numeric"
-                                        value={
-                                          refundAutoTotal && refundPayments.length === 1
-                                            ? refundAmount
-                                            : payment.amountYen
-                                        }
-                                        onChange={(event) => {
-                                          setRefundAutoTotal(false);
-                                          setRefundPayments((current) =>
-                                            current.map((row) =>
-                                              row.key === payment.key
-                                                ? {
-                                                    ...row,
-                                                    amountYen: event.target.value.replace(
-                                                      /\D/g,
-                                                      "",
-                                                    ),
-                                                  }
-                                                : row,
-                                            ),
-                                          );
-                                        }}
-                                      />
-                                      <button
-                                        className="row-remove"
-                                        type="button"
-                                        aria-label={`返金先 ${index + 1} を削除`}
-                                        onClick={() =>
-                                          setRefundPayments((current) =>
-                                            current.filter((row) => row.key !== payment.key),
-                                          )
-                                        }
-                                      >
-                                        <X size={14} />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
+                                  >
+                                    <option value="ITEM_ONLY">この品目だけ</option>
+                                    <option value="VARIANT_NAME">バリエーション名として学習</option>
+                                    <option value="MERCHANT_ALIAS">この店の別表記として学習</option>
+                                  </select>
+                                  {itemDrafts[item.id]?.productLearning === "VARIANT_NAME" && (
+                                    <input
+                                      aria-label="バリエーション名"
+                                      value={itemDrafts[item.id]?.variantName ?? ""}
+                                      onChange={(event) =>
+                                        setItemDrafts((current) => ({
+                                          ...current,
+                                          [item.id]: {
+                                            ...current[item.id],
+                                            variantName: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                      placeholder="バリエーション名"
+                                    />
+                                  )}
+                                </>
                               )}
-                              <button
-                                className="text-button"
-                                type="button"
-                                onClick={addRefundPayment}
-                              >
-                                <Plus size={14} />
-                                返金先を追加
-                              </button>
-                              {refundPayments.length > 0 && (
-                                <span className="payment-difference">
-                                  返金差額 {yen(Number(refundAmount) - refundPaymentTotal)}
-                                </span>
-                              )}
-                              <div className="edit-actions">
-                                <button
-                                  className="button button-soft"
-                                  type="button"
-                                  onClick={() => setCorrectionTarget(null)}
-                                >
-                                  キャンセル
-                                </button>
-                                <button
-                                  className="button button-primary"
-                                  disabled={correctionPending || remaining <= 0}
-                                >
-                                  返品を記録
-                                </button>
-                              </div>
-                            </form>
-                          ) : (
+                            <input
+                              aria-label="金額"
+                              inputMode="numeric"
+                              value={itemDrafts[item.id]?.amountYen ?? String(item.amountYen)}
+                              onChange={(event) =>
+                                setItemDrafts((current) => ({
+                                  ...current,
+                                  [item.id]: {
+                                    ...current[item.id],
+                                    amountYen: event.target.value.replace(/\D/g, ""),
+                                  },
+                                }))
+                              }
+                            />
                             <button
-                              className="text-button correction-trigger"
+                              className="text-button"
                               type="button"
-                              disabled={remaining <= 0}
-                              onClick={() => startCorrection(purchase, item)}
+                              onClick={() => void saveItem(purchase, item)}
                             >
-                              返品を記録
+                              品目を保存
                             </button>
-                          );
-                        })()}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </section>
-      {moreError && <InlineError message={moreError} />}
-      {hasNextPage && !filtersActive && (
+                          </>
+                        ) : (
+                          <>
+                            <span>{item.name}</span>
+                            <span>
+                              {household.categories.find(
+                                (category) => category.id === item.categoryId,
+                              )?.name ?? "未分類"}
+                            </span>
+                            <b>{yen(item.amountYen)}</b>
+                            <span>
+                              {item.allocations
+                                .map(
+                                  (allocation) =>
+                                    `${allocation.poolName ?? household.pools.find((pool) => pool.id === allocation.poolId)?.name ?? ""} ${allocation.weight}`,
+                                )
+                                .join(" / ")}
+                            </span>
+                            {item.tags.length > 0 && (
+                              <span className="item-tag-list">
+                                {item.tags.map((tag) => (
+                                  <i key={tag.id}>{tag.name}</i>
+                                ))}
+                              </span>
+                            )}
+                          </>
+                        )}
+                        {editing !== purchase.id &&
+                          (() => {
+                            const priorRefunds = (purchase.corrections ?? [])
+                              .filter((correction) => correction.itemId === item.id)
+                              .reduce((total, correction) => total + correction.amountDeltaYen, 0);
+                            const remaining = item.amountYen + priorRefunds;
+                            const isTarget =
+                              correctionTarget?.purchaseId === purchase.id &&
+                              correctionTarget.itemId === item.id;
+                            return isTarget ? (
+                              <form
+                                className="purchase-correction-form"
+                                onSubmit={(event) => {
+                                  event.preventDefault();
+                                  void submitCorrection(purchase, item);
+                                }}
+                              >
+                                <b>{item.name}の返品</b>
+                                <span>残額 {yen(Math.max(0, remaining))}</span>
+                                <label>
+                                  返金額
+                                  <input
+                                    aria-label="返金額"
+                                    inputMode="numeric"
+                                    value={refundAmount}
+                                    max={remaining}
+                                    onChange={(event) =>
+                                      setRefundAmount(event.target.value.replace(/\D/g, ""))
+                                    }
+                                    required
+                                  />
+                                </label>
+                                <label>
+                                  理由
+                                  <input
+                                    aria-label="返品理由"
+                                    value={refundReason}
+                                    onChange={(event) => setRefundReason(event.target.value)}
+                                    required
+                                  />
+                                </label>
+                                {refundPayments.length === 0 ? (
+                                  <span>返金先なし</span>
+                                ) : (
+                                  <div className="refund-payment-list">
+                                    {refundPayments.map((payment, index) => (
+                                      <div className="refund-payment-row" key={payment.key}>
+                                        <select
+                                          aria-label={`返金先 ${index + 1}`}
+                                          value={payment.paymentAccountId}
+                                          onChange={(event) =>
+                                            setRefundPayments((current) =>
+                                              current.map((row) =>
+                                                row.key === payment.key
+                                                  ? { ...row, paymentAccountId: event.target.value }
+                                                  : row,
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          <option value="">口座を選択</option>
+                                          {household.accounts.map((account) => (
+                                            <option key={account.id} value={account.id}>
+                                              {account.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          aria-label={`返金額 ${index + 1}`}
+                                          inputMode="numeric"
+                                          value={
+                                            refundAutoTotal && refundPayments.length === 1
+                                              ? refundAmount
+                                              : payment.amountYen
+                                          }
+                                          onChange={(event) => {
+                                            setRefundAutoTotal(false);
+                                            setRefundPayments((current) =>
+                                              current.map((row) =>
+                                                row.key === payment.key
+                                                  ? {
+                                                      ...row,
+                                                      amountYen: event.target.value.replace(
+                                                        /\D/g,
+                                                        "",
+                                                      ),
+                                                    }
+                                                  : row,
+                                              ),
+                                            );
+                                          }}
+                                        />
+                                        <button
+                                          className="row-remove"
+                                          type="button"
+                                          aria-label={`返金先 ${index + 1} を削除`}
+                                          onClick={() =>
+                                            setRefundPayments((current) =>
+                                              current.filter((row) => row.key !== payment.key),
+                                            )
+                                          }
+                                        >
+                                          <X size={14} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                <button
+                                  className="text-button"
+                                  type="button"
+                                  onClick={addRefundPayment}
+                                >
+                                  <Plus size={14} />
+                                  返金先を追加
+                                </button>
+                                {refundPayments.length > 0 && (
+                                  <span className="payment-difference">
+                                    返金差額 {yen(Number(refundAmount) - refundPaymentTotal)}
+                                  </span>
+                                )}
+                                <div className="edit-actions">
+                                  <button
+                                    className="button button-soft"
+                                    type="button"
+                                    onClick={() => setCorrectionTarget(null)}
+                                  >
+                                    キャンセル
+                                  </button>
+                                  <button
+                                    className="button button-primary"
+                                    disabled={correctionPending || remaining <= 0}
+                                  >
+                                    返品を記録
+                                  </button>
+                                </div>
+                              </form>
+                            ) : (
+                              <button
+                                className="text-button correction-trigger"
+                                type="button"
+                                disabled={remaining <= 0}
+                                onClick={() => startCorrection(purchase, item)}
+                              >
+                                返品を記録
+                              </button>
+                            );
+                          })()}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </section>
+      )}
+      {recordMode === "purchases" && moreError && <InlineError message={moreError} />}
+      {recordMode === "purchases" && hasNextPage && !filtersActive && (
         <div className="ledger-more">
           <button
             className="button button-soft"
@@ -1538,7 +1722,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           </button>
         </div>
       )}
-      {moreError && filtersActive && (
+      {recordMode === "purchases" && moreError && filtersActive && (
         <div className="ledger-more">
           <button
             className="button button-soft"
