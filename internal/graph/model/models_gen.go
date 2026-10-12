@@ -782,6 +782,16 @@ type ProductConcept struct {
 
 func (ProductConcept) IsNode() {}
 
+type ProductConceptConnection struct {
+	Edges    []*ProductConceptEdge `json:"edges"`
+	PageInfo *PageInfo             `json:"pageInfo"`
+}
+
+type ProductConceptEdge struct {
+	Cursor string          `json:"cursor"`
+	Node   *ProductConcept `json:"node"`
+}
+
 type ProductSuggestion struct {
 	Concept     *ProductConcept `json:"concept"`
 	Variant     *ProductVariant `json:"variant"`

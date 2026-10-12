@@ -26,7 +26,7 @@ import {
 } from "../../../entities/purchase";
 import { ledgerQuery } from "../../../entities/ledger";
 import { unmatchedObservationsQuery } from "../api/observation/operations";
-import { productCatalogQuery } from "../../../entities/product";
+import { readProductCatalog } from "../../../entities/product";
 import { tagsQuery } from "../../../entities/tag";
 import { EmptyState, InlineError } from "../../../shared/ui";
 import { formatQuantity, parseQuantity } from "../../../shared/lib";
@@ -293,10 +293,8 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   };
   useEffect(() => {
     let active = true;
-    void readGraphql<{ productCatalog: ProductConcept[] }>(productCatalogQuery, {
-      householdId: household.id,
-    })
-      .then((result) => active && setCatalog(result.productCatalog))
+    void readProductCatalog(household.id)
+      .then((products) => active && setCatalog(products))
       .catch(() => {});
     return () => {
       active = false;

@@ -9,6 +9,16 @@ type ProductConcept implements Node {
   variants: [ProductVariant!]!
 }
 
+type ProductConceptEdge {
+  cursor: String!
+  node: ProductConcept!
+}
+
+type ProductConceptConnection {
+  edges: [ProductConceptEdge!]!
+  pageInfo: PageInfo!
+}
+
 extend type Query {
-  productCatalog(householdId: ID! @nodeID(of: "Household")): [ProductConcept!]!
+  productCatalog(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): ProductConceptConnection!
 }

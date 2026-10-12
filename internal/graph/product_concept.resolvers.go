@@ -27,8 +27,8 @@ func (r *productConceptResolver) CategoryID(ctx context.Context, obj *model.Prod
 }
 
 // ProductCatalog is the resolver for the productCatalog field.
-func (r *queryResolver) ProductCatalog(ctx context.Context, householdID string) ([]*model.ProductConcept, error) {
-	return r.productCatalog(ctx, householdID)
+func (r *queryResolver) ProductCatalog(ctx context.Context, householdID string, after *string, first *int) (*model.ProductConceptConnection, error) {
+	return r.productCatalog(ctx, householdID, after, first)
 }
 
 // ProductConcept returns ProductConceptResolver implementation.

@@ -1,9 +1,9 @@
 package graph
 
-import "errors"
+import purchaseapp "github.com/walnuts1018/horse/internal/application/purchase"
 
 var (
-	ErrConflict = errors.New("resource conflict")
-	ErrNotFound = errors.New("resource not found")
-	ErrBadInput = errors.New("invalid input")
+	ErrConflict = purchaseapp.ErrConflict
+	ErrNotFound = purchaseapp.ErrNotFound
+	ErrBadInput = purchaseapp.ErrBadInput
 )

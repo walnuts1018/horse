@@ -1,32 +1,41 @@
 import { graphql } from "react-relay";
 
 export const productCatalogQuery = graphql`
-  query ProductCatalogQuery($householdId: ID!) {
-    productCatalog(householdId: $householdId) {
-      id
-      householdId
-      name
-      normalizedName
-      categoryId
-      archived
-      revision
-      variants {
-        id
-        householdId
-        conceptId
-        name
-        normalizedName
-        brand
-        packageSize
-        barcode
-        archived
-        revision
-        aliases {
+  query ProductCatalogQuery($householdId: ID!, $first: Int!, $after: String) {
+    productCatalog(householdId: $householdId, first: $first, after: $after) {
+      edges {
+        cursor
+        node {
           id
-          alias
-          merchantKey
+          householdId
+          name
+          normalizedName
+          categoryId
+          archived
           revision
+          variants {
+            id
+            householdId
+            conceptId
+            name
+            normalizedName
+            brand
+            packageSize
+            barcode
+            archived
+            revision
+            aliases {
+              id
+              alias
+              merchantKey
+              revision
+            }
+          }
         }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
       }
     }
   }

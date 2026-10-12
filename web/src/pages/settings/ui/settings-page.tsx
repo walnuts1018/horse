@@ -40,7 +40,7 @@ import {
 import {
   createProductConceptMutation,
   createProductVariantMutation,
-  productCatalogQuery,
+  readProductCatalog,
   setProductAliasMutation,
 } from "../../../entities/product";
 import {
@@ -217,10 +217,7 @@ export function SettingsPage({
     setAllocationRules(result.allocationRules);
   };
   const refreshProducts = async () => {
-    const result = await readGraphql<{ productCatalog: ProductConcept[] }>(productCatalogQuery, {
-      householdId: household.id,
-    });
-    setCatalog(result.productCatalog);
+    setCatalog(await readProductCatalog(household.id));
   };
   const refreshInvitations = async () => {
     if (!isOwner) return;

@@ -270,24 +270,72 @@ func loadProductAlias(ctx context.Context, db productDB, aliasID string) (*model
 	return &model.ProductAlias{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), VariantID: row.VariantID.String(), MerchantKey: row.MerchantKey, Alias: row.AliasText, NormalizedAlias: row.NormalizedAlias, Revision: int(row.Revision)}, nil
 }
 
-func (r *queryResolver) productCatalog(ctx context.Context, householdID string) ([]*model.ProductConcept, error) {
+func (r *queryResolver) productCatalog(ctx context.Context, householdID string, after *string, first *int) (*model.ProductConceptConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	householdUUID, _ := gofrsuuid.FromString(householdID)
-	rows, err := models.ProductConcepts.Query(sm.Where(models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID))), sm.OrderBy(models.ProductConcepts.Columns.NormalizedName), sm.OrderBy(models.ProductConcepts.Columns.ID)).All(ctx, bobpgx.NewPool(r.DB))
-	if err != nil {
-		return nil, err
+	pageSize := 50
+	if first != nil {
+		pageSize = *first
 	}
-	result := make([]*model.ProductConcept, 0, len(rows))
-	for _, conceptRow := range rows {
-		concept, err := loadProductConcept(ctx, bobpgx.NewPool(r.DB), conceptRow.ID.String())
+	if pageSize < 1 || pageSize > 100 {
+		return nil, fmt.Errorf("%w: page size must be between 1 and 100", ErrBadInput)
+	}
+	householdUUID, _ := gofrsuuid.FromString(householdID)
+	filters := []bob.Expression{models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID))}
+	db := bobpgx.NewPool(r.DB)
+	var previousPage bool
+	if after != nil && *after != "" {
+		value, err := decodeCursor(*after, "ProductConcept")
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, concept)
+		name, id, ok := strings.Cut(value, "\x00")
+		if !ok || name == "" || id == "" {
+			return nil, fmt.Errorf("%w: invalid ProductConcept cursor", ErrBadInput)
+		}
+		cursorUUID, err := gofrsuuid.FromString(id)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid ProductConcept cursor", ErrBadInput)
+		}
+		filters = append(filters, psql.Or(
+			models.ProductConcepts.Columns.NormalizedName.GT(psql.Arg(name)),
+			psql.And(models.ProductConcepts.Columns.NormalizedName.EQ(psql.Arg(name)), models.ProductConcepts.Columns.ID.GT(psql.Arg(cursorUUID))),
+		))
+		previousPage = true
 	}
-	return result, nil
+	rows, err := models.ProductConcepts.Query(
+		sm.Where(psql.And(filters...)),
+		sm.OrderBy(models.ProductConcepts.Columns.NormalizedName),
+		sm.OrderBy(models.ProductConcepts.Columns.ID),
+		sm.Limit(pageSize+1),
+	).All(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	hasNextPage := len(rows) > pageSize
+	if hasNextPage {
+		rows = rows[:pageSize]
+	}
+	connection := &model.ProductConceptConnection{
+		Edges:    make([]*model.ProductConceptEdge, 0, len(rows)),
+		PageInfo: &model.PageInfo{HasPreviousPage: previousPage, HasNextPage: hasNextPage},
+	}
+	for _, conceptRow := range rows {
+		concept, err := loadProductConcept(ctx, db, conceptRow.ID.String())
+		if err != nil {
+			return nil, err
+		}
+		cursor := encodeCursor("ProductConcept", conceptRow.NormalizedName+"\x00"+conceptRow.ID.String())
+		connection.Edges = append(connection.Edges, &model.ProductConceptEdge{Cursor: cursor, Node: concept})
+	}
+	if len(connection.Edges) > 0 {
+		start := connection.Edges[0].Cursor
+		end := connection.Edges[len(connection.Edges)-1].Cursor
+		connection.PageInfo.StartCursor = &start
+		connection.PageInfo.EndCursor = &end
+	}
+	return connection, nil
 }
 
 func (r *queryResolver) productSuggestions(ctx context.Context, householdID, query string, merchant *string, first *int) ([]*model.ProductSuggestion, error) {

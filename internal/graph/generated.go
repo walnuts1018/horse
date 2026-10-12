@@ -448,6 +448,16 @@ type ComplexityRoot struct {
 		Variants       func(childComplexity int) int
 	}
 
+	ProductConceptConnection struct {
+		Edges    func(childComplexity int) int
+		PageInfo func(childComplexity int) int
+	}
+
+	ProductConceptEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
+
 	ProductSuggestion struct {
 		Concept     func(childComplexity int) int
 		MatchedName func(childComplexity int) int
@@ -562,7 +572,7 @@ type ComplexityRoot struct {
 		MonthlyMemberSpending   func(childComplexity int, householdID string, from string, to string) int
 		Node                    func(childComplexity int, id string) int
 		Nodes                   func(childComplexity int, ids []string) int
-		ProductCatalog          func(childComplexity int, householdID string) int
+		ProductCatalog          func(childComplexity int, householdID string, after *string, first *int) int
 		ProductSuggestions      func(childComplexity int, householdID string, query string, merchant *string, first *int) int
 		PurchaseCorrections     func(childComplexity int, purchaseID string) int
 		Purchases               func(childComplexity int, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) int
@@ -891,7 +901,7 @@ type QueryResolver interface {
 	LoanBalances(ctx context.Context, householdID string) ([]*model.LoanBalance, error)
 	MonthlyCategorySpending(ctx context.Context, householdID string, from string, to string) ([]*model.MonthlyCategorySpending, error)
 	MonthlyMemberSpending(ctx context.Context, householdID string, from string, to string) (*model.MonthlyMemberSpendingReport, error)
-	ProductCatalog(ctx context.Context, householdID string) ([]*model.ProductConcept, error)
+	ProductCatalog(ctx context.Context, householdID string, after *string, first *int) (*model.ProductConceptConnection, error)
 	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first *int) ([]*model.ProductSuggestion, error)
 	Purchases(ctx context.Context, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
 	PurchaseCorrections(ctx context.Context, purchaseID string) ([]*model.PurchaseCorrection, error)
@@ -2516,6 +2526,32 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.ProductConcept.Variants(childComplexity), true
 
+	case "ProductConceptConnection.edges":
+		if e.ComplexityRoot.ProductConceptConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ProductConceptConnection.Edges(childComplexity), true
+	case "ProductConceptConnection.pageInfo":
+		if e.ComplexityRoot.ProductConceptConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ProductConceptConnection.PageInfo(childComplexity), true
+
+	case "ProductConceptEdge.cursor":
+		if e.ComplexityRoot.ProductConceptEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ProductConceptEdge.Cursor(childComplexity), true
+	case "ProductConceptEdge.node":
+		if e.ComplexityRoot.ProductConceptEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ProductConceptEdge.Node(childComplexity), true
+
 	case "ProductSuggestion.concept":
 		if e.ComplexityRoot.ProductSuggestion.Concept == nil {
 			break
@@ -3105,7 +3141,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.ProductCatalog(childComplexity, args["householdId"].(string)), true
+		return e.ComplexityRoot.Query.ProductCatalog(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
 	case "Query.productSuggestions":
 		if e.ComplexityRoot.Query.ProductSuggestions == nil {
 			break
@@ -4493,8 +4529,18 @@ type PostPurchaseSuccess {
   variants: [ProductVariant!]!
 }
 
+type ProductConceptEdge {
+  cursor: String!
+  node: ProductConcept!
+}
+
+type ProductConceptConnection {
+  edges: [ProductConceptEdge!]!
+  pageInfo: PageInfo!
+}
+
 extend type Query {
-  productCatalog(householdId: ID! @nodeID(of: "Household")): [ProductConcept!]!
+  productCatalog(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): ProductConceptConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/product_suggestion.graphqls", Input: `type ProductSuggestion {
@@ -4757,8 +4803,6 @@ enum TransferInputKind {
   LOAN
   GIFT
 }
-
-
 `, BuiltIn: false},
 	{Name: "../../graphql/recurring_expense.graphqls", Input: `type RecurringExpense implements Node {
   id: ID! @goField(forceResolver: true)
@@ -5650,6 +5694,26 @@ func (ec *executionContext) childFields_ProductConcept(ctx context.Context, fiel
 		return ec.fieldContext_ProductConcept_variants(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type ProductConcept", field.Name)
+}
+
+func (ec *executionContext) childFields_ProductConceptConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_ProductConceptConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_ProductConceptConnection_pageInfo(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ProductConceptConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_ProductConceptEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_ProductConceptEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_ProductConceptEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ProductConceptEdge", field.Name)
 }
 
 func (ec *executionContext) childFields_ProductSuggestion(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -7889,6 +7953,22 @@ func (ec *executionContext) field_Query_productCatalog_args(ctx context.Context,
 		return nil, err
 	}
 	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg2
 	return args, nil
 }
 
@@ -14860,6 +14940,125 @@ func (ec *executionContext) fieldContext_ProductConcept_variants(_ context.Conte
 	return fc, nil
 }
 
+func (ec *executionContext) _ProductConceptConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.ProductConceptConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ProductConceptConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.ProductConceptEdge) graphql.Marshaler {
+			return ec.marshalNProductConceptEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConceptEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ProductConceptConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ProductConceptConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ProductConceptEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ProductConceptConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.ProductConceptConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ProductConceptConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ProductConceptConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ProductConceptConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ProductConceptEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.ProductConceptEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ProductConceptEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ProductConceptEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ProductConceptEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _ProductConceptEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.ProductConceptEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ProductConceptEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.ProductConcept) graphql.Marshaler {
+			return ec.marshalNProductConcept2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConcept(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ProductConceptEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ProductConceptEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ProductConcept(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _ProductSuggestion_concept(ctx context.Context, field graphql.CollectedField, obj *model.ProductSuggestion) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -17235,11 +17434,11 @@ func (ec *executionContext) _Query_productCatalog(ctx context.Context, field gra
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().ProductCatalog(ctx, fc.Args["householdId"].(string))
+			return ec.Resolvers.Query().ProductCatalog(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []*model.ProductConcept) graphql.Marshaler {
-			return ec.marshalNProductConcept2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConceptᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.ProductConceptConnection) graphql.Marshaler {
+			return ec.marshalNProductConceptConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConceptConnection(ctx, selections, v)
 		},
 		true,
 		true,
@@ -17252,7 +17451,7 @@ func (ec *executionContext) fieldContext_Query_productCatalog(ctx context.Contex
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_ProductConcept(ctx, field)
+			return ec.childFields_ProductConceptConnection(ctx, field)
 		},
 	}
 	defer func() {
@@ -29874,6 +30073,92 @@ func (ec *executionContext) _ProductConcept(ctx context.Context, sel ast.Selecti
 	return out
 }
 
+var productConceptConnectionImplementors = []string{"ProductConceptConnection"}
+
+func (ec *executionContext) _ProductConceptConnection(ctx context.Context, sel ast.SelectionSet, obj *model.ProductConceptConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, productConceptConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ProductConceptConnection")
+		case "edges":
+			out.Values[i] = ec._ProductConceptConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._ProductConceptConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var productConceptEdgeImplementors = []string{"ProductConceptEdge"}
+
+func (ec *executionContext) _ProductConceptEdge(ctx context.Context, sel ast.SelectionSet, obj *model.ProductConceptEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, productConceptEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ProductConceptEdge")
+		case "cursor":
+			out.Values[i] = ec._ProductConceptEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._ProductConceptEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var productSuggestionImplementors = []string{"ProductSuggestion"}
 
 func (ec *executionContext) _ProductSuggestion(ctx context.Context, sel ast.SelectionSet, obj *model.ProductSuggestion) graphql.Marshaler {
@@ -34448,11 +34733,31 @@ func (ec *executionContext) marshalNProductAlias2ᚖgithubᚗcomᚋwalnuts1018�
 	return ec._ProductAlias(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNProductConcept2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConceptᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ProductConcept) graphql.Marshaler {
+func (ec *executionContext) marshalNProductConcept2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConcept(ctx context.Context, sel ast.SelectionSet, v *model.ProductConcept) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ProductConcept(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNProductConceptConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConceptConnection(ctx context.Context, sel ast.SelectionSet, v *model.ProductConceptConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ProductConceptConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNProductConceptEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConceptEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ProductConceptEdge) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNProductConcept2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConcept(ctx, sel, v[i])
+		return ec.marshalNProductConceptEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConceptEdge(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -34464,14 +34769,14 @@ func (ec *executionContext) marshalNProductConcept2ᚕᚖgithubᚗcomᚋwalnuts1
 	return ret
 }
 
-func (ec *executionContext) marshalNProductConcept2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConcept(ctx context.Context, sel ast.SelectionSet, v *model.ProductConcept) graphql.Marshaler {
+func (ec *executionContext) marshalNProductConceptEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductConceptEdge(ctx context.Context, sel ast.SelectionSet, v *model.ProductConceptEdge) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
-	return ec._ProductConcept(ctx, sel, v)
+	return ec._ProductConceptEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNProductSuggestion2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductSuggestionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ProductSuggestion) graphql.Marshaler {

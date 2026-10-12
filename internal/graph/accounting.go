@@ -16,6 +16,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	purchaseapp "github.com/walnuts1018/horse/internal/application/purchase"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -25,7 +26,7 @@ type accountingDB interface {
 	bob.Executor
 }
 
-var ErrUnattributedPurchasePayment = errors.New("posted purchase payment has no funding pool")
+var ErrUnattributedPurchasePayment = purchaseapp.ErrUnattributedPurchasePayment
 var ErrMissingPurchaseFundingSnapshot = errors.New("posted purchase has no funding snapshot")
 
 var accountingLocation = time.FixedZone("JST", 9*60*60)
