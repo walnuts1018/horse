@@ -2,7 +2,7 @@ extend type Mutation {
   createProductVariant(input: CreateProductVariantInput!): CreateProductVariantResult!
 }
 
-union CreateProductVariantResult = CreateProductVariantSuccess | MutationError
+union CreateProductVariantResult = CreateProductVariantSuccess | CreateProductVariantUserError
 
 type CreateProductVariantSuccess {
   result: ProductVariant!
@@ -15,4 +15,9 @@ input CreateProductVariantInput {
   brand: String
   packageSize: String
   barcode: String
+}
+
+type CreateProductVariantUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

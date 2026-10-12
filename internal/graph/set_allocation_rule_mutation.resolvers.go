@@ -16,7 +16,7 @@ func (r *mutationResolver) SetAllocationRule(ctx context.Context, input model.Se
 	result, err := r.setAllocationRule(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.SetAllocationRuleUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

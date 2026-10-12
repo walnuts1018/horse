@@ -16,7 +16,7 @@ func (r *mutationResolver) RecordExternalIncome(ctx context.Context, input model
 	result, err := r.recordExternalIncome(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.RecordExternalIncomeUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

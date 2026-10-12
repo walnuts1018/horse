@@ -4,7 +4,7 @@ enum MutationErrorCode {
   NOT_FOUND
 }
 
-type MutationError {
+interface MutationError {
   code: MutationErrorCode!
   message: String!
 }

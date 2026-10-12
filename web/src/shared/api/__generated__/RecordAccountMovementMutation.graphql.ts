@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ddd72bd512ee0400349725a8ff7d3f3e>>
+ * @generated SignedSource<<f770ceb3957c09bc32ef12a6662f7534>>
  * @lightSyntaxTransform
  */
 
@@ -25,12 +25,10 @@ export type RecordAccountMovementMutation$variables = {
 };
 export type RecordAccountMovementMutation$data = {
   readonly recordAccountMovement: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "RecordAccountMovementSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly amountYen: any;
       readonly description: string;
       readonly fromAccountId: string;
@@ -39,10 +37,6 @@ export type RecordAccountMovementMutation$data = {
       readonly occurredAt: string;
       readonly toAccountId: string;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type RecordAccountMovementMutation = {
@@ -166,7 +160,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -190,12 +184,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "08e304fccbd3fa5f6d4bfdac9973da75",
+    "cacheID": "68edf6d6302fa85131a271bfac22c0be",
     "id": null,
     "metadata": {},
     "name": "RecordAccountMovementMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordAccountMovementMutation(\n  $input: RecordAccountMovementInput!\n) {\n  recordAccountMovement(input: $input) {\n    __typename\n    ... on RecordAccountMovementSuccess {\n      result {\n        id\n        kind\n        occurredAt\n        fromAccountId\n        toAccountId\n        amountYen\n        description\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation RecordAccountMovementMutation(\n  $input: RecordAccountMovementInput!\n) {\n  recordAccountMovement(input: $input) {\n    __typename\n    ... on RecordAccountMovementSuccess {\n      result {\n        id\n        kind\n        occurredAt\n        fromAccountId\n        toAccountId\n        amountYen\n        description\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

@@ -16,7 +16,7 @@ func (r *mutationResolver) UpdateTag(ctx context.Context, input model.UpdateTagI
 	result, err := r.updateTag(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.UpdateTagUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

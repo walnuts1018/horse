@@ -16,7 +16,7 @@ func (r *mutationResolver) CreatePool(ctx context.Context, input model.CreatePoo
 	result, err := r.createPool(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.CreatePoolUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

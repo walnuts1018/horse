@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e89efc88bb53d01cc54b3a233f3777f0>>
+ * @generated SignedSource<<0ec76747fb06b3ccdf1cd93a2016e35c>>
  * @lightSyntaxTransform
  */
 
@@ -20,21 +20,15 @@ export type SetProductAliasMutation$variables = {
 };
 export type SetProductAliasMutation$data = {
   readonly setProductAlias: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "SetProductAliasSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly alias: string;
       readonly id: string;
       readonly merchantKey: string;
       readonly revision: number;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type SetProductAliasMutation = {
@@ -137,7 +131,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -161,12 +155,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "280b58f6d60dce65986d6fe7a86d6045",
+    "cacheID": "9e320cc3d72c54cd4cfe52abe6948e2c",
     "id": null,
     "metadata": {},
     "name": "SetProductAliasMutation",
     "operationKind": "mutation",
-    "text": "mutation SetProductAliasMutation(\n  $input: SetProductAliasInput!\n) {\n  setProductAlias(input: $input) {\n    __typename\n    ... on SetProductAliasSuccess {\n      result {\n        id\n        alias\n        merchantKey\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetProductAliasMutation(\n  $input: SetProductAliasInput!\n) {\n  setProductAlias(input: $input) {\n    __typename\n    ... on SetProductAliasSuccess {\n      result {\n        id\n        alias\n        merchantKey\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

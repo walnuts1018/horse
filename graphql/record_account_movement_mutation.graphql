@@ -2,7 +2,7 @@ extend type Mutation {
   recordAccountMovement(input: RecordAccountMovementInput!): RecordAccountMovementResult!
 }
 
-union RecordAccountMovementResult = RecordAccountMovementSuccess | MutationError
+union RecordAccountMovementResult = RecordAccountMovementSuccess | RecordAccountMovementUserError
 
 type RecordAccountMovementSuccess {
   result: AccountMovement!
@@ -17,4 +17,9 @@ input RecordAccountMovementInput {
   occurredAt: String!
   description: String!
   idempotencyKey: String!
+}
+
+type RecordAccountMovementUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

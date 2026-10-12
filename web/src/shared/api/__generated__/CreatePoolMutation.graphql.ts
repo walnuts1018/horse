@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<64f67cd3f79e6e36ac0775868510b52f>>
+ * @generated SignedSource<<93a6f893ef44236ff070c5551403635d>>
  * @lightSyntaxTransform
  */
 
@@ -20,18 +20,12 @@ export type CreatePoolMutation$variables = {
 };
 export type CreatePoolMutation$data = {
   readonly createPool: {
-    readonly __typename: "CreatePoolSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type CreatePoolMutation = {
@@ -113,7 +107,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -137,12 +131,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "7aae90bf3012810cd9f44f01f214e9ff",
+    "cacheID": "40f3bede52427523a9f8866d95e2e3cd",
     "id": null,
     "metadata": {},
     "name": "CreatePoolMutation",
     "operationKind": "mutation",
-    "text": "mutation CreatePoolMutation(\n  $input: CreatePoolInput!\n) {\n  createPool(input: $input) {\n    __typename\n    ... on CreatePoolSuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreatePoolMutation(\n  $input: CreatePoolInput!\n) {\n  createPool(input: $input) {\n    __typename\n    ... on CreatePoolSuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

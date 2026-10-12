@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<2acc9192af32231d8f6cee0fe50eda24>>
+ * @generated SignedSource<<4eb347177a80706e12e24c398d633422>>
  * @lightSyntaxTransform
  */
 
@@ -16,20 +16,14 @@ export type RevokeHouseholdInvitationMutation$variables = {
 };
 export type RevokeHouseholdInvitationMutation$data = {
   readonly revokeHouseholdInvitation: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "RevokeHouseholdInvitationSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
       readonly revokedAt: string | null | undefined;
       readonly status: HouseholdInvitationStatus;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type RevokeHouseholdInvitationMutation = {
@@ -135,7 +129,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -159,12 +153,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "3128ba4dcbefd20f0f04b09d8ccd9e9b",
+    "cacheID": "d43651255a91f97a8cc06050596ffb79",
     "id": null,
     "metadata": {},
     "name": "RevokeHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation RevokeHouseholdInvitationMutation(\n  $householdId: ID!\n  $invitationId: ID!\n) {\n  revokeHouseholdInvitation(householdId: $householdId, invitationId: $invitationId) {\n    __typename\n    ... on RevokeHouseholdInvitationSuccess {\n      result {\n        id\n        status\n        revokedAt\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation RevokeHouseholdInvitationMutation(\n  $householdId: ID!\n  $invitationId: ID!\n) {\n  revokeHouseholdInvitation(householdId: $householdId, invitationId: $invitationId) {\n    __typename\n    ... on RevokeHouseholdInvitationSuccess {\n      result {\n        id\n        status\n        revokedAt\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

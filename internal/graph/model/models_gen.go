@@ -90,6 +90,12 @@ type LedgerEntry interface {
 	GetCreatedAt() string
 }
 
+type MutationError interface {
+	IsMutationError()
+	GetCode() MutationErrorCode
+	GetMessage() string
+}
+
 type PostPurchaseResult interface {
 	IsPostPurchaseResult()
 }
@@ -167,6 +173,17 @@ type AcceptHouseholdInvitationSuccess struct {
 }
 
 func (AcceptHouseholdInvitationSuccess) IsAcceptHouseholdInvitationResult() {}
+
+type AcceptHouseholdInvitationUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (AcceptHouseholdInvitationUserError) IsAcceptHouseholdInvitationResult() {}
+
+func (AcceptHouseholdInvitationUserError) IsMutationError()                {}
+func (this AcceptHouseholdInvitationUserError) GetCode() MutationErrorCode { return this.Code }
+func (this AcceptHouseholdInvitationUserError) GetMessage() string         { return this.Message }
 
 type Account struct {
 	ID     string      `json:"id"`
@@ -289,17 +306,50 @@ type ArchiveBudgetSuccess struct {
 
 func (ArchiveBudgetSuccess) IsArchiveBudgetResult() {}
 
+type ArchiveBudgetUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (ArchiveBudgetUserError) IsArchiveBudgetResult() {}
+
+func (ArchiveBudgetUserError) IsMutationError()                {}
+func (this ArchiveBudgetUserError) GetCode() MutationErrorCode { return this.Code }
+func (this ArchiveBudgetUserError) GetMessage() string         { return this.Message }
+
 type ArchiveRecurringExpenseSuccess struct {
 	Result *RecurringExpense `json:"result"`
 }
 
 func (ArchiveRecurringExpenseSuccess) IsArchiveRecurringExpenseResult() {}
 
+type ArchiveRecurringExpenseUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (ArchiveRecurringExpenseUserError) IsArchiveRecurringExpenseResult() {}
+
+func (ArchiveRecurringExpenseUserError) IsMutationError()                {}
+func (this ArchiveRecurringExpenseUserError) GetCode() MutationErrorCode { return this.Code }
+func (this ArchiveRecurringExpenseUserError) GetMessage() string         { return this.Message }
+
 type ArchiveTagSuccess struct {
 	Result *Tag `json:"result"`
 }
 
 func (ArchiveTagSuccess) IsArchiveTagResult() {}
+
+type ArchiveTagUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (ArchiveTagUserError) IsArchiveTagResult() {}
+
+func (ArchiveTagUserError) IsMutationError()                {}
+func (this ArchiveTagUserError) GetCode() MutationErrorCode { return this.Code }
+func (this ArchiveTagUserError) GetMessage() string         { return this.Message }
 
 type Budget struct {
 	ID           string  `json:"id"`
@@ -342,6 +392,17 @@ type BulkUpdatePurchaseItemsSuccess struct {
 
 func (BulkUpdatePurchaseItemsSuccess) IsBulkUpdatePurchaseItemsResult() {}
 
+type BulkUpdatePurchaseItemsUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (BulkUpdatePurchaseItemsUserError) IsBulkUpdatePurchaseItemsResult() {}
+
+func (BulkUpdatePurchaseItemsUserError) IsMutationError()                {}
+func (this BulkUpdatePurchaseItemsUserError) GetCode() MutationErrorCode { return this.Code }
+func (this BulkUpdatePurchaseItemsUserError) GetMessage() string         { return this.Message }
+
 type BulkUpdatePurchasesInput struct {
 	Targets       []*PurchaseUpdateTargetInput `json:"targets"`
 	ChangedFields []string                     `json:"changedFields"`
@@ -352,6 +413,17 @@ type BulkUpdatePurchasesSuccess struct {
 }
 
 func (BulkUpdatePurchasesSuccess) IsBulkUpdatePurchasesResult() {}
+
+type BulkUpdatePurchasesUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (BulkUpdatePurchasesUserError) IsBulkUpdatePurchasesResult() {}
+
+func (BulkUpdatePurchasesUserError) IsMutationError()                {}
+func (this BulkUpdatePurchasesUserError) GetCode() MutationErrorCode { return this.Code }
+func (this BulkUpdatePurchasesUserError) GetMessage() string         { return this.Message }
 
 type Category struct {
 	ID       string  `json:"id"`
@@ -374,6 +446,17 @@ type ClosePeriodSuccess struct {
 
 func (ClosePeriodSuccess) IsClosePeriodResult() {}
 
+type ClosePeriodUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (ClosePeriodUserError) IsClosePeriodResult() {}
+
+func (ClosePeriodUserError) IsMutationError()                {}
+func (this ClosePeriodUserError) GetCode() MutationErrorCode { return this.Code }
+func (this ClosePeriodUserError) GetMessage() string         { return this.Message }
+
 type CorrectPurchaseInput struct {
 	HouseholdID        string                  `json:"householdId"`
 	PurchaseID         string                  `json:"purchaseId"`
@@ -390,6 +473,17 @@ type CorrectPurchaseSuccess struct {
 }
 
 func (CorrectPurchaseSuccess) IsCorrectPurchaseResult() {}
+
+type CorrectPurchaseUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CorrectPurchaseUserError) IsCorrectPurchaseResult() {}
+
+func (CorrectPurchaseUserError) IsMutationError()                {}
+func (this CorrectPurchaseUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CorrectPurchaseUserError) GetMessage() string         { return this.Message }
 
 type CorrectionLedgerEntry struct {
 	ID          string    `json:"id"`
@@ -425,6 +519,17 @@ type CreateAccountSuccess struct {
 
 func (CreateAccountSuccess) IsCreateAccountResult() {}
 
+type CreateAccountUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreateAccountUserError) IsCreateAccountResult() {}
+
+func (CreateAccountUserError) IsMutationError()                {}
+func (this CreateAccountUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreateAccountUserError) GetMessage() string         { return this.Message }
+
 type CreateCategoryInput struct {
 	HouseholdID string  `json:"householdId"`
 	Name        string  `json:"name"`
@@ -436,6 +541,17 @@ type CreateCategorySuccess struct {
 }
 
 func (CreateCategorySuccess) IsCreateCategoryResult() {}
+
+type CreateCategoryUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreateCategoryUserError) IsCreateCategoryResult() {}
+
+func (CreateCategoryUserError) IsMutationError()                {}
+func (this CreateCategoryUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreateCategoryUserError) GetMessage() string         { return this.Message }
 
 type CreateHouseholdInput struct {
 	Name        string   `json:"name"`
@@ -453,11 +569,33 @@ type CreateHouseholdInvitationSuccess struct {
 
 func (CreateHouseholdInvitationSuccess) IsCreateHouseholdInvitationResult() {}
 
+type CreateHouseholdInvitationUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreateHouseholdInvitationUserError) IsCreateHouseholdInvitationResult() {}
+
+func (CreateHouseholdInvitationUserError) IsMutationError()                {}
+func (this CreateHouseholdInvitationUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreateHouseholdInvitationUserError) GetMessage() string         { return this.Message }
+
 type CreateHouseholdSuccess struct {
 	Result *Household `json:"result"`
 }
 
 func (CreateHouseholdSuccess) IsCreateHouseholdResult() {}
+
+type CreateHouseholdUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreateHouseholdUserError) IsCreateHouseholdResult() {}
+
+func (CreateHouseholdUserError) IsMutationError()                {}
+func (this CreateHouseholdUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreateHouseholdUserError) GetMessage() string         { return this.Message }
 
 type CreatePoolInput struct {
 	HouseholdID string   `json:"householdId"`
@@ -471,6 +609,17 @@ type CreatePoolSuccess struct {
 
 func (CreatePoolSuccess) IsCreatePoolResult() {}
 
+type CreatePoolUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreatePoolUserError) IsCreatePoolResult() {}
+
+func (CreatePoolUserError) IsMutationError()                {}
+func (this CreatePoolUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreatePoolUserError) GetMessage() string         { return this.Message }
+
 type CreateProductConceptInput struct {
 	HouseholdID string  `json:"householdId"`
 	Name        string  `json:"name"`
@@ -482,6 +631,17 @@ type CreateProductConceptSuccess struct {
 }
 
 func (CreateProductConceptSuccess) IsCreateProductConceptResult() {}
+
+type CreateProductConceptUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreateProductConceptUserError) IsCreateProductConceptResult() {}
+
+func (CreateProductConceptUserError) IsMutationError()                {}
+func (this CreateProductConceptUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreateProductConceptUserError) GetMessage() string         { return this.Message }
 
 type CreateProductVariantInput struct {
 	HouseholdID string  `json:"householdId"`
@@ -497,6 +657,17 @@ type CreateProductVariantSuccess struct {
 }
 
 func (CreateProductVariantSuccess) IsCreateProductVariantResult() {}
+
+type CreateProductVariantUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreateProductVariantUserError) IsCreateProductVariantResult() {}
+
+func (CreateProductVariantUserError) IsMutationError()                {}
+func (this CreateProductVariantUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreateProductVariantUserError) GetMessage() string         { return this.Message }
 
 type CreatePurchaseInput struct {
 	IdempotencyKey             string                  `json:"idempotencyKey"`
@@ -519,6 +690,17 @@ type CreatePurchaseSuccess struct {
 
 func (CreatePurchaseSuccess) IsCreatePurchaseResult() {}
 
+type CreatePurchaseUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreatePurchaseUserError) IsCreatePurchaseResult() {}
+
+func (CreatePurchaseUserError) IsMutationError()                {}
+func (this CreatePurchaseUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreatePurchaseUserError) GetMessage() string         { return this.Message }
+
 type CreateTagInput struct {
 	HouseholdID string `json:"householdId"`
 	Name        string `json:"name"`
@@ -529,6 +711,17 @@ type CreateTagSuccess struct {
 }
 
 func (CreateTagSuccess) IsCreateTagResult() {}
+
+type CreateTagUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreateTagUserError) IsCreateTagResult() {}
+
+func (CreateTagUserError) IsMutationError()                {}
+func (this CreateTagUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreateTagUserError) GetMessage() string         { return this.Message }
 
 type CreatedHouseholdInvitation struct {
 	Invitation *HouseholdInvitation `json:"invitation"`
@@ -642,81 +835,6 @@ type MonthlyMemberSpendingReport struct {
 type Mutation struct {
 }
 
-type MutationError struct {
-	Code    MutationErrorCode `json:"code"`
-	Message string            `json:"message"`
-}
-
-func (MutationError) IsAcceptHouseholdInvitationResult() {}
-
-func (MutationError) IsArchiveBudgetResult() {}
-
-func (MutationError) IsArchiveRecurringExpenseResult() {}
-
-func (MutationError) IsArchiveTagResult() {}
-
-func (MutationError) IsBulkUpdatePurchaseItemsResult() {}
-
-func (MutationError) IsBulkUpdatePurchasesResult() {}
-
-func (MutationError) IsClosePeriodResult() {}
-
-func (MutationError) IsCorrectPurchaseResult() {}
-
-func (MutationError) IsCreateAccountResult() {}
-
-func (MutationError) IsCreateCategoryResult() {}
-
-func (MutationError) IsCreateHouseholdInvitationResult() {}
-
-func (MutationError) IsCreateHouseholdResult() {}
-
-func (MutationError) IsCreatePoolResult() {}
-
-func (MutationError) IsCreateProductConceptResult() {}
-
-func (MutationError) IsCreateProductVariantResult() {}
-
-func (MutationError) IsCreatePurchaseResult() {}
-
-func (MutationError) IsCreateTagResult() {}
-
-func (MutationError) IsPostPurchaseResult() {}
-
-func (MutationError) IsRecordAccountMovementResult() {}
-
-func (MutationError) IsRecordExternalIncomeResult() {}
-
-func (MutationError) IsRecordFundingResult() {}
-
-func (MutationError) IsRecordRepaymentResult() {}
-
-func (MutationError) IsRecordTransferResult() {}
-
-func (MutationError) IsRevokeHouseholdInvitationResult() {}
-
-func (MutationError) IsSetAllocationRuleResult() {}
-
-func (MutationError) IsSetBudgetResult() {}
-
-func (MutationError) IsSetCategoryArchivedResult() {}
-
-func (MutationError) IsSetDefaultAllocationResult() {}
-
-func (MutationError) IsSetFundingScheduleResult() {}
-
-func (MutationError) IsSetPoolFundingRuleResult() {}
-
-func (MutationError) IsSetProductAliasResult() {}
-
-func (MutationError) IsSetRecurringExpenseResult() {}
-
-func (MutationError) IsUpdatePurchaseItemResult() {}
-
-func (MutationError) IsUpdatePurchaseResult() {}
-
-func (MutationError) IsUpdateTagResult() {}
-
 type PageInfo struct {
 	HasNextPage     bool    `json:"hasNextPage"`
 	HasPreviousPage bool    `json:"hasPreviousPage"`
@@ -753,6 +871,17 @@ type PostPurchaseSuccess struct {
 }
 
 func (PostPurchaseSuccess) IsPostPurchaseResult() {}
+
+type PostPurchaseUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (PostPurchaseUserError) IsPostPurchaseResult() {}
+
+func (PostPurchaseUserError) IsMutationError()                {}
+func (this PostPurchaseUserError) GetCode() MutationErrorCode { return this.Code }
+func (this PostPurchaseUserError) GetMessage() string         { return this.Message }
 
 type PrintedUnitPrice struct {
 	AmountYen Long              `json:"amountYen"`
@@ -973,6 +1102,17 @@ type RecordAccountMovementSuccess struct {
 
 func (RecordAccountMovementSuccess) IsRecordAccountMovementResult() {}
 
+type RecordAccountMovementUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (RecordAccountMovementUserError) IsRecordAccountMovementResult() {}
+
+func (RecordAccountMovementUserError) IsMutationError()                {}
+func (this RecordAccountMovementUserError) GetCode() MutationErrorCode { return this.Code }
+func (this RecordAccountMovementUserError) GetMessage() string         { return this.Message }
+
 type RecordExternalIncomeInput struct {
 	HouseholdID    string `json:"householdId"`
 	AccountID      string `json:"accountId"`
@@ -987,6 +1127,17 @@ type RecordExternalIncomeSuccess struct {
 }
 
 func (RecordExternalIncomeSuccess) IsRecordExternalIncomeResult() {}
+
+type RecordExternalIncomeUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (RecordExternalIncomeUserError) IsRecordExternalIncomeResult() {}
+
+func (RecordExternalIncomeUserError) IsMutationError()                {}
+func (this RecordExternalIncomeUserError) GetCode() MutationErrorCode { return this.Code }
+func (this RecordExternalIncomeUserError) GetMessage() string         { return this.Message }
 
 type RecordFundingInput struct {
 	HouseholdID          string  `json:"householdId"`
@@ -1004,6 +1155,17 @@ type RecordFundingSuccess struct {
 }
 
 func (RecordFundingSuccess) IsRecordFundingResult() {}
+
+type RecordFundingUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (RecordFundingUserError) IsRecordFundingResult() {}
+
+func (RecordFundingUserError) IsMutationError()                {}
+func (this RecordFundingUserError) GetCode() MutationErrorCode { return this.Code }
+func (this RecordFundingUserError) GetMessage() string         { return this.Message }
 
 type RecordRepaymentInput struct {
 	HouseholdID          string  `json:"householdId"`
@@ -1024,6 +1186,17 @@ type RecordRepaymentSuccess struct {
 
 func (RecordRepaymentSuccess) IsRecordRepaymentResult() {}
 
+type RecordRepaymentUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (RecordRepaymentUserError) IsRecordRepaymentResult() {}
+
+func (RecordRepaymentUserError) IsMutationError()                {}
+func (this RecordRepaymentUserError) GetCode() MutationErrorCode { return this.Code }
+func (this RecordRepaymentUserError) GetMessage() string         { return this.Message }
+
 type RecordTransferInput struct {
 	HouseholdID          string            `json:"householdId"`
 	FromMemberID         string            `json:"fromMemberId"`
@@ -1042,6 +1215,17 @@ type RecordTransferSuccess struct {
 }
 
 func (RecordTransferSuccess) IsRecordTransferResult() {}
+
+type RecordTransferUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (RecordTransferUserError) IsRecordTransferResult() {}
+
+func (RecordTransferUserError) IsMutationError()                {}
+func (this RecordTransferUserError) GetCode() MutationErrorCode { return this.Code }
+func (this RecordTransferUserError) GetMessage() string         { return this.Message }
 
 type RecurringExpense struct {
 	ID               string  `json:"id"`
@@ -1068,6 +1252,17 @@ type RevokeHouseholdInvitationSuccess struct {
 
 func (RevokeHouseholdInvitationSuccess) IsRevokeHouseholdInvitationResult() {}
 
+type RevokeHouseholdInvitationUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (RevokeHouseholdInvitationUserError) IsRevokeHouseholdInvitationResult() {}
+
+func (RevokeHouseholdInvitationUserError) IsMutationError()                {}
+func (this RevokeHouseholdInvitationUserError) GetCode() MutationErrorCode { return this.Code }
+func (this RevokeHouseholdInvitationUserError) GetMessage() string         { return this.Message }
+
 type SetAllocationRuleInput struct {
 	HouseholdID      string             `json:"householdId"`
 	CategoryID       *string            `json:"categoryId,omitempty"`
@@ -1082,6 +1277,17 @@ type SetAllocationRuleSuccess struct {
 }
 
 func (SetAllocationRuleSuccess) IsSetAllocationRuleResult() {}
+
+type SetAllocationRuleUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SetAllocationRuleUserError) IsSetAllocationRuleResult() {}
+
+func (SetAllocationRuleUserError) IsMutationError()                {}
+func (this SetAllocationRuleUserError) GetCode() MutationErrorCode { return this.Code }
+func (this SetAllocationRuleUserError) GetMessage() string         { return this.Message }
 
 type SetBudgetInput struct {
 	HouseholdID  string  `json:"householdId"`
@@ -1100,11 +1306,33 @@ type SetBudgetSuccess struct {
 
 func (SetBudgetSuccess) IsSetBudgetResult() {}
 
+type SetBudgetUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SetBudgetUserError) IsSetBudgetResult() {}
+
+func (SetBudgetUserError) IsMutationError()                {}
+func (this SetBudgetUserError) GetCode() MutationErrorCode { return this.Code }
+func (this SetBudgetUserError) GetMessage() string         { return this.Message }
+
 type SetCategoryArchivedSuccess struct {
 	Result *Category `json:"result"`
 }
 
 func (SetCategoryArchivedSuccess) IsSetCategoryArchivedResult() {}
+
+type SetCategoryArchivedUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SetCategoryArchivedUserError) IsSetCategoryArchivedResult() {}
+
+func (SetCategoryArchivedUserError) IsMutationError()                {}
+func (this SetCategoryArchivedUserError) GetCode() MutationErrorCode { return this.Code }
+func (this SetCategoryArchivedUserError) GetMessage() string         { return this.Message }
 
 type SetDefaultAllocationInput struct {
 	HouseholdID string             `json:"householdId"`
@@ -1116,6 +1344,17 @@ type SetDefaultAllocationSuccess struct {
 }
 
 func (SetDefaultAllocationSuccess) IsSetDefaultAllocationResult() {}
+
+type SetDefaultAllocationUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SetDefaultAllocationUserError) IsSetDefaultAllocationResult() {}
+
+func (SetDefaultAllocationUserError) IsMutationError()                {}
+func (this SetDefaultAllocationUserError) GetCode() MutationErrorCode { return this.Code }
+func (this SetDefaultAllocationUserError) GetMessage() string         { return this.Message }
 
 type SetFundingScheduleInput struct {
 	HouseholdID string  `json:"householdId"`
@@ -1133,6 +1372,17 @@ type SetFundingScheduleSuccess struct {
 
 func (SetFundingScheduleSuccess) IsSetFundingScheduleResult() {}
 
+type SetFundingScheduleUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SetFundingScheduleUserError) IsSetFundingScheduleResult() {}
+
+func (SetFundingScheduleUserError) IsMutationError()                {}
+func (this SetFundingScheduleUserError) GetCode() MutationErrorCode { return this.Code }
+func (this SetFundingScheduleUserError) GetMessage() string         { return this.Message }
+
 type SetPoolFundingRuleInput struct {
 	HouseholdID      string                      `json:"householdId"`
 	PoolID           string                      `json:"poolId"`
@@ -1148,6 +1398,17 @@ type SetPoolFundingRuleSuccess struct {
 
 func (SetPoolFundingRuleSuccess) IsSetPoolFundingRuleResult() {}
 
+type SetPoolFundingRuleUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SetPoolFundingRuleUserError) IsSetPoolFundingRuleResult() {}
+
+func (SetPoolFundingRuleUserError) IsMutationError()                {}
+func (this SetPoolFundingRuleUserError) GetCode() MutationErrorCode { return this.Code }
+func (this SetPoolFundingRuleUserError) GetMessage() string         { return this.Message }
+
 type SetProductAliasInput struct {
 	HouseholdID string `json:"householdId"`
 	VariantID   string `json:"variantId"`
@@ -1160,6 +1421,17 @@ type SetProductAliasSuccess struct {
 }
 
 func (SetProductAliasSuccess) IsSetProductAliasResult() {}
+
+type SetProductAliasUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SetProductAliasUserError) IsSetProductAliasResult() {}
+
+func (SetProductAliasUserError) IsMutationError()                {}
+func (this SetProductAliasUserError) GetCode() MutationErrorCode { return this.Code }
+func (this SetProductAliasUserError) GetMessage() string         { return this.Message }
 
 type SetRecurringExpenseInput struct {
 	HouseholdID      string  `json:"householdId"`
@@ -1181,6 +1453,17 @@ type SetRecurringExpenseSuccess struct {
 }
 
 func (SetRecurringExpenseSuccess) IsSetRecurringExpenseResult() {}
+
+type SetRecurringExpenseUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SetRecurringExpenseUserError) IsSetRecurringExpenseResult() {}
+
+func (SetRecurringExpenseUserError) IsMutationError()                {}
+func (this SetRecurringExpenseUserError) GetCode() MutationErrorCode { return this.Code }
+func (this SetRecurringExpenseUserError) GetMessage() string         { return this.Message }
 
 type Settlement struct {
 	Period    string            `json:"period"`
@@ -1290,11 +1573,33 @@ type UpdatePurchaseItemSuccess struct {
 
 func (UpdatePurchaseItemSuccess) IsUpdatePurchaseItemResult() {}
 
+type UpdatePurchaseItemUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (UpdatePurchaseItemUserError) IsUpdatePurchaseItemResult() {}
+
+func (UpdatePurchaseItemUserError) IsMutationError()                {}
+func (this UpdatePurchaseItemUserError) GetCode() MutationErrorCode { return this.Code }
+func (this UpdatePurchaseItemUserError) GetMessage() string         { return this.Message }
+
 type UpdatePurchaseSuccess struct {
 	Result *Purchase `json:"result"`
 }
 
 func (UpdatePurchaseSuccess) IsUpdatePurchaseResult() {}
+
+type UpdatePurchaseUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (UpdatePurchaseUserError) IsUpdatePurchaseResult() {}
+
+func (UpdatePurchaseUserError) IsMutationError()                {}
+func (this UpdatePurchaseUserError) GetCode() MutationErrorCode { return this.Code }
+func (this UpdatePurchaseUserError) GetMessage() string         { return this.Message }
 
 type UpdateTagInput struct {
 	TagID        string `json:"tagId"`
@@ -1307,6 +1612,17 @@ type UpdateTagSuccess struct {
 }
 
 func (UpdateTagSuccess) IsUpdateTagResult() {}
+
+type UpdateTagUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (UpdateTagUserError) IsUpdateTagResult() {}
+
+func (UpdateTagUserError) IsMutationError()                {}
+func (this UpdateTagUserError) GetCode() MutationErrorCode { return this.Code }
+func (this UpdateTagUserError) GetMessage() string         { return this.Message }
 
 type Viewer struct {
 	ID          string       `json:"id"`

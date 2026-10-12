@@ -16,7 +16,7 @@ func (r *mutationResolver) CreateProductConcept(ctx context.Context, input model
 	result, err := r.createProductConcept(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.CreateProductConceptUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

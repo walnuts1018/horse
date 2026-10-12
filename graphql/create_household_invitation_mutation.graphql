@@ -7,7 +7,7 @@ extend type Mutation {
   createHouseholdInvitation(input: CreateHouseholdInvitationInput!): CreateHouseholdInvitationResult!
 }
 
-union CreateHouseholdInvitationResult = CreateHouseholdInvitationSuccess | MutationError
+union CreateHouseholdInvitationResult = CreateHouseholdInvitationSuccess | CreateHouseholdInvitationUserError
 
 type CreateHouseholdInvitationSuccess {
   result: CreatedHouseholdInvitation!
@@ -16,4 +16,9 @@ type CreateHouseholdInvitationSuccess {
 input CreateHouseholdInvitationInput {
   householdId: ID! @nodeID(of: "Household")
   expiresAt: String!
+}
+
+type CreateHouseholdInvitationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

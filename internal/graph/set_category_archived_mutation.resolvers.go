@@ -16,7 +16,7 @@ func (r *mutationResolver) SetCategoryArchived(ctx context.Context, categoryID s
 	result, err := r.setCategoryArchived(ctx, categoryID, archived)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.SetCategoryArchivedUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

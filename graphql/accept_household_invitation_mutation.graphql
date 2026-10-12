@@ -2,8 +2,13 @@ extend type Mutation {
   acceptHouseholdInvitation(token: String!): AcceptHouseholdInvitationResult!
 }
 
-union AcceptHouseholdInvitationResult = AcceptHouseholdInvitationSuccess | MutationError
+union AcceptHouseholdInvitationResult = AcceptHouseholdInvitationSuccess | AcceptHouseholdInvitationUserError
 
 type AcceptHouseholdInvitationSuccess {
   result: Household!
+}
+
+type AcceptHouseholdInvitationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

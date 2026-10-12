@@ -72,6 +72,11 @@ type ComplexityRoot struct {
 		Result func(childComplexity int) int
 	}
 
+	AcceptHouseholdInvitationUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	Account struct {
 		ID     func(childComplexity int) int
 		Kind   func(childComplexity int) int
@@ -173,12 +178,27 @@ type ComplexityRoot struct {
 		Result func(childComplexity int) int
 	}
 
+	ArchiveBudgetUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	ArchiveRecurringExpenseSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	ArchiveRecurringExpenseUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	ArchiveTagSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	ArchiveTagUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	Budget struct {
@@ -199,8 +219,18 @@ type ComplexityRoot struct {
 		Items func(childComplexity int) int
 	}
 
+	BulkUpdatePurchaseItemsUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	BulkUpdatePurchasesSuccess struct {
 		Purchases func(childComplexity int) int
+	}
+
+	BulkUpdatePurchasesUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	Category struct {
@@ -214,8 +244,18 @@ type ComplexityRoot struct {
 		Result func(childComplexity int) int
 	}
 
+	ClosePeriodUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	CorrectPurchaseSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	CorrectPurchaseUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	CorrectionLedgerEntry struct {
@@ -232,36 +272,81 @@ type ComplexityRoot struct {
 		Result func(childComplexity int) int
 	}
 
+	CreateAccountUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	CreateCategorySuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	CreateCategoryUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	CreateHouseholdInvitationSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	CreateHouseholdInvitationUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	CreateHouseholdSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	CreateHouseholdUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	CreatePoolSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	CreatePoolUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	CreateProductConceptSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	CreateProductConceptUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	CreateProductVariantSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	CreateProductVariantUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	CreatePurchaseSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	CreatePurchaseUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	CreateTagSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	CreateTagUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	CreatedHouseholdInvitation struct {
@@ -393,11 +478,6 @@ type ComplexityRoot struct {
 		UpdateTag                 func(childComplexity int, input model.UpdateTagInput) int
 	}
 
-	MutationError struct {
-		Code    func(childComplexity int) int
-		Message func(childComplexity int) int
-	}
-
 	PageInfo struct {
 		EndCursor       func(childComplexity int) int
 		HasNextPage     func(childComplexity int) int
@@ -424,6 +504,11 @@ type ComplexityRoot struct {
 
 	PostPurchaseSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	PostPurchaseUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	PrintedUnitPrice struct {
@@ -591,20 +676,45 @@ type ComplexityRoot struct {
 		Result func(childComplexity int) int
 	}
 
+	RecordAccountMovementUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	RecordExternalIncomeSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	RecordExternalIncomeUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	RecordFundingSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	RecordFundingUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	RecordRepaymentSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	RecordRepaymentUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	RecordTransferSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	RecordTransferUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	RecurringExpense struct {
@@ -628,36 +738,81 @@ type ComplexityRoot struct {
 		Result func(childComplexity int) int
 	}
 
+	RevokeHouseholdInvitationUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	SetAllocationRuleSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	SetAllocationRuleUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	SetBudgetSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	SetBudgetUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	SetCategoryArchivedSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	SetCategoryArchivedUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	SetDefaultAllocationSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	SetDefaultAllocationUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	SetFundingScheduleSuccess struct {
 		Success func(childComplexity int) int
+	}
+
+	SetFundingScheduleUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	SetPoolFundingRuleSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	SetPoolFundingRuleUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	SetProductAliasSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	SetProductAliasUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	SetRecurringExpenseSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	SetRecurringExpenseUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	Settlement struct {
@@ -730,12 +885,27 @@ type ComplexityRoot struct {
 		Result func(childComplexity int) int
 	}
 
+	UpdatePurchaseItemUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	UpdatePurchaseSuccess struct {
 		Result func(childComplexity int) int
 	}
 
+	UpdatePurchaseUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	UpdateTagSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	UpdateTagUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	Viewer struct {
@@ -970,6 +1140,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AcceptHouseholdInvitationSuccess.Result(childComplexity), true
+
+	case "AcceptHouseholdInvitationUserError.code":
+		if e.ComplexityRoot.AcceptHouseholdInvitationUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AcceptHouseholdInvitationUserError.Code(childComplexity), true
+	case "AcceptHouseholdInvitationUserError.message":
+		if e.ComplexityRoot.AcceptHouseholdInvitationUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AcceptHouseholdInvitationUserError.Message(childComplexity), true
 
 	case "Account.id":
 		if e.ComplexityRoot.Account.ID == nil {
@@ -1356,6 +1539,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.ArchiveBudgetSuccess.Result(childComplexity), true
 
+	case "ArchiveBudgetUserError.code":
+		if e.ComplexityRoot.ArchiveBudgetUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArchiveBudgetUserError.Code(childComplexity), true
+	case "ArchiveBudgetUserError.message":
+		if e.ComplexityRoot.ArchiveBudgetUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArchiveBudgetUserError.Message(childComplexity), true
+
 	case "ArchiveRecurringExpenseSuccess.result":
 		if e.ComplexityRoot.ArchiveRecurringExpenseSuccess.Result == nil {
 			break
@@ -1363,12 +1559,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.ArchiveRecurringExpenseSuccess.Result(childComplexity), true
 
+	case "ArchiveRecurringExpenseUserError.code":
+		if e.ComplexityRoot.ArchiveRecurringExpenseUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArchiveRecurringExpenseUserError.Code(childComplexity), true
+	case "ArchiveRecurringExpenseUserError.message":
+		if e.ComplexityRoot.ArchiveRecurringExpenseUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArchiveRecurringExpenseUserError.Message(childComplexity), true
+
 	case "ArchiveTagSuccess.result":
 		if e.ComplexityRoot.ArchiveTagSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.ArchiveTagSuccess.Result(childComplexity), true
+
+	case "ArchiveTagUserError.code":
+		if e.ComplexityRoot.ArchiveTagUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArchiveTagUserError.Code(childComplexity), true
+	case "ArchiveTagUserError.message":
+		if e.ComplexityRoot.ArchiveTagUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ArchiveTagUserError.Message(childComplexity), true
 
 	case "Budget.actualYen":
 		if e.ComplexityRoot.Budget.ActualYen == nil {
@@ -1444,12 +1666,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.BulkUpdatePurchaseItemsSuccess.Items(childComplexity), true
 
+	case "BulkUpdatePurchaseItemsUserError.code":
+		if e.ComplexityRoot.BulkUpdatePurchaseItemsUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.BulkUpdatePurchaseItemsUserError.Code(childComplexity), true
+	case "BulkUpdatePurchaseItemsUserError.message":
+		if e.ComplexityRoot.BulkUpdatePurchaseItemsUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.BulkUpdatePurchaseItemsUserError.Message(childComplexity), true
+
 	case "BulkUpdatePurchasesSuccess.purchases":
 		if e.ComplexityRoot.BulkUpdatePurchasesSuccess.Purchases == nil {
 			break
 		}
 
 		return e.ComplexityRoot.BulkUpdatePurchasesSuccess.Purchases(childComplexity), true
+
+	case "BulkUpdatePurchasesUserError.code":
+		if e.ComplexityRoot.BulkUpdatePurchasesUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.BulkUpdatePurchasesUserError.Code(childComplexity), true
+	case "BulkUpdatePurchasesUserError.message":
+		if e.ComplexityRoot.BulkUpdatePurchasesUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.BulkUpdatePurchasesUserError.Message(childComplexity), true
 
 	case "Category.archived":
 		if e.ComplexityRoot.Category.Archived == nil {
@@ -1483,12 +1731,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.ClosePeriodSuccess.Result(childComplexity), true
 
+	case "ClosePeriodUserError.code":
+		if e.ComplexityRoot.ClosePeriodUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosePeriodUserError.Code(childComplexity), true
+	case "ClosePeriodUserError.message":
+		if e.ComplexityRoot.ClosePeriodUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosePeriodUserError.Message(childComplexity), true
+
 	case "CorrectPurchaseSuccess.result":
 		if e.ComplexityRoot.CorrectPurchaseSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.CorrectPurchaseSuccess.Result(childComplexity), true
+
+	case "CorrectPurchaseUserError.code":
+		if e.ComplexityRoot.CorrectPurchaseUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CorrectPurchaseUserError.Code(childComplexity), true
+	case "CorrectPurchaseUserError.message":
+		if e.ComplexityRoot.CorrectPurchaseUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CorrectPurchaseUserError.Message(childComplexity), true
 
 	case "CorrectionLedgerEntry.amountYen":
 		if e.ComplexityRoot.CorrectionLedgerEntry.AmountYen == nil {
@@ -1540,12 +1814,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.CreateAccountSuccess.Result(childComplexity), true
 
+	case "CreateAccountUserError.code":
+		if e.ComplexityRoot.CreateAccountUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateAccountUserError.Code(childComplexity), true
+	case "CreateAccountUserError.message":
+		if e.ComplexityRoot.CreateAccountUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateAccountUserError.Message(childComplexity), true
+
 	case "CreateCategorySuccess.result":
 		if e.ComplexityRoot.CreateCategorySuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.CreateCategorySuccess.Result(childComplexity), true
+
+	case "CreateCategoryUserError.code":
+		if e.ComplexityRoot.CreateCategoryUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateCategoryUserError.Code(childComplexity), true
+	case "CreateCategoryUserError.message":
+		if e.ComplexityRoot.CreateCategoryUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateCategoryUserError.Message(childComplexity), true
 
 	case "CreateHouseholdInvitationSuccess.result":
 		if e.ComplexityRoot.CreateHouseholdInvitationSuccess.Result == nil {
@@ -1554,12 +1854,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.CreateHouseholdInvitationSuccess.Result(childComplexity), true
 
+	case "CreateHouseholdInvitationUserError.code":
+		if e.ComplexityRoot.CreateHouseholdInvitationUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateHouseholdInvitationUserError.Code(childComplexity), true
+	case "CreateHouseholdInvitationUserError.message":
+		if e.ComplexityRoot.CreateHouseholdInvitationUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateHouseholdInvitationUserError.Message(childComplexity), true
+
 	case "CreateHouseholdSuccess.result":
 		if e.ComplexityRoot.CreateHouseholdSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.CreateHouseholdSuccess.Result(childComplexity), true
+
+	case "CreateHouseholdUserError.code":
+		if e.ComplexityRoot.CreateHouseholdUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateHouseholdUserError.Code(childComplexity), true
+	case "CreateHouseholdUserError.message":
+		if e.ComplexityRoot.CreateHouseholdUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateHouseholdUserError.Message(childComplexity), true
 
 	case "CreatePoolSuccess.result":
 		if e.ComplexityRoot.CreatePoolSuccess.Result == nil {
@@ -1568,12 +1894,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.CreatePoolSuccess.Result(childComplexity), true
 
+	case "CreatePoolUserError.code":
+		if e.ComplexityRoot.CreatePoolUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreatePoolUserError.Code(childComplexity), true
+	case "CreatePoolUserError.message":
+		if e.ComplexityRoot.CreatePoolUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreatePoolUserError.Message(childComplexity), true
+
 	case "CreateProductConceptSuccess.result":
 		if e.ComplexityRoot.CreateProductConceptSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.CreateProductConceptSuccess.Result(childComplexity), true
+
+	case "CreateProductConceptUserError.code":
+		if e.ComplexityRoot.CreateProductConceptUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateProductConceptUserError.Code(childComplexity), true
+	case "CreateProductConceptUserError.message":
+		if e.ComplexityRoot.CreateProductConceptUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateProductConceptUserError.Message(childComplexity), true
 
 	case "CreateProductVariantSuccess.result":
 		if e.ComplexityRoot.CreateProductVariantSuccess.Result == nil {
@@ -1582,6 +1934,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.CreateProductVariantSuccess.Result(childComplexity), true
 
+	case "CreateProductVariantUserError.code":
+		if e.ComplexityRoot.CreateProductVariantUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateProductVariantUserError.Code(childComplexity), true
+	case "CreateProductVariantUserError.message":
+		if e.ComplexityRoot.CreateProductVariantUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateProductVariantUserError.Message(childComplexity), true
+
 	case "CreatePurchaseSuccess.result":
 		if e.ComplexityRoot.CreatePurchaseSuccess.Result == nil {
 			break
@@ -1589,12 +1954,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.CreatePurchaseSuccess.Result(childComplexity), true
 
+	case "CreatePurchaseUserError.code":
+		if e.ComplexityRoot.CreatePurchaseUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreatePurchaseUserError.Code(childComplexity), true
+	case "CreatePurchaseUserError.message":
+		if e.ComplexityRoot.CreatePurchaseUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreatePurchaseUserError.Message(childComplexity), true
+
 	case "CreateTagSuccess.result":
 		if e.ComplexityRoot.CreateTagSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.CreateTagSuccess.Result(childComplexity), true
+
+	case "CreateTagUserError.code":
+		if e.ComplexityRoot.CreateTagUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateTagUserError.Code(childComplexity), true
+	case "CreateTagUserError.message":
+		if e.ComplexityRoot.CreateTagUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateTagUserError.Message(childComplexity), true
 
 	case "CreatedHouseholdInvitation.invitation":
 		if e.ComplexityRoot.CreatedHouseholdInvitation.Invitation == nil {
@@ -2324,19 +2715,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Mutation.UpdateTag(childComplexity, args["input"].(model.UpdateTagInput)), true
 
-	case "MutationError.code":
-		if e.ComplexityRoot.MutationError.Code == nil {
-			break
-		}
-
-		return e.ComplexityRoot.MutationError.Code(childComplexity), true
-	case "MutationError.message":
-		if e.ComplexityRoot.MutationError.Message == nil {
-			break
-		}
-
-		return e.ComplexityRoot.MutationError.Message(childComplexity), true
-
 	case "PageInfo.endCursor":
 		if e.ComplexityRoot.PageInfo.EndCursor == nil {
 			break
@@ -2436,6 +2814,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.PostPurchaseSuccess.Result(childComplexity), true
+
+	case "PostPurchaseUserError.code":
+		if e.ComplexityRoot.PostPurchaseUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PostPurchaseUserError.Code(childComplexity), true
+	case "PostPurchaseUserError.message":
+		if e.ComplexityRoot.PostPurchaseUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PostPurchaseUserError.Message(childComplexity), true
 
 	case "PrintedUnitPrice.amountYen":
 		if e.ComplexityRoot.PrintedUnitPrice.AmountYen == nil {
@@ -3249,12 +3640,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.RecordAccountMovementSuccess.Result(childComplexity), true
 
+	case "RecordAccountMovementUserError.code":
+		if e.ComplexityRoot.RecordAccountMovementUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordAccountMovementUserError.Code(childComplexity), true
+	case "RecordAccountMovementUserError.message":
+		if e.ComplexityRoot.RecordAccountMovementUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordAccountMovementUserError.Message(childComplexity), true
+
 	case "RecordExternalIncomeSuccess.result":
 		if e.ComplexityRoot.RecordExternalIncomeSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.RecordExternalIncomeSuccess.Result(childComplexity), true
+
+	case "RecordExternalIncomeUserError.code":
+		if e.ComplexityRoot.RecordExternalIncomeUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordExternalIncomeUserError.Code(childComplexity), true
+	case "RecordExternalIncomeUserError.message":
+		if e.ComplexityRoot.RecordExternalIncomeUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordExternalIncomeUserError.Message(childComplexity), true
 
 	case "RecordFundingSuccess.result":
 		if e.ComplexityRoot.RecordFundingSuccess.Result == nil {
@@ -3263,6 +3680,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.RecordFundingSuccess.Result(childComplexity), true
 
+	case "RecordFundingUserError.code":
+		if e.ComplexityRoot.RecordFundingUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordFundingUserError.Code(childComplexity), true
+	case "RecordFundingUserError.message":
+		if e.ComplexityRoot.RecordFundingUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordFundingUserError.Message(childComplexity), true
+
 	case "RecordRepaymentSuccess.result":
 		if e.ComplexityRoot.RecordRepaymentSuccess.Result == nil {
 			break
@@ -3270,12 +3700,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.RecordRepaymentSuccess.Result(childComplexity), true
 
+	case "RecordRepaymentUserError.code":
+		if e.ComplexityRoot.RecordRepaymentUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordRepaymentUserError.Code(childComplexity), true
+	case "RecordRepaymentUserError.message":
+		if e.ComplexityRoot.RecordRepaymentUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordRepaymentUserError.Message(childComplexity), true
+
 	case "RecordTransferSuccess.result":
 		if e.ComplexityRoot.RecordTransferSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.RecordTransferSuccess.Result(childComplexity), true
+
+	case "RecordTransferUserError.code":
+		if e.ComplexityRoot.RecordTransferUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordTransferUserError.Code(childComplexity), true
+	case "RecordTransferUserError.message":
+		if e.ComplexityRoot.RecordTransferUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordTransferUserError.Message(childComplexity), true
 
 	case "RecurringExpense.amountYen":
 		if e.ComplexityRoot.RecurringExpense.AmountYen == nil {
@@ -3369,12 +3825,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.RevokeHouseholdInvitationSuccess.Result(childComplexity), true
 
+	case "RevokeHouseholdInvitationUserError.code":
+		if e.ComplexityRoot.RevokeHouseholdInvitationUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RevokeHouseholdInvitationUserError.Code(childComplexity), true
+	case "RevokeHouseholdInvitationUserError.message":
+		if e.ComplexityRoot.RevokeHouseholdInvitationUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RevokeHouseholdInvitationUserError.Message(childComplexity), true
+
 	case "SetAllocationRuleSuccess.result":
 		if e.ComplexityRoot.SetAllocationRuleSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.SetAllocationRuleSuccess.Result(childComplexity), true
+
+	case "SetAllocationRuleUserError.code":
+		if e.ComplexityRoot.SetAllocationRuleUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetAllocationRuleUserError.Code(childComplexity), true
+	case "SetAllocationRuleUserError.message":
+		if e.ComplexityRoot.SetAllocationRuleUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetAllocationRuleUserError.Message(childComplexity), true
 
 	case "SetBudgetSuccess.result":
 		if e.ComplexityRoot.SetBudgetSuccess.Result == nil {
@@ -3383,12 +3865,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.SetBudgetSuccess.Result(childComplexity), true
 
+	case "SetBudgetUserError.code":
+		if e.ComplexityRoot.SetBudgetUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetBudgetUserError.Code(childComplexity), true
+	case "SetBudgetUserError.message":
+		if e.ComplexityRoot.SetBudgetUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetBudgetUserError.Message(childComplexity), true
+
 	case "SetCategoryArchivedSuccess.result":
 		if e.ComplexityRoot.SetCategoryArchivedSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.SetCategoryArchivedSuccess.Result(childComplexity), true
+
+	case "SetCategoryArchivedUserError.code":
+		if e.ComplexityRoot.SetCategoryArchivedUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetCategoryArchivedUserError.Code(childComplexity), true
+	case "SetCategoryArchivedUserError.message":
+		if e.ComplexityRoot.SetCategoryArchivedUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetCategoryArchivedUserError.Message(childComplexity), true
 
 	case "SetDefaultAllocationSuccess.result":
 		if e.ComplexityRoot.SetDefaultAllocationSuccess.Result == nil {
@@ -3397,12 +3905,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.SetDefaultAllocationSuccess.Result(childComplexity), true
 
+	case "SetDefaultAllocationUserError.code":
+		if e.ComplexityRoot.SetDefaultAllocationUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetDefaultAllocationUserError.Code(childComplexity), true
+	case "SetDefaultAllocationUserError.message":
+		if e.ComplexityRoot.SetDefaultAllocationUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetDefaultAllocationUserError.Message(childComplexity), true
+
 	case "SetFundingScheduleSuccess.success":
 		if e.ComplexityRoot.SetFundingScheduleSuccess.Success == nil {
 			break
 		}
 
 		return e.ComplexityRoot.SetFundingScheduleSuccess.Success(childComplexity), true
+
+	case "SetFundingScheduleUserError.code":
+		if e.ComplexityRoot.SetFundingScheduleUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetFundingScheduleUserError.Code(childComplexity), true
+	case "SetFundingScheduleUserError.message":
+		if e.ComplexityRoot.SetFundingScheduleUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetFundingScheduleUserError.Message(childComplexity), true
 
 	case "SetPoolFundingRuleSuccess.result":
 		if e.ComplexityRoot.SetPoolFundingRuleSuccess.Result == nil {
@@ -3411,6 +3945,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.SetPoolFundingRuleSuccess.Result(childComplexity), true
 
+	case "SetPoolFundingRuleUserError.code":
+		if e.ComplexityRoot.SetPoolFundingRuleUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetPoolFundingRuleUserError.Code(childComplexity), true
+	case "SetPoolFundingRuleUserError.message":
+		if e.ComplexityRoot.SetPoolFundingRuleUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetPoolFundingRuleUserError.Message(childComplexity), true
+
 	case "SetProductAliasSuccess.result":
 		if e.ComplexityRoot.SetProductAliasSuccess.Result == nil {
 			break
@@ -3418,12 +3965,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.SetProductAliasSuccess.Result(childComplexity), true
 
+	case "SetProductAliasUserError.code":
+		if e.ComplexityRoot.SetProductAliasUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetProductAliasUserError.Code(childComplexity), true
+	case "SetProductAliasUserError.message":
+		if e.ComplexityRoot.SetProductAliasUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetProductAliasUserError.Message(childComplexity), true
+
 	case "SetRecurringExpenseSuccess.result":
 		if e.ComplexityRoot.SetRecurringExpenseSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.SetRecurringExpenseSuccess.Result(childComplexity), true
+
+	case "SetRecurringExpenseUserError.code":
+		if e.ComplexityRoot.SetRecurringExpenseUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetRecurringExpenseUserError.Code(childComplexity), true
+	case "SetRecurringExpenseUserError.message":
+		if e.ComplexityRoot.SetRecurringExpenseUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetRecurringExpenseUserError.Message(childComplexity), true
 
 	case "Settlement.createdAt":
 		if e.ComplexityRoot.Settlement.CreatedAt == nil {
@@ -3709,6 +4282,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.UpdatePurchaseItemSuccess.Result(childComplexity), true
 
+	case "UpdatePurchaseItemUserError.code":
+		if e.ComplexityRoot.UpdatePurchaseItemUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdatePurchaseItemUserError.Code(childComplexity), true
+	case "UpdatePurchaseItemUserError.message":
+		if e.ComplexityRoot.UpdatePurchaseItemUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdatePurchaseItemUserError.Message(childComplexity), true
+
 	case "UpdatePurchaseSuccess.result":
 		if e.ComplexityRoot.UpdatePurchaseSuccess.Result == nil {
 			break
@@ -3716,12 +4302,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.UpdatePurchaseSuccess.Result(childComplexity), true
 
+	case "UpdatePurchaseUserError.code":
+		if e.ComplexityRoot.UpdatePurchaseUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdatePurchaseUserError.Code(childComplexity), true
+	case "UpdatePurchaseUserError.message":
+		if e.ComplexityRoot.UpdatePurchaseUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdatePurchaseUserError.Message(childComplexity), true
+
 	case "UpdateTagSuccess.result":
 		if e.ComplexityRoot.UpdateTagSuccess.Result == nil {
 			break
 		}
 
 		return e.ComplexityRoot.UpdateTagSuccess.Result(childComplexity), true
+
+	case "UpdateTagUserError.code":
+		if e.ComplexityRoot.UpdateTagUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdateTagUserError.Code(childComplexity), true
+	case "UpdateTagUserError.message":
+		if e.ComplexityRoot.UpdateTagUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdateTagUserError.Message(childComplexity), true
 
 	case "Viewer.displayName":
 		if e.ComplexityRoot.Viewer.DisplayName == nil {
@@ -3875,10 +4487,15 @@ var sources = []*ast.Source{
   acceptHouseholdInvitation(token: String!): AcceptHouseholdInvitationResult!
 }
 
-union AcceptHouseholdInvitationResult = AcceptHouseholdInvitationSuccess | MutationError
+union AcceptHouseholdInvitationResult = AcceptHouseholdInvitationSuccess | AcceptHouseholdInvitationUserError
 
 type AcceptHouseholdInvitationSuccess {
   result: Household!
+}
+
+type AcceptHouseholdInvitationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/account.graphql", Input: `type Account implements Node {
@@ -4026,30 +4643,45 @@ extend type Query {
   archiveBudget(budgetId: ID! @nodeID(of: "Budget"), baseRevision: Int!, archived: Boolean!): ArchiveBudgetResult!
 }
 
-union ArchiveBudgetResult = ArchiveBudgetSuccess | MutationError
+union ArchiveBudgetResult = ArchiveBudgetSuccess | ArchiveBudgetUserError
 
 type ArchiveBudgetSuccess {
   result: Budget!
+}
+
+type ArchiveBudgetUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/archive_recurring_expense_mutation.graphql", Input: `extend type Mutation {
   archiveRecurringExpense(expenseId: ID! @nodeID(of: "RecurringExpense"), baseRevision: Int!, archived: Boolean!): ArchiveRecurringExpenseResult!
 }
 
-union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | MutationError
+union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | ArchiveRecurringExpenseUserError
 
 type ArchiveRecurringExpenseSuccess {
   result: RecurringExpense!
+}
+
+type ArchiveRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/archive_tag_mutation.graphql", Input: `extend type Mutation {
   archiveTag(tagId: ID! @nodeID(of: "Tag"), baseRevision: Int!, archived: Boolean!): ArchiveTagResult!
 }
 
-union ArchiveTagResult = ArchiveTagSuccess | MutationError
+union ArchiveTagResult = ArchiveTagSuccess | ArchiveTagUserError
 
 type ArchiveTagSuccess {
   result: Tag!
+}
+
+type ArchiveTagUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/budget.graphql", Input: `type Budget implements Node {
@@ -4074,7 +4706,7 @@ extend type Query {
   bulkUpdatePurchaseItems(input: BulkUpdatePurchaseItemsInput!): BulkUpdatePurchaseItemsResult!
 }
 
-union BulkUpdatePurchaseItemsResult = BulkUpdatePurchaseItemsSuccess | MutationError
+union BulkUpdatePurchaseItemsResult = BulkUpdatePurchaseItemsSuccess | BulkUpdatePurchaseItemsUserError
 
 type BulkUpdatePurchaseItemsSuccess {
   items: [PurchaseItem!]!
@@ -4097,12 +4729,17 @@ input PurchaseItemTargetInput {
   itemId: ID! @nodeID(of: "PurchaseItem")
   baseRevision: Int!
 }
+
+type BulkUpdatePurchaseItemsUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/bulk_update_purchases_mutation.graphql", Input: `extend type Mutation {
   bulkUpdatePurchases(input: BulkUpdatePurchasesInput!): BulkUpdatePurchasesResult!
 }
 
-union BulkUpdatePurchasesResult = BulkUpdatePurchasesSuccess | MutationError
+union BulkUpdatePurchasesResult = BulkUpdatePurchasesSuccess | BulkUpdatePurchasesUserError
 
 type BulkUpdatePurchasesSuccess {
   purchases: [Purchase!]!
@@ -4124,6 +4761,11 @@ input PurchaseUpdateTargetInput {
   baseRevision: Int!
   patch: BulkPurchasePatch!
 }
+
+type BulkUpdatePurchasesUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/category.graphql", Input: `type Category implements Node {
   id: ID! @goField(forceResolver: true)
@@ -4136,7 +4778,7 @@ input PurchaseUpdateTargetInput {
   closePeriod(input: ClosePeriodInput!): ClosePeriodResult!
 }
 
-union ClosePeriodResult = ClosePeriodSuccess | MutationError
+union ClosePeriodResult = ClosePeriodSuccess | ClosePeriodUserError
 
 type ClosePeriodSuccess {
   result: Settlement!
@@ -4147,12 +4789,17 @@ input ClosePeriodInput {
   period: String!
   expectedRevision: Int!
 }
+
+type ClosePeriodUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/correct_purchase_mutation.graphql", Input: `extend type Mutation {
   correctPurchase(input: CorrectPurchaseInput!): CorrectPurchaseResult!
 }
 
-union CorrectPurchaseResult = CorrectPurchaseSuccess | MutationError
+union CorrectPurchaseResult = CorrectPurchaseSuccess | CorrectPurchaseUserError
 
 type CorrectPurchaseSuccess {
   result: Purchase!
@@ -4168,12 +4815,17 @@ input CorrectPurchaseInput {
   paymentAllocations: [PurchasePaymentInput!]
   idempotencyKey: String!
 }
+
+type CorrectPurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/create_account_mutation.graphql", Input: `extend type Mutation {
   createAccount(input: CreateAccountInput!): CreateAccountResult!
 }
 
-union CreateAccountResult = CreateAccountSuccess | MutationError
+union CreateAccountResult = CreateAccountSuccess | CreateAccountUserError
 
 type CreateAccountSuccess {
   result: Account!
@@ -4191,12 +4843,17 @@ input AccountOpeningBalanceInput {
   amountYen: Long!
   at: String!
 }
+
+type CreateAccountUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/create_category_mutation.graphql", Input: `extend type Mutation {
   createCategory(input: CreateCategoryInput!): CreateCategoryResult!
 }
 
-union CreateCategoryResult = CreateCategorySuccess | MutationError
+union CreateCategoryResult = CreateCategorySuccess | CreateCategoryUserError
 
 type CreateCategorySuccess {
   result: Category!
@@ -4206,6 +4863,11 @@ input CreateCategoryInput {
   householdId: ID! @nodeID(of: "Household")
   name: String!
   parentId: ID @nodeID(of: "Category")
+}
+
+type CreateCategoryUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/create_household_invitation_mutation.graphql", Input: `type CreatedHouseholdInvitation {
@@ -4217,7 +4879,7 @@ extend type Mutation {
   createHouseholdInvitation(input: CreateHouseholdInvitationInput!): CreateHouseholdInvitationResult!
 }
 
-union CreateHouseholdInvitationResult = CreateHouseholdInvitationSuccess | MutationError
+union CreateHouseholdInvitationResult = CreateHouseholdInvitationSuccess | CreateHouseholdInvitationUserError
 
 type CreateHouseholdInvitationSuccess {
   result: CreatedHouseholdInvitation!
@@ -4227,12 +4889,17 @@ input CreateHouseholdInvitationInput {
   householdId: ID! @nodeID(of: "Household")
   expiresAt: String!
 }
+
+type CreateHouseholdInvitationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/create_household_mutation.graphql", Input: `extend type Mutation {
   createHousehold(input: CreateHouseholdInput!): CreateHouseholdResult!
 }
 
-union CreateHouseholdResult = CreateHouseholdSuccess | MutationError
+union CreateHouseholdResult = CreateHouseholdSuccess | CreateHouseholdUserError
 
 type CreateHouseholdSuccess {
   result: Household!
@@ -4242,12 +4909,17 @@ input CreateHouseholdInput {
   name: String!
   memberNames: [String!]!
 }
+
+type CreateHouseholdUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/create_pool_mutation.graphql", Input: `extend type Mutation {
   createPool(input: CreatePoolInput!): CreatePoolResult!
 }
 
-union CreatePoolResult = CreatePoolSuccess | MutationError
+union CreatePoolResult = CreatePoolSuccess | CreatePoolUserError
 
 type CreatePoolSuccess {
   result: Pool!
@@ -4258,12 +4930,17 @@ input CreatePoolInput {
   name: String!
   kind: PoolKind!
 }
+
+type CreatePoolUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/create_product_concept_mutation.graphql", Input: `extend type Mutation {
   createProductConcept(input: CreateProductConceptInput!): CreateProductConceptResult!
 }
 
-union CreateProductConceptResult = CreateProductConceptSuccess | MutationError
+union CreateProductConceptResult = CreateProductConceptSuccess | CreateProductConceptUserError
 
 type CreateProductConceptSuccess {
   result: ProductConcept!
@@ -4274,12 +4951,17 @@ input CreateProductConceptInput {
   name: String!
   categoryId: ID @nodeID(of: "Category")
 }
+
+type CreateProductConceptUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/create_product_variant_mutation.graphql", Input: `extend type Mutation {
   createProductVariant(input: CreateProductVariantInput!): CreateProductVariantResult!
 }
 
-union CreateProductVariantResult = CreateProductVariantSuccess | MutationError
+union CreateProductVariantResult = CreateProductVariantSuccess | CreateProductVariantUserError
 
 type CreateProductVariantSuccess {
   result: ProductVariant!
@@ -4293,12 +4975,17 @@ input CreateProductVariantInput {
   packageSize: String
   barcode: String
 }
+
+type CreateProductVariantUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/create_purchase_mutation.graphql", Input: `extend type Mutation {
   createPurchase(input: CreatePurchaseInput!): CreatePurchaseResult!
 }
 
-union CreatePurchaseResult = CreatePurchaseSuccess | MutationError
+union CreatePurchaseResult = CreatePurchaseSuccess | CreatePurchaseUserError
 
 type CreatePurchaseSuccess {
   result: Purchase!
@@ -4328,12 +5015,17 @@ input PurchaseItemInput {
   productVariantId: ID @nodeID(of: "ProductVariant")
   allocations: [AllocationInput!]
 }
+
+type CreatePurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/create_tag_mutation.graphql", Input: `extend type Mutation {
   createTag(input: CreateTagInput!): CreateTagResult!
 }
 
-union CreateTagResult = CreateTagSuccess | MutationError
+union CreateTagResult = CreateTagSuccess | CreateTagUserError
 
 type CreateTagSuccess {
   result: Tag!
@@ -4342,6 +5034,11 @@ type CreateTagSuccess {
 input CreateTagInput {
   householdId: ID! @nodeID(of: "Household")
   name: String!
+}
+
+type CreateTagUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/household.graphql", Input: `type Household implements Node {
@@ -4512,7 +5209,7 @@ extend type Query {
   NOT_FOUND
 }
 
-type MutationError {
+interface MutationError {
   code: MutationErrorCode!
   message: String!
 }
@@ -4548,10 +5245,15 @@ enum SharedPoolSettlementPolicy {
   postPurchase(purchaseId: ID! @nodeID(of: "Purchase"), expectedRevision: Int!, idempotencyKey: String!): PostPurchaseResult!
 }
 
-union PostPurchaseResult = PostPurchaseSuccess | MutationError
+union PostPurchaseResult = PostPurchaseSuccess | PostPurchaseUserError
 
 type PostPurchaseSuccess {
   result: Purchase!
+}
+
+type PostPurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/product_alias.graphql", Input: `type ProductAlias implements Node {
@@ -4731,7 +5433,7 @@ type EffectiveUnitPrice {
   recordAccountMovement(input: RecordAccountMovementInput!): RecordAccountMovementResult!
 }
 
-union RecordAccountMovementResult = RecordAccountMovementSuccess | MutationError
+union RecordAccountMovementResult = RecordAccountMovementSuccess | RecordAccountMovementUserError
 
 type RecordAccountMovementSuccess {
   result: AccountMovement!
@@ -4747,12 +5449,17 @@ input RecordAccountMovementInput {
   description: String!
   idempotencyKey: String!
 }
+
+type RecordAccountMovementUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/record_external_income_mutation.graphql", Input: `extend type Mutation {
   recordExternalIncome(input: RecordExternalIncomeInput!): RecordExternalIncomeResult!
 }
 
-union RecordExternalIncomeResult = RecordExternalIncomeSuccess | MutationError
+union RecordExternalIncomeResult = RecordExternalIncomeSuccess | RecordExternalIncomeUserError
 
 type RecordExternalIncomeSuccess {
   result: AccountIncome!
@@ -4766,12 +5473,17 @@ input RecordExternalIncomeInput {
   description: String!
   idempotencyKey: String!
 }
+
+type RecordExternalIncomeUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/record_funding_mutation.graphql", Input: `extend type Mutation {
   recordFunding(input: RecordFundingInput!): RecordFundingResult!
 }
 
-union RecordFundingResult = RecordFundingSuccess | MutationError
+union RecordFundingResult = RecordFundingSuccess | RecordFundingUserError
 
 type RecordFundingSuccess {
   result: LedgerEntry!
@@ -4787,12 +5499,17 @@ input RecordFundingInput {
   sourceAccountId: ID @nodeID(of: "Account")
   destinationAccountId: ID @nodeID(of: "Account")
 }
+
+type RecordFundingUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/record_repayment_mutation.graphql", Input: `extend type Mutation {
   recordRepayment(input: RecordRepaymentInput!): RecordRepaymentResult!
 }
 
-union RecordRepaymentResult = RecordRepaymentSuccess | MutationError
+union RecordRepaymentResult = RecordRepaymentSuccess | RecordRepaymentUserError
 
 type RecordRepaymentSuccess {
   result: LedgerEntry!
@@ -4810,12 +5527,17 @@ input RecordRepaymentInput {
   description: String!
   idempotencyKey: String!
 }
+
+type RecordRepaymentUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/record_transfer_mutation.graphql", Input: `extend type Mutation {
   recordTransfer(input: RecordTransferInput!): RecordTransferResult!
 }
 
-union RecordTransferResult = RecordTransferSuccess | MutationError
+union RecordTransferResult = RecordTransferSuccess | RecordTransferUserError
 
 type RecordTransferSuccess {
   result: LedgerEntry!
@@ -4838,6 +5560,11 @@ enum TransferInputKind {
   ADVANCE
   LOAN
   GIFT
+}
+
+type RecordTransferUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/recurring_expense.graphql", Input: `type RecurringExpense implements Node {
@@ -4865,10 +5592,15 @@ extend type Query {
   revokeHouseholdInvitation(householdId: ID! @nodeID(of: "Household"), invitationId: ID! @nodeID(of: "HouseholdInvitation")): RevokeHouseholdInvitationResult!
 }
 
-union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | MutationError
+union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | RevokeHouseholdInvitationUserError
 
 type RevokeHouseholdInvitationSuccess {
   result: HouseholdInvitation!
+}
+
+type RevokeHouseholdInvitationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/schema.graphql", Input: `scalar Long
@@ -4898,7 +5630,7 @@ type PageInfo {
   setAllocationRule(input: SetAllocationRuleInput!): SetAllocationRuleResult!
 }
 
-union SetAllocationRuleResult = SetAllocationRuleSuccess | MutationError
+union SetAllocationRuleResult = SetAllocationRuleSuccess | SetAllocationRuleUserError
 
 type SetAllocationRuleSuccess {
   result: AllocationRule!
@@ -4912,12 +5644,17 @@ input SetAllocationRuleInput {
   productVariantId: ID @nodeID(of: "ProductVariant")
   allocations: [AllocationInput!]!
 }
+
+type SetAllocationRuleUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/set_budget_mutation.graphql", Input: `extend type Mutation {
   setBudget(input: SetBudgetInput!): SetBudgetResult!
 }
 
-union SetBudgetResult = SetBudgetSuccess | MutationError
+union SetBudgetResult = SetBudgetSuccess | SetBudgetUserError
 
 type SetBudgetSuccess {
   result: Budget!
@@ -4933,22 +5670,32 @@ input SetBudgetInput {
   startsOn: String!
   endsOn: String
 }
+
+type SetBudgetUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/set_category_archived_mutation.graphql", Input: `extend type Mutation {
   setCategoryArchived(categoryId: ID! @nodeID(of: "Category"), archived: Boolean!): SetCategoryArchivedResult!
 }
 
-union SetCategoryArchivedResult = SetCategoryArchivedSuccess | MutationError
+union SetCategoryArchivedResult = SetCategoryArchivedSuccess | SetCategoryArchivedUserError
 
 type SetCategoryArchivedSuccess {
   result: Category!
+}
+
+type SetCategoryArchivedUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/set_default_allocation_mutation.graphql", Input: `extend type Mutation {
   setDefaultAllocation(input: SetDefaultAllocationInput!): SetDefaultAllocationResult!
 }
 
-union SetDefaultAllocationResult = SetDefaultAllocationSuccess | MutationError
+union SetDefaultAllocationResult = SetDefaultAllocationSuccess | SetDefaultAllocationUserError
 
 type SetDefaultAllocationSuccess {
   result: Household!
@@ -4958,12 +5705,17 @@ input SetDefaultAllocationInput {
   householdId: ID! @nodeID(of: "Household")
   allocations: [AllocationInput!]!
 }
+
+type SetDefaultAllocationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/set_funding_schedule_mutation.graphql", Input: `extend type Mutation {
   setFundingSchedule(input: SetFundingScheduleInput!): SetFundingScheduleResult!
 }
 
-union SetFundingScheduleResult = SetFundingScheduleSuccess | MutationError
+union SetFundingScheduleResult = SetFundingScheduleSuccess | SetFundingScheduleUserError
 
 type SetFundingScheduleSuccess {
   success: Boolean!
@@ -4978,12 +5730,17 @@ input SetFundingScheduleInput {
   startsOn: String!
   endsOn: String
 }
+
+type SetFundingScheduleUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/set_pool_funding_rule_mutation.graphql", Input: `extend type Mutation {
   setPoolFundingRule(input: SetPoolFundingRuleInput!): SetPoolFundingRuleResult!
 }
 
-union SetPoolFundingRuleResult = SetPoolFundingRuleSuccess | MutationError
+union SetPoolFundingRuleResult = SetPoolFundingRuleSuccess | SetPoolFundingRuleUserError
 
 type SetPoolFundingRuleSuccess {
   result: Pool!
@@ -5002,12 +5759,17 @@ input PoolFundingShareInput {
   memberId: ID! @nodeID(of: "Member")
   weight: Long!
 }
+
+type SetPoolFundingRuleUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/set_product_alias_mutation.graphql", Input: `extend type Mutation {
   setProductAlias(input: SetProductAliasInput!): SetProductAliasResult!
 }
 
-union SetProductAliasResult = SetProductAliasSuccess | MutationError
+union SetProductAliasResult = SetProductAliasSuccess | SetProductAliasUserError
 
 type SetProductAliasSuccess {
   result: ProductAlias!
@@ -5019,12 +5781,17 @@ input SetProductAliasInput {
   merchant: String!
   alias: String!
 }
+
+type SetProductAliasUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/set_recurring_expense_mutation.graphql", Input: `extend type Mutation {
   setRecurringExpense(input: SetRecurringExpenseInput!): SetRecurringExpenseResult!
 }
 
-union SetRecurringExpenseResult = SetRecurringExpenseSuccess | MutationError
+union SetRecurringExpenseResult = SetRecurringExpenseSuccess | SetRecurringExpenseUserError
 
 type SetRecurringExpenseSuccess {
   result: RecurringExpense!
@@ -5043,6 +5810,11 @@ input SetRecurringExpenseInput {
   startsOn: String!
   nextDueOn: String!
   endsOn: String
+}
+
+type SetRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/settlement.graphql", Input: `enum SettlementStatus {
@@ -5132,7 +5904,7 @@ extend type Query {
   updatePurchaseItem(input: UpdatePurchaseItemInput!): UpdatePurchaseItemResult!
 }
 
-union UpdatePurchaseItemResult = UpdatePurchaseItemSuccess | MutationError
+union UpdatePurchaseItemResult = UpdatePurchaseItemSuccess | UpdatePurchaseItemUserError
 
 type UpdatePurchaseItemSuccess {
   result: PurchaseItem!
@@ -5158,12 +5930,17 @@ enum ProductLearningScope {
   VARIANT_NAME
   MERCHANT_ALIAS
 }
+
+type UpdatePurchaseItemUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/update_purchase_mutation.graphql", Input: `extend type Mutation {
   updatePurchase(input: UpdatePurchaseInput!): UpdatePurchaseResult!
 }
 
-union UpdatePurchaseResult = UpdatePurchaseSuccess | MutationError
+union UpdatePurchaseResult = UpdatePurchaseSuccess | UpdatePurchaseUserError
 
 type UpdatePurchaseSuccess {
   result: Purchase!
@@ -5181,12 +5958,17 @@ input PurchasePatch {
   merchant: String
   paymentAllocations: [PurchasePaymentInput!]
 }
+
+type UpdatePurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 `, BuiltIn: false},
 	{Name: "../../graphql/update_tag_mutation.graphql", Input: `extend type Mutation {
   updateTag(input: UpdateTagInput!): UpdateTagResult!
 }
 
-union UpdateTagResult = UpdateTagSuccess | MutationError
+union UpdateTagResult = UpdateTagSuccess | UpdateTagUserError
 
 type UpdateTagSuccess {
   result: Tag!
@@ -5196,6 +5978,11 @@ input UpdateTagInput {
   tagId: ID! @nodeID(of: "Tag")
   baseRevision: Int!
   name: String!
+}
+
+type UpdateTagUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/viewer.graphql", Input: `type Viewer {
@@ -8700,6 +9487,52 @@ func (ec *executionContext) fieldContext_AcceptHouseholdInvitationSuccess_result
 	return fc, nil
 }
 
+func (ec *executionContext) _AcceptHouseholdInvitationUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.AcceptHouseholdInvitationUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AcceptHouseholdInvitationUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AcceptHouseholdInvitationUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AcceptHouseholdInvitationUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _AcceptHouseholdInvitationUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.AcceptHouseholdInvitationUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AcceptHouseholdInvitationUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AcceptHouseholdInvitationUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AcceptHouseholdInvitationUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _Account_id(ctx context.Context, field graphql.CollectedField, obj *model.Account) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10207,6 +11040,52 @@ func (ec *executionContext) fieldContext_ArchiveBudgetSuccess_result(_ context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _ArchiveBudgetUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.ArchiveBudgetUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArchiveBudgetUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ArchiveBudgetUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArchiveBudgetUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _ArchiveBudgetUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.ArchiveBudgetUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArchiveBudgetUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ArchiveBudgetUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArchiveBudgetUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _ArchiveRecurringExpenseSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.ArchiveRecurringExpenseSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10239,6 +11118,52 @@ func (ec *executionContext) fieldContext_ArchiveRecurringExpenseSuccess_result(_
 	return fc, nil
 }
 
+func (ec *executionContext) _ArchiveRecurringExpenseUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.ArchiveRecurringExpenseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArchiveRecurringExpenseUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ArchiveRecurringExpenseUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArchiveRecurringExpenseUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _ArchiveRecurringExpenseUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.ArchiveRecurringExpenseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArchiveRecurringExpenseUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ArchiveRecurringExpenseUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArchiveRecurringExpenseUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _ArchiveTagSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.ArchiveTagSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10269,6 +11194,52 @@ func (ec *executionContext) fieldContext_ArchiveTagSuccess_result(_ context.Cont
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _ArchiveTagUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.ArchiveTagUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArchiveTagUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ArchiveTagUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArchiveTagUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _ArchiveTagUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.ArchiveTagUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ArchiveTagUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ArchiveTagUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ArchiveTagUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _Budget_id(ctx context.Context, field graphql.CollectedField, obj *model.Budget) (ret graphql.Marshaler) {
@@ -10556,6 +11527,52 @@ func (ec *executionContext) fieldContext_BulkUpdatePurchaseItemsSuccess_items(_ 
 	return fc, nil
 }
 
+func (ec *executionContext) _BulkUpdatePurchaseItemsUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.BulkUpdatePurchaseItemsUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_BulkUpdatePurchaseItemsUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_BulkUpdatePurchaseItemsUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("BulkUpdatePurchaseItemsUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _BulkUpdatePurchaseItemsUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.BulkUpdatePurchaseItemsUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_BulkUpdatePurchaseItemsUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_BulkUpdatePurchaseItemsUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("BulkUpdatePurchaseItemsUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _BulkUpdatePurchasesSuccess_purchases(ctx context.Context, field graphql.CollectedField, obj *model.BulkUpdatePurchasesSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10586,6 +11603,52 @@ func (ec *executionContext) fieldContext_BulkUpdatePurchasesSuccess_purchases(_ 
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _BulkUpdatePurchasesUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.BulkUpdatePurchasesUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_BulkUpdatePurchasesUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_BulkUpdatePurchasesUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("BulkUpdatePurchasesUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _BulkUpdatePurchasesUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.BulkUpdatePurchasesUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_BulkUpdatePurchasesUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_BulkUpdatePurchasesUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("BulkUpdatePurchasesUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _Category_id(ctx context.Context, field graphql.CollectedField, obj *model.Category) (ret graphql.Marshaler) {
@@ -10712,6 +11775,52 @@ func (ec *executionContext) fieldContext_ClosePeriodSuccess_result(_ context.Con
 	return fc, nil
 }
 
+func (ec *executionContext) _ClosePeriodUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.ClosePeriodUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosePeriodUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosePeriodUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosePeriodUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _ClosePeriodUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.ClosePeriodUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosePeriodUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosePeriodUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosePeriodUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _CorrectPurchaseSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CorrectPurchaseSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10742,6 +11851,52 @@ func (ec *executionContext) fieldContext_CorrectPurchaseSuccess_result(_ context
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _CorrectPurchaseUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CorrectPurchaseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CorrectPurchaseUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CorrectPurchaseUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CorrectPurchaseUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CorrectPurchaseUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CorrectPurchaseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CorrectPurchaseUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CorrectPurchaseUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CorrectPurchaseUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _CorrectionLedgerEntry_id(ctx context.Context, field graphql.CollectedField, obj *model.CorrectionLedgerEntry) (ret graphql.Marshaler) {
@@ -10946,6 +12101,52 @@ func (ec *executionContext) fieldContext_CreateAccountSuccess_result(_ context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _CreateAccountUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CreateAccountUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateAccountUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateAccountUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateAccountUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CreateAccountUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CreateAccountUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateAccountUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateAccountUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateAccountUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _CreateCategorySuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CreateCategorySuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -10976,6 +12177,52 @@ func (ec *executionContext) fieldContext_CreateCategorySuccess_result(_ context.
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _CreateCategoryUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CreateCategoryUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateCategoryUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateCategoryUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateCategoryUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CreateCategoryUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CreateCategoryUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateCategoryUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateCategoryUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateCategoryUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _CreateHouseholdInvitationSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CreateHouseholdInvitationSuccess) (ret graphql.Marshaler) {
@@ -11010,6 +12257,52 @@ func (ec *executionContext) fieldContext_CreateHouseholdInvitationSuccess_result
 	return fc, nil
 }
 
+func (ec *executionContext) _CreateHouseholdInvitationUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CreateHouseholdInvitationUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateHouseholdInvitationUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateHouseholdInvitationUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateHouseholdInvitationUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CreateHouseholdInvitationUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CreateHouseholdInvitationUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateHouseholdInvitationUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateHouseholdInvitationUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateHouseholdInvitationUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _CreateHouseholdSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CreateHouseholdSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -11040,6 +12333,52 @@ func (ec *executionContext) fieldContext_CreateHouseholdSuccess_result(_ context
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _CreateHouseholdUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CreateHouseholdUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateHouseholdUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateHouseholdUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateHouseholdUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CreateHouseholdUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CreateHouseholdUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateHouseholdUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateHouseholdUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateHouseholdUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _CreatePoolSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CreatePoolSuccess) (ret graphql.Marshaler) {
@@ -11074,6 +12413,52 @@ func (ec *executionContext) fieldContext_CreatePoolSuccess_result(_ context.Cont
 	return fc, nil
 }
 
+func (ec *executionContext) _CreatePoolUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CreatePoolUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreatePoolUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreatePoolUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreatePoolUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CreatePoolUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CreatePoolUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreatePoolUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreatePoolUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreatePoolUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _CreateProductConceptSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CreateProductConceptSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -11104,6 +12489,52 @@ func (ec *executionContext) fieldContext_CreateProductConceptSuccess_result(_ co
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _CreateProductConceptUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CreateProductConceptUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateProductConceptUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateProductConceptUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateProductConceptUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CreateProductConceptUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CreateProductConceptUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateProductConceptUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateProductConceptUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateProductConceptUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _CreateProductVariantSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CreateProductVariantSuccess) (ret graphql.Marshaler) {
@@ -11138,6 +12569,52 @@ func (ec *executionContext) fieldContext_CreateProductVariantSuccess_result(_ co
 	return fc, nil
 }
 
+func (ec *executionContext) _CreateProductVariantUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CreateProductVariantUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateProductVariantUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateProductVariantUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateProductVariantUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CreateProductVariantUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CreateProductVariantUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateProductVariantUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateProductVariantUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateProductVariantUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _CreatePurchaseSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CreatePurchaseSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -11170,6 +12647,52 @@ func (ec *executionContext) fieldContext_CreatePurchaseSuccess_result(_ context.
 	return fc, nil
 }
 
+func (ec *executionContext) _CreatePurchaseUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CreatePurchaseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreatePurchaseUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreatePurchaseUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreatePurchaseUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CreatePurchaseUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CreatePurchaseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreatePurchaseUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreatePurchaseUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreatePurchaseUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _CreateTagSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CreateTagSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -11200,6 +12723,52 @@ func (ec *executionContext) fieldContext_CreateTagSuccess_result(_ context.Conte
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _CreateTagUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CreateTagUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateTagUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateTagUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateTagUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CreateTagUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CreateTagUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateTagUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateTagUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateTagUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _CreatedHouseholdInvitation_invitation(ctx context.Context, field graphql.CollectedField, obj *model.CreatedHouseholdInvitation) (ret graphql.Marshaler) {
@@ -14115,52 +15684,6 @@ func (ec *executionContext) fieldContext_Mutation_updateTag(ctx context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _MutationError_code(ctx context.Context, field graphql.CollectedField, obj *model.MutationError) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_MutationError_code(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			return obj.Code, nil
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
-			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_MutationError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("MutationError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
-}
-
-func (ec *executionContext) _MutationError_message(ctx context.Context, field graphql.CollectedField, obj *model.MutationError) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_MutationError_message(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			return obj.Message, nil
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_MutationError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("MutationError", field, false, false, errors.New("field of type String does not have child fields"))
-}
-
 func (ec *executionContext) _PageInfo_hasNextPage(ctx context.Context, field graphql.CollectedField, obj *model.PageInfo) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -14545,6 +16068,52 @@ func (ec *executionContext) fieldContext_PostPurchaseSuccess_result(_ context.Co
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _PostPurchaseUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.PostPurchaseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PostPurchaseUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PostPurchaseUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PostPurchaseUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _PostPurchaseUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.PostPurchaseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PostPurchaseUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PostPurchaseUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PostPurchaseUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _PrintedUnitPrice_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.PrintedUnitPrice) (ret graphql.Marshaler) {
@@ -17932,6 +19501,52 @@ func (ec *executionContext) fieldContext_RecordAccountMovementSuccess_result(_ c
 	return fc, nil
 }
 
+func (ec *executionContext) _RecordAccountMovementUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.RecordAccountMovementUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordAccountMovementUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordAccountMovementUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecordAccountMovementUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _RecordAccountMovementUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.RecordAccountMovementUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordAccountMovementUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordAccountMovementUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecordAccountMovementUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _RecordExternalIncomeSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.RecordExternalIncomeSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -17962,6 +19577,52 @@ func (ec *executionContext) fieldContext_RecordExternalIncomeSuccess_result(_ co
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _RecordExternalIncomeUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.RecordExternalIncomeUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordExternalIncomeUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordExternalIncomeUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecordExternalIncomeUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _RecordExternalIncomeUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.RecordExternalIncomeUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordExternalIncomeUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordExternalIncomeUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecordExternalIncomeUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _RecordFundingSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.RecordFundingSuccess) (ret graphql.Marshaler) {
@@ -17996,6 +19657,52 @@ func (ec *executionContext) fieldContext_RecordFundingSuccess_result(_ context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _RecordFundingUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.RecordFundingUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordFundingUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordFundingUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecordFundingUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _RecordFundingUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.RecordFundingUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordFundingUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordFundingUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecordFundingUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _RecordRepaymentSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.RecordRepaymentSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -18028,6 +19735,52 @@ func (ec *executionContext) fieldContext_RecordRepaymentSuccess_result(_ context
 	return fc, nil
 }
 
+func (ec *executionContext) _RecordRepaymentUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.RecordRepaymentUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordRepaymentUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordRepaymentUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecordRepaymentUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _RecordRepaymentUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.RecordRepaymentUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordRepaymentUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordRepaymentUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecordRepaymentUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _RecordTransferSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.RecordTransferSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -18058,6 +19811,52 @@ func (ec *executionContext) fieldContext_RecordTransferSuccess_result(_ context.
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _RecordTransferUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.RecordTransferUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordTransferUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordTransferUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecordTransferUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _RecordTransferUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.RecordTransferUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordTransferUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordTransferUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecordTransferUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _RecurringExpense_id(ctx context.Context, field graphql.CollectedField, obj *model.RecurringExpense) (ret graphql.Marshaler) {
@@ -18414,6 +20213,52 @@ func (ec *executionContext) fieldContext_RevokeHouseholdInvitationSuccess_result
 	return fc, nil
 }
 
+func (ec *executionContext) _RevokeHouseholdInvitationUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.RevokeHouseholdInvitationUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RevokeHouseholdInvitationUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RevokeHouseholdInvitationUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RevokeHouseholdInvitationUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _RevokeHouseholdInvitationUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.RevokeHouseholdInvitationUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RevokeHouseholdInvitationUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RevokeHouseholdInvitationUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RevokeHouseholdInvitationUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _SetAllocationRuleSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.SetAllocationRuleSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -18444,6 +20289,52 @@ func (ec *executionContext) fieldContext_SetAllocationRuleSuccess_result(_ conte
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _SetAllocationRuleUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.SetAllocationRuleUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetAllocationRuleUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetAllocationRuleUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetAllocationRuleUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _SetAllocationRuleUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.SetAllocationRuleUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetAllocationRuleUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetAllocationRuleUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetAllocationRuleUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _SetBudgetSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.SetBudgetSuccess) (ret graphql.Marshaler) {
@@ -18478,6 +20369,52 @@ func (ec *executionContext) fieldContext_SetBudgetSuccess_result(_ context.Conte
 	return fc, nil
 }
 
+func (ec *executionContext) _SetBudgetUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.SetBudgetUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetBudgetUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetBudgetUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetBudgetUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _SetBudgetUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.SetBudgetUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetBudgetUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetBudgetUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetBudgetUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _SetCategoryArchivedSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.SetCategoryArchivedSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -18508,6 +20445,52 @@ func (ec *executionContext) fieldContext_SetCategoryArchivedSuccess_result(_ con
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _SetCategoryArchivedUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.SetCategoryArchivedUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetCategoryArchivedUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetCategoryArchivedUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetCategoryArchivedUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _SetCategoryArchivedUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.SetCategoryArchivedUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetCategoryArchivedUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetCategoryArchivedUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetCategoryArchivedUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _SetDefaultAllocationSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.SetDefaultAllocationSuccess) (ret graphql.Marshaler) {
@@ -18542,6 +20525,52 @@ func (ec *executionContext) fieldContext_SetDefaultAllocationSuccess_result(_ co
 	return fc, nil
 }
 
+func (ec *executionContext) _SetDefaultAllocationUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.SetDefaultAllocationUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetDefaultAllocationUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetDefaultAllocationUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetDefaultAllocationUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _SetDefaultAllocationUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.SetDefaultAllocationUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetDefaultAllocationUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetDefaultAllocationUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetDefaultAllocationUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _SetFundingScheduleSuccess_success(ctx context.Context, field graphql.CollectedField, obj *model.SetFundingScheduleSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -18563,6 +20592,52 @@ func (ec *executionContext) _SetFundingScheduleSuccess_success(ctx context.Conte
 }
 func (ec *executionContext) fieldContext_SetFundingScheduleSuccess_success(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("SetFundingScheduleSuccess", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _SetFundingScheduleUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.SetFundingScheduleUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetFundingScheduleUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetFundingScheduleUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetFundingScheduleUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _SetFundingScheduleUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.SetFundingScheduleUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetFundingScheduleUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetFundingScheduleUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetFundingScheduleUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _SetPoolFundingRuleSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.SetPoolFundingRuleSuccess) (ret graphql.Marshaler) {
@@ -18597,6 +20672,52 @@ func (ec *executionContext) fieldContext_SetPoolFundingRuleSuccess_result(_ cont
 	return fc, nil
 }
 
+func (ec *executionContext) _SetPoolFundingRuleUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.SetPoolFundingRuleUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetPoolFundingRuleUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetPoolFundingRuleUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetPoolFundingRuleUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _SetPoolFundingRuleUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.SetPoolFundingRuleUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetPoolFundingRuleUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetPoolFundingRuleUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetPoolFundingRuleUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _SetProductAliasSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.SetProductAliasSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -18629,6 +20750,52 @@ func (ec *executionContext) fieldContext_SetProductAliasSuccess_result(_ context
 	return fc, nil
 }
 
+func (ec *executionContext) _SetProductAliasUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.SetProductAliasUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetProductAliasUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetProductAliasUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetProductAliasUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _SetProductAliasUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.SetProductAliasUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetProductAliasUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetProductAliasUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetProductAliasUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _SetRecurringExpenseSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.SetRecurringExpenseSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -18659,6 +20826,52 @@ func (ec *executionContext) fieldContext_SetRecurringExpenseSuccess_result(_ con
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _SetRecurringExpenseUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.SetRecurringExpenseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetRecurringExpenseUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetRecurringExpenseUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetRecurringExpenseUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _SetRecurringExpenseUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.SetRecurringExpenseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetRecurringExpenseUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetRecurringExpenseUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetRecurringExpenseUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _Settlement_period(ctx context.Context, field graphql.CollectedField, obj *model.Settlement) (ret graphql.Marshaler) {
@@ -19791,6 +22004,52 @@ func (ec *executionContext) fieldContext_UpdatePurchaseItemSuccess_result(_ cont
 	return fc, nil
 }
 
+func (ec *executionContext) _UpdatePurchaseItemUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.UpdatePurchaseItemUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdatePurchaseItemUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdatePurchaseItemUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UpdatePurchaseItemUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _UpdatePurchaseItemUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.UpdatePurchaseItemUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdatePurchaseItemUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdatePurchaseItemUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UpdatePurchaseItemUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _UpdatePurchaseSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.UpdatePurchaseSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -19823,6 +22082,52 @@ func (ec *executionContext) fieldContext_UpdatePurchaseSuccess_result(_ context.
 	return fc, nil
 }
 
+func (ec *executionContext) _UpdatePurchaseUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.UpdatePurchaseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdatePurchaseUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdatePurchaseUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UpdatePurchaseUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _UpdatePurchaseUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.UpdatePurchaseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdatePurchaseUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdatePurchaseUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UpdatePurchaseUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _UpdateTagSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.UpdateTagSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -19853,6 +22158,52 @@ func (ec *executionContext) fieldContext_UpdateTagSuccess_result(_ context.Conte
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _UpdateTagUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.UpdateTagUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdateTagUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdateTagUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UpdateTagUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _UpdateTagUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.UpdateTagUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdateTagUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdateTagUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UpdateTagUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _Viewer_id(ctx context.Context, field graphql.CollectedField, obj *model.Viewer) (ret graphql.Marshaler) {
@@ -24804,13 +27155,13 @@ func (ec *executionContext) _AcceptHouseholdInvitationResult(ctx context.Context
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.AcceptHouseholdInvitationUserError:
+		return ec._AcceptHouseholdInvitationUserError(ctx, sel, &obj)
+	case *model.AcceptHouseholdInvitationUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._AcceptHouseholdInvitationUserError(ctx, sel, obj)
 	case model.AcceptHouseholdInvitationSuccess:
 		return ec._AcceptHouseholdInvitationSuccess(ctx, sel, &obj)
 	case *model.AcceptHouseholdInvitationSuccess:
@@ -24831,13 +27182,13 @@ func (ec *executionContext) _ArchiveBudgetResult(ctx context.Context, sel ast.Se
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.ArchiveBudgetUserError:
+		return ec._ArchiveBudgetUserError(ctx, sel, &obj)
+	case *model.ArchiveBudgetUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._ArchiveBudgetUserError(ctx, sel, obj)
 	case model.ArchiveBudgetSuccess:
 		return ec._ArchiveBudgetSuccess(ctx, sel, &obj)
 	case *model.ArchiveBudgetSuccess:
@@ -24858,13 +27209,13 @@ func (ec *executionContext) _ArchiveRecurringExpenseResult(ctx context.Context, 
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.ArchiveRecurringExpenseUserError:
+		return ec._ArchiveRecurringExpenseUserError(ctx, sel, &obj)
+	case *model.ArchiveRecurringExpenseUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._ArchiveRecurringExpenseUserError(ctx, sel, obj)
 	case model.ArchiveRecurringExpenseSuccess:
 		return ec._ArchiveRecurringExpenseSuccess(ctx, sel, &obj)
 	case *model.ArchiveRecurringExpenseSuccess:
@@ -24885,13 +27236,13 @@ func (ec *executionContext) _ArchiveTagResult(ctx context.Context, sel ast.Selec
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.ArchiveTagUserError:
+		return ec._ArchiveTagUserError(ctx, sel, &obj)
+	case *model.ArchiveTagUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._ArchiveTagUserError(ctx, sel, obj)
 	case model.ArchiveTagSuccess:
 		return ec._ArchiveTagSuccess(ctx, sel, &obj)
 	case *model.ArchiveTagSuccess:
@@ -24912,13 +27263,13 @@ func (ec *executionContext) _BulkUpdatePurchaseItemsResult(ctx context.Context, 
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.BulkUpdatePurchaseItemsUserError:
+		return ec._BulkUpdatePurchaseItemsUserError(ctx, sel, &obj)
+	case *model.BulkUpdatePurchaseItemsUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._BulkUpdatePurchaseItemsUserError(ctx, sel, obj)
 	case model.BulkUpdatePurchaseItemsSuccess:
 		return ec._BulkUpdatePurchaseItemsSuccess(ctx, sel, &obj)
 	case *model.BulkUpdatePurchaseItemsSuccess:
@@ -24939,13 +27290,13 @@ func (ec *executionContext) _BulkUpdatePurchasesResult(ctx context.Context, sel 
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.BulkUpdatePurchasesUserError:
+		return ec._BulkUpdatePurchasesUserError(ctx, sel, &obj)
+	case *model.BulkUpdatePurchasesUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._BulkUpdatePurchasesUserError(ctx, sel, obj)
 	case model.BulkUpdatePurchasesSuccess:
 		return ec._BulkUpdatePurchasesSuccess(ctx, sel, &obj)
 	case *model.BulkUpdatePurchasesSuccess:
@@ -24966,13 +27317,13 @@ func (ec *executionContext) _ClosePeriodResult(ctx context.Context, sel ast.Sele
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.ClosePeriodUserError:
+		return ec._ClosePeriodUserError(ctx, sel, &obj)
+	case *model.ClosePeriodUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._ClosePeriodUserError(ctx, sel, obj)
 	case model.ClosePeriodSuccess:
 		return ec._ClosePeriodSuccess(ctx, sel, &obj)
 	case *model.ClosePeriodSuccess:
@@ -24993,13 +27344,13 @@ func (ec *executionContext) _CorrectPurchaseResult(ctx context.Context, sel ast.
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.CorrectPurchaseUserError:
+		return ec._CorrectPurchaseUserError(ctx, sel, &obj)
+	case *model.CorrectPurchaseUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._CorrectPurchaseUserError(ctx, sel, obj)
 	case model.CorrectPurchaseSuccess:
 		return ec._CorrectPurchaseSuccess(ctx, sel, &obj)
 	case *model.CorrectPurchaseSuccess:
@@ -25020,13 +27371,13 @@ func (ec *executionContext) _CreateAccountResult(ctx context.Context, sel ast.Se
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.CreateAccountUserError:
+		return ec._CreateAccountUserError(ctx, sel, &obj)
+	case *model.CreateAccountUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._CreateAccountUserError(ctx, sel, obj)
 	case model.CreateAccountSuccess:
 		return ec._CreateAccountSuccess(ctx, sel, &obj)
 	case *model.CreateAccountSuccess:
@@ -25047,13 +27398,13 @@ func (ec *executionContext) _CreateCategoryResult(ctx context.Context, sel ast.S
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.CreateCategoryUserError:
+		return ec._CreateCategoryUserError(ctx, sel, &obj)
+	case *model.CreateCategoryUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._CreateCategoryUserError(ctx, sel, obj)
 	case model.CreateCategorySuccess:
 		return ec._CreateCategorySuccess(ctx, sel, &obj)
 	case *model.CreateCategorySuccess:
@@ -25074,13 +27425,13 @@ func (ec *executionContext) _CreateHouseholdInvitationResult(ctx context.Context
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.CreateHouseholdInvitationUserError:
+		return ec._CreateHouseholdInvitationUserError(ctx, sel, &obj)
+	case *model.CreateHouseholdInvitationUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._CreateHouseholdInvitationUserError(ctx, sel, obj)
 	case model.CreateHouseholdInvitationSuccess:
 		return ec._CreateHouseholdInvitationSuccess(ctx, sel, &obj)
 	case *model.CreateHouseholdInvitationSuccess:
@@ -25101,13 +27452,13 @@ func (ec *executionContext) _CreateHouseholdResult(ctx context.Context, sel ast.
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.CreateHouseholdUserError:
+		return ec._CreateHouseholdUserError(ctx, sel, &obj)
+	case *model.CreateHouseholdUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._CreateHouseholdUserError(ctx, sel, obj)
 	case model.CreateHouseholdSuccess:
 		return ec._CreateHouseholdSuccess(ctx, sel, &obj)
 	case *model.CreateHouseholdSuccess:
@@ -25128,13 +27479,13 @@ func (ec *executionContext) _CreatePoolResult(ctx context.Context, sel ast.Selec
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.CreatePoolUserError:
+		return ec._CreatePoolUserError(ctx, sel, &obj)
+	case *model.CreatePoolUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._CreatePoolUserError(ctx, sel, obj)
 	case model.CreatePoolSuccess:
 		return ec._CreatePoolSuccess(ctx, sel, &obj)
 	case *model.CreatePoolSuccess:
@@ -25155,13 +27506,13 @@ func (ec *executionContext) _CreateProductConceptResult(ctx context.Context, sel
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.CreateProductConceptUserError:
+		return ec._CreateProductConceptUserError(ctx, sel, &obj)
+	case *model.CreateProductConceptUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._CreateProductConceptUserError(ctx, sel, obj)
 	case model.CreateProductConceptSuccess:
 		return ec._CreateProductConceptSuccess(ctx, sel, &obj)
 	case *model.CreateProductConceptSuccess:
@@ -25182,13 +27533,13 @@ func (ec *executionContext) _CreateProductVariantResult(ctx context.Context, sel
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.CreateProductVariantUserError:
+		return ec._CreateProductVariantUserError(ctx, sel, &obj)
+	case *model.CreateProductVariantUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._CreateProductVariantUserError(ctx, sel, obj)
 	case model.CreateProductVariantSuccess:
 		return ec._CreateProductVariantSuccess(ctx, sel, &obj)
 	case *model.CreateProductVariantSuccess:
@@ -25209,13 +27560,13 @@ func (ec *executionContext) _CreatePurchaseResult(ctx context.Context, sel ast.S
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.CreatePurchaseUserError:
+		return ec._CreatePurchaseUserError(ctx, sel, &obj)
+	case *model.CreatePurchaseUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._CreatePurchaseUserError(ctx, sel, obj)
 	case model.CreatePurchaseSuccess:
 		return ec._CreatePurchaseSuccess(ctx, sel, &obj)
 	case *model.CreatePurchaseSuccess:
@@ -25236,13 +27587,13 @@ func (ec *executionContext) _CreateTagResult(ctx context.Context, sel ast.Select
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
+	case model.CreateTagUserError:
+		return ec._CreateTagUserError(ctx, sel, &obj)
+	case *model.CreateTagUserError:
 		if obj == nil {
 			return graphql.Null
 		}
-		return ec._MutationError(ctx, sel, obj)
+		return ec._CreateTagUserError(ctx, sel, obj)
 	case model.CreateTagSuccess:
 		return ec._CreateTagSuccess(ctx, sel, &obj)
 	case *model.CreateTagSuccess:
@@ -25296,6 +27647,264 @@ func (ec *executionContext) _LedgerEntry(ctx context.Context, sel ast.SelectionS
 			return typedObj
 		} else {
 			panic(fmt.Errorf("unexpected type %T; non-generated variants of LedgerEntry must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _MutationError(ctx context.Context, sel ast.SelectionSet, obj model.MutationError) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.UpdateTagUserError:
+		return ec._UpdateTagUserError(ctx, sel, &obj)
+	case *model.UpdateTagUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._UpdateTagUserError(ctx, sel, obj)
+	case model.UpdatePurchaseUserError:
+		return ec._UpdatePurchaseUserError(ctx, sel, &obj)
+	case *model.UpdatePurchaseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._UpdatePurchaseUserError(ctx, sel, obj)
+	case model.UpdatePurchaseItemUserError:
+		return ec._UpdatePurchaseItemUserError(ctx, sel, &obj)
+	case *model.UpdatePurchaseItemUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._UpdatePurchaseItemUserError(ctx, sel, obj)
+	case model.SetRecurringExpenseUserError:
+		return ec._SetRecurringExpenseUserError(ctx, sel, &obj)
+	case *model.SetRecurringExpenseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetRecurringExpenseUserError(ctx, sel, obj)
+	case model.SetProductAliasUserError:
+		return ec._SetProductAliasUserError(ctx, sel, &obj)
+	case *model.SetProductAliasUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetProductAliasUserError(ctx, sel, obj)
+	case model.SetPoolFundingRuleUserError:
+		return ec._SetPoolFundingRuleUserError(ctx, sel, &obj)
+	case *model.SetPoolFundingRuleUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetPoolFundingRuleUserError(ctx, sel, obj)
+	case model.SetFundingScheduleUserError:
+		return ec._SetFundingScheduleUserError(ctx, sel, &obj)
+	case *model.SetFundingScheduleUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetFundingScheduleUserError(ctx, sel, obj)
+	case model.SetDefaultAllocationUserError:
+		return ec._SetDefaultAllocationUserError(ctx, sel, &obj)
+	case *model.SetDefaultAllocationUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetDefaultAllocationUserError(ctx, sel, obj)
+	case model.SetCategoryArchivedUserError:
+		return ec._SetCategoryArchivedUserError(ctx, sel, &obj)
+	case *model.SetCategoryArchivedUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetCategoryArchivedUserError(ctx, sel, obj)
+	case model.SetBudgetUserError:
+		return ec._SetBudgetUserError(ctx, sel, &obj)
+	case *model.SetBudgetUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetBudgetUserError(ctx, sel, obj)
+	case model.SetAllocationRuleUserError:
+		return ec._SetAllocationRuleUserError(ctx, sel, &obj)
+	case *model.SetAllocationRuleUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetAllocationRuleUserError(ctx, sel, obj)
+	case model.RevokeHouseholdInvitationUserError:
+		return ec._RevokeHouseholdInvitationUserError(ctx, sel, &obj)
+	case *model.RevokeHouseholdInvitationUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RevokeHouseholdInvitationUserError(ctx, sel, obj)
+	case model.RecordTransferUserError:
+		return ec._RecordTransferUserError(ctx, sel, &obj)
+	case *model.RecordTransferUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordTransferUserError(ctx, sel, obj)
+	case model.RecordRepaymentUserError:
+		return ec._RecordRepaymentUserError(ctx, sel, &obj)
+	case *model.RecordRepaymentUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordRepaymentUserError(ctx, sel, obj)
+	case model.RecordFundingUserError:
+		return ec._RecordFundingUserError(ctx, sel, &obj)
+	case *model.RecordFundingUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordFundingUserError(ctx, sel, obj)
+	case model.RecordExternalIncomeUserError:
+		return ec._RecordExternalIncomeUserError(ctx, sel, &obj)
+	case *model.RecordExternalIncomeUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordExternalIncomeUserError(ctx, sel, obj)
+	case model.RecordAccountMovementUserError:
+		return ec._RecordAccountMovementUserError(ctx, sel, &obj)
+	case *model.RecordAccountMovementUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordAccountMovementUserError(ctx, sel, obj)
+	case model.PostPurchaseUserError:
+		return ec._PostPurchaseUserError(ctx, sel, &obj)
+	case *model.PostPurchaseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._PostPurchaseUserError(ctx, sel, obj)
+	case model.CreateTagUserError:
+		return ec._CreateTagUserError(ctx, sel, &obj)
+	case *model.CreateTagUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreateTagUserError(ctx, sel, obj)
+	case model.CreatePurchaseUserError:
+		return ec._CreatePurchaseUserError(ctx, sel, &obj)
+	case *model.CreatePurchaseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreatePurchaseUserError(ctx, sel, obj)
+	case model.CreateProductVariantUserError:
+		return ec._CreateProductVariantUserError(ctx, sel, &obj)
+	case *model.CreateProductVariantUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreateProductVariantUserError(ctx, sel, obj)
+	case model.CreateProductConceptUserError:
+		return ec._CreateProductConceptUserError(ctx, sel, &obj)
+	case *model.CreateProductConceptUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreateProductConceptUserError(ctx, sel, obj)
+	case model.CreatePoolUserError:
+		return ec._CreatePoolUserError(ctx, sel, &obj)
+	case *model.CreatePoolUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreatePoolUserError(ctx, sel, obj)
+	case model.CreateHouseholdUserError:
+		return ec._CreateHouseholdUserError(ctx, sel, &obj)
+	case *model.CreateHouseholdUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreateHouseholdUserError(ctx, sel, obj)
+	case model.CreateHouseholdInvitationUserError:
+		return ec._CreateHouseholdInvitationUserError(ctx, sel, &obj)
+	case *model.CreateHouseholdInvitationUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreateHouseholdInvitationUserError(ctx, sel, obj)
+	case model.CreateCategoryUserError:
+		return ec._CreateCategoryUserError(ctx, sel, &obj)
+	case *model.CreateCategoryUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreateCategoryUserError(ctx, sel, obj)
+	case model.CreateAccountUserError:
+		return ec._CreateAccountUserError(ctx, sel, &obj)
+	case *model.CreateAccountUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreateAccountUserError(ctx, sel, obj)
+	case model.CorrectPurchaseUserError:
+		return ec._CorrectPurchaseUserError(ctx, sel, &obj)
+	case *model.CorrectPurchaseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CorrectPurchaseUserError(ctx, sel, obj)
+	case model.ClosePeriodUserError:
+		return ec._ClosePeriodUserError(ctx, sel, &obj)
+	case *model.ClosePeriodUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._ClosePeriodUserError(ctx, sel, obj)
+	case model.BulkUpdatePurchasesUserError:
+		return ec._BulkUpdatePurchasesUserError(ctx, sel, &obj)
+	case *model.BulkUpdatePurchasesUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._BulkUpdatePurchasesUserError(ctx, sel, obj)
+	case model.BulkUpdatePurchaseItemsUserError:
+		return ec._BulkUpdatePurchaseItemsUserError(ctx, sel, &obj)
+	case *model.BulkUpdatePurchaseItemsUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._BulkUpdatePurchaseItemsUserError(ctx, sel, obj)
+	case model.ArchiveTagUserError:
+		return ec._ArchiveTagUserError(ctx, sel, &obj)
+	case *model.ArchiveTagUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._ArchiveTagUserError(ctx, sel, obj)
+	case model.ArchiveRecurringExpenseUserError:
+		return ec._ArchiveRecurringExpenseUserError(ctx, sel, &obj)
+	case *model.ArchiveRecurringExpenseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._ArchiveRecurringExpenseUserError(ctx, sel, obj)
+	case model.ArchiveBudgetUserError:
+		return ec._ArchiveBudgetUserError(ctx, sel, &obj)
+	case *model.ArchiveBudgetUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._ArchiveBudgetUserError(ctx, sel, obj)
+	case model.AcceptHouseholdInvitationUserError:
+		return ec._AcceptHouseholdInvitationUserError(ctx, sel, &obj)
+	case *model.AcceptHouseholdInvitationUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._AcceptHouseholdInvitationUserError(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of MutationError must implement graphql.Marshaler", obj))
 		}
 	}
 }
@@ -25490,6 +28099,13 @@ func (ec *executionContext) _PostPurchaseResult(ctx context.Context, sel ast.Sel
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.PostPurchaseUserError:
+		return ec._PostPurchaseUserError(ctx, sel, &obj)
+	case *model.PostPurchaseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._PostPurchaseUserError(ctx, sel, obj)
 	case model.PostPurchaseSuccess:
 		return ec._PostPurchaseSuccess(ctx, sel, &obj)
 	case *model.PostPurchaseSuccess:
@@ -25497,13 +28113,6 @@ func (ec *executionContext) _PostPurchaseResult(ctx context.Context, sel ast.Sel
 			return graphql.Null
 		}
 		return ec._PostPurchaseSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25517,6 +28126,13 @@ func (ec *executionContext) _RecordAccountMovementResult(ctx context.Context, se
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.RecordAccountMovementUserError:
+		return ec._RecordAccountMovementUserError(ctx, sel, &obj)
+	case *model.RecordAccountMovementUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordAccountMovementUserError(ctx, sel, obj)
 	case model.RecordAccountMovementSuccess:
 		return ec._RecordAccountMovementSuccess(ctx, sel, &obj)
 	case *model.RecordAccountMovementSuccess:
@@ -25524,13 +28140,6 @@ func (ec *executionContext) _RecordAccountMovementResult(ctx context.Context, se
 			return graphql.Null
 		}
 		return ec._RecordAccountMovementSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25544,6 +28153,13 @@ func (ec *executionContext) _RecordExternalIncomeResult(ctx context.Context, sel
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.RecordExternalIncomeUserError:
+		return ec._RecordExternalIncomeUserError(ctx, sel, &obj)
+	case *model.RecordExternalIncomeUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordExternalIncomeUserError(ctx, sel, obj)
 	case model.RecordExternalIncomeSuccess:
 		return ec._RecordExternalIncomeSuccess(ctx, sel, &obj)
 	case *model.RecordExternalIncomeSuccess:
@@ -25551,13 +28167,6 @@ func (ec *executionContext) _RecordExternalIncomeResult(ctx context.Context, sel
 			return graphql.Null
 		}
 		return ec._RecordExternalIncomeSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25571,6 +28180,13 @@ func (ec *executionContext) _RecordFundingResult(ctx context.Context, sel ast.Se
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.RecordFundingUserError:
+		return ec._RecordFundingUserError(ctx, sel, &obj)
+	case *model.RecordFundingUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordFundingUserError(ctx, sel, obj)
 	case model.RecordFundingSuccess:
 		return ec._RecordFundingSuccess(ctx, sel, &obj)
 	case *model.RecordFundingSuccess:
@@ -25578,13 +28194,6 @@ func (ec *executionContext) _RecordFundingResult(ctx context.Context, sel ast.Se
 			return graphql.Null
 		}
 		return ec._RecordFundingSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25598,6 +28207,13 @@ func (ec *executionContext) _RecordRepaymentResult(ctx context.Context, sel ast.
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.RecordRepaymentUserError:
+		return ec._RecordRepaymentUserError(ctx, sel, &obj)
+	case *model.RecordRepaymentUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordRepaymentUserError(ctx, sel, obj)
 	case model.RecordRepaymentSuccess:
 		return ec._RecordRepaymentSuccess(ctx, sel, &obj)
 	case *model.RecordRepaymentSuccess:
@@ -25605,13 +28221,6 @@ func (ec *executionContext) _RecordRepaymentResult(ctx context.Context, sel ast.
 			return graphql.Null
 		}
 		return ec._RecordRepaymentSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25625,6 +28234,13 @@ func (ec *executionContext) _RecordTransferResult(ctx context.Context, sel ast.S
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.RecordTransferUserError:
+		return ec._RecordTransferUserError(ctx, sel, &obj)
+	case *model.RecordTransferUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordTransferUserError(ctx, sel, obj)
 	case model.RecordTransferSuccess:
 		return ec._RecordTransferSuccess(ctx, sel, &obj)
 	case *model.RecordTransferSuccess:
@@ -25632,13 +28248,6 @@ func (ec *executionContext) _RecordTransferResult(ctx context.Context, sel ast.S
 			return graphql.Null
 		}
 		return ec._RecordTransferSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25652,6 +28261,13 @@ func (ec *executionContext) _RevokeHouseholdInvitationResult(ctx context.Context
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.RevokeHouseholdInvitationUserError:
+		return ec._RevokeHouseholdInvitationUserError(ctx, sel, &obj)
+	case *model.RevokeHouseholdInvitationUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RevokeHouseholdInvitationUserError(ctx, sel, obj)
 	case model.RevokeHouseholdInvitationSuccess:
 		return ec._RevokeHouseholdInvitationSuccess(ctx, sel, &obj)
 	case *model.RevokeHouseholdInvitationSuccess:
@@ -25659,13 +28275,6 @@ func (ec *executionContext) _RevokeHouseholdInvitationResult(ctx context.Context
 			return graphql.Null
 		}
 		return ec._RevokeHouseholdInvitationSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25679,6 +28288,13 @@ func (ec *executionContext) _SetAllocationRuleResult(ctx context.Context, sel as
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.SetAllocationRuleUserError:
+		return ec._SetAllocationRuleUserError(ctx, sel, &obj)
+	case *model.SetAllocationRuleUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetAllocationRuleUserError(ctx, sel, obj)
 	case model.SetAllocationRuleSuccess:
 		return ec._SetAllocationRuleSuccess(ctx, sel, &obj)
 	case *model.SetAllocationRuleSuccess:
@@ -25686,13 +28302,6 @@ func (ec *executionContext) _SetAllocationRuleResult(ctx context.Context, sel as
 			return graphql.Null
 		}
 		return ec._SetAllocationRuleSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25706,6 +28315,13 @@ func (ec *executionContext) _SetBudgetResult(ctx context.Context, sel ast.Select
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.SetBudgetUserError:
+		return ec._SetBudgetUserError(ctx, sel, &obj)
+	case *model.SetBudgetUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetBudgetUserError(ctx, sel, obj)
 	case model.SetBudgetSuccess:
 		return ec._SetBudgetSuccess(ctx, sel, &obj)
 	case *model.SetBudgetSuccess:
@@ -25713,13 +28329,6 @@ func (ec *executionContext) _SetBudgetResult(ctx context.Context, sel ast.Select
 			return graphql.Null
 		}
 		return ec._SetBudgetSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25733,6 +28342,13 @@ func (ec *executionContext) _SetCategoryArchivedResult(ctx context.Context, sel 
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.SetCategoryArchivedUserError:
+		return ec._SetCategoryArchivedUserError(ctx, sel, &obj)
+	case *model.SetCategoryArchivedUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetCategoryArchivedUserError(ctx, sel, obj)
 	case model.SetCategoryArchivedSuccess:
 		return ec._SetCategoryArchivedSuccess(ctx, sel, &obj)
 	case *model.SetCategoryArchivedSuccess:
@@ -25740,13 +28356,6 @@ func (ec *executionContext) _SetCategoryArchivedResult(ctx context.Context, sel 
 			return graphql.Null
 		}
 		return ec._SetCategoryArchivedSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25760,6 +28369,13 @@ func (ec *executionContext) _SetDefaultAllocationResult(ctx context.Context, sel
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.SetDefaultAllocationUserError:
+		return ec._SetDefaultAllocationUserError(ctx, sel, &obj)
+	case *model.SetDefaultAllocationUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetDefaultAllocationUserError(ctx, sel, obj)
 	case model.SetDefaultAllocationSuccess:
 		return ec._SetDefaultAllocationSuccess(ctx, sel, &obj)
 	case *model.SetDefaultAllocationSuccess:
@@ -25767,13 +28383,6 @@ func (ec *executionContext) _SetDefaultAllocationResult(ctx context.Context, sel
 			return graphql.Null
 		}
 		return ec._SetDefaultAllocationSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25787,6 +28396,13 @@ func (ec *executionContext) _SetFundingScheduleResult(ctx context.Context, sel a
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.SetFundingScheduleUserError:
+		return ec._SetFundingScheduleUserError(ctx, sel, &obj)
+	case *model.SetFundingScheduleUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetFundingScheduleUserError(ctx, sel, obj)
 	case model.SetFundingScheduleSuccess:
 		return ec._SetFundingScheduleSuccess(ctx, sel, &obj)
 	case *model.SetFundingScheduleSuccess:
@@ -25794,13 +28410,6 @@ func (ec *executionContext) _SetFundingScheduleResult(ctx context.Context, sel a
 			return graphql.Null
 		}
 		return ec._SetFundingScheduleSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25814,6 +28423,13 @@ func (ec *executionContext) _SetPoolFundingRuleResult(ctx context.Context, sel a
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.SetPoolFundingRuleUserError:
+		return ec._SetPoolFundingRuleUserError(ctx, sel, &obj)
+	case *model.SetPoolFundingRuleUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetPoolFundingRuleUserError(ctx, sel, obj)
 	case model.SetPoolFundingRuleSuccess:
 		return ec._SetPoolFundingRuleSuccess(ctx, sel, &obj)
 	case *model.SetPoolFundingRuleSuccess:
@@ -25821,13 +28437,6 @@ func (ec *executionContext) _SetPoolFundingRuleResult(ctx context.Context, sel a
 			return graphql.Null
 		}
 		return ec._SetPoolFundingRuleSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25841,6 +28450,13 @@ func (ec *executionContext) _SetProductAliasResult(ctx context.Context, sel ast.
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.SetProductAliasUserError:
+		return ec._SetProductAliasUserError(ctx, sel, &obj)
+	case *model.SetProductAliasUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetProductAliasUserError(ctx, sel, obj)
 	case model.SetProductAliasSuccess:
 		return ec._SetProductAliasSuccess(ctx, sel, &obj)
 	case *model.SetProductAliasSuccess:
@@ -25848,13 +28464,6 @@ func (ec *executionContext) _SetProductAliasResult(ctx context.Context, sel ast.
 			return graphql.Null
 		}
 		return ec._SetProductAliasSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25868,6 +28477,13 @@ func (ec *executionContext) _SetRecurringExpenseResult(ctx context.Context, sel 
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.SetRecurringExpenseUserError:
+		return ec._SetRecurringExpenseUserError(ctx, sel, &obj)
+	case *model.SetRecurringExpenseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetRecurringExpenseUserError(ctx, sel, obj)
 	case model.SetRecurringExpenseSuccess:
 		return ec._SetRecurringExpenseSuccess(ctx, sel, &obj)
 	case *model.SetRecurringExpenseSuccess:
@@ -25875,13 +28491,6 @@ func (ec *executionContext) _SetRecurringExpenseResult(ctx context.Context, sel 
 			return graphql.Null
 		}
 		return ec._SetRecurringExpenseSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25895,6 +28504,13 @@ func (ec *executionContext) _UpdatePurchaseItemResult(ctx context.Context, sel a
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.UpdatePurchaseItemUserError:
+		return ec._UpdatePurchaseItemUserError(ctx, sel, &obj)
+	case *model.UpdatePurchaseItemUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._UpdatePurchaseItemUserError(ctx, sel, obj)
 	case model.UpdatePurchaseItemSuccess:
 		return ec._UpdatePurchaseItemSuccess(ctx, sel, &obj)
 	case *model.UpdatePurchaseItemSuccess:
@@ -25902,13 +28518,6 @@ func (ec *executionContext) _UpdatePurchaseItemResult(ctx context.Context, sel a
 			return graphql.Null
 		}
 		return ec._UpdatePurchaseItemSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25922,6 +28531,13 @@ func (ec *executionContext) _UpdatePurchaseResult(ctx context.Context, sel ast.S
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.UpdatePurchaseUserError:
+		return ec._UpdatePurchaseUserError(ctx, sel, &obj)
+	case *model.UpdatePurchaseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._UpdatePurchaseUserError(ctx, sel, obj)
 	case model.UpdatePurchaseSuccess:
 		return ec._UpdatePurchaseSuccess(ctx, sel, &obj)
 	case *model.UpdatePurchaseSuccess:
@@ -25929,13 +28545,6 @@ func (ec *executionContext) _UpdatePurchaseResult(ctx context.Context, sel ast.S
 			return graphql.Null
 		}
 		return ec._UpdatePurchaseSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25949,6 +28558,13 @@ func (ec *executionContext) _UpdateTagResult(ctx context.Context, sel ast.Select
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
+	case model.UpdateTagUserError:
+		return ec._UpdateTagUserError(ctx, sel, &obj)
+	case *model.UpdateTagUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._UpdateTagUserError(ctx, sel, obj)
 	case model.UpdateTagSuccess:
 		return ec._UpdateTagSuccess(ctx, sel, &obj)
 	case *model.UpdateTagSuccess:
@@ -25956,13 +28572,6 @@ func (ec *executionContext) _UpdateTagResult(ctx context.Context, sel ast.Select
 			return graphql.Null
 		}
 		return ec._UpdateTagSuccess(ctx, sel, obj)
-	case model.MutationError:
-		return ec._MutationError(ctx, sel, &obj)
-	case *model.MutationError:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._MutationError(ctx, sel, obj)
 	default:
 		if typedObj, ok := obj.(graphql.Marshaler); ok {
 			return typedObj
@@ -25990,6 +28599,49 @@ func (ec *executionContext) _AcceptHouseholdInvitationSuccess(ctx context.Contex
 			out.Values[i] = graphql.MarshalString("AcceptHouseholdInvitationSuccess")
 		case "result":
 			out.Values[i] = ec._AcceptHouseholdInvitationSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var acceptHouseholdInvitationUserErrorImplementors = []string{"AcceptHouseholdInvitationUserError", "AcceptHouseholdInvitationResult", "MutationError"}
+
+func (ec *executionContext) _AcceptHouseholdInvitationUserError(ctx context.Context, sel ast.SelectionSet, obj *model.AcceptHouseholdInvitationUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, acceptHouseholdInvitationUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AcceptHouseholdInvitationUserError")
+		case "code":
+			out.Values[i] = ec._AcceptHouseholdInvitationUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._AcceptHouseholdInvitationUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -27314,6 +29966,49 @@ func (ec *executionContext) _ArchiveBudgetSuccess(ctx context.Context, sel ast.S
 	return out
 }
 
+var archiveBudgetUserErrorImplementors = []string{"ArchiveBudgetUserError", "ArchiveBudgetResult", "MutationError"}
+
+func (ec *executionContext) _ArchiveBudgetUserError(ctx context.Context, sel ast.SelectionSet, obj *model.ArchiveBudgetUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, archiveBudgetUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ArchiveBudgetUserError")
+		case "code":
+			out.Values[i] = ec._ArchiveBudgetUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._ArchiveBudgetUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var archiveRecurringExpenseSuccessImplementors = []string{"ArchiveRecurringExpenseSuccess", "ArchiveRecurringExpenseResult"}
 
 func (ec *executionContext) _ArchiveRecurringExpenseSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.ArchiveRecurringExpenseSuccess) graphql.Marshaler {
@@ -27352,6 +30047,49 @@ func (ec *executionContext) _ArchiveRecurringExpenseSuccess(ctx context.Context,
 	return out
 }
 
+var archiveRecurringExpenseUserErrorImplementors = []string{"ArchiveRecurringExpenseUserError", "ArchiveRecurringExpenseResult", "MutationError"}
+
+func (ec *executionContext) _ArchiveRecurringExpenseUserError(ctx context.Context, sel ast.SelectionSet, obj *model.ArchiveRecurringExpenseUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, archiveRecurringExpenseUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ArchiveRecurringExpenseUserError")
+		case "code":
+			out.Values[i] = ec._ArchiveRecurringExpenseUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._ArchiveRecurringExpenseUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var archiveTagSuccessImplementors = []string{"ArchiveTagSuccess", "ArchiveTagResult"}
 
 func (ec *executionContext) _ArchiveTagSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.ArchiveTagSuccess) graphql.Marshaler {
@@ -27366,6 +30104,49 @@ func (ec *executionContext) _ArchiveTagSuccess(ctx context.Context, sel ast.Sele
 			out.Values[i] = graphql.MarshalString("ArchiveTagSuccess")
 		case "result":
 			out.Values[i] = ec._ArchiveTagSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var archiveTagUserErrorImplementors = []string{"ArchiveTagUserError", "ArchiveTagResult", "MutationError"}
+
+func (ec *executionContext) _ArchiveTagUserError(ctx context.Context, sel ast.SelectionSet, obj *model.ArchiveTagUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, archiveTagUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ArchiveTagUserError")
+		case "code":
+			out.Values[i] = ec._ArchiveTagUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._ArchiveTagUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -27615,6 +30396,49 @@ func (ec *executionContext) _BulkUpdatePurchaseItemsSuccess(ctx context.Context,
 	return out
 }
 
+var bulkUpdatePurchaseItemsUserErrorImplementors = []string{"BulkUpdatePurchaseItemsUserError", "BulkUpdatePurchaseItemsResult", "MutationError"}
+
+func (ec *executionContext) _BulkUpdatePurchaseItemsUserError(ctx context.Context, sel ast.SelectionSet, obj *model.BulkUpdatePurchaseItemsUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, bulkUpdatePurchaseItemsUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("BulkUpdatePurchaseItemsUserError")
+		case "code":
+			out.Values[i] = ec._BulkUpdatePurchaseItemsUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._BulkUpdatePurchaseItemsUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var bulkUpdatePurchasesSuccessImplementors = []string{"BulkUpdatePurchasesSuccess", "BulkUpdatePurchasesResult"}
 
 func (ec *executionContext) _BulkUpdatePurchasesSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.BulkUpdatePurchasesSuccess) graphql.Marshaler {
@@ -27629,6 +30453,49 @@ func (ec *executionContext) _BulkUpdatePurchasesSuccess(ctx context.Context, sel
 			out.Values[i] = graphql.MarshalString("BulkUpdatePurchasesSuccess")
 		case "purchases":
 			out.Values[i] = ec._BulkUpdatePurchasesSuccess_purchases(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var bulkUpdatePurchasesUserErrorImplementors = []string{"BulkUpdatePurchasesUserError", "BulkUpdatePurchasesResult", "MutationError"}
+
+func (ec *executionContext) _BulkUpdatePurchasesUserError(ctx context.Context, sel ast.SelectionSet, obj *model.BulkUpdatePurchasesUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, bulkUpdatePurchasesUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("BulkUpdatePurchasesUserError")
+		case "code":
+			out.Values[i] = ec._BulkUpdatePurchasesUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._BulkUpdatePurchasesUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -27810,6 +30677,49 @@ func (ec *executionContext) _ClosePeriodSuccess(ctx context.Context, sel ast.Sel
 	return out
 }
 
+var closePeriodUserErrorImplementors = []string{"ClosePeriodUserError", "ClosePeriodResult", "MutationError"}
+
+func (ec *executionContext) _ClosePeriodUserError(ctx context.Context, sel ast.SelectionSet, obj *model.ClosePeriodUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, closePeriodUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ClosePeriodUserError")
+		case "code":
+			out.Values[i] = ec._ClosePeriodUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._ClosePeriodUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var correctPurchaseSuccessImplementors = []string{"CorrectPurchaseSuccess", "CorrectPurchaseResult"}
 
 func (ec *executionContext) _CorrectPurchaseSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.CorrectPurchaseSuccess) graphql.Marshaler {
@@ -27824,6 +30734,49 @@ func (ec *executionContext) _CorrectPurchaseSuccess(ctx context.Context, sel ast
 			out.Values[i] = graphql.MarshalString("CorrectPurchaseSuccess")
 		case "result":
 			out.Values[i] = ec._CorrectPurchaseSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var correctPurchaseUserErrorImplementors = []string{"CorrectPurchaseUserError", "CorrectPurchaseResult", "MutationError"}
+
+func (ec *executionContext) _CorrectPurchaseUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CorrectPurchaseUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, correctPurchaseUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CorrectPurchaseUserError")
+		case "code":
+			out.Values[i] = ec._CorrectPurchaseUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CorrectPurchaseUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -27987,6 +30940,49 @@ func (ec *executionContext) _CreateAccountSuccess(ctx context.Context, sel ast.S
 	return out
 }
 
+var createAccountUserErrorImplementors = []string{"CreateAccountUserError", "CreateAccountResult", "MutationError"}
+
+func (ec *executionContext) _CreateAccountUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CreateAccountUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createAccountUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateAccountUserError")
+		case "code":
+			out.Values[i] = ec._CreateAccountUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CreateAccountUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var createCategorySuccessImplementors = []string{"CreateCategorySuccess", "CreateCategoryResult"}
 
 func (ec *executionContext) _CreateCategorySuccess(ctx context.Context, sel ast.SelectionSet, obj *model.CreateCategorySuccess) graphql.Marshaler {
@@ -28001,6 +30997,49 @@ func (ec *executionContext) _CreateCategorySuccess(ctx context.Context, sel ast.
 			out.Values[i] = graphql.MarshalString("CreateCategorySuccess")
 		case "result":
 			out.Values[i] = ec._CreateCategorySuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var createCategoryUserErrorImplementors = []string{"CreateCategoryUserError", "CreateCategoryResult", "MutationError"}
+
+func (ec *executionContext) _CreateCategoryUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CreateCategoryUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createCategoryUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateCategoryUserError")
+		case "code":
+			out.Values[i] = ec._CreateCategoryUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CreateCategoryUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -28063,6 +31102,49 @@ func (ec *executionContext) _CreateHouseholdInvitationSuccess(ctx context.Contex
 	return out
 }
 
+var createHouseholdInvitationUserErrorImplementors = []string{"CreateHouseholdInvitationUserError", "CreateHouseholdInvitationResult", "MutationError"}
+
+func (ec *executionContext) _CreateHouseholdInvitationUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CreateHouseholdInvitationUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createHouseholdInvitationUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateHouseholdInvitationUserError")
+		case "code":
+			out.Values[i] = ec._CreateHouseholdInvitationUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CreateHouseholdInvitationUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var createHouseholdSuccessImplementors = []string{"CreateHouseholdSuccess", "CreateHouseholdResult"}
 
 func (ec *executionContext) _CreateHouseholdSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.CreateHouseholdSuccess) graphql.Marshaler {
@@ -28077,6 +31159,49 @@ func (ec *executionContext) _CreateHouseholdSuccess(ctx context.Context, sel ast
 			out.Values[i] = graphql.MarshalString("CreateHouseholdSuccess")
 		case "result":
 			out.Values[i] = ec._CreateHouseholdSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var createHouseholdUserErrorImplementors = []string{"CreateHouseholdUserError", "CreateHouseholdResult", "MutationError"}
+
+func (ec *executionContext) _CreateHouseholdUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CreateHouseholdUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createHouseholdUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateHouseholdUserError")
+		case "code":
+			out.Values[i] = ec._CreateHouseholdUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CreateHouseholdUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -28139,6 +31264,49 @@ func (ec *executionContext) _CreatePoolSuccess(ctx context.Context, sel ast.Sele
 	return out
 }
 
+var createPoolUserErrorImplementors = []string{"CreatePoolUserError", "CreatePoolResult", "MutationError"}
+
+func (ec *executionContext) _CreatePoolUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CreatePoolUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createPoolUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreatePoolUserError")
+		case "code":
+			out.Values[i] = ec._CreatePoolUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CreatePoolUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var createProductConceptSuccessImplementors = []string{"CreateProductConceptSuccess", "CreateProductConceptResult"}
 
 func (ec *executionContext) _CreateProductConceptSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.CreateProductConceptSuccess) graphql.Marshaler {
@@ -28153,6 +31321,49 @@ func (ec *executionContext) _CreateProductConceptSuccess(ctx context.Context, se
 			out.Values[i] = graphql.MarshalString("CreateProductConceptSuccess")
 		case "result":
 			out.Values[i] = ec._CreateProductConceptSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var createProductConceptUserErrorImplementors = []string{"CreateProductConceptUserError", "CreateProductConceptResult", "MutationError"}
+
+func (ec *executionContext) _CreateProductConceptUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CreateProductConceptUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createProductConceptUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateProductConceptUserError")
+		case "code":
+			out.Values[i] = ec._CreateProductConceptUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CreateProductConceptUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -28215,6 +31426,49 @@ func (ec *executionContext) _CreateProductVariantSuccess(ctx context.Context, se
 	return out
 }
 
+var createProductVariantUserErrorImplementors = []string{"CreateProductVariantUserError", "CreateProductVariantResult", "MutationError"}
+
+func (ec *executionContext) _CreateProductVariantUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CreateProductVariantUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createProductVariantUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateProductVariantUserError")
+		case "code":
+			out.Values[i] = ec._CreateProductVariantUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CreateProductVariantUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var createPurchaseSuccessImplementors = []string{"CreatePurchaseSuccess", "CreatePurchaseResult"}
 
 func (ec *executionContext) _CreatePurchaseSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.CreatePurchaseSuccess) graphql.Marshaler {
@@ -28253,6 +31507,49 @@ func (ec *executionContext) _CreatePurchaseSuccess(ctx context.Context, sel ast.
 	return out
 }
 
+var createPurchaseUserErrorImplementors = []string{"CreatePurchaseUserError", "CreatePurchaseResult", "MutationError"}
+
+func (ec *executionContext) _CreatePurchaseUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CreatePurchaseUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createPurchaseUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreatePurchaseUserError")
+		case "code":
+			out.Values[i] = ec._CreatePurchaseUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CreatePurchaseUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var createTagSuccessImplementors = []string{"CreateTagSuccess", "CreateTagResult"}
 
 func (ec *executionContext) _CreateTagSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.CreateTagSuccess) graphql.Marshaler {
@@ -28267,6 +31564,49 @@ func (ec *executionContext) _CreateTagSuccess(ctx context.Context, sel ast.Selec
 			out.Values[i] = graphql.MarshalString("CreateTagSuccess")
 		case "result":
 			out.Values[i] = ec._CreateTagSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var createTagUserErrorImplementors = []string{"CreateTagUserError", "CreateTagResult", "MutationError"}
+
+func (ec *executionContext) _CreateTagUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CreateTagUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createTagUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateTagUserError")
+		case "code":
+			out.Values[i] = ec._CreateTagUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CreateTagUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -29479,49 +32819,6 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 	return out
 }
 
-var mutationErrorImplementors = []string{"MutationError", "AcceptHouseholdInvitationResult", "ArchiveBudgetResult", "ArchiveRecurringExpenseResult", "ArchiveTagResult", "BulkUpdatePurchaseItemsResult", "BulkUpdatePurchasesResult", "ClosePeriodResult", "CorrectPurchaseResult", "CreateAccountResult", "CreateCategoryResult", "CreateHouseholdInvitationResult", "CreateHouseholdResult", "CreatePoolResult", "CreateProductConceptResult", "CreateProductVariantResult", "CreatePurchaseResult", "CreateTagResult", "PostPurchaseResult", "RecordAccountMovementResult", "RecordExternalIncomeResult", "RecordFundingResult", "RecordRepaymentResult", "RecordTransferResult", "RevokeHouseholdInvitationResult", "SetAllocationRuleResult", "SetBudgetResult", "SetCategoryArchivedResult", "SetDefaultAllocationResult", "SetFundingScheduleResult", "SetPoolFundingRuleResult", "SetProductAliasResult", "SetRecurringExpenseResult", "UpdatePurchaseItemResult", "UpdatePurchaseResult", "UpdateTagResult"}
-
-func (ec *executionContext) _MutationError(ctx context.Context, sel ast.SelectionSet, obj *model.MutationError) graphql.Marshaler {
-	fields := graphql.CollectFields(ec.OperationContext, sel, mutationErrorImplementors)
-
-	out := graphql.NewFieldSet(fields)
-	deferredFieldSet := graphql.NewFieldSet(nil)
-	deferLabelToView := make(map[string]*graphql.FieldSetView)
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("MutationError")
-		case "code":
-			out.Values[i] = ec._MutationError_code(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "message":
-			out.Values[i] = ec._MutationError_message(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch(ctx)
-	if out.Invalids > 0 {
-		return graphql.Null
-	}
-
-	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
-
-	ec.ProcessDeferredGroup(graphql.DeferredGroup{
-		Defers:   deferLabelToView,
-		Path:     graphql.GetPath(ctx),
-		FieldSet: deferredFieldSet,
-		Context:  ctx,
-	})
-
-	return out
-}
-
 var pageInfoImplementors = []string{"PageInfo"}
 
 func (ec *executionContext) _PageInfo(ctx context.Context, sel ast.SelectionSet, obj *model.PageInfo) graphql.Marshaler {
@@ -29809,6 +33106,49 @@ func (ec *executionContext) _PostPurchaseSuccess(ctx context.Context, sel ast.Se
 			out.Values[i] = graphql.MarshalString("PostPurchaseSuccess")
 		case "result":
 			out.Values[i] = ec._PostPurchaseSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var postPurchaseUserErrorImplementors = []string{"PostPurchaseUserError", "PostPurchaseResult", "MutationError"}
+
+func (ec *executionContext) _PostPurchaseUserError(ctx context.Context, sel ast.SelectionSet, obj *model.PostPurchaseUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, postPurchaseUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("PostPurchaseUserError")
+		case "code":
+			out.Values[i] = ec._PostPurchaseUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._PostPurchaseUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -31988,6 +35328,49 @@ func (ec *executionContext) _RecordAccountMovementSuccess(ctx context.Context, s
 	return out
 }
 
+var recordAccountMovementUserErrorImplementors = []string{"RecordAccountMovementUserError", "RecordAccountMovementResult", "MutationError"}
+
+func (ec *executionContext) _RecordAccountMovementUserError(ctx context.Context, sel ast.SelectionSet, obj *model.RecordAccountMovementUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, recordAccountMovementUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RecordAccountMovementUserError")
+		case "code":
+			out.Values[i] = ec._RecordAccountMovementUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._RecordAccountMovementUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var recordExternalIncomeSuccessImplementors = []string{"RecordExternalIncomeSuccess", "RecordExternalIncomeResult"}
 
 func (ec *executionContext) _RecordExternalIncomeSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.RecordExternalIncomeSuccess) graphql.Marshaler {
@@ -32002,6 +35385,49 @@ func (ec *executionContext) _RecordExternalIncomeSuccess(ctx context.Context, se
 			out.Values[i] = graphql.MarshalString("RecordExternalIncomeSuccess")
 		case "result":
 			out.Values[i] = ec._RecordExternalIncomeSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var recordExternalIncomeUserErrorImplementors = []string{"RecordExternalIncomeUserError", "RecordExternalIncomeResult", "MutationError"}
+
+func (ec *executionContext) _RecordExternalIncomeUserError(ctx context.Context, sel ast.SelectionSet, obj *model.RecordExternalIncomeUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, recordExternalIncomeUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RecordExternalIncomeUserError")
+		case "code":
+			out.Values[i] = ec._RecordExternalIncomeUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._RecordExternalIncomeUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -32064,6 +35490,49 @@ func (ec *executionContext) _RecordFundingSuccess(ctx context.Context, sel ast.S
 	return out
 }
 
+var recordFundingUserErrorImplementors = []string{"RecordFundingUserError", "RecordFundingResult", "MutationError"}
+
+func (ec *executionContext) _RecordFundingUserError(ctx context.Context, sel ast.SelectionSet, obj *model.RecordFundingUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, recordFundingUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RecordFundingUserError")
+		case "code":
+			out.Values[i] = ec._RecordFundingUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._RecordFundingUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var recordRepaymentSuccessImplementors = []string{"RecordRepaymentSuccess", "RecordRepaymentResult"}
 
 func (ec *executionContext) _RecordRepaymentSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.RecordRepaymentSuccess) graphql.Marshaler {
@@ -32102,6 +35571,49 @@ func (ec *executionContext) _RecordRepaymentSuccess(ctx context.Context, sel ast
 	return out
 }
 
+var recordRepaymentUserErrorImplementors = []string{"RecordRepaymentUserError", "RecordRepaymentResult", "MutationError"}
+
+func (ec *executionContext) _RecordRepaymentUserError(ctx context.Context, sel ast.SelectionSet, obj *model.RecordRepaymentUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, recordRepaymentUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RecordRepaymentUserError")
+		case "code":
+			out.Values[i] = ec._RecordRepaymentUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._RecordRepaymentUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var recordTransferSuccessImplementors = []string{"RecordTransferSuccess", "RecordTransferResult"}
 
 func (ec *executionContext) _RecordTransferSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.RecordTransferSuccess) graphql.Marshaler {
@@ -32116,6 +35628,49 @@ func (ec *executionContext) _RecordTransferSuccess(ctx context.Context, sel ast.
 			out.Values[i] = graphql.MarshalString("RecordTransferSuccess")
 		case "result":
 			out.Values[i] = ec._RecordTransferSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var recordTransferUserErrorImplementors = []string{"RecordTransferUserError", "RecordTransferResult", "MutationError"}
+
+func (ec *executionContext) _RecordTransferUserError(ctx context.Context, sel ast.SelectionSet, obj *model.RecordTransferUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, recordTransferUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RecordTransferUserError")
+		case "code":
+			out.Values[i] = ec._RecordTransferUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._RecordTransferUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -32413,6 +35968,49 @@ func (ec *executionContext) _RevokeHouseholdInvitationSuccess(ctx context.Contex
 	return out
 }
 
+var revokeHouseholdInvitationUserErrorImplementors = []string{"RevokeHouseholdInvitationUserError", "RevokeHouseholdInvitationResult", "MutationError"}
+
+func (ec *executionContext) _RevokeHouseholdInvitationUserError(ctx context.Context, sel ast.SelectionSet, obj *model.RevokeHouseholdInvitationUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, revokeHouseholdInvitationUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RevokeHouseholdInvitationUserError")
+		case "code":
+			out.Values[i] = ec._RevokeHouseholdInvitationUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._RevokeHouseholdInvitationUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var setAllocationRuleSuccessImplementors = []string{"SetAllocationRuleSuccess", "SetAllocationRuleResult"}
 
 func (ec *executionContext) _SetAllocationRuleSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.SetAllocationRuleSuccess) graphql.Marshaler {
@@ -32427,6 +36025,49 @@ func (ec *executionContext) _SetAllocationRuleSuccess(ctx context.Context, sel a
 			out.Values[i] = graphql.MarshalString("SetAllocationRuleSuccess")
 		case "result":
 			out.Values[i] = ec._SetAllocationRuleSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var setAllocationRuleUserErrorImplementors = []string{"SetAllocationRuleUserError", "SetAllocationRuleResult", "MutationError"}
+
+func (ec *executionContext) _SetAllocationRuleUserError(ctx context.Context, sel ast.SelectionSet, obj *model.SetAllocationRuleUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, setAllocationRuleUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetAllocationRuleUserError")
+		case "code":
+			out.Values[i] = ec._SetAllocationRuleUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._SetAllocationRuleUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -32489,6 +36130,49 @@ func (ec *executionContext) _SetBudgetSuccess(ctx context.Context, sel ast.Selec
 	return out
 }
 
+var setBudgetUserErrorImplementors = []string{"SetBudgetUserError", "SetBudgetResult", "MutationError"}
+
+func (ec *executionContext) _SetBudgetUserError(ctx context.Context, sel ast.SelectionSet, obj *model.SetBudgetUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, setBudgetUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetBudgetUserError")
+		case "code":
+			out.Values[i] = ec._SetBudgetUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._SetBudgetUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var setCategoryArchivedSuccessImplementors = []string{"SetCategoryArchivedSuccess", "SetCategoryArchivedResult"}
 
 func (ec *executionContext) _SetCategoryArchivedSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.SetCategoryArchivedSuccess) graphql.Marshaler {
@@ -32503,6 +36187,49 @@ func (ec *executionContext) _SetCategoryArchivedSuccess(ctx context.Context, sel
 			out.Values[i] = graphql.MarshalString("SetCategoryArchivedSuccess")
 		case "result":
 			out.Values[i] = ec._SetCategoryArchivedSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var setCategoryArchivedUserErrorImplementors = []string{"SetCategoryArchivedUserError", "SetCategoryArchivedResult", "MutationError"}
+
+func (ec *executionContext) _SetCategoryArchivedUserError(ctx context.Context, sel ast.SelectionSet, obj *model.SetCategoryArchivedUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, setCategoryArchivedUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetCategoryArchivedUserError")
+		case "code":
+			out.Values[i] = ec._SetCategoryArchivedUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._SetCategoryArchivedUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -32565,6 +36292,49 @@ func (ec *executionContext) _SetDefaultAllocationSuccess(ctx context.Context, se
 	return out
 }
 
+var setDefaultAllocationUserErrorImplementors = []string{"SetDefaultAllocationUserError", "SetDefaultAllocationResult", "MutationError"}
+
+func (ec *executionContext) _SetDefaultAllocationUserError(ctx context.Context, sel ast.SelectionSet, obj *model.SetDefaultAllocationUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, setDefaultAllocationUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetDefaultAllocationUserError")
+		case "code":
+			out.Values[i] = ec._SetDefaultAllocationUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._SetDefaultAllocationUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var setFundingScheduleSuccessImplementors = []string{"SetFundingScheduleSuccess", "SetFundingScheduleResult"}
 
 func (ec *executionContext) _SetFundingScheduleSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.SetFundingScheduleSuccess) graphql.Marshaler {
@@ -32579,6 +36349,49 @@ func (ec *executionContext) _SetFundingScheduleSuccess(ctx context.Context, sel 
 			out.Values[i] = graphql.MarshalString("SetFundingScheduleSuccess")
 		case "success":
 			out.Values[i] = ec._SetFundingScheduleSuccess_success(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var setFundingScheduleUserErrorImplementors = []string{"SetFundingScheduleUserError", "SetFundingScheduleResult", "MutationError"}
+
+func (ec *executionContext) _SetFundingScheduleUserError(ctx context.Context, sel ast.SelectionSet, obj *model.SetFundingScheduleUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, setFundingScheduleUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetFundingScheduleUserError")
+		case "code":
+			out.Values[i] = ec._SetFundingScheduleUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._SetFundingScheduleUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -32641,6 +36454,49 @@ func (ec *executionContext) _SetPoolFundingRuleSuccess(ctx context.Context, sel 
 	return out
 }
 
+var setPoolFundingRuleUserErrorImplementors = []string{"SetPoolFundingRuleUserError", "SetPoolFundingRuleResult", "MutationError"}
+
+func (ec *executionContext) _SetPoolFundingRuleUserError(ctx context.Context, sel ast.SelectionSet, obj *model.SetPoolFundingRuleUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, setPoolFundingRuleUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetPoolFundingRuleUserError")
+		case "code":
+			out.Values[i] = ec._SetPoolFundingRuleUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._SetPoolFundingRuleUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var setProductAliasSuccessImplementors = []string{"SetProductAliasSuccess", "SetProductAliasResult"}
 
 func (ec *executionContext) _SetProductAliasSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.SetProductAliasSuccess) graphql.Marshaler {
@@ -32679,6 +36535,49 @@ func (ec *executionContext) _SetProductAliasSuccess(ctx context.Context, sel ast
 	return out
 }
 
+var setProductAliasUserErrorImplementors = []string{"SetProductAliasUserError", "SetProductAliasResult", "MutationError"}
+
+func (ec *executionContext) _SetProductAliasUserError(ctx context.Context, sel ast.SelectionSet, obj *model.SetProductAliasUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, setProductAliasUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetProductAliasUserError")
+		case "code":
+			out.Values[i] = ec._SetProductAliasUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._SetProductAliasUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var setRecurringExpenseSuccessImplementors = []string{"SetRecurringExpenseSuccess", "SetRecurringExpenseResult"}
 
 func (ec *executionContext) _SetRecurringExpenseSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.SetRecurringExpenseSuccess) graphql.Marshaler {
@@ -32693,6 +36592,49 @@ func (ec *executionContext) _SetRecurringExpenseSuccess(ctx context.Context, sel
 			out.Values[i] = graphql.MarshalString("SetRecurringExpenseSuccess")
 		case "result":
 			out.Values[i] = ec._SetRecurringExpenseSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var setRecurringExpenseUserErrorImplementors = []string{"SetRecurringExpenseUserError", "SetRecurringExpenseResult", "MutationError"}
+
+func (ec *executionContext) _SetRecurringExpenseUserError(ctx context.Context, sel ast.SelectionSet, obj *model.SetRecurringExpenseUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, setRecurringExpenseUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetRecurringExpenseUserError")
+		case "code":
+			out.Values[i] = ec._SetRecurringExpenseUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._SetRecurringExpenseUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -33376,6 +37318,49 @@ func (ec *executionContext) _UpdatePurchaseItemSuccess(ctx context.Context, sel 
 	return out
 }
 
+var updatePurchaseItemUserErrorImplementors = []string{"UpdatePurchaseItemUserError", "UpdatePurchaseItemResult", "MutationError"}
+
+func (ec *executionContext) _UpdatePurchaseItemUserError(ctx context.Context, sel ast.SelectionSet, obj *model.UpdatePurchaseItemUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, updatePurchaseItemUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("UpdatePurchaseItemUserError")
+		case "code":
+			out.Values[i] = ec._UpdatePurchaseItemUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._UpdatePurchaseItemUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var updatePurchaseSuccessImplementors = []string{"UpdatePurchaseSuccess", "UpdatePurchaseResult"}
 
 func (ec *executionContext) _UpdatePurchaseSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.UpdatePurchaseSuccess) graphql.Marshaler {
@@ -33414,6 +37399,49 @@ func (ec *executionContext) _UpdatePurchaseSuccess(ctx context.Context, sel ast.
 	return out
 }
 
+var updatePurchaseUserErrorImplementors = []string{"UpdatePurchaseUserError", "UpdatePurchaseResult", "MutationError"}
+
+func (ec *executionContext) _UpdatePurchaseUserError(ctx context.Context, sel ast.SelectionSet, obj *model.UpdatePurchaseUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, updatePurchaseUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("UpdatePurchaseUserError")
+		case "code":
+			out.Values[i] = ec._UpdatePurchaseUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._UpdatePurchaseUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var updateTagSuccessImplementors = []string{"UpdateTagSuccess", "UpdateTagResult"}
 
 func (ec *executionContext) _UpdateTagSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.UpdateTagSuccess) graphql.Marshaler {
@@ -33428,6 +37456,49 @@ func (ec *executionContext) _UpdateTagSuccess(ctx context.Context, sel ast.Selec
 			out.Values[i] = graphql.MarshalString("UpdateTagSuccess")
 		case "result":
 			out.Values[i] = ec._UpdateTagSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var updateTagUserErrorImplementors = []string{"UpdateTagUserError", "UpdateTagResult", "MutationError"}
+
+func (ec *executionContext) _UpdateTagUserError(ctx context.Context, sel ast.SelectionSet, obj *model.UpdateTagUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, updateTagUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("UpdateTagUserError")
+		case "code":
+			out.Values[i] = ec._UpdateTagUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._UpdateTagUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

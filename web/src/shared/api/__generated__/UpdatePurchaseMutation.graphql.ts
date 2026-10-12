@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<aa1c3a10737fbbb3bd6fd739658c32dd>>
+ * @generated SignedSource<<209e7aa2af46fee47cc438bd39c30246>>
  * @lightSyntaxTransform
  */
 
@@ -29,21 +29,15 @@ export type UpdatePurchaseMutation$variables = {
 };
 export type UpdatePurchaseMutation$data = {
   readonly updatePurchase: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "UpdatePurchaseSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
       readonly merchant: string;
       readonly occurredAt: string;
       readonly revision: number;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type UpdatePurchaseMutation = {
@@ -146,7 +140,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -170,12 +164,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "6041998676162d4e57379d5d9425d685",
+    "cacheID": "dd8491f5be8c2f4d79d15e767545dc08",
     "id": null,
     "metadata": {},
     "name": "UpdatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation UpdatePurchaseMutation(\n  $input: UpdatePurchaseInput!\n) {\n  updatePurchase(input: $input) {\n    __typename\n    ... on UpdatePurchaseSuccess {\n      result {\n        id\n        revision\n        occurredAt\n        merchant\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation UpdatePurchaseMutation(\n  $input: UpdatePurchaseInput!\n) {\n  updatePurchase(input: $input) {\n    __typename\n    ... on UpdatePurchaseSuccess {\n      result {\n        id\n        revision\n        occurredAt\n        merchant\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<983a1ef9dfaa95d25668eebb398ec030>>
+ * @generated SignedSource<<45fde8ac7a401f2c0df11f3ac9e06046>>
  * @lightSyntaxTransform
  */
 
@@ -17,20 +17,14 @@ export type PostPurchaseMutation$variables = {
 };
 export type PostPurchaseMutation$data = {
   readonly postPurchase: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "PostPurchaseSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
       readonly revision: number;
       readonly status: PurchaseStatus;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type PostPurchaseMutation = {
@@ -144,7 +138,7 @@ v3 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -176,12 +170,12 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "cf117f237d7d6f2c2f5e166ac887cd7f",
+    "cacheID": "c70c4b4c41ef05f8a22d62892c75326b",
     "id": null,
     "metadata": {},
     "name": "PostPurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation PostPurchaseMutation(\n  $purchaseId: ID!\n  $expectedRevision: Int!\n  $idempotencyKey: String!\n) {\n  postPurchase(purchaseId: $purchaseId, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) {\n    __typename\n    ... on PostPurchaseSuccess {\n      result {\n        id\n        revision\n        status\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation PostPurchaseMutation(\n  $purchaseId: ID!\n  $expectedRevision: Int!\n  $idempotencyKey: String!\n) {\n  postPurchase(purchaseId: $purchaseId, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) {\n    __typename\n    ... on PostPurchaseSuccess {\n      result {\n        id\n        revision\n        status\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

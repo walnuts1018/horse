@@ -2,7 +2,7 @@ extend type Mutation {
   setPoolFundingRule(input: SetPoolFundingRuleInput!): SetPoolFundingRuleResult!
 }
 
-union SetPoolFundingRuleResult = SetPoolFundingRuleSuccess | MutationError
+union SetPoolFundingRuleResult = SetPoolFundingRuleSuccess | SetPoolFundingRuleUserError
 
 type SetPoolFundingRuleSuccess {
   result: Pool!
@@ -20,4 +20,9 @@ input SetPoolFundingRuleInput {
 input PoolFundingShareInput {
   memberId: ID! @nodeID(of: "Member")
   weight: Long!
+}
+
+type SetPoolFundingRuleUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

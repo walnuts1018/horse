@@ -2,7 +2,7 @@ extend type Mutation {
   recordTransfer(input: RecordTransferInput!): RecordTransferResult!
 }
 
-union RecordTransferResult = RecordTransferSuccess | MutationError
+union RecordTransferResult = RecordTransferSuccess | RecordTransferUserError
 
 type RecordTransferSuccess {
   result: LedgerEntry!
@@ -25,4 +25,9 @@ enum TransferInputKind {
   ADVANCE
   LOAN
   GIFT
+}
+
+type RecordTransferUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

@@ -2,7 +2,7 @@ extend type Mutation {
   setAllocationRule(input: SetAllocationRuleInput!): SetAllocationRuleResult!
 }
 
-union SetAllocationRuleResult = SetAllocationRuleSuccess | MutationError
+union SetAllocationRuleResult = SetAllocationRuleSuccess | SetAllocationRuleUserError
 
 type SetAllocationRuleSuccess {
   result: AllocationRule!
@@ -15,4 +15,9 @@ input SetAllocationRuleInput {
   productConceptId: ID @nodeID(of: "ProductConcept")
   productVariantId: ID @nodeID(of: "ProductVariant")
   allocations: [AllocationInput!]!
+}
+
+type SetAllocationRuleUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

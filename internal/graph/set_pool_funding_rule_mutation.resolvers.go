@@ -16,7 +16,7 @@ func (r *mutationResolver) SetPoolFundingRule(ctx context.Context, input model.S
 	result, err := r.setPoolFundingRule(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.SetPoolFundingRuleUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

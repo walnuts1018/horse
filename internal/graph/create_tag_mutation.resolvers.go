@@ -16,7 +16,7 @@ func (r *mutationResolver) CreateTag(ctx context.Context, input model.CreateTagI
 	result, err := r.createTag(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.CreateTagUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

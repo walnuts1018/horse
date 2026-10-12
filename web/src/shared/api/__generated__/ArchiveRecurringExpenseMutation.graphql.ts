@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<6daaddb08b26477724076e583c6cad63>>
+ * @generated SignedSource<<42450391d4781e7f7757da11f9232278>>
  * @lightSyntaxTransform
  */
 
@@ -16,20 +16,14 @@ export type ArchiveRecurringExpenseMutation$variables = {
 };
 export type ArchiveRecurringExpenseMutation$data = {
   readonly archiveRecurringExpense: {
-    readonly __typename: "ArchiveRecurringExpenseSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly archived: boolean;
       readonly id: string;
       readonly revision: number;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type ArchiveRecurringExpenseMutation = {
@@ -143,7 +137,7 @@ v3 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -175,12 +169,12 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "87b7ff44429c939f6a8d97526f3b5f32",
+    "cacheID": "7bee09069b5671b12cdcf7240bd3d749",
     "id": null,
     "metadata": {},
     "name": "ArchiveRecurringExpenseMutation",
     "operationKind": "mutation",
-    "text": "mutation ArchiveRecurringExpenseMutation(\n  $expenseId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveRecurringExpense(expenseId: $expenseId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveRecurringExpenseSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation ArchiveRecurringExpenseMutation(\n  $expenseId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveRecurringExpense(expenseId: $expenseId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveRecurringExpenseSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

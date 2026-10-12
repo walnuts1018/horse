@@ -16,7 +16,7 @@ func (r *mutationResolver) ClosePeriod(ctx context.Context, input model.ClosePer
 	result, err := r.closePeriod(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.ClosePeriodUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

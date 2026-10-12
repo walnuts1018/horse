@@ -567,7 +567,7 @@ function unwrapMutationResults(response: Record<string, unknown>) {
     Object.entries(response).map(([key, value]) => {
       if (!value || typeof value !== "object" || !("__typename" in value)) return [key, value];
       const result = value as Record<string, unknown>;
-      if (result.__typename === "MutationError") {
+      if (typeof result.__typename === "string" && result.__typename.endsWith("UserError")) {
         throw new ApiError(String(result.message), String(result.code));
       }
       if (typeof result.__typename === "string" && result.__typename.endsWith("Success")) {

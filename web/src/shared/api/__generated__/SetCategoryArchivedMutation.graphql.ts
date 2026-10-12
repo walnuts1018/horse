@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e066c1166a2a375c20bbca6204ee9595>>
+ * @generated SignedSource<<204d3cc9b9d48b5f79c530c4a263ec94>>
  * @lightSyntaxTransform
  */
 
@@ -15,19 +15,13 @@ export type SetCategoryArchivedMutation$variables = {
 };
 export type SetCategoryArchivedMutation$data = {
   readonly setCategoryArchived: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "SetCategoryArchivedSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly archived: boolean;
       readonly id: string;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type SetCategoryArchivedMutation = {
@@ -124,7 +118,7 @@ v2 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -154,12 +148,12 @@ return {
     "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "11126441e3ad63e05a7eff4fabff4a05",
+    "cacheID": "25ae16af5a1a59dc9cde41c4ddecbdf6",
     "id": null,
     "metadata": {},
     "name": "SetCategoryArchivedMutation",
     "operationKind": "mutation",
-    "text": "mutation SetCategoryArchivedMutation(\n  $categoryId: ID!\n  $archived: Boolean!\n) {\n  setCategoryArchived(categoryId: $categoryId, archived: $archived) {\n    __typename\n    ... on SetCategoryArchivedSuccess {\n      result {\n        id\n        archived\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetCategoryArchivedMutation(\n  $categoryId: ID!\n  $archived: Boolean!\n) {\n  setCategoryArchived(categoryId: $categoryId, archived: $archived) {\n    __typename\n    ... on SetCategoryArchivedSuccess {\n      result {\n        id\n        archived\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

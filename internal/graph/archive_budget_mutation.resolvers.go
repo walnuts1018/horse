@@ -16,7 +16,7 @@ func (r *mutationResolver) ArchiveBudget(ctx context.Context, budgetID string, b
 	result, err := r.archiveBudget(ctx, budgetID, baseRevision, archived)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.ArchiveBudgetUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

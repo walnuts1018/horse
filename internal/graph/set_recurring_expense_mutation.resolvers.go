@@ -16,7 +16,7 @@ func (r *mutationResolver) SetRecurringExpense(ctx context.Context, input model.
 	result, err := r.setRecurringExpense(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.SetRecurringExpenseUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

@@ -16,7 +16,7 @@ func (r *mutationResolver) CorrectPurchase(ctx context.Context, input model.Corr
 	result, err := r.correctPurchase(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.CorrectPurchaseUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

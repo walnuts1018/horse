@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<38ac688af4f1d122ab75dcb45d4f25b1>>
+ * @generated SignedSource<<77af44d1a27a0dc7a34780cf5beb93e6>>
  * @lightSyntaxTransform
  */
 
@@ -23,16 +23,10 @@ export type SetFundingScheduleMutation$variables = {
 };
 export type SetFundingScheduleMutation$data = {
   readonly setFundingSchedule: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "SetFundingScheduleSuccess";
-    readonly success: boolean;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly success?: boolean;
   };
 };
 export type SetFundingScheduleMutation = {
@@ -103,7 +97,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -127,12 +121,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "15b019feeeaee823b96bd72498ea2e7c",
+    "cacheID": "78a4e52639d34fd65e56683d12dea22a",
     "id": null,
     "metadata": {},
     "name": "SetFundingScheduleMutation",
     "operationKind": "mutation",
-    "text": "mutation SetFundingScheduleMutation(\n  $input: SetFundingScheduleInput!\n) {\n  setFundingSchedule(input: $input) {\n    __typename\n    ... on SetFundingScheduleSuccess {\n      success\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetFundingScheduleMutation(\n  $input: SetFundingScheduleInput!\n) {\n  setFundingSchedule(input: $input) {\n    __typename\n    ... on SetFundingScheduleSuccess {\n      success\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<112a28004685789d3abc5e376b70fb4d>>
+ * @generated SignedSource<<bb78bac21140906ae624d3a56ea10387>>
  * @lightSyntaxTransform
  */
 
@@ -25,18 +25,12 @@ export type RecordFundingMutation$variables = {
 };
 export type RecordFundingMutation$data = {
   readonly recordFunding: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "RecordFundingSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly " $fragmentSpreads": FragmentRefs<"LedgerEntryFields">;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type RecordFundingMutation = {
@@ -85,7 +79,7 @@ v3 = {
     }
   ],
   "type": "MutationError",
-  "abstractKey": null
+  "abstractKey": "__isMutationError"
 },
 v4 = {
   "alias": null,
@@ -339,12 +333,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "34f9e4182ab713a9bcc3df5c75481d4f",
+    "cacheID": "e622bf317a40658cb08565f74e304a9f",
     "id": null,
     "metadata": {},
     "name": "RecordFundingMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordFundingMutation(\n  $input: RecordFundingInput!\n) {\n  recordFunding(input: $input) {\n    __typename\n    ... on RecordFundingSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      id\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
+    "text": "mutation RecordFundingMutation(\n  $input: RecordFundingInput!\n) {\n  recordFunding(input: $input) {\n    __typename\n    ... on RecordFundingSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      id\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
   }
 };
 })();

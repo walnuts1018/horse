@@ -16,7 +16,7 @@ func (r *mutationResolver) ArchiveTag(ctx context.Context, tagID string, baseRev
 	result, err := r.archiveTag(ctx, tagID, baseRevision, archived)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.ArchiveTagUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

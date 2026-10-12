@@ -2,7 +2,7 @@ extend type Mutation {
   updatePurchase(input: UpdatePurchaseInput!): UpdatePurchaseResult!
 }
 
-union UpdatePurchaseResult = UpdatePurchaseSuccess | MutationError
+union UpdatePurchaseResult = UpdatePurchaseSuccess | UpdatePurchaseUserError
 
 type UpdatePurchaseSuccess {
   result: Purchase!
@@ -19,4 +19,9 @@ input PurchasePatch {
   occurredAt: String
   merchant: String
   paymentAllocations: [PurchasePaymentInput!]
+}
+
+type UpdatePurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

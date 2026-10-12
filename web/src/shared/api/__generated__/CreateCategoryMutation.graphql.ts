@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a2f651f94ccbc64756479cc82580a051>>
+ * @generated SignedSource<<20dbd37694d618d063cdaaf6a074c5ae>>
  * @lightSyntaxTransform
  */
 
@@ -19,18 +19,12 @@ export type CreateCategoryMutation$variables = {
 };
 export type CreateCategoryMutation$data = {
   readonly createCategory: {
-    readonly __typename: "CreateCategorySuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type CreateCategoryMutation = {
@@ -112,7 +106,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -136,12 +130,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "f6e3c61ce9db4a6b85fafba89784361f",
+    "cacheID": "922a75443f7512f419f27340186baf93",
     "id": null,
     "metadata": {},
     "name": "CreateCategoryMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateCategoryMutation(\n  $input: CreateCategoryInput!\n) {\n  createCategory(input: $input) {\n    __typename\n    ... on CreateCategorySuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreateCategoryMutation(\n  $input: CreateCategoryInput!\n) {\n  createCategory(input: $input) {\n    __typename\n    ... on CreateCategorySuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

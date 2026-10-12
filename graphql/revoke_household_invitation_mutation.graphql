@@ -2,8 +2,13 @@ extend type Mutation {
   revokeHouseholdInvitation(householdId: ID! @nodeID(of: "Household"), invitationId: ID! @nodeID(of: "HouseholdInvitation")): RevokeHouseholdInvitationResult!
 }
 
-union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | MutationError
+union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | RevokeHouseholdInvitationUserError
 
 type RevokeHouseholdInvitationSuccess {
   result: HouseholdInvitation!
+}
+
+type RevokeHouseholdInvitationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

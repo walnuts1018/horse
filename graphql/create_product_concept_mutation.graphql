@@ -2,7 +2,7 @@ extend type Mutation {
   createProductConcept(input: CreateProductConceptInput!): CreateProductConceptResult!
 }
 
-union CreateProductConceptResult = CreateProductConceptSuccess | MutationError
+union CreateProductConceptResult = CreateProductConceptSuccess | CreateProductConceptUserError
 
 type CreateProductConceptSuccess {
   result: ProductConcept!
@@ -12,4 +12,9 @@ input CreateProductConceptInput {
   householdId: ID! @nodeID(of: "Household")
   name: String!
   categoryId: ID @nodeID(of: "Category")
+}
+
+type CreateProductConceptUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

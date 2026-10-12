@@ -2,7 +2,7 @@ extend type Mutation {
   createPurchase(input: CreatePurchaseInput!): CreatePurchaseResult!
 }
 
-union CreatePurchaseResult = CreatePurchaseSuccess | MutationError
+union CreatePurchaseResult = CreatePurchaseSuccess | CreatePurchaseUserError
 
 type CreatePurchaseSuccess {
   result: Purchase!
@@ -31,4 +31,9 @@ input PurchaseItemInput {
   categoryId: ID @nodeID(of: "Category")
   productVariantId: ID @nodeID(of: "ProductVariant")
   allocations: [AllocationInput!]
+}
+
+type CreatePurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

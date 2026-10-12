@@ -2,7 +2,7 @@ extend type Mutation {
   createCategory(input: CreateCategoryInput!): CreateCategoryResult!
 }
 
-union CreateCategoryResult = CreateCategorySuccess | MutationError
+union CreateCategoryResult = CreateCategorySuccess | CreateCategoryUserError
 
 type CreateCategorySuccess {
   result: Category!
@@ -12,4 +12,9 @@ input CreateCategoryInput {
   householdId: ID! @nodeID(of: "Household")
   name: String!
   parentId: ID @nodeID(of: "Category")
+}
+
+type CreateCategoryUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

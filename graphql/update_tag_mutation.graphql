@@ -2,7 +2,7 @@ extend type Mutation {
   updateTag(input: UpdateTagInput!): UpdateTagResult!
 }
 
-union UpdateTagResult = UpdateTagSuccess | MutationError
+union UpdateTagResult = UpdateTagSuccess | UpdateTagUserError
 
 type UpdateTagSuccess {
   result: Tag!
@@ -12,4 +12,9 @@ input UpdateTagInput {
   tagId: ID! @nodeID(of: "Tag")
   baseRevision: Int!
   name: String!
+}
+
+type UpdateTagUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

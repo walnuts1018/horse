@@ -16,7 +16,7 @@ func (r *mutationResolver) CreateAccount(ctx context.Context, input model.Create
 	result, err := r.createAccount(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.CreateAccountUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

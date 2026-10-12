@@ -16,7 +16,7 @@ func (r *mutationResolver) PostPurchase(ctx context.Context, purchaseID string, 
 	result, err := r.postPurchase(ctx, purchaseID, expectedRevision, idempotencyKey)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.PostPurchaseUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

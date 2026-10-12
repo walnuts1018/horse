@@ -2,8 +2,13 @@ extend type Mutation {
   postPurchase(purchaseId: ID! @nodeID(of: "Purchase"), expectedRevision: Int!, idempotencyKey: String!): PostPurchaseResult!
 }
 
-union PostPurchaseResult = PostPurchaseSuccess | MutationError
+union PostPurchaseResult = PostPurchaseSuccess | PostPurchaseUserError
 
 type PostPurchaseSuccess {
   result: Purchase!
+}
+
+type PostPurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

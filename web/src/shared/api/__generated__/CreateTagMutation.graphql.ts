@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<61785b3f07743504b14116baecdfeec7>>
+ * @generated SignedSource<<2b0e31043ebe5f58fdc2df4e82d5eeae>>
  * @lightSyntaxTransform
  */
 
@@ -18,22 +18,16 @@ export type CreateTagMutation$variables = {
 };
 export type CreateTagMutation$data = {
   readonly createTag: {
-    readonly __typename: "CreateTagSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly archived: boolean;
       readonly householdId: string;
       readonly id: string;
       readonly name: string;
       readonly revision: number;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type CreateTagMutation = {
@@ -143,7 +137,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -167,12 +161,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "f836008e386e33fdb12b90c5549fd0fa",
+    "cacheID": "3958551d2b94257977a16edb6b87c6f4",
     "id": null,
     "metadata": {},
     "name": "CreateTagMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateTagMutation(\n  $input: CreateTagInput!\n) {\n  createTag(input: $input) {\n    __typename\n    ... on CreateTagSuccess {\n      result {\n        id\n        householdId\n        name\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreateTagMutation(\n  $input: CreateTagInput!\n) {\n  createTag(input: $input) {\n    __typename\n    ... on CreateTagSuccess {\n      result {\n        id\n        householdId\n        name\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

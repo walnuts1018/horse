@@ -16,7 +16,7 @@ func (r *mutationResolver) CreatePurchase(ctx context.Context, input model.Creat
 	result, err := r.createPurchase(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.CreatePurchaseUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

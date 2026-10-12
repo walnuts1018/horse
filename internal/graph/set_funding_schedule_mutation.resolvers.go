@@ -16,7 +16,7 @@ func (r *mutationResolver) SetFundingSchedule(ctx context.Context, input model.S
 	success, err := r.setFundingSchedule(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.SetFundingScheduleUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

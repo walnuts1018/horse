@@ -2,7 +2,7 @@ extend type Mutation {
   createAccount(input: CreateAccountInput!): CreateAccountResult!
 }
 
-union CreateAccountResult = CreateAccountSuccess | MutationError
+union CreateAccountResult = CreateAccountSuccess | CreateAccountUserError
 
 type CreateAccountSuccess {
   result: Account!
@@ -19,4 +19,9 @@ input CreateAccountInput {
 input AccountOpeningBalanceInput {
   amountYen: Long!
   at: String!
+}
+
+type CreateAccountUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

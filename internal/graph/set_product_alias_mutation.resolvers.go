@@ -16,7 +16,7 @@ func (r *mutationResolver) SetProductAlias(ctx context.Context, input model.SetP
 	result, err := r.setProductAlias(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.SetProductAliasUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

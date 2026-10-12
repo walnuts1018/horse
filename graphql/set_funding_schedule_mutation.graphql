@@ -2,7 +2,7 @@ extend type Mutation {
   setFundingSchedule(input: SetFundingScheduleInput!): SetFundingScheduleResult!
 }
 
-union SetFundingScheduleResult = SetFundingScheduleSuccess | MutationError
+union SetFundingScheduleResult = SetFundingScheduleSuccess | SetFundingScheduleUserError
 
 type SetFundingScheduleSuccess {
   success: Boolean!
@@ -16,4 +16,9 @@ input SetFundingScheduleInput {
   cadence: String!
   startsOn: String!
   endsOn: String
+}
+
+type SetFundingScheduleUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

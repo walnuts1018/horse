@@ -2,7 +2,7 @@ extend type Mutation {
   recordRepayment(input: RecordRepaymentInput!): RecordRepaymentResult!
 }
 
-union RecordRepaymentResult = RecordRepaymentSuccess | MutationError
+union RecordRepaymentResult = RecordRepaymentSuccess | RecordRepaymentUserError
 
 type RecordRepaymentSuccess {
   result: LedgerEntry!
@@ -19,4 +19,9 @@ input RecordRepaymentInput {
   occurredAt: String!
   description: String!
   idempotencyKey: String!
+}
+
+type RecordRepaymentUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

@@ -2,7 +2,7 @@ extend type Mutation {
   updatePurchaseItem(input: UpdatePurchaseItemInput!): UpdatePurchaseItemResult!
 }
 
-union UpdatePurchaseItemResult = UpdatePurchaseItemSuccess | MutationError
+union UpdatePurchaseItemResult = UpdatePurchaseItemSuccess | UpdatePurchaseItemUserError
 
 type UpdatePurchaseItemSuccess {
   result: PurchaseItem!
@@ -27,4 +27,9 @@ enum ProductLearningScope {
   ITEM_ONLY
   VARIANT_NAME
   MERCHANT_ALIAS
+}
+
+type UpdatePurchaseItemUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0f6f6d31fc70a1a2a35ff29a578a0635>>
+ * @generated SignedSource<<faab4b13ede8b18d88bcf26f4433bb1b>>
  * @lightSyntaxTransform
  */
 
@@ -19,8 +19,10 @@ export type CreateHouseholdInvitationMutation$variables = {
 };
 export type CreateHouseholdInvitationMutation$data = {
   readonly createHouseholdInvitation: {
-    readonly __typename: "CreateHouseholdInvitationSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly invitation: {
         readonly acceptedAt: string | null | undefined;
         readonly createdAt: string;
@@ -33,14 +35,6 @@ export type CreateHouseholdInvitationMutation$data = {
       };
       readonly token: string;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type CreateHouseholdInvitationMutation = {
@@ -189,7 +183,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -213,12 +207,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "e76075286a66a39366806a2ca2ef18da",
+    "cacheID": "02d38680b59ec435599c4d3c13c6db30",
     "id": null,
     "metadata": {},
     "name": "CreateHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateHouseholdInvitationMutation(\n  $input: CreateHouseholdInvitationInput!\n) {\n  createHouseholdInvitation(input: $input) {\n    __typename\n    ... on CreateHouseholdInvitationSuccess {\n      result {\n        token\n        invitation {\n          id\n          householdId\n          role\n          status\n          expiresAt\n          createdAt\n          revokedAt\n          acceptedAt\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreateHouseholdInvitationMutation(\n  $input: CreateHouseholdInvitationInput!\n) {\n  createHouseholdInvitation(input: $input) {\n    __typename\n    ... on CreateHouseholdInvitationSuccess {\n      result {\n        token\n        invitation {\n          id\n          householdId\n          role\n          status\n          expiresAt\n          createdAt\n          revokedAt\n          acceptedAt\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

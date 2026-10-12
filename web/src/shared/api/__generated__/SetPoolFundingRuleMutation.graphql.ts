@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<85d8f398325abef7d29789e0b1c00ddd>>
+ * @generated SignedSource<<f7bc291ae4eb9ecedd678f6d2ce6351f>>
  * @lightSyntaxTransform
  */
 
@@ -28,12 +28,10 @@ export type SetPoolFundingRuleMutation$variables = {
 };
 export type SetPoolFundingRuleMutation$data = {
   readonly setPoolFundingRule: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "SetPoolFundingRuleSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly fundingRuleVersion: number;
       readonly fundingShares: ReadonlyArray<{
         readonly memberId: string;
@@ -45,10 +43,6 @@ export type SetPoolFundingRuleMutation$data = {
       readonly ownerMemberId: string | null | undefined;
       readonly settlementPolicy: SharedPoolSettlementPolicy | null | undefined;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type SetPoolFundingRuleMutation = {
@@ -190,7 +184,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -214,12 +208,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "4cffcc1fdf62c93d7b567abe034912ab",
+    "cacheID": "b1149c3412047e9fae4606cead53ffd8",
     "id": null,
     "metadata": {},
     "name": "SetPoolFundingRuleMutation",
     "operationKind": "mutation",
-    "text": "mutation SetPoolFundingRuleMutation(\n  $input: SetPoolFundingRuleInput!\n) {\n  setPoolFundingRule(input: $input) {\n    __typename\n    ... on SetPoolFundingRuleSuccess {\n      result {\n        id\n        kind\n        ownerMemberId\n        fundingRuleVersion\n        settlementPolicy\n        fundingShares {\n          memberId\n          memberName\n          weight\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetPoolFundingRuleMutation(\n  $input: SetPoolFundingRuleInput!\n) {\n  setPoolFundingRule(input: $input) {\n    __typename\n    ... on SetPoolFundingRuleSuccess {\n      result {\n        id\n        kind\n        ownerMemberId\n        fundingRuleVersion\n        settlementPolicy\n        fundingShares {\n          memberId\n          memberName\n          weight\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

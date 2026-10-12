@@ -16,7 +16,7 @@ func (r *mutationResolver) RecordAccountMovement(ctx context.Context, input mode
 	result, err := r.recordAccountMovement(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.RecordAccountMovementUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

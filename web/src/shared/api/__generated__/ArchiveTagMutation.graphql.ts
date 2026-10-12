@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ba23574429ccabb2e7013cb2a7a4407a>>
+ * @generated SignedSource<<881543ab4e8815c1637e174198a50930>>
  * @lightSyntaxTransform
  */
 
@@ -16,20 +16,14 @@ export type ArchiveTagMutation$variables = {
 };
 export type ArchiveTagMutation$data = {
   readonly archiveTag: {
-    readonly __typename: "ArchiveTagSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly archived: boolean;
       readonly id: string;
       readonly revision: number;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type ArchiveTagMutation = {
@@ -143,7 +137,7 @@ v3 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -175,12 +169,12 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "69f58eba9671a508d912c559b92c6eb3",
+    "cacheID": "6d93dd3a56fabb357972dc8efd26d08e",
     "id": null,
     "metadata": {},
     "name": "ArchiveTagMutation",
     "operationKind": "mutation",
-    "text": "mutation ArchiveTagMutation(\n  $tagId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveTag(tagId: $tagId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveTagSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation ArchiveTagMutation(\n  $tagId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveTag(tagId: $tagId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveTagSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

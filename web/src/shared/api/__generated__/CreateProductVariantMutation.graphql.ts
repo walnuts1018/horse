@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f4bbe6e49cd28479a9e7b88bd1e680cb>>
+ * @generated SignedSource<<570fd7762a79e0002210bd35ddc7910b>>
  * @lightSyntaxTransform
  */
 
@@ -22,19 +22,13 @@ export type CreateProductVariantMutation$variables = {
 };
 export type CreateProductVariantMutation$data = {
   readonly createProductVariant: {
-    readonly __typename: "CreateProductVariantSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
       readonly name: string;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type CreateProductVariantMutation = {
@@ -123,7 +117,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -147,12 +141,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "80a008804b90c2324775d0eb4b518c5f",
+    "cacheID": "8179717e2085e262ff4b26c32aa11855",
     "id": null,
     "metadata": {},
     "name": "CreateProductVariantMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateProductVariantMutation(\n  $input: CreateProductVariantInput!\n) {\n  createProductVariant(input: $input) {\n    __typename\n    ... on CreateProductVariantSuccess {\n      result {\n        id\n        name\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreateProductVariantMutation(\n  $input: CreateProductVariantInput!\n) {\n  createProductVariant(input: $input) {\n    __typename\n    ... on CreateProductVariantSuccess {\n      result {\n        id\n        name\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

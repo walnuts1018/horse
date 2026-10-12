@@ -16,7 +16,7 @@ func (r *mutationResolver) RecordFunding(ctx context.Context, input model.Record
 	result, err := r.recordFunding(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.RecordFundingUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

@@ -2,8 +2,13 @@ extend type Mutation {
   setCategoryArchived(categoryId: ID! @nodeID(of: "Category"), archived: Boolean!): SetCategoryArchivedResult!
 }
 
-union SetCategoryArchivedResult = SetCategoryArchivedSuccess | MutationError
+union SetCategoryArchivedResult = SetCategoryArchivedSuccess | SetCategoryArchivedUserError
 
 type SetCategoryArchivedSuccess {
   result: Category!
+}
+
+type SetCategoryArchivedUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

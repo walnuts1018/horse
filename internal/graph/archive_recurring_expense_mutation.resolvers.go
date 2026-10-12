@@ -16,7 +16,7 @@ func (r *mutationResolver) ArchiveRecurringExpense(ctx context.Context, expenseI
 	result, err := r.archiveRecurringExpense(ctx, expenseID, baseRevision, archived)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.ArchiveRecurringExpenseUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

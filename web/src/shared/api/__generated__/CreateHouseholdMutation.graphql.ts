@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e297c57e3c4ed64b1456d5f0892e3af5>>
+ * @generated SignedSource<<9db9276cd9ceb32f4faaeda1bff72104>>
  * @lightSyntaxTransform
  */
 
@@ -18,18 +18,12 @@ export type CreateHouseholdMutation$variables = {
 };
 export type CreateHouseholdMutation$data = {
   readonly createHousehold: {
-    readonly __typename: "CreateHouseholdSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type CreateHouseholdMutation = {
@@ -111,7 +105,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -135,12 +129,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "3736dd5d55d7d9a9ed65ecbac4f33495",
+    "cacheID": "f2ad79ef0b52d6614ca70e2c1d18ef2d",
     "id": null,
     "metadata": {},
     "name": "CreateHouseholdMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateHouseholdMutation(\n  $input: CreateHouseholdInput!\n) {\n  createHousehold(input: $input) {\n    __typename\n    ... on CreateHouseholdSuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreateHouseholdMutation(\n  $input: CreateHouseholdInput!\n) {\n  createHousehold(input: $input) {\n    __typename\n    ... on CreateHouseholdSuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

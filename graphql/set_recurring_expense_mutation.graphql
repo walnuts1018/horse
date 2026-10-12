@@ -2,7 +2,7 @@ extend type Mutation {
   setRecurringExpense(input: SetRecurringExpenseInput!): SetRecurringExpenseResult!
 }
 
-union SetRecurringExpenseResult = SetRecurringExpenseSuccess | MutationError
+union SetRecurringExpenseResult = SetRecurringExpenseSuccess | SetRecurringExpenseUserError
 
 type SetRecurringExpenseSuccess {
   result: RecurringExpense!
@@ -21,4 +21,9 @@ input SetRecurringExpenseInput {
   startsOn: String!
   nextDueOn: String!
   endsOn: String
+}
+
+type SetRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

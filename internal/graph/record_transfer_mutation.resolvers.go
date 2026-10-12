@@ -16,7 +16,7 @@ func (r *mutationResolver) RecordTransfer(ctx context.Context, input model.Recor
 	result, err := r.recordTransfer(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.RecordTransferUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

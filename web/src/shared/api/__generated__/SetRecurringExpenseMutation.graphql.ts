@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9df28a5b52de8bf57efd00d141551252>>
+ * @generated SignedSource<<430f7d02c86bdce8fa25775aa04ebc66>>
  * @lightSyntaxTransform
  */
 
@@ -28,12 +28,10 @@ export type SetRecurringExpenseMutation$variables = {
 };
 export type SetRecurringExpenseMutation$data = {
   readonly setRecurringExpense: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "SetRecurringExpenseSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly amountYen: any;
       readonly archived: boolean;
       readonly cadence: string;
@@ -47,10 +45,6 @@ export type SetRecurringExpenseMutation$data = {
       readonly revision: number;
       readonly startsOn: string;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type SetRecurringExpenseMutation = {
@@ -209,7 +203,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -233,12 +227,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "1abaab34724e511d8e818f46345c27f9",
+    "cacheID": "4b33889adbecb1cb487a13d2b06c652b",
     "id": null,
     "metadata": {},
     "name": "SetRecurringExpenseMutation",
     "operationKind": "mutation",
-    "text": "mutation SetRecurringExpenseMutation(\n  $input: SetRecurringExpenseInput!\n) {\n  setRecurringExpense(input: $input) {\n    __typename\n    ... on SetRecurringExpenseSuccess {\n      result {\n        id\n        name\n        merchant\n        amountYen\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetRecurringExpenseMutation(\n  $input: SetRecurringExpenseInput!\n) {\n  setRecurringExpense(input: $input) {\n    __typename\n    ... on SetRecurringExpenseSuccess {\n      result {\n        id\n        name\n        merchant\n        amountYen\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

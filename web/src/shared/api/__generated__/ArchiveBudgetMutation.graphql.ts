@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ffb8707c1fcf1f254fb4894bb5d4de33>>
+ * @generated SignedSource<<718c3b513b5608526af3e1e27046cbb9>>
  * @lightSyntaxTransform
  */
 
@@ -16,20 +16,14 @@ export type ArchiveBudgetMutation$variables = {
 };
 export type ArchiveBudgetMutation$data = {
   readonly archiveBudget: {
-    readonly __typename: "ArchiveBudgetSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly archived: boolean;
       readonly id: string;
       readonly revision: number;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type ArchiveBudgetMutation = {
@@ -143,7 +137,7 @@ v3 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -175,12 +169,12 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "5c54b63c82046018c60d6b5f9ad691ee",
+    "cacheID": "afada52118a51f682336eb58f89aa62b",
     "id": null,
     "metadata": {},
     "name": "ArchiveBudgetMutation",
     "operationKind": "mutation",
-    "text": "mutation ArchiveBudgetMutation(\n  $budgetId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveBudget(budgetId: $budgetId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveBudgetSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation ArchiveBudgetMutation(\n  $budgetId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveBudget(budgetId: $budgetId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveBudgetSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

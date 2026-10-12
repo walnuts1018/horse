@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5fd69d93a79b800041b40470d07febe2>>
+ * @generated SignedSource<<d0c330f61b256f46f7da2c6f25fde758>>
  * @lightSyntaxTransform
  */
 
@@ -20,20 +20,14 @@ export type ClosePeriodMutation$variables = {
 };
 export type ClosePeriodMutation$data = {
   readonly closePeriod: {
-    readonly __typename: "ClosePeriodSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly period: string;
       readonly revision: number;
       readonly status: SettlementStatus;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type ClosePeriodMutation = {
@@ -129,7 +123,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -153,12 +147,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "eda53cb6dd3f260de79fd55a8f0082ba",
+    "cacheID": "ac0250c1ae1d1eec441f007522bcc67e",
     "id": null,
     "metadata": {},
     "name": "ClosePeriodMutation",
     "operationKind": "mutation",
-    "text": "mutation ClosePeriodMutation(\n  $input: ClosePeriodInput!\n) {\n  closePeriod(input: $input) {\n    __typename\n    ... on ClosePeriodSuccess {\n      result {\n        period\n        status\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation ClosePeriodMutation(\n  $input: ClosePeriodInput!\n) {\n  closePeriod(input: $input) {\n    __typename\n    ... on ClosePeriodSuccess {\n      result {\n        period\n        status\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

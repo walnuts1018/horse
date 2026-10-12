@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e8aa97c15940be34350f86f13d5ef0b0>>
+ * @generated SignedSource<<6f81a6c7a7ff5b086f15dd1b7700c2c7>>
  * @lightSyntaxTransform
  */
 
@@ -32,19 +32,13 @@ export type BulkUpdatePurchasesMutation$variables = {
 };
 export type BulkUpdatePurchasesMutation$data = {
   readonly bulkUpdatePurchases: {
-    readonly __typename: "BulkUpdatePurchasesSuccess";
-    readonly purchases: ReadonlyArray<{
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly purchases?: ReadonlyArray<{
       readonly id: string;
       readonly revision: number;
     }>;
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type BulkUpdatePurchasesMutation = {
@@ -133,7 +127,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -157,12 +151,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "2f8d1df4103fd3a41aa175dda256248d",
+    "cacheID": "88b275771907d81c77ff9ca8f0b2fdba",
     "id": null,
     "metadata": {},
     "name": "BulkUpdatePurchasesMutation",
     "operationKind": "mutation",
-    "text": "mutation BulkUpdatePurchasesMutation(\n  $input: BulkUpdatePurchasesInput!\n) {\n  bulkUpdatePurchases(input: $input) {\n    __typename\n    ... on BulkUpdatePurchasesSuccess {\n      purchases {\n        id\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation BulkUpdatePurchasesMutation(\n  $input: BulkUpdatePurchasesInput!\n) {\n  bulkUpdatePurchases(input: $input) {\n    __typename\n    ... on BulkUpdatePurchasesSuccess {\n      purchases {\n        id\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

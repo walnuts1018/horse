@@ -16,7 +16,7 @@ func (r *mutationResolver) RecordRepayment(ctx context.Context, input model.Reco
 	result, err := r.recordRepayment(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.RecordRepaymentUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

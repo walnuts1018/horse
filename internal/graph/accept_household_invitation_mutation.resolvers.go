@@ -16,7 +16,7 @@ func (r *mutationResolver) AcceptHouseholdInvitation(ctx context.Context, token 
 	result, err := r.acceptHouseholdInvitation(ctx, token)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.AcceptHouseholdInvitationUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

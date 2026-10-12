@@ -2,7 +2,7 @@ extend type Mutation {
   setBudget(input: SetBudgetInput!): SetBudgetResult!
 }
 
-union SetBudgetResult = SetBudgetSuccess | MutationError
+union SetBudgetResult = SetBudgetSuccess | SetBudgetUserError
 
 type SetBudgetSuccess {
   result: Budget!
@@ -17,4 +17,9 @@ input SetBudgetInput {
   amountYen: Long!
   startsOn: String!
   endsOn: String
+}
+
+type SetBudgetUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

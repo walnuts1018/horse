@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0d1fa2a4058c17d31553345455e9d093>>
+ * @generated SignedSource<<32b43697ecc9ab32fa6a8894aeaf2cdd>>
  * @lightSyntaxTransform
  */
 
@@ -33,8 +33,9 @@ export type BulkUpdatePurchaseItemsMutation$variables = {
 };
 export type BulkUpdatePurchaseItemsMutation$data = {
   readonly bulkUpdatePurchaseItems: {
-    readonly __typename: "BulkUpdatePurchaseItemsSuccess";
-    readonly items: ReadonlyArray<{
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly items?: ReadonlyArray<{
       readonly allocations: ReadonlyArray<{
         readonly amountYen: any | null | undefined;
         readonly poolId: string;
@@ -73,14 +74,7 @@ export type BulkUpdatePurchaseItemsMutation$data = {
         readonly revision: number;
       }>;
     }>;
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
+    readonly message?: string;
   };
 };
 export type BulkUpdatePurchaseItemsMutation = {
@@ -344,7 +338,7 @@ v7 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -368,12 +362,12 @@ return {
     "selections": (v7/*:: as any*/)
   },
   "params": {
-    "cacheID": "a830711051cfb01abbd30ce1dd501e98",
+    "cacheID": "a36e51e44384de307e9ce3203d8fbf86",
     "id": null,
     "metadata": {},
     "name": "BulkUpdatePurchaseItemsMutation",
     "operationKind": "mutation",
-    "text": "mutation BulkUpdatePurchaseItemsMutation(\n  $input: BulkUpdatePurchaseItemsInput!\n) {\n  bulkUpdatePurchaseItems(input: $input) {\n    __typename\n    ... on BulkUpdatePurchaseItemsSuccess {\n      items {\n        id\n        name\n        amountYen\n        currency\n        quantity {\n          numerator\n          denominator\n          unit\n        }\n        printedUnitPrice {\n          amountYen\n          basis {\n            numerator\n            denominator\n            unit\n          }\n        }\n        effectiveUnitPrice {\n          numeratorYen\n          denominator\n        }\n        revision\n        categoryId\n        productVariantId\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n        tags {\n          id\n          householdId\n          name\n          archived\n          revision\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation BulkUpdatePurchaseItemsMutation(\n  $input: BulkUpdatePurchaseItemsInput!\n) {\n  bulkUpdatePurchaseItems(input: $input) {\n    __typename\n    ... on BulkUpdatePurchaseItemsSuccess {\n      items {\n        id\n        name\n        amountYen\n        currency\n        quantity {\n          numerator\n          denominator\n          unit\n        }\n        printedUnitPrice {\n          amountYen\n          basis {\n            numerator\n            denominator\n            unit\n          }\n        }\n        effectiveUnitPrice {\n          numeratorYen\n          denominator\n        }\n        revision\n        categoryId\n        productVariantId\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n        tags {\n          id\n          householdId\n          name\n          archived\n          revision\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

@@ -16,7 +16,7 @@ func (r *mutationResolver) RevokeHouseholdInvitation(ctx context.Context, househ
 	result, err := r.revokeHouseholdInvitation(ctx, householdID, invitationID)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.RevokeHouseholdInvitationUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

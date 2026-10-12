@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0d06428d84e0142215c715d18e99f68c>>
+ * @generated SignedSource<<23c44f4af4885fd98bc6a4195c7f1959>>
  * @lightSyntaxTransform
  */
 
@@ -26,18 +26,12 @@ export type CreateAccountMutation$variables = {
 };
 export type CreateAccountMutation$data = {
   readonly createAccount: {
-    readonly __typename: "CreateAccountSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type CreateAccountMutation = {
@@ -119,7 +113,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -143,12 +137,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "74cf8820cccf1c3c1b7aabf5bebd6952",
+    "cacheID": "a902c3f65459ee51568e0fc40e1e499c",
     "id": null,
     "metadata": {},
     "name": "CreateAccountMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateAccountMutation(\n  $input: CreateAccountInput!\n) {\n  createAccount(input: $input) {\n    __typename\n    ... on CreateAccountSuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreateAccountMutation(\n  $input: CreateAccountInput!\n) {\n  createAccount(input: $input) {\n    __typename\n    ... on CreateAccountSuccess {\n      result {\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

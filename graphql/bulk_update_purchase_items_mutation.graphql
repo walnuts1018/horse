@@ -2,7 +2,7 @@ extend type Mutation {
   bulkUpdatePurchaseItems(input: BulkUpdatePurchaseItemsInput!): BulkUpdatePurchaseItemsResult!
 }
 
-union BulkUpdatePurchaseItemsResult = BulkUpdatePurchaseItemsSuccess | MutationError
+union BulkUpdatePurchaseItemsResult = BulkUpdatePurchaseItemsSuccess | BulkUpdatePurchaseItemsUserError
 
 type BulkUpdatePurchaseItemsSuccess {
   items: [PurchaseItem!]!
@@ -24,4 +24,9 @@ input BulkPurchaseItemPatch {
 input PurchaseItemTargetInput {
   itemId: ID! @nodeID(of: "PurchaseItem")
   baseRevision: Int!
+}
+
+type BulkUpdatePurchaseItemsUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<2982bf3c9a90c9b3ba15feec666a1e98>>
+ * @generated SignedSource<<3aa5f2308bb5a9305063d170de467769>>
  * @lightSyntaxTransform
  */
 
@@ -32,19 +32,13 @@ export type CorrectPurchaseMutation$variables = {
 };
 export type CorrectPurchaseMutation$data = {
   readonly correctPurchase: {
-    readonly __typename: "CorrectPurchaseSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
       readonly revision: number;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type CorrectPurchaseMutation = {
@@ -133,7 +127,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -157,12 +151,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "d142a74b263af2342436fb3b16a9c393",
+    "cacheID": "3681b902109936b4493f17dec9b049b3",
     "id": null,
     "metadata": {},
     "name": "CorrectPurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation CorrectPurchaseMutation(\n  $input: CorrectPurchaseInput!\n) {\n  correctPurchase(input: $input) {\n    __typename\n    ... on CorrectPurchaseSuccess {\n      result {\n        id\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CorrectPurchaseMutation(\n  $input: CorrectPurchaseInput!\n) {\n  correctPurchase(input: $input) {\n    __typename\n    ... on CorrectPurchaseSuccess {\n      result {\n        id\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<898077abd3f4fb10de58decfb900ee37>>
+ * @generated SignedSource<<7fcb6f430ef4b61082a2e788d1e9fac7>>
  * @lightSyntaxTransform
  */
 
@@ -22,12 +22,10 @@ export type RecordExternalIncomeMutation$variables = {
 };
 export type RecordExternalIncomeMutation$data = {
   readonly recordExternalIncome: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "RecordExternalIncomeSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly accountId: string;
       readonly amountYen: any;
       readonly currency: string;
@@ -36,10 +34,6 @@ export type RecordExternalIncomeMutation$data = {
       readonly id: string;
       readonly occurredAt: string;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type RecordExternalIncomeMutation = {
@@ -163,7 +157,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -187,12 +181,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "59ce01330df93c2ef3855d733a7b5b8a",
+    "cacheID": "5b7fdcb02d20de8703048721b4b68977",
     "id": null,
     "metadata": {},
     "name": "RecordExternalIncomeMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordExternalIncomeMutation(\n  $input: RecordExternalIncomeInput!\n) {\n  recordExternalIncome(input: $input) {\n    __typename\n    ... on RecordExternalIncomeSuccess {\n      result {\n        id\n        householdId\n        accountId\n        currency\n        occurredAt\n        amountYen\n        description\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation RecordExternalIncomeMutation(\n  $input: RecordExternalIncomeInput!\n) {\n  recordExternalIncome(input: $input) {\n    __typename\n    ... on RecordExternalIncomeSuccess {\n      result {\n        id\n        householdId\n        accountId\n        currency\n        occurredAt\n        amountYen\n        description\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<93805c76b7e583f422da3ce767804629>>
+ * @generated SignedSource<<0e7c8dbebe35df877eabf8c19f7d877b>>
  * @lightSyntaxTransform
  */
 
@@ -22,19 +22,13 @@ export type SetDefaultAllocationMutation$variables = {
 };
 export type SetDefaultAllocationMutation$data = {
   readonly setDefaultAllocation: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "SetDefaultAllocationSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
       readonly revision: number;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type SetDefaultAllocationMutation = {
@@ -123,7 +117,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -147,12 +141,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "2aee9d091e54a8cab098418992e8f3d3",
+    "cacheID": "20ee0af34e99b71dde9e89a5f31615e2",
     "id": null,
     "metadata": {},
     "name": "SetDefaultAllocationMutation",
     "operationKind": "mutation",
-    "text": "mutation SetDefaultAllocationMutation(\n  $input: SetDefaultAllocationInput!\n) {\n  setDefaultAllocation(input: $input) {\n    __typename\n    ... on SetDefaultAllocationSuccess {\n      result {\n        id\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetDefaultAllocationMutation(\n  $input: SetDefaultAllocationInput!\n) {\n  setDefaultAllocation(input: $input) {\n    __typename\n    ... on SetDefaultAllocationSuccess {\n      result {\n        id\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

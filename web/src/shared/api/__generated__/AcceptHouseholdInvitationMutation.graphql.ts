@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ea3c1a612436f68b240ec3078c93fdea>>
+ * @generated SignedSource<<8f484d8f2bebf993abc53db3dea9ee44>>
  * @lightSyntaxTransform
  */
 
@@ -14,19 +14,13 @@ export type AcceptHouseholdInvitationMutation$variables = {
 };
 export type AcceptHouseholdInvitationMutation$data = {
   readonly acceptHouseholdInvitation: {
-    readonly __typename: "AcceptHouseholdInvitationSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly id: string;
       readonly name: string;
     };
-  } | {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type AcceptHouseholdInvitationMutation = {
@@ -115,7 +109,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -139,12 +133,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "b2db08066af4f76d485ffa8865c2caf4",
+    "cacheID": "7bc3c712b364635e1763a1dfa48bb1bb",
     "id": null,
     "metadata": {},
     "name": "AcceptHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation AcceptHouseholdInvitationMutation(\n  $token: String!\n) {\n  acceptHouseholdInvitation(token: $token) {\n    __typename\n    ... on AcceptHouseholdInvitationSuccess {\n      result {\n        id\n        name\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation AcceptHouseholdInvitationMutation(\n  $token: String!\n) {\n  acceptHouseholdInvitation(token: $token) {\n    __typename\n    ... on AcceptHouseholdInvitationSuccess {\n      result {\n        id\n        name\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

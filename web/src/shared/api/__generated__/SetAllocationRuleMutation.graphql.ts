@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<30c0bf76698557cd7b36cf491fd5fbc1>>
+ * @generated SignedSource<<9cd827d78ea5790a246b860d9b0b14ba>>
  * @lightSyntaxTransform
  */
 
@@ -27,12 +27,10 @@ export type SetAllocationRuleMutation$variables = {
 };
 export type SetAllocationRuleMutation$data = {
   readonly setAllocationRule: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "SetAllocationRuleSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly allocations: ReadonlyArray<{
         readonly poolId: string;
         readonly weight: any;
@@ -45,10 +43,6 @@ export type SetAllocationRuleMutation$data = {
       readonly revision: number;
       readonly scope: AllocationRuleScope;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type SetAllocationRuleMutation = {
@@ -197,7 +191,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -221,12 +215,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "4987d715493585cd32a11a9142639772",
+    "cacheID": "b8120ef1a51ff1b74242e2b932964981",
     "id": null,
     "metadata": {},
     "name": "SetAllocationRuleMutation",
     "operationKind": "mutation",
-    "text": "mutation SetAllocationRuleMutation(\n  $input: SetAllocationRuleInput!\n) {\n  setAllocationRule(input: $input) {\n    __typename\n    ... on SetAllocationRuleSuccess {\n      result {\n        id\n        scope\n        categoryId\n        merchant\n        productConceptId\n        productVariantId\n        revision\n        allocations {\n          poolId\n          weight\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetAllocationRuleMutation(\n  $input: SetAllocationRuleInput!\n) {\n  setAllocationRule(input: $input) {\n    __typename\n    ... on SetAllocationRuleSuccess {\n      result {\n        id\n        scope\n        categoryId\n        merchant\n        productConceptId\n        productVariantId\n        revision\n        allocations {\n          poolId\n          weight\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

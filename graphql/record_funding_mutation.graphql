@@ -2,7 +2,7 @@ extend type Mutation {
   recordFunding(input: RecordFundingInput!): RecordFundingResult!
 }
 
-union RecordFundingResult = RecordFundingSuccess | MutationError
+union RecordFundingResult = RecordFundingSuccess | RecordFundingUserError
 
 type RecordFundingSuccess {
   result: LedgerEntry!
@@ -17,4 +17,9 @@ input RecordFundingInput {
   idempotencyKey: String!
   sourceAccountId: ID @nodeID(of: "Account")
   destinationAccountId: ID @nodeID(of: "Account")
+}
+
+type RecordFundingUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }

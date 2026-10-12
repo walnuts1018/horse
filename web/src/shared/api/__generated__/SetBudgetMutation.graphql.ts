@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<fd70ef4d5940ed8a6aba6b86ed715934>>
+ * @generated SignedSource<<ff9744fdba9b8d09e14c65aa3a3c7056>>
  * @lightSyntaxTransform
  */
 
@@ -24,12 +24,10 @@ export type SetBudgetMutation$variables = {
 };
 export type SetBudgetMutation$data = {
   readonly setBudget: {
-    readonly __typename: "MutationError";
-    readonly code: MutationErrorCode;
-    readonly message: string;
-  } | {
-    readonly __typename: "SetBudgetSuccess";
-    readonly result: {
+    readonly __typename: string;
+    readonly code?: MutationErrorCode;
+    readonly message?: string;
+    readonly result?: {
       readonly actualYen: any;
       readonly amountYen: any;
       readonly archived: boolean;
@@ -41,10 +39,6 @@ export type SetBudgetMutation$data = {
       readonly revision: number;
       readonly startsOn: string;
     };
-  } | {
-    // This will never be '%other', but we need some
-    // value in case none of the concrete values match.
-    readonly __typename: "%other";
   };
 };
 export type SetBudgetMutation = {
@@ -189,7 +183,7 @@ v1 = [
           }
         ],
         "type": "MutationError",
-        "abstractKey": null
+        "abstractKey": "__isMutationError"
       }
     ],
     "storageKey": null
@@ -213,12 +207,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "8d167c916dac1365cbd3152117f87928",
+    "cacheID": "d9c339eab74d20c63d4026c244708403",
     "id": null,
     "metadata": {},
     "name": "SetBudgetMutation",
     "operationKind": "mutation",
-    "text": "mutation SetBudgetMutation(\n  $input: SetBudgetInput!\n) {\n  setBudget(input: $input) {\n    __typename\n    ... on SetBudgetSuccess {\n      result {\n        id\n        categoryId\n        name\n        amountYen\n        actualYen\n        remainingYen\n        startsOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetBudgetMutation(\n  $input: SetBudgetInput!\n) {\n  setBudget(input: $input) {\n    __typename\n    ... on SetBudgetSuccess {\n      result {\n        id\n        categoryId\n        name\n        amountYen\n        actualYen\n        remainingYen\n        startsOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

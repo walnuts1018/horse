@@ -16,7 +16,7 @@ func (r *mutationResolver) CreateHouseholdInvitation(ctx context.Context, input 
 	result, err := r.createHouseholdInvitation(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
-			return result, nil
+			return &model.CreateHouseholdInvitationUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}

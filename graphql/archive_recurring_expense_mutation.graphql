@@ -2,8 +2,13 @@ extend type Mutation {
   archiveRecurringExpense(expenseId: ID! @nodeID(of: "RecurringExpense"), baseRevision: Int!, archived: Boolean!): ArchiveRecurringExpenseResult!
 }
 
-union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | MutationError
+union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | ArchiveRecurringExpenseUserError
 
 type ArchiveRecurringExpenseSuccess {
   result: RecurringExpense!
+}
+
+type ArchiveRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
