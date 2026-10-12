@@ -546,7 +546,6 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || len(bulkUpdatedPurchases) != 1 {
 		t.Fatalf("posted purchase payment allocations should update in bulk: %v", err)
 	}
-	accountSwitchPurchase = bulkUpdatedPurchases[0]
 	purchasePaymentRows, err := models.PurchasePayments.Query(
 		sm.Where(models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(accountSwitchUUID))),
 		sm.OrderBy(models.PurchasePayments.Columns.LineNo),
