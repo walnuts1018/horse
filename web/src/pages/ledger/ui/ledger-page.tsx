@@ -46,9 +46,15 @@ const purchaseMonth = (occurredAt: string) =>
     year: "numeric",
     month: "2-digit",
   }).format(new Date(occurredAt));
+const nextMonth = (month: string) => {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const serial = year * 12 + monthNumber;
+  return `${Math.floor(serial / 12)}-${String((serial % 12) + 1).padStart(2, "0")}`;
+};
 
 export function LedgerPage({ household, onAdd }: { household: Household; onAdd: () => void }) {
   const [recordMode, setRecordMode] = useState<"purchases" | "observations">("purchases");
+  const [viewMode, setViewMode] = useState<"purchases" | "items">("purchases");
   const [search, setSearch] = useState("");
   const [fromMonth, setFromMonth] = useState("");
   const [toMonth, setToMonth] = useState("");
@@ -88,10 +94,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     loadMore,
     refresh,
   } = useHouseholdPurchases(household.id, 100, {
+    from: fromMonth ? `${fromMonth}-01T00:00:00+09:00` : undefined,
+    to: toMonth ? `${nextMonth(toMonth)}-01T00:00:00+09:00` : undefined,
     origin: recordMode === "purchases" ? originFilter || undefined : undefined,
     hasEvidence:
       recordMode === "purchases" && evidenceFilter !== "" ? evidenceFilter === "true" : undefined,
-    loadAll: recordMode === "purchases" && filtersActive,
+    loadAll: recordMode === "purchases" && (viewMode === "items" || filtersActive),
   });
   const unmatched = useUnmatchedObservations(household.id, {
     enabled: recordMode === "observations",
@@ -194,6 +202,25 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     setBulkUndo(null);
     setBulkError("");
   }, [household.id]);
+  useEffect(() => {
+    setSelectedItems(new Set());
+  }, [
+    recordMode,
+    viewMode,
+    search,
+    fromMonth,
+    toMonth,
+    categoryFilter,
+    poolFilter,
+    accountFilter,
+    tagFilter,
+    originFilter,
+    evidenceFilter,
+    observationSourceFilter,
+    observationStateFilter,
+    minimumAmount,
+    maximumAmount,
+  ]);
   const latestPurchase = async (purchaseId: string) => {
     let after: string | null = null;
     for (;;) {
@@ -547,6 +574,40 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       (!maximumAmount || purchase.totalYen <= Number(maximumAmount))
     );
   });
+  const filteredItems = purchases.flatMap((purchase) => {
+    const month = purchaseMonth(purchase.occurredAt);
+    const purchaseMatches =
+      (!fromMonth || month >= fromMonth) &&
+      (!toMonth || month <= toMonth) &&
+      (!accountFilter ||
+        purchase.paymentAllocations?.some(
+          (payment) => payment.paymentAccountId === accountFilter,
+        ) ||
+        purchase.paymentAccountId === accountFilter);
+    if (!purchaseMatches) return [];
+    return purchase.items
+      .filter((item) => {
+        const searchMatches =
+          !search ||
+          `${purchase.merchant} ${item.name}`
+            .toLocaleLowerCase()
+            .includes(search.toLocaleLowerCase());
+        return (
+          searchMatches &&
+          (!categoryFilter ||
+            (categoryFilter === "__uncategorized"
+              ? !item.categoryId
+              : item.categoryId === categoryFilter)) &&
+          (!poolFilter ||
+            item.allocations.some((allocation) => allocation.poolId === poolFilter)) &&
+          (!tagFilter || item.tags.some((tag) => tag.id === tagFilter)) &&
+          (!minimumAmount || item.amountYen >= Number(minimumAmount)) &&
+          (!maximumAmount || item.amountYen <= Number(maximumAmount))
+        );
+      })
+      .map((item) => ({ purchase, item }));
+  });
+  const itemCoverageComplete = !loading && !loadingMore && !hasNextPage && !moreError;
   const selectedCount = selectedItems.size;
   const bulkAllocationEntries = Object.entries(bulkAllocations)
     .filter(([, weight]) => Number(weight) > 0)
@@ -715,9 +776,11 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           />
         </label>
         <div className="record-count">
-          {recordMode === "purchases"
-            ? `${filtered.length}件表示 · ${purchases.length}/${totalCount}件読込`
-            : `${unmatched.observations.length}/${unmatched.totalCount}件表示`}
+          {recordMode === "observations"
+            ? `${unmatched.observations.length}/${unmatched.totalCount}件表示`
+            : viewMode === "items"
+              ? `${filteredItems.length}品目表示 · ${purchases.length}/${totalCount}件購入取得`
+              : `${filtered.length}件表示 · ${purchases.length}/${totalCount}件読込`}
         </div>
       </div>
       <div className="ledger-filters">
@@ -735,6 +798,21 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             <option value="observations">照合候補</option>
           </select>
         </label>
+        {recordMode === "purchases" && (
+          <label className="select-filter">
+            <span>単位</span>
+            <select
+              value={viewMode}
+              onChange={(event) => {
+                setViewMode(event.target.value as "purchases" | "items");
+                setSelectedItems(new Set());
+              }}
+            >
+              <option value="purchases">購入</option>
+              <option value="items">品目</option>
+            </select>
+          </label>
+        )}
         {recordMode === "purchases" ? (
           <>
             <label className="select-filter">
@@ -814,7 +892,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
               </select>
             </label>
             <label className="select-filter">
-              <span>金額</span>
+              <span>{viewMode === "items" ? "品目額" : "購入額"}</span>
               <input
                 aria-label="最低金額"
                 type="number"
@@ -1109,7 +1187,93 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           )}
         </section>
       )}
-      {recordMode === "purchases" && (
+      {recordMode === "purchases" && viewMode === "items" && (
+        <section className="panel ledger-list">
+          {loading && purchases.length === 0 ? (
+            <div className="skeleton-list">
+              <i />
+              <i />
+              <i />
+            </div>
+          ) : error ? (
+            <InlineError message={error} />
+          ) : filteredItems.length === 0 && itemCoverageComplete ? (
+            <EmptyState
+              icon={<BookOpen />}
+              title="品目が見つかりません"
+              action="買い物を追加"
+              onClick={onAdd}
+            />
+          ) : filteredItems.length === 0 ? (
+            <div className="skeleton-list">
+              <i />
+              <i />
+              <i />
+            </div>
+          ) : (
+            filteredItems.map(({ purchase, item }) => (
+              <div className="ledger-entry" key={item.id}>
+                <div className="ledger-item-row">
+                  <input
+                    className="item-select"
+                    type="checkbox"
+                    aria-label={`${item.name}を選択`}
+                    checked={selectedItems.has(item.id)}
+                    onChange={() => toggleItem(item.id)}
+                    disabled={bulkPending}
+                  />
+                  <div className="purchase-description">
+                    <b>{item.name}</b>
+                    <span>
+                      {purchase.merchant || "店舗未入力"} · {purchaseMonth(purchase.occurredAt)} ·{" "}
+                      {household.categories.find((category) => category.id === item.categoryId)
+                        ?.name ?? "未分類"}
+                      {item.allocations.length > 0 &&
+                        ` · ${item.allocations
+                          .map(
+                            (allocation) =>
+                              household.pools.find((pool) => pool.id === allocation.poolId)?.name ??
+                              allocation.poolName,
+                          )
+                          .join("・")}`}
+                      {item.tags.length > 0 && ` · ${item.tags.map((tag) => tag.name).join("・")}`}
+                    </span>
+                  </div>
+                  <div className="purchase-meta">
+                    <b>{yen(item.amountYen)}</b>
+                    <span>購入 {yen(purchase.totalYen)}</span>
+                  </div>
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={() => {
+                      setRecordMode("purchases");
+                      setViewMode("purchases");
+                      setExpanded(purchase.id);
+                    }}
+                  >
+                    購入を開く
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+          {loadingMore && <div className="ledger-more">購入履歴を取得中</div>}
+          {moreError && <InlineError message={moreError} />}
+          {moreError && hasNextPage && (
+            <div className="ledger-more">
+              <button
+                className="button button-soft"
+                disabled={loadingMore}
+                onClick={() => void loadMore()}
+              >
+                {loadingMore ? "読み込み中" : "取得を再試行"}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+      {recordMode === "purchases" && viewMode === "purchases" && (
         <section className="panel ledger-list">
           {loading || (filtersActive && loadingMore) ? (
             <div className="skeleton-list">

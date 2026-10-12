@@ -1868,6 +1868,24 @@ a {
   font-size: 9px;
 }
 
+.ledger-item-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 54px;
+  border-bottom: 1px solid #edf1ed;
+  color: #66756c;
+  font-size: 9px;
+}
+
+.ledger-item-row .item-select {
+  justify-self: start;
+  width: 15px;
+  height: 15px;
+  accent-color: #4d7358;
+}
+
 .expanded-item span:nth-child(3),
 .expanded-item span:nth-child(5) {
   color: #9ba69f;
@@ -3374,6 +3392,17 @@ a {
   .expanded-item span:nth-child(5) {
     grid-column: 2/-1;
     padding-bottom: 7px;
+  }
+
+  .ledger-item-row {
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 7px 0;
+  }
+
+  .ledger-item-row .text-button {
+    grid-column: 2 / -1;
+    justify-self: start;
   }
 
   .composer-heading {

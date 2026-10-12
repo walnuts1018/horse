@@ -21,15 +21,16 @@ export function useHouseholdPurchases(
   const [moreError, setMoreError] = useState("");
   const [hasNextPage, setHasNextPage] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
-  const [dataHouseholdId, setDataHouseholdId] = useState(householdId);
+  const [dataQueryKey, setDataQueryKey] = useState("");
   const cursor = useRef<string | null>(null);
   const generation = useRef(0);
   const requestInProgress = useRef(false);
   const loadedPages = useRef(1);
   const pageSetKey = useRef("");
+  const currentQueryKey = `${householdId}:${first}:${options.from ?? ""}:${options.to ?? ""}:${options.origin ?? ""}:${options.hasEvidence ?? ""}`;
 
   const refresh = useCallback(async () => {
-    const key = `${householdId}:${first}:${options.from ?? ""}:${options.to ?? ""}:${options.origin ?? ""}:${options.hasEvidence ?? ""}`;
+    const key = currentQueryKey;
     const pagesToRestore = pageSetKey.current === key ? loadedPages.current : 1;
     pageSetKey.current = key;
     const currentGeneration = ++generation.current;
@@ -64,7 +65,7 @@ export function useHouseholdPurchases(
         ];
         setPurchases(accumulated);
         setTotalCount(page.totalCount);
-        setDataHouseholdId(householdId);
+        setDataQueryKey(key);
         const nextCursor: string | null = page.pageInfo.endCursor ?? null;
         cursor.current = nextCursor;
         const more = page.pageInfo.hasNextPage && Boolean(nextCursor) && nextCursor !== after;
@@ -86,7 +87,15 @@ export function useHouseholdPurchases(
         setLoadingMore(false);
       }
     }
-  }, [householdId, first, options.from, options.to, options.origin, options.hasEvidence]);
+  }, [
+    currentQueryKey,
+    householdId,
+    first,
+    options.from,
+    options.to,
+    options.origin,
+    options.hasEvidence,
+  ]);
 
   const loadMore = useCallback(async () => {
     if (!cursor.current || requestInProgress.current || !hasNextPage) return;
@@ -108,7 +117,7 @@ export function useHouseholdPurchases(
       if (generation.current !== currentGeneration) return;
       const page = result.purchases;
       setTotalCount(page.totalCount);
-      setDataHouseholdId(householdId);
+      setDataQueryKey(currentQueryKey);
       setPurchases((current) => {
         const seen = new Set(current.map((purchase) => purchase.id));
         return [
@@ -137,6 +146,7 @@ export function useHouseholdPurchases(
     options.to,
     options.origin,
     options.hasEvidence,
+    currentQueryKey,
   ]);
 
   useEffect(() => {
@@ -158,13 +168,13 @@ export function useHouseholdPurchases(
   }, [hasNextPage, loadMore, loadingMore, moreError, options.loadAll]);
 
   return {
-    purchases: dataHouseholdId === householdId ? purchases : [],
+    purchases: dataQueryKey === currentQueryKey ? purchases : [],
     loading,
     loadingMore,
     error,
     moreError,
     hasNextPage,
-    totalCount: dataHouseholdId === householdId ? totalCount : 0,
+    totalCount: dataQueryKey === currentQueryKey ? totalCount : 0,
     loadMore,
     refresh,
   };

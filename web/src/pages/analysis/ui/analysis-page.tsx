@@ -44,7 +44,7 @@ const nextMonth = (month: string) => {
 type Dimension = "category" | "merchant" | "item" | "pool" | "account" | "member";
 type PurchaseDimension = Exclude<Dimension, "category" | "member">;
 type AnalyticsRow = { id: string; name: string; amount: number; count: number };
-type MonthlyEntry = { month: string; id: string; amount: number };
+type MonthlyEntry = { month: string; id: string; amount: number; occurredAt: string };
 
 function purchaseDimensions(purchases: Purchase[], household: Household) {
   const rows: Record<PurchaseDimension, Map<string, AnalyticsRow>> = {
@@ -65,12 +65,13 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
     name: string,
     amount: number,
     month: string,
+    occurredAt: string,
   ) => {
     const row = rows[dimension].get(id) ?? { id, name, amount: 0, count: 0 };
     row.amount += amount;
     row.count += 1;
     rows[dimension].set(id, row);
-    monthly[dimension].push({ month, id, amount });
+    monthly[dimension].push({ month, id, amount, occurredAt });
   };
   for (const purchase of purchases) {
     if (purchase.status !== "POSTED" && purchase.status !== "CLOSED") continue;
@@ -81,9 +82,17 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
       purchase.merchant || "店舗未入力",
       purchase.totalYen,
       month,
+      purchase.occurredAt,
     );
     for (const item of purchase.items) {
-      add("item", item.productVariantId ?? item.name, item.name, item.amountYen, month);
+      add(
+        "item",
+        item.productVariantId ?? item.name,
+        item.name,
+        item.amountYen,
+        month,
+        purchase.occurredAt,
+      );
       for (const allocation of item.allocations) {
         const pool = household.pools.find((candidate) => candidate.id === allocation.poolId);
         const amount =
@@ -98,6 +107,7 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
           pool?.name ?? allocation.poolName ?? "プール",
           amount,
           month,
+          purchase.occurredAt,
         );
       }
     }
@@ -110,7 +120,14 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
       const account = household.accounts.find(
         (candidate) => candidate.id === payment.paymentAccountId,
       );
-      add("account", payment.paymentAccountId, account?.name ?? "決済元", payment.amountYen, month);
+      add(
+        "account",
+        payment.paymentAccountId,
+        account?.name ?? "決済元",
+        payment.amountYen,
+        month,
+        purchase.occurredAt,
+      );
     }
   }
   return { rows, monthly };
@@ -544,7 +561,7 @@ export function AnalysisPage({ household }: { household: Household }) {
             (() => {
               const prices = data.monthly.item
                 .filter((entry) => entry.id === row.id)
-                .sort((left, right) => left.month.localeCompare(right.month));
+                .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
               const firstPrice = prices[0]?.amount ?? 0;
               const latestPrice = prices[prices.length - 1]?.amount ?? 0;
               const change =
@@ -556,7 +573,7 @@ export function AnalysisPage({ household }: { household: Household }) {
                   <small>{row.count}件</small>
                   {prices.length > 1 && (
                     <small className="price-change">
-                      初回価格 {yen(firstPrice)}、最新価格 {yen(latestPrice)}（
+                      初回購入額 {yen(firstPrice)}、最新購入額 {yen(latestPrice)}（
                       {change > 0 ? "+" : ""}
                       {change}%）
                     </small>
