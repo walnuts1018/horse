@@ -41,6 +41,7 @@ import {
 import { InlineError } from "../../../shared/ui";
 
 type DraftItem = PurchaseDraftItem;
+type PaymentDraft = { key: string; paymentAccountId: string; amountYen: string };
 const purchaseItemSchema = z.object({
   name: z.string().trim().min(1),
   amount: z.string().regex(/^[1-9]\d*$/),
@@ -67,7 +68,14 @@ export function PurchaseCreatePage({
 }) {
   const [merchant, setMerchant] = useState("");
   const [occurredAt, setOccurredAt] = useState(localDateTime);
-  const [paymentAccountId, setPaymentAccountId] = useState(household.accounts[0]?.id ?? "");
+  const [paymentRows, setPaymentRows] = useState<PaymentDraft[]>(() => [
+    {
+      key: crypto.randomUUID(),
+      paymentAccountId: household.accounts[0]?.id ?? "",
+      amountYen: "",
+    },
+  ]);
+  const [paymentAutoTotal, setPaymentAutoTotal] = useState(true);
   const [items, setItems] = useState<DraftItem[]>([]);
   const [itemName, setItemName] = useState("");
   const [itemAmount, setItemAmount] = useState("");
@@ -99,7 +107,22 @@ export function PurchaseCreatePage({
     ? household.defaultAllocation
     : household.pools.map((pool) => ({ poolId: pool.id, weight: pool.defaultShareWeight || 1 }));
 
-  const draft = { merchant, occurredAt, paymentAccountId, itemName, itemAmount, categoryId, items };
+  const itemTotal = sum(items.map((item) => Number(item.amount) || 0));
+  const draft = {
+    merchant,
+    occurredAt,
+    paymentAccountId: paymentRows[0]?.paymentAccountId ?? "",
+    paymentAllocations: paymentRows.map((payment) => ({
+      paymentAccountId: payment.paymentAccountId,
+      amountYen:
+        paymentAutoTotal && paymentRows.length === 1 ? String(itemTotal) : payment.amountYen,
+    })),
+    paymentAutoTotal,
+    itemName,
+    itemAmount,
+    categoryId,
+    items,
+  };
   const draftRef = useRef(draft);
   draftRef.current = draft;
   useEffect(() => {
@@ -112,7 +135,25 @@ export function PurchaseCreatePage({
         if (loaded) {
           setMerchant(loaded.merchant);
           setOccurredAt(loaded.occurredAt || localDateTime());
-          setPaymentAccountId(loaded.paymentAccountId || household.accounts[0]?.id || "");
+          if (loaded.paymentAllocations?.length) {
+            setPaymentRows(
+              loaded.paymentAllocations.map((payment) => ({
+                key: crypto.randomUUID(),
+                paymentAccountId: payment.paymentAccountId,
+                amountYen: payment.amountYen,
+              })),
+            );
+            setPaymentAutoTotal(loaded.paymentAutoTotal ?? false);
+          } else {
+            setPaymentRows([
+              {
+                key: crypto.randomUUID(),
+                paymentAccountId: loaded.paymentAccountId || household.accounts[0]?.id || "",
+                amountYen: "",
+              },
+            ]);
+            setPaymentAutoTotal(true);
+          }
           setItemName(loaded.itemName);
           setItemAmount(loaded.itemAmount);
           setCategoryId(
@@ -158,7 +199,8 @@ export function PurchaseCreatePage({
     draftHouseholdId,
     merchant,
     occurredAt,
-    paymentAccountId,
+    paymentRows,
+    paymentAutoTotal,
     itemName,
     itemAmount,
     categoryId,
@@ -230,8 +272,30 @@ export function PurchaseCreatePage({
       )
       .slice(0, 4);
   }, [history, itemName]);
-  const total = sum(items.map((item) => Number(item.amount) || 0));
+  const paymentAmount = (payment: PaymentDraft) =>
+    Number(paymentAutoTotal && paymentRows.length === 1 ? itemTotal : payment.amountYen) || 0;
+  const paymentTotal = sum(paymentRows.map(paymentAmount));
+  const paymentDifference = itemTotal - paymentTotal;
   const hasDraftContent = Boolean(merchant.trim() || itemName.trim() || itemAmount || items.length);
+
+  const addPaymentRow = () => {
+    setPaymentRows((current) => [
+      ...current.map((payment) => ({
+        ...payment,
+        amountYen: paymentAutoTotal && current.length === 1 ? String(itemTotal) : payment.amountYen,
+      })),
+      { key: crypto.randomUUID(), paymentAccountId: "", amountYen: "" },
+    ]);
+    setPaymentAutoTotal(false);
+  };
+  const patchPayment = (key: string, patch: Partial<PaymentDraft>) => {
+    if (patch.amountYen !== undefined) setPaymentAutoTotal(false);
+    setPaymentRows((current) =>
+      current.map((payment) => (payment.key === key ? { ...payment, ...patch } : payment)),
+    );
+  };
+  const removePaymentRow = (key: string) =>
+    setPaymentRows((current) => current.filter((payment) => payment.key !== key));
 
   const addItem = (name = itemName, amount = itemAmount) => {
     const parsed = purchaseItemSchema.safeParse({ name, amount });
@@ -322,6 +386,14 @@ export function PurchaseCreatePage({
       setMessage("設定で決済元を登録してください");
       return;
     }
+    if (
+      !paymentRows.length ||
+      paymentRows.some((payment) => !payment.paymentAccountId || paymentAmount(payment) < 1) ||
+      paymentDifference !== 0
+    ) {
+      setMessage("決済元と金額を確認してください");
+      return;
+    }
     saving.current = true;
     setPending(true);
     setMessage("");
@@ -332,7 +404,11 @@ export function PurchaseCreatePage({
         householdId: household.id,
         occurredAt: new Date(occurredAt).toISOString(),
         merchant: merchant.trim(),
-        paymentAccountId: paymentAccountId || null,
+        paymentAccountId: paymentRows.length === 1 ? paymentRows[0].paymentAccountId : null,
+        paymentAllocations: paymentRows.map((payment) => ({
+          paymentAccountId: payment.paymentAccountId,
+          amountYen: paymentAmount(payment),
+        })),
         items: items.map((item) => ({
           name: item.name,
           amountYen: Number(item.amount),
@@ -347,7 +423,14 @@ export function PurchaseCreatePage({
       skipDraftSave.current = true;
       setMerchant("");
       setOccurredAt(localDateTime());
-      setPaymentAccountId(household.accounts[0]?.id ?? "");
+      setPaymentRows([
+        {
+          key: crypto.randomUUID(),
+          paymentAccountId: household.accounts[0]?.id ?? "",
+          amountYen: "",
+        },
+      ]);
+      setPaymentAutoTotal(true);
       setItemName("");
       setItemAmount("");
       setCategoryId(enabledCategories[0]?.id ?? "");
@@ -426,20 +509,65 @@ export function PurchaseCreatePage({
             onChange={(e) => setOccurredAt(e.target.value)}
           />
         </div>
-        <div className="field-group">
-          <label htmlFor="payment">決済元</label>
-          <select
-            id="payment"
-            value={paymentAccountId}
-            onChange={(e) => setPaymentAccountId(e.target.value)}
-          >
-            <option value="">決済元を選択</option>
-            {household.accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
+        <div className="field-group payment-allocation-field">
+          <label>決済内訳</label>
+          <div className="payment-allocation-list">
+            {paymentRows.map((payment, index) => (
+              <div className="payment-allocation-row" key={payment.key}>
+                <select
+                  aria-label={`決済元 ${index + 1}`}
+                  value={payment.paymentAccountId}
+                  onChange={(event) =>
+                    patchPayment(payment.key, { paymentAccountId: event.target.value })
+                  }
+                >
+                  <option value="">決済元を選択</option>
+                  {household.accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="yen-input">
+                  <span>¥</span>
+                  <input
+                    aria-label={`決済額 ${index + 1}`}
+                    inputMode="numeric"
+                    value={
+                      paymentAutoTotal && paymentRows.length === 1
+                        ? String(itemTotal || "")
+                        : payment.amountYen
+                    }
+                    onChange={(event) =>
+                      patchPayment(payment.key, {
+                        amountYen: event.target.value.replace(/\D/g, ""),
+                      })
+                    }
+                  />
+                </div>
+                <button
+                  className="row-remove"
+                  type="button"
+                  aria-label={`決済元 ${index + 1} を削除`}
+                  disabled={paymentRows.length <= 1}
+                  onClick={() => removePaymentRow(payment.key)}
+                >
+                  <X size={15} />
+                </button>
+              </div>
             ))}
-          </select>
+          </div>
+          <div className="payment-allocation-footer">
+            <button className="text-button" type="button" onClick={addPaymentRow}>
+              <Plus size={14} />
+              決済元を追加
+            </button>
+            <span className={paymentDifference === 0 ? "payment-balanced" : "payment-unbalanced"}>
+              {paymentDifference === 0
+                ? "一致"
+                : `${paymentDifference > 0 ? "不足" : "超過"} ${yen(Math.abs(paymentDifference))}`}
+            </span>
+          </div>
         </div>
       </section>
       <section className="panel item-entry-panel">
@@ -751,7 +879,7 @@ export function PurchaseCreatePage({
       <div className="composer-bottom">
         <div>
           <div className="total-label">
-            合計 <strong>{yen(total)}</strong>
+            合計 <strong>{yen(itemTotal)}</strong>
           </div>
           <span>
             {items.length}品目

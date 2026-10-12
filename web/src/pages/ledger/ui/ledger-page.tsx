@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { BookOpen, ChevronDown, ChevronRight, Plus, Search } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, Plus, Search, X } from "lucide-react";
 import {
   ApiError,
+  correctPurchaseMutation,
+  makeIdempotencyKey,
   purchasesQuery,
   productCatalogQuery,
   readGraphql,
@@ -12,6 +14,7 @@ import {
   type Purchase,
   type PurchaseItem,
   type ProductConcept,
+  type PurchasePaymentInput,
 } from "../../../shared/api";
 import { EmptyState, InlineError } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../shared/api";
@@ -34,7 +37,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   const [purchaseDraft, setPurchaseDraft] = useState<{
     merchant: string;
     occurredAt: string;
-    paymentAccountId: string;
+    paymentAllocations: Array<{ paymentAccountId: string; amountYen: string }>;
   } | null>(null);
   const [itemDrafts, setItemDrafts] = useState<
     Record<
@@ -51,6 +54,17 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   >({});
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
   const [editError, setEditError] = useState("");
+  const [correctionTarget, setCorrectionTarget] = useState<{
+    purchaseId: string;
+    itemId: string;
+  } | null>(null);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const [refundPayments, setRefundPayments] = useState<
+    Array<{ key: string; paymentAccountId: string; amountYen: string }>
+  >([]);
+  const [refundAutoTotal, setRefundAutoTotal] = useState(true);
+  const [correctionPending, setCorrectionPending] = useState(false);
   const [conflict, setConflict] = useState<{
     label: string;
     localValue: string;
@@ -85,7 +99,14 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     setPurchaseDraft({
       merchant: purchase.merchant,
       occurredAt: occurredAt.toISOString().slice(0, 16),
-      paymentAccountId: purchase.paymentAccountId ?? "",
+      paymentAllocations: purchase.paymentAllocations?.length
+        ? purchase.paymentAllocations.map((payment) => ({
+            paymentAccountId: payment.paymentAccountId,
+            amountYen: String(payment.amountYen),
+          }))
+        : purchase.paymentAccountId
+          ? [{ paymentAccountId: purchase.paymentAccountId, amountYen: String(purchase.totalYen) }]
+          : [],
     });
     setItemDrafts(
       Object.fromEntries(
@@ -104,6 +125,96 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     );
     setConflict(null);
     setEditError("");
+  };
+  const startCorrection = (purchase: Purchase, item: PurchaseItem) => {
+    setCorrectionTarget({ purchaseId: purchase.id, itemId: item.id });
+    setRefundAmount("");
+    setRefundReason("");
+    setRefundPayments([]);
+    setRefundAutoTotal(true);
+    setEditError("");
+  };
+  const addRefundPayment = () => {
+    setRefundPayments((current) => [
+      ...current.map((payment) => ({
+        ...payment,
+        amountYen: refundAutoTotal && current.length === 1 ? refundAmount : payment.amountYen,
+      })),
+      {
+        key: crypto.randomUUID(),
+        paymentAccountId: "",
+        amountYen: current.length === 0 ? refundAmount : "",
+      },
+    ]);
+    setRefundAutoTotal(false);
+  };
+  const submitCorrection = async (purchase: Purchase, item: PurchaseItem) => {
+    const amountYen = Number(refundAmount);
+    const previousCorrections = (purchase.corrections ?? [])
+      .filter((correction) => correction.itemId === item.id)
+      .reduce((sum, correction) => sum + correction.amountDeltaYen, 0);
+    const remaining = item.amountYen + previousCorrections;
+    const refundTotal = refundPayments.reduce(
+      (sum, payment) =>
+        sum +
+        Number(refundAutoTotal && refundPayments.length === 1 ? refundAmount : payment.amountYen),
+      0,
+    );
+    const paymentAllocations: PurchasePaymentInput[] = refundPayments.map((payment) => ({
+      paymentAccountId: payment.paymentAccountId,
+      amountYen: Number(
+        refundAutoTotal && refundPayments.length === 1 ? refundAmount : payment.amountYen,
+      ),
+    }));
+    if (!Number.isSafeInteger(amountYen) || amountYen < 1 || amountYen > remaining) {
+      setEditError("返金額を確認してください");
+      return;
+    }
+    if (
+      refundPayments.some(
+        (payment, index) =>
+          !payment.paymentAccountId ||
+          !Number.isSafeInteger(paymentAllocations[index].amountYen) ||
+          paymentAllocations[index].amountYen < 1,
+      ) ||
+      (paymentAllocations.length > 0 && refundTotal !== amountYen)
+    ) {
+      setEditError("返金先と返金額を確認してください");
+      return;
+    }
+    if (!refundReason.trim()) {
+      setEditError("理由を入力してください");
+      return;
+    }
+    const allocations = item.allocations
+      .filter((allocation) => allocation.weight > 0)
+      .map(({ poolId, weight }) => ({ poolId, weight }));
+    if (!allocations.length) {
+      setEditError("元品目の負担先がありません");
+      return;
+    }
+    setCorrectionPending(true);
+    setEditError("");
+    try {
+      await readGraphql(correctPurchaseMutation, {
+        input: {
+          householdId: household.id,
+          purchaseId: purchase.id,
+          itemId: item.id,
+          amountDeltaYen: -amountYen,
+          reason: refundReason.trim(),
+          allocations,
+          paymentAllocations,
+          idempotencyKey: makeIdempotencyKey(),
+        },
+      });
+      setCorrectionTarget(null);
+      await refresh();
+    } catch (reason) {
+      setEditError((reason as Error).message);
+    } finally {
+      setCorrectionPending(false);
+    }
   };
   const saveItem = async (purchase: Purchase, item: PurchaseItem) => {
     const draft = itemDrafts[item.id];
@@ -188,17 +299,47 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   };
   const savePurchase = async (purchase: Purchase) => {
     if (!purchaseDraft) return;
+    const paymentAllocations: PurchasePaymentInput[] = purchaseDraft.paymentAllocations.map(
+      (payment) => ({
+        paymentAccountId: payment.paymentAccountId,
+        amountYen: Number(payment.amountYen),
+      }),
+    );
+    const currentAllocations = (
+      purchase.paymentAllocations?.length
+        ? purchase.paymentAllocations
+        : purchase.paymentAccountId
+          ? [{ paymentAccountId: purchase.paymentAccountId, amountYen: purchase.totalYen }]
+          : []
+    ).map((payment) => ({
+      paymentAccountId: payment.paymentAccountId,
+      amountYen: payment.amountYen,
+    }));
+    const paymentAllocationsChanged =
+      JSON.stringify(paymentAllocations) !== JSON.stringify(currentAllocations);
+    if (
+      paymentAllocationsChanged &&
+      (paymentAllocations.some(
+        (payment) =>
+          !payment.paymentAccountId ||
+          !Number.isSafeInteger(payment.amountYen) ||
+          payment.amountYen < 1,
+      ) ||
+        paymentAllocations.reduce((total, payment) => total + payment.amountYen, 0) !==
+          purchase.totalYen)
+    ) {
+      setEditError("決済元と金額を確認してください");
+      return;
+    }
     const patch = {
       merchant: purchaseDraft.merchant.trim(),
       occurredAt: new Date(purchaseDraft.occurredAt).toISOString(),
-      paymentAccountId: purchaseDraft.paymentAccountId || null,
+      paymentAllocations,
     };
     const changedFields = [
       ...(patch.merchant !== purchase.merchant ? ["merchant"] : []),
       ...(Date.parse(patch.occurredAt) !== Date.parse(purchase.occurredAt) ? ["occurredAt"] : []),
-      ...(!sameNullableString(patch.paymentAccountId, purchase.paymentAccountId)
-        ? ["paymentAccountId"]
-        : []),
+      ...(paymentAllocationsChanged ? ["paymentAllocations"] : []),
     ] as Array<keyof typeof patch>;
     if (!changedFields.length) return;
     const changedPatch = Object.fromEntries(changedFields.map((field) => [field, patch[field]]));
@@ -255,6 +396,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         `${purchase.merchant} ${purchase.items.map((item) => item.name).join(" ")}`
           .toLocaleLowerCase()
           .includes(search.toLocaleLowerCase())),
+  );
+  const refundPaymentTotal = refundPayments.reduce(
+    (sum, payment) =>
+      sum +
+      Number(refundAutoTotal && refundPayments.length === 1 ? refundAmount : payment.amountYen),
+    0,
   );
   return (
     <>
@@ -344,7 +491,18 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                       minute: "2-digit",
                     })}{" "}
                     · {purchase.items.length}品目 ·{" "}
-                    {purchase.paymentAccount?.name ?? "決済元未設定"}
+                    {purchase.paymentAllocations?.length
+                      ? purchase.paymentAllocations
+                          .map((payment) => {
+                            const accountName =
+                              payment.account?.name ??
+                              household.accounts.find(
+                                (account) => account.id === payment.paymentAccountId,
+                              )?.name ?? "決済元";
+                            return `${accountName} ${yen(payment.amountYen)}`;
+                          })
+                          .join(" / ")
+                      : purchase.paymentAccount?.name ?? "決済元未設定"}
                   </span>
                 </div>
                 <div className="purchase-meta">
@@ -378,23 +536,91 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                           setPurchaseDraft({ ...purchaseDraft, occurredAt: event.target.value })
                         }
                       />
-                      <select
-                        aria-label="決済元"
-                        value={purchaseDraft.paymentAccountId}
-                        onChange={(event) =>
-                          setPurchaseDraft({
-                            ...purchaseDraft,
-                            paymentAccountId: event.target.value,
-                          })
-                        }
-                      >
-                        <option value="">決済元未設定</option>
-                        {household.accounts.map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.name}
-                          </option>
+                      <div className="purchase-edit-payments">
+                        <b>決済内訳</b>
+                        {purchaseDraft.paymentAllocations.map((payment, index) => (
+                          <div className="purchase-edit-payment-row" key={index}>
+                            <select
+                              aria-label={`決済元 ${index + 1}`}
+                              value={payment.paymentAccountId}
+                              onChange={(event) =>
+                                setPurchaseDraft({
+                                  ...purchaseDraft,
+                                  paymentAllocations: purchaseDraft.paymentAllocations.map(
+                                    (row, rowIndex) =>
+                                      rowIndex === index
+                                        ? { ...row, paymentAccountId: event.target.value }
+                                        : row,
+                                  ),
+                                })
+                              }
+                            >
+                              <option value="">決済元を選択</option>
+                              {household.accounts.map((account) => (
+                                <option key={account.id} value={account.id}>
+                                  {account.name}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              aria-label={`決済額 ${index + 1}`}
+                              inputMode="numeric"
+                              value={payment.amountYen}
+                              onChange={(event) =>
+                                setPurchaseDraft({
+                                  ...purchaseDraft,
+                                  paymentAllocations: purchaseDraft.paymentAllocations.map(
+                                    (row, rowIndex) =>
+                                      rowIndex === index
+                                        ? { ...row, amountYen: event.target.value.replace(/\D/g, "") }
+                                        : row,
+                                  ),
+                                })
+                              }
+                            />
+                            <button
+                              className="row-remove"
+                              type="button"
+                              aria-label={`決済元 ${index + 1} を削除`}
+                              onClick={() =>
+                                setPurchaseDraft({
+                                  ...purchaseDraft,
+                                  paymentAllocations: purchaseDraft.paymentAllocations.filter(
+                                    (_, rowIndex) => rowIndex !== index,
+                                  ),
+                                })
+                              }
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
                         ))}
-                      </select>
+                        <button
+                          className="text-button"
+                          type="button"
+                          onClick={() =>
+                            setPurchaseDraft({
+                              ...purchaseDraft,
+                              paymentAllocations: [
+                                ...purchaseDraft.paymentAllocations,
+                                { paymentAccountId: "", amountYen: "" },
+                              ],
+                            })
+                          }
+                        >
+                          <Plus size={14} />
+                          決済元を追加
+                        </button>
+                        <small>
+                          差額 {yen(
+                            purchase.totalYen -
+                              purchaseDraft.paymentAllocations.reduce(
+                                (total, payment) => total + Number(payment.amountYen || 0),
+                                0,
+                              ),
+                          )}
+                        </small>
+                      </div>
                       <div className="edit-actions">
                         <button
                           type="button"
@@ -411,6 +637,17 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                       買い物を編集
                     </button>
                   )}
+                  {(purchase.corrections ?? []).map((correction) => (
+                    <div className="purchase-correction-entry" key={correction.id}>
+                      <span>{correction.itemId ? "品目返品" : "購入訂正"}</span>
+                      <b
+                        className={correction.amountDeltaYen < 0 ? "settlement-credit" : undefined}
+                      >
+                        {yen(correction.amountDeltaYen)}
+                      </b>
+                      <small>{correction.reason}</small>
+                    </div>
+                  ))}
                   {purchase.items.map((item) => (
                     <div className="expanded-item" key={item.id}>
                       {editing === purchase.id ? (
@@ -558,6 +795,154 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                           </span>
                         </>
                       )}
+                      {editing !== purchase.id &&
+                        (() => {
+                          const priorRefunds = (purchase.corrections ?? [])
+                            .filter((correction) => correction.itemId === item.id)
+                            .reduce((total, correction) => total + correction.amountDeltaYen, 0);
+                          const remaining = item.amountYen + priorRefunds;
+                          const isTarget =
+                            correctionTarget?.purchaseId === purchase.id &&
+                            correctionTarget.itemId === item.id;
+                          return isTarget ? (
+                            <form
+                              className="purchase-correction-form"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                void submitCorrection(purchase, item);
+                              }}
+                            >
+                              <b>{item.name}の返品</b>
+                              <span>残額 {yen(Math.max(0, remaining))}</span>
+                              <label>
+                                返金額
+                                <input
+                                  aria-label="返金額"
+                                  inputMode="numeric"
+                                  value={refundAmount}
+                                  max={remaining}
+                                  onChange={(event) =>
+                                    setRefundAmount(event.target.value.replace(/\D/g, ""))
+                                  }
+                                  required
+                                />
+                              </label>
+                              <label>
+                                理由
+                                <input
+                                  aria-label="返品理由"
+                                  value={refundReason}
+                                  onChange={(event) => setRefundReason(event.target.value)}
+                                  required
+                                />
+                              </label>
+                              {refundPayments.length === 0 ? (
+                                <span>返金先なし</span>
+                              ) : (
+                                <div className="refund-payment-list">
+                                  {refundPayments.map((payment, index) => (
+                                    <div className="refund-payment-row" key={payment.key}>
+                                      <select
+                                        aria-label={`返金先 ${index + 1}`}
+                                        value={payment.paymentAccountId}
+                                        onChange={(event) =>
+                                          setRefundPayments((current) =>
+                                            current.map((row) =>
+                                              row.key === payment.key
+                                                ? { ...row, paymentAccountId: event.target.value }
+                                                : row,
+                                            ),
+                                          )
+                                        }
+                                      >
+                                        <option value="">口座を選択</option>
+                                        {household.accounts.map((account) => (
+                                          <option key={account.id} value={account.id}>
+                                            {account.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        aria-label={`返金額 ${index + 1}`}
+                                        inputMode="numeric"
+                                        value={
+                                          refundAutoTotal && refundPayments.length === 1
+                                            ? refundAmount
+                                            : payment.amountYen
+                                        }
+                                        onChange={(event) => {
+                                          setRefundAutoTotal(false);
+                                          setRefundPayments((current) =>
+                                            current.map((row) =>
+                                              row.key === payment.key
+                                                ? {
+                                                    ...row,
+                                                    amountYen: event.target.value.replace(
+                                                      /\D/g,
+                                                      "",
+                                                    ),
+                                                  }
+                                                : row,
+                                            ),
+                                          );
+                                        }}
+                                      />
+                                      <button
+                                        className="row-remove"
+                                        type="button"
+                                        aria-label={`返金先 ${index + 1} を削除`}
+                                        onClick={() =>
+                                          setRefundPayments((current) =>
+                                            current.filter((row) => row.key !== payment.key),
+                                          )
+                                        }
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <button
+                                className="text-button"
+                                type="button"
+                                onClick={addRefundPayment}
+                              >
+                                <Plus size={14} />
+                                返金先を追加
+                              </button>
+                              {refundPayments.length > 0 && (
+                                <span className="payment-difference">
+                                  返金差額 {yen(Number(refundAmount) - refundPaymentTotal)}
+                                </span>
+                              )}
+                              <div className="edit-actions">
+                                <button
+                                  className="button button-soft"
+                                  type="button"
+                                  onClick={() => setCorrectionTarget(null)}
+                                >
+                                  キャンセル
+                                </button>
+                                <button
+                                  className="button button-primary"
+                                  disabled={correctionPending || remaining <= 0}
+                                >
+                                  返品を記録
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <button
+                              className="text-button correction-trigger"
+                              type="button"
+                              disabled={remaining <= 0}
+                              onClick={() => startCorrection(purchase, item)}
+                            >
+                              返品を記録
+                            </button>
+                          );
+                        })()}
                     </div>
                   ))}
                 </div>

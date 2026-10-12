@@ -14,6 +14,8 @@ export type PurchaseDraft = {
   merchant: string;
   occurredAt: string;
   paymentAccountId: string;
+  paymentAllocations?: Array<{ paymentAccountId: string; amountYen: string }>;
+  paymentAutoTotal?: boolean;
   itemName: string;
   itemAmount: string;
   categoryId: string;

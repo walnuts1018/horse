@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b78524708f9860337e8056fe757934f7>>
+ * @generated SignedSource<<67a2d522c5def39d8f8fa569f5a4329f>>
  * @lightSyntaxTransform
  */
 
@@ -18,6 +18,11 @@ export type PurchasePatch = {
   merchant?: string | null | undefined;
   occurredAt?: string | null | undefined;
   paymentAccountId?: string | null | undefined;
+  paymentAllocations?: ReadonlyArray<PurchasePaymentInput> | null | undefined;
+};
+export type PurchasePaymentInput = {
+  amountYen: any;
+  paymentAccountId: string;
 };
 export type UpdatePurchaseMutation$variables = {
   input: UpdatePurchaseInput;

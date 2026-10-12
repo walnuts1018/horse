@@ -1159,6 +1159,65 @@ a {
   margin-bottom: 14px;
 }
 
+.payment-allocation-field {
+  grid-column: 1 / -1;
+}
+
+.payment-allocation-list {
+  display: grid;
+  gap: 6px;
+}
+
+.payment-allocation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px 30px;
+  align-items: center;
+  gap: 8px;
+}
+
+.payment-allocation-row > select {
+  height: 36px;
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #e9ede9;
+  border-radius: 8px;
+  background: #fcfdfb;
+  color: #425249;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.payment-allocation-row .yen-input {
+  width: 100%;
+}
+
+.payment-allocation-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.payment-allocation-footer .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.payment-balanced,
+.payment-unbalanced {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.payment-balanced {
+  color: #39755f;
+}
+
+.payment-unbalanced {
+  color: #a45e4f;
+}
+
 .purchase-outbox {
   margin-top: 14px;
   padding: 16px 19px;
@@ -1725,6 +1784,92 @@ a {
   font-size: 10px;
 }
 
+.purchase-correction-entry {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid #f2f4f1;
+  padding: 8px 0;
+  color: #7b8981;
+  font-size: 9px;
+}
+
+.purchase-correction-entry b {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.purchase-correction-entry small {
+  overflow-wrap: anywhere;
+}
+
+.correction-trigger,
+.purchase-correction-form {
+  grid-column: 1 / -1;
+}
+
+.purchase-correction-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfa;
+}
+
+.purchase-correction-form > label {
+  display: grid;
+  gap: 5px;
+  color: #829087;
+  font-size: 9px;
+}
+
+.purchase-correction-form > b,
+.purchase-correction-form > span,
+.refund-payment-list,
+.purchase-correction-form > .text-button,
+.purchase-correction-form > .payment-difference,
+.purchase-correction-form > .edit-actions {
+  grid-column: 1 / -1;
+}
+
+.purchase-correction-form > span {
+  color: #89968d;
+  font-size: 9px;
+}
+
+.purchase-correction-form > label input,
+.purchase-correction-form > label select,
+.refund-payment-row > input,
+.refund-payment-row > select {
+  height: 34px;
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.refund-payment-list {
+  display: grid;
+  gap: 6px;
+}
+
+.refund-payment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(80px, 130px) 27px;
+  gap: 7px;
+}
+
+.payment-difference {
+  font-variant-numeric: tabular-nums;
+}
+
 .period-picker {
   height: 37px;
   display: flex;
@@ -1918,6 +2063,50 @@ a {
   gap: 11px;
   min-height: 57px;
   border-bottom: 1px solid #eff2ef;
+}
+
+.loan-panel {
+  margin-top: 15px;
+  padding: 18px 20px 12px;
+}
+
+.loan-panel .panel-heading {
+  align-items: center;
+}
+
+.loan-balance-row {
+  min-height: 57px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 13px;
+  border-top: 1px solid #eff2ef;
+}
+
+.loan-balance-row > div {
+  min-width: 0;
+}
+
+.loan-balance-row b,
+.loan-balance-row small {
+  display: block;
+}
+
+.loan-balance-row b {
+  color: #53675a;
+  font-size: 10px;
+}
+
+.loan-balance-row small {
+  margin-top: 4px;
+  color: #89968d;
+  font-size: 9px;
+}
+
+.loan-balance-row strong {
+  color: #42544a;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .funding-entry:last-child {
@@ -3070,6 +3259,17 @@ a {
     font-size: 10px;
   }
 
+  .payment-allocation-row {
+    grid-template-columns: minmax(0, 1fr) 112px 25px;
+    gap: 5px;
+  }
+
+  .payment-allocation-row > select {
+    height: 34px;
+    font-size: 10px;
+    padding: 0 7px;
+  }
+
   .item-entry-panel {
     padding: 15px 12px 10px;
   }
@@ -3234,6 +3434,21 @@ a {
 
   .settlement-panel {
     padding: 15px 13px 12px;
+  }
+
+  .loan-panel {
+    padding: 14px 13px 10px;
+  }
+
+  .loan-balance-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 8px 0;
+  }
+
+  .loan-balance-row .text-button {
+    grid-column: 1 / -1;
+    justify-self: end;
   }
 
   .settlement-line {
@@ -3687,6 +3902,26 @@ a {
   justify-content: flex-end;
 }
 
+.purchase-edit-payments {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.purchase-edit-payment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(76px, 120px) 27px;
+  gap: 7px;
+}
+
+.purchase-edit-payments > small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .expanded-item input,
 .expanded-item select {
   width: 100%;
@@ -3798,5 +4033,15 @@ a {
 
   .purchase-edit-form .edit-actions {
     grid-column: auto;
+  }
+
+  .purchase-correction-form {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .refund-payment-row {
+    grid-template-columns: minmax(0, 1fr) 85px 25px;
+    gap: 5px;
   }
 }

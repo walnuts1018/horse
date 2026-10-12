@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<51091a87bc612e20fe0c8bfe0523adea>>
+ * @generated SignedSource<<ea0fd1dea8210d8d57b22cfd9a768ebf>>
  * @lightSyntaxTransform
  */
 
@@ -25,6 +25,7 @@ export type LedgerQuery$data = {
         readonly fromMemberId: string | null | undefined;
         readonly id: string;
         readonly kind: LedgerKind;
+        readonly loanId: string | null | undefined;
         readonly occurredAt: string;
         readonly poolId: string | null | undefined;
         readonly sourcePurchaseId: string | null | undefined;
@@ -176,6 +177,13 @@ v3 = [
                 "kind": "ScalarField",
                 "name": "sourcePurchaseId",
                 "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "loanId",
+                "storageKey": null
               }
             ],
             "storageKey": null
@@ -245,16 +253,16 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "bb13ae06330f35c6b713ad39ed0fd4c7",
+    "cacheID": "2f57e021d48fde7847e797612f788a17",
     "id": null,
     "metadata": {},
     "name": "LedgerQuery",
     "operationKind": "query",
-    "text": "query LedgerQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  ledger(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        kind\n        occurredAt\n        description\n        amountYen\n        currency\n        fromMemberId\n        toMemberId\n        poolId\n        sourcePurchaseId\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query LedgerQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  ledger(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        kind\n        occurredAt\n        description\n        amountYen\n        currency\n        fromMemberId\n        toMemberId\n        poolId\n        sourcePurchaseId\n        loanId\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "852c7ef9147e436b3f28d15080f2021b";
+(node as any).hash = "2ef7e718a9b809876fa683d52513073a";
 
 export default node;

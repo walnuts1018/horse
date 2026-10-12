@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f2d12315c63d6a604b3f1ecc634af2bf>>
+ * @generated SignedSource<<e47ff20918fc85e258fc325e95eb2569>>
  * @lightSyntaxTransform
  */
 
@@ -16,9 +16,14 @@ export type CreatePurchaseInput = {
   merchant: string;
   occurredAt: string;
   paymentAccountId?: string | null | undefined;
+  paymentAllocations?: ReadonlyArray<PurchasePaymentInput> | null | undefined;
   sourceDocumentId?: string | null | undefined;
   sourceReference?: string | null | undefined;
   status?: PurchaseStatus | null | undefined;
+};
+export type PurchasePaymentInput = {
+  amountYen: any;
+  paymentAccountId: string;
 };
 export type PurchaseItemInput = {
   allocations?: ReadonlyArray<AllocationInput> | null | undefined;

@@ -40,6 +40,8 @@ export type Purchase = {
   merchant: string;
   paymentAccountId?: string | null;
   paymentAccount?: Account | null;
+  paymentAllocations?: PurchasePayment[];
+  corrections?: PurchaseCorrection[];
   items: PurchaseItem[];
   totalYen: number;
   revision: number;
@@ -53,6 +55,7 @@ export type CreatePurchaseInput = {
   occurredAt: string;
   merchant: string;
   paymentAccountId: string | null;
+  paymentAllocations?: PurchasePaymentInput[];
   items: Array<{
     name: string;
     amountYen: number;
@@ -60,6 +63,25 @@ export type CreatePurchaseInput = {
     productVariantId?: string | null;
     allocations: Array<{ poolId: string; weight: number }> | null;
   }>;
+};
+export type PurchasePaymentInput = { paymentAccountId: string; amountYen: number };
+export type PurchasePayment = PurchasePaymentInput & { account?: Account | null };
+export type PurchaseCorrection = {
+  id: string;
+  itemId?: string | null;
+  amountDeltaYen: number;
+  reason: string;
+  occurredAt: string;
+  settlementMonth: string;
+  paymentAllocations: PurchasePayment[];
+};
+export type LoanBalance = {
+  loanId: string;
+  lenderMemberId: string;
+  borrowerMemberId: string;
+  principalYen: number;
+  repaidYen: number;
+  balanceYen: number;
 };
 export type Member = { id: string; displayName: string; role: string };
 export type Household = {
@@ -342,6 +364,14 @@ export const purchasesQuery = graphql`
             kind
             poolId
           }
+          paymentAllocations {
+            paymentAccountId
+            amountYen
+            account {
+              id
+              name
+            }
+          }
           items {
             id
             name
@@ -357,6 +387,22 @@ export const purchasesQuery = graphql`
             }
           }
           totalYen
+          corrections {
+            id
+            itemId
+            amountDeltaYen
+            reason
+            occurredAt
+            settlementMonth
+            paymentAllocations {
+              paymentAccountId
+              amountYen
+              account {
+                id
+                name
+              }
+            }
+          }
           revision
           status
           createdAt
@@ -439,6 +485,7 @@ export const ledgerQuery = graphql`
           toMemberId
           poolId
           sourcePurchaseId
+          loanId
         }
       }
       pageInfo {
@@ -446,6 +493,19 @@ export const ledgerQuery = graphql`
         hasNextPage
       }
       totalCount
+    }
+  }
+`;
+
+export const loanBalancesQuery = graphql`
+  query LoanBalancesQuery($householdId: ID!) {
+    loanBalances(householdId: $householdId) {
+      loanId
+      lenderMemberId
+      borrowerMemberId
+      principalYen
+      repaidYen
+      balanceYen
     }
   }
 `;
@@ -731,6 +791,15 @@ export const recordTransferMutation = graphql`
   mutation RecordTransferMutation($input: RecordTransferInput!) {
     recordTransfer(input: $input) {
       id
+      loanId
+    }
+  }
+`;
+export const correctPurchaseMutation = graphql`
+  mutation CorrectPurchaseMutation($input: CorrectPurchaseInput!) {
+    correctPurchase(input: $input) {
+      id
+      revision
     }
   }
 `;

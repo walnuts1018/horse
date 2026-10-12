@@ -11,6 +11,7 @@ import {
 import {
   closePeriodMutation,
   ledgerQuery,
+  loanBalancesQuery,
   makeIdempotencyKey,
   recordFundingMutation,
   recordTransferMutation,
@@ -19,6 +20,7 @@ import {
   type Connection,
   type Household,
   type LedgerEntry,
+  type LoanBalance,
   type Settlement,
 } from "../../../shared/api";
 import { InlineError } from "../../../shared/ui";
@@ -36,6 +38,7 @@ export function SettlementPage({ household }: { household: Household }) {
   const [period, setPeriod] = useState(monthKey());
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
+  const [loans, setLoans] = useState<LoanBalance[]>([]);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -44,10 +47,12 @@ export function SettlementPage({ household }: { household: Household }) {
   const [transferKind, setTransferKind] = useState("ADVANCE");
   const [transferAmount, setTransferAmount] = useState("");
   const [transferDescription, setTransferDescription] = useState("");
+  const [transferLoanId, setTransferLoanId] = useState("");
+  const [transferPaymentAccountId, setTransferPaymentAccountId] = useState("");
   const load = async () => {
     setError("");
     try {
-      const [settlementData, ledgerData] = await Promise.all([
+      const [settlementData, ledgerData, loanData] = await Promise.all([
         readGraphql<{ settlement: Settlement }>(settlementQuery, {
           householdId: household.id,
           period,
@@ -56,9 +61,13 @@ export function SettlementPage({ household }: { household: Household }) {
           householdId: household.id,
           first: 100,
         }),
+        readGraphql<{ loanBalances: LoanBalance[] }>(loanBalancesQuery, {
+          householdId: household.id,
+        }),
       ]);
       setSettlement(settlementData.settlement);
       setEntries(ledgerData.ledger.edges.map((edge) => edge.node));
+      setLoans(loanData.loanBalances);
     } catch (reason) {
       setError((reason as Error).message);
     }
@@ -107,7 +116,14 @@ export function SettlementPage({ household }: { household: Household }) {
   const saveTransfer = async (event: FormEvent) => {
     event.preventDefault();
     const amountYen = Number(transferAmount);
-    if (!transferFrom || !transferTo || transferFrom === transferTo || amountYen < 1) return;
+    if (
+      !transferFrom ||
+      !transferTo ||
+      transferFrom === transferTo ||
+      amountYen < 1 ||
+      (transferKind === "REPAYMENT" && !transferLoanId)
+    )
+      return;
     setPending(true);
     try {
       await readGraphql(recordTransferMutation, {
@@ -116,6 +132,8 @@ export function SettlementPage({ household }: { household: Household }) {
           fromMemberId: transferFrom,
           toMemberId: transferTo,
           kind: transferKind,
+          ...(transferKind === "REPAYMENT" ? { loanId: transferLoanId } : {}),
+          paymentAccountId: transferPaymentAccountId || null,
           amountYen,
           occurredAt: new Date().toISOString(),
           description: transferDescription.trim() || "メンバー間の送金",
@@ -124,6 +142,8 @@ export function SettlementPage({ household }: { household: Household }) {
       });
       setTransferAmount("");
       setTransferDescription("");
+      setTransferLoanId("");
+      setTransferPaymentAccountId("");
       setTransferOpen(false);
       await load();
     } catch (reason) {
@@ -133,6 +153,14 @@ export function SettlementPage({ household }: { household: Household }) {
     }
   };
   const totalDue = sum(settlement?.lines.map((line) => line.amountDueYen) ?? []);
+  const openLoans = loans.filter((loan) => loan.balanceYen > 0);
+  const openTransferForLoan = (loan: LoanBalance) => {
+    setTransferKind("REPAYMENT");
+    setTransferLoanId(loan.loanId);
+    setTransferFrom(loan.borrowerMemberId);
+    setTransferTo(loan.lenderMemberId);
+    setTransferOpen(true);
+  };
   return (
     <>
       <div className="page-heading">
@@ -258,10 +286,46 @@ export function SettlementPage({ household }: { household: Household }) {
                 <option value="GIFT">贈与</option>
               </select>
             </label>
+            {transferKind === "REPAYMENT" && (
+              <label>
+                貸付
+                <select
+                  required
+                  value={transferLoanId}
+                  onChange={(event) => {
+                    const loan = openLoans.find((row) => row.loanId === event.target.value);
+                    setTransferLoanId(event.target.value);
+                    if (loan) {
+                      setTransferFrom(loan.borrowerMemberId);
+                      setTransferTo(loan.lenderMemberId);
+                    }
+                  }}
+                >
+                  <option value="">貸付を選択</option>
+                  {openLoans.map((loan) => (
+                    <option key={loan.loanId} value={loan.loanId}>
+                      {household.members.find((member) => member.id === loan.borrowerMemberId)
+                        ?.displayName ?? "借主"}{" "}
+                      →{" "}
+                      {household.members.find((member) => member.id === loan.lenderMemberId)
+                        ?.displayName ?? "貸主"}{" "}
+                      {yen(loan.balanceYen)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label>
-              送金元
+              {transferKind === "LOAN"
+                ? "貸主"
+                : transferKind === "REPAYMENT"
+                  ? "借主"
+                  : transferKind === "GIFT"
+                    ? "贈与者"
+                    : "立替者"}
               <select
                 value={transferFrom}
+                disabled={transferKind === "REPAYMENT"}
                 onChange={(event) => setTransferFrom(event.target.value)}
               >
                 {household.members.map((member) => (
@@ -272,11 +336,35 @@ export function SettlementPage({ household }: { household: Household }) {
               </select>
             </label>
             <label>
-              送金先
-              <select value={transferTo} onChange={(event) => setTransferTo(event.target.value)}>
+              {transferKind === "LOAN"
+                ? "借主"
+                : transferKind === "REPAYMENT"
+                  ? "貸主"
+                  : transferKind === "GIFT"
+                    ? "受贈者"
+                    : "受益者"}
+              <select
+                value={transferTo}
+                disabled={transferKind === "REPAYMENT"}
+                onChange={(event) => setTransferTo(event.target.value)}
+              >
                 {household.members.map((member) => (
                   <option value={member.id} key={member.id}>
                     {member.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              決済口座
+              <select
+                value={transferPaymentAccountId}
+                onChange={(event) => setTransferPaymentAccountId(event.target.value)}
+              >
+                <option value="">口座外</option>
+                {household.accounts.map((account) => (
+                  <option value={account.id} key={account.id}>
+                    {account.name}
                   </option>
                 ))}
               </select>
@@ -305,6 +393,57 @@ export function SettlementPage({ household }: { household: Household }) {
               保存
             </button>
           </form>
+        )}
+      </section>
+      <section className="panel loan-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">貸付と返済</span>
+            <h2>貸付残高</h2>
+          </div>
+          <span className="count-badge">{openLoans.length}</span>
+          <button
+            className="button button-soft"
+            onClick={() => {
+              setTransferKind("LOAN");
+              setTransferLoanId("");
+              setTransferOpen(true);
+            }}
+          >
+            <Plus size={15} />
+            貸付を記録
+          </button>
+        </div>
+        {loans.length === 0 ? (
+          <div className="empty-state compact">
+            <Wallet />
+            <span>貸付記録はありません</span>
+          </div>
+        ) : (
+          loans.map((loan) => (
+            <div className="loan-balance-row" key={loan.loanId}>
+              <div>
+                <b>
+                  {household.members.find((member) => member.id === loan.borrowerMemberId)
+                    ?.displayName ?? "借主"}{" "}
+                  →{" "}
+                  {household.members.find((member) => member.id === loan.lenderMemberId)
+                    ?.displayName ?? "貸主"}
+                </b>
+                <small>
+                  元本 {yen(loan.principalYen)} · 返済済み {yen(loan.repaidYen)}
+                </small>
+              </div>
+              <strong>{yen(loan.balanceYen)}</strong>
+              <button
+                className="text-button"
+                disabled={loan.balanceYen <= 0}
+                onClick={() => openTransferForLoan(loan)}
+              >
+                返済を記録
+              </button>
+            </div>
+          ))
         )}
       </section>
       <div className="section-heading">

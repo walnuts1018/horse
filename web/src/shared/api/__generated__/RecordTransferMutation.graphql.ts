@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ad98aec7899e56580d86a639981e54d0>>
+ * @generated SignedSource<<0f40beaa61c6d64581ef7fb8c410d66d>>
  * @lightSyntaxTransform
  */
 
@@ -18,6 +18,7 @@ export type RecordTransferInput = {
   kind: TransferKind;
   loanId?: string | null | undefined;
   occurredAt: string;
+  paymentAccountId?: string | null | undefined;
   toMemberId: string;
 };
 export type RecordTransferMutation$variables = {
@@ -26,6 +27,7 @@ export type RecordTransferMutation$variables = {
 export type RecordTransferMutation$data = {
   readonly recordTransfer: {
     readonly id: string;
+    readonly loanId: string | null | undefined;
   };
 };
 export type RecordTransferMutation = {
@@ -62,6 +64,13 @@ v1 = [
         "kind": "ScalarField",
         "name": "id",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "loanId",
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -85,16 +94,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "c0e9a36008a84f29241c0269b5e396d6",
+    "cacheID": "a1a3526fc6216b1dcfa6dddd2eecbfb6",
     "id": null,
     "metadata": {},
     "name": "RecordTransferMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordTransferMutation(\n  $input: RecordTransferInput!\n) {\n  recordTransfer(input: $input) {\n    id\n  }\n}\n"
+    "text": "mutation RecordTransferMutation(\n  $input: RecordTransferInput!\n) {\n  recordTransfer(input: $input) {\n    id\n    loanId\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d32429ff5ddae1d52a34fcf81709cb1e";
+(node as any).hash = "3a4ea75a1b0155cdda78a8ae370710c8";
 
 export default node;
