@@ -30,7 +30,7 @@ import (
 type IdempotencyKey struct {
 	HouseholdID        uuid.UUID                   `db:"household_id,pk" `
 	Key                string                      `db:"key,pk" `
-	Operation          string                      `db:"operation" `
+	Operation          string                      `db:"operation,pk" `
 	ResourceID         sql.Null[uuid.UUID]         `db:"resource_id" `
 	Response           types.JSON[json.RawMessage] `db:"response" `
 	CreatedAt          time.Time                   `db:"created_at" `
@@ -142,7 +142,7 @@ func (c idempotencyKeyColumn) ShouldOmitParens() bool {
 type IdempotencyKeySetter struct {
 	HouseholdID        *uuid.UUID                   `db:"household_id,pk" `
 	Key                *string                      `db:"key,pk" `
-	Operation          *string                      `db:"operation" `
+	Operation          *string                      `db:"operation,pk" `
 	ResourceID         *sql.Null[uuid.UUID]         `db:"resource_id" `
 	Response           *types.JSON[json.RawMessage] `db:"response" `
 	CreatedAt          *time.Time                   `db:"created_at" `
@@ -416,26 +416,29 @@ func idempotencyKeyScanMapper(ctx context.Context, cols []string) (scan.BeforeFu
 
 // FindIdempotencyKey retrieves a single record by primary key
 // If cols is empty Find will return all columns.
-func FindIdempotencyKey(ctx context.Context, exec bob.Executor, HouseholdIDPK uuid.UUID, KeyPK string, cols ...string) (*IdempotencyKey, error) {
+func FindIdempotencyKey(ctx context.Context, exec bob.Executor, HouseholdIDPK uuid.UUID, KeyPK string, OperationPK string, cols ...string) (*IdempotencyKey, error) {
 	if len(cols) == 0 {
 		return IdempotencyKeys.Query(
 			sm.Where(IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(HouseholdIDPK))),
 			sm.Where(IdempotencyKeys.Columns.Key.EQ(psql.Arg(KeyPK))),
+			sm.Where(IdempotencyKeys.Columns.Operation.EQ(psql.Arg(OperationPK))),
 		).One(ctx, exec)
 	}
 
 	return IdempotencyKeys.Query(
 		sm.Where(IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(HouseholdIDPK))),
 		sm.Where(IdempotencyKeys.Columns.Key.EQ(psql.Arg(KeyPK))),
+		sm.Where(IdempotencyKeys.Columns.Operation.EQ(psql.Arg(OperationPK))),
 		sm.Columns(IdempotencyKeys.Columns.Only(cols...)),
 	).One(ctx, exec)
 }
 
 // IdempotencyKeyExists checks the presence of a single record by primary key
-func IdempotencyKeyExists(ctx context.Context, exec bob.Executor, HouseholdIDPK uuid.UUID, KeyPK string) (bool, error) {
+func IdempotencyKeyExists(ctx context.Context, exec bob.Executor, HouseholdIDPK uuid.UUID, KeyPK string, OperationPK string) (bool, error) {
 	return IdempotencyKeys.Query(
 		sm.Where(IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(HouseholdIDPK))),
 		sm.Where(IdempotencyKeys.Columns.Key.EQ(psql.Arg(KeyPK))),
+		sm.Where(IdempotencyKeys.Columns.Operation.EQ(psql.Arg(OperationPK))),
 	).Exists(ctx, exec)
 }
 
@@ -464,11 +467,12 @@ func (o *IdempotencyKey) primaryKeyVals() bob.Expression {
 	return psql.ArgGroup(
 		o.HouseholdID,
 		o.Key,
+		o.Operation,
 	)
 }
 
 func (o *IdempotencyKey) pkEQ() dialect.Expression {
-	return psql.Group(psql.Quote("idempotency_keys", "household_id"), psql.Quote("idempotency_keys", "key")).EQ(bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+	return psql.Group(psql.Quote("idempotency_keys", "household_id"), psql.Quote("idempotency_keys", "key"), psql.Quote("idempotency_keys", "operation")).EQ(bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
 		return o.primaryKeyVals().WriteSQL(ctx, w, d, start)
 	}))
 }
@@ -497,6 +501,7 @@ func (o *IdempotencyKey) Reload(ctx context.Context, exec bob.Executor) error {
 	o2, err := IdempotencyKeys.Query(
 		sm.Where(IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))),
 		sm.Where(IdempotencyKeys.Columns.Key.EQ(psql.Arg(o.Key))),
+		sm.Where(IdempotencyKeys.Columns.Operation.EQ(psql.Arg(o.Operation))),
 	).One(ctx, exec)
 	if err != nil {
 		return err
@@ -532,7 +537,7 @@ func (o IdempotencyKeySlice) pkIN() dialect.Expression {
 		return psql.Raw("NULL")
 	}
 
-	return psql.Group(psql.Quote("idempotency_keys", "household_id"), psql.Quote("idempotency_keys", "key")).In(bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+	return psql.Group(psql.Quote("idempotency_keys", "household_id"), psql.Quote("idempotency_keys", "key"), psql.Quote("idempotency_keys", "operation")).In(bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
 		pkPairs := make([]bob.Expression, len(o))
 		for i, row := range o {
 			pkPairs[i] = row.primaryKeyVals()
@@ -551,6 +556,9 @@ func (o IdempotencyKeySlice) copyMatchingRows(from ...*IdempotencyKey) {
 				continue
 			}
 			if new.Key != old.Key {
+				continue
+			}
+			if new.Operation != old.Operation {
 				continue
 			}
 			new.R = old.R

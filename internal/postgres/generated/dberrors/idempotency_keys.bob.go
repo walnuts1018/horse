@@ -7,7 +7,7 @@ var IdempotencyKeyErrors = &idempotencyKeyErrors{
 	ErrUniqueIdempotencyKeysPkey: &UniqueConstraintError{
 		schema:  "",
 		table:   "idempotency_keys",
-		columns: []string{"household_id", "key"},
+		columns: []string{"household_id", "key", "operation"},
 		s:       "idempotency_keys_pkey",
 	},
 }

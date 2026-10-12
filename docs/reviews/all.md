@@ -14,7 +14,8 @@
 
 最優先
 
-# 2件
+- 修正済み 1件
+- 未解決 1件
 
 重要
 
@@ -28,60 +29,13 @@
 
 ## P0 — 最優先で直すべき問題
 
-### 1. 購入がDRAFTのままで、精算・支出分析に反映されない
+### 1. mutation間で共有した冪等性キーが一意制約に衝突する（修正済み）
 
-会計上の重大な不整合
+公開環境では`createPurchase`が成功した後、同じ冪等性キーを使った`postPurchase`がPostgreSQLの一意制約違反で失敗していました。
 
-これは最も優先度が高い問題です。
+各mutationは`household_id`、`key`、`operation`の組み合わせで既存結果を検索していましたが、`idempotency_keys`の主キーは`(household_id, key)`だけでした。そのため、購入作成時の冪等性行と購入確定時の冪等性行が同じキーを使うと、`postPurchase`の登録がSQLSTATE `23505`で拒否されていました。
 
-原因となっている実装
-
-- [mutations.go: createPurchase](https://github.com/walnuts1018/horse/blob/5399fecc15b26c9d24a5aba0c057d8bc0e464d5f/internal/graph/mutations.go#L674-L711)
-- [horse-app.tsx: 購入送信](https://github.com/walnuts1018/horse/blob/5399fecc15b26c9d24a5aba0c057d8bc0e464d5f/web/src/app/horse-app.tsx#L136-L174)
-- [accounting.go: 精算対象の取得](https://github.com/walnuts1018/horse/blob/5399fecc15b26c9d24a5aba0c057d8bc0e464d5f/internal/graph/accounting.go#L423-L435)
-
-`createPurchase`は、購入を必ず`DRAFT`として作成します。`POSTED`を明示指定することも拒否しています。
-
-一方、フロントエンドの送信処理は次のようになっています。
-
-```
-await read(createPurchaseMutation, {
-  input: request.input,
-});
-await completePurchaseOutbox(key, owner);
-```
-
-ここで送信が成功したとみなし、Outboxを削除しています。
-
-しかし、`postPurchase`を呼んでいません。
-
-精算計算は`POSTED`と`CLOSED`の購入のみを集計しています。月別支出分析も同様です。
-
-したがって、通常のUIから登録した購入は帳簿に表示されても、精算・月別支出に反映されない状態になります。
-
-さらに帳簿UIでは`CLOSED`以外をまとめて「記録済み」と表示しているため、利用者には問題が分かりません。
-
-修正案
-
-`createPurchase`と`postPurchase`を、1つの確定操作として扱えるAPIを追加するのがよいです。
-
-例えば、
-
-```
-mutation RecordPurchase($input: RecordPurchaseInput!) {
-  recordPurchase(input: $input) {
-    id
-    status
-    revision
-  }
-}
-```
-
-内部では1つのDBトランザクションで、購入・品目・負担配賦・決済情報・会計仕訳・証拠リンクを確定します。
-
-既存の`createPurchase`と`postPurchase`は、下書き保存の用途として残せます。
-
-これなら、APIを2回呼ぶ途中で接続が切れた場合の中途半端な状態も避けられます。
+主キーを`(household_id, key, operation)`に変更し、mutationごとに同じ冪等性キーを安全に使えるようにしました。PostgreSQL統合テストで`CreatePurchase`と`PostPurchase`に同じキーを渡し、購入が`POSTED`になることを確認します。
 
 ### 2. AI取り込みで購入作成と証拠の紐付けが別トランザクションになっている
 

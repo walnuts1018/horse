@@ -94,10 +94,15 @@ var IdempotencyKeys = Table[
 					Desc:         null.FromCond(false, true),
 					IsExpression: false,
 				},
+				{
+					Name:         "operation",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
 			},
 			Unique:        true,
 			Comment:       "",
-			NullsFirst:    []bool{false, false},
+			NullsFirst:    []bool{false, false, false},
 			NullsDistinct: false,
 			Where:         "",
 			Include:       []string{},
@@ -105,7 +110,7 @@ var IdempotencyKeys = Table[
 	},
 	PrimaryKey: &constraint{
 		Name:    "idempotency_keys_pkey",
-		Columns: []string{"household_id", "key"},
+		Columns: []string{"household_id", "key", "operation"},
 		Comment: "",
 	},
 	ForeignKeys: idempotencyKeyForeignKeys{
