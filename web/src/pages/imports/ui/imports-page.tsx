@@ -231,15 +231,14 @@ export function ImportsPage({
         if (!invertTransform(transform)) throw new Error("原本の座標を読み取れません");
         const blob = await response.blob();
         if (blob.type !== "image/png") throw new Error("原本ページを表示できませんでした");
+        if (!active) return;
         objectUrl = URL.createObjectURL(blob);
-        if (active) {
-          setPreview({
-            documentId: selectedDocument.id,
-            page: previewPage,
-            src: objectUrl,
-            transform,
-          });
-        }
+        setPreview({
+          documentId: selectedDocument.id,
+          page: previewPage,
+          src: objectUrl,
+          transform,
+        });
       })
       .catch((reason) => {
         if (active && (reason as Error).name !== "AbortError") {
