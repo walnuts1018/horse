@@ -1,11 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	stdjson "encoding/json"
 	"encoding/json/v2"
+	"image"
+	"image/png"
 	"io"
 	"log/slog"
 	"net/http"
@@ -28,6 +31,21 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 	"uuid"
 )
+
+type previewTestStore struct {
+	document ingestion.Document
+	gets     int
+}
+
+func (s *previewTestStore) Put(context.Context, string, string, []byte) (string, string, error) {
+	return "", "", nil
+}
+
+func (s *previewTestStore) Get(_ context.Context, _ string, mimeType string) (ingestion.Document, error) {
+	s.gets++
+	s.document.MIMEType = mimeType
+	return s.document, nil
+}
 
 func mustIntegrationUUID(t *testing.T, value string) gofrsuuid.UUID {
 	t.Helper()
@@ -113,7 +131,23 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := New(db, authService, slog.New(slog.NewTextHandler(io.Discard, nil)), Config{PublicOrigin: "http://horse.test", Store: &ingestion.ObjectStore{}}).Handler()
+	var previewPNG bytes.Buffer
+	if err := png.Encode(&previewPNG, image.NewRGBA(image.Rect(0, 0, 2, 1))); err != nil {
+		t.Fatal(err)
+	}
+	store := &previewTestStore{document: ingestion.Document{Data: []byte("unchanged original")}}
+	ocrCalls := 0
+	ocrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ocrCalls++
+		if r.URL.Path != "/crop" {
+			t.Errorf("unexpected OCR path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("X-Coordinate-Transform", `[1,0,0,0,1,0,0,0,1]`)
+		_, _ = w.Write(previewPNG.Bytes())
+	}))
+	defer ocrServer.Close()
+	server := New(db, authService, slog.New(slog.NewTextHandler(io.Discard, nil)), Config{PublicOrigin: "http://horse.test", Store: store, OCR: ingestion.OCR{Endpoint: ocrServer.URL}}).Handler()
 
 	graphqlRequest := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader(`{"query":"query($id: ID!) { household(id: $id) { id name } }","variables":{"id":"`+householdID+`"}}`))
 	graphqlRequest.Header.Set("Origin", "http://horse.test")
@@ -131,6 +165,13 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	server.ServeHTTP(contentResponse, contentRequest)
 	if contentResponse.Code != http.StatusNotFound {
 		t.Fatalf("non-member original document request was not hidden: status=%d body=%s", contentResponse.Code, contentResponse.Body.String())
+	}
+	previewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview", nil)
+	previewRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: cookieValue, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	previewResponse := httptest.NewRecorder()
+	server.ServeHTTP(previewResponse, previewRequest)
+	if previewResponse.Code != http.StatusNotFound || ocrCalls != 0 || store.gets != 0 {
+		t.Fatalf("non-member preview accessed private evidence: status=%d OCR calls=%d storage reads=%d", previewResponse.Code, ocrCalls, store.gets)
 	}
 
 	purchaseID, itemID, jobID := uuid.NewV7().String(), uuid.NewV7().String(), uuid.NewV7().String()
@@ -180,6 +221,20 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	ownerExpiry := time.Now().Add(10 * time.Minute)
 	if _, err := models.OidcSessions.Insert(&models.OidcSessionSetter{TokenHash: &ownerHashBytes, MemberID: &ownerUUID, Expiry: &ownerExpiry}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
+	}
+	invalidPreviewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview?page=-1", nil)
+	invalidPreviewRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	invalidPreviewResponse := httptest.NewRecorder()
+	server.ServeHTTP(invalidPreviewResponse, invalidPreviewRequest)
+	if invalidPreviewResponse.Code != http.StatusBadRequest || ocrCalls != 0 {
+		t.Fatalf("invalid preview page was not rejected: status=%d OCR calls=%d", invalidPreviewResponse.Code, ocrCalls)
+	}
+	validPreviewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview?page=0", nil)
+	validPreviewRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	validPreviewResponse := httptest.NewRecorder()
+	server.ServeHTTP(validPreviewResponse, validPreviewRequest)
+	if validPreviewResponse.Code != http.StatusOK || validPreviewResponse.Header().Get("Content-Type") != "image/png" || validPreviewResponse.Header().Get("Cache-Control") != "private, no-store" || validPreviewResponse.Header().Get("X-Original-Content-Type") != mimeType || validPreviewResponse.Header().Get("X-Source-Page") != "0" || validPreviewResponse.Header().Get("X-Coordinate-Transform") != `[1,0,0,0,1,0,0,0,1]` || !bytes.Equal(validPreviewResponse.Body.Bytes(), previewPNG.Bytes()) || ocrCalls != 1 || store.gets != 1 {
+		t.Fatalf("member preview response incorrect: status=%d headers=%v OCR calls=%d storage reads=%d", validPreviewResponse.Code, validPreviewResponse.Header(), ocrCalls, store.gets)
 	}
 	confirm := func(index int) *httptest.ResponseRecorder {
 		t.Helper()

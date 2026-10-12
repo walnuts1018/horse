@@ -29,8 +29,14 @@ import (
 type Config struct {
 	PublicOrigin   string
 	FrontendOrigin string
-	Store          *ingestion.ObjectStore
+	Store          DocumentStore
+	OCR            ingestion.OCR
 	Queue          *ingestion.Queue
+}
+
+type DocumentStore interface {
+	Put(context.Context, string, string, []byte) (string, string, error)
+	Get(context.Context, string, string) (ingestion.Document, error)
 }
 
 type Server struct {
@@ -57,6 +63,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /documents", s.documents)
 	mux.HandleFunc("GET /documents/{id}", s.document)
 	mux.HandleFunc("GET /documents/{id}/content", s.documentContent)
+	mux.HandleFunc("GET /documents/{id}/preview", s.documentPreview)
 	mux.HandleFunc("GET /documents/{id}/matches", s.documentMatches)
 	mux.HandleFunc("POST /documents/{id}/retry", s.retryDocument)
 	mux.HandleFunc("POST /documents/{id}/confirm", s.confirmEvidence)

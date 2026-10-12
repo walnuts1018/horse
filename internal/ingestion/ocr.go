@@ -6,6 +6,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/png"
 	"io"
 	"math"
 	"mime/multipart"
@@ -29,6 +31,8 @@ type OCR struct {
 }
 
 var printedNumber = regexp.MustCompile(`-?[0-9][0-9,.]*`)
+
+var ErrInvalidCropPage = errors.New("invalid crop page")
 
 func (o OCR) Extract(ctx context.Context, document Document) ([]OCRLine, error) {
 	if o.Endpoint == "" {
@@ -142,8 +146,20 @@ func (o OCR) Crop(ctx context.Context, document Document, region Region) (Docume
 	if readErr != nil || closeErr != nil {
 		return Document{}, transform, errors.Join(errors.New("read cropped image failed"), readErr, closeErr)
 	}
+	if response.StatusCode == http.StatusBadRequest {
+		var problem struct {
+			Detail string `json:"detail"`
+		}
+		if json.Unmarshal(data, &problem) == nil && strings.Contains(problem.Detail, "page is out of range") {
+			return Document{}, transform, ErrInvalidCropPage
+		}
+	}
 	if response.StatusCode != http.StatusOK || len(data) == 0 || len(data) > MaxDocumentBytes || response.Header.Get("Content-Type") != "image/png" {
 		return Document{}, transform, fmt.Errorf("image crop service returned HTTP %d", response.StatusCode)
+	}
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > 40_000_000 {
+		return Document{}, transform, errors.New("invalid cropped image")
 	}
 	var values [9]float64
 	if err := json.Unmarshal([]byte(response.Header.Get("X-Coordinate-Transform")), &values); err != nil {

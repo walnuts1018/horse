@@ -87,7 +87,7 @@ func run(logger *slog.Logger) error {
 	}
 	httpServer := &http.Server{
 		Addr:              ":" + port,
-		Handler:           otelhttp.NewHandler(api.New(pool, authService, logger, api.Config{PublicOrigin: publicOrigin, FrontendOrigin: os.Getenv("FRONTEND_ORIGIN"), Store: objectStore, Queue: queue}).Handler(), "horse-api"),
+		Handler:           otelhttp.NewHandler(api.New(pool, authService, logger, api.Config{PublicOrigin: publicOrigin, FrontendOrigin: os.Getenv("FRONTEND_ORIGIN"), Store: objectStore, OCR: ingestion.OCR{Endpoint: os.Getenv("OCR_URL")}, Queue: queue}).Handler(), "horse-api"),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      0,
