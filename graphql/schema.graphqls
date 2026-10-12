@@ -4,22 +4,26 @@ enum PoolKind {
   PERSONAL
   SHARED
 }
+
 enum AccountKind {
   BANK
   CASH
   CARD
   OTHER
 }
+
 enum PurchaseStatus {
   DRAFT
   POSTED
   CLOSED
 }
+
 enum PurchaseOrigin {
   AI
   MANUAL
   UNKNOWN
 }
+
 enum SourceKind {
   RECEIPT
   ORDER
@@ -27,37 +31,44 @@ enum SourceKind {
   CARD
   BANK
 }
+
 enum UnmatchedObservationState {
   UNMATCHED
   CONFIRMED
 }
+
 enum TransferKind {
   ADVANCE
   LOAN
   REPAYMENT
   GIFT
 }
+
 enum AccountMovementKind {
   TRANSFER
   CARD_BILL_PAYMENT
 }
+
 enum LedgerKind {
   PURCHASE
   FUNDING
   TRANSFER
   CORRECTION
 }
+
 enum AllocationRuleScope {
   PRODUCT_VARIANT
   PRODUCT
   CATEGORY
   MERCHANT
 }
+
 enum ProductLearningScope {
   ITEM_ONLY
   VARIANT_NAME
   MERCHANT_ALIAS
 }
+
 enum SharedPoolSettlementPolicy {
   BALANCE_TO_STANDARD
   REIMBURSE_PERSONAL
@@ -69,6 +80,7 @@ type Viewer {
   displayName: String!
   households: [Household!]!
 }
+
 type Household {
   id: ID!
   name: String!
@@ -81,11 +93,13 @@ type Household {
   createdAt: String!
   updatedAt: String!
 }
+
 type Member {
   id: ID!
   displayName: String!
   role: String!
 }
+
 type HouseholdInvitation {
   id: ID!
   householdId: ID!
@@ -95,10 +109,12 @@ type HouseholdInvitation {
   revokedAt: String
   acceptedAt: String
 }
+
 type CreatedHouseholdInvitation {
   invitation: HouseholdInvitation!
   token: String!
 }
+
 type Pool {
   id: ID!
   name: String!
@@ -109,22 +125,26 @@ type Pool {
   settlementPolicy: SharedPoolSettlementPolicy
   fundingRuleVersion: Int!
 }
+
 type PoolFundingShare {
   memberId: ID!
   memberName: String!
   weight: Long!
 }
+
 type Account {
   id: ID!
   name: String!
   kind: AccountKind!
   poolId: ID
 }
+
 type AccountBalance {
   accountId: ID!
   balanceYen: Long!
   currency: String!
 }
+
 type AccountBalanceAnalysis {
   accountId: ID!
   currency: String!
@@ -134,6 +154,7 @@ type AccountBalanceAnalysis {
   closingBalanceYen: Long!
   changes: [AccountBalanceChange!]!
 }
+
 type AccountBalanceChange {
   occurredAt: String!
   sourceKind: String!
@@ -142,6 +163,7 @@ type AccountBalanceChange {
   changeYen: Long!
   balanceYen: Long!
 }
+
 type AccountIncome {
   id: ID!
   householdId: ID!
@@ -152,18 +174,21 @@ type AccountIncome {
   description: String!
   createdAt: String!
 }
+
 type Category {
   id: ID!
   name: String!
   parentId: ID
   archived: Boolean!
 }
+
 type Allocation {
   poolId: ID!
   poolName: String
   weight: Long!
   amountYen: Long
 }
+
 type AllocationRule {
   id: ID!
   householdId: ID!
@@ -175,6 +200,7 @@ type AllocationRule {
   revision: Int!
   allocations: [Allocation!]!
 }
+
 type ProductConcept {
   id: ID!
   householdId: ID!
@@ -185,6 +211,7 @@ type ProductConcept {
   revision: Int!
   variants: [ProductVariant!]!
 }
+
 type ProductVariant {
   id: ID!
   householdId: ID!
@@ -198,6 +225,7 @@ type ProductVariant {
   revision: Int!
   aliases: [ProductAlias!]!
 }
+
 type ProductAlias {
   id: ID!
   householdId: ID!
@@ -207,12 +235,14 @@ type ProductAlias {
   normalizedAlias: String!
   revision: Int!
 }
+
 type ProductSuggestion {
   concept: ProductConcept!
   variant: ProductVariant!
   matchedName: String!
   score: Int!
 }
+
 type Purchase {
   id: ID!
   householdId: ID!
@@ -233,11 +263,13 @@ type Purchase {
   createdAt: String!
   updatedAt: String!
 }
+
 type PurchasePayment {
   paymentAccountId: ID!
   account: Account
   amountYen: Long!
 }
+
 type PurchaseCorrection {
   id: ID!
   itemId: ID
@@ -247,6 +279,7 @@ type PurchaseCorrection {
   settlementMonth: String!
   paymentAllocations: [PurchasePayment!]!
 }
+
 type PurchaseItem {
   id: ID!
   name: String!
@@ -267,6 +300,7 @@ type PurchaseItem {
   tags: [Tag!]!
   revision: Int!
 }
+
 type Tag {
   id: ID!
   householdId: ID!
@@ -274,6 +308,7 @@ type Tag {
   archived: Boolean!
   revision: Int!
 }
+
 type Budget {
   id: ID!
   householdId: ID!
@@ -287,6 +322,7 @@ type Budget {
   archived: Boolean!
   revision: Int!
 }
+
 type RecurringExpense {
   id: ID!
   householdId: ID!
@@ -303,6 +339,7 @@ type RecurringExpense {
   archived: Boolean!
   revision: Int!
 }
+
 type AccountMovement {
   id: ID!
   householdId: ID!
@@ -315,19 +352,23 @@ type AccountMovement {
   description: String!
   createdAt: String!
 }
+
 type PageInfo {
   endCursor: String
   hasNextPage: Boolean!
 }
+
 type PurchaseEdge {
   cursor: String!
   node: Purchase!
 }
+
 type PurchaseConnection {
   edges: [PurchaseEdge!]!
   pageInfo: PageInfo!
   totalCount: Int!
 }
+
 type UnmatchedObservation {
   documentId: ID!
   sourceReference: String!
@@ -340,15 +381,18 @@ type UnmatchedObservation {
   orderId: String!
   transactionId: String!
 }
+
 type UnmatchedObservationEdge {
   cursor: String!
   node: UnmatchedObservation!
 }
+
 type UnmatchedObservationConnection {
   edges: [UnmatchedObservationEdge!]!
   pageInfo: PageInfo!
   totalCount: Int!
 }
+
 type LedgerEntry {
   id: ID!
   kind: LedgerKind!
@@ -364,6 +408,7 @@ type LedgerEntry {
   loanId: ID
   createdAt: String!
 }
+
 type LoanBalance {
   loanId: ID!
   lenderMemberId: ID!
@@ -373,15 +418,18 @@ type LoanBalance {
   balanceYen: Long!
   createdAt: String!
 }
+
 type LedgerEdge {
   cursor: String!
   node: LedgerEntry!
 }
+
 type LedgerConnection {
   edges: [LedgerEdge!]!
   pageInfo: PageInfo!
   totalCount: Int!
 }
+
 type SettlementLine {
   memberId: ID!
   memberName: String!
@@ -393,6 +441,7 @@ type SettlementLine {
   advanceCreditYen: Long!
   amountDueYen: Long!
 }
+
 type Settlement {
   period: String!
   status: String!
@@ -400,26 +449,31 @@ type Settlement {
   lines: [SettlementLine!]!
   createdAt: String
 }
+
 type MonthlyCategorySpending {
   period: String!
   categoryId: ID
   categoryName: String
   amountYen: Long!
 }
+
 type MonthlyMemberSpending {
   period: String!
   memberId: ID!
   memberName: String!
   amountYen: Long!
 }
+
 type MonthlyMemberSpendingReport {
   items: [MonthlyMemberSpending!]!
   hasUnattributedPurchases: Boolean!
 }
+
 input AllocationInput {
   poolId: ID!
   weight: Long!
 }
+
 input PurchaseItemInput {
   name: String!
   amountYen: Long!
@@ -434,10 +488,12 @@ input PurchaseItemInput {
   productVariantId: ID
   allocations: [AllocationInput!]
 }
+
 input PurchasePaymentInput {
   paymentAccountId: ID!
   amountYen: Long!
 }
+
 input CreatePurchaseInput {
   idempotencyKey: String!
   householdId: ID!
@@ -451,18 +507,21 @@ input CreatePurchaseInput {
   items: [PurchaseItemInput!]!
   status: PurchaseStatus
 }
+
 input PurchasePatch {
   occurredAt: String
   merchant: String
   paymentAccountId: ID
   paymentAllocations: [PurchasePaymentInput!]
 }
+
 input UpdatePurchaseInput {
   purchaseId: ID!
   baseRevision: Int!
   patch: PurchasePatch!
   changedFields: [String!]!
 }
+
 input UpdatePurchaseItemInput {
   itemId: ID!
   baseRevision: Int!
@@ -482,30 +541,36 @@ input UpdatePurchaseItemInput {
   allocations: [AllocationInput!]
   changedFields: [String!]!
 }
+
 input PurchaseItemTargetInput {
   itemId: ID!
   baseRevision: Int!
 }
+
 input BulkPurchaseItemPatch {
   categoryId: ID
   productVariantId: ID
   allocations: [AllocationInput!]
   tagIds: [ID!]
 }
+
 input BulkUpdatePurchaseItemsInput {
   targets: [PurchaseItemTargetInput!]!
   patch: BulkPurchaseItemPatch!
   changedFields: [String!]!
 }
+
 input CreateTagInput {
   householdId: ID!
   name: String!
 }
+
 input UpdateTagInput {
   tagId: ID!
   baseRevision: Int!
   name: String!
 }
+
 input SetBudgetInput {
   householdId: ID!
   budgetId: ID
@@ -516,6 +581,7 @@ input SetBudgetInput {
   startsOn: String!
   endsOn: String
 }
+
 input SetRecurringExpenseInput {
   householdId: ID!
   expenseId: ID
@@ -530,6 +596,7 @@ input SetRecurringExpenseInput {
   nextDueOn: String!
   endsOn: String
 }
+
 input RecordAccountMovementInput {
   householdId: ID!
   kind: AccountMovementKind!
@@ -540,6 +607,7 @@ input RecordAccountMovementInput {
   description: String!
   idempotencyKey: String!
 }
+
 input RecordExternalIncomeInput {
   householdId: ID!
   accountId: ID!
@@ -548,11 +616,13 @@ input RecordExternalIncomeInput {
   description: String!
   idempotencyKey: String!
 }
+
 input CreateProductConceptInput {
   householdId: ID!
   name: String!
   categoryId: ID
 }
+
 input CreateProductVariantInput {
   householdId: ID!
   conceptId: ID!
@@ -561,29 +631,35 @@ input CreateProductVariantInput {
   packageSize: String
   barcode: String
 }
+
 input SetProductAliasInput {
   householdId: ID!
   variantId: ID!
   merchant: String!
   alias: String!
 }
+
 input CreateHouseholdInput {
   name: String!
   memberNames: [String!]!
 }
+
 input CreateHouseholdInvitationInput {
   householdId: ID!
   expiresAt: String!
 }
+
 input CreatePoolInput {
   householdId: ID!
   name: String!
   kind: PoolKind!
 }
+
 input PoolFundingShareInput {
   memberId: ID!
   weight: Long!
 }
+
 input SetPoolFundingRuleInput {
   householdId: ID!
   poolId: ID!
@@ -592,6 +668,7 @@ input SetPoolFundingRuleInput {
   settlementPolicy: SharedPoolSettlementPolicy
   expectedVersion: Int!
 }
+
 input CreateAccountInput {
   householdId: ID!
   name: String!
@@ -600,15 +677,18 @@ input CreateAccountInput {
   openingBalanceYen: Long
   openingBalanceAt: String
 }
+
 input CreateCategoryInput {
   householdId: ID!
   name: String!
   parentId: ID
 }
+
 input SetDefaultAllocationInput {
   householdId: ID!
   allocations: [AllocationInput!]!
 }
+
 input SetAllocationRuleInput {
   householdId: ID!
   categoryId: ID
@@ -617,6 +697,7 @@ input SetAllocationRuleInput {
   productVariantId: ID
   allocations: [AllocationInput!]!
 }
+
 input RecordFundingInput {
   householdId: ID!
   memberId: ID!
@@ -627,6 +708,7 @@ input RecordFundingInput {
   sourceAccountId: ID
   destinationAccountId: ID
 }
+
 input RecordTransferInput {
   householdId: ID!
   fromMemberId: ID!
@@ -640,6 +722,7 @@ input RecordTransferInput {
   description: String!
   idempotencyKey: String!
 }
+
 input SetFundingScheduleInput {
   householdId: ID!
   memberId: ID!
@@ -649,11 +732,13 @@ input SetFundingScheduleInput {
   startsOn: String!
   endsOn: String
 }
+
 input ClosePeriodInput {
   householdId: ID!
   period: String!
   expectedRevision: Int!
 }
+
 input CorrectPurchaseInput {
   householdId: ID!
   purchaseId: ID!
@@ -697,6 +782,7 @@ type Query {
   accountBalanceAnalysis(householdId: ID!, accountId: ID!, from: String!, to: String!): AccountBalanceAnalysis!
   accountIncomes(householdId: ID!, first: Int = 50): [AccountIncome!]!
 }
+
 type Mutation {
   createHousehold(input: CreateHouseholdInput!): Household!
   createHouseholdInvitation(input: CreateHouseholdInvitationInput!): CreatedHouseholdInvitation!
