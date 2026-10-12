@@ -17,4 +17,4 @@ sql:
   dialect: psql
   driver: github.com/jackc/pgx/v5/stdlib
   pattern: migrations/*.sql
-  uuid_pkg: std
+  uuid_pkg: gofrs
