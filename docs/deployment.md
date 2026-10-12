@@ -29,13 +29,13 @@ Blackbox exporterは`https://horse.walnuts.dev/healthz`を30秒間隔で確認�
 
 ## Gemini APIの課金
 
-Gemini APIは無料用と有料用のGoogle Cloud Projectを分け、無料ProjectにはBilling Accountをリンクしません。有料ProjectにはTerraform管理のSpendCapを設定し、Gemini API serviceだけを月500円に制限します。SpendCapは50%、80%、100%でProject Ownersへ通知します。Billing Account administratorsとProject Ownersへの300円到達通知は別のalerts-only Budgetで管理します。
+Gemini APIは無料用と有料用のGoogle Cloud Projectを分け、無料ProjectにはBilling Accountをリンクしません。有料ProjectにはTerraform管理のSpendCapを設定し、Gemini API serviceだけを月500円に制限します。SpendCapは250円、400円、500円の到達時にBilling AccountのAdministratorとUser、およびProject Ownersへ通知します。同じProject、service、予算期間を対象とするalerts-only Budgetが存在するとSpendCapを作成できないため、300円の別Budgetは作成しません。
 予算期間は[Cloud BillingのUTC-8の暦月](https://docs.cloud.google.com/billing/docs/reference/budget/rest/v1/billingAccounts.budgets)を基準にし、SpendCapで保留したジョブは翌月初の切替後に再試行します。
 月初日は解除の反映が遅れた場合に1時間後へ保留し直します。
 
 Google Cloud Free TrialのWelcome creditはGemini APIとAI Studioの利用料に適用されません。Gemini APIのPaid Tierを有効にするにはAI Studioで有料Projectの状態を確認し、Billing Accountのlink後に必要なPrepay設定を完了する必要があります。新規ユーザーはPrepayの利用を求められる場合があり、その場合のcredits購入や支払設定は運用者がAI Studioで行います。TerraformはPrepay購入や自動reloadを設定しません。
 
-2026年10月12日のHCP Terraform実行[`run-25fQB7YJd6NaMdDa`](https://app.terraform.io/app/walnuts-dev/workspaces/infra/runs/run-25fQB7YJd6NaMdDa)では、300円の警告予算の更新が成功し、500円のSpendCap作成だけがGoogle APIの`400 FAILED_PRECONDITION`で失敗しました。予算APIの認証はapplyフェーズの短期トークンを使用し、予算更新のupdateMaskから変更できないbudgetFilterを除外しています。AI Studioでは有料Projectが「無料トライアル」「前払いが必要」と表示されていますが、APIの応答は前提条件の詳細を返していないため、この表示だけで失敗原因を断定できません。SpendCap、有料APIキー、AI専用Secretの作成完了は未確認です。[Googleの請求手順](https://ai.google.dev/gemini-api/docs/billing/)に従って運用者が必要な請求設定を完了した後、Terraformを再実行し、SpendCapの作成と状態を確認してください。
+2026年10月12日のSpendCap作成では、同じscopeの300円alerts-only Budgetが存在するため、Google Cloud ConsoleとAPIがSpendCap作成を拒否しました。運用者はそのBudgetを削除し、Terraformで500円SpendCapだけを管理します。削除後にSpendCapの作成、金額、Gemini API serviceのfilter、通知先を確認するまで、有料APIキーの発行とGemini API呼び出しを行いません。予算APIの認証はapplyフェーズの短期トークンを使用し、予算更新のupdateMaskから変更できないbudgetFilterを除外します。[Googleの請求手順](https://ai.google.dev/gemini-api/docs/billing/)に従って運用者が必要な請求設定を完了した後、Terraformを再実行し、SpendCapの作成と状態を確認してください。
 
 SpendCapは請求の見積り遅延を伴い、適用は即時ではありません。Googleの公式説明では請求データ処理に約10分の遅れが発生する場合があり、上限を超えた請求が発生する可能性があります。SpendCapは超過を完全には保証しないため、Workerは`GEMINI_ENABLED=false`の状態を維持し、運用者がBilling状態、SpendCap、AI StudioのPaid Tierを確認した後でのみ有効化します。
 
