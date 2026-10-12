@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 import {
   budgetsQuery,
   monthlyCategorySpendingQuery,
+  recurringExpensesQuery,
   readGraphql,
   type Household,
   type Budget,
   type Purchase,
+  type RecurringExpense,
 } from "../../../shared/api";
 import { useHouseholdPurchases } from "../../../shared/api";
 import { InlineError } from "../../../shared/ui";
@@ -38,7 +40,7 @@ const nextMonth = (month: string) => {
   return `${Math.floor(serial / 12)}-${String((serial % 12) + 1).padStart(2, "0")}`;
 };
 
-type Dimension = "category" | "merchant" | "item" | "pool" | "account";
+type Dimension = "category" | "merchant" | "item" | "pool" | "account" | "member";
 type AnalyticsRow = { id: string; name: string; amount: number; count: number };
 type MonthlyEntry = { month: string; id: string; amount: number };
 
@@ -48,12 +50,14 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
     item: new Map(),
     pool: new Map(),
     account: new Map(),
+    member: new Map(),
   };
   const monthly: Record<Exclude<Dimension, "category">, MonthlyEntry[]> = {
     merchant: [],
     item: [],
     pool: [],
     account: [],
+    member: [],
   };
   const add = (
     dimension: Exclude<Dimension, "category">,
@@ -68,7 +72,30 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
     rows[dimension].set(id, row);
     monthly[dimension].push({ month, id, amount });
   };
+  const addMemberAmount = (poolId: string, amount: number, month: string) => {
+    const pool = household.pools.find((candidate) => candidate.id === poolId);
+    if (pool?.kind === "PERSONAL" && pool.ownerMemberId) {
+      const member = household.members.find((candidate) => candidate.id === pool.ownerMemberId);
+      add("member", pool.ownerMemberId, member?.displayName ?? "メンバー", amount, month);
+      return;
+    }
+    if (pool?.kind === "SHARED" && pool.fundingShares.length > 0) {
+      const weightTotal = sum(pool.fundingShares.map((share) => share.weight));
+      let distributed = 0;
+      pool.fundingShares.forEach((share, index) => {
+        const memberAmount =
+          index === pool.fundingShares.length - 1
+            ? amount - distributed
+            : Math.round((amount * share.weight) / Math.max(1, weightTotal));
+        distributed += memberAmount;
+        add("member", share.memberId, share.memberName, memberAmount, month);
+      });
+      return;
+    }
+    add("member", "__unassigned", "配賦未設定", amount, month);
+  };
   for (const purchase of purchases) {
+    if (purchase.status !== "POSTED" && purchase.status !== "CLOSED") continue;
     const month = japanMonth(new Date(purchase.occurredAt));
     add(
       "merchant",
@@ -79,6 +106,9 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
     );
     for (const item of purchase.items) {
       add("item", item.productVariantId ?? item.name, item.name, item.amountYen, month);
+      if (item.allocations.length === 0) {
+        add("member", "__unassigned", "配賦未設定", item.amountYen, month);
+      }
       for (const allocation of item.allocations) {
         const pool = household.pools.find((candidate) => candidate.id === allocation.poolId);
         const amount =
@@ -94,7 +124,27 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
           amount,
           month,
         );
+        addMemberAmount(allocation.poolId, amount, month);
       }
+    }
+    const itemsById = new Map(purchase.items.map((item) => [item.id, item]));
+    for (const correction of purchase.corrections ?? []) {
+      if (!correction.itemId) continue;
+      const item = itemsById.get(correction.itemId);
+      if (!item) continue;
+      const allocations = item.allocations;
+      const weightTotal = sum(allocations.map((allocation) => allocation.weight));
+      let distributed = 0;
+      allocations.forEach((allocation, index) => {
+        const amount =
+          index === allocations.length - 1
+            ? correction.amountDeltaYen - distributed
+            : Math.round(
+                (correction.amountDeltaYen * allocation.weight) / Math.max(1, weightTotal),
+              );
+        distributed += amount;
+        addMemberAmount(allocation.poolId, amount, month);
+      });
     }
     const payments = purchase.paymentAllocations?.length
       ? purchase.paymentAllocations
@@ -113,11 +163,16 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
 
 export function AnalysisPage({ household }: { household: Household }) {
   const [periodLength, setPeriodLength] = useState(6);
+  const [annual, setAnnual] = useState(false);
+  const [annualYear, setAnnualYear] = useState(Number(japanMonth(new Date()).slice(0, 4)));
   const [dimension, setDimension] = useState<Dimension>("category");
   const currentMonth = japanMonth(new Date());
-  const months = monthRange(currentMonth, periodLength);
+  const months = annual
+    ? monthRange(`${annualYear}-12`, 12)
+    : monthRange(currentMonth, periodLength);
+  const finalMonth = months[months.length - 1];
   const from = `${months[0]}-01T00:00:00+09:00`;
-  const to = `${nextMonth(currentMonth)}-01T00:00:00+09:00`;
+  const to = `${nextMonth(finalMonth)}-01T00:00:00+09:00`;
   const { purchases, loading, loadingMore, error, moreError } = useHouseholdPurchases(
     household.id,
     100,
@@ -139,6 +194,8 @@ export function AnalysisPage({ household }: { household: Household }) {
   const [spendingError, setSpendingError] = useState("");
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [budgetError, setBudgetError] = useState("");
+  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
+  const [recurringError, setRecurringError] = useState("");
   useEffect(() => {
     let active = true;
     setSpendingLoading(true);
@@ -146,7 +203,7 @@ export function AnalysisPage({ household }: { household: Household }) {
     void readGraphql<{ monthlyCategorySpending: typeof spending }>(monthlyCategorySpendingQuery, {
       householdId: household.id,
       from: months[0],
-      to: currentMonth,
+      to: finalMonth,
     })
       .then((result) => active && setSpending(result.monthlyCategorySpending))
       .catch((reason) => active && setSpendingError((reason as Error).message))
@@ -154,7 +211,7 @@ export function AnalysisPage({ household }: { household: Household }) {
     return () => {
       active = false;
     };
-  }, [household.id, months[0], currentMonth]);
+  }, [household.id, months[0], finalMonth]);
   useEffect(() => {
     let active = true;
     setBudgetError("");
@@ -168,6 +225,19 @@ export function AnalysisPage({ household }: { household: Household }) {
       active = false;
     };
   }, [household.id, currentMonth]);
+  useEffect(() => {
+    let active = true;
+    setRecurringError("");
+    void readGraphql<{ recurringExpenses: RecurringExpense[] }>(recurringExpensesQuery, {
+      householdId: household.id,
+      includeArchived: false,
+    })
+      .then((result) => active && setRecurringExpenses(result.recurringExpenses))
+      .catch((reason) => active && setRecurringError((reason as Error).message));
+    return () => {
+      active = false;
+    };
+  }, [household.id]);
 
   const data = purchaseDimensions(purchases, household);
   const categories = Array.from(
@@ -201,6 +271,7 @@ export function AnalysisPage({ household }: { household: Household }) {
           ),
   }));
   const total = sum(monthly.map((row) => row.amount));
+  const displayedPeriodCount = months.length;
   const max = Math.max(...monthly.map((row) => row.amount), 1);
   const peakRow = rows[0];
   const labels: Record<Dimension, string> = {
@@ -209,9 +280,26 @@ export function AnalysisPage({ household }: { household: Household }) {
     item: "品目",
     pool: "負担先",
     account: "決済元",
+    member: "メンバー負担",
   };
   const isLoading = loading || loadingMore || spendingLoading;
-  const loadError = error || moreError || spendingError || budgetError;
+  const loadError = error || moreError || spendingError || budgetError || recurringError;
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const activeRecurringExpenses = recurringExpenses.filter(
+    (expense) => expense.startsOn <= today && (!expense.endsOn || expense.endsOn >= today),
+  );
+  const recurringMonthlyAmount = sum(
+    activeRecurringExpenses.map((expense) => {
+      if (expense.cadence === "WEEKLY") return Math.round((expense.amountYen * 52) / 12);
+      if (expense.cadence === "YEARLY") return Math.round(expense.amountYen / 12);
+      return expense.amountYen;
+    }),
+  );
 
   return (
     <>
@@ -224,14 +312,36 @@ export function AnalysisPage({ household }: { household: Household }) {
           <label className="select-filter">
             <span>期間</span>
             <select
-              value={periodLength}
-              onChange={(event) => setPeriodLength(Number(event.target.value))}
+              value={annual ? "annual" : periodLength}
+              onChange={(event) => {
+                setAnnual(event.target.value === "annual");
+                if (event.target.value !== "annual") setPeriodLength(Number(event.target.value));
+              }}
             >
+              <option value="annual">年次</option>
               <option value={3}>3か月</option>
               <option value={6}>6か月</option>
               <option value={12}>12か月</option>
             </select>
           </label>
+          {annual && (
+            <label className="select-filter">
+              <span>年</span>
+              <select
+                value={annualYear}
+                onChange={(event) => setAnnualYear(Number(event.target.value))}
+              >
+                {Array.from(
+                  { length: 10 },
+                  (_, index) => Number(currentMonth.slice(0, 4)) - index,
+                ).map((year) => (
+                  <option value={year} key={year}>
+                    {year}年
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="select-filter">
             <span>集計</span>
             <select
@@ -252,12 +362,12 @@ export function AnalysisPage({ household }: { household: Household }) {
         <section className="panel summary-card">
           <span className="eyebrow">期間合計</span>
           <h2>{yen(total)}</h2>
-          <small>{periodLength}か月</small>
+          <small>{annual ? `${annualYear}年` : `${displayedPeriodCount}か月`}</small>
         </section>
         <section className="panel summary-card">
           <span className="eyebrow">月平均</span>
-          <h2>{yen(Math.round(total / periodLength))}</h2>
-          <small>{periodLength}か月</small>
+          <h2>{yen(Math.round(total / displayedPeriodCount))}</h2>
+          <small>{displayedPeriodCount}か月</small>
         </section>
         <section className="panel summary-card">
           <span className="eyebrow">最多の{labels[dimension]}</span>
@@ -300,12 +410,44 @@ export function AnalysisPage({ household }: { household: Household }) {
           })}
         </section>
       )}
+      <section className="panel analysis-budget-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">定期支出</span>
+            <h2>月額換算 {yen(recurringMonthlyAmount)}</h2>
+          </div>
+        </div>
+        {activeRecurringExpenses.length === 0 ? (
+          <div className="empty-state compact">
+            <BarChart3 />
+            <span>定期支出の記録</span>
+          </div>
+        ) : (
+          activeRecurringExpenses.map((expense) => (
+            <div className="analysis-budget-row" key={expense.id}>
+              <div>
+                <b>{expense.name}</b>
+                <small>{expense.merchant || expense.cadence}</small>
+              </div>
+              <strong>{yen(expense.amountYen)}</strong>
+              <small>
+                {expense.cadence === "WEEKLY"
+                  ? "毎週"
+                  : expense.cadence === "YEARLY"
+                    ? "毎年"
+                    : "毎月"}
+              </small>
+            </div>
+          ))
+        )}
+      </section>
       <div className="analysis-grid">
         <section className="panel analysis-chart-panel">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">月別推移</span>
               <h2>{labels[dimension]}の支出</h2>
+              {dimension === "member" && <small>共用分は現在の負担比率で按分</small>}
             </div>
             <span className="chart-legend">
               <i />
