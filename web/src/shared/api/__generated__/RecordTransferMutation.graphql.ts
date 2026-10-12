@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<667920e97a7c47ad95f52c3add7182ff>>
+ * @generated SignedSource<<169c84a00304add5bd347fc356165c2d>>
  * @lightSyntaxTransform
  */
 
@@ -10,7 +10,7 @@
 import type { ConcreteRequest } from 'relay-runtime';
 import type { FragmentRefs } from "relay-runtime";
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type TransferKind = "ADVANCE" | "GIFT" | "LOAN" | "REPAYMENT" | "%future added value";
+export type TransferInputKind = "ADVANCE" | "GIFT" | "LOAN" | "%future added value";
 export type RecordTransferInput = {
   amountYen: any;
   description: string;
@@ -18,8 +18,7 @@ export type RecordTransferInput = {
   fromMemberId: string;
   householdId: string;
   idempotencyKey: string;
-  kind: TransferKind;
-  loanId?: string | null | undefined;
+  kind: TransferInputKind;
   occurredAt: string;
   paymentAccountId?: string | null | undefined;
   toMemberId: string;

@@ -2543,7 +2543,39 @@ func loadLedgerEntry(ctx context.Context, db *pgxpool.Pool, entryID string) (*mo
 	return result, nil
 }
 
+type transferCommand struct {
+	HouseholdID          string             `json:"householdId"`
+	FromMemberID         string             `json:"fromMemberId"`
+	ToMemberID           string             `json:"toMemberId"`
+	Kind                 model.TransferKind `json:"kind"`
+	LoanID               *string            `json:"loanId,omitempty"`
+	PaymentAccountID     *string            `json:"paymentAccountId,omitempty"`
+	DestinationAccountID *string            `json:"destinationAccountId,omitempty"`
+	AmountYen            model.Long         `json:"amountYen"`
+	OccurredAt           string             `json:"occurredAt"`
+	Description          string             `json:"description"`
+	IdempotencyKey       string             `json:"idempotencyKey"`
+}
+
 func (r *mutationResolver) recordTransfer(ctx context.Context, input model.RecordTransferInput) (*model.LedgerEntryData, error) {
+	return r.recordTransferCommand(ctx, transferCommand{
+		HouseholdID: input.HouseholdID, FromMemberID: input.FromMemberID, ToMemberID: input.ToMemberID,
+		Kind: model.TransferKind(input.Kind), PaymentAccountID: input.PaymentAccountID,
+		DestinationAccountID: input.DestinationAccountID, AmountYen: input.AmountYen,
+		OccurredAt: input.OccurredAt, Description: input.Description, IdempotencyKey: input.IdempotencyKey,
+	})
+}
+
+func (r *mutationResolver) recordRepayment(ctx context.Context, input model.RecordRepaymentInput) (*model.LedgerEntryData, error) {
+	return r.recordTransferCommand(ctx, transferCommand{
+		HouseholdID: input.HouseholdID, FromMemberID: input.FromMemberID, ToMemberID: input.ToMemberID,
+		Kind: model.TransferKindRepayment, LoanID: &input.LoanID, PaymentAccountID: input.PaymentAccountID,
+		DestinationAccountID: input.DestinationAccountID, AmountYen: input.AmountYen,
+		OccurredAt: input.OccurredAt, Description: input.Description, IdempotencyKey: input.IdempotencyKey,
+	})
+}
+
+func (r *mutationResolver) recordTransferCommand(ctx context.Context, input transferCommand) (*model.LedgerEntryData, error) {
 	user, err := requireMember(ctx, r.DB, input.HouseholdID)
 	if err != nil {
 		return nil, err

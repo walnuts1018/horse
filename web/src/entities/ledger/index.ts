@@ -9,4 +9,5 @@ export {
   recordExternalIncomeMutation,
   recordFundingMutation,
   recordTransferMutation,
+  recordRepaymentMutation,
 } from "./api/operations";

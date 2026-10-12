@@ -12,8 +12,7 @@ input RecordTransferInput {
   householdId: ID! @nodeID(of: "Household")
   fromMemberId: ID! @nodeID(of: "Member")
   toMemberId: ID! @nodeID(of: "Member")
-  kind: TransferKind!
-  loanId: ID
+  kind: TransferInputKind!
   paymentAccountId: ID @nodeID(of: "Account")
   destinationAccountId: ID @nodeID(of: "Account")
   amountYen: Long!
@@ -22,3 +21,8 @@ input RecordTransferInput {
   idempotencyKey: String!
 }
 
+enum TransferInputKind {
+  ADVANCE
+  LOAN
+  GIFT
+}

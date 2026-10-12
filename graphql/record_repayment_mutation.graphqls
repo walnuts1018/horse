@@ -1,0 +1,22 @@
+extend type Mutation {
+  recordRepayment(input: RecordRepaymentInput!): RecordRepaymentResult!
+}
+
+union RecordRepaymentResult = RecordRepaymentSuccess | MutationError
+
+type RecordRepaymentSuccess {
+  result: LedgerEntry!
+}
+
+input RecordRepaymentInput {
+  householdId: ID! @nodeID(of: "Household")
+  fromMemberId: ID! @nodeID(of: "Member")
+  toMemberId: ID! @nodeID(of: "Member")
+  loanId: ID!
+  paymentAccountId: ID @nodeID(of: "Account")
+  destinationAccountId: ID @nodeID(of: "Account")
+  amountYen: Long!
+  occurredAt: String!
+  description: String!
+  idempotencyKey: String!
+}

@@ -778,7 +778,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	loan, err := resolver.recordTransfer(ctx, model.RecordTransferInput{
-		HouseholdID: household.ID, FromMemberID: memberA, ToMemberID: memberB, Kind: model.TransferKindLoan,
+		HouseholdID: household.ID, FromMemberID: memberA, ToMemberID: memberB, Kind: model.TransferInputKindLoan,
 		PaymentAccountID: &lenderAccount.ID, DestinationAccountID: &borrowerAccount.ID,
 		AmountYen: 5000, OccurredAt: "2026-06-10T12:00:00Z", Description: "Loan", IdempotencyKey: uuid.NewV7().String(),
 	})
@@ -792,9 +792,9 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	repayment, err := resolver.recordTransfer(ctx, model.RecordTransferInput{
-		HouseholdID: household.ID, FromMemberID: memberB, ToMemberID: memberA, Kind: model.TransferKindRepayment,
-		LoanID: loan.TransferID, PaymentAccountID: &sharedAccount.ID, DestinationAccountID: &lenderAccount.ID, AmountYen: 5000,
+	repayment, err := resolver.recordRepayment(ctx, model.RecordRepaymentInput{
+		HouseholdID: household.ID, FromMemberID: memberB, ToMemberID: memberA,
+		LoanID: *loan.TransferID, PaymentAccountID: &sharedAccount.ID, DestinationAccountID: &lenderAccount.ID, AmountYen: 5000,
 		OccurredAt: "2026-06-13T12:00:00Z", Description: "Shared repayment", IdempotencyKey: uuid.NewV7().String(),
 	})
 	if err != nil || repayment.TransferID == nil {

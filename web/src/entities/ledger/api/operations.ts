@@ -65,6 +65,23 @@ export const recordTransferMutation = graphql`
   }
 `;
 
+export const recordRepaymentMutation = graphql`
+  mutation RecordRepaymentMutation($input: RecordRepaymentInput!) {
+    recordRepayment(input: $input) {
+      __typename
+      ... on RecordRepaymentSuccess {
+        result {
+          ...LedgerEntryFields
+        }
+      }
+      ... on MutationError {
+        code
+        message
+      }
+    }
+  }
+`;
+
 export const accountMovementsQuery = graphql`
   query AccountMovementsQuery($householdId: ID!, $first: Int, $after: String) {
     accountMovements(householdId: $householdId, first: $first, after: $after) {

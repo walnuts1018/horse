@@ -105,6 +105,10 @@ type RecordFundingResult interface {
 	IsRecordFundingResult()
 }
 
+type RecordRepaymentResult interface {
+	IsRecordRepaymentResult()
+}
+
 type RecordTransferResult interface {
 	IsRecordTransferResult()
 }
@@ -678,6 +682,8 @@ func (MutationError) IsRecordExternalIncomeResult() {}
 
 func (MutationError) IsRecordFundingResult() {}
 
+func (MutationError) IsRecordRepaymentResult() {}
+
 func (MutationError) IsRecordTransferResult() {}
 
 func (MutationError) IsRevokeHouseholdInvitationResult() {}
@@ -980,18 +986,36 @@ type RecordFundingSuccess struct {
 
 func (RecordFundingSuccess) IsRecordFundingResult() {}
 
+type RecordRepaymentInput struct {
+	HouseholdID          string  `json:"householdId"`
+	FromMemberID         string  `json:"fromMemberId"`
+	ToMemberID           string  `json:"toMemberId"`
+	LoanID               string  `json:"loanId"`
+	PaymentAccountID     *string `json:"paymentAccountId,omitempty"`
+	DestinationAccountID *string `json:"destinationAccountId,omitempty"`
+	AmountYen            Long    `json:"amountYen"`
+	OccurredAt           string  `json:"occurredAt"`
+	Description          string  `json:"description"`
+	IdempotencyKey       string  `json:"idempotencyKey"`
+}
+
+type RecordRepaymentSuccess struct {
+	Result LedgerEntry `json:"result"`
+}
+
+func (RecordRepaymentSuccess) IsRecordRepaymentResult() {}
+
 type RecordTransferInput struct {
-	HouseholdID          string       `json:"householdId"`
-	FromMemberID         string       `json:"fromMemberId"`
-	ToMemberID           string       `json:"toMemberId"`
-	Kind                 TransferKind `json:"kind"`
-	LoanID               *string      `json:"loanId,omitempty"`
-	PaymentAccountID     *string      `json:"paymentAccountId,omitempty"`
-	DestinationAccountID *string      `json:"destinationAccountId,omitempty"`
-	AmountYen            Long         `json:"amountYen"`
-	OccurredAt           string       `json:"occurredAt"`
-	Description          string       `json:"description"`
-	IdempotencyKey       string       `json:"idempotencyKey"`
+	HouseholdID          string            `json:"householdId"`
+	FromMemberID         string            `json:"fromMemberId"`
+	ToMemberID           string            `json:"toMemberId"`
+	Kind                 TransferInputKind `json:"kind"`
+	PaymentAccountID     *string           `json:"paymentAccountId,omitempty"`
+	DestinationAccountID *string           `json:"destinationAccountId,omitempty"`
+	AmountYen            Long              `json:"amountYen"`
+	OccurredAt           string            `json:"occurredAt"`
+	Description          string            `json:"description"`
+	IdempotencyKey       string            `json:"idempotencyKey"`
 }
 
 type RecordTransferSuccess struct {
@@ -1951,6 +1975,63 @@ func (e *SourceKind) UnmarshalJSON(b []byte) error {
 }
 
 func (e SourceKind) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type TransferInputKind string
+
+const (
+	TransferInputKindAdvance TransferInputKind = "ADVANCE"
+	TransferInputKindLoan    TransferInputKind = "LOAN"
+	TransferInputKindGift    TransferInputKind = "GIFT"
+)
+
+var AllTransferInputKind = []TransferInputKind{
+	TransferInputKindAdvance,
+	TransferInputKindLoan,
+	TransferInputKindGift,
+}
+
+func (e TransferInputKind) IsValid() bool {
+	switch e {
+	case TransferInputKindAdvance, TransferInputKindLoan, TransferInputKindGift:
+		return true
+	}
+	return false
+}
+
+func (e TransferInputKind) String() string {
+	return string(e)
+}
+
+func (e *TransferInputKind) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = TransferInputKind(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid TransferInputKind", str)
+	}
+	return nil
+}
+
+func (e TransferInputKind) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *TransferInputKind) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e TransferInputKind) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

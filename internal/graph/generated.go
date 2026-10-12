@@ -373,6 +373,7 @@ type ComplexityRoot struct {
 		RecordAccountMovement     func(childComplexity int, input model.RecordAccountMovementInput) int
 		RecordExternalIncome      func(childComplexity int, input model.RecordExternalIncomeInput) int
 		RecordFunding             func(childComplexity int, input model.RecordFundingInput) int
+		RecordRepayment           func(childComplexity int, input model.RecordRepaymentInput) int
 		RecordTransfer            func(childComplexity int, input model.RecordTransferInput) int
 		RevokeHouseholdInvitation func(childComplexity int, householdID string, invitationID string) int
 		SetAllocationRule         func(childComplexity int, input model.SetAllocationRuleInput) int
@@ -581,6 +582,10 @@ type ComplexityRoot struct {
 	}
 
 	RecordFundingSuccess struct {
+		Result func(childComplexity int) int
+	}
+
+	RecordRepaymentSuccess struct {
 		Result func(childComplexity int) int
 	}
 
@@ -814,6 +819,7 @@ type MutationResolver interface {
 	RecordAccountMovement(ctx context.Context, input model.RecordAccountMovementInput) (model.RecordAccountMovementResult, error)
 	RecordExternalIncome(ctx context.Context, input model.RecordExternalIncomeInput) (model.RecordExternalIncomeResult, error)
 	RecordFunding(ctx context.Context, input model.RecordFundingInput) (model.RecordFundingResult, error)
+	RecordRepayment(ctx context.Context, input model.RecordRepaymentInput) (model.RecordRepaymentResult, error)
 	RecordTransfer(ctx context.Context, input model.RecordTransferInput) (model.RecordTransferResult, error)
 	RevokeHouseholdInvitation(ctx context.Context, householdID string, invitationID string) (model.RevokeHouseholdInvitationResult, error)
 	SetAllocationRule(ctx context.Context, input model.SetAllocationRuleInput) (model.SetAllocationRuleResult, error)
@@ -2137,6 +2143,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RecordFunding(childComplexity, args["input"].(model.RecordFundingInput)), true
+	case "Mutation.recordRepayment":
+		if e.ComplexityRoot.Mutation.RecordRepayment == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_recordRepayment_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.RecordRepayment(childComplexity, args["input"].(model.RecordRepaymentInput)), true
 	case "Mutation.recordTransfer":
 		if e.ComplexityRoot.Mutation.RecordTransfer == nil {
 			break
@@ -3194,6 +3211,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.RecordFundingSuccess.Result(childComplexity), true
 
+	case "RecordRepaymentSuccess.result":
+		if e.ComplexityRoot.RecordRepaymentSuccess.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecordRepaymentSuccess.Result(childComplexity), true
+
 	case "RecordTransferSuccess.result":
 		if e.ComplexityRoot.RecordTransferSuccess.Result == nil {
 			break
@@ -3708,6 +3732,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputRecordAccountMovementInput,
 		ec.unmarshalInputRecordExternalIncomeInput,
 		ec.unmarshalInputRecordFundingInput,
+		ec.unmarshalInputRecordRepaymentInput,
 		ec.unmarshalInputRecordTransferInput,
 		ec.unmarshalInputSetAllocationRuleInput,
 		ec.unmarshalInputSetBudgetInput,
@@ -4681,6 +4706,29 @@ input RecordFundingInput {
   destinationAccountId: ID @nodeID(of: "Account")
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/record_repayment_mutation.graphqls", Input: `extend type Mutation {
+  recordRepayment(input: RecordRepaymentInput!): RecordRepaymentResult!
+}
+
+union RecordRepaymentResult = RecordRepaymentSuccess | MutationError
+
+type RecordRepaymentSuccess {
+  result: LedgerEntry!
+}
+
+input RecordRepaymentInput {
+  householdId: ID! @nodeID(of: "Household")
+  fromMemberId: ID! @nodeID(of: "Member")
+  toMemberId: ID! @nodeID(of: "Member")
+  loanId: ID!
+  paymentAccountId: ID @nodeID(of: "Account")
+  destinationAccountId: ID @nodeID(of: "Account")
+  amountYen: Long!
+  occurredAt: String!
+  description: String!
+  idempotencyKey: String!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/record_transfer_mutation.graphqls", Input: `extend type Mutation {
   recordTransfer(input: RecordTransferInput!): RecordTransferResult!
 }
@@ -4695,8 +4743,7 @@ input RecordTransferInput {
   householdId: ID! @nodeID(of: "Household")
   fromMemberId: ID! @nodeID(of: "Member")
   toMemberId: ID! @nodeID(of: "Member")
-  kind: TransferKind!
-  loanId: ID
+  kind: TransferInputKind!
   paymentAccountId: ID @nodeID(of: "Account")
   destinationAccountId: ID @nodeID(of: "Account")
   amountYen: Long!
@@ -4704,6 +4751,13 @@ input RecordTransferInput {
   description: String!
   idempotencyKey: String!
 }
+
+enum TransferInputKind {
+  ADVANCE
+  LOAN
+  GIFT
+}
+
 
 `, BuiltIn: false},
 	{Name: "../../graphql/recurring_expense.graphqls", Input: `type RecurringExpense implements Node {
@@ -6580,6 +6634,20 @@ func (ec *executionContext) field_Mutation_recordFunding_args(ctx context.Contex
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.RecordFundingInput, error) {
 			return ec.unmarshalNRecordFundingInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordFundingInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_recordRepayment_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.RecordRepaymentInput, error) {
+			return ec.unmarshalNRecordRepaymentInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordRepaymentInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -13335,6 +13403,50 @@ func (ec *executionContext) fieldContext_Mutation_recordFunding(ctx context.Cont
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_recordRepayment(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_recordRepayment(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().RecordRepayment(ctx, fc.Args["input"].(model.RecordRepaymentInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.RecordRepaymentResult) graphql.Marshaler {
+			return ec.marshalNRecordRepaymentResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordRepaymentResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_recordRepayment(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type RecordRepaymentResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_recordRepayment_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_recordTransfer(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -17659,6 +17771,38 @@ func (ec *executionContext) _RecordFundingSuccess_result(ctx context.Context, fi
 func (ec *executionContext) fieldContext_RecordFundingSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "RecordFundingSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RecordRepaymentSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.RecordRepaymentSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecordRepaymentSuccess_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.LedgerEntry) graphql.Marshaler {
+			return ec.marshalNLedgerEntry2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLedgerEntry(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecordRepaymentSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RecordRepaymentSuccess",
 		Field:      field,
 		IsMethod:   false,
 		IsResolver: false,
@@ -22819,6 +22963,203 @@ func (ec *executionContext) unmarshalInputRecordFundingInput(ctx context.Context
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputRecordRepaymentInput(ctx context.Context, obj any) (model.RecordRepaymentInput, error) {
+	var it model.RecordRepaymentInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId", "fromMemberId", "toMemberId", "loanId", "paymentAccountId", "destinationAccountId", "amountYen", "occurredAt", "description", "idempotencyKey"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Household")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.HouseholdID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "fromMemberId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("fromMemberId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Member")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.FromMemberID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "toMemberId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("toMemberId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Member")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.ToMemberID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "loanId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("loanId"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.LoanID = data
+		case "paymentAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal *string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal *string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(*string); ok {
+				it.PaymentAccountID = data
+			} else if tmp == nil {
+				it.PaymentAccountID = nil
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "destinationAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("destinationAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal *string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal *string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(*string); ok {
+				it.DestinationAccountID = data
+			} else if tmp == nil {
+				it.DestinationAccountID = nil
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "amountYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AmountYen = data
+		case "occurredAt":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.OccurredAt = data
+		case "description":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("description"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Description = data
+		case "idempotencyKey":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("idempotencyKey"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.IdempotencyKey = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputRecordTransferInput(ctx context.Context, obj any) (model.RecordTransferInput, error) {
 	var it model.RecordTransferInput
 	if obj == nil {
@@ -22830,7 +23171,7 @@ func (ec *executionContext) unmarshalInputRecordTransferInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "fromMemberId", "toMemberId", "kind", "loanId", "paymentAccountId", "destinationAccountId", "amountYen", "occurredAt", "description", "idempotencyKey"}
+	fieldsInOrder := [...]string{"householdId", "fromMemberId", "toMemberId", "kind", "paymentAccountId", "destinationAccountId", "amountYen", "occurredAt", "description", "idempotencyKey"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -22920,18 +23261,11 @@ func (ec *executionContext) unmarshalInputRecordTransferInput(ctx context.Contex
 			}
 		case "kind":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("kind"))
-			data, err := ec.unmarshalNTransferKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferKind(ctx, v)
+			data, err := ec.unmarshalNTransferInputKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferInputKind(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.Kind = data
-		case "loanId":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("loanId"))
-			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.LoanID = data
 		case "paymentAccountId":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
 			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
@@ -24981,6 +25315,33 @@ func (ec *executionContext) _RecordFundingResult(ctx context.Context, sel ast.Se
 			return typedObj
 		} else {
 			panic(fmt.Errorf("unexpected type %T; non-generated variants of RecordFundingResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _RecordRepaymentResult(ctx context.Context, sel ast.SelectionSet, obj model.RecordRepaymentResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.RecordRepaymentSuccess:
+		return ec._RecordRepaymentSuccess(ctx, sel, &obj)
+	case *model.RecordRepaymentSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RecordRepaymentSuccess(ctx, sel, obj)
+	case model.MutationError:
+		return ec._MutationError(ctx, sel, &obj)
+	case *model.MutationError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._MutationError(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of RecordRepaymentResult must implement graphql.Marshaler", obj))
 		}
 	}
 }
@@ -28658,6 +29019,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "recordRepayment":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_recordRepayment(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "recordTransfer":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_recordTransfer(ctx, field)
@@ -28770,7 +29138,7 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 	return out
 }
 
-var mutationErrorImplementors = []string{"MutationError", "AcceptHouseholdInvitationResult", "ArchiveBudgetResult", "ArchiveRecurringExpenseResult", "ArchiveTagResult", "BulkUpdatePurchaseItemsResult", "BulkUpdatePurchasesResult", "ClosePeriodResult", "CorrectPurchaseResult", "CreateAccountResult", "CreateCategoryResult", "CreateHouseholdInvitationResult", "CreateHouseholdResult", "CreatePoolResult", "CreateProductConceptResult", "CreateProductVariantResult", "CreatePurchaseResult", "CreateTagResult", "PostPurchaseResult", "RecordAccountMovementResult", "RecordExternalIncomeResult", "RecordFundingResult", "RecordTransferResult", "RevokeHouseholdInvitationResult", "SetAllocationRuleResult", "SetBudgetResult", "SetCategoryArchivedResult", "SetDefaultAllocationResult", "SetFundingScheduleResult", "SetPoolFundingRuleResult", "SetProductAliasResult", "SetRecurringExpenseResult", "UpdatePurchaseItemResult", "UpdatePurchaseResult", "UpdateTagResult"}
+var mutationErrorImplementors = []string{"MutationError", "AcceptHouseholdInvitationResult", "ArchiveBudgetResult", "ArchiveRecurringExpenseResult", "ArchiveTagResult", "BulkUpdatePurchaseItemsResult", "BulkUpdatePurchasesResult", "ClosePeriodResult", "CorrectPurchaseResult", "CreateAccountResult", "CreateCategoryResult", "CreateHouseholdInvitationResult", "CreateHouseholdResult", "CreatePoolResult", "CreateProductConceptResult", "CreateProductVariantResult", "CreatePurchaseResult", "CreateTagResult", "PostPurchaseResult", "RecordAccountMovementResult", "RecordExternalIncomeResult", "RecordFundingResult", "RecordRepaymentResult", "RecordTransferResult", "RevokeHouseholdInvitationResult", "SetAllocationRuleResult", "SetBudgetResult", "SetCategoryArchivedResult", "SetDefaultAllocationResult", "SetFundingScheduleResult", "SetPoolFundingRuleResult", "SetProductAliasResult", "SetRecurringExpenseResult", "UpdatePurchaseItemResult", "UpdatePurchaseResult", "UpdateTagResult"}
 
 func (ec *executionContext) _MutationError(ctx context.Context, sel ast.SelectionSet, obj *model.MutationError) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mutationErrorImplementors)
@@ -31212,6 +31580,44 @@ func (ec *executionContext) _RecordFundingSuccess(ctx context.Context, sel ast.S
 			out.Values[i] = graphql.MarshalString("RecordFundingSuccess")
 		case "result":
 			out.Values[i] = ec._RecordFundingSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var recordRepaymentSuccessImplementors = []string{"RecordRepaymentSuccess", "RecordRepaymentResult"}
+
+func (ec *executionContext) _RecordRepaymentSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.RecordRepaymentSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, recordRepaymentSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RecordRepaymentSuccess")
+		case "result":
+			out.Values[i] = ec._RecordRepaymentSuccess_result(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -34407,6 +34813,21 @@ func (ec *executionContext) marshalNRecordFundingResult2githubᚗcomᚋwalnuts10
 	return ec._RecordFundingResult(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNRecordRepaymentInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordRepaymentInput(ctx context.Context, v any) (model.RecordRepaymentInput, error) {
+	res, err := ec.unmarshalInputRecordRepaymentInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNRecordRepaymentResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordRepaymentResult(ctx context.Context, sel ast.SelectionSet, v model.RecordRepaymentResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._RecordRepaymentResult(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNRecordTransferInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordTransferInput(ctx context.Context, v any) (model.RecordTransferInput, error) {
 	res, err := ec.unmarshalInputRecordTransferInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -34728,6 +35149,16 @@ func (ec *executionContext) marshalNTag2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋ
 		return graphql.Null
 	}
 	return ec._Tag(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNTransferInputKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferInputKind(ctx context.Context, v any) (model.TransferInputKind, error) {
+	var res model.TransferInputKind
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNTransferInputKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferInputKind(ctx context.Context, sel ast.SelectionSet, v model.TransferInputKind) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) unmarshalNTransferKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferKind(ctx context.Context, v any) (model.TransferKind, error) {

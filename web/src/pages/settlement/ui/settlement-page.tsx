@@ -21,6 +21,7 @@ import { closePeriodMutation, settlementQuery } from "../../../entities/settleme
 import {
   ledgerQuery,
   loanBalancesQuery,
+  recordRepaymentMutation,
   recordFundingMutation,
   recordTransferMutation,
 } from "../../../entities/ledger";
@@ -146,21 +147,26 @@ export function SettlementPage({ household }: { household: Household }) {
     }
     setPending(true);
     try {
-      await readGraphql(recordTransferMutation, {
-        input: {
-          householdId: household.id,
-          fromMemberId: transferFrom,
-          toMemberId: transferTo,
-          kind: transferKind,
-          ...(transferKind === "REPAYMENT" ? { loanId: transferLoanId } : {}),
-          paymentAccountId: transferPaymentAccountId || null,
-          destinationAccountId: transferDestinationAccountId || null,
-          amountYen,
-          occurredAt: new Date().toISOString(),
-          description: transferDescription.trim() || "メンバー間の送金",
-          idempotencyKey: makeIdempotencyKey(),
-        },
-      });
+      const input = {
+        householdId: household.id,
+        fromMemberId: transferFrom,
+        toMemberId: transferTo,
+        paymentAccountId: transferPaymentAccountId || null,
+        destinationAccountId: transferDestinationAccountId || null,
+        amountYen,
+        occurredAt: new Date().toISOString(),
+        description: transferDescription.trim() || "メンバー間の送金",
+        idempotencyKey: makeIdempotencyKey(),
+      };
+      if (transferKind === "REPAYMENT") {
+        await readGraphql(recordRepaymentMutation, {
+          input: { ...input, loanId: transferLoanId },
+        });
+      } else {
+        await readGraphql(recordTransferMutation, {
+          input: { ...input, kind: transferKind },
+        });
+      }
       setTransferAmount("");
       setTransferDescription("");
       setTransferLoanId("");
