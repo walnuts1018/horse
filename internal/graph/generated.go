@@ -4396,8 +4396,6 @@ extend type Query {
   monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): MonthlyMemberSpendingReport!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/mutation.graphqls", Input: `type Mutation
-`, BuiltIn: false},
 	{Name: "../../graphql/mutation_error.graphqls", Input: `enum MutationErrorCode {
   BAD_INPUT
   CONFLICT
@@ -4621,11 +4619,6 @@ input PurchasePaymentInput {
   amountYen: Long!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/query.graphqls", Input: `type Query {
-  node(id: ID!): Node
-  nodes(ids: [ID!]!): [Node]!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/record_account_movement_mutation.graphqls", Input: `extend type Mutation {
   recordAccountMovement(input: RecordAccountMovementInput!): RecordAccountMovementResult!
 }
@@ -4751,6 +4744,13 @@ directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
 interface Node {
   id: ID!
 }
+
+type Query {
+  node(id: ID!): Node
+  nodes(ids: [ID!]!): [Node]!
+}
+
+type Mutation
 
 type PageInfo {
   hasNextPage: Boolean!
