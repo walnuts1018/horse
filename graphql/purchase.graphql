@@ -29,17 +29,6 @@ enum PurchaseOrigin {
   UNKNOWN
 }
 
-type PurchasePayment {
-  paymentAccountId: ID! @goField(forceResolver: true)
-  account: Account!
-  amountYen: Long!
-}
-
-input PurchasePaymentInput {
-  paymentAccountId: ID! @nodeID(of: "Account")
-  amountYen: Long!
-}
-
 type PurchaseEdge {
   cursor: String!
   node: Purchase!

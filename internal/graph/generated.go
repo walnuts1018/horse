@@ -4961,6 +4961,16 @@ type CorrectPurchaseUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/correction_ledger_entry.graphql", Input: `type CorrectionLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  purchase: Purchase!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/create_account_mutation.graphql", Input: `extend type Mutation {
   createAccount(input: CreateAccountInput!): CreateAccountResult!
 }
@@ -5181,6 +5191,17 @@ type CreateTagUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/funding_ledger_entry.graphql", Input: `type FundingLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  member: Member!
+  pool: Pool!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/household.graphql", Input: `type Household implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
@@ -5250,57 +5271,6 @@ type LedgerConnection {
   edges: [LedgerEdge!]!
   pageInfo: PageInfo!
   totalCount: Int!
-}
-
-type PurchaseLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  purchase: Purchase!
-}
-
-type FundingLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  member: Member!
-  pool: Pool!
-}
-
-type TransferLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  fromMember: Member!
-  toMember: Member!
-  transferKind: TransferKind!
-  loan: LoanBalance
-}
-
-enum TransferKind {
-  ADVANCE
-  LOAN
-  REPAYMENT
-  GIFT
-}
-
-type CorrectionLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  purchase: Purchase!
 }
 
 extend type Query {
@@ -5509,17 +5479,6 @@ enum PurchaseOrigin {
   UNKNOWN
 }
 
-type PurchasePayment {
-  paymentAccountId: ID! @goField(forceResolver: true)
-  account: Account!
-  amountYen: Long!
-}
-
-input PurchasePaymentInput {
-  paymentAccountId: ID! @nodeID(of: "Account")
-  amountYen: Long!
-}
-
 type PurchaseEdge {
   cursor: String!
   node: Purchase!
@@ -5589,6 +5548,27 @@ input PrintedUnitPriceInput {
 type EffectiveUnitPrice {
   numeratorYen: String!
   denominator: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/purchase_ledger_entry.graphql", Input: `type PurchaseLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  purchase: Purchase!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/purchase_payment.graphql", Input: `type PurchasePayment {
+  paymentAccountId: ID! @goField(forceResolver: true)
+  account: Account!
+  amountYen: Long!
+}
+
+input PurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/record_account_movement_mutation.graphql", Input: `extend type Mutation {
@@ -6026,6 +6006,26 @@ extend type Query {
 
 extend type Query {
   tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/transfer_ledger_entry.graphql", Input: `type TransferLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  fromMember: Member!
+  toMember: Member!
+  transferKind: TransferKind!
+  loan: LoanBalance
+}
+
+enum TransferKind {
+  ADVANCE
+  LOAN
+  REPAYMENT
+  GIFT
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/unmatched_observation.graphql", Input: `type UnmatchedObservation implements Node {

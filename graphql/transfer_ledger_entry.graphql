@@ -1,0 +1,19 @@
+type TransferLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  fromMember: Member!
+  toMember: Member!
+  transferKind: TransferKind!
+  loan: LoanBalance
+}
+
+enum TransferKind {
+  ADVANCE
+  LOAN
+  REPAYMENT
+  GIFT
+}
