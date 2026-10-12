@@ -70,7 +70,7 @@ func TestClosedPeriodRejectsAccountMovementsAndOpeningBalances(t *testing.T) {
 	}
 	if _, err := mutation.createAccount(ctx, model.CreateAccountInput{
 		HouseholdID: household.ID, Name: "Opening balance in closed period", Kind: model.AccountKindBank,
-		OpeningBalanceYen: new(model.Long(1200)), OpeningBalanceAt: new("2026-04-15T12:00:00Z"),
+		OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(1200), At: "2026-04-15T12:00:00Z"},
 	}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("closed-period opening balance should fail with conflict: %v", err)
 	}

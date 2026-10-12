@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ac769107c4bc624a82be1d1e4f212488>>
+ * @generated SignedSource<<5fd69d93a79b800041b40470d07febe2>>
  * @lightSyntaxTransform
  */
 
@@ -9,6 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type SettlementStatus = "CLOSED" | "OPEN" | "%future added value";
 export type ClosePeriodInput = {
   expectedRevision: number;
   householdId: string;
@@ -23,7 +24,7 @@ export type ClosePeriodMutation$data = {
     readonly result: {
       readonly period: string;
       readonly revision: number;
-      readonly status: string;
+      readonly status: SettlementStatus;
     };
   } | {
     readonly __typename: "MutationError";

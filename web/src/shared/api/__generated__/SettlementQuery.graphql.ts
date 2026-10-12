@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bf4712c1ec5bfab6263b35191ce51a74>>
+ * @generated SignedSource<<4a487353f6c2ff4035461fcbbf85380f>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type SettlementStatus = "CLOSED" | "OPEN" | "%future added value";
 export type SettlementQuery$variables = {
   householdId: string;
   period: string;
@@ -27,7 +28,7 @@ export type SettlementQuery$data = {
     }>;
     readonly period: string;
     readonly revision: number;
-    readonly status: string;
+    readonly status: SettlementStatus;
   };
 };
 export type SettlementQuery = {

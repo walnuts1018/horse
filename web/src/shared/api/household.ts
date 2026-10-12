@@ -210,7 +210,7 @@ export type Household = {
 };
 export type Settlement = {
   period: string;
-  status: string;
+  status: "OPEN" | "CLOSED";
   revision: number;
   lines: Array<{
     memberId: string;

@@ -247,6 +247,11 @@ type AccountMovementEdge struct {
 	Node   *AccountMovement `json:"node"`
 }
 
+type AccountOpeningBalanceInput struct {
+	AmountYen Long   `json:"amountYen"`
+	At        string `json:"at"`
+}
+
 type Allocation struct {
 	PoolID    string  `json:"poolId"`
 	PoolName  *string `json:"poolName,omitempty"`
@@ -400,12 +405,11 @@ func (this CorrectionLedgerEntry) GetCurrency() string    { return this.Currency
 func (this CorrectionLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
 
 type CreateAccountInput struct {
-	HouseholdID       string      `json:"householdId"`
-	Name              string      `json:"name"`
-	Kind              AccountKind `json:"kind"`
-	PoolID            *string     `json:"poolId,omitempty"`
-	OpeningBalanceYen *Long       `json:"openingBalanceYen,omitempty"`
-	OpeningBalanceAt  *string     `json:"openingBalanceAt,omitempty"`
+	HouseholdID    string                      `json:"householdId"`
+	Name           string                      `json:"name"`
+	Kind           AccountKind                 `json:"kind"`
+	PoolID         *string                     `json:"poolId,omitempty"`
+	OpeningBalance *AccountOpeningBalanceInput `json:"openingBalance,omitempty"`
 }
 
 type CreateAccountSuccess struct {
@@ -1137,7 +1141,7 @@ func (SetRecurringExpenseSuccess) IsSetRecurringExpenseResult() {}
 
 type Settlement struct {
 	Period    string            `json:"period"`
-	Status    string            `json:"status"`
+	Status    SettlementStatus  `json:"status"`
 	Revision  int               `json:"revision"`
 	Lines     []*SettlementLine `json:"lines"`
 	CreatedAt *string           `json:"createdAt,omitempty"`
@@ -1776,6 +1780,61 @@ func (e *PurchaseStatus) UnmarshalJSON(b []byte) error {
 }
 
 func (e PurchaseStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type SettlementStatus string
+
+const (
+	SettlementStatusOpen   SettlementStatus = "OPEN"
+	SettlementStatusClosed SettlementStatus = "CLOSED"
+)
+
+var AllSettlementStatus = []SettlementStatus{
+	SettlementStatusOpen,
+	SettlementStatusClosed,
+}
+
+func (e SettlementStatus) IsValid() bool {
+	switch e {
+	case SettlementStatusOpen, SettlementStatusClosed:
+		return true
+	}
+	return false
+}
+
+func (e SettlementStatus) String() string {
+	return string(e)
+}
+
+func (e *SettlementStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SettlementStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SettlementStatus", str)
+	}
+	return nil
+}
+
+func (e SettlementStatus) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SettlementStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SettlementStatus) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

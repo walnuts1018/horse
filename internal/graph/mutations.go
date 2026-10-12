@@ -179,15 +179,13 @@ func (r *mutationResolver) createAccount(ctx context.Context, input model.Create
 		return nil, fmt.Errorf("%w: invalid account", ErrBadInput)
 	}
 	openingBalance := int64(0)
-	if input.OpeningBalanceYen != nil {
-		openingBalance = int64(*input.OpeningBalanceYen)
-	}
-	if openingBalance < 0 || openingBalance > maxMoney || (openingBalance > 0) != (input.OpeningBalanceAt != nil) {
-		return nil, fmt.Errorf("%w: opening balance and date must be provided together", ErrBadInput)
-	}
 	var openingAt time.Time
-	if input.OpeningBalanceAt != nil {
-		openingAt, err = parseTime(*input.OpeningBalanceAt)
+	if input.OpeningBalance != nil {
+		openingBalance = int64(input.OpeningBalance.AmountYen)
+		if openingBalance < 1 || openingBalance > maxMoney {
+			return nil, fmt.Errorf("%w: invalid opening balance", ErrBadInput)
+		}
+		openingAt, err = parseTime(input.OpeningBalance.At)
 		if err != nil {
 			return nil, err
 		}

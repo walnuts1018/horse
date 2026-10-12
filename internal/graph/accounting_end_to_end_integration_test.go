@@ -56,14 +56,14 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 	openingAt := "2026-05-01T00:00:00Z"
 	fromAccount, err := mutation.createAccount(ctx, model.CreateAccountInput{
 		HouseholdID: household.ID, Name: "Operating", Kind: model.AccountKindBank,
-		OpeningBalanceYen: new(model.Long(1000)), OpeningBalanceAt: &openingAt,
+		OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(1000), At: openingAt},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	toAccount, err := mutation.createAccount(ctx, model.CreateAccountInput{
 		HouseholdID: household.ID, Name: "Reserve", Kind: model.AccountKindBank,
-		OpeningBalanceYen: new(model.Long(300)), OpeningBalanceAt: &openingAt,
+		OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(300), At: openingAt},
 	})
 	if err != nil {
 		t.Fatal(err)

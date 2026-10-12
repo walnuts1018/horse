@@ -765,15 +765,15 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		}
 	}
 	openingAt := "2026-05-01T00:00:00Z"
-	lenderAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Lender bank", Kind: model.AccountKindBank, PoolID: &lenderPool.ID, OpeningBalanceYen: new(model.Long(5000)), OpeningBalanceAt: &openingAt})
+	lenderAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Lender bank", Kind: model.AccountKindBank, PoolID: &lenderPool.ID, OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(5000), At: openingAt}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	borrowerAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Borrower bank", Kind: model.AccountKindBank, PoolID: &borrowerPool.ID, OpeningBalanceYen: new(model.Long(5000)), OpeningBalanceAt: &openingAt})
+	borrowerAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Borrower bank", Kind: model.AccountKindBank, PoolID: &borrowerPool.ID, OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(5000), At: openingAt}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sharedAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Shared bank", Kind: model.AccountKindBank, PoolID: &sharedPool.ID, OpeningBalanceYen: new(model.Long(5000)), OpeningBalanceAt: &openingAt})
+	sharedAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Shared bank", Kind: model.AccountKindBank, PoolID: &sharedPool.ID, OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(5000), At: openingAt}})
 	if err != nil {
 		t.Fatal(err)
 	}

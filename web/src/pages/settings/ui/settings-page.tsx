@@ -684,7 +684,12 @@ export function SettingsPage({
   };
   const addAccount = (event: FormEvent) => {
     event.preventDefault();
-    if (openingBalanceYen && !Number.isFinite(Number(openingBalanceYen))) return;
+    if (
+      openingBalanceYen !== "" &&
+      (!Number.isSafeInteger(Number(openingBalanceYen)) || Number(openingBalanceYen) < 1)
+    ) {
+      return;
+    }
     setPending(true);
     void readGraphql(createAccountMutation, {
       input: {
@@ -692,8 +697,13 @@ export function SettingsPage({
         name: accountName.trim(),
         kind: accountKind,
         poolId: accountPool || null,
-        ...(openingBalanceYen
-          ? { openingBalanceYen: Number(openingBalanceYen), openingBalanceAt }
+        ...(openingBalanceYen !== ""
+          ? {
+              openingBalance: {
+                amountYen: Number(openingBalanceYen),
+                at: openingBalanceAt,
+              },
+            }
           : {}),
       },
     })

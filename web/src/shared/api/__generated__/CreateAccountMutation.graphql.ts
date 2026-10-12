@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<94a5fe67321b53e33247343519391388>>
+ * @generated SignedSource<<0d06428d84e0142215c715d18e99f68c>>
  * @lightSyntaxTransform
  */
 
@@ -14,9 +14,12 @@ export type CreateAccountInput = {
   householdId: string;
   kind: AccountKind;
   name: string;
-  openingBalanceAt?: string | null | undefined;
-  openingBalanceYen?: any | null | undefined;
+  openingBalance?: AccountOpeningBalanceInput | null | undefined;
   poolId?: string | null | undefined;
+};
+export type AccountOpeningBalanceInput = {
+  amountYen: any;
+  at: string;
 };
 export type CreateAccountMutation$variables = {
   input: CreateAccountInput;

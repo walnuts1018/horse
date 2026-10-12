@@ -1,6 +1,11 @@
+enum SettlementStatus {
+  OPEN
+  CLOSED
+}
+
 type Settlement {
   period: String!
-  status: String!
+  status: SettlementStatus!
   revision: Int!
   lines: [SettlementLine!]!
   createdAt: String

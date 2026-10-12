@@ -3680,6 +3680,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := newExecutionContext(opCtx, e, make(chan graphql.DeferredResult))
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputAccountOpeningBalanceInput,
 		ec.unmarshalInputAllocationInput,
 		ec.unmarshalInputBulkPurchaseItemPatch,
 		ec.unmarshalInputBulkPurchasePatch,
@@ -4116,8 +4117,12 @@ input CreateAccountInput {
   name: String!
   kind: AccountKind!
   poolId: ID @nodeID(of: "Pool")
-  openingBalanceYen: Long
-  openingBalanceAt: String
+  openingBalance: AccountOpeningBalanceInput
+}
+
+input AccountOpeningBalanceInput {
+  amountYen: Long!
+  at: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/create_category_mutation.graphqls", Input: `extend type Mutation {
@@ -4906,9 +4911,14 @@ input SetRecurringExpenseInput {
   endsOn: String
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/settlement.graphqls", Input: `type Settlement {
+	{Name: "../../graphql/settlement.graphqls", Input: `enum SettlementStatus {
+  OPEN
+  CLOSED
+}
+
+type Settlement {
   period: String!
-  status: String!
+  status: SettlementStatus!
   revision: Int!
   lines: [SettlementLine!]!
   createdAt: String
@@ -18327,15 +18337,15 @@ func (ec *executionContext) _Settlement_status(ctx context.Context, field graphq
 			return obj.Status, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.SettlementStatus) graphql.Marshaler {
+			return ec.marshalNSettlementStatus2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSettlementStatus(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_Settlement_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Settlement", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Settlement", field, false, false, errors.New("field of type SettlementStatus does not have child fields"))
 }
 
 func (ec *executionContext) _Settlement_revision(ctx context.Context, field graphql.CollectedField, obj *model.Settlement) (ret graphql.Marshaler) {
@@ -20646,6 +20656,43 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputAccountOpeningBalanceInput(ctx context.Context, obj any) (model.AccountOpeningBalanceInput, error) {
+	var it model.AccountOpeningBalanceInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"amountYen", "at"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "amountYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AmountYen = data
+		case "at":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("at"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.At = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputAllocationInput(ctx context.Context, obj any) (model.AllocationInput, error) {
 	var it model.AllocationInput
 	if obj == nil {
@@ -21161,7 +21208,7 @@ func (ec *executionContext) unmarshalInputCreateAccountInput(ctx context.Context
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "name", "kind", "poolId", "openingBalanceYen", "openingBalanceAt"}
+	fieldsInOrder := [...]string{"householdId", "name", "kind", "poolId", "openingBalance"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -21238,20 +21285,13 @@ func (ec *executionContext) unmarshalInputCreateAccountInput(ctx context.Context
 				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
 				return it, graphql.ErrorOnPath(ctx, err)
 			}
-		case "openingBalanceYen":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("openingBalanceYen"))
-			data, err := ec.unmarshalOLong2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+		case "openingBalance":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("openingBalance"))
+			data, err := ec.unmarshalOAccountOpeningBalanceInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountOpeningBalanceInput(ctx, v)
 			if err != nil {
 				return it, err
 			}
-			it.OpeningBalanceYen = data
-		case "openingBalanceAt":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("openingBalanceAt"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.OpeningBalanceAt = data
+			it.OpeningBalance = data
 		}
 	}
 	return it, nil
@@ -34569,6 +34609,16 @@ func (ec *executionContext) marshalNSettlementLine2ᚖgithubᚗcomᚋwalnuts1018
 	return ec._SettlementLine(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNSettlementStatus2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSettlementStatus(ctx context.Context, v any) (model.SettlementStatus, error) {
+	var res model.SettlementStatus
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSettlementStatus2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSettlementStatus(ctx context.Context, sel ast.SelectionSet, v model.SettlementStatus) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) unmarshalNSourceKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx context.Context, v any) (model.SourceKind, error) {
 	var res model.SourceKind
 	err := res.UnmarshalGQL(v)
@@ -34946,6 +34996,14 @@ func (ec *executionContext) marshalOAccount2ᚖgithubᚗcomᚋwalnuts1018ᚋhors
 		return graphql.Null
 	}
 	return ec._Account(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOAccountOpeningBalanceInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountOpeningBalanceInput(ctx context.Context, v any) (*model.AccountOpeningBalanceInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputAccountOpeningBalanceInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalOAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx context.Context, v any) ([]*model.AllocationInput, error) {

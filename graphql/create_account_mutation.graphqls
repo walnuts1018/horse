@@ -13,6 +13,10 @@ input CreateAccountInput {
   name: String!
   kind: AccountKind!
   poolId: ID @nodeID(of: "Pool")
-  openingBalanceYen: Long
-  openingBalanceAt: String
+  openingBalance: AccountOpeningBalanceInput
+}
+
+input AccountOpeningBalanceInput {
+  amountYen: Long!
+  at: String!
 }
