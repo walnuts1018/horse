@@ -69,6 +69,7 @@ type Receipt struct {
 
 type Verification struct {
 	Receipt       Receipt                `json:"receipt"`
+	Transform     [9]float64             `json:"transform"`
 	Issues        []string               `json:"issues"`
 	ComputedTotal int64                  `json:"computedTotal"`
 	Balanced      bool                   `json:"balanced"`
@@ -99,7 +100,7 @@ type ExtractionRun struct {
 func Verify(receipt Receipt) (Verification, error) {
 	r := receipt
 	r.Items = slices.Clone(receipt.Items)
-	v := Verification{Receipt: r, Issues: slices.Clone(r.Warnings)}
+	v := Verification{Receipt: r, Transform: identityTransform(), Issues: slices.Clone(r.Warnings)}
 	if r.Currency != "JPY" || len(r.Items) == 0 || len(r.Items) > 1000 || len(r.TaxGroups) > 1000 || len(r.Payments) > 100 || !validAmount(r.Total) || !validAmount(r.Discount) || r.Discount > 0 {
 		return v, errors.New("invalid receipt currency, items or amounts")
 	}
@@ -277,6 +278,11 @@ func Verify(receipt Receipt) (Verification, error) {
 
 func validRegion(r Region) bool {
 	return r.Page >= 0 && r.Top >= 0 && r.Left >= 0 && r.Bottom <= 1 && r.Right <= 1 && r.Top < r.Bottom && r.Left < r.Right
+}
+
+// ValidRegionは正規化座標の領域が有効かを返す。
+func ValidRegion(r Region) bool {
+	return validRegion(r)
 }
 
 func validAmount(value int64) bool { return value >= -MaxAmount && value <= MaxAmount }

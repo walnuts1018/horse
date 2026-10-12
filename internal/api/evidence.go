@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json/v2"
 	"net/http"
 	"time"
 
@@ -55,14 +56,15 @@ func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type evidence struct {
-		DocumentID  string    `json:"documentId"`
-		ItemID      *string   `json:"itemId"`
-		SourceKind  string    `json:"sourceKind"`
-		MIMEType    string    `json:"mimeType"`
-		SHA256      string    `json:"sha256"`
-		Region      any       `json:"region"`
-		Observation any       `json:"observation"`
-		CreatedAt   time.Time `json:"createdAt"`
+		DocumentID  string     `json:"documentId"`
+		ItemID      *string    `json:"itemId"`
+		SourceKind  string     `json:"sourceKind"`
+		MIMEType    string     `json:"mimeType"`
+		SHA256      string     `json:"sha256"`
+		Region      any        `json:"region"`
+		Transform   [9]float64 `json:"transform"`
+		Observation any        `json:"observation"`
+		CreatedAt   time.Time  `json:"createdAt"`
 	}
 	result := make([]evidence, 0)
 	for _, link := range evidenceLinks {
@@ -75,6 +77,13 @@ func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
 			DocumentID: document.ID.String(), SourceKind: document.SourceKind,
 			MIMEType: document.MimeType, SHA256: document.Sha256,
 			Observation: link.Observation.Val, CreatedAt: link.CreatedAt,
+			Transform: [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1},
+		}
+		var observation struct {
+			Transform [9]float64 `json:"transform"`
+		}
+		if err := json.Unmarshal(link.Observation.Val, &observation); err == nil && observation.Transform != [9]float64{} {
+			entry.Transform = observation.Transform
 		}
 		if link.ItemID.Valid {
 			id := link.ItemID.V.String()

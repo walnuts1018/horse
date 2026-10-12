@@ -429,8 +429,9 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	var input struct {
 		Hints []ingestion.HistoryHint `json:"hints"`
+		Crop  *ingestion.Region       `json:"crop,omitempty"`
 	}
-	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 64<<10), &input); err != nil || len(input.Hints) > 30 {
+	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 64<<10), &input); err != nil || len(input.Hints) > 30 || input.Crop != nil && (!ingestion.ValidRegion(*input.Crop) || input.Crop.Page != 0) {
 		http.Error(w, "invalid extraction hints", http.StatusBadRequest)
 		return
 	}
@@ -460,6 +461,10 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
 	}
+	if input.Crop != nil && document.MimeType != "image/jpeg" && document.MimeType != "image/png" {
+		http.Error(w, "image crop requires a JPEG or PNG document", http.StatusBadRequest)
+		return
+	}
 	latestJob, err := models.ExtractionJobs.Query(
 		sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID))),
 		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
@@ -473,7 +478,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "extraction is already running", http.StatusConflict)
 		return
 	}
-	request, err := json.Marshal(map[string]any{"hints": input.Hints})
+	request, err := json.Marshal(map[string]any{"hints": input.Hints, "crop": input.Crop})
 	if err != nil {
 		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
 		return
@@ -649,6 +654,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 	}
 	var region any
 	observation := []byte(`{}`)
+	transform := [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
 	if input.SourceItemIndex != nil {
 		observationJobID, err := gofrsuuid.FromString(*input.ObservationJobID)
 		if err != nil {
@@ -671,7 +677,8 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		item := verified.Receipt.Items[*input.SourceItemIndex]
-		observation, err = json.Marshal(map[string]any{"jobId": *input.ObservationJobID, "itemIndex": *input.SourceItemIndex, "item": item, "transform": []int{1, 0, 0, 0, 1, 0, 0, 0, 1}})
+		transform = verified.Transform
+		observation, err = json.Marshal(map[string]any{"jobId": *input.ObservationJobID, "itemIndex": *input.SourceItemIndex, "item": item, "transform": transform})
 		if err != nil {
 			http.Error(w, "evidence encoding failed", http.StatusInternalServerError)
 			return

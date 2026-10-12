@@ -303,9 +303,17 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	}
 	var request struct {
 		Hints []HistoryHint `json:"hints"`
+		Crop  *Region       `json:"crop,omitempty"`
 	}
 	if err := json.Unmarshal(j.Request, &request); err != nil {
 		return Verification{}, fmt.Errorf("decode extraction request: %w", err)
+	}
+	transform := identityTransform()
+	if request.Crop != nil {
+		document, transform, err = CropImage(document, *request.Crop)
+		if err != nil {
+			return Verification{}, fmt.Errorf("prepare cropped document: %w", err)
+		}
 	}
 	receipt, runs, err := w.Router.Generate(ctx, j.SourceKind, document, request.Hints, GeminiRouteOptions{Reason: "initial_extraction"})
 	if err != nil {
@@ -315,9 +323,22 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if err != nil {
 		return Verification{Receipt: receipt, Runs: runs}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "receipt_validation_failed"}
 	}
+	var lines []OCRLine
+	var ocrErr error
+	if len(document.MIMEType) >= 6 && document.MIMEType[:6] == "image/" {
+		lines, ocrErr = w.OCR.Extract(ctx, document)
+		if ocrErr == nil {
+			if err := transformVerification(&verified, lines, transform); err != nil {
+				return Verification{}, fmt.Errorf("map evidence regions to original image: %w", err)
+			}
+		} else if err := transformReceiptRegions(&verified, transform); err != nil {
+			return Verification{}, fmt.Errorf("map evidence regions to original image: %w", err)
+		}
+	} else {
+		verified.Transform = transform
+	}
 	verified.Runs = annotateRuns(runs, receipt, verified.Issues)
 	if len(document.MIMEType) >= 6 && document.MIMEType[:6] == "image/" {
-		lines, ocrErr := w.OCR.Extract(ctx, document)
 		if ocrErr != nil {
 			verified.Issues = append(verified.Issues, "独立したOCR読取を取得できませんでした。原本を確認してください。")
 		} else {
@@ -335,6 +356,9 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			if qualityErr == nil {
 				second, verifyErr := Verify(alternative)
 				if verifyErr == nil {
+					if err := transformReceiptRegions(&second, transform); err != nil {
+						return Verification{}, fmt.Errorf("map reviewed evidence regions to original image: %w", err)
+					}
 					second.Runs = annotateRuns(qualityRuns, alternative, second.Issues)
 					second.OCRLines = verified.OCRLines
 					if len(second.OCRLines) > 0 {
@@ -353,6 +377,9 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			if proErr == nil {
 				proVerification, verifyErr := Verify(proReceipt)
 				if verifyErr == nil {
+					if err := transformReceiptRegions(&proVerification, transform); err != nil {
+						return Verification{}, fmt.Errorf("map reviewed evidence regions to original image: %w", err)
+					}
 					proVerification.Runs = annotateRuns(proRuns, proReceipt, proVerification.Issues)
 					proVerification.OCRLines = verified.OCRLines
 					if len(proVerification.OCRLines) > 0 {
