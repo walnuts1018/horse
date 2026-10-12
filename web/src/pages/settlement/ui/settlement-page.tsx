@@ -40,17 +40,19 @@ export function SettlementPage({ household }: { household: Household }) {
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [loans, setLoans] = useState<LoanBalance[]>([]);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [pending, setPending] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferFrom, setTransferFrom] = useState(household.members[0]?.id ?? "");
   const [transferTo, setTransferTo] = useState(household.members[1]?.id ?? "");
-  const [transferKind, setTransferKind] = useState("ADVANCE");
+  const [transferKind, setTransferKind] = useState<"ADVANCE" | "LOAN" | "REPAYMENT" | "GIFT">(
+    "ADVANCE",
+  );
   const [transferAmount, setTransferAmount] = useState("");
   const [transferDescription, setTransferDescription] = useState("");
   const [transferLoanId, setTransferLoanId] = useState("");
   const [transferPaymentAccountId, setTransferPaymentAccountId] = useState("");
   const load = async () => {
-    setError("");
     try {
       const [settlementData, ledgerData, loanData] = await Promise.all([
         readGraphql<{ settlement: Settlement }>(settlementQuery, {
@@ -68,8 +70,9 @@ export function SettlementPage({ household }: { household: Household }) {
       setSettlement(settlementData.settlement);
       setEntries(ledgerData.ledger.edges.map((edge) => edge.node));
       setLoans(loanData.loanBalances);
+      setLoadError("");
     } catch (reason) {
-      setError((reason as Error).message);
+      setLoadError((reason as Error).message);
     }
   };
   useEffect(() => {
@@ -116,14 +119,21 @@ export function SettlementPage({ household }: { household: Household }) {
   const saveTransfer = async (event: FormEvent) => {
     event.preventDefault();
     const amountYen = Number(transferAmount);
+    const selectedLoan = openLoans.find((loan) => loan.loanId === transferLoanId);
     if (
       !transferFrom ||
       !transferTo ||
       transferFrom === transferTo ||
+      !Number.isSafeInteger(amountYen) ||
       amountYen < 1 ||
-      (transferKind === "REPAYMENT" && !transferLoanId)
-    )
+      (transferKind === "REPAYMENT" && !selectedLoan)
+    ) {
       return;
+    }
+    if (transferKind === "REPAYMENT" && selectedLoan && amountYen > selectedLoan.balanceYen) {
+      setError(`返済額は貸付残高${yen(selectedLoan.balanceYen)}以下にしてください`);
+      return;
+    }
     setPending(true);
     try {
       await readGraphql(recordTransferMutation, {
@@ -154,11 +164,21 @@ export function SettlementPage({ household }: { household: Household }) {
   };
   const totalDue = sum(settlement?.lines.map((line) => line.amountDueYen) ?? []);
   const openLoans = loans.filter((loan) => loan.balanceYen > 0);
+  const selectedLoan = openLoans.find((loan) => loan.loanId === transferLoanId);
+  const parsedTransferAmount = Number(transferAmount);
+  const invalidTransferAmount =
+    !Number.isSafeInteger(parsedTransferAmount) ||
+    parsedTransferAmount < 1 ||
+    (transferKind === "REPAYMENT" &&
+      (!selectedLoan || parsedTransferAmount > selectedLoan.balanceYen));
   const openTransferForLoan = (loan: LoanBalance) => {
     setTransferKind("REPAYMENT");
     setTransferLoanId(loan.loanId);
     setTransferFrom(loan.borrowerMemberId);
     setTransferTo(loan.lenderMemberId);
+    setTransferAmount("");
+    setTransferDescription("");
+    setError("");
     setTransferOpen(true);
   };
   return (
@@ -176,6 +196,14 @@ export function SettlementPage({ household }: { household: Household }) {
         </label>
       </div>
       {error && <InlineError message={error} />}
+      {loadError && (
+        <div className="settlement-load-error">
+          <InlineError message={loadError} />
+          <button className="text-button" type="button" onClick={() => void load()}>
+            再試行
+          </button>
+        </div>
+      )}
       <section className="settlement-hero">
         <div>
           <span>次回の入金</span>
@@ -278,7 +306,17 @@ export function SettlementPage({ household }: { household: Household }) {
               種別
               <select
                 value={transferKind}
-                onChange={(event) => setTransferKind(event.target.value)}
+                onChange={(event) => {
+                  const nextKind = event.target.value as typeof transferKind;
+                  setTransferKind(nextKind);
+                  setTransferLoanId("");
+                  setTransferAmount("");
+                  setError("");
+                  if (transferKind === "REPAYMENT" && nextKind !== "REPAYMENT") {
+                    setTransferFrom(household.members[0]?.id ?? "");
+                    setTransferTo(household.members[1]?.id ?? "");
+                  }
+                }}
               >
                 <option value="ADVANCE">立て替え</option>
                 <option value="LOAN">貸し借り</option>
@@ -299,6 +337,7 @@ export function SettlementPage({ household }: { household: Household }) {
                       setTransferFrom(loan.borrowerMemberId);
                       setTransferTo(loan.lenderMemberId);
                     }
+                    setError("");
                   }}
                 >
                   <option value="">貸付を選択</option>
@@ -356,12 +395,12 @@ export function SettlementPage({ household }: { household: Household }) {
               </select>
             </label>
             <label>
-              決済口座
+              資金元口座
               <select
                 value={transferPaymentAccountId}
                 onChange={(event) => setTransferPaymentAccountId(event.target.value)}
               >
-                <option value="">口座外</option>
+                <option value="">現金など口座外</option>
                 {household.accounts.map((account) => (
                   <option value={account.id} key={account.id}>
                     {account.name}
@@ -374,9 +413,13 @@ export function SettlementPage({ household }: { household: Household }) {
               <input
                 inputMode="numeric"
                 value={transferAmount}
+                max={transferKind === "REPAYMENT" ? selectedLoan?.balanceYen : undefined}
                 onChange={(event) => setTransferAmount(event.target.value.replace(/\D/g, ""))}
                 required
               />
+              {transferKind === "REPAYMENT" && selectedLoan && (
+                <small>返済可能額 {yen(selectedLoan.balanceYen)}</small>
+              )}
             </label>
             <label className="transfer-description">
               摘要
@@ -387,7 +430,13 @@ export function SettlementPage({ household }: { household: Household }) {
             </label>
             <button
               className="button button-primary"
-              disabled={pending || household.members.length < 2 || transferFrom === transferTo}
+              disabled={
+                pending ||
+                household.members.length < 2 ||
+                transferFrom === transferTo ||
+                invalidTransferAmount ||
+                (transferKind === "REPAYMENT" && !selectedLoan)
+              }
             >
               <Check size={16} />
               保存
@@ -407,6 +456,13 @@ export function SettlementPage({ household }: { household: Household }) {
             onClick={() => {
               setTransferKind("LOAN");
               setTransferLoanId("");
+              setTransferAmount("");
+              setTransferDescription("");
+              setError("");
+              if (transferKind === "REPAYMENT") {
+                setTransferFrom(household.members[0]?.id ?? "");
+                setTransferTo(household.members[1]?.id ?? "");
+              }
               setTransferOpen(true);
             }}
           >

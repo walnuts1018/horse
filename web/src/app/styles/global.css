@@ -2074,6 +2074,17 @@ a {
   align-items: center;
 }
 
+.settlement-load-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settlement-load-error .inline-error {
+  flex: 1;
+  min-width: 0;
+}
+
 .loan-balance-row {
   min-height: 57px;
   display: grid;
