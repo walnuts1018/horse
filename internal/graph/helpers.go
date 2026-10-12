@@ -232,220 +232,221 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	executor := bobpgx.NewPool(db)
-	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(id)))).One(ctx, executor)
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(id)))).One(ctx, queryExecutor(db))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	result := &model.Purchase{
-		ID: purchase.ID.String(), HouseholdID: purchase.HouseholdID.String(),
-		OccurredAt: timeString(purchase.OccurredAt), Merchant: purchase.Merchant,
-		Origin: model.PurchaseOrigin(purchase.Origin), SourceKinds: make([]model.SourceKind, 0),
-		Revision: int(purchase.Revision), Status: model.PurchaseStatus(purchase.Status), Currency: "JPY",
-		CreatedAt: timeString(purchase.CreatedAt), UpdatedAt: timeString(purchase.UpdatedAt),
-		Items: make([]*model.PurchaseItem, 0), PaymentAllocations: make([]*model.PurchasePayment, 0),
-		Corrections: make([]*model.PurchaseCorrection, 0),
-	}
-	evidence, err := models.EvidenceLinks.Query(sm.Where(psql.And(
-		models.EvidenceLinks.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
-		models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
-	))).All(ctx, executor)
+	loaded, err := loadPurchases(ctx, db, models.PurchaseSlice{purchase})
 	if err != nil {
 		return nil, err
 	}
-	if err := evidence.LoadSourceDocument(ctx, executor); err != nil {
+	return loaded[0], nil
+}
+
+func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.PurchaseSlice) ([]*model.Purchase, error) {
+	if len(purchases) == 0 {
+		return []*model.Purchase{}, nil
+	}
+	executor := queryExecutor(db)
+	if err := purchases.LoadAccount(ctx, executor); err != nil {
 		return nil, err
 	}
-	confirmations, err := models.DocumentConfirmations.Query(sm.Where(psql.And(
-		models.DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
-		models.DocumentConfirmations.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
-	))).All(ctx, executor)
-	if err != nil {
+	if err := purchases.LoadEvidenceLinks(ctx, executor); err != nil {
+		return nil, err
+	}
+	if err := purchases.LoadDocumentConfirmations(ctx, executor); err != nil {
+		return nil, err
+	}
+	if err := purchases.LoadPurchaseItems(ctx, executor, sm.OrderBy(models.PurchaseItems.Columns.CreatedAt), sm.OrderBy(models.PurchaseItems.Columns.ID)); err != nil {
+		return nil, err
+	}
+	if err := purchases.LoadPurchasePayments(ctx, executor, sm.OrderBy(models.PurchasePayments.Columns.LineNo)); err != nil {
+		return nil, err
+	}
+	if err := purchases.LoadCorrections(ctx, executor, sm.OrderBy(models.Corrections.Columns.CreatedAt), sm.OrderBy(models.Corrections.Columns.ID)); err != nil {
+		return nil, err
+	}
+
+	items := make(models.PurchaseItemSlice, 0)
+	evidenceLinks := make(models.EvidenceLinkSlice, 0)
+	confirmations := make(models.DocumentConfirmationSlice, 0)
+	payments := make(models.PurchasePaymentSlice, 0)
+	corrections := make(models.CorrectionSlice, 0)
+	for _, purchase := range purchases {
+		items = append(items, purchase.R.PurchaseItems...)
+		evidenceLinks = append(evidenceLinks, purchase.R.EvidenceLinks...)
+		confirmations = append(confirmations, purchase.R.DocumentConfirmations...)
+		payments = append(payments, purchase.R.PurchasePayments...)
+		corrections = append(corrections, purchase.R.Corrections...)
+	}
+	if err := evidenceLinks.LoadSourceDocument(ctx, executor); err != nil {
 		return nil, err
 	}
 	if err := confirmations.LoadSourceDocument(ctx, executor); err != nil {
 		return nil, err
 	}
-	result.HasEvidence = len(evidence)+len(confirmations) > 0
-	sourceKinds := make(map[model.SourceKind]struct{}, len(evidence))
-	for _, link := range evidence {
-		if link.R.SourceDocument == nil {
-			continue
-		}
-		kind := model.SourceKind(strings.ToUpper(link.R.SourceDocument.SourceKind))
-		sourceKinds[kind] = struct{}{}
-	}
-	for _, confirmation := range confirmations {
-		if confirmation.R.SourceDocument == nil {
-			continue
-		}
-		kind := model.SourceKind(strings.ToUpper(confirmation.R.SourceDocument.SourceKind))
-		sourceKinds[kind] = struct{}{}
-	}
-	for kind := range sourceKinds {
-		result.SourceKinds = append(result.SourceKinds, kind)
-	}
-	slices.Sort(result.SourceKinds)
-	var legacyPaymentAccount *model.Account
-	if purchase.PaymentAccountID.Valid {
-		if err := purchase.LoadAccount(ctx, executor); err != nil {
-			return nil, err
-		}
-		legacyPaymentAccount = graphAccount(purchase.R.Account)
-	}
-	items, err := models.PurchaseItems.Query(
-		sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),
-		sm.OrderBy(models.PurchaseItems.Columns.CreatedAt),
-		sm.OrderBy(models.PurchaseItems.Columns.ID),
-	).All(ctx, executor)
-	if err != nil {
+	if err := items.LoadItemAllocations(ctx, executor, sm.OrderBy(models.ItemAllocations.Columns.PoolID)); err != nil {
 		return nil, err
 	}
-	allocationsByItem := make(map[gofrsuuid.UUID]models.ItemAllocationSlice, len(items))
+	if err := items.LoadPurchaseItemTags(ctx, executor, sm.OrderBy(models.PurchaseItemTags.Columns.TagID)); err != nil {
+		return nil, err
+	}
+	allocations := make(models.ItemAllocationSlice, 0)
+	itemTags := make(models.PurchaseItemTagSlice, 0)
 	for _, item := range items {
-		allocations, err := models.ItemAllocations.Query(sm.Where(psql.And(
-			models.ItemAllocations.Columns.HouseholdID.EQ(psql.Arg(item.HouseholdID)),
-			models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(item.PurchaseID)),
-			models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(item.ID)),
-		))).All(ctx, executor)
-		if err != nil {
-			return nil, err
-		}
-		allocationsByItem[item.ID] = allocations
+		allocations = append(allocations, item.R.ItemAllocations...)
+		itemTags = append(itemTags, item.R.PurchaseItemTags...)
 	}
-	for _, allocations := range allocationsByItem {
-		if err := allocations.LoadPool(ctx, executor); err != nil {
-			return nil, err
-		}
+	if err := allocations.LoadPool(ctx, executor); err != nil {
+		return nil, err
 	}
-	var total int64
-	for _, storedItem := range items {
-		item := &model.PurchaseItem{
-			ID: storedItem.ID.String(), Name: storedItem.Name, AmountYen: graphLong(storedItem.AmountYen),
-			Revision: int(storedItem.Revision), Currency: "JPY", Allocations: make([]*model.Allocation, 0), Tags: make([]*model.Tag, 0),
+	if err := itemTags.LoadTag(ctx, executor); err != nil {
+		return nil, err
+	}
+	if err := payments.LoadAccount(ctx, executor); err != nil {
+		return nil, err
+	}
+	if err := corrections.LoadJournal(ctx, executor); err != nil {
+		return nil, err
+	}
+	if err := corrections.LoadCorrectionPayments(ctx, executor, sm.OrderBy(models.CorrectionPayments.Columns.LineNo)); err != nil {
+		return nil, err
+	}
+	correctionPayments := make(models.CorrectionPaymentSlice, 0)
+	for _, correction := range corrections {
+		correctionPayments = append(correctionPayments, correction.R.CorrectionPayments...)
+	}
+	if err := correctionPayments.LoadAccount(ctx, executor); err != nil {
+		return nil, err
+	}
+
+	result := make([]*model.Purchase, 0, len(purchases))
+	for _, purchase := range purchases {
+		loaded := &model.Purchase{
+			ID: purchase.ID.String(), HouseholdID: purchase.HouseholdID.String(),
+			OccurredAt: timeString(purchase.OccurredAt), Merchant: purchase.Merchant,
+			Origin: model.PurchaseOrigin(purchase.Origin), SourceKinds: make([]model.SourceKind, 0),
+			Revision: int(purchase.Revision), Status: model.PurchaseStatus(purchase.Status), Currency: "JPY",
+			CreatedAt: timeString(purchase.CreatedAt), UpdatedAt: timeString(purchase.UpdatedAt),
+			Items: make([]*model.PurchaseItem, 0), PaymentAllocations: make([]*model.PurchasePayment, 0),
+			Corrections: make([]*model.PurchaseCorrection, 0),
 		}
-		measure := purchaseItemMeasure{
-			quantityNumerator: storedItem.QuantityNumerator, quantityDenominator: storedItem.QuantityDenominator,
-			quantityUnit: storedItem.QuantityUnit, printedUnitPriceYen: storedItem.PrintedUnitPriceYen,
-			printedUnitPriceQuantityNumerator:   storedItem.PrintedUnitPriceQuantityNumerator,
-			printedUnitPriceQuantityDenominator: storedItem.PrintedUnitPriceQuantityDenominator, printedUnitPriceUnit: storedItem.PrintedUnitPriceUnit,
-		}
-		if measure.quantityNumerator.Valid {
-			item.Quantity = &model.PurchaseQuantity{Numerator: strconv.FormatInt(measure.quantityNumerator.V, 10), Denominator: strconv.FormatInt(measure.quantityDenominator.V, 10), Unit: measure.quantityUnit.V}
-		}
-		if measure.printedUnitPriceYen.Valid {
-			item.PrintedUnitPrice = &model.PrintedUnitPrice{
-				AmountYen: graphLong(measure.printedUnitPriceYen.V),
-				Basis:     &model.PurchaseQuantity{Numerator: strconv.FormatInt(measure.printedUnitPriceQuantityNumerator.V, 10), Denominator: strconv.FormatInt(measure.printedUnitPriceQuantityDenominator.V, 10), Unit: measure.printedUnitPriceUnit.V},
+		sourceKinds := make(map[model.SourceKind]struct{}, len(purchase.R.EvidenceLinks)+len(purchase.R.DocumentConfirmations))
+		for _, link := range purchase.R.EvidenceLinks {
+			if link.R.SourceDocument != nil {
+				sourceKinds[model.SourceKind(strings.ToUpper(link.R.SourceDocument.SourceKind))] = struct{}{}
 			}
 		}
-		effectiveNumerator, effectiveDenominator, ok := effectiveUnitPrice(storedItem.AmountYen, measure)
-		if !ok {
-			return nil, fmt.Errorf("purchase item %s effective unit price exceeds int64", storedItem.ID)
-		}
-		if effectiveNumerator != nil && effectiveDenominator != nil {
-			item.EffectiveUnitPrice = &model.EffectiveUnitPrice{NumeratorYen: *effectiveNumerator, Denominator: *effectiveDenominator}
-		}
-		if storedItem.CategoryID.Valid {
-			categoryID := storedItem.CategoryID.V.String()
-			item.CategoryID = &categoryID
-		}
-		if storedItem.ProductVariantID.Valid {
-			variantID := storedItem.ProductVariantID.V.String()
-			item.ProductVariantID = &variantID
-		}
-		total, ok = checkedAdd(total, storedItem.AmountYen)
-		if !ok {
-			return nil, fmt.Errorf("purchase %s total exceeds int64", purchaseID)
-		}
-		for _, storedAllocation := range allocationsByItem[storedItem.ID] {
-			poolName := storedAllocation.R.Pool.Name
-			allocation := &model.Allocation{
-				PoolID: storedAllocation.PoolID.String(), PoolName: &poolName,
-				Weight: graphLong(storedAllocation.Weight),
+		for _, confirmation := range purchase.R.DocumentConfirmations {
+			if confirmation.R.SourceDocument != nil {
+				sourceKinds[model.SourceKind(strings.ToUpper(confirmation.R.SourceDocument.SourceKind))] = struct{}{}
 			}
-			amount := graphLong(storedAllocation.AmountYen)
-			allocation.AmountYen = &amount
-			item.Allocations = append(item.Allocations, allocation)
 		}
-		tagLinks, err := models.PurchaseItemTags.Query(sm.Where(models.PurchaseItemTags.Columns.ItemID.EQ(psql.Arg(storedItem.ID)))).All(ctx, executor)
-		if err != nil {
-			return nil, err
+		for kind := range sourceKinds {
+			loaded.SourceKinds = append(loaded.SourceKinds, kind)
 		}
-		if err := tagLinks.LoadTag(ctx, executor); err != nil {
-			return nil, err
+		slices.Sort(loaded.SourceKinds)
+		loaded.HasEvidence = len(purchase.R.EvidenceLinks)+len(purchase.R.DocumentConfirmations) > 0
+
+		var total int64
+		for _, storedItem := range purchase.R.PurchaseItems {
+			item := &model.PurchaseItem{
+				ID: storedItem.ID.String(), Name: storedItem.Name, AmountYen: graphLong(storedItem.AmountYen),
+				Revision: int(storedItem.Revision), Currency: "JPY", Allocations: make([]*model.Allocation, 0), Tags: make([]*model.Tag, 0),
+			}
+			measure := purchaseItemMeasure{
+				quantityNumerator: storedItem.QuantityNumerator, quantityDenominator: storedItem.QuantityDenominator,
+				quantityUnit: storedItem.QuantityUnit, printedUnitPriceYen: storedItem.PrintedUnitPriceYen,
+				printedUnitPriceQuantityNumerator:   storedItem.PrintedUnitPriceQuantityNumerator,
+				printedUnitPriceQuantityDenominator: storedItem.PrintedUnitPriceQuantityDenominator, printedUnitPriceUnit: storedItem.PrintedUnitPriceUnit,
+			}
+			if measure.quantityNumerator.Valid {
+				item.Quantity = &model.PurchaseQuantity{Numerator: strconv.FormatInt(measure.quantityNumerator.V, 10), Denominator: strconv.FormatInt(measure.quantityDenominator.V, 10), Unit: measure.quantityUnit.V}
+			}
+			if measure.printedUnitPriceYen.Valid {
+				item.PrintedUnitPrice = &model.PrintedUnitPrice{
+					AmountYen: graphLong(measure.printedUnitPriceYen.V),
+					Basis:     &model.PurchaseQuantity{Numerator: strconv.FormatInt(measure.printedUnitPriceQuantityNumerator.V, 10), Denominator: strconv.FormatInt(measure.printedUnitPriceQuantityDenominator.V, 10), Unit: measure.printedUnitPriceUnit.V},
+				}
+			}
+			effectiveNumerator, effectiveDenominator, ok := effectiveUnitPrice(storedItem.AmountYen, measure)
+			if !ok {
+				return nil, fmt.Errorf("purchase item %s effective unit price exceeds int64", storedItem.ID)
+			}
+			if effectiveNumerator != nil && effectiveDenominator != nil {
+				item.EffectiveUnitPrice = &model.EffectiveUnitPrice{NumeratorYen: *effectiveNumerator, Denominator: *effectiveDenominator}
+			}
+			if storedItem.CategoryID.Valid {
+				categoryID := storedItem.CategoryID.V.String()
+				item.CategoryID = &categoryID
+			}
+			if storedItem.ProductVariantID.Valid {
+				variantID := storedItem.ProductVariantID.V.String()
+				item.ProductVariantID = &variantID
+			}
+			total, ok = checkedAdd(total, storedItem.AmountYen)
+			if !ok {
+				return nil, fmt.Errorf("purchase %s total exceeds int64", purchase.ID)
+			}
+			for _, storedAllocation := range storedItem.R.ItemAllocations {
+				if storedAllocation.R.Pool == nil {
+					return nil, fmt.Errorf("item allocation for item %s has no pool", storedItem.ID)
+				}
+				poolName := storedAllocation.R.Pool.Name
+				amount := graphLong(storedAllocation.AmountYen)
+				item.Allocations = append(item.Allocations, &model.Allocation{
+					PoolID: storedAllocation.PoolID.String(), PoolName: &poolName,
+					Weight: graphLong(storedAllocation.Weight), AmountYen: &amount,
+				})
+			}
+			for _, tagLink := range storedItem.R.PurchaseItemTags {
+				if tagLink.R.Tag == nil {
+					return nil, fmt.Errorf("purchase item tag %s has no tag", tagLink.TagID)
+				}
+				item.Tags = append(item.Tags, tagModel(tagLink.R.Tag))
+			}
+			loaded.Items = append(loaded.Items, item)
 		}
-		for _, tagLink := range tagLinks {
-			item.Tags = append(item.Tags, tagModel(tagLink.R.Tag))
-		}
-		result.Items = append(result.Items, item)
-	}
-	result.TotalYen = graphLong(total)
-	paymentRows, err := models.PurchasePayments.Query(
-		sm.Where(models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),
-		sm.OrderBy(models.PurchasePayments.Columns.LineNo),
-	).All(ctx, executor)
-	if err != nil {
-		return nil, err
-	}
-	if err := paymentRows.LoadAccount(ctx, executor); err != nil {
-		return nil, err
-	}
-	for _, storedPayment := range paymentRows {
-		result.PaymentAllocations = append(result.PaymentAllocations, &model.PurchasePayment{
-			PaymentAccountID: storedPayment.AccountID.String(), AmountYen: graphLong(storedPayment.AmountYen),
-			Account: graphAccount(storedPayment.R.Account),
-		})
-	}
-	if len(result.PaymentAllocations) == 0 && purchase.PaymentAccountID.Valid {
-		result.PaymentAllocations = append(result.PaymentAllocations, &model.PurchasePayment{
-			PaymentAccountID: purchase.PaymentAccountID.V.String(), Account: legacyPaymentAccount, AmountYen: graphLong(total),
-		})
-	}
-	correctionRows, err := models.Corrections.Query(
-		sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchase.ID))),
-		sm.OrderBy(models.Corrections.Columns.CreatedAt),
-		sm.OrderBy(models.Corrections.Columns.ID),
-	).All(ctx, executor)
-	if err != nil {
-		return nil, err
-	}
-	if err := correctionRows.LoadJournal(ctx, executor); err != nil {
-		return nil, err
-	}
-	for _, storedCorrection := range correctionRows {
-		correction := &model.PurchaseCorrection{
-			ID: storedCorrection.ID.String(), AmountDeltaYen: graphLong(storedCorrection.AmountDeltaYen),
-			Reason: storedCorrection.Reason, OccurredAt: timeString(storedCorrection.R.Journal.OccurredAt),
-			SettlementMonth: accountingPeriod(purchase.OccurredAt), PaymentAllocations: make([]*model.PurchasePayment, 0),
-		}
-		if storedCorrection.ItemID.Valid {
-			itemID := storedCorrection.ItemID.V.String()
-			correction.ItemID = &itemID
-		}
-		if storedCorrection.EffectivePeriod.Valid {
-			correction.SettlementMonth = storedCorrection.EffectivePeriod.V
-		}
-		payments, err := models.CorrectionPayments.Query(
-			sm.Where(models.CorrectionPayments.Columns.CorrectionID.EQ(psql.Arg(storedCorrection.ID))),
-			sm.OrderBy(models.CorrectionPayments.Columns.LineNo),
-		).All(ctx, executor)
-		if err != nil {
-			return nil, err
-		}
-		if err := payments.LoadAccount(ctx, executor); err != nil {
-			return nil, err
-		}
-		for _, storedPayment := range payments {
-			correction.PaymentAllocations = append(correction.PaymentAllocations, &model.PurchasePayment{
+		loaded.TotalYen = graphLong(total)
+		for _, storedPayment := range purchase.R.PurchasePayments {
+			loaded.PaymentAllocations = append(loaded.PaymentAllocations, &model.PurchasePayment{
 				PaymentAccountID: storedPayment.AccountID.String(), AmountYen: graphLong(storedPayment.AmountYen),
 				Account: graphAccount(storedPayment.R.Account),
 			})
 		}
-		result.Corrections = append(result.Corrections, correction)
+		if len(loaded.PaymentAllocations) == 0 && purchase.PaymentAccountID.Valid {
+			loaded.PaymentAllocations = append(loaded.PaymentAllocations, &model.PurchasePayment{
+				PaymentAccountID: purchase.PaymentAccountID.V.String(), Account: graphAccount(purchase.R.Account), AmountYen: graphLong(total),
+			})
+		}
+		for _, storedCorrection := range purchase.R.Corrections {
+			if storedCorrection.R.Journal == nil {
+				return nil, fmt.Errorf("correction %s has no journal", storedCorrection.ID)
+			}
+			correction := &model.PurchaseCorrection{
+				ID: storedCorrection.ID.String(), AmountDeltaYen: graphLong(storedCorrection.AmountDeltaYen),
+				Reason: storedCorrection.Reason, OccurredAt: timeString(storedCorrection.R.Journal.OccurredAt),
+				SettlementMonth: accountingPeriod(purchase.OccurredAt), PaymentAllocations: make([]*model.PurchasePayment, 0),
+			}
+			if storedCorrection.ItemID.Valid {
+				itemID := storedCorrection.ItemID.V.String()
+				correction.ItemID = &itemID
+			}
+			if storedCorrection.EffectivePeriod.Valid {
+				correction.SettlementMonth = storedCorrection.EffectivePeriod.V
+			}
+			for _, storedPayment := range storedCorrection.R.CorrectionPayments {
+				correction.PaymentAllocations = append(correction.PaymentAllocations, &model.PurchasePayment{
+					PaymentAccountID: storedPayment.AccountID.String(), AmountYen: graphLong(storedPayment.AmountYen),
+					Account: graphAccount(storedPayment.R.Account),
+				})
+			}
+			loaded.Corrections = append(loaded.Corrections, correction)
+		}
+		result = append(result, loaded)
 	}
 	return result, nil
 }

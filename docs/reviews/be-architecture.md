@@ -118,89 +118,17 @@ Service層ではGraphQLの生成モデルを使わず、アプリケーション
 
 なお、Repositoryインターフェースをテーブルごとに大量生産する必要はありません。 Goでは不要な抽象化も保守性を悪化させます。まずはユースケース単位のServiceと、必要な場所だけの小さなインターフェースで十分です。
 
-## 2. Bobを使っているのにN+1クエリが多い
+## 2. 月次集計と口座残高集計にN+1クエリが残っている
 
 優先度：高 / 性能・保守性
 
-ここはかなり明確な改善対象です。
+購入一覧は`loadPurchases`で購入、品目、配賦、タグ、決済、訂正、証拠をBobの関連ロード機能でまとめて取得するよう変更しました。複数購入の関連データが混ざらないことをDB統合テストで確認しています。
 
-### 購入一覧の取得
-
-該当：
-
-- [queries.go: purchases](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/graph/queries.go#L159-L261)
-- [helpers.go: loadPurchase](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/graph/helpers.go#L229-L441)
-
-購入一覧では、まず購入を取得してから、各購入に対して`loadPurchase`を呼んでいます。
-
-さらに`loadPurchase`内部で、品目ごとに配賦・タグなどを検索しています。
-
-```
-for _, row := range purchases {
-    purchase, err := loadPurchase(
-        ctx, r.DB, row.ID.String(),
-    )
-    // ...
-}
-```
-
-そして`loadPurchase`内部にも次のような処理があります。
-
-```
-for _, item := range items {
-    allocations, err := models.ItemAllocations.Query(
-        // itemごとの条件
-    ).All(ctx, executor)
-}
-```
-
-これは典型的な多段N+1です。
-
-1回の一覧取得で50件の購入、各10品目を表示するような場合、関連データの取得だけで大量のSQLを発行する構造になっています。
-
-### BobのThenLoadを活用する
-
-Bobには、関連モデルをまとめて取得する`ThenLoad`と、JOINによる`Preload`があります。
-
-[image](https://www.google.com/s2/favicons?domain=https://bob.stephenafamo.com\&sz=32)
-
-Bob
-
-現状でも`LoadMember`や`LoadAccount`は一部使用されていますが、親の集合全体に対してまとめてロードする設計に統一できていません。
-
-推奨するのは次の処理です。
-
-```
-購入一覧
-  ↓ 1クエリ
-対象購入の品目
-  ↓ 1クエリ
-対象品目の配賦
-  ↓ 1クエリ
-対象品目のタグ
-  ↓ 1クエリ
-購入単位の決済・訂正・証拠
-  ↓ 数クエリ
-レスポンスを組み立て
-```
-
-必ずしもすべて1クエリに統合する必要はありません。多対多の関係を無理にJOINすると行数が膨張するからです。
-
-関連データの種類に応じて数回のバッチクエリで取得する構造に変えるのがよいです。
-
-gqlgenでDataLoaderを導入する方法もありますが、現在の実装ではResolverがGraphQLのフィールドを処理する前に`loadPurchase`が一括でモデルを組み立てています。そのため、DataLoaderを追加するだけでは既存のN+1は解消されません。
-
-まずBob側のバッチ取得を改善し、必要に応じてフィールドResolver用のDataLoaderを採用してください。
-
-### 月次分析も同様
+### 月次分析
 
 [月次支出分析の実装](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/graph/queries.go#L388-L624)
 
-`monthlyCategorySpending`は購入ごとに品目と訂正を取得し、Goで集計しています。
-
-`monthlyMemberSpending`では、購入ごとに配賦、負担スナップショット、訂正を取得し、さらに訂正ごとにメンバー負担を取得しています。
-
-この種の集計はBob DSLの集計式とJOINでDB上に構築し、Goでは会計ルールと結果の整形を扱うべきです。
+`monthlyCategorySpending`は購入ごとに品目と訂正を取得し、Goで集計しています。`monthlyMemberSpending`では、購入ごとに配賦、負担スナップショット、訂正を取得し、さらに訂正ごとにメンバー負担を取得しています。`accountBalances`も口座ごとに仕訳を取得してGoで残高を集計しています。これらの集計はBob DSLで必要な行をJOIN・集約し、Goでは会計ルールと結果の整形を扱う構成へ変更します。
 
 ## 3. Bob DSLで集計と検索を型安全に実装する
 

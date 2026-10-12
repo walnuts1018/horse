@@ -182,6 +182,69 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if report.HasUnattributedPurchases || amountByMember[memberA] != 660 || amountByMember[memberB] != 440 {
 		t.Fatalf("historical spending changed after rule edit or correction used the wrong month: report=%#v", report)
 	}
+	secondPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: now.UTC().Format(time.RFC3339), Merchant: "Another shop",
+		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 300}},
+		Items:              []*model.PurchaseItemInput{{Name: "another item", AmountYen: 300}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tag, err := resolver.createTag(ctx, model.CreateTagInput{HouseholdID: household.ID, Name: "Batch loading"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagUUID := generatedUUID(tag.ID)
+	itemUUID := generatedUUID(purchase.Items[0].ID)
+	if _, err := models.PurchaseItemTags.Insert(&models.PurchaseItemTagSetter{HouseholdID: &householdID, PurchaseID: &purchaseUUID, ItemID: &itemUUID, TagID: &tagUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := (&Resolver{DB: db}).Query().Purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed.TotalCount != 2 || len(listed.Edges) != 2 {
+		t.Fatalf("purchase list returned %d purchases with %d edges, want 2", listed.TotalCount, len(listed.Edges))
+	}
+	listedByID := make(map[string]*model.Purchase, len(listed.Edges))
+	for _, edge := range listed.Edges {
+		listedByID[edge.Node.ID] = edge.Node
+	}
+	listedPurchase := listedByID[purchase.ID]
+	if listedPurchase == nil {
+		t.Fatalf("first purchase is missing from its list: %v", listedByID)
+	}
+	if !listedPurchase.HasEvidence || len(listedPurchase.SourceKinds) != 1 || listedPurchase.SourceKinds[0] != model.SourceKindReceipt {
+		t.Fatalf("first purchase evidence relations are incorrect: %#v", listedPurchase)
+	}
+	if len(listedPurchase.Items) != 1 || listedPurchase.Items[0].Name != "item" || int64(listedPurchase.Items[0].AmountYen) != 1200 {
+		t.Fatalf("first purchase item relation is incorrect: %#v", listedPurchase.Items)
+	}
+	if len(listedPurchase.Items[0].Tags) != 1 || listedPurchase.Items[0].Tags[0].ID != tag.ID {
+		t.Fatalf("first purchase tag relation is incorrect: %#v", listedPurchase.Items[0].Tags)
+	}
+	if len(listedPurchase.Items[0].Allocations) != 1 || listedPurchase.Items[0].Allocations[0].PoolID != pool.ID || listedPurchase.Items[0].Allocations[0].AmountYen == nil || int64(*listedPurchase.Items[0].Allocations[0].AmountYen) != 1200 {
+		t.Fatalf("first purchase allocation relation is incorrect: %#v", listedPurchase.Items[0].Allocations)
+	}
+	if len(listedPurchase.PaymentAllocations) != 1 || listedPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedPurchase.PaymentAllocations[0].AmountYen) != 1200 || len(listedPurchase.Corrections) != 1 {
+		t.Fatalf("first purchase relations were not loaded from their own records: %#v", listedPurchase)
+	}
+	listedSecondPurchase := listedByID[secondPurchase.ID]
+	if listedSecondPurchase == nil {
+		t.Fatalf("second purchase is missing from its list: %v", listedByID)
+	}
+	if listedSecondPurchase.HasEvidence || len(listedSecondPurchase.Items) != 1 || listedSecondPurchase.Items[0].Name != "another item" || int64(listedSecondPurchase.Items[0].AmountYen) != 300 {
+		t.Fatalf("second purchase item or evidence relations crossed with another purchase: %#v", listedSecondPurchase)
+	}
+	if len(listedSecondPurchase.Items[0].Tags) != 0 {
+		t.Fatalf("second purchase inherited another purchase's tag: %#v", listedSecondPurchase.Items[0].Tags)
+	}
+	if len(listedSecondPurchase.Items[0].Allocations) != 1 || listedSecondPurchase.Items[0].Allocations[0].PoolID != pool.ID || listedSecondPurchase.Items[0].Allocations[0].AmountYen == nil || int64(*listedSecondPurchase.Items[0].Allocations[0].AmountYen) != 300 {
+		t.Fatalf("second purchase allocation relation crossed with another purchase: %#v", listedSecondPurchase.Items[0].Allocations)
+	}
+	if len(listedSecondPurchase.PaymentAllocations) != 1 || listedSecondPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedSecondPurchase.PaymentAllocations[0].AmountYen) != 300 || len(listedSecondPurchase.Corrections) != 0 {
+		t.Fatalf("second purchase relations crossed with another purchase: %#v", listedSecondPurchase)
+	}
 	outsiderContext := auth.WithPrincipal(t.Context(), auth.Principal{MemberID: outsider, Subject: "burden-integration:" + outsider, DisplayName: "Outsider"})
 	if _, err := (&Resolver{DB: db}).Query().MonthlyMemberSpending(outsiderContext, household.ID, period, period); err == nil {
 		t.Fatal("a member outside the household must not read its spending report")

@@ -285,11 +285,12 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		pageInfo.HasNextPage = true
 	}
 	connection := &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0, len(purchases)), TotalCount: int(count), PageInfo: pageInfo}
-	for _, row := range purchases {
-		purchase, err := loadPurchase(ctx, r.DB, row.ID.String())
-		if err != nil {
-			return nil, err
-		}
+	loadedPurchases, err := loadPurchases(ctx, r.DB, purchases)
+	if err != nil {
+		return nil, err
+	}
+	for index, purchase := range loadedPurchases {
+		row := purchases[index]
 		connection.Edges = append(connection.Edges, &model.PurchaseEdge{Cursor: encodeCursor("Purchase", row.ID.String()), Node: purchase})
 	}
 	if len(purchases) > 0 {
