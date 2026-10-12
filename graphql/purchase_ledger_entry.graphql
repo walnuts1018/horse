@@ -1,9 +1,0 @@
-type PurchaseLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  purchase: Purchase!
-}

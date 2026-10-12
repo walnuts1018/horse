@@ -21,6 +21,11 @@ func (r *purchaseResolver) HouseholdID(ctx context.Context, obj *model.Purchase)
 	return encodeNodeID("Household", obj.HouseholdID)
 }
 
+// PaymentAccountID is the resolver for the paymentAccountId field.
+func (r *purchasePaymentResolver) PaymentAccountID(ctx context.Context, obj *model.PurchasePayment) (string, error) {
+	return encodeNodeID("Account", obj.PaymentAccountID)
+}
+
 // Purchases is the resolver for the purchases field.
 func (r *queryResolver) Purchases(ctx context.Context, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error) {
 	return r.purchases(ctx, householdID, from, to, origin, hasEvidence, after, before, first, last)
@@ -29,4 +34,10 @@ func (r *queryResolver) Purchases(ctx context.Context, householdID string, from 
 // Purchase returns PurchaseResolver implementation.
 func (r *Resolver) Purchase() PurchaseResolver { return &purchaseResolver{r} }
 
-type purchaseResolver struct{ *Resolver }
+// PurchasePayment returns PurchasePaymentResolver implementation.
+func (r *Resolver) PurchasePayment() PurchasePaymentResolver { return &purchasePaymentResolver{r} }
+
+type (
+	purchaseResolver        struct{ *Resolver }
+	purchasePaymentResolver struct{ *Resolver }
+)
