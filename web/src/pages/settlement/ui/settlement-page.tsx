@@ -414,11 +414,24 @@ export function SettlementPage({ household }: { household: Household }) {
                 inputMode="numeric"
                 value={transferAmount}
                 max={transferKind === "REPAYMENT" ? selectedLoan?.balanceYen : undefined}
+                aria-invalid={
+                  transferKind === "REPAYMENT" &&
+                  selectedLoan !== undefined &&
+                  parsedTransferAmount > selectedLoan.balanceYen
+                }
                 onChange={(event) => setTransferAmount(event.target.value.replace(/\D/g, ""))}
                 required
               />
               {transferKind === "REPAYMENT" && selectedLoan && (
-                <small>返済可能額 {yen(selectedLoan.balanceYen)}</small>
+                <small
+                  className={
+                    parsedTransferAmount > selectedLoan.balanceYen ? "payment-unbalanced" : undefined
+                  }
+                >
+                  {parsedTransferAmount > selectedLoan.balanceYen
+                    ? "返済額が残高を超えています"
+                    : `返済可能額 ${yen(selectedLoan.balanceYen)}`}
+                </small>
               )}
             </label>
             <label className="transfer-description">
