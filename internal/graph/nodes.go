@@ -109,6 +109,21 @@ func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.No
 				return value, nil
 			}
 		}
+		if kind == "LoanBalance" {
+			parsedID, _ := uuid.FromString(id)
+			loan, err := models.Transfers.Query(sm.Where(psql.And(
+				models.Transfers.Columns.ID.EQ(psql.Arg(parsedID)),
+				models.Transfers.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
+				models.Transfers.Columns.Kind.EQ(psql.Arg("LOAN")),
+			))).One(ctx, queryExecutor(r.DB))
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			return loadLoanBalance(ctx, queryExecutor(r.DB), loan)
+		}
 		if kind == "Category" {
 			if value := findValue(household.Categories, func(value *model.Category) bool { return value.ID == id }); value != nil {
 				return value, nil

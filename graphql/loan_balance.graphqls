@@ -1,5 +1,5 @@
-type LoanBalance {
-  loanId: ID!
+type LoanBalance implements Node {
+  id: ID!
   lenderMemberId: ID!
   borrowerMemberId: ID!
   principalYen: Long!

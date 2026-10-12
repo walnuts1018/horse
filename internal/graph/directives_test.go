@@ -25,3 +25,19 @@ func TestNodeIDDirectiveDecodesList(t *testing.T) {
 		t.Fatalf("NodeIDDirective() = %#v, want %#v", value, want)
 	}
 }
+
+func TestNodeIDDirectiveDecodesLoanBalance(t *testing.T) {
+	const rawID = "123e4567-e89b-42d3-a456-426614174000"
+	globalID, err := encodeNodeID("LoanBalance", rawID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	value, err := NodeIDDirective(t.Context(), globalID, nil, "LoanBalance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value != rawID {
+		t.Fatalf("NodeIDDirective() = %#v, want %q", value, rawID)
+	}
+}

@@ -74,19 +74,10 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 			if err != nil {
 				return nil, err
 			}
-			loanLedger, err := models.LedgerEntries.Query(sm.Where(models.LedgerEntries.Columns.ID.EQ(psql.Arg(loanRow.LedgerEntryID)))).One(ctx, bobpgx.NewPool(db))
+			loan, err = loadLoanBalance(ctx, bobpgx.NewPool(db), loanRow)
 			if err != nil {
 				return nil, err
 			}
-			repayments, err := models.Transfers.Query(sm.Where(psql.And(models.Transfers.Columns.HouseholdID.EQ(psql.Arg(loanRow.HouseholdID)), models.Transfers.Columns.LoanID.EQ(psql.Arg(sql.Null[uuid.UUID]{V: loanRow.ID, Valid: true}))))).All(ctx, bobpgx.NewPool(db))
-			if err != nil {
-				return nil, err
-			}
-			var repaid int64
-			for _, repayment := range repayments {
-				repaid += repayment.AmountYen
-			}
-			loan = &model.LoanBalance{LoanID: loanRow.ID.String(), LenderMemberID: loanRow.FromMemberID.String(), BorrowerMemberID: loanRow.ToMemberID.String(), PrincipalYen: graphLong(loanRow.AmountYen), RepaidYen: graphLong(repaid), BalanceYen: graphLong(loanRow.AmountYen - repaid), CreatedAt: timeString(loanLedger.CreatedAt)}
 		}
 		return &model.TransferLedgerEntry{ID: baseID, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: currency, CreatedAt: createdAt, FromMember: fromMember, ToMember: toMember, TransferKind: model.TransferKind(transfer.Kind), Loan: loan}, nil
 	default:

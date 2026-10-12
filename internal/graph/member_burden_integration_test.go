@@ -182,6 +182,13 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if report.HasUnattributedPurchases || amountByMember[memberA] != 660 || amountByMember[memberB] != 440 {
 		t.Fatalf("historical spending changed after rule edit or correction used the wrong month: report=%#v", report)
 	}
+	categoryReport, err := query.MonthlyCategorySpending(ctx, household.ID, period, period)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(categoryReport) != 1 || categoryReport[0].Period != period || categoryReport[0].CategoryID != nil || categoryReport[0].CategoryName != nil || int64(categoryReport[0].AmountYen) != 1100 {
+		t.Fatalf("monthly category spending changed the purchase month or correction amount: %#v", categoryReport)
+	}
 	secondPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: now.UTC().Format(time.RFC3339), Merchant: "Another shop",
 		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 300}},

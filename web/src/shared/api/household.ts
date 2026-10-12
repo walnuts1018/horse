@@ -190,7 +190,7 @@ export type PurchaseCorrection = {
   paymentAllocations: PurchasePayment[];
 };
 export type LoanBalance = {
-  loanId: string;
+  id: string;
   lenderMemberId: string;
   borrowerMemberId: string;
   principalYen: number;
@@ -539,13 +539,13 @@ function normalizeGraphQLValue(value: unknown): unknown {
     if (typename === "TransferLedgerEntry") {
       const from = item.fromMember as { id?: string } | undefined;
       const to = item.toMember as { id?: string } | undefined;
-      const loan = item.loan as { loanId?: string } | null;
+      const loan = item.loan as { id?: string } | null;
       return {
         ...base,
         kind: item.transferKind,
         fromMemberId: from?.id,
         toMemberId: to?.id,
-        loanId: loan?.loanId,
+        loanId: loan?.id,
       };
     }
     if (typename === "PurchaseLedgerEntry" || typename === "CorrectionLedgerEntry") {

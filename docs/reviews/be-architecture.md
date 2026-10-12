@@ -118,7 +118,7 @@ Service層ではGraphQLの生成モデルを使わず、アプリケーション
 
 なお、Repositoryインターフェースをテーブルごとに大量生産する必要はありません。 Goでは不要な抽象化も保守性を悪化させます。まずはユースケース単位のServiceと、必要な場所だけの小さなインターフェースで十分です。
 
-## 2. 月次集計と口座残高集計にN+1クエリが残っている
+## 2. 購入一覧・月次・口座集計のN+1
 
 優先度：高 / 性能・保守性
 
@@ -126,9 +126,7 @@ Service層ではGraphQLの生成モデルを使わず、アプリケーション
 
 ### 月次分析
 
-[月次支出分析の実装](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/graph/queries.go#L388-L624)
-
-`monthlyCategorySpending`は購入ごとに品目と訂正を取得し、Goで集計しています。`monthlyMemberSpending`では、購入ごとに配賦、負担スナップショット、訂正を取得し、さらに訂正ごとにメンバー負担を取得しています。`accountBalances`も口座ごとに仕訳を取得してGoで残高を集計しています。これらの集計はBob DSLで必要な行をJOIN・集約し、Goでは会計ルールと結果の整形を扱う構成へ変更します。
+`monthlyCategorySpending`と`monthlyMemberSpending`は専用の`monthly_spending.go`へ分割し、品目・訂正・負担スナップショットをBob DSLで集約します。`accountBalances`もBob DSLの単一集計クエリで計算します。集計結果と元購入月に対する補正、開始残高より前の仕訳を除外する境界をDB統合テストで確認しています。
 
 ## 3. Bob DSLで集計と検索を型安全に実装する
 
@@ -155,7 +153,7 @@ queries:
 | 口座残高集計 | Bob DSLによる集計 |
 | 複雑な会計計算 | Goのdomain関数 |
 
-現行の月次集計や口座分析は会計仕様を反映したBob DSLに置き換え、追加の集計も同じ型安全な構成にそろえます。DB固有の実行計画を確認するときは、Bobが生成するクエリと引数を使って検証します。
+月次集計と口座残高集計は会計仕様を反映したBob DSLへ移行しました。追加の集計も同じ型安全な構成にそろえます。DB固有の実行計画を確認するときは、Bobが生成するクエリと引数を使って検証します。
 
 ## 4. 会計仕訳の構築ロジックが重複している
 
@@ -204,78 +202,11 @@ func BuildPurchaseJournal(
 
 配賦・金額の保存則・仕訳構築は自前の純粋関数、DBアクセスとトランザクションはBob/pgxという役割分担が最適だと思います。
 
-## 5. Gemini APIの独自HTTP実装を公式SDKへ置き換える
+## 5. Gemini Schema定義とGo型の同期
 
 優先度：高 / ライブラリ活用
 
 該当：[internal/ingestion/gemini.go](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/ingestion/gemini.go)
-
-現在の`Gemini.ExtractRun`では、以下の処理を自前で実装しています。
-
-- HTTPリクエストとJSONペイロードの構築
-- 画像のBase64エンコード
-- Thinking設定とService Tierの指定
-- レスポンスのJSONデコード
-- 候補とFinishReasonの解析
-- トークン使用量の取得
-- HTTPエラーの解釈
-
-このうち大部分は、Google公式のGo SDKに任せられます。
-
-### `google.golang.org/genai`を採用する
-
-公式Go SDKは現在、必要な次の機能を備えています。
-
-| 機能                              | SDK対応 |
-| ------------------------------- | ----- |
-| 画像・PDF・テキスト入力                   | 対応    |
-| Structured Output / JSON Schema | 対応    |
-| Thinking Level                  | 対応    |
-| Standard / Flex Service Tier    | 対応    |
-| Batch API                       | 対応    |
-| Token Usage取得                   | 対応    |
-| Files API                       | 対応    |
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-+3
-
-特に重要なのは、Free/Paidのモデルルーティングは今までどおり自前で実装し、Geminiへの通信部分だけSDKに任せることです。
-
-今回のFree/Paid切り替え、予算管理、品質に応じた再解析はHorse固有のビジネスルールです。ここをSDKに委ねる必要はありません。
-
-推奨構造は次のとおりです。
-
-```
-ingestion/
-├── router.go
-├── extractor.go
-├── verifier.go
-└── provider/
-    └── gemini/
-        ├── client.go
-        ├── schema.go
-        └── errors.go
-```
-
-例えばプロバイダのインターフェースは、
-
-```
-type VisionExtractor interface {
-    Extract(
-        ctx context.Context,
-        request ExtractRequest,
-    ) (ExtractionResult, error)
-}
-```
-
-のようにできます。
-
-`google.golang.org/genai`を使った実装は`provider/gemini`内に閉じ込めます。
-
-この設計であれば、将来GeminiのモデルやAPIが変わっても、会計処理やWorkerの実装を変更する必要がなくなります。
 
 また、`receiptSchema()`は現在、`map[string]any`による手作りJSON Schemaです。これは`Receipt`構造体と二重管理になっています。
 
@@ -361,11 +292,7 @@ DBロックを保持したまま外部APIを待つ構成にはしないでくだ
 
 | 処理 | 現状の問題 | 推奨 |
 | ------------------------- | ---------------------- | ------------ |
-| `accountBalances` | 全仕訳をGoへ読み込んで集計 | Bob DSLによるDB集計 |
-| `monthlyCategorySpending` | 購入ごとの品目検索 | Bob DSLによるDB集計 |
-| `monthlyMemberSpending` | 購入・訂正ごとの繰り返し検索 | 集計専用Query |
 | `productSuggestions` | 全商品の取得・Go側検索 | DB側絞り込み |
-| `purchases` | `loadPurchase`を件数分実行 | バッチロード |
 | `hasEvidence`フィルタ | 証拠リンクを全取得し巨大な`IN`条件を構築 | Bob DSLの存在条件 |
 
 特に`hasEvidence`は、[queries.go](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/graph/queries.go#L178-L206)で、家庭内のEvidenceLinkとDocumentConfirmationを全部取得し、購入IDの集合をGoで構築しています。

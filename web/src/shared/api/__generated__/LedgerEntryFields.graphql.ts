@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bb661c1bb8b1a85fb8c8e35ebdd8e999>>
+ * @generated SignedSource<<7923ca77a3e8b27202291aeb7c9b6dfe>>
  * @lightSyntaxTransform
  */
 
@@ -22,7 +22,7 @@ export type LedgerEntryFields$data = {
   };
   readonly id: string;
   readonly loan?: {
-    readonly loanId: string;
+    readonly id: string;
   } | null | undefined;
   readonly member?: {
     readonly displayName: string;
@@ -57,6 +57,9 @@ var v0 = {
   "storageKey": null
 },
 v1 = [
+  (v0/*:: as any*/)
+],
+v2 = [
   {
     "alias": null,
     "args": null,
@@ -64,13 +67,11 @@ v1 = [
     "kind": "LinkedField",
     "name": "purchase",
     "plural": false,
-    "selections": [
-      (v0/*:: as any*/)
-    ],
+    "selections": (v1/*:: as any*/),
     "storageKey": null
   }
 ],
-v2 = [
+v3 = [
   (v0/*:: as any*/),
   {
     "alias": null,
@@ -131,7 +132,7 @@ return {
     },
     {
       "kind": "InlineFragment",
-      "selections": (v1/*:: as any*/),
+      "selections": (v2/*:: as any*/),
       "type": "PurchaseLedgerEntry",
       "abstractKey": null
     },
@@ -145,7 +146,7 @@ return {
           "kind": "LinkedField",
           "name": "member",
           "plural": false,
-          "selections": (v2/*:: as any*/),
+          "selections": (v3/*:: as any*/),
           "storageKey": null
         },
         {
@@ -181,7 +182,7 @@ return {
           "kind": "LinkedField",
           "name": "fromMember",
           "plural": false,
-          "selections": (v2/*:: as any*/),
+          "selections": (v3/*:: as any*/),
           "storageKey": null
         },
         {
@@ -191,7 +192,7 @@ return {
           "kind": "LinkedField",
           "name": "toMember",
           "plural": false,
-          "selections": (v2/*:: as any*/),
+          "selections": (v3/*:: as any*/),
           "storageKey": null
         },
         {
@@ -208,15 +209,7 @@ return {
           "kind": "LinkedField",
           "name": "loan",
           "plural": false,
-          "selections": [
-            {
-              "alias": null,
-              "args": null,
-              "kind": "ScalarField",
-              "name": "loanId",
-              "storageKey": null
-            }
-          ],
+          "selections": (v1/*:: as any*/),
           "storageKey": null
         }
       ],
@@ -225,7 +218,7 @@ return {
     },
     {
       "kind": "InlineFragment",
-      "selections": (v1/*:: as any*/),
+      "selections": (v2/*:: as any*/),
       "type": "CorrectionLedgerEntry",
       "abstractKey": null
     }
@@ -235,6 +228,6 @@ return {
 };
 })();
 
-(node as any).hash = "8e0d60c635a8609f28033bc596eb11fd";
+(node as any).hash = "ba59a945c8a7b1bf94a54feec1c27ea3";
 
 export default node;

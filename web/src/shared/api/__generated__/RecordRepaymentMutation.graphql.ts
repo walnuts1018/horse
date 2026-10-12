@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<276da8c79502d084dce7a3acaf93f2e9>>
+ * @generated SignedSource<<7a91da0bdd93131ab1cf6c5a0650442e>>
  * @lightSyntaxTransform
  */
 
@@ -97,6 +97,9 @@ v4 = {
   "storageKey": null
 },
 v5 = [
+  (v4/*:: as any*/)
+],
+v6 = [
   {
     "alias": null,
     "args": null,
@@ -104,13 +107,11 @@ v5 = [
     "kind": "LinkedField",
     "name": "purchase",
     "plural": false,
-    "selections": [
-      (v4/*:: as any*/)
-    ],
+    "selections": (v5/*:: as any*/),
     "storageKey": null
   }
 ],
-v6 = [
+v7 = [
   (v4/*:: as any*/),
   {
     "alias": null,
@@ -236,7 +237,7 @@ return {
                   },
                   {
                     "kind": "InlineFragment",
-                    "selections": (v5/*:: as any*/),
+                    "selections": (v6/*:: as any*/),
                     "type": "PurchaseLedgerEntry",
                     "abstractKey": null
                   },
@@ -250,7 +251,7 @@ return {
                         "kind": "LinkedField",
                         "name": "member",
                         "plural": false,
-                        "selections": (v6/*:: as any*/),
+                        "selections": (v7/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -286,7 +287,7 @@ return {
                         "kind": "LinkedField",
                         "name": "fromMember",
                         "plural": false,
-                        "selections": (v6/*:: as any*/),
+                        "selections": (v7/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -296,7 +297,7 @@ return {
                         "kind": "LinkedField",
                         "name": "toMember",
                         "plural": false,
-                        "selections": (v6/*:: as any*/),
+                        "selections": (v7/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -313,15 +314,7 @@ return {
                         "kind": "LinkedField",
                         "name": "loan",
                         "plural": false,
-                        "selections": [
-                          {
-                            "alias": null,
-                            "args": null,
-                            "kind": "ScalarField",
-                            "name": "loanId",
-                            "storageKey": null
-                          }
-                        ],
+                        "selections": (v5/*:: as any*/),
                         "storageKey": null
                       }
                     ],
@@ -330,7 +323,7 @@ return {
                   },
                   {
                     "kind": "InlineFragment",
-                    "selections": (v5/*:: as any*/),
+                    "selections": (v6/*:: as any*/),
                     "type": "CorrectionLedgerEntry",
                     "abstractKey": null
                   }
@@ -348,12 +341,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "d5d1fb4d2b006b89613cc74a834963aa",
+    "cacheID": "212342e0175d421e7971af03c7187816",
     "id": null,
     "metadata": {},
     "name": "RecordRepaymentMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordRepaymentMutation(\n  $input: RecordRepaymentInput!\n) {\n  recordRepayment(input: $input) {\n    __typename\n    ... on RecordRepaymentSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      loanId\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
+    "text": "mutation RecordRepaymentMutation(\n  $input: RecordRepaymentInput!\n) {\n  recordRepayment(input: $input) {\n    __typename\n    ... on RecordRepaymentSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      id\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
   }
 };
 })();

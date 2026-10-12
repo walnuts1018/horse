@@ -21,7 +21,7 @@ export const ledgerQuery = graphql`
 export const loanBalancesQuery = graphql`
   query LoanBalancesQuery($householdId: ID!) {
     loanBalances(householdId: $householdId) {
-      loanId
+      id
       lenderMemberId
       borrowerMemberId
       principalYen
@@ -249,7 +249,7 @@ export const ledgerEntryFields = graphql`
       }
       transferKind
       loan {
-        loanId
+        id
       }
     }
     ... on CorrectionLedgerEntry {

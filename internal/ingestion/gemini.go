@@ -1,16 +1,15 @@
 package ingestion
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"google.golang.org/genai"
 )
 
 const PromptVersion = "receipt-2026-10-13.2"
@@ -137,14 +136,13 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 	if endpoint == "" {
 		endpoint = "https://generativelanguage.googleapis.com/v1beta/"
 	}
-	u, err := url.Parse(endpoint)
+	baseURL, err := geminiBaseURL(endpoint)
 	if err != nil {
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "invalid_endpoint"})
 	}
 	if strings.ContainsAny(g.Model, "/?#") {
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "invalid_model"})
 	}
-	u = u.JoinPath("models", g.Model+":generateContent")
 	emailHasUnparsedAttachments := false
 	if document.MIMEType == "message/rfc822" {
 		email, err := parseEmail(document.Data)
@@ -174,73 +172,52 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 	if len(options.Guidance) > 0 {
 		prompt += ` This is a quality review with additional verification evidence. Re-read the original source and independently assess the following observations. Do not repeat the previous interpretation unless the source supports it. Resolve conflicts only from source evidence; preserve uncertainty otherwise. Additional evidence and review goals:\n` + strings.Join(options.Guidance, "\n\n")
 	}
-	parts := []any{map[string]any{"text": prompt}}
+	parts := []*genai.Part{genai.NewPartFromText(prompt)}
 	if strings.HasPrefix(document.MIMEType, "text/") || document.MIMEType == "message/rfc822" {
-		parts = append(parts, map[string]any{"text": string(document.Data)})
+		parts = append(parts, genai.NewPartFromText(string(document.Data)))
 	} else {
-		parts = append(parts, map[string]any{"inlineData": map[string]any{"mimeType": document.MIMEType, "data": base64.StdEncoding.EncodeToString(document.Data)}})
+		parts = append(parts, genai.NewPartFromBytes(document.Data, document.MIMEType))
 	}
-	payload, err := json.Marshal(map[string]any{
-		"contents": []any{map[string]any{"role": "user", "parts": parts}},
-		"generationConfig": map[string]any{
-			"responseMimeType":   "application/json",
-			"responseJsonSchema": receiptSchema(),
-			"maxOutputTokens":    MaxOutputTokens,
-			"thinkingConfig":     map[string]any{"thinkingLevel": run.ThinkingLevel},
+	responseCapture := new(geminiResponseCapture)
+	httpClient := geminiHTTPClient(g.HTTPClient, timeout, responseCapture)
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:     g.APIKey,
+		Backend:    genai.BackendGeminiAPI,
+		HTTPClient: httpClient,
+		HTTPOptions: genai.HTTPOptions{
+			BaseURL:      baseURL,
+			APIVersion:   "v1beta",
+			RetryOptions: &genai.HTTPRetryOptions{Attempts: new(int32(1))},
 		},
-		"service_tier": run.ServiceTier,
 	})
 	if err != nil {
-		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "request_encoding_failed"})
+		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "client_initialization_failed"})
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(payload))
+	result, err := client.Models.GenerateContent(ctx, g.Model, []*genai.Content{{Role: "user", Parts: parts}}, &genai.GenerateContentConfig{
+		ResponseMIMEType:   "application/json",
+		ResponseJsonSchema: receiptSchema(),
+		MaxOutputTokens:    int32(MaxOutputTokens),
+		ThinkingConfig:     &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevel(strings.ToUpper(run.ThinkingLevel))},
+		ServiceTier:        genai.ServiceTier(run.ServiceTier),
+	})
 	if err != nil {
-		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "request_creation_failed"})
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", g.APIKey)
-	client := g.HTTPClient
-	if client == nil {
-		client = &http.Client{Timeout: timeout}
-	}
-	response, err := client.Do(req)
-	if err != nil {
+		if apiErr, ok := errors.AsType[genai.APIError](err); ok {
+			return finish(Receipt{}, providerError(apiErr, responseCapture))
+		}
+		if responseCapture.statusCode == http.StatusOK {
+			return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "malformed_provider_json"})
+		}
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureTemporary, Code: "transport_error"})
 	}
-	body, readErr := io.ReadAll(io.LimitReader(response.Body, 4<<20))
-	closeErr := response.Body.Close()
-	if readErr != nil || closeErr != nil {
-		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureTemporary, Code: "response_read_error"})
-	}
-	if response.StatusCode != http.StatusOK {
-		return finish(Receipt{}, providerError(response, body))
-	}
-	var result struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text    string `json:"text"`
-					Thought bool   `json:"thought"`
-				} `json:"parts"`
-			} `json:"content"`
-			FinishReason string `json:"finishReason"`
-		} `json:"candidates"`
-		Usage struct {
-			Prompt     int64 `json:"promptTokenCount"`
-			Candidates int64 `json:"candidatesTokenCount"`
-			Thoughts   int64 `json:"thoughtsTokenCount"`
-		} `json:"usageMetadata"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "malformed_provider_json"})
-	}
-	if len(result.Candidates) == 0 || result.Candidates[0].FinishReason != "STOP" {
+	if result == nil || len(result.Candidates) == 0 || result.Candidates[0] == nil || result.Candidates[0].FinishReason != genai.FinishReasonStop {
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "incomplete_generation"})
 	}
 	var text strings.Builder
-	for _, part := range result.Candidates[0].Content.Parts {
-		if !part.Thought {
-			text.WriteString(part.Text)
+	if content := result.Candidates[0].Content; content != nil {
+		for _, part := range content.Parts {
+			if part != nil && !part.Thought {
+				text.WriteString(part.Text)
+			}
 		}
 	}
 	var receipt Receipt
@@ -249,35 +226,34 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 	}
 	receipt.Model = g.Model
 	receipt.PromptVersion = PromptVersion
-	receipt.InputTokens = result.Usage.Prompt
-	receipt.OutputTokens = result.Usage.Candidates + result.Usage.Thoughts
+	if result.UsageMetadata != nil {
+		receipt.InputTokens = int64(result.UsageMetadata.PromptTokenCount)
+		receipt.OutputTokens = int64(result.UsageMetadata.CandidatesTokenCount + result.UsageMetadata.ThoughtsTokenCount)
+	}
 	if emailHasUnparsedAttachments {
 		receipt.Warnings = append(receipt.Warnings, emailAttachmentReviewWarning)
 	}
 	return finish(receipt, nil)
 }
 
-func providerError(response *http.Response, body []byte) *GeminiAPIError {
-	var decoded struct {
-		Error struct {
-			Status  string `json:"status"`
-			Message string `json:"message"`
-			Details []struct {
-				Reason     string `json:"reason"`
-				RetryDelay string `json:"retryDelay"`
-			} `json:"details"`
-		} `json:"error"`
+func providerError(response genai.APIError, capture *geminiResponseCapture) *GeminiAPIError {
+	classificationText := strings.ToLower(response.Status + " " + response.Message)
+	statusCode := response.Code
+	if capture.statusCode != 0 {
+		statusCode = capture.statusCode
 	}
-	_ = json.Unmarshal(body, &decoded)
-	classificationText := strings.ToLower(decoded.Error.Status + " " + decoded.Error.Message)
-	apiErr := &GeminiAPIError{StatusCode: response.StatusCode, Code: "provider_rejected"}
-	for _, detail := range decoded.Error.Details {
-		classificationText += " " + strings.ToLower(detail.Reason)
-		if parsed, err := time.ParseDuration(detail.RetryDelay); err == nil {
-			apiErr.RetryAfter = max(apiErr.RetryAfter, parsed)
+	apiErr := &GeminiAPIError{StatusCode: statusCode, Code: "provider_rejected"}
+	for _, detail := range response.Details {
+		if reason, ok := detail["reason"].(string); ok {
+			classificationText += " " + strings.ToLower(reason)
+		}
+		if retryDelay, ok := detail["retryDelay"].(string); ok {
+			if parsed, err := time.ParseDuration(retryDelay); err == nil {
+				apiErr.RetryAfter = max(apiErr.RetryAfter, parsed)
+			}
 		}
 	}
-	if value := response.Header.Get("Retry-After"); value != "" {
+	if value := capture.header.Get("Retry-After"); value != "" {
 		if seconds, err := time.ParseDuration(value); err == nil {
 			apiErr.RetryAfter = max(apiErr.RetryAfter, seconds)
 		} else if seconds, err := time.ParseDuration(value + "s"); err == nil {
@@ -291,18 +267,65 @@ func providerError(response *http.Response, body []byte) *GeminiAPIError {
 		apiErr.Kind, apiErr.Code = GeminiFailureSpendCap, "spend_cap_reached"
 		return apiErr
 	}
-	switch response.StatusCode {
+	switch statusCode {
 	case http.StatusTooManyRequests:
 		apiErr.Kind, apiErr.Code = GeminiFailureQuota, "rate_limited"
 	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		apiErr.Kind, apiErr.Code = GeminiFailureTemporary, "provider_unavailable"
 	default:
 		apiErr.Kind = GeminiFailureRejected
-		if response.StatusCode >= 500 {
+		if statusCode >= 500 {
 			apiErr.Kind, apiErr.Code = GeminiFailureTemporary, "provider_error"
 		}
 	}
 	return apiErr
+}
+
+type geminiResponseCapture struct {
+	statusCode int
+	header     http.Header
+}
+
+type geminiResponseTransport struct {
+	base    http.RoundTripper
+	capture *geminiResponseCapture
+}
+
+func (t geminiResponseTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(request)
+	if response != nil {
+		t.capture.statusCode = response.StatusCode
+		t.capture.header = response.Header.Clone()
+	}
+	return response, err
+}
+
+func geminiHTTPClient(client *http.Client, timeout time.Duration, capture *geminiResponseCapture) *http.Client {
+	result := http.Client{Timeout: timeout}
+	if client != nil {
+		result = *client
+		if result.Timeout == 0 {
+			result.Timeout = timeout
+		}
+	}
+	transport := result.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	result.Transport = geminiResponseTransport{base: transport, capture: capture}
+	return &result
+}
+
+func geminiBaseURL(endpoint string) (string, error) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return "", errors.New("invalid Gemini endpoint")
+	}
+	path := strings.TrimRight(parsed.Path, "/")
+	path = strings.TrimSuffix(path, "/v1beta")
+	parsed.Path = path
+	parsed.RawPath = ""
+	return parsed.String(), nil
 }
 
 func receiptSchema() map[string]any {

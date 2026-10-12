@@ -777,6 +777,12 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := resolver.recordExternalIncome(ctx, model.RecordExternalIncomeInput{
+		HouseholdID: household.ID, AccountID: lenderAccount.ID, AmountYen: 700,
+		OccurredAt: "2026-04-30T12:00:00Z", IdempotencyKey: uuid.NewV7().String(), Description: "Before opening balance",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	loan, err := resolver.recordTransfer(ctx, model.RecordTransferInput{
 		HouseholdID: household.ID, FromMemberID: memberA, ToMemberID: memberB, Kind: model.TransferInputKindLoan,
 		PaymentAccountID: &lenderAccount.ID, DestinationAccountID: &borrowerAccount.ID,
@@ -801,8 +807,39 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		t.Fatalf("shared-pool repayment failed: transfer=%#v error=%v", repayment, err)
 	}
 	loanBalances, err := (&Resolver{DB: db}).Query().LoanBalances(ctx, household.ID)
-	if err != nil || len(loanBalances) != 1 || loanBalances[0].LoanID != *loan.TransferID || loanBalances[0].BalanceYen != 0 || loanBalances[0].PrincipalYen != 5000 || loanBalances[0].RepaidYen != 5000 {
+	loanNodeID, nodeIDErr := encodeNodeID("LoanBalance", *loan.TransferID)
+	if err != nil || nodeIDErr != nil || len(loanBalances) != 1 || loanBalances[0].ID != loanNodeID || loanBalances[0].BalanceYen != 0 || loanBalances[0].PrincipalYen != 5000 || loanBalances[0].RepaidYen != 5000 {
 		t.Fatalf("loan balance was not settled: balances=%#v error=%v", loanBalances, err)
+	}
+	loanNode, err := (&Resolver{DB: db}).Query().Node(ctx, loanNodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loanBalanceNode, ok := loanNode.(*model.LoanBalance)
+	if !ok || loanBalanceNode.BalanceYen != 0 {
+		t.Fatalf("loan node returned an unsettled balance: %#v", loanNode)
+	}
+	foreignMemberID := uuid.NewV7().String()
+	foreignMemberUUID, _ := gofrsuuid.FromString(foreignMemberID)
+	foreignSubject := "loan-node-other-household:" + foreignMemberID
+	if _, err := models.Members.Insert(&models.MemberSetter{ID: &foreignMemberUUID, OidcSubject: &foreignSubject, DisplayName: new("Other household member")}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(foreignMemberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
+	foreignCtx := auth.WithPrincipal(ctx, auth.Principal{MemberID: foreignMemberID, Subject: foreignSubject})
+	foreignResolver := &mutationResolver{Resolver: &Resolver{DB: db}}
+	foreignHousehold, err := foreignResolver.createHousehold(foreignCtx, model.CreateHouseholdInput{Name: "other loan household"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(foreignHousehold.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
+	loanNode, err = (&Resolver{DB: db}).Query().Node(foreignCtx, loanNodeID)
+	if err != nil || loanNode != nil {
+		t.Fatalf("loan node was available to a different household: node=%#v error=%v", loanNode, err)
 	}
 	settlement, err := (&Resolver{DB: db}).Query().Settlement(ctx, household.ID, "2026-06")
 	if err != nil {

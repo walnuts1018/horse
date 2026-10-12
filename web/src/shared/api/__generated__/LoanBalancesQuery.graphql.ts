@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5e2efd656d443abcb994595e7824b355>>
+ * @generated SignedSource<<6fc4ffd8707b1ad98ed42a9e9f48577d>>
  * @lightSyntaxTransform
  */
 
@@ -15,8 +15,8 @@ export type LoanBalancesQuery$data = {
   readonly loanBalances: ReadonlyArray<{
     readonly balanceYen: any;
     readonly borrowerMemberId: string;
+    readonly id: string;
     readonly lenderMemberId: string;
-    readonly loanId: string;
     readonly principalYen: any;
     readonly repaidYen: any;
   }>;
@@ -53,7 +53,7 @@ v1 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "loanId",
+        "name": "id",
         "storageKey": null
       },
       {
@@ -113,16 +113,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "28ac538ee3edd5b4d6f0ad7aa5a30ce0",
+    "cacheID": "d4818c7d4de32e0ce452f32681404e80",
     "id": null,
     "metadata": {},
     "name": "LoanBalancesQuery",
     "operationKind": "query",
-    "text": "query LoanBalancesQuery(\n  $householdId: ID!\n) {\n  loanBalances(householdId: $householdId) {\n    loanId\n    lenderMemberId\n    borrowerMemberId\n    principalYen\n    repaidYen\n    balanceYen\n  }\n}\n"
+    "text": "query LoanBalancesQuery(\n  $householdId: ID!\n) {\n  loanBalances(householdId: $householdId) {\n    id\n    lenderMemberId\n    borrowerMemberId\n    principalYen\n    repaidYen\n    balanceYen\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "7c0432cf729371a54d8aef37ab13df33";
+(node as any).hash = "66aa5a3181c754a9ebd667c9eaf35142";
 
 export default node;

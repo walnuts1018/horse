@@ -596,7 +596,7 @@ type LedgerEdge struct {
 }
 
 type LoanBalance struct {
-	LoanID           string `json:"loanId"`
+	ID               string `json:"id"`
 	LenderMemberID   string `json:"lenderMemberId"`
 	BorrowerMemberID string `json:"borrowerMemberId"`
 	PrincipalYen     Long   `json:"principalYen"`
@@ -604,6 +604,8 @@ type LoanBalance struct {
 	BalanceYen       Long   `json:"balanceYen"`
 	CreatedAt        string `json:"createdAt"`
 }
+
+func (LoanBalance) IsNode() {}
 
 type Member struct {
 	ID          string `json:"id"`

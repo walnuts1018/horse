@@ -320,8 +320,8 @@ type ComplexityRoot struct {
 		BalanceYen       func(childComplexity int) int
 		BorrowerMemberID func(childComplexity int) int
 		CreatedAt        func(childComplexity int) int
+		ID               func(childComplexity int) int
 		LenderMemberID   func(childComplexity int) int
-		LoanID           func(childComplexity int) int
 		PrincipalYen     func(childComplexity int) int
 		RepaidYen        func(childComplexity int) int
 	}
@@ -1815,18 +1815,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.LoanBalance.CreatedAt(childComplexity), true
+	case "LoanBalance.id":
+		if e.ComplexityRoot.LoanBalance.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LoanBalance.ID(childComplexity), true
 	case "LoanBalance.lenderMemberId":
 		if e.ComplexityRoot.LoanBalance.LenderMemberID == nil {
 			break
 		}
 
 		return e.ComplexityRoot.LoanBalance.LenderMemberID(childComplexity), true
-	case "LoanBalance.loanId":
-		if e.ComplexityRoot.LoanBalance.LoanID == nil {
-			break
-		}
-
-		return e.ComplexityRoot.LoanBalance.LoanID(childComplexity), true
 	case "LoanBalance.principalYen":
 		if e.ComplexityRoot.LoanBalance.PrincipalYen == nil {
 			break
@@ -4413,8 +4413,8 @@ extend type Query {
   ledger(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): LedgerConnection!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/loan_balance.graphqls", Input: `type LoanBalance {
-  loanId: ID!
+	{Name: "../../graphql/loan_balance.graphqls", Input: `type LoanBalance implements Node {
+  id: ID!
   lenderMemberId: ID!
   borrowerMemberId: ID!
   principalYen: Long!
@@ -4766,7 +4766,7 @@ input RecordRepaymentInput {
   householdId: ID! @nodeID(of: "Household")
   fromMemberId: ID! @nodeID(of: "Member")
   toMemberId: ID! @nodeID(of: "Member")
-  loanId: ID!
+  loanId: ID! @nodeID(of: "LoanBalance")
   paymentAccountId: ID @nodeID(of: "Account")
   destinationAccountId: ID @nodeID(of: "Account")
   amountYen: Long!
@@ -5528,8 +5528,8 @@ func (ec *executionContext) childFields_LedgerEdge(ctx context.Context, field gr
 
 func (ec *executionContext) childFields_LoanBalance(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
-	case "loanId":
-		return ec.fieldContext_LoanBalance_loanId(ctx, field)
+	case "id":
+		return ec.fieldContext_LoanBalance_id(ctx, field)
 	case "lenderMemberId":
 		return ec.fieldContext_LoanBalance_lenderMemberId(ctx, field)
 	case "borrowerMemberId":
@@ -12090,16 +12090,16 @@ func (ec *executionContext) fieldContext_LedgerEdge_node(_ context.Context, fiel
 	return fc, nil
 }
 
-func (ec *executionContext) _LoanBalance_loanId(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalance) (ret graphql.Marshaler) {
+func (ec *executionContext) _LoanBalance_id(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalance) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
 		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_LoanBalance_loanId(ctx, field)
+			return ec.fieldContext_LoanBalance_id(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
-			return obj.LoanID, nil
+			return obj.ID, nil
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
@@ -12109,7 +12109,7 @@ func (ec *executionContext) _LoanBalance_loanId(ctx context.Context, field graph
 		true,
 	)
 }
-func (ec *executionContext) fieldContext_LoanBalance_loanId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_LoanBalance_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("LoanBalance", field, false, false, errors.New("field of type ID does not have child fields"))
 }
 
@@ -23263,11 +23263,31 @@ func (ec *executionContext) unmarshalInputRecordRepaymentInput(ctx context.Conte
 			}
 		case "loanId":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("loanId"))
-			data, err := ec.unmarshalNID2string(ctx, v)
-			if err != nil {
-				return it, err
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "LoanBalance")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
 			}
-			it.LoanID = data
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.LoanID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
 		case "paymentAccountId":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
 			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
@@ -25345,6 +25365,13 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 			return graphql.Null
 		}
 		return ec._Member(ctx, sel, obj)
+	case model.LoanBalance:
+		return ec._LoanBalance(ctx, sel, &obj)
+	case *model.LoanBalance:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LoanBalance(ctx, sel, obj)
 	case model.HouseholdInvitation:
 		return ec._HouseholdInvitation(ctx, sel, &obj)
 	case *model.HouseholdInvitation:
@@ -28687,7 +28714,7 @@ func (ec *executionContext) _LedgerEdge(ctx context.Context, sel ast.SelectionSe
 	return out
 }
 
-var loanBalanceImplementors = []string{"LoanBalance"}
+var loanBalanceImplementors = []string{"LoanBalance", "Node"}
 
 func (ec *executionContext) _LoanBalance(ctx context.Context, sel ast.SelectionSet, obj *model.LoanBalance) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, loanBalanceImplementors)
@@ -28699,8 +28726,8 @@ func (ec *executionContext) _LoanBalance(ctx context.Context, sel ast.SelectionS
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("LoanBalance")
-		case "loanId":
-			out.Values[i] = ec._LoanBalance_loanId(ctx, field, obj)
+		case "id":
+			out.Values[i] = ec._LoanBalance_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

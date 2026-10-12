@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3812e5f77c12290e7bc4093c6b9e9ddd>>
+ * @generated SignedSource<<9560bba636b2fe55d11620888076a285>>
  * @lightSyntaxTransform
  */
 
@@ -114,6 +114,9 @@ v7 = {
   "storageKey": null
 },
 v8 = [
+  (v7/*:: as any*/)
+],
+v9 = [
   {
     "alias": null,
     "args": null,
@@ -121,13 +124,11 @@ v8 = [
     "kind": "LinkedField",
     "name": "purchase",
     "plural": false,
-    "selections": [
-      (v7/*:: as any*/)
-    ],
+    "selections": (v8/*:: as any*/),
     "storageKey": null
   }
 ],
-v9 = [
+v10 = [
   (v7/*:: as any*/),
   {
     "alias": null,
@@ -277,7 +278,7 @@ return {
                   },
                   {
                     "kind": "InlineFragment",
-                    "selections": (v8/*:: as any*/),
+                    "selections": (v9/*:: as any*/),
                     "type": "PurchaseLedgerEntry",
                     "abstractKey": null
                   },
@@ -291,7 +292,7 @@ return {
                         "kind": "LinkedField",
                         "name": "member",
                         "plural": false,
-                        "selections": (v9/*:: as any*/),
+                        "selections": (v10/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -327,7 +328,7 @@ return {
                         "kind": "LinkedField",
                         "name": "fromMember",
                         "plural": false,
-                        "selections": (v9/*:: as any*/),
+                        "selections": (v10/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -337,7 +338,7 @@ return {
                         "kind": "LinkedField",
                         "name": "toMember",
                         "plural": false,
-                        "selections": (v9/*:: as any*/),
+                        "selections": (v10/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -354,15 +355,7 @@ return {
                         "kind": "LinkedField",
                         "name": "loan",
                         "plural": false,
-                        "selections": [
-                          {
-                            "alias": null,
-                            "args": null,
-                            "kind": "ScalarField",
-                            "name": "loanId",
-                            "storageKey": null
-                          }
-                        ],
+                        "selections": (v8/*:: as any*/),
                         "storageKey": null
                       }
                     ],
@@ -371,7 +364,7 @@ return {
                   },
                   {
                     "kind": "InlineFragment",
-                    "selections": (v8/*:: as any*/),
+                    "selections": (v9/*:: as any*/),
                     "type": "CorrectionLedgerEntry",
                     "abstractKey": null
                   }
@@ -389,12 +382,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "fbb4baf12f9ed04a2e2e8da7c6d1c95c",
+    "cacheID": "0ef6beaae271e19f09ecd66c7db82331",
     "id": null,
     "metadata": {},
     "name": "LedgerQuery",
     "operationKind": "query",
-    "text": "query LedgerQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  ledger(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      loanId\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
+    "text": "query LedgerQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  ledger(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      id\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
   }
 };
 })();

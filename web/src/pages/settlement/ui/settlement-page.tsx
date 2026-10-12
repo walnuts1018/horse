@@ -130,7 +130,7 @@ export function SettlementPage({ household }: { household: Household }) {
   const saveTransfer = async (event: FormEvent) => {
     event.preventDefault();
     const amountYen = Number(transferAmount);
-    const selectedLoan = openLoans.find((loan) => loan.loanId === transferLoanId);
+    const selectedLoan = openLoans.find((loan) => loan.id === transferLoanId);
     if (
       !transferFrom ||
       !transferTo ||
@@ -182,7 +182,7 @@ export function SettlementPage({ household }: { household: Household }) {
   };
   const totalDue = sum(settlement?.lines.map((line) => line.amountDueYen) ?? []);
   const openLoans = loans.filter((loan) => loan.balanceYen > 0);
-  const selectedLoan = openLoans.find((loan) => loan.loanId === transferLoanId);
+  const selectedLoan = openLoans.find((loan) => loan.id === transferLoanId);
   const parsedTransferAmount = Number(transferAmount);
   const invalidTransferAmount =
     !Number.isSafeInteger(parsedTransferAmount) ||
@@ -191,7 +191,7 @@ export function SettlementPage({ household }: { household: Household }) {
       (!selectedLoan || parsedTransferAmount > selectedLoan.balanceYen));
   const openTransferForLoan = (loan: LoanBalance) => {
     setTransferKind("REPAYMENT");
-    setTransferLoanId(loan.loanId);
+    setTransferLoanId(loan.id);
     setTransferFrom(loan.borrowerMemberId);
     setTransferTo(loan.lenderMemberId);
     setTransferAmount("");
@@ -394,7 +394,7 @@ export function SettlementPage({ household }: { household: Household }) {
                   required
                   value={transferLoanId}
                   onChange={(event) => {
-                    const loan = openLoans.find((row) => row.loanId === event.target.value);
+                    const loan = openLoans.find((row) => row.id === event.target.value);
                     setTransferLoanId(event.target.value);
                     if (loan) {
                       setTransferFrom(loan.borrowerMemberId);
@@ -405,7 +405,7 @@ export function SettlementPage({ household }: { household: Household }) {
                 >
                   <option value="">貸付を選択</option>
                   {openLoans.map((loan) => (
-                    <option key={loan.loanId} value={loan.loanId}>
+                    <option key={loan.id} value={loan.id}>
                       {household.members.find((member) => member.id === loan.borrowerMemberId)
                         ?.displayName ?? "借主"}{" "}
                       →{" "}
@@ -571,7 +571,7 @@ export function SettlementPage({ household }: { household: Household }) {
           </div>
         ) : (
           loans.map((loan) => (
-            <div className="loan-balance-row" key={loan.loanId}>
+            <div className="loan-balance-row" key={loan.id}>
               <div>
                 <b>
                   {household.members.find((member) => member.id === loan.borrowerMemberId)

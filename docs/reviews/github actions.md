@@ -1,3 +1,1 @@
-- jactionlintを用いてlintする（mise taskを定義する&GitHub Actionsで実行）
 - GitHub Actionsにおいて、最新機能であるParallel Stepを用いて高速化する
-- 

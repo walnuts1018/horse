@@ -12,7 +12,7 @@ input RecordRepaymentInput {
   householdId: ID! @nodeID(of: "Household")
   fromMemberId: ID! @nodeID(of: "Member")
   toMemberId: ID! @nodeID(of: "Member")
-  loanId: ID!
+  loanId: ID! @nodeID(of: "LoanBalance")
   paymentAccountId: ID @nodeID(of: "Account")
   destinationAccountId: ID @nodeID(of: "Account")
   amountYen: Long!

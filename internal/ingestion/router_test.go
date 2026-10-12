@@ -59,7 +59,7 @@ func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 	if runs[0].PromptVersion != PromptVersion || runs[0].PriceTableVersion != GeminiPriceTableVersion || runs[0].PriceEstimateStatus != "unavailable_failed_run" || runs[1].PromptVersion != PromptVersion || runs[1].PriceTableVersion != GeminiPriceTableVersion || runs[1].PriceEstimateStatus != "estimated_paid" || runs[1].USDJPYRate != 158.535 || runs[1].USDJPYRateSource != "unspecified" || runs[1].PricedAt.IsZero() {
 		t.Fatalf("run audit metadata is incomplete: %#v", runs)
 	}
-	if paidBody["service_tier"] != "standard" {
+	if paidBody["serviceTier"] != "standard" {
 		t.Fatalf("interactive paid fallback must use Standard: request=%#v", paidBody)
 	}
 	generationConfig, ok := paidBody["generationConfig"].(map[string]any)
@@ -67,7 +67,7 @@ func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 		t.Fatalf("REST service tier or output token configuration is invalid: %#v", paidBody)
 	}
 	thinkingConfig, ok := generationConfig["thinkingConfig"].(map[string]any)
-	if !ok || thinkingConfig["thinkingLevel"] != "low" {
+	if !ok || thinkingConfig["thinkingLevel"] != "LOW" {
 		t.Fatalf("initial image request must use low thinking: %#v", generationConfig)
 	}
 }
@@ -123,22 +123,28 @@ func TestGeminiRouterSelectsEmailLiteAndOnlyRetriesTemporaryErrors(t *testing.T)
 
 func TestGeminiSpendCapAndMalformedOutputAreTypedAndSanitized(t *testing.T) {
 	tests := []struct {
-		name      string
-		status    int
-		body      string
-		wantKind  GeminiFailureKind
-		wantCode  string
-		wantSpend bool
+		name           string
+		status         int
+		body           string
+		retryAfter     string
+		wantRetryAfter time.Duration
+		wantKind       GeminiFailureKind
+		wantCode       string
+		wantSpend      bool
 	}{
 		{name: "spend cap", status: http.StatusTooManyRequests, body: `{"error":{"status":"RESOURCE_EXHAUSTED","message":"project spend cap reached"}}`, wantKind: GeminiFailureSpendCap, wantCode: "spend_cap_reached", wantSpend: true},
 		{name: "monthly spending cap", status: http.StatusTooManyRequests, body: `{"error":{"status":"RESOURCE_EXHAUSTED","message":"Your billing account has exceeded its monthly spending cap."}}`, wantKind: GeminiFailureSpendCap, wantCode: "spend_cap_reached", wantSpend: true},
 		{name: "structured spend cap reason", status: http.StatusForbidden, body: `{"error":{"status":"PERMISSION_DENIED","details":[{"reason":"SPEND_CAP_ENFORCED"}]}}`, wantKind: GeminiFailureSpendCap, wantCode: "spend_cap_reached", wantSpend: true},
+		{name: "rate limit retry delay", status: http.StatusTooManyRequests, body: `{"error":{"status":"RESOURCE_EXHAUSTED"}}`, retryAfter: "3", wantRetryAfter: 3 * time.Second, wantKind: GeminiFailureQuota, wantCode: "rate_limited"},
 		{name: "malformed provider JSON", status: http.StatusOK, body: `not json`, wantKind: GeminiFailureBadResponse, wantCode: "malformed_provider_json"},
 		{name: "broken receipt JSON", status: http.StatusOK, body: `{"candidates":[{"content":{"parts":[{"text":"{broken"}]},"finishReason":"STOP"}]}`, wantKind: GeminiFailureBadResponse, wantCode: "invalid_receipt_json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tt.retryAfter != "" {
+					w.Header().Set("Retry-After", tt.retryAfter)
+				}
 				w.WriteHeader(tt.status)
 				_, _ = io.WriteString(w, tt.body)
 			}))
@@ -151,6 +157,9 @@ func TestGeminiSpendCapAndMalformedOutputAreTypedAndSanitized(t *testing.T) {
 			apiErr, ok := errors.AsType[*GeminiAPIError](err)
 			if !ok || apiErr.Kind != tt.wantKind || apiErr.Code != tt.wantCode || errors.Is(err, ErrGeminiSpendCap) != tt.wantSpend {
 				t.Fatalf("unexpected sanitized error: %#v (%v)", apiErr, err)
+			}
+			if apiErr.RetryAfter != tt.wantRetryAfter {
+				t.Fatalf("unexpected retry delay: got %s, want %s", apiErr.RetryAfter, tt.wantRetryAfter)
 			}
 			if runs[0].Status != "failed" || runs[0].ErrorCode != tt.wantCode {
 				t.Fatalf("failed run metadata missing: %#v", runs[0])
@@ -230,7 +239,7 @@ func TestGeminiQualityReviewAddsEvidenceAndChangesRequest(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(prompts) != 2 || prompts[0] == prompts[1] || levels[0] != "low" || levels[1] != "medium" {
+	if len(prompts) != 2 || prompts[0] == prompts[1] || levels[0] != "LOW" || levels[1] != "MEDIUM" {
 		t.Fatalf("quality review must use evidence and medium thinking: prompts=%#v levels=%#v first=%#v", prompts, levels, first)
 	}
 	if !strings.Contains(prompts[1], "税率別小計が一致しません") || !strings.Contains(prompts[1], "TOTAL 980") {
