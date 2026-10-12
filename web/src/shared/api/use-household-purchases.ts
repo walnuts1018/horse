@@ -23,7 +23,7 @@ export function useHouseholdPurchases(
   const pageSetKey = useRef("");
 
   const refresh = useCallback(async () => {
-    const key = `${householdId}:${options.from ?? ""}:${options.to ?? ""}`;
+    const key = `${householdId}:${first}:${options.from ?? ""}:${options.to ?? ""}`;
     const pagesToRestore = pageSetKey.current === key ? loadedPages.current : 1;
     pageSetKey.current = key;
     const currentGeneration = ++generation.current;

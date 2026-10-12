@@ -500,7 +500,8 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           itemId: item.id,
           baseRevision: item.revision,
         };
-        if (bulkCategory && bulkCategory !== (item.categoryId ?? "")) {
+        const desiredCategory = bulkCategory === "__uncategorized" ? "" : bulkCategory;
+        if (bulkCategory && desiredCategory !== (item.categoryId ?? "")) {
           input.categoryId = bulkCategory === "__uncategorized" ? null : bulkCategory;
           undoPatch.categoryId = item.categoryId ?? null;
           changedFields.push("categoryId");
@@ -697,7 +698,11 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           <span>{selectedCount}品目を選択中</span>
           <label className="select-filter">
             <span>カテゴリ</span>
-            <select value={bulkCategory} onChange={(event) => setBulkCategory(event.target.value)}>
+            <select
+              value={bulkCategory}
+              disabled={bulkPending || editing !== null || Boolean(correctionTarget)}
+              onChange={(event) => setBulkCategory(event.target.value)}
+            >
               <option value="">変更なし</option>
               <option value="__uncategorized">未分類</option>
               {household.categories
@@ -711,7 +716,11 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           </label>
           <label className="select-filter">
             <span>負担先</span>
-            <select value={bulkPool} onChange={(event) => setBulkPool(event.target.value)}>
+            <select
+              value={bulkPool}
+              disabled={bulkPending || editing !== null || Boolean(correctionTarget)}
+              onChange={(event) => setBulkPool(event.target.value)}
+            >
               <option value="">変更なし</option>
               {household.pools.map((pool) => (
                 <option key={pool.id} value={pool.id}>
@@ -724,6 +733,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             <span>商品</span>
             <select
               value={bulkVariantId}
+              disabled={bulkPending || editing !== null || Boolean(correctionTarget)}
               onChange={(event) => setBulkVariantId(event.target.value)}
             >
               <option value="">変更なし</option>
@@ -741,7 +751,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           <button
             className="button button-primary"
             type="button"
-            disabled={bulkPending || (!bulkCategory && !bulkPool && !bulkVariantId)}
+            disabled={
+              bulkPending ||
+              editing !== null ||
+              Boolean(correctionTarget) ||
+              (!bulkCategory && !bulkPool && !bulkVariantId)
+            }
             onClick={() => void applyBulkEdit()}
           >
             {bulkPending ? "更新中" : "一括変更"}
