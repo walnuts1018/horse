@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/99designs/gqlgen/graphql"
@@ -15,6 +17,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/gofrs/uuid/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
@@ -101,19 +104,62 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			presented.Extensions = map[string]any{"code": "BAD_USER_INPUT"}
 			presented.Message = "invalid input"
 		} else {
+			s.logGraphQLResolverFailure(ctx, err)
 			presented.Extensions = map[string]any{"code": "INTERNAL_SERVER_ERROR"}
 			presented.Message = "internal server error"
 		}
 		return presented
 	})
 	executor.SetRecoverFunc(func(ctx context.Context, recovered any) error {
-		s.logger.ErrorContext(ctx, "GraphQL resolver panic", "panic", fmt.Sprint(recovered))
+		s.logger.ErrorContext(ctx, "GraphQL resolver panic", "graphql_path", graphQLFieldPath(ctx), "panic_type", fmt.Sprintf("%T", recovered))
 		return errors.New("internal server error")
 	})
 	request := http.MaxBytesReader(w, r.Body, 2<<20)
 	r.Body = request
 	ctx := auth.WithPrincipal(r.Context(), principal)
 	executor.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func (s *Server) logGraphQLResolverFailure(ctx context.Context, err error) {
+	path := graphQLFieldPath(ctx)
+	if path == "" {
+		return
+	}
+	attrs := []any{"graphql_path", path, "error_type", fmt.Sprintf("%T", err)}
+	if postgresError, ok := errors.AsType[*pgconn.PgError](err); ok {
+		attrs = append(attrs,
+			"postgres_code", postgresError.Code,
+			"postgres_schema", postgresError.SchemaName,
+			"postgres_table", postgresError.TableName,
+			"postgres_column", postgresError.ColumnName,
+			"postgres_constraint", postgresError.ConstraintName,
+		)
+	}
+	s.logger.ErrorContext(ctx, "GraphQL resolver failed", attrs...)
+}
+
+func graphQLFieldPath(ctx context.Context) string {
+	var fields []string
+	for field := graphql.GetFieldContext(ctx); field != nil; field = field.Parent {
+		if field.Index != nil {
+			fields = append(fields, "["+strconv.Itoa(*field.Index)+"]")
+		} else if field.Field.Field != nil && field.Field.Name != "" {
+			fields = append(fields, field.Field.Name)
+		}
+	}
+	slices.Reverse(fields)
+	var path strings.Builder
+	for _, field := range fields {
+		if strings.HasPrefix(field, "[") {
+			path.WriteString(field)
+			continue
+		}
+		if path.Len() > 0 {
+			path.WriteByte('.')
+		}
+		path.WriteString(field)
+	}
+	return path.String()
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
