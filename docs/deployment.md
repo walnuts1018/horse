@@ -29,7 +29,7 @@ Blackbox exporterは`https://horse.walnuts.dev/healthz`を30秒間隔で確認�
 
 ## Gemini APIの課金
 
-Gemini APIは無料用と有料用のGoogle Cloud Projectを分け、無料ProjectにはBilling Accountをリンクしません。有料ProjectにはTerraform管理のSpendCapを設定し、Gemini API serviceだけを月500円に制限します。SpendCapは50%、80%、100%でBilling Account administratorsとProject Ownersへ通知します。追加の300円到達通知は別のalerts-only Budgetで管理します。
+Gemini APIは無料用と有料用のGoogle Cloud Projectを分け、無料ProjectにはBilling Accountをリンクしません。有料ProjectにはTerraform管理のSpendCapを設定し、Gemini API serviceだけを月500円に制限します。SpendCapは50%、80%、100%でProject Ownersへ通知します。Billing Account administratorsとProject Ownersへの300円到達通知は別のalerts-only Budgetで管理します。
 予算期間は[Cloud BillingのUTC-8の暦月](https://docs.cloud.google.com/billing/docs/reference/budget/rest/v1/billingAccounts.budgets)を基準にし、SpendCapで保留したジョブは翌月初の切替後に再試行します。
 月初日は解除の反映が遅れた場合に1時間後へ保留し直します。
 
@@ -39,13 +39,13 @@ SpendCapは請求の見積り遅延を伴い、適用は即時ではありませ
 
 ## Google CloudのTerraform認証
 
-専用Projectは`walnuts-horse-gemini-free`と`walnuts-horse-gemini-paid`を使用します。組織に属さないProjectをサービスアカウントから新規作成できないため、初回はGoogle ConsoleでProjectを作成し、infraのTerraform import blockで管理対象へ取り込みます。既存Projectは使用しません。
+専用Projectは`walnuts-horse-gemini-free`と`walnuts-horse-gemini-paid`を使用します。組織に属さないProjectをサービスアカウントから新規作成できないため、初回はGoogle ConsoleでProjectを作成し、infraの`google_cloud` moduleでProjectの名前、請求、API、IAM、WIFを定義して取り込みます。既存の`walnuts-dev` Projectも現在の設定を同じmoduleで管理し、Gemini用には使用しません。Googleが変更を許可しない`_Required`のログ設定は管理対象外です。
 
 HCP Terraformの`walnuts-dev`組織、`Default Project`、`infra` workspaceだけをWorkload Identity Federationの信頼対象とします。workspace IDとOIDC audienceも照合し、planとapplyのphaseごとに別のサービスアカウントへ短期認証を発行します。長期サービスアカウントキーは作成しません。
 
-計画用アカウントは専用ProjectのViewer、有料Projectの予算読取ロール、対象Billing AccountのProject Billing Costs Managerを使用します。ViewerにはAPIキー値の読取権限が含まれるため、Terraformのplanとstateへのアクセスを制限します。適用用アカウントは専用ProjectのViewer、Service Usage Admin、API Keys Adminに加え、有料Projectだけの予算管理ロールとProject Billing Manager、対象Billing AccountのBilling Userを使用します。Owner、Editor、IAM policyの変更権限は付与しません。
+計画用アカウントは管理対象ProjectのViewer、有料Projectの予算読取・API quota使用ロール、対象Billing AccountのProject Billing Costs Managerを使用します。ViewerにはAPIキー値の読取権限が含まれるため、Terraformのplanとstateへのアクセスを制限します。適用用アカウントは管理対象ProjectのViewerと、専用ProjectのService Usage Admin、API Keys Adminに加え、有料Projectだけの予算管理ロールとProject Billing Manager、対象Billing AccountのBilling Userを使用します。Owner、Editor、IAM policyの変更権限は付与しません。
 
-初回のWIF、サービスアカウント、カスタムロール、IAM bindingは管理者がConsoleで設定し、Terraformへimportします。通常のapplyではこれらの設定を読取できても権限変更はできません。IAMや認証設定に差分が出た場合は適用を止め、管理者が変更内容を確認してbootstrap手順で対応します。通常のapplyを成功させるために権限を自動で追加しないでください。
+初回のWIF、サービスアカウント、カスタムロール、IAM bindingは管理者がConsoleまたはgcloudで設定し、現在値をTerraformコードへ定義してimportします。HCP TerraformのGoogle Cloud認証変数もTerraformで管理します。通常のapplyではこれらの設定を読取できても権限変更はできません。IAMや認証設定に差分が出た場合は適用を止め、管理者が変更内容を確認してbootstrap手順で対応します。通常のapplyを成功させるために権限を自動で追加しないでください。
 
 有料APIキーは月500円のSpendCap作成に成功してから発行し、キーの利用先をGemini APIに限定します。キーは1PasswordのCONCEALEDフィールドへ保存し、External Secretsを通じてWorkerだけへ渡します。Workerの外部HTTPS通信は`generativelanguage.googleapis.com`だけを許可します。DNSとDB、S3、RabbitMQ、OCR、OTelへの内部通信は別途許可します。
 
