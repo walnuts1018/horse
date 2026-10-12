@@ -35,6 +35,13 @@ const yen = (amount = 0) =>
   }).format(amount);
 const monthKey = () => new Date().toISOString().slice(0, 7);
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
+const ledgerKindLabels: Record<string, string> = {
+  FUNDING: "入金",
+  ADVANCE: "立て替え",
+  LOAN: "貸付",
+  REPAYMENT: "返済",
+  GIFT: "贈与",
+};
 
 export function SettlementPage({ household }: { household: Household }) {
   const [period, setPeriod] = useState(monthKey());
@@ -661,6 +668,17 @@ export function SettlementPage({ household }: { household: Household }) {
                 </span>
                 <div>
                   <b>{entry.description}</b>
+                  <small>{ledgerKindLabels[entry.kind] ?? "送金"}</small>
+                  {entry.fromMemberId && entry.toMemberId && (
+                    <small>
+                      {household.members.find((member) => member.id === entry.fromMemberId)
+                        ?.displayName ?? "送金元"}
+                      から
+                      {household.members.find((member) => member.id === entry.toMemberId)
+                        ?.displayName ?? "送金先"}
+                      へ
+                    </small>
+                  )}
                   <small>{new Date(entry.occurredAt).toLocaleDateString("ja-JP")}</small>
                 </div>
                 <strong>{yen(entry.amountYen)}</strong>

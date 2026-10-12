@@ -826,6 +826,21 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil || repayment.TransferID == nil {
 		t.Fatalf("shared-pool repayment failed: transfer=%#v error=%v", repayment, err)
 	}
+	gift, err := resolver.recordTransfer(ctx, model.RecordTransferInput{
+		HouseholdID: household.ID, FromMemberID: memberA, ToMemberID: memberB, Kind: model.TransferInputKindGift,
+		AmountYen: 300, OccurredAt: "2026-06-14T12:00:00Z", Description: "Gift", IdempotencyKey: uuid.NewV7().String(),
+	})
+	if err != nil || gift.TransferID == nil {
+		t.Fatalf("gift transfer failed: transfer=%#v error=%v", gift, err)
+	}
+	giftUUID, err := gofrsuuid.FromString(*gift.TransferID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	giftRow, err := models.Transfers.Query(sm.Where(models.Transfers.Columns.ID.EQ(psql.Arg(giftUUID)))).One(ctx, bobpgx.NewPool(db))
+	if err != nil || giftRow.Kind != string(model.TransferInputKindGift) || giftRow.FromMemberID.String() != memberA || giftRow.ToMemberID.String() != memberB {
+		t.Fatalf("gift kind or participants were not persisted: gift=%#v error=%v", giftRow, err)
+	}
 	ledgerNodeID, err := encodeNodeID("LedgerEntry", loan.ID)
 	if err != nil {
 		t.Fatal(err)
