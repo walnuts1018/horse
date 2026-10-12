@@ -561,7 +561,10 @@ export function AnalysisPage({ household }: { household: Household }) {
             (() => {
               const prices = data.monthly.item
                 .filter((entry) => entry.id === row.id)
-                .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+                .sort(
+                  (left, right) =>
+                    new Date(left.occurredAt).getTime() - new Date(right.occurredAt).getTime(),
+                );
               const firstPrice = prices[0]?.amount ?? 0;
               const latestPrice = prices[prices.length - 1]?.amount ?? 0;
               const change =
