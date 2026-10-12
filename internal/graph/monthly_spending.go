@@ -249,7 +249,7 @@ func hasUnattributedMonthlySpending(ctx context.Context, executor bob.Executor, 
 	allocationMismatch, err := bob.All(ctx, executor, psql.Select(
 		sm.With("allocations", "purchase_id", "item_id", "pool_id", "amount_yen").As(allocations),
 		sm.With("burdens", "purchase_id", "item_id", "pool_id", "amount_yen").As(burdens),
-		sm.Columns(psql.Arg(true).As("mismatch")),
+		sm.Columns(monthlySpendingMismatchExpression()),
 		sm.From("allocations", sm.LeftJoin("burdens").On(psql.And(
 			psql.Quote("allocations", "purchase_id").EQ(psql.Quote("burdens", "purchase_id")),
 			psql.Quote("allocations", "item_id").EQ(psql.Quote("burdens", "item_id")),
@@ -279,7 +279,7 @@ func hasUnattributedMonthlySpending(ctx context.Context, executor bob.Executor, 
 	)
 	correctionMismatch, err := bob.All(ctx, executor, psql.Select(
 		sm.With("correction_burdens", "correction_id", "amount_delta_yen").As(correctionBurdens),
-		sm.Columns(psql.Arg(true).As("mismatch")),
+		sm.Columns(monthlySpendingMismatchExpression()),
 		sm.From(models.Corrections.NameExpr(),
 			sm.InnerJoin(models.Purchases.NameExpr()).On(models.Purchases.Columns.ID.EQ(models.Corrections.Columns.PurchaseID)),
 			sm.LeftJoin("correction_burdens").On(psql.Quote("correction_burdens", "correction_id").EQ(models.Corrections.Columns.ID)),
@@ -294,4 +294,8 @@ func hasUnattributedMonthlySpending(ctx context.Context, executor bob.Executor, 
 		return false, err
 	}
 	return len(correctionMismatch) > 0, nil
+}
+
+func monthlySpendingMismatchExpression() bob.Expression {
+	return psql.F("coalesce", psql.Cast(psql.Arg(true), "boolean"), psql.Cast(psql.Arg(false), "boolean"))().As("mismatch")
 }
