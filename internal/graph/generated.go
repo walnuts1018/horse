@@ -3819,7 +3819,7 @@ extend type Query {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/archive_budget_mutation.graphqls", Input: `extend type Mutation {
-  archiveBudget(budgetId: ID!, baseRevision: Int!, archived: Boolean!): ArchiveBudgetResult!
+  archiveBudget(budgetId: ID! @nodeID(of: "Budget"), baseRevision: Int!, archived: Boolean!): ArchiveBudgetResult!
 }
 
 union ArchiveBudgetResult = ArchiveBudgetSuccess | MutationError
@@ -3829,7 +3829,7 @@ type ArchiveBudgetSuccess {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/archive_recurring_expense_mutation.graphqls", Input: `extend type Mutation {
-  archiveRecurringExpense(expenseId: ID!, baseRevision: Int!, archived: Boolean!): ArchiveRecurringExpenseResult!
+  archiveRecurringExpense(expenseId: ID! @nodeID(of: "RecurringExpense"), baseRevision: Int!, archived: Boolean!): ArchiveRecurringExpenseResult!
 }
 
 union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | MutationError
@@ -3839,7 +3839,7 @@ type ArchiveRecurringExpenseSuccess {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/archive_tag_mutation.graphqls", Input: `extend type Mutation {
-  archiveTag(tagId: ID!, baseRevision: Int!, archived: Boolean!): ArchiveTagResult!
+  archiveTag(tagId: ID! @nodeID(of: "Tag"), baseRevision: Int!, archived: Boolean!): ArchiveTagResult!
 }
 
 union ArchiveTagResult = ArchiveTagSuccess | MutationError
@@ -3886,7 +3886,7 @@ input BulkPurchaseItemPatch {
   categoryId: ID @nodeID(of: "Category")
   productVariantId: ID @nodeID(of: "ProductVariant")
   allocations: [AllocationInput!]
-  tagIds: [ID!]
+  tagIds: [ID!] @nodeID(of: "Tag")
 }
 
 input PurchaseItemTargetInput {
@@ -3938,7 +3938,7 @@ input CorrectPurchaseInput {
   idempotencyKey: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/correction_ledger_entry.graphqls", Input: `type CorrectionLedgerEntry implements LedgerRecord {
+	{Name: "../../graphql/correction_ledger_entry.graphqls", Input: `type CorrectionLedgerEntry implements LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!
@@ -4120,7 +4120,7 @@ input CreateTagInput {
   name: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/funding_ledger_entry.graphqls", Input: `type FundingLedgerEntry implements LedgerRecord {
+	{Name: "../../graphql/funding_ledger_entry.graphqls", Input: `type FundingLedgerEntry implements LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!
@@ -4165,7 +4165,7 @@ extend type Query {
   householdInvitations(householdId: ID! @nodeID(of: "Household")): [HouseholdInvitation!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/ledger_entry.graphqls", Input: `interface LedgerRecord {
+	{Name: "../../graphql/ledger_entry.graphqls", Input: `interface LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!
@@ -4173,8 +4173,6 @@ extend type Query {
   currency: String!
   createdAt: String!
 }
-
-union LedgerEntry = PurchaseLedgerEntry | FundingLedgerEntry | TransferLedgerEntry | CorrectionLedgerEntry
 
 type LedgerEdge {
   cursor: String!
@@ -4294,7 +4292,7 @@ enum SharedPoolSettlementPolicy {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/post_purchase_mutation.graphqls", Input: `extend type Mutation {
-  postPurchase(purchaseId: ID!, expectedRevision: Int!, idempotencyKey: String!): PostPurchaseResult!
+  postPurchase(purchaseId: ID! @nodeID(of: "Purchase"), expectedRevision: Int!, idempotencyKey: String!): PostPurchaseResult!
 }
 
 union PostPurchaseResult = PostPurchaseSuccess | MutationError
@@ -4457,7 +4455,7 @@ type EffectiveUnitPrice {
   denominator: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/purchase_ledger_entry.graphqls", Input: `type PurchaseLedgerEntry implements LedgerRecord {
+	{Name: "../../graphql/purchase_ledger_entry.graphqls", Input: `type PurchaseLedgerEntry implements LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!
@@ -4472,8 +4470,8 @@ type EffectiveUnitPrice {
   account: Account
   amountYen: Long!
 }
-`, BuiltIn: false},
-	{Name: "../../graphql/purchase_payment_input.graphqls", Input: `input PurchasePaymentInput {
+
+input PurchasePaymentInput {
   paymentAccountId: ID! @nodeID(of: "Account")
   amountYen: Long!
 }
@@ -4591,7 +4589,7 @@ extend type Query {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/revoke_household_invitation_mutation.graphqls", Input: `extend type Mutation {
-  revokeHouseholdInvitation(householdId: ID!, invitationId: ID!): RevokeHouseholdInvitationResult!
+  revokeHouseholdInvitation(householdId: ID! @nodeID(of: "Household"), invitationId: ID! @nodeID(of: "HouseholdInvitation")): RevokeHouseholdInvitationResult!
 }
 
 union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | MutationError
@@ -4641,7 +4639,7 @@ input SetBudgetInput {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/set_category_archived_mutation.graphqls", Input: `extend type Mutation {
-  setCategoryArchived(categoryId: ID!, archived: Boolean!): SetCategoryArchivedResult!
+  setCategoryArchived(categoryId: ID! @nodeID(of: "Category"), archived: Boolean!): SetCategoryArchivedResult!
 }
 
 union SetCategoryArchivedResult = SetCategoryArchivedSuccess | MutationError
@@ -4802,7 +4800,7 @@ extend type Query {
   GIFT
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/transfer_ledger_entry.graphqls", Input: `type TransferLedgerEntry implements LedgerRecord {
+	{Name: "../../graphql/transfer_ledger_entry.graphqls", Input: `type TransferLedgerEntry implements LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!
@@ -5869,10 +5867,8 @@ func (ec *executionContext) field_Mutation_acceptHouseholdInvitation_args(ctx co
 func (ec *executionContext) field_Mutation_archiveBudget_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "budgetId",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNID2string(ctx, v)
-		})
+
+	arg0, err := ec.field_Mutation_archiveBudget_argsBudgetID(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -5896,13 +5892,56 @@ func (ec *executionContext) field_Mutation_archiveBudget_args(ctx context.Contex
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_archiveBudget_argsBudgetID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["budgetId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("budgetId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["budgetId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Budget")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
+}
+
 func (ec *executionContext) field_Mutation_archiveRecurringExpense_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "expenseId",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNID2string(ctx, v)
-		})
+
+	arg0, err := ec.field_Mutation_archiveRecurringExpense_argsExpenseID(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -5926,13 +5965,56 @@ func (ec *executionContext) field_Mutation_archiveRecurringExpense_args(ctx cont
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_archiveRecurringExpense_argsExpenseID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["expenseId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("expenseId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["expenseId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "RecurringExpense")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
+}
+
 func (ec *executionContext) field_Mutation_archiveTag_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "tagId",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNID2string(ctx, v)
-		})
+
+	arg0, err := ec.field_Mutation_archiveTag_argsTagID(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -5954,6 +6036,51 @@ func (ec *executionContext) field_Mutation_archiveTag_args(ctx context.Context, 
 	}
 	args["archived"] = arg2
 	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_archiveTag_argsTagID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["tagId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("tagId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["tagId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Tag")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
 }
 
 func (ec *executionContext) field_Mutation_bulkUpdatePurchaseItems_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
@@ -6127,10 +6254,8 @@ func (ec *executionContext) field_Mutation_createTag_args(ctx context.Context, r
 func (ec *executionContext) field_Mutation_postPurchase_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "purchaseId",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNID2string(ctx, v)
-		})
+
+	arg0, err := ec.field_Mutation_postPurchase_argsPurchaseID(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -6152,6 +6277,51 @@ func (ec *executionContext) field_Mutation_postPurchase_args(ctx context.Context
 	}
 	args["idempotencyKey"] = arg2
 	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_postPurchase_argsPurchaseID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["purchaseId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("purchaseId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["purchaseId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Purchase")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
 }
 
 func (ec *executionContext) field_Mutation_recordAccountMovement_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
@@ -6213,23 +6383,109 @@ func (ec *executionContext) field_Mutation_recordTransfer_args(ctx context.Conte
 func (ec *executionContext) field_Mutation_revokeHouseholdInvitation_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "householdId",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNID2string(ctx, v)
-		})
+
+	arg0, err := ec.field_Mutation_revokeHouseholdInvitation_argsHouseholdID(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
 	args["householdId"] = arg0
-	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "invitationId",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNID2string(ctx, v)
-		})
+
+	arg1, err := ec.field_Mutation_revokeHouseholdInvitation_argsInvitationID(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
 	args["invitationId"] = arg1
 	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_revokeHouseholdInvitation_argsHouseholdID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["householdId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["householdId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Household")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
+}
+
+func (ec *executionContext) field_Mutation_revokeHouseholdInvitation_argsInvitationID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["invitationId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("invitationId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["invitationId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "HouseholdInvitation")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
 }
 
 func (ec *executionContext) field_Mutation_setAllocationRule_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
@@ -6263,10 +6519,8 @@ func (ec *executionContext) field_Mutation_setBudget_args(ctx context.Context, r
 func (ec *executionContext) field_Mutation_setCategoryArchived_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "categoryId",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNID2string(ctx, v)
-		})
+
+	arg0, err := ec.field_Mutation_setCategoryArchived_argsCategoryID(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -6280,6 +6534,51 @@ func (ec *executionContext) field_Mutation_setCategoryArchived_args(ctx context.
 	}
 	args["archived"] = arg1
 	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_setCategoryArchived_argsCategoryID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["categoryId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("categoryId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["categoryId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Category")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
 }
 
 func (ec *executionContext) field_Mutation_setDefaultAllocation_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
@@ -11054,7 +11353,16 @@ func (ec *executionContext) _LedgerEdge_node(ctx context.Context, field graphql.
 	)
 }
 func (ec *executionContext) fieldContext_LedgerEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("LedgerEdge", field, false, false, errors.New("field of type LedgerEntry does not have child fields"))
+	fc = &graphql.FieldContext{
+		Object:     "LedgerEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _LoanBalance_loanId(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalance) (ret graphql.Marshaler) {
@@ -16783,7 +17091,16 @@ func (ec *executionContext) _RecordFundingSuccess_result(ctx context.Context, fi
 	)
 }
 func (ec *executionContext) fieldContext_RecordFundingSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("RecordFundingSuccess", field, false, false, errors.New("field of type LedgerEntry does not have child fields"))
+	fc = &graphql.FieldContext{
+		Object:     "RecordFundingSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _RecordTransferSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.RecordTransferSuccess) (ret graphql.Marshaler) {
@@ -16806,7 +17123,16 @@ func (ec *executionContext) _RecordTransferSuccess_result(ctx context.Context, f
 	)
 }
 func (ec *executionContext) fieldContext_RecordTransferSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("RecordTransferSuccess", field, false, false, errors.New("field of type LedgerEntry does not have child fields"))
+	fc = &graphql.FieldContext{
+		Object:     "RecordTransferSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _RecurringExpense_id(ctx context.Context, field graphql.CollectedField, obj *model.RecurringExpense) (ret graphql.Marshaler) {
@@ -19906,11 +20232,33 @@ func (ec *executionContext) unmarshalInputBulkPurchaseItemPatch(ctx context.Cont
 			it.Allocations = data
 		case "tagIds":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("tagIds"))
-			data, err := ec.unmarshalOID2ᚕstringᚄ(ctx, v)
-			if err != nil {
-				return it, err
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚕstringᚄ(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Tag")
+				if err != nil {
+					var zeroVal []string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal []string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
 			}
-			it.TagIds = data
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.([]string); ok {
+				it.TagIds = data
+			} else if tmp == nil {
+				it.TagIds = nil
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be []string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
 		}
 	}
 	return it, nil
@@ -23673,47 +24021,6 @@ func (ec *executionContext) _LedgerEntry(ctx context.Context, sel ast.SelectionS
 	}
 }
 
-func (ec *executionContext) _LedgerRecord(ctx context.Context, sel ast.SelectionSet, obj model.LedgerRecord) graphql.Marshaler {
-	switch obj := (obj).(type) {
-	case nil:
-		return graphql.Null
-	case model.TransferLedgerEntry:
-		return ec._TransferLedgerEntry(ctx, sel, &obj)
-	case *model.TransferLedgerEntry:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._TransferLedgerEntry(ctx, sel, obj)
-	case model.PurchaseLedgerEntry:
-		return ec._PurchaseLedgerEntry(ctx, sel, &obj)
-	case *model.PurchaseLedgerEntry:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._PurchaseLedgerEntry(ctx, sel, obj)
-	case model.FundingLedgerEntry:
-		return ec._FundingLedgerEntry(ctx, sel, &obj)
-	case *model.FundingLedgerEntry:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._FundingLedgerEntry(ctx, sel, obj)
-	case model.CorrectionLedgerEntry:
-		return ec._CorrectionLedgerEntry(ctx, sel, &obj)
-	case *model.CorrectionLedgerEntry:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._CorrectionLedgerEntry(ctx, sel, obj)
-	default:
-		if typedObj, ok := obj.(graphql.Marshaler); ok {
-			return typedObj
-		} else {
-			panic(fmt.Errorf("unexpected type %T; non-generated variants of LedgerRecord must implement graphql.Marshaler", obj))
-		}
-	}
-}
-
 func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj model.Node) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -25975,7 +26282,7 @@ func (ec *executionContext) _CorrectPurchaseSuccess(ctx context.Context, sel ast
 	return out
 }
 
-var correctionLedgerEntryImplementors = []string{"CorrectionLedgerEntry", "LedgerRecord", "LedgerEntry"}
+var correctionLedgerEntryImplementors = []string{"CorrectionLedgerEntry", "LedgerEntry"}
 
 func (ec *executionContext) _CorrectionLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.CorrectionLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, correctionLedgerEntryImplementors)
@@ -26471,7 +26778,7 @@ func (ec *executionContext) _EffectiveUnitPrice(ctx context.Context, sel ast.Sel
 	return out
 }
 
-var fundingLedgerEntryImplementors = []string{"FundingLedgerEntry", "LedgerRecord", "LedgerEntry"}
+var fundingLedgerEntryImplementors = []string{"FundingLedgerEntry", "LedgerEntry"}
 
 func (ec *executionContext) _FundingLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.FundingLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, fundingLedgerEntryImplementors)
@@ -29136,7 +29443,7 @@ func (ec *executionContext) _PurchaseItem(ctx context.Context, sel ast.Selection
 	return out
 }
 
-var purchaseLedgerEntryImplementors = []string{"PurchaseLedgerEntry", "LedgerEntry", "LedgerRecord"}
+var purchaseLedgerEntryImplementors = []string{"PurchaseLedgerEntry", "LedgerEntry"}
 
 func (ec *executionContext) _PurchaseLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.PurchaseLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, purchaseLedgerEntryImplementors)
@@ -30905,7 +31212,7 @@ func (ec *executionContext) _Tag(ctx context.Context, sel ast.SelectionSet, obj 
 	return out
 }
 
-var transferLedgerEntryImplementors = []string{"TransferLedgerEntry", "LedgerEntry", "LedgerRecord"}
+var transferLedgerEntryImplementors = []string{"TransferLedgerEntry", "LedgerEntry"}
 
 func (ec *executionContext) _TransferLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.TransferLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, transferLedgerEntryImplementors)

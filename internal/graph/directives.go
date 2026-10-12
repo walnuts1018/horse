@@ -11,13 +11,20 @@ func NodeIDDirective(ctx context.Context, value any, next graphql.Resolver, of s
 	if value == nil {
 		return nil, nil
 	}
-	globalID, ok := value.(string)
-	if !ok {
-		return nil, fmt.Errorf("node ID must be a string")
+	switch globalID := value.(type) {
+	case string:
+		return decodeNodeID(globalID, of)
+	case []string:
+		decoded := make([]string, len(globalID))
+		for i := range globalID {
+			id, err := decodeNodeID(globalID[i], of)
+			if err != nil {
+				return nil, err
+			}
+			decoded[i] = id
+		}
+		return decoded, nil
+	default:
+		return nil, fmt.Errorf("node ID must be a string or a list of strings")
 	}
-	id, err := decodeNodeID(globalID, of)
-	if err != nil {
-		return nil, err
-	}
-	return id, nil
 }

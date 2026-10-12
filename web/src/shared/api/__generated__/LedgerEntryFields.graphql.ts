@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0c4c83e6fded3c9ecebe5419a96fc4cc>>
+ * @generated SignedSource<<bb661c1bb8b1a85fb8c8e35ebdd8e999>>
  * @lightSyntaxTransform
  */
 
@@ -11,71 +11,36 @@ import type { ReaderFragment } from 'relay-runtime';
 export type TransferKind = "ADVANCE" | "GIFT" | "LOAN" | "REPAYMENT" | "%future added value";
 import type { FragmentRefs } from "relay-runtime";
 export type LedgerEntryFields$data = {
-  readonly __typename: "CorrectionLedgerEntry";
+  readonly __typename: string;
   readonly amountYen: any;
   readonly createdAt: string;
   readonly currency: string;
   readonly description: string;
-  readonly id: string;
-  readonly occurredAt: string;
-  readonly purchase: {
+  readonly fromMember?: {
+    readonly displayName: string;
     readonly id: string;
   };
-  readonly " $fragmentType": "LedgerEntryFields";
-} | {
-  readonly __typename: "FundingLedgerEntry";
-  readonly amountYen: any;
-  readonly createdAt: string;
-  readonly currency: string;
-  readonly description: string;
   readonly id: string;
-  readonly member: {
+  readonly loan?: {
+    readonly loanId: string;
+  } | null | undefined;
+  readonly member?: {
     readonly displayName: string;
     readonly id: string;
   };
   readonly occurredAt: string;
-  readonly pool: {
+  readonly pool?: {
     readonly id: string;
     readonly name: string;
   };
-  readonly " $fragmentType": "LedgerEntryFields";
-} | {
-  readonly __typename: "PurchaseLedgerEntry";
-  readonly amountYen: any;
-  readonly createdAt: string;
-  readonly currency: string;
-  readonly description: string;
-  readonly id: string;
-  readonly occurredAt: string;
-  readonly purchase: {
+  readonly purchase?: {
     readonly id: string;
   };
-  readonly " $fragmentType": "LedgerEntryFields";
-} | {
-  readonly __typename: "TransferLedgerEntry";
-  readonly amountYen: any;
-  readonly createdAt: string;
-  readonly currency: string;
-  readonly description: string;
-  readonly fromMember: {
+  readonly toMember?: {
     readonly displayName: string;
     readonly id: string;
   };
-  readonly id: string;
-  readonly loan: {
-    readonly loanId: string;
-  } | null | undefined;
-  readonly occurredAt: string;
-  readonly toMember: {
-    readonly displayName: string;
-    readonly id: string;
-  };
-  readonly transferKind: TransferKind;
-  readonly " $fragmentType": "LedgerEntryFields";
-} | {
-  // This will never be '%other', but we need some
-  // value in case none of the concrete values match.
-  readonly __typename: "%other";
+  readonly transferKind?: TransferKind;
   readonly " $fragmentType": "LedgerEntryFields";
 };
 export type LedgerEntryFields$key = {
@@ -91,48 +56,7 @@ var v0 = {
   "name": "id",
   "storageKey": null
 },
-v1 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "occurredAt",
-  "storageKey": null
-},
-v2 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "description",
-  "storageKey": null
-},
-v3 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "amountYen",
-  "storageKey": null
-},
-v4 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "currency",
-  "storageKey": null
-},
-v5 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "createdAt",
-  "storageKey": null
-},
-v6 = [
-  (v0/*:: as any*/),
-  (v1/*:: as any*/),
-  (v2/*:: as any*/),
-  (v3/*:: as any*/),
-  (v4/*:: as any*/),
-  (v5/*:: as any*/),
+v1 = [
   {
     "alias": null,
     "args": null,
@@ -146,7 +70,7 @@ v6 = [
     "storageKey": null
   }
 ],
-v7 = [
+v2 = [
   (v0/*:: as any*/),
   {
     "alias": null,
@@ -169,21 +93,51 @@ return {
       "name": "__typename",
       "storageKey": null
     },
+    (v0/*:: as any*/),
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "occurredAt",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "description",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "amountYen",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "currency",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "createdAt",
+      "storageKey": null
+    },
     {
       "kind": "InlineFragment",
-      "selections": (v6/*:: as any*/),
+      "selections": (v1/*:: as any*/),
       "type": "PurchaseLedgerEntry",
       "abstractKey": null
     },
     {
       "kind": "InlineFragment",
       "selections": [
-        (v0/*:: as any*/),
-        (v1/*:: as any*/),
-        (v2/*:: as any*/),
-        (v3/*:: as any*/),
-        (v4/*:: as any*/),
-        (v5/*:: as any*/),
         {
           "alias": null,
           "args": null,
@@ -191,7 +145,7 @@ return {
           "kind": "LinkedField",
           "name": "member",
           "plural": false,
-          "selections": (v7/*:: as any*/),
+          "selections": (v2/*:: as any*/),
           "storageKey": null
         },
         {
@@ -220,12 +174,6 @@ return {
     {
       "kind": "InlineFragment",
       "selections": [
-        (v0/*:: as any*/),
-        (v1/*:: as any*/),
-        (v2/*:: as any*/),
-        (v3/*:: as any*/),
-        (v4/*:: as any*/),
-        (v5/*:: as any*/),
         {
           "alias": null,
           "args": null,
@@ -233,7 +181,7 @@ return {
           "kind": "LinkedField",
           "name": "fromMember",
           "plural": false,
-          "selections": (v7/*:: as any*/),
+          "selections": (v2/*:: as any*/),
           "storageKey": null
         },
         {
@@ -243,7 +191,7 @@ return {
           "kind": "LinkedField",
           "name": "toMember",
           "plural": false,
-          "selections": (v7/*:: as any*/),
+          "selections": (v2/*:: as any*/),
           "storageKey": null
         },
         {
@@ -277,7 +225,7 @@ return {
     },
     {
       "kind": "InlineFragment",
-      "selections": (v6/*:: as any*/),
+      "selections": (v1/*:: as any*/),
       "type": "CorrectionLedgerEntry",
       "abstractKey": null
     }
@@ -287,6 +235,6 @@ return {
 };
 })();
 
-(node as any).hash = "58c1e92010602de98f852f14592e6aa4";
+(node as any).hash = "8e0d60c635a8609f28033bc596eb11fd";
 
 export default node;

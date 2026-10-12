@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b8167c8bc9e08a90df5dacebe3315d1c>>
+ * @generated SignedSource<<667920e97a7c47ad95f52c3add7182ff>>
  * @lightSyntaxTransform
  */
 
@@ -98,48 +98,7 @@ v4 = {
   "name": "id",
   "storageKey": null
 },
-v5 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "occurredAt",
-  "storageKey": null
-},
-v6 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "description",
-  "storageKey": null
-},
-v7 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "amountYen",
-  "storageKey": null
-},
-v8 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "currency",
-  "storageKey": null
-},
-v9 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "createdAt",
-  "storageKey": null
-},
-v10 = [
-  (v4/*:: as any*/),
-  (v5/*:: as any*/),
-  (v6/*:: as any*/),
-  (v7/*:: as any*/),
-  (v8/*:: as any*/),
-  (v9/*:: as any*/),
+v5 = [
   {
     "alias": null,
     "args": null,
@@ -153,7 +112,7 @@ v10 = [
     "storageKey": null
   }
 ],
-v11 = [
+v6 = [
   (v4/*:: as any*/),
   {
     "alias": null,
@@ -241,21 +200,51 @@ return {
                     "kind": "TypeDiscriminator",
                     "abstractKey": "__isLedgerEntry"
                   },
+                  (v4/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "occurredAt",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "description",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "amountYen",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "currency",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "createdAt",
+                    "storageKey": null
+                  },
                   {
                     "kind": "InlineFragment",
-                    "selections": (v10/*:: as any*/),
+                    "selections": (v5/*:: as any*/),
                     "type": "PurchaseLedgerEntry",
                     "abstractKey": null
                   },
                   {
                     "kind": "InlineFragment",
                     "selections": [
-                      (v4/*:: as any*/),
-                      (v5/*:: as any*/),
-                      (v6/*:: as any*/),
-                      (v7/*:: as any*/),
-                      (v8/*:: as any*/),
-                      (v9/*:: as any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -263,7 +252,7 @@ return {
                         "kind": "LinkedField",
                         "name": "member",
                         "plural": false,
-                        "selections": (v11/*:: as any*/),
+                        "selections": (v6/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -292,12 +281,6 @@ return {
                   {
                     "kind": "InlineFragment",
                     "selections": [
-                      (v4/*:: as any*/),
-                      (v5/*:: as any*/),
-                      (v6/*:: as any*/),
-                      (v7/*:: as any*/),
-                      (v8/*:: as any*/),
-                      (v9/*:: as any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -305,7 +288,7 @@ return {
                         "kind": "LinkedField",
                         "name": "fromMember",
                         "plural": false,
-                        "selections": (v11/*:: as any*/),
+                        "selections": (v6/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -315,7 +298,7 @@ return {
                         "kind": "LinkedField",
                         "name": "toMember",
                         "plural": false,
-                        "selections": (v11/*:: as any*/),
+                        "selections": (v6/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -349,7 +332,7 @@ return {
                   },
                   {
                     "kind": "InlineFragment",
-                    "selections": (v10/*:: as any*/),
+                    "selections": (v5/*:: as any*/),
                     "type": "CorrectionLedgerEntry",
                     "abstractKey": null
                   }
@@ -367,12 +350,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "c2d5dc5ec1a2ff83034bad76630f64e2",
+    "cacheID": "b31204ccbad8a4ef63c8697fb395db40",
     "id": null,
     "metadata": {},
     "name": "RecordTransferMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordTransferMutation(\n  $input: RecordTransferInput!\n) {\n  recordTransfer(input: $input) {\n    __typename\n    ... on RecordTransferSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        ... on CorrectionLedgerEntry {\n          id\n        }\n        ... on FundingLedgerEntry {\n          id\n        }\n        ... on PurchaseLedgerEntry {\n          id\n        }\n        ... on TransferLedgerEntry {\n          id\n        }\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  ... on PurchaseLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      loanId\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    id\n    occurredAt\n    description\n    amountYen\n    currency\n    createdAt\n    purchase {\n      id\n    }\n  }\n}\n"
+    "text": "mutation RecordTransferMutation(\n  $input: RecordTransferInput!\n) {\n  recordTransfer(input: $input) {\n    __typename\n    ... on RecordTransferSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    ... on MutationError {\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      loanId\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
   }
 };
 })();

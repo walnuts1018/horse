@@ -182,24 +182,18 @@ export const recordExternalIncomeMutation = graphql`
 export const ledgerEntryFields = graphql`
   fragment LedgerEntryFields on LedgerEntry {
     __typename
+    id
+    occurredAt
+    description
+    amountYen
+    currency
+    createdAt
     ... on PurchaseLedgerEntry {
-      id
-      occurredAt
-      description
-      amountYen
-      currency
-      createdAt
       purchase {
         id
       }
     }
     ... on FundingLedgerEntry {
-      id
-      occurredAt
-      description
-      amountYen
-      currency
-      createdAt
       member {
         id
         displayName
@@ -210,12 +204,6 @@ export const ledgerEntryFields = graphql`
       }
     }
     ... on TransferLedgerEntry {
-      id
-      occurredAt
-      description
-      amountYen
-      currency
-      createdAt
       fromMember {
         id
         displayName
@@ -230,12 +218,6 @@ export const ledgerEntryFields = graphql`
       }
     }
     ... on CorrectionLedgerEntry {
-      id
-      occurredAt
-      description
-      amountYen
-      currency
-      createdAt
       purchase {
         id
       }

@@ -47,7 +47,7 @@ import {
   createHouseholdInvitationMutation,
   householdInvitationsQuery,
   revokeHouseholdInvitationMutation,
-} from "../../../entities/household";
+} from "../api/household/operations";
 import {
   accountMovementsQuery,
   accountBalancesQuery,

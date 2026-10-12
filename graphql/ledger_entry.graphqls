@@ -1,4 +1,4 @@
-interface LedgerRecord {
+interface LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!
@@ -6,8 +6,6 @@ interface LedgerRecord {
   currency: String!
   createdAt: String!
 }
-
-union LedgerEntry = PurchaseLedgerEntry | FundingLedgerEntry | TransferLedgerEntry | CorrectionLedgerEntry
 
 type LedgerEdge {
   cursor: String!

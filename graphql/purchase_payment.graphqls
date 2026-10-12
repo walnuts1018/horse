@@ -3,3 +3,8 @@ type PurchasePayment {
   account: Account
   amountYen: Long!
 }
+
+input PurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
+}

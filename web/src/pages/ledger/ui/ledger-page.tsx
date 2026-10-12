@@ -24,13 +24,13 @@ import {
   updatePurchaseMutation,
 } from "../../../entities/purchase";
 import { ledgerQuery } from "../../../entities/ledger";
-import { unmatchedObservationsQuery } from "../../../entities/observation";
+import { unmatchedObservationsQuery } from "../api/observation/operations";
 import { productCatalogQuery } from "../../../entities/product";
 import { tagsQuery } from "../../../entities/tag";
 import { EmptyState, InlineError } from "../../../shared/ui";
 import { formatQuantity, parseQuantity } from "../../../shared/lib";
 import { useHouseholdPurchases } from "../../../entities/purchase";
-import { useUnmatchedObservations } from "../../../entities/observation";
+import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
 
 type PurchaseEvidence = {
   documentId: string;

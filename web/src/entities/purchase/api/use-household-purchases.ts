@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLazyLoadQuery, usePaginationFragment } from "react-relay";
 import type { Purchase, PurchaseItem, PurchaseOrigin } from "../../../shared/api";
-import type { PurchasesQuery } from "../../../shared/api/__generated__/PurchasesQuery.graphql";
-import type { PurchaseListFragment$key } from "../../../shared/api/__generated__/PurchaseListFragment.graphql";
+import type { PurchaseListFragment$key, PurchasesQuery } from "..";
 import { purchaseListFragment, purchasesQuery } from "./operations";
 
 type Options = {

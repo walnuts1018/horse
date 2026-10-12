@@ -1,5 +1,5 @@
 extend type Mutation {
-  archiveTag(tagId: ID!, baseRevision: Int!, archived: Boolean!): ArchiveTagResult!
+  archiveTag(tagId: ID! @nodeID(of: "Tag"), baseRevision: Int!, archived: Boolean!): ArchiveTagResult!
 }
 
 union ArchiveTagResult = ArchiveTagSuccess | MutationError

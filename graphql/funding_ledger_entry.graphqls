@@ -1,4 +1,4 @@
-type FundingLedgerEntry implements LedgerRecord {
+type FundingLedgerEntry implements LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!

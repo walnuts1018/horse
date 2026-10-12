@@ -26,7 +26,7 @@ import {
   householdsQuery,
 } from "./api/operations";
 import { useCreateAndPostPurchase } from "../entities/purchase";
-import { GraphQLErrorBoundary } from "./ui/graphql-error-boundary";
+import { GraphQLErrorBoundary } from "./graphql-error-boundary";
 import {
   claimPurchaseOutbox,
   completePurchaseOutbox,

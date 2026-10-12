@@ -77,10 +77,6 @@ type CreateTagResult interface {
 
 type LedgerEntry interface {
 	IsLedgerEntry()
-}
-
-type LedgerRecord interface {
-	IsLedgerRecord()
 	GetID() string
 	GetOccurredAt() string
 	GetDescription() string
@@ -352,15 +348,13 @@ type CorrectionLedgerEntry struct {
 	Purchase    *Purchase `json:"purchase"`
 }
 
-func (CorrectionLedgerEntry) IsLedgerRecord()             {}
+func (CorrectionLedgerEntry) IsLedgerEntry()              {}
 func (this CorrectionLedgerEntry) GetID() string          { return this.ID }
 func (this CorrectionLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
 func (this CorrectionLedgerEntry) GetDescription() string { return this.Description }
 func (this CorrectionLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
 func (this CorrectionLedgerEntry) GetCurrency() string    { return this.Currency }
 func (this CorrectionLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
-
-func (CorrectionLedgerEntry) IsLedgerEntry() {}
 
 type CreateAccountInput struct {
 	HouseholdID       string      `json:"householdId"`
@@ -504,15 +498,13 @@ type FundingLedgerEntry struct {
 	Pool        *Pool   `json:"pool"`
 }
 
-func (FundingLedgerEntry) IsLedgerRecord()             {}
+func (FundingLedgerEntry) IsLedgerEntry()              {}
 func (this FundingLedgerEntry) GetID() string          { return this.ID }
 func (this FundingLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
 func (this FundingLedgerEntry) GetDescription() string { return this.Description }
 func (this FundingLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
 func (this FundingLedgerEntry) GetCurrency() string    { return this.Currency }
 func (this FundingLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
-
-func (FundingLedgerEntry) IsLedgerEntry() {}
 
 type Household struct {
 	ID                string        `json:"id"`
@@ -846,9 +838,7 @@ type PurchaseLedgerEntry struct {
 	Purchase    *Purchase `json:"purchase"`
 }
 
-func (PurchaseLedgerEntry) IsLedgerEntry() {}
-
-func (PurchaseLedgerEntry) IsLedgerRecord()             {}
+func (PurchaseLedgerEntry) IsLedgerEntry()              {}
 func (this PurchaseLedgerEntry) GetID() string          { return this.ID }
 func (this PurchaseLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
 func (this PurchaseLedgerEntry) GetDescription() string { return this.Description }
@@ -1140,9 +1130,7 @@ type TransferLedgerEntry struct {
 	Loan         *LoanBalance `json:"loan,omitempty"`
 }
 
-func (TransferLedgerEntry) IsLedgerEntry() {}
-
-func (TransferLedgerEntry) IsLedgerRecord()             {}
+func (TransferLedgerEntry) IsLedgerEntry()              {}
 func (this TransferLedgerEntry) GetID() string          { return this.ID }
 func (this TransferLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
 func (this TransferLedgerEntry) GetDescription() string { return this.Description }

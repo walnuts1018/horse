@@ -5,7 +5,7 @@ import {
   type SourceKind,
   type UnmatchedObservation,
   type UnmatchedObservationState,
-} from "../../../shared/api";
+} from "../../../../shared/api";
 import { unmatchedObservationsQuery } from "./operations";
 
 type Options = {

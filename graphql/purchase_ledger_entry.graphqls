@@ -1,4 +1,4 @@
-type PurchaseLedgerEntry implements LedgerRecord {
+type PurchaseLedgerEntry implements LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!

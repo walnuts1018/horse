@@ -1,4 +1,4 @@
-type CorrectionLedgerEntry implements LedgerRecord {
+type CorrectionLedgerEntry implements LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!

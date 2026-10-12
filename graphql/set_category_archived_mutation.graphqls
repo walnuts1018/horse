@@ -1,5 +1,5 @@
 extend type Mutation {
-  setCategoryArchived(categoryId: ID!, archived: Boolean!): SetCategoryArchivedResult!
+  setCategoryArchived(categoryId: ID! @nodeID(of: "Category"), archived: Boolean!): SetCategoryArchivedResult!
 }
 
 union SetCategoryArchivedResult = SetCategoryArchivedSuccess | MutationError

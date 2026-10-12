@@ -1,4 +1,4 @@
-type TransferLedgerEntry implements LedgerRecord {
+type TransferLedgerEntry implements LedgerEntry {
   id: ID!
   occurredAt: String!
   description: String!
