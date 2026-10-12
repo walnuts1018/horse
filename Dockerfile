@@ -39,7 +39,7 @@ WORKDIR /app
 COPY --from=web-build --chown=10001:10001 /src/web/.output/ ./.output/
 COPY --from=api-build --chown=10001:10001 /out/api ./api
 COPY --from=api-build --chown=10001:10001 /out/worker ./worker
-COPY --from=atlas --chown=10001:10001 /atlas /usr/local/bin/atlas
+COPY --from=atlas --chown=10001:10001 --chmod=0555 /atlas /usr/local/bin/atlas
 COPY --chown=10001:10001 atlas.hcl ./atlas.hcl
 COPY --chown=10001:10001 migrations/ ./migrations/
 
