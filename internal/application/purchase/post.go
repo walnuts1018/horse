@@ -246,7 +246,7 @@ func snapshotMemberBurden(ctx context.Context, executor bob.Executor, householdI
 		if err != nil {
 			continue
 		}
-		if rule.version < 1 || rule.version > math.MaxInt32 {
+		if rule.version < 1 {
 			return fmt.Errorf("%w: invalid pool funding rule version", ErrBadInput)
 		}
 		parts, err := domain.Allocate(allocation.AmountYen, weights)
@@ -384,7 +384,7 @@ func snapshotPaymentFunding(ctx context.Context, executor bob.Executor, househol
 			continue
 		}
 		rule, ok := rules[account.PoolID.V]
-		if !ok || rule.version < 1 || rule.version > math.MaxInt32 {
+		if !ok || rule.version < 1 {
 			continue
 		}
 		weights, err := memberWeights(rule)

@@ -24,25 +24,6 @@ type purchaseItemMeasure struct {
 	printedUnitPriceUnit                sql.Null[string]
 }
 
-func measureFromInput(input *model.PurchaseItemInput) (purchaseItemMeasure, error) {
-	var quantityNumerator, quantityDenominator, quantityUnit *string
-	if input.Quantity != nil {
-		quantityNumerator, quantityDenominator, quantityUnit = &input.Quantity.Numerator, &input.Quantity.Denominator, &input.Quantity.Unit
-	}
-	var printedPrice *model.Long
-	var printedBasisNumerator, printedBasisDenominator, printedUnit *string
-	if input.PrintedUnitPrice != nil {
-		if input.PrintedUnitPrice.Basis == nil {
-			return purchaseItemMeasure{}, errors.New("printed unit price basis is required")
-		}
-		printedPrice = &input.PrintedUnitPrice.AmountYen
-		printedBasisNumerator = &input.PrintedUnitPrice.Basis.Numerator
-		printedBasisDenominator = &input.PrintedUnitPrice.Basis.Denominator
-		printedUnit = &input.PrintedUnitPrice.Basis.Unit
-	}
-	return newPurchaseItemMeasure(quantityNumerator, quantityDenominator, quantityUnit, printedPrice, printedBasisNumerator, printedBasisDenominator, printedUnit)
-}
-
 func measureFromUpdate(input model.UpdatePurchaseItemInput, current purchaseItemMeasure) (purchaseItemMeasure, error) {
 	updated := current
 	if containsChangedField(input.ChangedFields, "quantity") {
