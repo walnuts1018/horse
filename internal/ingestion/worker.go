@@ -309,8 +309,10 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		return Verification{}, fmt.Errorf("decode extraction request: %w", err)
 	}
 	transform := identityTransform()
+	transformPage := 0
 	if request.Crop != nil {
-		document, transform, err = CropImage(document, *request.Crop)
+		transformPage = request.Crop.Page
+		document, transform, err = w.OCR.Crop(ctx, document, *request.Crop)
 		if err != nil {
 			return Verification{}, fmt.Errorf("prepare cropped document: %w", err)
 		}
@@ -328,14 +330,15 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if len(document.MIMEType) >= 6 && document.MIMEType[:6] == "image/" {
 		lines, ocrErr = w.OCR.Extract(ctx, document)
 		if ocrErr == nil {
-			if err := transformVerification(&verified, lines, transform); err != nil {
+			if err := transformVerification(&verified, lines, transform, transformPage); err != nil {
 				return Verification{}, fmt.Errorf("map evidence regions to original image: %w", err)
 			}
-		} else if err := transformReceiptRegions(&verified, transform); err != nil {
+		} else if err := transformReceiptRegions(&verified, transform, transformPage); err != nil {
 			return Verification{}, fmt.Errorf("map evidence regions to original image: %w", err)
 		}
 	} else {
 		verified.Transform = transform
+		verified.TransformPage = transformPage
 	}
 	verified.Runs = annotateRuns(runs, receipt, verified.Issues)
 	if len(document.MIMEType) >= 6 && document.MIMEType[:6] == "image/" {
@@ -356,7 +359,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			if qualityErr == nil {
 				second, verifyErr := Verify(alternative)
 				if verifyErr == nil {
-					if err := transformReceiptRegions(&second, transform); err != nil {
+					if err := transformReceiptRegions(&second, transform, transformPage); err != nil {
 						return Verification{}, fmt.Errorf("map reviewed evidence regions to original image: %w", err)
 					}
 					second.Runs = annotateRuns(qualityRuns, alternative, second.Issues)
@@ -377,7 +380,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			if proErr == nil {
 				proVerification, verifyErr := Verify(proReceipt)
 				if verifyErr == nil {
-					if err := transformReceiptRegions(&proVerification, transform); err != nil {
+					if err := transformReceiptRegions(&proVerification, transform, transformPage); err != nil {
 						return Verification{}, fmt.Errorf("map reviewed evidence regions to original image: %w", err)
 					}
 					proVerification.Runs = annotateRuns(proRuns, proReceipt, proVerification.Issues)

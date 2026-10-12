@@ -147,7 +147,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if _, err := models.PurchaseItems.Insert(&models.PurchaseItemSetter{ID: &itemUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, Name: &itemName, AmountYen: &itemAmount}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
-	verification := ingestion.Verification{Receipt: ingestion.Receipt{Items: []ingestion.Item{{PrintedName: "printed item", Name: "test item", Region: &ingestion.Region{Top: 0.1, Left: 0.2, Bottom: 0.3, Right: 0.8}}}}}
+	verification := ingestion.Verification{Receipt: ingestion.Receipt{Items: []ingestion.Item{{PrintedName: "printed item", Name: "test item", Region: &ingestion.Region{Top: 0.1, Left: 0.2, Bottom: 0.3, Right: 0.8}}}}, Transform: [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}}
 	payload, err := json.Marshal(verification)
 	if err != nil {
 		t.Fatal(err)
@@ -203,6 +203,49 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 	if response := confirm(0); response.Code != http.StatusOK {
 		t.Fatalf("evidence link failed: %d %s", response.Code, response.Body.String())
+	}
+	secondDocumentID, secondJobID := uuid.NewV7().String(), uuid.NewV7().String()
+	secondDocumentUUID, secondJobUUID := mustIntegrationUUID(t, secondDocumentID), mustIntegrationUUID(t, secondJobID)
+	secondHash, secondObjectKey, cardSource := "access-test:"+secondDocumentID, householdID+"/originals/"+secondDocumentID, "card"
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &secondDocumentUUID, HouseholdID: &householdUUID, Sha256: &secondHash, ObjectKey: &secondObjectKey, MimeType: &mimeType, SourceKind: &cardSource, CreatedBy: &ownerUUID}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &secondJobUUID, HouseholdID: &householdUUID, SourceDocumentID: &secondDocumentUUID, Status: &jobStatus, Result: &jobResult}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	groupBody, err := json.Marshal(map[string]any{"sources": []any{
+		map[string]any{"documentId": documentID, "itemId": itemID, "sourceItemIndex": 0, "observationJobId": jobID},
+		map[string]any{"documentId": secondDocumentID, "itemId": itemID, "sourceItemIndex": 0, "observationJobId": secondJobID},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	groupRequest := httptest.NewRequest(http.MethodPost, "/purchases/"+purchaseID+"/evidence", strings.NewReader(string(groupBody)))
+	groupRequest.Header.Set("Origin", "http://horse.test")
+	groupRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	groupResponse := httptest.NewRecorder()
+	server.ServeHTTP(groupResponse, groupRequest)
+	if groupResponse.Code != http.StatusOK || !strings.Contains(groupResponse.Body.String(), `"sourceCount":2`) {
+		t.Fatalf("multi-source evidence confirmation failed: %d %s", groupResponse.Code, groupResponse.Body.String())
+	}
+	rollbackBody, err := json.Marshal(map[string]any{"sources": []any{
+		map[string]any{"documentId": secondDocumentID, "sourceReference": "rollback"},
+		map[string]any{"documentId": "invalid-document-id"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rollbackRequest := httptest.NewRequest(http.MethodPost, "/purchases/"+purchaseID+"/evidence", strings.NewReader(string(rollbackBody)))
+	rollbackRequest.Header.Set("Origin", "http://horse.test")
+	rollbackRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	rollbackResponse := httptest.NewRecorder()
+	server.ServeHTTP(rollbackResponse, rollbackRequest)
+	if rollbackResponse.Code != http.StatusBadRequest {
+		t.Fatalf("invalid evidence group was accepted: %d %s", rollbackResponse.Code, rollbackResponse.Body.String())
+	}
+	secondConfirmations, err := models.DocumentConfirmations.Query(sm.Where(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(secondDocumentUUID)))).All(ctx, executor)
+	if err != nil || len(secondConfirmations) != 1 {
+		t.Fatalf("failed multi-source confirmation left partial state: %d %v", len(secondConfirmations), err)
 	}
 	// 解析結果の更新後も、確認した観測と原本座標は証拠に保存された状態を保つ。
 	emptyResult := sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`{}`)}, Valid: true}

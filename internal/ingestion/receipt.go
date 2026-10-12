@@ -70,6 +70,7 @@ type Receipt struct {
 type Verification struct {
 	Receipt       Receipt                `json:"receipt"`
 	Transform     [9]float64             `json:"transform"`
+	TransformPage int                    `json:"transformPage"`
 	Issues        []string               `json:"issues"`
 	ComputedTotal int64                  `json:"computedTotal"`
 	Balanced      bool                   `json:"balanced"`

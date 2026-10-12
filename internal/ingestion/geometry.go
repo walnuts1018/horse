@@ -1,60 +1,12 @@
 package ingestion
 
 import (
-	"bytes"
 	"errors"
-	"image"
-	_ "image/jpeg"
-	"image/png"
 	"math"
 )
 
-const maxCropPixels = 40_000_000
-
 func identityTransform() [9]float64 {
 	return [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}
-}
-
-// CropImageは保存済みの原本を変更せずに画像を切り抜き、処理画像から原本への座標変換を返す。
-func CropImage(document Document, region Region) (Document, [9]float64, error) {
-	transform := identityTransform()
-	if !validRegion(region) || region.Page != 0 {
-		return Document{}, transform, errors.New("invalid image crop region")
-	}
-	config, _, err := image.DecodeConfig(bytes.NewReader(document.Data))
-	if err != nil || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxCropPixels {
-		return Document{}, transform, errors.New("invalid or oversized image")
-	}
-	source, _, err := image.Decode(bytes.NewReader(document.Data))
-	if err != nil {
-		return Document{}, transform, errors.New("decode image for crop failed")
-	}
-	bounds := source.Bounds()
-	left := bounds.Min.X + int(math.Floor(region.Left*float64(bounds.Dx())))
-	top := bounds.Min.Y + int(math.Floor(region.Top*float64(bounds.Dy())))
-	right := bounds.Min.X + int(math.Ceil(region.Right*float64(bounds.Dx())))
-	bottom := bounds.Min.Y + int(math.Ceil(region.Bottom*float64(bounds.Dy())))
-	left = max(bounds.Min.X, min(left, bounds.Max.X-1))
-	top = max(bounds.Min.Y, min(top, bounds.Max.Y-1))
-	right = max(left+1, min(right, bounds.Max.X))
-	bottom = max(top+1, min(bottom, bounds.Max.Y))
-	cropped := image.NewRGBA(image.Rect(0, 0, right-left, bottom-top))
-	for y := top; y < bottom; y++ {
-		for x := left; x < right; x++ {
-			cropped.Set(x-left, y-top, source.At(x, y))
-		}
-	}
-	var encoded bytes.Buffer
-	if err := png.Encode(&encoded, cropped); err != nil || encoded.Len() > MaxDocumentBytes {
-		return Document{}, transform, errors.New("encode cropped image failed")
-	}
-	width, height := float64(bounds.Dx()), float64(bounds.Dy())
-	transform = [9]float64{
-		float64(right-left) / width, 0, float64(left-bounds.Min.X) / width,
-		0, float64(bottom-top) / height, float64(top-bounds.Min.Y) / height,
-		0, 0, 1,
-	}
-	return Document{MIMEType: "image/png", Data: encoded.Bytes()}, transform, nil
 }
 
 func transformRegion(region Region, transform [9]float64) (Region, error) {
@@ -82,9 +34,10 @@ func transformRegion(region Region, transform [9]float64) (Region, error) {
 	return result, nil
 }
 
-func transformVerification(verification *Verification, lines []OCRLine, transform [9]float64) error {
+func transformVerification(verification *Verification, lines []OCRLine, transform [9]float64, page int) error {
 	verification.Transform = transform
-	if err := transformReceiptRegions(verification, transform); err != nil {
+	verification.TransformPage = page
+	if err := transformReceiptRegions(verification, transform, page); err != nil {
 		return err
 	}
 	for i := range lines {
@@ -92,13 +45,15 @@ func transformVerification(verification *Verification, lines []OCRLine, transfor
 		if err != nil {
 			return err
 		}
+		mapped.Page = page
 		lines[i].Region = mapped
 	}
 	return nil
 }
 
-func transformReceiptRegions(verification *Verification, transform [9]float64) error {
+func transformReceiptRegions(verification *Verification, transform [9]float64, page int) error {
 	verification.Transform = transform
+	verification.TransformPage = page
 	for i := range verification.Receipt.Items {
 		region := verification.Receipt.Items[i].Region
 		if region == nil {
@@ -108,6 +63,7 @@ func transformReceiptRegions(verification *Verification, transform [9]float64) e
 		if err != nil {
 			return err
 		}
+		mapped.Page = page
 		verification.Receipt.Items[i].Region = &mapped
 	}
 	return nil

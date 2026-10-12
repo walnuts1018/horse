@@ -60,6 +60,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /documents/{id}/matches", s.documentMatches)
 	mux.HandleFunc("POST /documents/{id}/retry", s.retryDocument)
 	mux.HandleFunc("POST /documents/{id}/confirm", s.confirmEvidence)
+	mux.HandleFunc("POST /purchases/{id}/evidence", s.confirmPurchaseEvidence)
 	mux.HandleFunc("GET /purchases/{id}/evidence", s.purchaseEvidence)
 	mux.HandleFunc("GET /events", s.events)
 	return s.recover(s.accessLog(mux))
