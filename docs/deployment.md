@@ -35,9 +35,9 @@ Gemini APIは無料用と有料用のGoogle Cloud Projectを分け、無料Proje
 
 Google Cloud Free TrialのWelcome creditはGemini APIとAI Studioの利用料に適用されません。Gemini APIのPaid Tierを有効にするにはAI Studioで有料Projectの状態を確認し、Billing Accountのlink後に必要なPrepay設定を完了する必要があります。新規ユーザーはPrepayの利用を求められる場合があり、その場合のcredits購入や支払設定は運用者がAI Studioで行います。TerraformはPrepay購入や自動reloadを設定しません。
 
-2026年10月12日のSpendCap作成では、同じscopeの300円alerts-only Budgetが存在するため、Google Cloud ConsoleとAPIがSpendCap作成を拒否しました。運用者はそのBudgetを削除し、Terraformで500円SpendCapだけを管理します。削除後にSpendCapの作成、金額、Gemini API serviceのfilter、通知先を確認するまで、有料APIキーの発行とGemini API呼び出しを行いません。予算APIの認証はapplyフェーズの短期トークンを使用し、予算更新のupdateMaskから変更できないbudgetFilterを除外します。[Googleの請求手順](https://ai.google.dev/gemini-api/docs/billing/)に従って運用者が必要な請求設定を完了した後、Terraformを再実行し、SpendCapの作成と状態を確認してください。
+2026年10月12日にTerraform applyが成功し、有料ProjectのGemini API serviceだけを対象にした月500円のSpendCapが`CONFIGURED`状態になりました。予算filterはcreditsを除外し、通知しきい値は50%、80%、100%です。Project Ownersへの通知も有効です。同じscopeにあった300円のalerts-only Budgetは削除し、Terraform stateから安全に除外しました。SpendCapの作成前に有料APIキーを発行していません。予算APIの認証はapplyフェーズの短期トークンを使用し、予算更新のupdateMaskから変更できないbudgetFilterを除外します。[Googleの請求手順](https://ai.google.dev/gemini-api/docs/billing/)に従い、請求状態とSpendCapを定期的に確認してください。
 
-SpendCapは請求の見積り遅延を伴い、適用は即時ではありません。Googleの公式説明では請求データ処理に約10分の遅れが発生する場合があり、上限を超えた請求が発生する可能性があります。SpendCapは超過を完全には保証しないため、Workerは`GEMINI_ENABLED=false`の状態を維持し、運用者がBilling状態、SpendCap、AI StudioのPaid Tierを確認した後でのみ有効化します。
+SpendCapは請求の見積り遅延を伴い、適用は即時ではありません。Googleの公式説明では請求データ処理に約10分の遅れが発生する場合があり、上限を超えた請求が発生する可能性があります。SpendCapは超過を完全には保証しません。Workerは`GEMINI_ENABLED=false`のままです。ESOが`horse-ai` OnePassword itemをConnectの`kurumi` vaultから取得できていないため、Gemini用Secretも同期されていません。通常WorkerでのGemini API呼び出しは行いません。隔離した合成データの検証は別途許可済みですが、専用の検証環境とSecret同期を確認してから実施します。
 
 ## Google CloudのTerraform認証
 
@@ -49,7 +49,7 @@ HCP Terraformの`walnuts-dev`組織、`Default Project`、`infra` workspaceだ�
 
 初回のWIF、サービスアカウント、カスタムロール、IAM bindingは管理者がConsoleまたはgcloudで設定し、現在値をTerraformコードへ定義してimportします。HCP TerraformのGoogle Cloud認証変数もTerraformで管理します。通常のapplyではこれらの設定を読取できても権限変更はできません。IAMや認証設定に差分が出た場合は適用を止め、管理者が変更内容を確認してbootstrap手順で対応します。通常のapplyを成功させるために権限を自動で追加しないでください。
 
-有料APIキーは月500円のSpendCap作成に成功してから発行し、キーの利用先をGemini APIに限定します。キーは1PasswordのCONCEALEDフィールドへ保存し、External Secretsを通じてWorkerだけへ渡します。Workerの外部HTTPS通信は`generativelanguage.googleapis.com`だけを許可します。DNSとDB、S3、RabbitMQ、OCR、OTelへの内部通信は別途許可します。
+有料APIキーは月500円のSpendCap作成後に発行し、キーの利用先をGemini APIに限定します。キーは1PasswordのCONCEALEDフィールドへ保存し、External Secretsを通じてWorkerだけへ渡す構成です。Workerの外部HTTPS通信は`generativelanguage.googleapis.com`だけを許可します。DNSとDB、S3、RabbitMQ、OCR、OTelへの内部通信は別途許可します。ESOが`horse-ai` itemを同期できるまでは、Workerの`GEMINI_ENABLED`を有効化しません。
 
 ## 検証状況
 
