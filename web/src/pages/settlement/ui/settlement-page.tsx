@@ -425,7 +425,9 @@ export function SettlementPage({ household }: { household: Household }) {
               {transferKind === "REPAYMENT" && selectedLoan && (
                 <small
                   className={
-                    parsedTransferAmount > selectedLoan.balanceYen ? "payment-unbalanced" : undefined
+                    parsedTransferAmount > selectedLoan.balanceYen
+                      ? "payment-unbalanced"
+                      : undefined
                   }
                 >
                   {parsedTransferAmount > selectedLoan.balanceYen

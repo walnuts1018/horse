@@ -498,11 +498,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                               payment.account?.name ??
                               household.accounts.find(
                                 (account) => account.id === payment.paymentAccountId,
-                              )?.name ?? "決済元";
+                              )?.name ??
+                              "決済元";
                             return `${accountName} ${yen(payment.amountYen)}`;
                           })
                           .join(" / ")
-                      : purchase.paymentAccount?.name ?? "決済元未設定"}
+                      : (purchase.paymentAccount?.name ?? "決済元未設定")}
                   </span>
                 </div>
                 <div className="purchase-meta">
@@ -572,7 +573,10 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                                   paymentAllocations: purchaseDraft.paymentAllocations.map(
                                     (row, rowIndex) =>
                                       rowIndex === index
-                                        ? { ...row, amountYen: event.target.value.replace(/\D/g, "") }
+                                        ? {
+                                            ...row,
+                                            amountYen: event.target.value.replace(/\D/g, ""),
+                                          }
                                         : row,
                                   ),
                                 })
@@ -612,7 +616,8 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                           決済元を追加
                         </button>
                         <small>
-                          差額 {yen(
+                          差額{" "}
+                          {yen(
                             purchase.totalYen -
                               purchaseDraft.paymentAllocations.reduce(
                                 (total, payment) => total + Number(payment.amountYen || 0),
