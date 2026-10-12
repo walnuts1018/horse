@@ -27,11 +27,55 @@ const yen = (amount = 0) =>
   }).format(amount);
 const sameNullableString = (left?: string | null, right?: string | null) =>
   (left ?? "") === (right ?? "");
+const purchaseMonth = (occurredAt: string) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+  }).format(new Date(occurredAt));
 
 export function LedgerPage({ household, onAdd }: { household: Household; onAdd: () => void }) {
-  const { purchases, loading, error, refresh } = useHouseholdPurchases(household.id, 100);
   const [search, setSearch] = useState("");
-  const [month, setMonth] = useState("");
+  const [fromMonth, setFromMonth] = useState("");
+  const [toMonth, setToMonth] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [poolFilter, setPoolFilter] = useState("");
+  const [accountFilter, setAccountFilter] = useState("");
+  const [minimumAmount, setMinimumAmount] = useState("");
+  const [maximumAmount, setMaximumAmount] = useState("");
+  const filtersActive = Boolean(
+    search ||
+    fromMonth ||
+    toMonth ||
+    categoryFilter ||
+    poolFilter ||
+    accountFilter ||
+    minimumAmount ||
+    maximumAmount,
+  );
+  const {
+    purchases,
+    loading,
+    loadingMore,
+    error,
+    moreError,
+    hasNextPage,
+    totalCount,
+    loadMore,
+    refresh,
+  } = useHouseholdPurchases(household.id, 100, { loadAll: filtersActive });
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(() => new Set());
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkPool, setBulkPool] = useState("");
+  const [bulkVariantId, setBulkVariantId] = useState("");
+  const [bulkPending, setBulkPending] = useState(false);
+  const [bulkError, setBulkError] = useState("");
+  const [bulkUndo, setBulkUndo] = useState<Array<{
+    itemId: string;
+    baseRevision: number;
+    patch: Record<string, unknown>;
+    changedFields: string[];
+  }> | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [purchaseDraft, setPurchaseDraft] = useState<{
@@ -72,14 +116,25 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     retry: () => Promise<void>;
     discard: () => Promise<void>;
   } | null>(null);
+  useEffect(() => {
+    setSelectedItems(new Set());
+    setBulkUndo(null);
+    setBulkError("");
+  }, [household.id]);
   const latestPurchase = async (purchaseId: string) => {
-    const result = await readGraphql<{ purchases: Connection<Purchase> }>(purchasesQuery, {
-      householdId: household.id,
-      first: 100,
-    });
-    return result.purchases.edges
-      .map((edge) => edge.node)
-      .find((purchase) => purchase.id === purchaseId);
+    let after: string | null = null;
+    for (;;) {
+      const result: { purchases: Connection<Purchase> } = await readGraphql(purchasesQuery, {
+        householdId: household.id,
+        first: 100,
+        after,
+      });
+      const match = result.purchases.edges.find((edge) => edge.node.id === purchaseId)?.node;
+      if (match) return match;
+      const page: Connection<Purchase>["pageInfo"] = result.purchases.pageInfo;
+      if (!page.hasNextPage || !page.endCursor || page.endCursor === after) return undefined;
+      after = page.endCursor;
+    }
   };
   useEffect(() => {
     let active = true;
@@ -389,14 +444,145 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       } else setEditError((reason as Error).message);
     }
   };
-  const filtered = purchases.filter(
-    (purchase) =>
-      (!month || purchase.occurredAt.slice(0, 7) === month) &&
+  const filtered = purchases.filter((purchase) => {
+    const month = purchaseMonth(purchase.occurredAt);
+    return (
+      (!fromMonth || month >= fromMonth) &&
+      (!toMonth || month <= toMonth) &&
       (!search ||
         `${purchase.merchant} ${purchase.items.map((item) => item.name).join(" ")}`
           .toLocaleLowerCase()
-          .includes(search.toLocaleLowerCase())),
-  );
+          .includes(search.toLocaleLowerCase())) &&
+      (!categoryFilter ||
+        purchase.items.some((item) =>
+          categoryFilter === "__uncategorized"
+            ? !item.categoryId
+            : item.categoryId === categoryFilter,
+        )) &&
+      (!poolFilter ||
+        purchase.items.some((item) =>
+          item.allocations.some((allocation) => allocation.poolId === poolFilter),
+        )) &&
+      (!accountFilter ||
+        purchase.paymentAllocations?.some(
+          (payment) => payment.paymentAccountId === accountFilter,
+        ) ||
+        purchase.paymentAccountId === accountFilter) &&
+      (!minimumAmount || purchase.totalYen >= Number(minimumAmount)) &&
+      (!maximumAmount || purchase.totalYen <= Number(maximumAmount))
+    );
+  });
+  const selectedCount = selectedItems.size;
+  const toggleItem = (itemId: string) =>
+    setSelectedItems((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  const applyBulkEdit = async () => {
+    if (!bulkCategory && !bulkPool && !bulkVariantId) return;
+    const targets = purchases.flatMap((purchase) =>
+      purchase.items
+        .filter((item) => selectedItems.has(item.id))
+        .map((item) => ({ purchase, item })),
+    );
+    if (!targets.length) return;
+    setBulkPending(true);
+    setBulkError("");
+    setBulkUndo(null);
+    const undoEntries: NonNullable<typeof bulkUndo> = [];
+    try {
+      for (const { item } of targets) {
+        const changedFields: string[] = [];
+        const undoPatch: Record<string, unknown> = {};
+        const input: Record<string, unknown> = {
+          itemId: item.id,
+          baseRevision: item.revision,
+        };
+        if (bulkCategory && bulkCategory !== (item.categoryId ?? "")) {
+          input.categoryId = bulkCategory === "__uncategorized" ? null : bulkCategory;
+          undoPatch.categoryId = item.categoryId ?? null;
+          changedFields.push("categoryId");
+        }
+        if (
+          bulkPool &&
+          !(
+            item.allocations.length === 1 &&
+            item.allocations[0].poolId === bulkPool &&
+            item.allocations[0].weight === 100
+          )
+        ) {
+          input.allocations = [{ poolId: bulkPool, weight: 100 }];
+          undoPatch.allocations = item.allocations
+            .filter((allocation) => allocation.weight > 0)
+            .map(({ poolId, weight }) => ({ poolId, weight }));
+          changedFields.push("allocations");
+        }
+        if (bulkVariantId && bulkVariantId !== (item.productVariantId ?? "")) {
+          input.productVariantId = bulkVariantId;
+          input.productLearning = "ITEM_ONLY";
+          undoPatch.productVariantId = item.productVariantId ?? null;
+          changedFields.push("productVariantId");
+        }
+        if (!changedFields.length) continue;
+        input.changedFields = changedFields;
+        const result = await readGraphql<{ updatePurchaseItem: { revision: number } }>(
+          updatePurchaseItemMutation,
+          { input },
+        );
+        undoEntries.push({
+          itemId: item.id,
+          baseRevision: result.updatePurchaseItem.revision,
+          patch: undoPatch,
+          changedFields,
+        });
+      }
+      setBulkUndo(undoEntries.length ? undoEntries : null);
+      setSelectedItems(new Set());
+      setBulkCategory("");
+      setBulkPool("");
+      setBulkVariantId("");
+      await refresh();
+    } catch (reason) {
+      setBulkError(
+        undoEntries.length
+          ? `${undoEntries.length}品目を更新しました。残りの更新に失敗しました。`
+          : (reason as Error).message,
+      );
+      setBulkUndo(undoEntries.length ? undoEntries : null);
+      await refresh();
+    } finally {
+      setBulkPending(false);
+    }
+  };
+  const undoBulkEdit = async () => {
+    if (!bulkUndo?.length) return;
+    setBulkPending(true);
+    setBulkError("");
+    let undone = 0;
+    try {
+      for (const entry of bulkUndo) {
+        await readGraphql(updatePurchaseItemMutation, {
+          input: {
+            itemId: entry.itemId,
+            baseRevision: entry.baseRevision,
+            ...entry.patch,
+            changedFields: entry.changedFields,
+          },
+        });
+        undone += 1;
+      }
+      setBulkUndo(null);
+      await refresh();
+    } catch (reason) {
+      setBulkError((reason as Error).message);
+      setBulkUndo(bulkUndo.slice(undone));
+      await refresh();
+    } finally {
+      setBulkPending(false);
+    }
+  };
   const refundPaymentTotal = refundPayments.reduce(
     (sum, payment) =>
       sum +
@@ -426,11 +612,164 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           />
         </label>
         <label className="select-filter">
-          <span>期間</span>
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+          <span>開始</span>
+          <input
+            aria-label="開始月"
+            type="month"
+            value={fromMonth}
+            onChange={(event) => setFromMonth(event.target.value)}
+          />
         </label>
-        <div className="record-count">{filtered.length}件</div>
+        <label className="select-filter">
+          <span>終了</span>
+          <input
+            aria-label="終了月"
+            type="month"
+            value={toMonth}
+            onChange={(event) => setToMonth(event.target.value)}
+          />
+        </label>
+        <div className="record-count">
+          {filtered.length}件表示 · {purchases.length}/{totalCount}件読込
+        </div>
       </div>
+      <div className="ledger-filters">
+        <label className="select-filter">
+          <span>カテゴリ</span>
+          <select
+            value={categoryFilter}
+            onChange={(event) => setCategoryFilter(event.target.value)}
+          >
+            <option value="">すべて</option>
+            <option value="__uncategorized">未分類</option>
+            {household.categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="select-filter">
+          <span>負担先</span>
+          <select value={poolFilter} onChange={(event) => setPoolFilter(event.target.value)}>
+            <option value="">すべて</option>
+            {household.pools.map((pool) => (
+              <option key={pool.id} value={pool.id}>
+                {pool.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="select-filter">
+          <span>決済元</span>
+          <select value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}>
+            <option value="">すべて</option>
+            {household.accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="select-filter">
+          <span>金額</span>
+          <input
+            aria-label="最低金額"
+            type="number"
+            min="0"
+            placeholder="下限"
+            value={minimumAmount}
+            onChange={(event) => setMinimumAmount(event.target.value)}
+          />
+          <span>〜</span>
+          <input
+            aria-label="最高金額"
+            type="number"
+            min="0"
+            placeholder="上限"
+            value={maximumAmount}
+            onChange={(event) => setMaximumAmount(event.target.value)}
+          />
+        </label>
+      </div>
+      {selectedCount > 0 && (
+        <section className="panel ledger-bulk-actions" aria-label="選択品目の一括編集">
+          <span>{selectedCount}品目を選択中</span>
+          <label className="select-filter">
+            <span>カテゴリ</span>
+            <select value={bulkCategory} onChange={(event) => setBulkCategory(event.target.value)}>
+              <option value="">変更なし</option>
+              <option value="__uncategorized">未分類</option>
+              {household.categories
+                .filter((category) => !category.archived)
+                .map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="select-filter">
+            <span>負担先</span>
+            <select value={bulkPool} onChange={(event) => setBulkPool(event.target.value)}>
+              <option value="">変更なし</option>
+              {household.pools.map((pool) => (
+                <option key={pool.id} value={pool.id}>
+                  {pool.name} 100%
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="select-filter">
+            <span>商品</span>
+            <select
+              value={bulkVariantId}
+              onChange={(event) => setBulkVariantId(event.target.value)}
+            >
+              <option value="">変更なし</option>
+              {catalog.flatMap((concept) =>
+                concept.variants
+                  .filter((variant) => !variant.archived)
+                  .map((variant) => (
+                    <option key={variant.id} value={variant.id}>
+                      {concept.name} · {variant.name}
+                    </option>
+                  )),
+              )}
+            </select>
+          </label>
+          <button
+            className="button button-primary"
+            type="button"
+            disabled={bulkPending || (!bulkCategory && !bulkPool && !bulkVariantId)}
+            onClick={() => void applyBulkEdit()}
+          >
+            {bulkPending ? "更新中" : "一括変更"}
+          </button>
+          <button
+            className="text-button"
+            type="button"
+            disabled={bulkPending}
+            onClick={() => setSelectedItems(new Set())}
+          >
+            選択解除
+          </button>
+        </section>
+      )}
+      {bulkUndo && (
+        <section className="panel ledger-bulk-actions" aria-live="polite">
+          <span>{bulkUndo.length}品目の変更</span>
+          <button
+            className="button button-soft"
+            type="button"
+            disabled={bulkPending}
+            onClick={() => void undoBulkEdit()}
+          >
+            元に戻す
+          </button>
+        </section>
+      )}
+      {bulkError && <InlineError message={bulkError} />}
       {editError && <InlineError message={editError} />}
       {conflict && (
         <section className="panel conflict-panel" aria-live="polite">
@@ -455,7 +794,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         </section>
       )}
       <section className="panel ledger-list">
-        {loading ? (
+        {loading || (filtersActive && loadingMore) ? (
           <div className="skeleton-list">
             <i />
             <i />
@@ -655,6 +994,14 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                   ))}
                   {purchase.items.map((item) => (
                     <div className="expanded-item" key={item.id}>
+                      <input
+                        className="item-select"
+                        type="checkbox"
+                        aria-label={`${item.name}を選択`}
+                        checked={selectedItems.has(item.id)}
+                        onChange={() => toggleItem(item.id)}
+                        disabled={editing === purchase.id || bulkPending}
+                      />
                       {editing === purchase.id ? (
                         <>
                           <input
@@ -956,6 +1303,29 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           ))
         )}
       </section>
+      {moreError && <InlineError message={moreError} />}
+      {hasNextPage && !filtersActive && (
+        <div className="ledger-more">
+          <button
+            className="button button-soft"
+            disabled={loadingMore}
+            onClick={() => void loadMore()}
+          >
+            {loadingMore ? "読み込み中" : "古い記録を読み込む"}
+          </button>
+        </div>
+      )}
+      {moreError && filtersActive && (
+        <div className="ledger-more">
+          <button
+            className="button button-soft"
+            disabled={loadingMore}
+            onClick={() => void loadMore()}
+          >
+            {loadingMore ? "読み込み中" : "検索範囲を読み込む"}
+          </button>
+        </div>
+      )}
     </>
   );
 }
