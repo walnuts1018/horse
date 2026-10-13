@@ -24,14 +24,14 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func accountBalanceSourceType(source model.Node) string {
+func accountBalanceSourceType(source model.AccountBalanceSource) string {
 	switch source.(type) {
-	case *model.Account:
-		return "Account"
 	case *model.AccountIncome:
 		return "AccountIncome"
 	case *model.AccountMovement:
 		return "AccountMovement"
+	case *model.AccountOpeningBalance:
+		return "AccountOpeningBalance"
 	case *model.CorrectionLedgerEntry:
 		return "CorrectionLedgerEntry"
 	case *model.FundingLedgerEntry:
@@ -1095,8 +1095,20 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if openingMonth.OpeningBalanceYen != 0 || openingMonth.ClosingBalanceYen != 5000 || len(openingMonth.Changes) != 1 || accountBalanceSourceType(openingMonth.Changes[0].Source) != "Account" {
+	if openingMonth.OpeningBalanceYen != 0 || openingMonth.ClosingBalanceYen != 5000 || len(openingMonth.Changes) != 1 || accountBalanceSourceType(openingMonth.Changes[0].Source) != "AccountOpeningBalance" {
 		t.Fatalf("the opening balance did not appear at its effective date: %#v", openingMonth)
+	}
+	openingSource, ok := openingMonth.Changes[0].Source.(*model.AccountOpeningBalance)
+	if !ok || openingSource.Account == nil || openingSource.Account.ID != lenderAccount.ID || openingSource.Account.Name != "Lender bank" {
+		t.Fatalf("the opening balance source did not include its account: %#v", openingMonth.Changes[0].Source)
+	}
+	resolvedNode, err := (&Resolver{DB: db}).Query().Node(ctx, openingSource.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedOpeningSource, ok := resolvedNode.(*model.AccountOpeningBalance)
+	if !ok || resolvedOpeningSource.Account == nil || resolvedOpeningSource.Account.ID != lenderAccount.ID {
+		t.Fatalf("the opening balance node did not resolve its account: %#v", resolvedNode)
 	}
 	cardAnalysis, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, cardAccount.ID, "2026-06", "2026-06")
 	if err != nil {

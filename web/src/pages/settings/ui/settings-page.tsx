@@ -91,7 +91,7 @@ const shiftMonth = (month: string, offset: number) => {
 };
 const balanceChangeSource = (sourceType: string) =>
   ({
-    Account: "初期残高",
+    AccountOpeningBalance: "初期残高",
     Purchase: "購入",
     PurchaseCorrection: "訂正",
     PurchaseLedgerEntry: "購入",

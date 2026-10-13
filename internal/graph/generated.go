@@ -161,6 +161,11 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	AccountOpeningBalance struct {
+		Account func(childComplexity int) int
+		ID      func(childComplexity int) int
+	}
+
 	Allocation struct {
 		AmountYen func(childComplexity int) int
 		PoolID    func(childComplexity int) int
@@ -1589,6 +1594,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AccountMovementEdge.Node(childComplexity), true
+
+	case "AccountOpeningBalance.account":
+		if e.ComplexityRoot.AccountOpeningBalance.Account == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountOpeningBalance.Account(childComplexity), true
+	case "AccountOpeningBalance.id":
+		if e.ComplexityRoot.AccountOpeningBalance.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountOpeningBalance.ID(childComplexity), true
 
 	case "Allocation.amountYen":
 		if e.ComplexityRoot.Allocation.AmountYen == nil {
@@ -5047,10 +5065,17 @@ extend type Query {
 
 type AccountBalanceChange {
   occurredAt: DateTime!
-  source: Node!
+  source: AccountBalanceSource!
   description: String!
   changeYen: Long!
   balanceYen: Long!
+}
+
+union AccountBalanceSource = AccountOpeningBalance | Purchase | PurchaseCorrection | CorrectionLedgerEntry | FundingLedgerEntry | PurchaseLedgerEntry | TransferLedgerEntry | AccountMovement | AccountIncome
+
+type AccountOpeningBalance implements Node {
+  id: ID!
+  account: Account!
 }
 
 extend type Query {
@@ -6101,7 +6126,7 @@ type EffectiveUnitPrice {
   entityKind: PurchaseChangeEntity!
   entityId: ID! @goField(forceResolver: true)
   revision: Int!
-  changedFields: [String!]!
+  changedFields: [PurchaseChangeField!]!
   occurredAt: DateTime!
 }
 
@@ -6116,6 +6141,22 @@ enum PurchaseChangeKind {
 enum PurchaseChangeEntity {
   PURCHASE
   PURCHASE_ITEM
+}
+
+enum PurchaseChangeField {
+  OCCURRED_AT
+  MERCHANT
+  PAYMENT_ALLOCATIONS
+  STATUS
+  CORRECTION
+  NAME
+  AMOUNT_YEN
+  QUANTITY
+  PRINTED_UNIT_PRICE
+  CATEGORY_ID
+  PRODUCT_VARIANT_ID
+  ALLOCATIONS
+  TAGS
 }
 
 extend type Subscription {
@@ -10789,24 +10830,15 @@ func (ec *executionContext) _AccountBalanceChange_source(ctx context.Context, fi
 			return obj.Source, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.Node) graphql.Marshaler {
-			return ec.marshalNNode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐNode(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.AccountBalanceSource) graphql.Marshaler {
+			return ec.marshalNAccountBalanceSource2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceSource(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_AccountBalanceChange_source(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "AccountBalanceChange",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
-		},
-	}
-	return fc, nil
+	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type AccountBalanceSource does not have child fields"))
 }
 
 func (ec *executionContext) _AccountBalanceChange_description(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
@@ -11635,6 +11667,61 @@ func (ec *executionContext) fieldContext_AccountMovementEdge_node(_ context.Cont
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_AccountMovement(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AccountOpeningBalance_id(ctx context.Context, field graphql.CollectedField, obj *model.AccountOpeningBalance) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountOpeningBalance_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountOpeningBalance_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountOpeningBalance", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _AccountOpeningBalance_account(ctx context.Context, field graphql.CollectedField, obj *model.AccountOpeningBalance) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountOpeningBalance_account(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Account, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Account) graphql.Marshaler {
+			return ec.marshalNAccount2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccount(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountOpeningBalance_account(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountOpeningBalance",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Account(ctx, field)
 		},
 	}
 	return fc, nil
@@ -19437,15 +19524,15 @@ func (ec *executionContext) _PurchaseChange_changedFields(ctx context.Context, f
 			return obj.ChangedFields, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []string) graphql.Marshaler {
-			return ec.marshalNString2ᚕstringᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v []model.PurchaseChangeField) graphql.Marshaler {
+			return ec.marshalNPurchaseChangeField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangeFieldᚄ(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_PurchaseChange_changedFields(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("PurchaseChange", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("PurchaseChange", field, false, false, errors.New("field of type PurchaseChangeField does not have child fields"))
 }
 
 func (ec *executionContext) _PurchaseChange_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseChange) (ret graphql.Marshaler) {
@@ -30249,6 +30336,82 @@ func (ec *executionContext) _AcceptHouseholdInvitationResult(ctx context.Context
 	}
 }
 
+func (ec *executionContext) _AccountBalanceSource(ctx context.Context, sel ast.SelectionSet, obj model.AccountBalanceSource) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.TransferLedgerEntry:
+		return ec._TransferLedgerEntry(ctx, sel, &obj)
+	case *model.TransferLedgerEntry:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._TransferLedgerEntry(ctx, sel, obj)
+	case model.PurchaseLedgerEntry:
+		return ec._PurchaseLedgerEntry(ctx, sel, &obj)
+	case *model.PurchaseLedgerEntry:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._PurchaseLedgerEntry(ctx, sel, obj)
+	case model.FundingLedgerEntry:
+		return ec._FundingLedgerEntry(ctx, sel, &obj)
+	case *model.FundingLedgerEntry:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._FundingLedgerEntry(ctx, sel, obj)
+	case model.CorrectionLedgerEntry:
+		return ec._CorrectionLedgerEntry(ctx, sel, &obj)
+	case *model.CorrectionLedgerEntry:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CorrectionLedgerEntry(ctx, sel, obj)
+	case model.PurchaseCorrection:
+		return ec._PurchaseCorrection(ctx, sel, &obj)
+	case *model.PurchaseCorrection:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._PurchaseCorrection(ctx, sel, obj)
+	case model.Purchase:
+		return ec._Purchase(ctx, sel, &obj)
+	case *model.Purchase:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._Purchase(ctx, sel, obj)
+	case model.AccountOpeningBalance:
+		return ec._AccountOpeningBalance(ctx, sel, &obj)
+	case *model.AccountOpeningBalance:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._AccountOpeningBalance(ctx, sel, obj)
+	case model.AccountMovement:
+		return ec._AccountMovement(ctx, sel, &obj)
+	case *model.AccountMovement:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._AccountMovement(ctx, sel, obj)
+	case model.AccountIncome:
+		return ec._AccountIncome(ctx, sel, &obj)
+	case *model.AccountIncome:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._AccountIncome(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of AccountBalanceSource must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _AllocationRuleTarget(ctx context.Context, sel ast.SelectionSet, obj model.AllocationRuleTarget) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -31259,6 +31422,13 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 			return graphql.Null
 		}
 		return ec._AllocationRule(ctx, sel, obj)
+	case model.AccountOpeningBalance:
+		return ec._AccountOpeningBalance(ctx, sel, &obj)
+	case *model.AccountOpeningBalance:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._AccountOpeningBalance(ctx, sel, obj)
 	case model.AccountMovement:
 		return ec._AccountMovement(ctx, sel, &obj)
 	case *model.AccountMovement:
@@ -32219,7 +32389,7 @@ func (ec *executionContext) _AccountBalanceChange(ctx context.Context, sel ast.S
 	return out
 }
 
-var accountIncomeImplementors = []string{"AccountIncome", "Node"}
+var accountIncomeImplementors = []string{"AccountIncome", "AccountBalanceSource", "Node"}
 
 func (ec *executionContext) _AccountIncome(ctx context.Context, sel ast.SelectionSet, obj *model.AccountIncome) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, accountIncomeImplementors)
@@ -32482,7 +32652,7 @@ func (ec *executionContext) _AccountIncomeEdge(ctx context.Context, sel ast.Sele
 	return out
 }
 
-var accountMovementImplementors = []string{"AccountMovement", "Node"}
+var accountMovementImplementors = []string{"AccountMovement", "AccountBalanceSource", "Node"}
 
 func (ec *executionContext) _AccountMovement(ctx context.Context, sel ast.SelectionSet, obj *model.AccountMovement) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, accountMovementImplementors)
@@ -32840,6 +33010,49 @@ func (ec *executionContext) _AccountMovementEdge(ctx context.Context, sel ast.Se
 			}
 		case "node":
 			out.Values[i] = ec._AccountMovementEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var accountOpeningBalanceImplementors = []string{"AccountOpeningBalance", "AccountBalanceSource", "Node"}
+
+func (ec *executionContext) _AccountOpeningBalance(ctx context.Context, sel ast.SelectionSet, obj *model.AccountOpeningBalance) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountOpeningBalanceImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountOpeningBalance")
+		case "id":
+			out.Values[i] = ec._AccountOpeningBalance_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "account":
+			out.Values[i] = ec._AccountOpeningBalance_account(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -34038,7 +34251,7 @@ func (ec *executionContext) _CorrectPurchaseUserError(ctx context.Context, sel a
 	return out
 }
 
-var correctionLedgerEntryImplementors = []string{"CorrectionLedgerEntry", "LedgerEntry", "Node"}
+var correctionLedgerEntryImplementors = []string{"CorrectionLedgerEntry", "AccountBalanceSource", "LedgerEntry", "Node"}
 
 func (ec *executionContext) _CorrectionLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.CorrectionLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, correctionLedgerEntryImplementors)
@@ -35116,7 +35329,7 @@ func (ec *executionContext) _EffectiveUnitPrice(ctx context.Context, sel ast.Sel
 	return out
 }
 
-var fundingLedgerEntryImplementors = []string{"FundingLedgerEntry", "LedgerEntry", "Node"}
+var fundingLedgerEntryImplementors = []string{"FundingLedgerEntry", "AccountBalanceSource", "LedgerEntry", "Node"}
 
 func (ec *executionContext) _FundingLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.FundingLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, fundingLedgerEntryImplementors)
@@ -37881,7 +38094,7 @@ func (ec *executionContext) _ProductVariant(ctx context.Context, sel ast.Selecti
 	return out
 }
 
-var purchaseImplementors = []string{"Purchase", "Node"}
+var purchaseImplementors = []string{"Purchase", "AccountBalanceSource", "Node"}
 
 func (ec *executionContext) _Purchase(ctx context.Context, sel ast.SelectionSet, obj *model.Purchase) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, purchaseImplementors)
@@ -38214,7 +38427,7 @@ func (ec *executionContext) _PurchaseConnection(ctx context.Context, sel ast.Sel
 	return out
 }
 
-var purchaseCorrectionImplementors = []string{"PurchaseCorrection", "Node"}
+var purchaseCorrectionImplementors = []string{"PurchaseCorrection", "AccountBalanceSource", "Node"}
 
 func (ec *executionContext) _PurchaseCorrection(ctx context.Context, sel ast.SelectionSet, obj *model.PurchaseCorrection) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, purchaseCorrectionImplementors)
@@ -38583,7 +38796,7 @@ func (ec *executionContext) _PurchaseItem(ctx context.Context, sel ast.Selection
 	return out
 }
 
-var purchaseLedgerEntryImplementors = []string{"PurchaseLedgerEntry", "LedgerEntry", "Node"}
+var purchaseLedgerEntryImplementors = []string{"PurchaseLedgerEntry", "AccountBalanceSource", "LedgerEntry", "Node"}
 
 func (ec *executionContext) _PurchaseLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.PurchaseLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, purchaseLedgerEntryImplementors)
@@ -41105,7 +41318,7 @@ func (ec *executionContext) _Tag(ctx context.Context, sel ast.SelectionSet, obj 
 	return out
 }
 
-var transferLedgerEntryImplementors = []string{"TransferLedgerEntry", "LedgerEntry", "Node"}
+var transferLedgerEntryImplementors = []string{"TransferLedgerEntry", "AccountBalanceSource", "LedgerEntry", "Node"}
 
 func (ec *executionContext) _TransferLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.TransferLedgerEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, transferLedgerEntryImplementors)
@@ -42419,6 +42632,16 @@ func (ec *executionContext) marshalNAccountBalanceChange2ᚖgithubᚗcomᚋwalnu
 	return ec._AccountBalanceChange(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNAccountBalanceSource2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceSource(ctx context.Context, sel ast.SelectionSet, v model.AccountBalanceSource) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountBalanceSource(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNAccountIncome2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncome(ctx context.Context, sel ast.SelectionSet, v *model.AccountIncome) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -43504,16 +43727,6 @@ func (ec *executionContext) marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018
 	return v
 }
 
-func (ec *executionContext) marshalNNode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐNode(ctx context.Context, sel ast.SelectionSet, v model.Node) graphql.Marshaler {
-	if v == nil {
-		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
-		}
-		return graphql.Null
-	}
-	return ec._Node(ctx, sel, v)
-}
-
 func (ec *executionContext) marshalNNode2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐNode(ctx context.Context, sel ast.SelectionSet, v []model.Node) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -43798,6 +44011,46 @@ func (ec *executionContext) unmarshalNPurchaseChangeEntity2githubᚗcomᚋwalnut
 
 func (ec *executionContext) marshalNPurchaseChangeEntity2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangeEntity(ctx context.Context, sel ast.SelectionSet, v model.PurchaseChangeEntity) graphql.Marshaler {
 	return v
+}
+
+func (ec *executionContext) unmarshalNPurchaseChangeField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangeField(ctx context.Context, v any) (model.PurchaseChangeField, error) {
+	var res model.PurchaseChangeField
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNPurchaseChangeField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangeField(ctx context.Context, sel ast.SelectionSet, v model.PurchaseChangeField) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) unmarshalNPurchaseChangeField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangeFieldᚄ(ctx context.Context, v any) ([]model.PurchaseChangeField, error) {
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]model.PurchaseChangeField, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNPurchaseChangeField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangeField(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNPurchaseChangeField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangeFieldᚄ(ctx context.Context, sel ast.SelectionSet, v []model.PurchaseChangeField) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNPurchaseChangeField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangeField(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalNPurchaseChangeKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangeKind(ctx context.Context, v any) (model.PurchaseChangeKind, error) {

@@ -10,10 +10,17 @@ type AccountBalanceAnalysis {
 
 type AccountBalanceChange {
   occurredAt: DateTime!
-  source: Node!
+  source: AccountBalanceSource!
   description: String!
   changeYen: Long!
   balanceYen: Long!
+}
+
+union AccountBalanceSource = AccountOpeningBalance | Purchase | PurchaseCorrection | CorrectionLedgerEntry | FundingLedgerEntry | PurchaseLedgerEntry | TransferLedgerEntry | AccountMovement | AccountIncome
+
+type AccountOpeningBalance implements Node {
+  id: ID!
+  account: Account!
 }
 
 extend type Query {

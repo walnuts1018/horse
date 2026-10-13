@@ -153,8 +153,38 @@ export const accountBalanceAnalysisQuery = graphql`
       changes {
         occurredAt
         source {
-          id
           __typename
+          ... on AccountOpeningBalance {
+            id
+            account {
+              id
+              name
+            }
+          }
+          ... on Purchase {
+            id
+          }
+          ... on PurchaseCorrection {
+            id
+          }
+          ... on CorrectionLedgerEntry {
+            id
+          }
+          ... on FundingLedgerEntry {
+            id
+          }
+          ... on PurchaseLedgerEntry {
+            id
+          }
+          ... on TransferLedgerEntry {
+            id
+          }
+          ... on AccountMovement {
+            id
+          }
+          ... on AccountIncome {
+            id
+          }
         }
         description
         changeYen

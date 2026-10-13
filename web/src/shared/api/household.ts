@@ -77,9 +77,19 @@ export type AccountMovement = {
   createdAt: string;
 };
 export type AccountBalance = { accountId: string; balanceYen: number; currency: string };
+export type AccountBalanceChangeSource =
+  | { id: string; __typename: "AccountOpeningBalance"; account: { id: string; name: string } }
+  | { id: string; __typename: "Purchase" }
+  | { id: string; __typename: "PurchaseCorrection" }
+  | { id: string; __typename: "CorrectionLedgerEntry" }
+  | { id: string; __typename: "FundingLedgerEntry" }
+  | { id: string; __typename: "PurchaseLedgerEntry" }
+  | { id: string; __typename: "TransferLedgerEntry" }
+  | { id: string; __typename: "AccountMovement" }
+  | { id: string; __typename: "AccountIncome" };
 export type AccountBalanceChange = {
   occurredAt: string;
-  source: { id: string; __typename: string };
+  source: AccountBalanceChangeSource;
   description: string;
   changeYen: number;
   balanceYen: number;

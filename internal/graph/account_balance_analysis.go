@@ -133,7 +133,7 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 			return nil, fmt.Errorf("%w: account running balance exceeds int64", ErrBadInput)
 		}
 		sourceKind := change.journal.SourceKind
-		source, err := r.accountBalanceSource(ctx, householdID, change.journal)
+		source, err := r.accountBalanceSource(ctx, householdID, account, change.journal)
 		if err != nil {
 			return nil, err
 		}
@@ -152,11 +152,18 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 	}, nil
 }
 
-func (r *queryResolver) accountBalanceSource(ctx context.Context, householdID string, journal *models.Journal) (model.Node, error) {
+func (r *queryResolver) accountBalanceSource(ctx context.Context, householdID string, account *models.Account, journal *models.Journal) (model.AccountBalanceSource, error) {
 	kind, id := "", journal.SourceID.String()
 	switch journal.SourceKind {
 	case "ACCOUNT_OPENING_BALANCE":
-		kind = "Account"
+		globalID, err := encodeNodeID("AccountOpeningBalance", account.ID.String())
+		if err != nil {
+			return nil, err
+		}
+		return &model.AccountOpeningBalance{
+			ID:      globalID,
+			Account: &model.Account{ID: account.ID.String(), Name: account.Name, Kind: model.AccountKind(account.Kind)},
+		}, nil
 	case "PURCHASE":
 		kind = "Purchase"
 	case "CORRECTION":
@@ -191,7 +198,15 @@ func (r *queryResolver) accountBalanceSource(ctx context.Context, householdID st
 	if err != nil {
 		return nil, err
 	}
-	return r.node(ctx, globalID)
+	node, err := r.node(ctx, globalID)
+	if err != nil {
+		return nil, err
+	}
+	source, ok := node.(model.AccountBalanceSource)
+	if !ok {
+		return nil, fmt.Errorf("node type %T cannot be an account balance source", node)
+	}
+	return source, nil
 }
 
 func accountSourceDescription(kind string) string {

@@ -15,6 +15,10 @@ type AcceptHouseholdInvitationResult interface {
 	IsAcceptHouseholdInvitationResult()
 }
 
+type AccountBalanceSource interface {
+	IsAccountBalanceSource()
+}
+
 type AllocationRuleTarget interface {
 	IsAllocationRuleTarget()
 	GetName() string
@@ -228,11 +232,11 @@ type AccountBalanceAnalysis struct {
 }
 
 type AccountBalanceChange struct {
-	OccurredAt  DateTime `json:"occurredAt"`
-	Source      Node     `json:"source"`
-	Description string   `json:"description"`
-	ChangeYen   Long     `json:"changeYen"`
-	BalanceYen  Long     `json:"balanceYen"`
+	OccurredAt  DateTime             `json:"occurredAt"`
+	Source      AccountBalanceSource `json:"source"`
+	Description string               `json:"description"`
+	ChangeYen   Long                 `json:"changeYen"`
+	BalanceYen  Long                 `json:"balanceYen"`
 }
 
 type AccountIncome struct {
@@ -245,6 +249,8 @@ type AccountIncome struct {
 	Description string   `json:"description"`
 	CreatedAt   DateTime `json:"createdAt"`
 }
+
+func (AccountIncome) IsAccountBalanceSource() {}
 
 func (AccountIncome) IsNode() {}
 
@@ -274,6 +280,8 @@ type AccountMovement struct {
 	CreatedAt     DateTime            `json:"createdAt"`
 }
 
+func (AccountMovement) IsAccountBalanceSource() {}
+
 func (AccountMovement) IsNode() {}
 
 type AccountMovementConnection struct {
@@ -286,6 +294,15 @@ type AccountMovementEdge struct {
 	Cursor string           `json:"cursor"`
 	Node   *AccountMovement `json:"node"`
 }
+
+type AccountOpeningBalance struct {
+	ID      string   `json:"id"`
+	Account *Account `json:"account"`
+}
+
+func (AccountOpeningBalance) IsAccountBalanceSource() {}
+
+func (AccountOpeningBalance) IsNode() {}
 
 type AccountOpeningBalanceInput struct {
 	AmountYen Long     `json:"amountYen"`
@@ -547,6 +564,8 @@ type CorrectionLedgerEntry struct {
 	CreatedAt   DateTime  `json:"createdAt"`
 	Purchase    *Purchase `json:"purchase"`
 }
+
+func (CorrectionLedgerEntry) IsAccountBalanceSource() {}
 
 func (CorrectionLedgerEntry) IsLedgerEntry()               {}
 func (this CorrectionLedgerEntry) GetID() string           { return this.ID }
@@ -852,6 +871,8 @@ type FundingLedgerEntry struct {
 	Pool        *Pool    `json:"pool"`
 }
 
+func (FundingLedgerEntry) IsAccountBalanceSource() {}
+
 func (FundingLedgerEntry) IsLedgerEntry()               {}
 func (this FundingLedgerEntry) GetID() string           { return this.ID }
 func (this FundingLedgerEntry) GetOccurredAt() DateTime { return this.OccurredAt }
@@ -1144,16 +1165,18 @@ type Purchase struct {
 	UpdatedAt          DateTime              `json:"updatedAt"`
 }
 
+func (Purchase) IsAccountBalanceSource() {}
+
 func (Purchase) IsNode() {}
 
 type PurchaseChange struct {
-	Cursor        string               `json:"cursor"`
-	Kind          PurchaseChangeKind   `json:"kind"`
-	EntityKind    PurchaseChangeEntity `json:"entityKind"`
-	EntityID      string               `json:"entityId"`
-	Revision      int                  `json:"revision"`
-	ChangedFields []string             `json:"changedFields"`
-	OccurredAt    DateTime             `json:"occurredAt"`
+	Cursor        string                `json:"cursor"`
+	Kind          PurchaseChangeKind    `json:"kind"`
+	EntityKind    PurchaseChangeEntity  `json:"entityKind"`
+	EntityID      string                `json:"entityId"`
+	Revision      int                   `json:"revision"`
+	ChangedFields []PurchaseChangeField `json:"changedFields"`
+	OccurredAt    DateTime              `json:"occurredAt"`
 }
 
 type PurchaseConnection struct {
@@ -1172,6 +1195,8 @@ type PurchaseCorrection struct {
 	SettlementMonth    YearMonth          `json:"settlementMonth"`
 	PaymentAllocations []*PurchasePayment `json:"paymentAllocations"`
 }
+
+func (PurchaseCorrection) IsAccountBalanceSource() {}
 
 func (PurchaseCorrection) IsNode() {}
 
@@ -1221,6 +1246,8 @@ type PurchaseLedgerEntry struct {
 	CreatedAt   DateTime  `json:"createdAt"`
 	Purchase    *Purchase `json:"purchase"`
 }
+
+func (PurchaseLedgerEntry) IsAccountBalanceSource() {}
 
 func (PurchaseLedgerEntry) IsLedgerEntry()               {}
 func (this PurchaseLedgerEntry) GetID() string           { return this.ID }
@@ -1657,6 +1684,8 @@ type TransferLedgerEntry struct {
 	TransferKind TransferKind `json:"transferKind"`
 	Loan         *LoanBalance `json:"loan,omitempty"`
 }
+
+func (TransferLedgerEntry) IsAccountBalanceSource() {}
 
 func (TransferLedgerEntry) IsLedgerEntry()               {}
 func (this TransferLedgerEntry) GetID() string           { return this.ID }
@@ -2457,6 +2486,83 @@ func (e *PurchaseChangeEntity) UnmarshalJSON(b []byte) error {
 }
 
 func (e PurchaseChangeEntity) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type PurchaseChangeField string
+
+const (
+	PurchaseChangeFieldOccurredAt         PurchaseChangeField = "OCCURRED_AT"
+	PurchaseChangeFieldMerchant           PurchaseChangeField = "MERCHANT"
+	PurchaseChangeFieldPaymentAllocations PurchaseChangeField = "PAYMENT_ALLOCATIONS"
+	PurchaseChangeFieldStatus             PurchaseChangeField = "STATUS"
+	PurchaseChangeFieldCorrection         PurchaseChangeField = "CORRECTION"
+	PurchaseChangeFieldName               PurchaseChangeField = "NAME"
+	PurchaseChangeFieldAmountYen          PurchaseChangeField = "AMOUNT_YEN"
+	PurchaseChangeFieldQuantity           PurchaseChangeField = "QUANTITY"
+	PurchaseChangeFieldPrintedUnitPrice   PurchaseChangeField = "PRINTED_UNIT_PRICE"
+	PurchaseChangeFieldCategoryID         PurchaseChangeField = "CATEGORY_ID"
+	PurchaseChangeFieldProductVariantID   PurchaseChangeField = "PRODUCT_VARIANT_ID"
+	PurchaseChangeFieldAllocations        PurchaseChangeField = "ALLOCATIONS"
+	PurchaseChangeFieldTags               PurchaseChangeField = "TAGS"
+)
+
+var AllPurchaseChangeField = []PurchaseChangeField{
+	PurchaseChangeFieldOccurredAt,
+	PurchaseChangeFieldMerchant,
+	PurchaseChangeFieldPaymentAllocations,
+	PurchaseChangeFieldStatus,
+	PurchaseChangeFieldCorrection,
+	PurchaseChangeFieldName,
+	PurchaseChangeFieldAmountYen,
+	PurchaseChangeFieldQuantity,
+	PurchaseChangeFieldPrintedUnitPrice,
+	PurchaseChangeFieldCategoryID,
+	PurchaseChangeFieldProductVariantID,
+	PurchaseChangeFieldAllocations,
+	PurchaseChangeFieldTags,
+}
+
+func (e PurchaseChangeField) IsValid() bool {
+	switch e {
+	case PurchaseChangeFieldOccurredAt, PurchaseChangeFieldMerchant, PurchaseChangeFieldPaymentAllocations, PurchaseChangeFieldStatus, PurchaseChangeFieldCorrection, PurchaseChangeFieldName, PurchaseChangeFieldAmountYen, PurchaseChangeFieldQuantity, PurchaseChangeFieldPrintedUnitPrice, PurchaseChangeFieldCategoryID, PurchaseChangeFieldProductVariantID, PurchaseChangeFieldAllocations, PurchaseChangeFieldTags:
+		return true
+	}
+	return false
+}
+
+func (e PurchaseChangeField) String() string {
+	return string(e)
+}
+
+func (e *PurchaseChangeField) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = PurchaseChangeField(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid PurchaseChangeField", str)
+	}
+	return nil
+}
+
+func (e PurchaseChangeField) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *PurchaseChangeField) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e PurchaseChangeField) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

@@ -43,14 +43,81 @@ func (r *queryResolver) node(ctx context.Context, id string) (model.Node, error)
 
 func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, error) {
 	result := make([]model.Node, len(ids))
+	decoded := make([]decodedNodeID, len(ids))
+	var households []*model.Household
+	idsByKind := make(map[string][]uuid.UUID)
+	indexesByKind := make(map[string]map[uuid.UUID][]int)
 	for index, id := range ids {
-		node, err := r.node(ctx, id)
+		kind, rawID, err := decodeGlobalNodeID(id)
+		if err != nil {
+			return nil, err
+		}
+		decoded[index] = decodedNodeID{kind: kind, rawID: rawID}
+		if kind != "UnmatchedObservation" && kind != "Settlement" {
+			parsedID, err := uuid.FromString(rawID)
+			if err != nil {
+				return nil, fmt.Errorf("invalid %s node ID: %w", kind, err)
+			}
+			if indexesByKind[kind] == nil {
+				indexesByKind[kind] = make(map[uuid.UUID][]int)
+			}
+			if _, exists := indexesByKind[kind][parsedID]; !exists {
+				idsByKind[kind] = append(idsByKind[kind], parsedID)
+			}
+			indexesByKind[kind][parsedID] = append(indexesByKind[kind][parsedID], index)
+		}
+	}
+
+	if len(idsByKind) > 0 {
+		var err error
+		households, err = r.households(ctx)
+		if err != nil {
+			return nil, err
+		}
+		resolved, err := r.loadBatchNodesByDomain(ctx, households, idsByKind, indexesByKind)
+		if err != nil {
+			return nil, err
+		}
+		for index, node := range resolved {
+			result[index] = node
+		}
+		for index, nodeID := range decoded {
+			if isBatchLoadedNodeKind(nodeID.kind) || nodeID.kind == "UnmatchedObservation" || nodeID.kind == "Settlement" {
+				continue
+			}
+			node, err := r.findNodeInHouseholds(ctx, households, nodeID.kind, nodeID.rawID)
+			if err != nil {
+				return nil, err
+			}
+			result[index] = node
+		}
+	}
+
+	for index, nodeID := range decoded {
+		if nodeID.kind != "UnmatchedObservation" && nodeID.kind != "Settlement" {
+			continue
+		}
+		node, err := r.node(ctx, ids[index])
 		if err != nil {
 			return nil, err
 		}
 		result[index] = node
 	}
 	return result, nil
+}
+
+func isBatchLoadedNodeKind(kind string) bool {
+	switch kind {
+	case "Purchase", "PurchaseItem", "PurchaseCorrection", "FundingSchedule", "AccountMovement", "AccountIncome", "HouseholdInvitation", "Tag", "RecurringExpense", "LoanBalance", "AllocationRule", "ProductConcept", "ProductVariant", "ProductAlias", "Budget", "LedgerEntry":
+		return true
+	default:
+		return false
+	}
+}
+
+type decodedNodeID struct {
+	kind  string
+	rawID string
 }
 
 func decodeGlobalNodeID(globalID string) (string, string, error) {
@@ -112,9 +179,36 @@ func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.No
 	if err != nil {
 		return nil, err
 	}
+	return r.findNodeInHouseholds(ctx, households, kind, id)
+}
+
+func (r *queryResolver) findNodeInHouseholds(ctx context.Context, households []*model.Household, kind, id string) (model.Node, error) {
+	var err error
 	for _, household := range households {
 		if kind == "Household" && household.ID == id {
 			return household, nil
+		}
+		if kind == "AccountOpeningBalance" {
+			account := findValue(household.Accounts, func(value *model.Account) bool { return value.ID == id })
+			if account == nil {
+				continue
+			}
+			openingBalance, err := models.Journals.Query(sm.Where(psql.And(
+				models.Journals.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
+				models.Journals.Columns.SourceKind.EQ(psql.Arg("ACCOUNT_OPENING_BALANCE")),
+				models.Journals.Columns.SourceID.EQ(psql.Arg(mustUUID(id))),
+			))).One(ctx, queryExecutor(r.DB))
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			globalID, err := encodeNodeID("AccountOpeningBalance", openingBalance.SourceID.String())
+			if err != nil {
+				return nil, err
+			}
+			return &model.AccountOpeningBalance{ID: globalID, Account: account}, nil
 		}
 		if kind == "Member" {
 			if value := findValue(household.Members, func(value *model.Member) bool { return value.ID == id }); value != nil {

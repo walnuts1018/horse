@@ -4,7 +4,7 @@ type PurchaseChange {
   entityKind: PurchaseChangeEntity!
   entityId: ID! @goField(forceResolver: true)
   revision: Int!
-  changedFields: [String!]!
+  changedFields: [PurchaseChangeField!]!
   occurredAt: DateTime!
 }
 
@@ -19,6 +19,22 @@ enum PurchaseChangeKind {
 enum PurchaseChangeEntity {
   PURCHASE
   PURCHASE_ITEM
+}
+
+enum PurchaseChangeField {
+  OCCURRED_AT
+  MERCHANT
+  PAYMENT_ALLOCATIONS
+  STATUS
+  CORRECTION
+  NAME
+  AMOUNT_YEN
+  QUANTITY
+  PRINTED_UNIT_PRICE
+  CATEGORY_ID
+  PRODUCT_VARIANT_ID
+  ALLOCATIONS
+  TAGS
 }
 
 extend type Subscription {
