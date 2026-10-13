@@ -259,7 +259,7 @@ func hasLetters(text string) bool {
 
 func isReceiptSummaryLine(text string) bool {
 	text = strings.ToLower(text)
-	for _, marker := range []string{"合計", "小計", "税", "対象", "値引", "割引", "クーポン", "ポイント", "現金", "カード", "お預", "釣銭", "返品", "会計", "領収", "番号", "担当", "電話", "登録", "total", "subtotal", "tax", "discount", "coupon", "payment", "cash", "credit", "change", "receipt", "no."} {
+	for _, marker := range []string{"合計", "小計", "税", "対象", "値引", "割引", "クーポン", "ポイント", "現金", "カード", "お預", "釣銭", "返品", "会計", "領収", "番号", "担当", "電話", "登録", "total", "subtotal", "tax", receiptDiscountKey, "coupon", "payment", "cash", "credit", "change", "receipt", "no."} {
 		if strings.Contains(text, marker) {
 			return true
 		}

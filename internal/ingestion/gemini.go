@@ -16,6 +16,7 @@ const PromptVersion = "receipt-2026-10-13.2"
 const GeminiPriceTableVersion = "gemini-prices-2026-10-v1"
 const MaxDocumentBytes = 20 << 20
 const MaxOutputTokens = 16_384
+const receiptDiscountKey = "discount"
 
 type Gemini struct {
 	APIKey           string
@@ -339,11 +340,11 @@ func receiptSchema() map[string]any {
 	}
 	array := func(items any) map[string]any { return map[string]any{schemaTypeKey: "array", schemaItemsKey: items} }
 	region := object(map[string]any{"page": integer, "top": map[string]any{schemaTypeKey: schemaTypeNumber}, "left": map[string]any{schemaTypeKey: schemaTypeNumber}, "bottom": map[string]any{schemaTypeKey: schemaTypeNumber}, "right": map[string]any{schemaTypeKey: schemaTypeNumber}}, "page", "top", "left", "bottom", "right")
-	item := object(map[string]any{"printedName": str, "name": str, "printedAmount": integer, "discount": integer, "priceBasis": str, "taxGroup": str, "quantityNumerator": quantityNumerator, "quantityDenominator": quantityDenominator, "quantityUnit": str, "printedUnitPriceYen": printedUnitPrice, "printedUnitPriceQuantityNumerator": quantityNumerator, "printedUnitPriceQuantityDenominator": quantityDenominator, "printedUnitPriceUnit": str, "categoryHint": str, "confidence": map[string]any{schemaTypeKey: schemaTypeNumber}, "region": region}, "printedName", "name", "printedAmount", "discount", "priceBasis", "taxGroup", "confidence")
+	item := object(map[string]any{"printedName": str, "name": str, "printedAmount": integer, receiptDiscountKey: integer, "priceBasis": str, "taxGroup": str, "quantityNumerator": quantityNumerator, "quantityDenominator": quantityDenominator, "quantityUnit": str, "printedUnitPriceYen": printedUnitPrice, "printedUnitPriceQuantityNumerator": quantityNumerator, "printedUnitPriceQuantityDenominator": quantityDenominator, "printedUnitPriceUnit": str, "categoryHint": str, "confidence": map[string]any{schemaTypeKey: schemaTypeNumber}, "region": region}, "printedName", "name", "printedAmount", receiptDiscountKey, "priceBasis", "taxGroup", "confidence")
 	group := object(map[string]any{"id": str, "numerator": integer, "denominator": integer, "basis": str, "rounding": str, "printedTax": integer, "printedSubtotal": integer}, "id", "numerator", "denominator", "basis", "rounding")
 	itemInterpretation := object(map[string]any{"index": integer, "priceBasis": str, "taxGroup": str}, "index", "priceBasis", "taxGroup")
 	groupInterpretation := object(map[string]any{"id": str, "basis": str, "rounding": str}, "id", "basis", "rounding")
 	interpretation := object(map[string]any{"id": str, schemaItemsKey: array(itemInterpretation), "groups": array(groupInterpretation)}, "id", schemaItemsKey, "groups")
 	payment := object(map[string]any{"method": str, "cardLast4": str, schemaAmountKey: integer}, "method", "cardLast4", schemaAmountKey)
-	return object(map[string]any{schemaMerchantKey: str, "purchasedAt": str, "orderId": str, "transactionId": str, "currency": str, schemaItemsKey: array(item), "taxGroups": array(group), "discount": integer, "total": integer, "payments": array(payment), "warnings": array(str), "interpretations": array(interpretation)}, schemaMerchantKey, "purchasedAt", "currency", schemaItemsKey, "taxGroups", "discount", "total", "payments", "warnings")
+	return object(map[string]any{schemaMerchantKey: str, "purchasedAt": str, "orderId": str, "transactionId": str, "currency": str, schemaItemsKey: array(item), "taxGroups": array(group), receiptDiscountKey: integer, "total": integer, "payments": array(payment), "warnings": array(str), "interpretations": array(interpretation)}, schemaMerchantKey, "purchasedAt", "currency", schemaItemsKey, "taxGroups", receiptDiscountKey, "total", "payments", "warnings")
 }

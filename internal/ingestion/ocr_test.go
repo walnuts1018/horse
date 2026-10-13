@@ -12,18 +12,20 @@ import (
 	"testing"
 )
 
+const yogurtReceiptLine = "ヨーグルト 198"
+
 func TestOCRCorroboration(t *testing.T) {
 	t.Parallel()
 	region := Region{Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
 	receipt := Receipt{Items: []Item{{PrintedName: "ヨーグルト", PrintedAmount: 198, Region: &region}}}
-	if issues := CompareOCR(receipt, []OCRLine{{Text: "ヨーグルト 198", Region: region}}); len(issues) != 0 {
+	if issues := CompareOCR(receipt, []OCRLine{{Text: yogurtReceiptLine, Region: region}}); len(issues) != 0 {
 		t.Fatal(issues)
 	}
 	if issues := CompareOCR(receipt, []OCRLine{{Text: "ヨーグルト 196", Region: region}}); len(issues) != 1 {
 		t.Fatalf("amount disagreement was not flagged: %v", issues)
 	}
 	other := Region{Top: 0.8, Left: 0.1, Bottom: 0.9, Right: 0.9}
-	if issues := CompareOCR(receipt, []OCRLine{{Text: "ヨーグルト 198", Region: other}}); len(issues) != 2 {
+	if issues := CompareOCR(receipt, []OCRLine{{Text: yogurtReceiptLine, Region: other}}); len(issues) != 2 {
 		t.Fatalf("incorrect evidence region was not flagged: %v", issues)
 	}
 }
@@ -33,10 +35,11 @@ func TestOCRCorroborationFindsUnmatchedItemRows(t *testing.T) {
 	itemRegion := Region{Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
 	missedItemRegion := Region{Top: 0.25, Left: 0.1, Bottom: 0.35, Right: 0.9}
 	receipt := Receipt{Items: []Item{{PrintedName: "ヨーグルト", PrintedAmount: 198, Region: &itemRegion}}}
-	lines := []OCRLine{
-		{Text: "ヨーグルト 198", Confidence: 0.95, Region: itemRegion},
-		{Text: "月見バーガー 430", Confidence: 0.92, Region: missedItemRegion},
-	}
+	lines := make([]OCRLine, 0, 4)
+	lines = append(lines,
+		OCRLine{Text: yogurtReceiptLine, Confidence: 0.95, Region: itemRegion},
+		OCRLine{Text: "月見バーガー 430", Confidence: 0.92, Region: missedItemRegion},
+	)
 	issues := CompareOCR(receipt, lines)
 	if len(issues) != 1 || issues[0] != "OCRにのみ読み取られた明細候補を確認してください。" {
 		t.Fatalf("unmatched item row was not reported: %v", issues)
