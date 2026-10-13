@@ -1,6 +1,7 @@
 import type { Purchase } from "../../../shared/api";
-import { InlineError } from "../../../shared/ui";
 import type { PurchaseEvidence as PurchaseEvidenceEntry } from "../api/purchase-evidence";
+
+import { InlineError } from "../../../shared/ui";
 
 export function PurchaseEvidence({
   purchase,

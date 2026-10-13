@@ -1,9 +1,11 @@
-import styles from "./settings-page.module.css";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Check } from "lucide-react";
-import { type Budget, type Household } from "../../../shared/api";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+
 import { readBudgets } from "../../../entities/budget";
+import { type Budget, type Household } from "../../../shared/api";
 import { archiveBudget, createBudget, updateBudget } from "../api/budget-management";
+
+import styles from "./settings-page.module.css";
 
 const currentMonth = () =>
   new Intl.DateTimeFormat("en-CA", {

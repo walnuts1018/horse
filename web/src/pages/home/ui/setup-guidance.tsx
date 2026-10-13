@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, Circle } from "lucide-react";
+
 import type { Household } from "../../../shared/api";
+
 import styles from "./setup-guidance.module.css";
 
 type SetupStep = {

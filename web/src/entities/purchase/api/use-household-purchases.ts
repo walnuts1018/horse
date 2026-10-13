@@ -5,7 +5,7 @@ import {
   useLazyLoadQuery,
   usePaginationFragment,
 } from "react-relay";
-import type { Purchase, PurchaseOrigin } from "../../../shared/api";
+
 import type {
   PurchaseChangesSubscription,
   PurchaseCorrectionsPaginationQuery,
@@ -13,14 +13,16 @@ import type {
   PurchaseAmountTarget,
   PurchasesQuery,
 } from "..";
+import type { Purchase, PurchaseOrigin } from "../../../shared/api";
+
 import { getRelayEnvironment } from "../../../shared/api";
+import { mapPurchaseItem } from "./map-purchase-item";
 import {
   purchaseChangesSubscription,
   purchaseCorrectionsPaginationQuery,
   purchaseListFragment,
   purchasesQuery,
 } from "./operations";
-import { mapPurchaseItem } from "./map-purchase-item";
 
 type Options = {
   from?: string;

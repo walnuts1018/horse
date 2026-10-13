@@ -4,6 +4,7 @@ import type {
   PurchaseHistoryQuery$data,
   PurchaseOrigin,
 } from "../../../shared/api";
+
 import { mapPurchaseItem } from "./map-purchase-item";
 
 type PurchaseHistoryRecord = PurchaseHistoryQuery$data["purchases"]["edges"][number]["node"];

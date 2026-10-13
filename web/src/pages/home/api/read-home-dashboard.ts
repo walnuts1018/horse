@@ -1,4 +1,6 @@
 import { fetchQuery } from "react-relay";
+
+import { settlementQuery } from "../../../entities/settlement";
 import {
   getRelayEnvironment,
   monthlyCategorySpendingQuery,
@@ -9,7 +11,6 @@ import {
   type SettlementQuery,
   type SettlementQuery$data,
 } from "../../../shared/api";
-import { settlementQuery } from "../../../entities/settlement";
 import { homeSummaryQuery } from "./home-summary";
 
 export type HomeSummary = {

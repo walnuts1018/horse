@@ -3,12 +3,13 @@ import type {
   CreatePoolMutation,
   SetPoolFundingRuleMutation,
 } from "../../../shared/api";
+
+import { commitSettingsMutation } from "./commit-mutation";
 import {
   createAccountMutation,
   createPoolMutation,
   setPoolFundingRuleMutation,
 } from "./operations";
-import { commitSettingsMutation } from "./commit-mutation";
 
 export type PoolKind = CreatePoolMutation["variables"]["input"]["kind"];
 export type AccountKind = CreateAccountMutation["variables"]["input"]["kind"];

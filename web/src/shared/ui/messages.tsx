@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+
 import { ChevronRight } from "lucide-react";
 
 function InlineError({ message }: { message: string }) {

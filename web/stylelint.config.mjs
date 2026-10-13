@@ -28,5 +28,16 @@ export default {
     "selector-class-pattern": null,
     "declaration-empty-line-before": null,
     "no-descending-specificity": null,
+    "import-notation": "string",
+    "lightness-notation": "number",
+    "hue-degree-notation": "number",
+    "alpha-value-notation": "number",
+    "color-function-notation": "modern",
+    "custom-property-pattern": [
+      "^([a-z][a-z0-9]*)(-[a-z0-9]+)*(-\\*)?$",
+      {
+        message: "Expected custom property name to be kebab-case",
+      },
+    ],
   },
 };

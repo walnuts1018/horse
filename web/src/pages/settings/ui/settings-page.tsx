@@ -1,21 +1,23 @@
-import styles from "./settings-page.module.css";
 import type { Household } from "../../../shared/api";
-import { useSettingsNavigation } from "../model/settings-navigation";
-import { useSettingsChangeTracking } from "../model/settings-change-tracking";
+
 import { useSettingsAccountBalances } from "../model/account-balances";
+import { useSettingsChangeTracking } from "../model/settings-change-tracking";
 import { useSettingsMutations } from "../model/settings-mutations";
-import { ManageHouseholdInvitations } from "./manage-household-invitations";
-import { ManageBudgets } from "./manage-budgets";
-import { ManageRecurringExpenses } from "./manage-recurring-expenses";
-import { ManageTags } from "./manage-tags";
-import { ViewAccountBalanceHistory } from "./view-account-balance-history";
+import { useSettingsNavigation } from "../model/settings-navigation";
 import { ManageAccountActivity } from "./manage-account-activity";
-import { ManageAllocationCatalog } from "./manage-allocation-catalog";
 import { ManageAccountSettings } from "./manage-account-settings";
-import { SettingsTabs } from "./settings-tabs";
+import { ManageAllocationCatalog } from "./manage-allocation-catalog";
+import { ManageBudgets } from "./manage-budgets";
 import { ManageCategoriesSection } from "./manage-categories-section";
 import { ManageDefaultAllocationSection } from "./manage-default-allocation-section";
+import { ManageHouseholdInvitations } from "./manage-household-invitations";
+import { ManageRecurringExpenses } from "./manage-recurring-expenses";
+import { ManageTags } from "./manage-tags";
 import { SettingsMembersSection } from "./settings-members-section";
+import { SettingsTabs } from "./settings-tabs";
+import { ViewAccountBalanceHistory } from "./view-account-balance-history";
+
+import styles from "./settings-page.module.css";
 
 export function SettingsPage({
   household,

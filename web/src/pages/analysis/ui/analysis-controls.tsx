@@ -1,5 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
+
 import type { Dimension } from "../model/purchase-analytics";
+
 import { analysisDimensionLabels } from "./analysis-dimension-labels";
 
 type Props = {

@@ -1,11 +1,12 @@
 import { fetchQuery } from "react-relay";
+
+import { accountBalancesQuery } from "../../../entities/ledger";
 import {
   getRelayEnvironment,
   type AccountBalance,
   type AccountBalancesQuery,
   type AccountBalancesQuery$data,
 } from "../../../shared/api";
-import { accountBalancesQuery } from "../../../entities/ledger";
 
 export async function readAccountBalances(householdId: string): Promise<AccountBalance[]> {
   const data: AccountBalancesQuery$data | undefined = await fetchQuery<AccountBalancesQuery>(

@@ -1,8 +1,11 @@
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+
+import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import { RelayEnvironmentProvider } from "react-relay";
+
 import { getRelayEnvironment } from "../../shared/api";
 import { App } from "../horse-app";
+
 import "../styles/global.css";
 
 export const Route = createRootRoute({

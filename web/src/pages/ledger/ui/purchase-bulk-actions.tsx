@@ -1,6 +1,8 @@
 import type { Household } from "../../../shared/api";
-import { InlineError } from "../../../shared/ui";
 import type { PurchaseBulkEditController } from "../model/purchase-bulk-edit";
+
+import { InlineError } from "../../../shared/ui";
+
 import styles from "./ledger-search.module.css";
 
 export function PurchaseBulkActions({

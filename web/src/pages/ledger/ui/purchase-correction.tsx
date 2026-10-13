@@ -1,5 +1,7 @@
-import { useState } from "react";
 import { Plus, X } from "lucide-react";
+import { useState } from "react";
+
+import { useCorrectPurchaseMutation } from "../../../entities/purchase";
 import {
   makeIdempotencyKey,
   type Household,
@@ -7,9 +9,8 @@ import {
   type PurchaseItem,
   type PurchasePaymentInput,
 } from "../../../shared/api";
-import { useCorrectPurchaseMutation } from "../../../entities/purchase";
-import { getRemainingRefundAmount } from "../model/purchase-correction";
 import { InlineError } from "../../../shared/ui";
+import { getRemainingRefundAmount } from "../model/purchase-correction";
 
 type RefundPayment = {
   key: string;

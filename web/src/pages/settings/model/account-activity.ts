@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+
 import { makeIdempotencyKey, MutationUserError } from "../../../shared/api";
+import {
+  readAccountActivity,
+  readMoreAccountIncomes,
+  readMoreAccountMovements,
+  recordAccountActivityIncome,
+  recordAccountActivityMovement,
+  type AccountActivityIncome,
+  type AccountActivityMovement,
+} from "../api/account-activity";
 import {
   clearAccountIncomeIntent,
   clearAccountMovementIntent,
@@ -10,15 +20,6 @@ import {
   type AccountIncomeIntent,
   type AccountMovementIntent,
 } from "./pending-account-mutations";
-import {
-  readAccountActivity,
-  readMoreAccountIncomes,
-  readMoreAccountMovements,
-  recordAccountActivityIncome,
-  recordAccountActivityMovement,
-  type AccountActivityIncome,
-  type AccountActivityMovement,
-} from "../api/account-activity";
 
 const localDateTime = () => {
   const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);

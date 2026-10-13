@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { Settlement } from "../../../shared/api";
+
 import { japanMonth } from "../../../shared/lib";
 import { readSettlement } from "../api/read-settlement";
 

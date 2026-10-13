@@ -1,4 +1,5 @@
 import type { Budget, Household } from "../../../shared/api";
+
 import { yen } from "../model/format-yen";
 
 export function AnalysisBudgetPanel({

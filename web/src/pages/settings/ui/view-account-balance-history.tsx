@@ -1,9 +1,11 @@
 import "./account-balance-history.css";
-import styles from "./settings-page.module.css";
 import { useEffect, useRef, useState } from "react";
+
 import { type AccountBalanceAnalysis, type Household } from "../../../shared/api";
-import { readAccountBalanceAnalysis } from "../api/read-account-balance-analysis";
 import { InlineError } from "../../../shared/ui";
+import { readAccountBalanceAnalysis } from "../api/read-account-balance-analysis";
+
+import styles from "./settings-page.module.css";
 
 type Account = Household["accounts"][number];
 

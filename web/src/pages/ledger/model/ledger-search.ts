@@ -1,5 +1,5 @@
-import type { Purchase, SourceKind, UnmatchedObservationState } from "../../../shared/api";
 import type { PurchaseAmountTarget, PurchasesQuery } from "../../../entities/purchase";
+import type { Purchase, SourceKind, UnmatchedObservationState } from "../../../shared/api";
 
 export type LedgerSearch = {
   recordMode: "purchases" | "observations";

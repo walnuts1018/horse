@@ -1,15 +1,18 @@
 import { BarChart3 } from "lucide-react";
+
 import type { Household } from "../../../shared/api";
-import { purchaseDimensions, type AnalyticsRow } from "../model/purchase-analytics";
+
 import { InlineError } from "../../../shared/ui";
+import { purchaseDimensions, type AnalyticsRow } from "../model/purchase-analytics";
 import { useAnalysisData } from "../model/use-analysis-data";
 import { useAnalysisPeriod } from "../model/use-analysis-period";
+import { AnalysisBreakdown } from "./analysis-breakdown";
+import { AnalysisBudgetPanel } from "./analysis-budget-panel";
 import { AnalysisControls } from "./analysis-controls";
 import { AnalysisSummary } from "./analysis-summary";
-import { AnalysisBudgetPanel } from "./analysis-budget-panel";
-import { RecurringExpensePanel } from "./recurring-expense-panel";
-import { AnalysisBreakdown } from "./analysis-breakdown";
 import { ItemPricePanel } from "./item-price-panel";
+import { RecurringExpensePanel } from "./recurring-expense-panel";
+
 import "./analysis-page.css";
 
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);

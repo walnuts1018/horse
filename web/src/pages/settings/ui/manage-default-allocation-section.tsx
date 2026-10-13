@@ -1,6 +1,9 @@
-import { Activity, Check } from "lucide-react";
 import type { FormEvent } from "react";
+
+import { Activity, Check } from "lucide-react";
+
 import type { Household } from "../../../shared/api";
+
 import styles from "./settings-page.module.css";
 
 export function ManageDefaultAllocationSection({

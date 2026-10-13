@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import type { Household } from "../../../shared/api";
 
 export type PaymentDraft = { key: string; paymentAccountId: string; amountYen: string };

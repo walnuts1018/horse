@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import {
   forwardRef,
   useEffect,
@@ -6,7 +7,7 @@ import {
   useState,
   type PointerEvent,
 } from "react";
-import { X } from "lucide-react";
+
 import "./camera-capture.css";
 
 type Crop = { left: number; top: number; right: number; bottom: number };

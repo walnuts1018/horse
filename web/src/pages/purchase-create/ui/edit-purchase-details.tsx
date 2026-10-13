@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+
 import type { Purchase } from "../../../shared/api";
 
 const yen = (amount = 0) =>

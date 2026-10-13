@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+
+import type { Purchase } from "../../../shared/api";
+
 import {
   useBulkUpdatePurchasesMutation,
   type BulkUpdatePurchasesMutation$variables,
 } from "../../../entities/purchase";
-import type { Purchase } from "../../../shared/api";
 
 type PurchaseBulkPatch = BulkUpdatePurchasesMutation$variables["input"]["targets"][number]["patch"];
 

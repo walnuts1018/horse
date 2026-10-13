@@ -1,5 +1,7 @@
-import { Check } from "lucide-react";
 import type { FormEvent } from "react";
+
+import { Check } from "lucide-react";
+
 import type { Household } from "../../../shared/api";
 
 export function SettlementTransferForm({

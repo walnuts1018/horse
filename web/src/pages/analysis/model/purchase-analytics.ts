@@ -1,4 +1,5 @@
 import type { Household, Purchase } from "../../../shared/api";
+
 import { japanMonth } from "../../../shared/lib";
 
 export type Dimension = "category" | "merchant" | "item" | "pool" | "account" | "member";

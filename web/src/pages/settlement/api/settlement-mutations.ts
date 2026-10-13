@@ -1,5 +1,7 @@
-import { commitMutation, graphql } from "react-relay";
 import type { GraphQLTaggedNode, MutationParameters } from "relay-runtime";
+
+import { commitMutation, graphql } from "react-relay";
+
 import {
   getRelayEnvironment,
   type SettlementClosePeriodMutation,

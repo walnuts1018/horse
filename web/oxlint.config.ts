@@ -1,11 +1,145 @@
 import { defineConfig } from "oxlint";
 
 export default defineConfig({
-  jsPlugins: ["eslint-plugin-compat"],
+  plugins: ["typescript", "react", "jsx-a11y", "unicorn", "oxc", "import", "promise"],
+  jsPlugins: ["eslint-plugin-react-you-might-not-need-an-effect", "eslint-plugin-compat"],
+  options: {
+    typeAware: true,
+    typeCheck: true,
+    reportUnusedDisableDirectives: "deny",
+  },
+  categories: {
+    correctness: "error",
+    suspicious: "error",
+    perf: "warn",
+  },
+  settings: {
+    react: {
+      version: "19.1.1",
+      linkComponents: [
+        {
+          name: "Link",
+          attribute: "to",
+        },
+      ],
+    },
+  },
   env: {
+    builtin: true,
     browser: true,
   },
+  overrides: [
+    {
+      files: ["**/*.test.*"],
+      rules: {
+        "typescript/no-unsafe-type-assertion": "error",
+      },
+    },
+  ],
   rules: {
+    "react-in-jsx-scope": "off",
     "compat/compat": "error",
+    "react/rules-of-hooks": "error",
+    "react/hooks": "error",
+    "react/immutability": "error",
+    "react/refs": "error",
+    "react/purity": "error",
+    "react/set-state-in-render": "error",
+    "react/error-boundaries": "error",
+    "react/globals": "error",
+    "react/invariant": "warn",
+    "react/syntax": "error",
+    "react/rule-suppression": "error",
+    "react/set-state-in-effect": "warn",
+    "react/no-deriving-state-in-effects": "warn",
+    "react/exhaustive-effect-dependencies": "error",
+    "react/static-components": "warn",
+    "react/preserve-manual-memoization": "warn",
+    "react/memo-dependencies": "warn",
+    "react/use-memo": "warn",
+    "react/void-use-memo": "warn",
+    "react/incompatible-library": "warn",
+    "react/unsupported-syntax": "warn",
+    "react/capitalized-calls": "warn",
+    "react/todo": "off",
+    "no-underscore-dangle": "off",
+    "no-new": "off",
+    "eslint/no-await-in-loop": "off",
+    "promise/always-return": "off",
+    "typescript/unbound-method": "warn",
+    "react/button-has-type": "error",
+    "react/no-unknown-property": "error",
+    "react/jsx-no-target-blank": "error",
+    "react/jsx-no-useless-fragment": "warn",
+    "react/no-unstable-nested-components": [
+      "error",
+      {
+        propNamePattern: "{render*,fallback}",
+      },
+    ],
+    "typescript/no-floating-promises": [
+      "error",
+      {
+        ignoreVoid: true,
+      },
+    ],
+    "typescript/no-misused-promises": [
+      "error",
+      {
+        checksVoidReturn: {
+          arguments: false,
+          attributes: false,
+        },
+      },
+    ],
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/consistent-return": "off",
+    "unicorn/prefer-add-event-listener": "off",
+    "import/no-unassigned-import": [
+      "error",
+      {
+        allow: ["**/*.css"],
+      },
+    ],
+    "typescript/no-unnecessary-condition": "warn",
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-unnecessary-type-assertion": "warn",
+    "typescript/no-deprecated": "warn",
+    "import/no-cycle": "warn",
+    "import/no-duplicates": "error",
+    "jsx-a11y/anchor-is-valid": [
+      "error",
+      {
+        components: ["Link"],
+        specialLink: ["to"],
+        aspects: ["noHref", "invalidHref", "preferButton"],
+      },
+    ],
+    "jsx-a11y/label-has-associated-control": [
+      "error",
+      {
+        controlComponents: ["Input", "Checkbox", "Select"],
+        depth: 3,
+      },
+    ],
+    "jsx-a11y/anchor-ambiguous-text": "error",
+    "jsx-a11y/click-events-have-key-events": "error",
+    "jsx-a11y/control-has-associated-label": "error",
+    "jsx-a11y/interactive-supports-focus": "error",
+    "jsx-a11y/media-has-caption": "error",
+    "jsx-a11y/mouse-events-have-key-events": "error",
+    "jsx-a11y/no-autofocus": "error",
+    "jsx-a11y/no-noninteractive-element-interactions": "error",
+    "jsx-a11y/no-noninteractive-tabindex": "error",
+    "jsx-a11y/prefer-tag-over-role": "error",
+    "react-you-might-not-need-an-effect/no-derived-state": "warn",
+    "react-you-might-not-need-an-effect/no-chain-state-updates": "warn",
+    "react-you-might-not-need-an-effect/no-event-handler": "off",
+    "react-you-might-not-need-an-effect/no-adjust-state-on-prop-change": "warn",
+    "react-you-might-not-need-an-effect/no-reset-all-state-on-prop-change": "warn",
+    "react-you-might-not-need-an-effect/no-pass-live-state-to-parent": "warn",
+    "react-you-might-not-need-an-effect/no-pass-data-to-parent": "warn",
+    "react-you-might-not-need-an-effect/no-external-store-subscription": "warn",
+    "react-you-might-not-need-an-effect/no-initialize-state": "warn",
   },
 });

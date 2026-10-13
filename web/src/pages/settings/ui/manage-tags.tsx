@@ -1,10 +1,12 @@
-import styles from "./settings-page.module.css";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+
+import { readTags } from "../../../entities/tag";
 import { type Tag } from "../../../shared/api";
 import { InlineError } from "../../../shared/ui";
-import { readTags } from "../../../entities/tag";
 import { archiveTag, createTag, updateTag } from "../api/tag-management";
+
+import styles from "./settings-page.module.css";
 
 export function ManageTags({
   householdId,

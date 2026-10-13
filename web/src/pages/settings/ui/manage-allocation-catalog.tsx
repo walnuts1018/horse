@@ -1,8 +1,11 @@
-import styles from "./settings-page.module.css";
-import { useEffect } from "react";
 import { Check, Plus } from "lucide-react";
+import { useEffect } from "react";
+
 import type { Household } from "../../../shared/api";
+
 import { useAllocationCatalog } from "../model/allocation-catalog";
+
+import styles from "./settings-page.module.css";
 
 export function ManageAllocationCatalog({
   household,

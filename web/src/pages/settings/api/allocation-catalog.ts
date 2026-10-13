@@ -1,4 +1,11 @@
 import { fetchQuery } from "react-relay";
+
+import { readProductCatalog } from "../../../entities/product";
+import {
+  createProductConceptMutation,
+  createProductVariantMutation,
+  setProductAliasMutation,
+} from "../../../entities/product";
 import {
   getRelayEnvironment,
   type AllocationRule,
@@ -9,14 +16,8 @@ import {
   type SetAllocationRuleMutation,
   type SetProductAliasMutation,
 } from "../../../shared/api";
-import { readProductCatalog } from "../../../entities/product";
-import { allocationRulesQuery, setAllocationRuleMutation } from "./operations";
-import {
-  createProductConceptMutation,
-  createProductVariantMutation,
-  setProductAliasMutation,
-} from "../../../entities/product";
 import { commitSettingsMutation } from "./commit-mutation";
+import { allocationRulesQuery, setAllocationRuleMutation } from "./operations";
 
 export async function readAllocationRules(householdId: string, after?: string) {
   const data = await fetchQuery<AllocationRulesQuery>(

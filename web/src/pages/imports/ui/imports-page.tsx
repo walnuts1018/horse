@@ -1,15 +1,11 @@
-import { useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { Camera, FileImage, ShieldCheck, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+
 import "./imports-page.css";
 import { type Household } from "../../../shared/api";
 import { InlineError } from "../../../shared/ui";
 import { useEvidencePreview } from "../model/evidence-preview";
-import { useDocumentEvidence } from "../model/use-document-evidence";
-import { useImportDocuments } from "../model/use-import-documents";
-import { CameraCapture, type CameraCaptureHandle } from "./camera-capture";
-import { ImportDocumentList } from "./import-document-list";
-import { ImportDocumentReview } from "./import-document-review";
 import {
   isSupportedFile,
   defaultDocumentFilters,
@@ -22,7 +18,12 @@ import {
   type StatementEntry,
   type StatementSourceKind,
 } from "../model/imports";
+import { useDocumentEvidence } from "../model/use-document-evidence";
 import { useImportConfirmation } from "../model/use-import-confirmation";
+import { useImportDocuments } from "../model/use-import-documents";
+import { CameraCapture, type CameraCaptureHandle } from "./camera-capture";
+import { ImportDocumentList } from "./import-document-list";
+import { ImportDocumentReview } from "./import-document-review";
 
 export function ImportsPage({
   household,

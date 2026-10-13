@@ -1,6 +1,8 @@
-import { useState } from "react";
 import { Check } from "lucide-react";
+import { useState } from "react";
+
 import type { OpenSettlement } from "../../../shared/api";
+
 import { formatSettlementYen, settlementPeriodLabel } from "../model/settlement-view";
 
 export function SettlementCloseConfirmation({

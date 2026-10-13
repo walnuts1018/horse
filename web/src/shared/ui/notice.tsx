@@ -1,5 +1,7 @@
-import { AlertCircle, Check, Info, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
+
+import { AlertCircle, Check, Info, TriangleAlert } from "lucide-react";
+
 import styles from "./notice.module.css";
 
 export type NoticeKind = "success" | "error" | "warning" | "info";

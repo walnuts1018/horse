@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
+
 import { makeIdempotencyKey, type Household, type Settlement } from "../../../shared/api";
 import { japanMonth } from "../../../shared/lib";
 import { recordSettlementFunding } from "../api/settlement-mutations";
-import { formatSettlementYen } from "./settlement-view";
 import {
   clearFundingIntent,
   getFundingIntent,
   saveFundingIntent,
   type FundingIntent,
 } from "./pending-ledger-mutations";
+import { formatSettlementYen } from "./settlement-view";
 
 export function useSettlementFunding({
   household,

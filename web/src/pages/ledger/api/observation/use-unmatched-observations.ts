@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchQuery } from "react-relay";
+
 import {
   getRelayEnvironment,
   type SourceKind,

@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
+
 import type { Budget, RecurringExpense } from "../../../shared/api";
+import type { Dimension } from "./purchase-analytics";
+
+import { readBudgets } from "../../../entities/budget";
+import { useHouseholdPurchases } from "../../../entities/purchase";
+import { readRecurringExpenses } from "../../../entities/recurring-expense";
 import {
   readAnalysisCategorySpending,
   readAnalysisMemberSpending,
 } from "../api/read-analysis-spending";
-import { readBudgets } from "../../../entities/budget";
-import { readRecurringExpenses } from "../../../entities/recurring-expense";
-import { useHouseholdPurchases } from "../../../entities/purchase";
-import type { Dimension } from "./purchase-analytics";
 
 export function useAnalysisData(
   householdId: string,

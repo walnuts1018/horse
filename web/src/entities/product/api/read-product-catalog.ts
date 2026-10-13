@@ -1,4 +1,5 @@
 import { fetchQuery } from "react-relay";
+
 import {
   getRelayEnvironment,
   type ProductAlias,

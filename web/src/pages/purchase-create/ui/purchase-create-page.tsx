@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, Undo2 } from "lucide-react";
-import { type Household, type Purchase } from "../../../shared/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+
 import { readHouseholdPurchases } from "../../../entities/purchase";
+import { type Household, type Purchase } from "../../../shared/api";
 import { usePurchaseOutbox } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
@@ -11,6 +12,7 @@ import { usePurchaseSubmission } from "../model/use-purchase-submission";
 import { EditPurchaseDetails } from "./edit-purchase-details";
 import { EditPurchasePayments } from "./edit-purchase-payments";
 import { PurchaseItemsComposer } from "./purchase-items-composer";
+
 import "./purchase-create-page.css";
 import styles from "./purchase-create-page.module.css";
 

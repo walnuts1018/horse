@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { readDocumentPreview } from "../api/document-preview";
-import type { DocumentReview } from "./imports";
+
 import type { PreviewTransform } from "./evidence-geometry";
+import type { DocumentReview } from "./imports";
+
+import { readDocumentPreview } from "../api/document-preview";
 
 export type EvidencePreview = {
   documentId: string;

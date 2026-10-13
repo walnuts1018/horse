@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { japanMonth } from "../../../shared/lib";
+
 import type { Dimension, ItemMetric } from "./purchase-analytics";
+
+import { japanMonth } from "../../../shared/lib";
 
 const monthRange = (current: string, count: number) => {
   const [year, month] = current.split("-").map(Number);

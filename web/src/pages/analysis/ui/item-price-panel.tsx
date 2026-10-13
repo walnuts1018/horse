@@ -1,12 +1,14 @@
 import type { Dispatch, SetStateAction } from "react";
+
 import type { Purchase } from "../../../shared/api";
+
+import { yen } from "../model/format-yen";
 import {
   formatExactYen,
   itemPriceSeries,
   type AnalyticsRow,
   type ItemMetric,
 } from "../model/purchase-analytics";
-import { yen } from "../model/format-yen";
 
 export function ItemPricePanel({
   rows,

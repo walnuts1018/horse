@@ -1,7 +1,9 @@
 import type { ClipboardEvent, KeyboardEvent, RefObject } from "react";
+
 import { Plus, Search } from "lucide-react";
-import type { Household } from "../../../shared/api";
+
 import type { ProductSuggestion } from "../../../entities/product";
+import type { Household } from "../../../shared/api";
 
 export function PurchaseItemEntry({
   itemName,

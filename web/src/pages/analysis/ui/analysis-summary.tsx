@@ -1,6 +1,7 @@
 import type { AnalyticsRow, Dimension } from "../model/purchase-analytics";
-import { analysisDimensionLabels } from "./analysis-dimension-labels";
+
 import { yen } from "../model/format-yen";
+import { analysisDimensionLabels } from "./analysis-dimension-labels";
 
 export function AnalysisSummary({
   annual,

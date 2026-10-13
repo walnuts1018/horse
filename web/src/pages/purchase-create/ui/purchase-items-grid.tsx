@@ -1,7 +1,10 @@
 import type { KeyboardEvent, RefObject } from "react";
+
 import { ReceiptJapaneseYen, X } from "lucide-react";
+
 import type { Household } from "../../../shared/api";
 import type { PurchaseDraftItem } from "../../../shared/lib";
+
 import { EditPurchaseItemAllocations } from "./edit-purchase-item-allocations";
 
 export function PurchaseItemsGrid({

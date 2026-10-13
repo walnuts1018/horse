@@ -1,6 +1,8 @@
 import { useState } from "react";
-import type { SettlementSnapshot } from "./settlement-period";
+
 import type { Settlement } from "../../../shared/api";
+import type { SettlementSnapshot } from "./settlement-period";
+
 import { closeSettlementPeriod } from "../api/settlement-mutations";
 
 export function useSettlementPeriodClose({

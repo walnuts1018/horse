@@ -1,8 +1,10 @@
 import { fetchQuery } from "react-relay";
+
 import type { Purchase, PurchaseHistoryQuery } from "../../../shared/api";
+
 import { getRelayEnvironment } from "../../../shared/api";
-import { purchaseHistoryQuery } from "./operations";
 import { mapPurchase } from "./map-purchase";
+import { purchaseHistoryQuery } from "./operations";
 
 export async function readHouseholdPurchases(
   householdId: string,

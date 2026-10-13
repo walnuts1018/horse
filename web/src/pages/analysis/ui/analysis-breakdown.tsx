@@ -1,8 +1,11 @@
-import { BarChart3 } from "lucide-react";
 import type { CSSProperties } from "react";
+
+import { BarChart3 } from "lucide-react";
+
 import type { AnalyticsRow, Dimension } from "../model/purchase-analytics";
-import { analysisDimensionLabels } from "./analysis-dimension-labels";
+
 import { yen } from "../model/format-yen";
+import { analysisDimensionLabels } from "./analysis-dimension-labels";
 
 type MonthTotal = { month: string; amount: number };
 type CategorySeries = { id: string; name: string; colorIndex: number };

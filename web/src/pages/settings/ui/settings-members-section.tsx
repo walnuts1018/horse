@@ -1,4 +1,5 @@
 import type { Household } from "../../../shared/api";
+
 import styles from "./settings-page.module.css";
 
 export function SettingsMembersSection({

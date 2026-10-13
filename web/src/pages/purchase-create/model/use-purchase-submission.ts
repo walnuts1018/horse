@@ -1,7 +1,9 @@
 import { useRef, useState, type FormEvent } from "react";
+
+import type { PaymentDraft } from "./purchase-payments";
+
 import { makeIdempotencyKey, type Household } from "../../../shared/api";
 import { enqueuePurchase, type PurchaseDraftItem } from "../../../shared/lib";
-import type { PaymentDraft } from "./purchase-payments";
 import { convertPurchaseItems } from "./purchase-items";
 
 export function usePurchaseSubmission({

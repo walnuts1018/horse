@@ -1,12 +1,14 @@
-import styles from "./settings-page.module.css";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+
 import {
   createHouseholdInvitation,
   readHouseholdInvitations,
   revokeHouseholdInvitation,
   type HouseholdInvitation,
 } from "../api/household-invitations";
+
+import styles from "./settings-page.module.css";
 
 export function ManageHouseholdInvitations({
   householdId,

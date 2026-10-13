@@ -1,21 +1,24 @@
-import { useEffect, useState } from "react";
 import { Check, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+
 import type { Household } from "../../../shared/api";
+
 import { useHouseholdLedger } from "../../../entities/ledger";
+
 import "./settlement-page.css";
+import { useSettlementFunding } from "../model/settlement-funding";
+import { useSettlementLoanState } from "../model/settlement-loan-state";
+import { useSettlementPeriod } from "../model/settlement-period";
+import { useSettlementPeriodClose } from "../model/settlement-period-close";
+import { useSettlementTransfer } from "../model/settlement-transfer";
 import { settlementTotalDue } from "../model/settlement-view";
-import { SettlementLoans } from "./settlement-loans";
 import { SettlementCloseConfirmation } from "./settlement-close-confirmation";
+import { SettlementFeedback } from "./settlement-feedback";
+import { SettlementLedger } from "./settlement-ledger";
+import { SettlementLoans } from "./settlement-loans";
 import { SettlementPeriodPicker } from "./settlement-period-picker";
 import { SettlementPreview } from "./settlement-preview";
 import { SettlementTransferForm } from "./settlement-transfer-form";
-import { SettlementLedger } from "./settlement-ledger";
-import { SettlementFeedback } from "./settlement-feedback";
-import { useSettlementTransfer } from "../model/settlement-transfer";
-import { useSettlementFunding } from "../model/settlement-funding";
-import { useSettlementPeriod } from "../model/settlement-period";
-import { useSettlementPeriodClose } from "../model/settlement-period-close";
-import { useSettlementLoanState } from "../model/settlement-loan-state";
 
 export function SettlementPage({
   household,

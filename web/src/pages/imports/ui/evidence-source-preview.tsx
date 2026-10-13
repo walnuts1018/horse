@@ -1,10 +1,14 @@
 import type { Dispatch, SetStateAction } from "react";
+
 import { FileImage } from "lucide-react";
-import styles from "./imports-page.module.css";
-import { InlineError } from "../../../shared/ui";
+
 import type { EvidencePreviewController } from "../model/evidence-preview";
-import { yen, type DocumentReview } from "../model/imports";
+
+import { InlineError } from "../../../shared/ui";
 import { regionPolygon, type Region } from "../model/evidence-geometry";
+import { yen, type DocumentReview } from "../model/imports";
+
+import styles from "./imports-page.module.css";
 
 export function EvidenceSourcePreview({
   document,

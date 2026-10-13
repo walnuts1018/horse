@@ -1,6 +1,8 @@
 import { ArrowLeftRight, Wallet } from "lucide-react";
+
 import type { Household, Settlement } from "../../../shared/api";
 import type { FundingIntent } from "../model/pending-ledger-mutations";
+
 import { formatSettlementYen, settlementPeriodLabel } from "../model/settlement-view";
 
 export function SettlementPreview({

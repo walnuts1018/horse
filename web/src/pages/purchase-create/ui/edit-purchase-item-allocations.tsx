@@ -1,5 +1,6 @@
-import { ChevronDown } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
+import { ChevronDown } from "lucide-react";
+
 import type { Household } from "../../../shared/api";
 import type { PurchaseDraftItem } from "../../../shared/lib";
 

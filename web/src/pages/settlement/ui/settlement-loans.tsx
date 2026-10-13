@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Check, Plus, Wallet } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+
 import { makeIdempotencyKey, type Household, type LoanBalance } from "../../../shared/api";
+import { InlineError } from "../../../shared/ui";
 import { readLoanBalances } from "../api/read-settlement";
 import { recordSettlementRepayment } from "../api/settlement-mutations";
-import { InlineError } from "../../../shared/ui";
 import {
   clearTransferIntent,
   getTransferIntent,

@@ -1,9 +1,12 @@
-import styles from "./settings-page.module.css";
 import { ArrowLeftRight, Check, Plus } from "lucide-react";
 import { useEffect } from "react";
+
 import type { Household } from "../../../shared/api";
+
 import { InlineError } from "../../../shared/ui";
 import { useAccountActivity } from "../model/account-activity";
+
+import styles from "./settings-page.module.css";
 
 const yen = (amount: number) =>
   new Intl.NumberFormat("ja-JP", {

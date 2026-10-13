@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { describe, expect, it } from "vitest";
+
 import { defaultLedgerSearch, parseLedgerSearch, serializeLedgerSearch } from "./ledger-search";
 
 const arbitraryUnknown = fc.oneof(

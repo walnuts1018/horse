@@ -1,6 +1,8 @@
 import type { Household, ProductConcept, Tag } from "../../../shared/api";
-import { InlineError } from "../../../shared/ui";
 import type { useLedgerItemBulkEdit } from "../model/ledger-item-bulk-edit";
+
+import { InlineError } from "../../../shared/ui";
+
 import styles from "./ledger-search.module.css";
 
 type LedgerItemBulkEdit = ReturnType<typeof useLedgerItemBulkEdit>;

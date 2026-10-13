@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { BookOpen, ChevronRight, Plus, Upload, Wallet } from "lucide-react";
-import { type Household, type Purchase } from "../../../shared/api";
-import { EmptyState } from "../../../shared/ui";
+import { useEffect, useState } from "react";
+
 import { useHouseholdPurchases } from "../../../entities/purchase";
+import { type Household, type Purchase } from "../../../shared/api";
 import { japanMonth } from "../../../shared/lib";
+import { EmptyState } from "../../../shared/ui";
 import {
   readHomeMonthlySpending,
   readHomeSettlement,
@@ -13,6 +14,7 @@ import {
   type HomeSummary,
 } from "../api/read-home-dashboard";
 import { SetupGuidance } from "./setup-guidance";
+
 import "./home-page.css";
 
 const yen = (amount = 0) =>

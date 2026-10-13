@@ -7,12 +7,14 @@ import {
   type KeyboardEvent,
 } from "react";
 import { z } from "zod";
-import { type Household, type Purchase } from "../../../shared/api";
-import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
+
 import type { PurchaseDraftItem } from "../../../shared/lib";
+
+import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
+import { type Household, type Purchase } from "../../../shared/api";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
-import { PurchaseItemsGrid } from "./purchase-items-grid";
 import { PurchaseItemEntry } from "./purchase-item-entry";
+import { PurchaseItemsGrid } from "./purchase-items-grid";
 
 const purchaseItemSchema = z.object({
   name: z.string().trim().min(1),

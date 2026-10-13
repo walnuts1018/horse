@@ -5,9 +5,10 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from "react";
+
+import type { Region } from "./evidence-geometry";
 import type { EvidencePreviewController } from "./evidence-preview";
 import type { DocumentReview } from "./imports";
-import type { Region } from "./evidence-geometry";
 
 export function useDocumentEvidence({
   document,

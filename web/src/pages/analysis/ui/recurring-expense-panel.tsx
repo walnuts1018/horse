@@ -1,5 +1,7 @@
 import { BarChart3 } from "lucide-react";
+
 import type { RecurringExpense } from "../../../shared/api";
+
 import { yen } from "../model/format-yen";
 
 export function RecurringExpensePanel({

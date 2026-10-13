@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { canReclassifyAttachment, type DocumentReview } from "./imports";
 
 describe("添付文書の明細種別変更", () => {

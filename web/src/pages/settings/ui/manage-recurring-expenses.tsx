@@ -1,13 +1,15 @@
-import styles from "./settings-page.module.css";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Check } from "lucide-react";
-import { type Household, type RecurringExpense } from "../../../shared/api";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+
 import { readRecurringExpenses } from "../../../entities/recurring-expense";
+import { type Household, type RecurringExpense } from "../../../shared/api";
 import {
   archiveRecurringExpense,
   createRecurringExpense,
   updateRecurringExpense,
 } from "../api/recurring-expense-management";
+
+import styles from "./settings-page.module.css";
 
 const localDate = () => new Date().toISOString().slice(0, 10);
 const yen = (amount: number) =>

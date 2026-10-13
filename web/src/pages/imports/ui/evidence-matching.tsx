@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
 import { AlertCircle, Link2 } from "lucide-react";
-import styles from "./imports-page.module.css";
+import { useEffect, useState } from "react";
+
 import type { Purchase } from "../../../shared/api";
+
 import { linkPurchaseEvidence, readDocumentMatches } from "../api/document-matches";
 import {
   sourceKindLabel,
@@ -9,6 +10,8 @@ import {
   type DocumentReview,
   type ObservationCandidates,
 } from "../model/imports";
+
+import styles from "./imports-page.module.css";
 
 export function EvidenceMatching({
   document,

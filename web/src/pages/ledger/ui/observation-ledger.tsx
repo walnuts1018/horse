@@ -1,11 +1,14 @@
-import { useEffect } from "react";
 import { BookOpen } from "lucide-react";
+import { useEffect } from "react";
+
 import type { Household } from "../../../shared/api";
+import type { LedgerSearch } from "../model/ledger-search";
+
 import { InlineError } from "../../../shared/ui";
 import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
 import { useObservationDirtyState } from "../model/observation-dirty";
-import type { LedgerSearch } from "../model/ledger-search";
 import { ObservationLinker } from "./observation-linker";
+
 import styles from "./ledger-search.module.css";
 
 export function ObservationLedger({

@@ -1,13 +1,4 @@
 import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
-import {
   Link,
   Outlet,
   useBlocker,
@@ -34,14 +25,23 @@ import {
   WifiOff,
 } from "lucide-react";
 import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+
+import {
   acceptHouseholdInvitation,
   createHousehold,
   readHousehold,
   readHouseholds,
 } from "../entities/household";
-import { ApiError, getViewer, type Household } from "../shared/api";
 import { useCreateAndPostPurchase } from "../entities/purchase";
-import { GraphQLErrorBoundary } from "./graphql-error-boundary";
+import { ApiError, getViewer, type Household } from "../shared/api";
 import {
   claimPurchaseOutbox,
   completePurchaseOutbox,
@@ -49,9 +49,10 @@ import {
   renewPurchaseOutboxLease,
   usePurchaseOutbox,
 } from "../shared/lib";
-import { isAppPage, type AppPage } from "./app-page";
-import { householdRouteContext } from "./household-route-context";
 import { Notice, type NoticeKind } from "../shared/ui";
+import { isAppPage, type AppPage } from "./app-page";
+import { GraphQLErrorBoundary } from "./graphql-error-boundary";
+import { householdRouteContext } from "./household-route-context";
 
 export function App() {
   const navigate = useNavigate({ from: "/" });

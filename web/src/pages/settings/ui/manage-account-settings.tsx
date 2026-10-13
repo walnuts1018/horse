@@ -1,6 +1,8 @@
-import styles from "./settings-page.module.css";
-import { useEffect } from "react";
 import { Check, ChevronRight, Plus, Wallet } from "lucide-react";
+import { useEffect } from "react";
+
+import type { AccountKind, PoolKind } from "../api/account-settings";
+
 import {
   isPersonalPool,
   isSharedPool,
@@ -9,7 +11,8 @@ import {
   type SharedPoolSettlementPolicy,
 } from "../../../shared/api";
 import { useAccountSettings } from "../model/account-settings";
-import type { AccountKind, PoolKind } from "../api/account-settings";
+
+import styles from "./settings-page.module.css";
 
 const yen = (amount: number) =>
   new Intl.NumberFormat("ja-JP", {

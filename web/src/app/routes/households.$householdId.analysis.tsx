@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+
 import { AnalysisPage } from "../../pages/analysis";
 import { useHouseholdRouteContext } from "../household-route-context";
 

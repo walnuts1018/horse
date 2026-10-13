@@ -1,5 +1,6 @@
-import { useState } from "react";
 import { AlertCircle, ChevronRight, FileImage, Upload, X } from "lucide-react";
+import { useState } from "react";
+
 import {
   canReclassifyAttachment,
   isCsvFile,

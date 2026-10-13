@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+
 import type { Household } from "../shared/api";
 import type { NoticeKind } from "../shared/ui";
 import type { AppPage } from "./app-page";

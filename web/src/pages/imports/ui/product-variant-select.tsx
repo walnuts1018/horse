@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
 
 export function ProductVariantSelect({

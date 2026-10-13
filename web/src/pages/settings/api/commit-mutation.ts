@@ -1,5 +1,7 @@
-import { commitMutation } from "react-relay";
 import type { GraphQLTaggedNode, MutationParameters } from "relay-runtime";
+
+import { commitMutation } from "react-relay";
+
 import { getRelayEnvironment } from "../../../shared/api";
 
 type MutationResult<TResult> = {

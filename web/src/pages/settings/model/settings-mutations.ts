@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
+
 import type { Household } from "../../../shared/api";
+
 import {
   createCategory as createCategoryMutation,
   setCategoryArchived as setCategoryArchivedMutation,
