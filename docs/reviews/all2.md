@@ -69,20 +69,6 @@ if strings.HasPrefix(document.MIMEType, "image/") {
 
 `Balanced=true` という一つの値に両方の意味を持たせるのは、今後の自動確定機能でも危険です。
 
-### P2 — カード明細の行IDが、バックエンドとフロントエンドで一致していない
-
-以下の3か所に、実際の不整合があります。
-
-- [バックエンドの観測データ](https://github.com/walnuts1018/horse/blob/345d605958294830c18ad048d677aecd9fc96a33/internal/ingestion/reconcile.go#L89-L96) は、明細の参照IDを必ず `row:2` のような形式で生成。
-- [フロントエンドの確定処理](https://github.com/walnuts1018/horse/blob/345d605958294830c18ad048d677aecd9fc96a33/web/src/pages/imports/model/use-import-confirmation.ts#L291-L304) は、取引番号があれば `transaction:ABC123` を使用。
-- [照合API](https://github.com/walnuts1018/horse/blob/345d605958294830c18ad048d677aecd9fc96a33/internal/api/reconciliation.go#L68-L77) は `sourceReference` の完全一致で絞り込み。
-
-取引番号が存在する明細では、照合APIの行と、確定済みの記録を同じIDで対応付けられません。
-
-加えて、[StatementReview](https://github.com/walnuts1018/horse/blob/345d605958294830c18ad048d677aecd9fc96a33/web/src/pages/imports/ui/statement-review.tsx#L25-L52) は「追加済み」をコンポーネントの状態で判定していますが、[確定状態の初期値](https://github.com/walnuts1018/horse/blob/345d605958294830c18ad048d677aecd9fc96a33/web/src/pages/imports/model/use-import-confirmation.ts#L36-L42) は空です。ページ再読み込み後には、DBに確定済み記録が残っていても未追加に見える可能性があります。
-
-修正方針: `sourceReference` の生成ルールをサーバー側に一本化し、CSVの各行に安定した一意なIDを割り当ててAPIで返してください。確定状態も `document_confirmations` を正本として復元します。取引番号だけをキーにすると、番号が重複した複数行を誤って同一視する危険があります。
-
 ### P2 — 注文メールに添付された領収書・請求書を読み取れない
 
 [email.go:91–95](https://github.com/walnuts1018/horse/blob/345d605958294830c18ad048d677aecd9fc96a33/internal/ingestion/email.go#L91-L95) および [114–130](https://github.com/walnuts1018/horse/blob/345d605958294830c18ad048d677aecd9fc96a33/internal/ingestion/email.go#L114-L130)
