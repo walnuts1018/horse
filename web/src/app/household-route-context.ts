@@ -7,6 +7,7 @@ export type HouseholdRouteContext = {
   household: Household | null;
   viewerId: string | null;
   navigateToPage: (page: AppPage) => void;
+  onNavigateToPurchase: () => void;
   reportUnsavedChanges: (unsaved: boolean) => void;
   onPurchaseQueued: (idempotencyKey: string) => void;
   onBackFromPurchase: () => void;

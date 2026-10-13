@@ -3895,7 +3895,7 @@ a {
     justify-content: space-around;
   }
 
-  .mobile-dock button {
+  .mobile-dock :is(button, a) {
     width: 20%;
     height: 50px;
     border: 0;
@@ -3909,13 +3909,13 @@ a {
     cursor: pointer;
   }
 
-  .mobile-dock button svg {
+  .mobile-dock :is(button, a) svg {
     width: 18px;
     height: 18px;
     stroke-width: 1.8;
   }
 
-  .mobile-dock button span {
+  .mobile-dock :is(button, a) span {
     font-size: 8px;
   }
 
@@ -4813,7 +4813,7 @@ a {
     .settlement-amount > small,
     .summary-card .eyebrow,
     .summary-card small,
-    .mobile-dock button span
+    .mobile-dock :is(button, a) span
   ) {
     font-size: max(var(--mobile-font-supporting), 1em);
   }

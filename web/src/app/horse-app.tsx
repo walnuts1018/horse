@@ -7,7 +7,14 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { Outlet, useBlocker, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  useBlocker,
+  useNavigate,
+  useParams,
+  useRouterState,
+} from "@tanstack/react-router";
 import {
   ArrowLeftRight,
   AlertCircle,
@@ -391,6 +398,9 @@ export function App() {
     household: activeHousehold,
     viewerId: viewer.id,
     navigateToPage,
+    onNavigateToPurchase: () => {
+      if (page !== "new") purchaseCreatePreviousPage.current = page;
+    },
     reportUnsavedChanges,
     onPurchaseQueued,
     onBackFromPurchase,
@@ -402,19 +412,17 @@ export function App() {
     <div className="app-shell">
       <aside className={`sidebar ${mobileMenu ? "sidebar-open" : ""}`}>
         <div className="sidebar-top">
-          <a
+          <Link
             className="brand"
-            href="#home"
-            onClick={(e) => {
-              e.preventDefault();
-              navigateToPage("home");
-            }}
+            to="/households/$householdId"
+            params={{ householdId: householdId ?? "" }}
+            search
           >
             <span className="brand-mark">h</span>
             <span>
               horse<small>HOUSEHOLD</small>
             </span>
-          </a>
+          </Link>
           <button
             className="icon-button close-menu"
             aria-label="メニューを閉じる"
@@ -458,41 +466,36 @@ export function App() {
             icon={<Home />}
             label="ホーム"
             active={page === "home"}
-            onClick={() => {
-              navigateToPage("home");
-            }}
+            to="/households/$householdId"
+            householdId={householdId ?? ""}
           />
           <NavItem
             icon={<BookOpen />}
             label="帳簿"
             active={page === "ledger"}
-            onClick={() => {
-              navigateToPage("ledger");
-            }}
+            to="/households/$householdId/ledger"
+            householdId={householdId ?? ""}
           />
           <NavItem
             icon={<ArrowLeftRight />}
             label="精算"
             active={page === "settlement"}
-            onClick={() => {
-              navigateToPage("settlement");
-            }}
+            to="/households/$householdId/settlement"
+            householdId={householdId ?? ""}
           />
           <NavItem
             icon={<BarChart3 />}
             label="分析"
             active={page === "analysis"}
-            onClick={() => {
-              navigateToPage("analysis");
-            }}
+            to="/households/$householdId/analysis"
+            householdId={householdId ?? ""}
           />
           <NavItem
             icon={<FileImage />}
             label="取り込み"
             active={page === "imports"}
-            onClick={() => {
-              navigateToPage("imports");
-            }}
+            to="/households/$householdId/imports"
+            householdId={householdId ?? ""}
           />
         </nav>
         <div className="sidebar-bottom">
@@ -508,9 +511,8 @@ export function App() {
             icon={<Settings2 />}
             label="設定"
             active={page === "settings"}
-            onClick={() => {
-              navigateToPage("settings");
-            }}
+            to="/households/$householdId/settings"
+            householdId={householdId ?? ""}
           />
           <div className="profile-row">
             <div className="profile-avatar">{viewer.displayName.slice(0, 1)}</div>
@@ -553,11 +555,20 @@ export function App() {
           </div>
           <div className="topbar-actions">
             {syncLabel && (
-              <button
+              <Link
                 className={`sync-status-pill ${failedOutboxCount ? "sync-status-error" : ""}`}
-                type="button"
-                onClick={() => navigateToPage("new")}
-                disabled={!household}
+                to="/households/$householdId/new"
+                params={{ householdId: householdId ?? "" }}
+                search
+                onClick={(event) => {
+                  if (!household) {
+                    event.preventDefault();
+                    return;
+                  }
+                  if (page !== "new") purchaseCreatePreviousPage.current = page;
+                }}
+                aria-disabled={!household}
+                tabIndex={household ? undefined : -1}
               >
                 {outbox.online === false ? (
                   <WifiOff size={15} />
@@ -567,12 +578,17 @@ export function App() {
                   <CloudUpload size={15} />
                 )}
                 <span>{syncLabel}</span>
-              </button>
+              </Link>
             )}
-            <button className="search-pill" onClick={() => navigateToPage("ledger")}>
+            <Link
+              className="search-pill"
+              to="/households/$householdId/ledger"
+              params={{ householdId: householdId ?? "" }}
+              search
+            >
               <Search size={16} />
               <span>帳簿を開く</span>
-            </button>
+            </Link>
           </div>
         </header>
         {outbox.reloadMessage && (
@@ -626,38 +642,58 @@ export function App() {
       </main>
       {notice && <Notice message={notice.message} kind={notice.kind} />}
       <nav className="mobile-dock" aria-label="モバイルメニュー">
-        <button
+        <Link
           className={page === "home" ? "dock-active" : ""}
-          onClick={() => navigateToPage("home")}
+          aria-current={page === "home" ? "page" : undefined}
+          to="/households/$householdId"
+          params={{ householdId: householdId ?? "" }}
+          search
         >
           <Home />
           <span>ホーム</span>
-        </button>
-        <button
+        </Link>
+        <Link
           className={page === "ledger" ? "dock-active" : ""}
-          onClick={() => navigateToPage("ledger")}
+          aria-current={page === "ledger" ? "page" : undefined}
+          to="/households/$householdId/ledger"
+          params={{ householdId: householdId ?? "" }}
+          search
         >
           <BookOpen />
           <span>帳簿</span>
-        </button>
-        <button className="dock-add" onClick={() => navigateToPage("new")}>
+        </Link>
+        <Link
+          className="dock-add"
+          to="/households/$householdId/new"
+          params={{ householdId: householdId ?? "" }}
+          search
+          onClick={() => {
+            if (page !== "new") purchaseCreatePreviousPage.current = page;
+          }}
+        >
           <Plus />
           <span>追加</span>
-        </button>
-        <button
+        </Link>
+        <Link
           className={page === "settlement" ? "dock-active" : ""}
-          onClick={() => navigateToPage("settlement")}
+          aria-current={page === "settlement" ? "page" : undefined}
+          to="/households/$householdId/settlement"
+          params={{ householdId: householdId ?? "" }}
+          search
         >
           <ArrowLeftRight />
           <span>精算</span>
-        </button>
-        <button
+        </Link>
+        <Link
           className={page === "analysis" ? "dock-active" : ""}
-          onClick={() => navigateToPage("analysis")}
+          aria-current={page === "analysis" ? "page" : undefined}
+          to="/households/$householdId/analysis"
+          params={{ householdId: householdId ?? "" }}
+          search
         >
           <BarChart3 />
           <span>分析</span>
-        </button>
+        </Link>
       </nav>
     </div>
   );
@@ -667,19 +703,33 @@ function NavItem({
   icon,
   label,
   active,
-  onClick,
+  to,
+  householdId,
 }: {
   icon: ReactNode;
   label: string;
   active: boolean;
-  onClick: () => void;
+  to:
+    | "/households/$householdId"
+    | "/households/$householdId/ledger"
+    | "/households/$householdId/settlement"
+    | "/households/$householdId/analysis"
+    | "/households/$householdId/imports"
+    | "/households/$householdId/settings";
+  householdId: string;
 }) {
   return (
-    <button className={`nav-item ${active ? "nav-active" : ""}`} onClick={onClick}>
+    <Link
+      className={`nav-item ${active ? "nav-active" : ""}`}
+      to={to}
+      params={{ householdId }}
+      search
+      aria-current={active ? "page" : undefined}
+    >
       {icon}
       <span>{label}</span>
       {active && <i />}
-    </button>
+    </Link>
   );
 }
 

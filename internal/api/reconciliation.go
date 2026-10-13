@@ -158,7 +158,7 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 
 func recentReconciliationDocuments(ctx context.Context, executor bob.Executor, householdID, currentDocumentID gofrsuuid.UUID) (models.SourceDocumentSlice, bool, error) {
 	successfulExtraction := psql.Exists(psql.Select(
-		sm.Columns(psql.Arg(1)),
+		sm.Columns(psql.Arg("1")),
 		sm.From(models.ExtractionJobs.NameExpr()),
 		sm.Where(psql.And(
 			models.ExtractionJobs.Columns.SourceDocumentID.EQ(models.SourceDocuments.Columns.ID),

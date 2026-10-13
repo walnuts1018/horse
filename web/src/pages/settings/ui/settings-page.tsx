@@ -1151,7 +1151,11 @@ export function SettingsPage({
         </div>
       </div>
       <div className="settings-layout" onChangeCapture={trackFormChange}>
-        <section className="panel settings-section">
+        <section
+          className="panel settings-section"
+          id="pool-settings"
+          style={{ scrollMarginTop: 80 }}
+        >
           <div className="panel-heading">
             <div>
               <span className="eyebrow">負担先</span>
@@ -1386,7 +1390,11 @@ export function SettingsPage({
             </>
           ) : null}
         </section>
-        <section className="panel settings-section">
+        <section
+          className="panel settings-section"
+          id="payment-source-settings"
+          style={{ scrollMarginTop: 80 }}
+        >
           <div className="panel-heading">
             <div>
               <span className="eyebrow">決済に使う口座・カード</span>
@@ -1508,7 +1516,11 @@ export function SettingsPage({
             </button>
           </form>
         </section>
-        <section className="panel settings-section">
+        <section
+          className="panel settings-section"
+          id="default-allocation-settings"
+          style={{ scrollMarginTop: 80 }}
+        >
           <div className="panel-heading">
             <div>
               <span className="eyebrow">買い物の初期値</span>

@@ -14,19 +14,23 @@ function EmptyState({
   title,
   action,
   onClick,
+  actionLink,
 }: {
   icon: ReactNode;
   title: string;
   action: string;
-  onClick: () => void;
+  onClick?: () => void;
+  actionLink?: ReactNode;
 }) {
   return (
     <div className="empty-state">
       {icon}
       <span>{title}</span>
-      <button className="text-button" onClick={onClick}>
-        {action} <ChevronRight size={15} />
-      </button>
+      {actionLink ?? (
+        <button className="text-button" onClick={onClick}>
+          {action} <ChevronRight size={15} />
+        </button>
+      )}
     </div>
   );
 }

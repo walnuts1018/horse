@@ -267,41 +267,6 @@ err := pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
 
 大きなUnit of Workフレームワークを追加する必要はありません。
 
-## 6. 型とエラーの扱いを整理する
-
-### 6.1 ID変換の失敗を黙って無視しない
-
-[purchase/service.go: parseUUID](https://github.com/walnuts1018/horse/blob/be514744182bd6cc1ffe1847ea588b801c2db894/internal/application/purchase/service.go#L520-L530)
-
-現在、次のヘルパーがあります。
-
-```
-func parseUUID(value string) gofrsuuid.UUID {
-    id, _ := gofrsuuid.FromString(value)
-    return id
-}
-```
-
-これは保守性の面で改善したいです。
-
-無効なUUIDが入力されても変換エラーを無視し、ゼロ値のUUIDを返してしまいます。結果として、入力エラーが後段の外部キー制約違反などとして現れ、原因を追いにくくなります。
-
-API入力では必ず変換エラーを返し、`newUUID()`のように生成結果が有効であることを保証できる経路だけ、別のヘルパーを使うべきです。
-
-### 6.2 Application共通のエラー型を用意する
-
-現在、GraphQLの`ErrBadInput`、`ErrConflict`、`ErrNotFound`は`purchase`パッケージで定義されたエラーを参照しています。
-
-[graph/errors.go](https://github.com/walnuts1018/horse/blob/be514744182bd6cc1ffe1847ea588b801c2db894/internal/graph/errors.go)
-
-これは機能としては動きますが、購入とは関係ない送金やカテゴリ登録まで、`purchase`パッケージのエラー定義に依存する構造です。
-
-例えば`internal/application/apperror`に共通のエラー分類を置く方が自然です。
-
-GraphQL層ではそれを`BAD_USER_INPUT`、`CONFLICT`、`NOT_FOUND`へ変換します。
-
-ただし、エラーをすべて汎用文字列に変換するのではなく、ドメイン固有の原因を`errors.Is`や`errors.As`で判定できるようにしてください。
-
 ## 7. 取り込みWorkerも責務を分けたい
 
 優先度：中

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { BookOpen, ChevronRight, Plus, ReceiptJapaneseYen, Upload, Wallet } from "lucide-react";
 import {
   monthlyCategorySpendingQuery,
@@ -12,6 +13,7 @@ import { EmptyState } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { japanMonth } from "../../../shared/lib";
 import { homeSummaryQuery } from "../api/home-summary";
+import { SetupGuidance } from "./setup-guidance";
 
 type HomeSummary = {
   dailySpending: Array<{ date: string; amountYen: number }>;
@@ -28,10 +30,10 @@ const sum = (numbers: number[]) => numbers.reduce((total, value) => total + valu
 
 export function HomePage({
   household,
-  onNavigate,
+  onNavigateToPurchase,
 }: {
   household: Household;
-  onNavigate: (page: "new" | "ledger" | "analysis" | "imports" | "settlement") => void;
+  onNavigateToPurchase: () => void;
 }) {
   const { purchases, totalCount } = useHouseholdPurchases(household.id, 8);
   const currentMonth = japanMonth(new Date());
@@ -101,12 +103,24 @@ export function HomePage({
           </span>
           <h1>おかえりなさい</h1>
         </div>
-        <button className="button button-primary" onClick={() => onNavigate("new")}>
+        <Link
+          className="button button-primary"
+          to="/households/$householdId/new"
+          params={{ householdId: household.id }}
+          search
+          onClick={onNavigateToPurchase}
+        >
           <Plus size={17} /> 買い物を追加
-        </button>
+        </Link>
       </div>
       <div className="quick-actions">
-        <button className="quick-card quick-main" onClick={() => onNavigate("new")}>
+        <Link
+          className="quick-card quick-main"
+          to="/households/$householdId/new"
+          params={{ householdId: household.id }}
+          search
+          onClick={onNavigateToPurchase}
+        >
           <span className="quick-icon">
             <ReceiptJapaneseYen />
           </span>
@@ -114,8 +128,13 @@ export function HomePage({
             <b>買い物を記録</b>
           </span>
           <ChevronRight />
-        </button>
-        <button className="quick-card" onClick={() => onNavigate("imports")}>
+        </Link>
+        <Link
+          className="quick-card"
+          to="/households/$householdId/imports"
+          params={{ householdId: household.id }}
+          search
+        >
           <span className="quick-icon quick-amber">
             <Upload />
           </span>
@@ -123,8 +142,13 @@ export function HomePage({
             <b>レシートを取り込む</b>
           </span>
           <ChevronRight />
-        </button>
+        </Link>
       </div>
+      <SetupGuidance
+        household={household}
+        purchaseCount={totalCount}
+        onNavigateToPurchase={onNavigateToPurchase}
+      />
       <div className="overview-grid">
         <section className="panel spend-panel">
           <div className="panel-heading">
@@ -139,9 +163,14 @@ export function HomePage({
             <span>
               品目 <b>{homeSummary?.monthlyItemCount ?? "—"}</b>
             </span>
-            <button className="text-button" onClick={() => onNavigate("analysis")}>
+            <Link
+              className="text-button"
+              to="/households/$householdId/analysis"
+              params={{ householdId: household.id }}
+              search
+            >
               分析を見る <ChevronRight size={15} />
-            </button>
+            </Link>
           </div>
         </section>
         <section className="panel settle-card">
@@ -162,9 +191,14 @@ export function HomePage({
                 : "今月分の精算"
               : "精算情報を取得できません"}
           </div>
-          <button className="button button-soft" onClick={() => onNavigate("settlement")}>
+          <Link
+            className="button button-soft"
+            to="/households/$householdId/settlement"
+            params={{ householdId: household.id }}
+            search
+          >
             精算を確認 <ChevronRight size={16} />
-          </button>
+          </Link>
         </section>
       </div>
       <div className="section-heading">
@@ -172,9 +206,14 @@ export function HomePage({
           <span className="eyebrow">最近の記録</span>
           <h2>買い物</h2>
         </div>
-        <button className="text-button" onClick={() => onNavigate("ledger")}>
+        <Link
+          className="text-button"
+          to="/households/$householdId/ledger"
+          params={{ householdId: household.id }}
+          search
+        >
           帳簿を開く <ChevronRight size={15} />
-        </button>
+        </Link>
       </div>
       <section className="panel recent-panel">
         {purchases.length === 0 ? (
@@ -182,7 +221,17 @@ export function HomePage({
             icon={<BookOpen />}
             title="買い物を記録"
             action="最初の買い物を追加"
-            onClick={() => onNavigate("new")}
+            actionLink={
+              <Link
+                className="text-button"
+                to="/households/$householdId/new"
+                params={{ householdId: household.id }}
+                search
+                onClick={onNavigateToPurchase}
+              >
+                最初の買い物を追加 <ChevronRight size={15} />
+              </Link>
+            }
           />
         ) : (
           purchases

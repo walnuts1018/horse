@@ -100,3 +100,17 @@ nullable outputの静的監査では、明白にnon-nullへ変更できるfield�
 仕訳明細の一括登録をBobの複数行INSERTへ変更しました。`go test ./internal/application/accounting`が成功しました。
 
 初回表示時にsearch paramsを正規化する処理が子ルートをホームへ戻すため削除しました。公開環境で深いURLの再読み込み、戻る・進むを確認する必要があります。
+
+### 2026年10月13日のレビュー整理
+
+`docs/reviews/all.md`の購入全体訂正における負担比率比較は、入力比率と保存済み金額比率を最大公約数で正規化して比較するよう変更しました。異なる比率、異なるプール、重複プール、不正な保存値を拒否する単体テストを追加し、`internal/graph`のテストとlintが成功したため、該当項目をレビューから削除しました。
+
+Geminiの未知モデル価格は`unknown_model_price`として明示し、有料ルートで価格未登録モデルを呼び出す前に拒否するようにしました。無料ルートの試行は維持し、未知モデルの拒否と費用メタデータを検査するテストを追加しました。`internal/ingestion`のテストとlintが成功したため、該当項目をレビューから削除しました。
+
+`docs/reviews/be-architecture2.md`のUUID変換とApplication共通エラー分類は、入力UUIDのparse errorを`ErrBadInput`として返し、共通の`apperror`分類をGraphQL結果へ変換する実装に整理しました。購入作成・確定・更新の不正IDと共通エラー分類を検証する単体テストを追加し、対象Goパッケージのテストとlintが成功したため、同文書の「型とエラーの扱い」節を削除しました。
+
+`docs/reviews/ux.md`では、取り込み確定時の複数決済・品目カテゴリ・商品variant選択、モバイル文字サイズ、タップ領域、購入入力順序、通知種別、原本と編集欄の配置、TanStack Routerの`Link`による画面遷移、初回設定ガイドを実装済みとして整理しました。商品variantは`productSuggestions`で候補を検索し、選択IDを購入作成へ渡します。初回設定ガイドは既存の家庭データと購入件数から未設定項目を判定し、負担先・決済元・標準配分の該当sectionへ移動します。確認した箇所は`web/src/pages/imports/ui/imports-page.tsx`、`web/src/pages/purchase-create/ui/purchase-create-page.tsx`、`web/src/pages/home/ui/home-page.tsx`、`web/src/pages/home/ui/setup-guidance.tsx`、`web/src/app/horse-app.tsx`、`web/src/app/styles/global.css`、`web/src/shared/ui/notice.tsx`です。Frontendの型検査、FSD、lint、formatが成功しました。ホームの7日間支出グラフには日付と金額の代替ラベルを追加しました。
+
+購入下書きは、編集後に古い`savedAt`が残っていても「未保存」と表示するよう変更しました。保存開始・成功・失敗を区別する状態表示と保存失敗時の再試行は未実装です。撮影入力と複数ファイル入力は分離しましたが、撮影後のプレビュー・回転・トリミングと実機のカメラ操作は未確認です。モバイルのpull-to-refreshと未保存状態でのタブ終了も実機・ブラウザー検証が残っています。
+
+購入訂正の過去ルールsnapshot、原本照合の直近100件取得、負担ルール一覧のバッチ読込はDB統合テストを含む変更後のGitHub Actions成功を確認できていないため、`docs/reviews/all.md`に残しました。原本照合の統合テストはrun `38412209424`でBob DSLの定数型不一致を検出しました。定数をtext型に直し、最新migrationを適用した一時DBで対象テストが成功しました。次のGitHub Actionsで再確認します。商品候補検索の実データ性能計測、帳簿のサーバー側検索、設定画面の情報設計、不確実な項目の順次確認、エラー通知からの操作、コントラストは未完了として残しています。

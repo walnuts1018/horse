@@ -5,7 +5,7 @@ import { useHouseholdRouteContext } from "../household-route-context";
 export const Route = createFileRoute("/households/$householdId/")({ component: HouseholdHome });
 
 function HouseholdHome() {
-  const { household, navigateToPage } = useHouseholdRouteContext();
+  const { household, onNavigateToPurchase } = useHouseholdRouteContext();
   if (!household) return null;
-  return <HomePage household={household} onNavigate={navigateToPage} />;
+  return <HomePage household={household} onNavigateToPurchase={onNavigateToPurchase} />;
 }
