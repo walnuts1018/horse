@@ -87,3 +87,37 @@ type UpdateOperations struct {
 type UpdateResult struct {
 	PurchaseID string
 }
+
+type UpdateItemCommand struct {
+	ActorID             string
+	ItemID              string
+	BaseRevision        int64
+	ChangedFields       []string
+	Name                *string
+	AmountYen           *int64
+	QuantitySet         bool
+	Quantity            *Measure
+	PrintedUnitPriceSet bool
+	PrintedUnitPrice    *PrintedUnitPrice
+	CategoryIDSet       bool
+	CategoryID          *string
+	ProductVariantIDSet bool
+	ProductVariantID    *string
+	ProductLearningSet  bool
+	ProductLearning     *ProductLearning
+	AllocationsSet      bool
+	Allocations         []Allocation
+}
+
+type ProductLearning struct {
+	ItemOnly      *bool
+	VariantName   *string
+	MerchantAlias *bool
+}
+
+type UpdateItemOperations struct {
+	LockAccountingPeriods func(context.Context, pgx.Tx, string, ...string) error
+	ReplacePayments       func(context.Context, pgx.Tx, string, string, []Payment) error
+	SyncAccounting        func(context.Context, pgx.Tx, string) error
+	UpsertProductAlias    func(context.Context, pgx.Tx, string, string, string, string, string) (string, error)
+}

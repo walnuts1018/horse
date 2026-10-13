@@ -84,7 +84,7 @@ func MonthlyCategorySpendings(ctx context.Context, executor bob.Executor, househ
 	}
 	result := make([]MonthlyCategorySpending, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, MonthlyCategorySpending{Period: row.Period, CategoryID: row.CategoryID, CategoryName: row.CategoryName, AmountYen: row.AmountYen})
+		result = append(result, MonthlyCategorySpending(row))
 	}
 	return result, nil
 }
@@ -128,7 +128,7 @@ func MonthlyMemberSpendings(ctx context.Context, executor bob.Executor, househol
 	}
 	result := make([]MonthlyMemberSpending, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, MonthlyMemberSpending{Period: row.Period, MemberID: row.MemberID, MemberName: row.MemberName, AmountYen: row.AmountYen})
+		result = append(result, MonthlyMemberSpending(row))
 	}
 	hasUnattributed, err := HasUnattributedMonthlySpending(ctx, executor, householdID, start, end)
 	if err != nil {

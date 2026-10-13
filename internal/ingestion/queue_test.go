@@ -8,6 +8,8 @@ import (
 )
 
 func TestSafeQueueDialErrorDoesNotExposeEndpointCredentials(t *testing.T) {
+	t.Parallel()
+
 	const password = "queue-password"
 	parseErr := errors.New("invalid URL escape")
 	err := &url.Error{

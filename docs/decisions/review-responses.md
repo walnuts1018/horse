@@ -124,6 +124,16 @@ UXレビュー#14では、撮影後の画像確認、90度回転、矩形トリ�
 
 ## 2026年10月14日
 
+`docs/reviews/be-architecture.md`と`docs/reviews/be-architecture2.md`を現行コードに照合しました。購入更新で既存負担スナップショットを保持し、新規配賦には現在のルールからスナップショットを作成します。決済内訳の更新時は`purchasePayments`が支払元スナップショットを再作成し、不整合がある場合は処理を失敗させます。`TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshotsForNewAllocations`、`TestPurchaseRefundSettlementUsesOriginalFundingSnapshotAfterRuleChanges`、`TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeriod`で関連する更新後精算を検証しています。したがって、購入確定・更新・訂正の会計同期とスナップショット欠落を最優先課題としていた旧指摘をレビューから削除しました。
+
+精算の期間範囲は`calculatePeriodsAccounting`がまとめて読み込み、複数月プレビューで同じ基礎データを月ごとに再取得しません。`TestSettlementPreviewMatchesMonthlyCalculationsAfterClosedCarry`で締め済み期間からの繰越結果を検証しています。N+1とResolver配下に精算処理が残るという旧指摘を削除しました。
+
+月次支出と商品候補は`internal/postgres/query`へ移動し、PostgreSQL Poolには`otelpgx.NewTracer()`を設定しました。GraphQL Resolverには口座間移動・外部入金・予算などの永続化処理が残るため、未解決項目として`docs/reviews/be-architecture.md`と`docs/reviews/be-architecture2.md`に記載しています。
+
+購入訂正と品目更新を`internal/application/purchase`へ移し、Resolverには認可・入力変換・結果変換を残しました。口座残高分析の残高計算とBob DSL読取も`internal/postgres/query`へ移しました。`go test ./internal/application/purchase ./internal/postgres/query ./internal/graph`が成功しました。Queryパッケージに専用テストはありません。GraphQLパッケージの既存`TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis`は残高分析の利用経路を確認します。これら3項目は実装済みとしてレビュー本文から削除しました。Query層は引き続き口座の全仕訳を読み、読込量や応答時間の計測はしていないため、性能改善を達成したとは記録しません。
+
+DBアクセスはBob DSLを使う方針を維持します。Bob Query Code Generationの提案は生SQL文字列を導入するため採用せず、複雑な読取もBob DSLで表現します。Bob Factoryは無効のままです。会計値の暗黙化を避け、重複削減の具体的な必要が確認できたFixtureだけ検討します。
+
 GraphQLレビューの一覧取得項目を確認しました。`Budget`、`Tag`、`RecurringExpense`、`ProductCatalog`はRelay Connectionを返し、対応するFrontend read関数は`hasNextPage`を見ながら全ページを取得します。設定画面で各一覧から項目を選択・編集し、商品やタグは購入入力でも候補全体を使うため、read関数で全ページを読む要件は維持しました。APIのConnection化と既存順序を保ったページ継続が完了したため、レビュー本文から削除しました。
 
 `ProductVariant.brand`と`packageSize`は未設定をnullで表す契約に揃えました。単一variant resolverは空文字をnullへ変換していましたが、allocation ruleとbatch catalog resolverは空文字を返していました。該当するBob DSL結果の変換も同じoptional mapperを使うようにし、GraphQLレビューから項目を削除しました。

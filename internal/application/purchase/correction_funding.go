@@ -1,4 +1,4 @@
-package graph
+package purchase
 
 import (
 	"cmp"
@@ -51,7 +51,7 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 		return nil, nil, err
 	}
 	if len(payments) == 0 || len(paymentSnapshots) == 0 {
-		return nil, nil, fmt.Errorf("%w: purchase %s payment", ErrMissingPurchaseFundingSnapshot, purchaseID)
+		return nil, nil, fmt.Errorf("%w: purchase %s payment", correctionErrMissingPurchaseFundingSnapshot, purchaseID)
 	}
 	snapshotsByLine := make(map[int32]models.PurchasePaymentFundingSnapshotSlice)
 	for _, snapshot := range paymentSnapshots {
@@ -62,14 +62,14 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 	for _, payment := range payments {
 		snapshots := snapshotsByLine[payment.LineNo]
 		if len(snapshots) == 0 {
-			return nil, nil, fmt.Errorf("%w: purchase %s payment line %d", ErrMissingPurchaseFundingSnapshot, purchaseID, payment.LineNo)
+			return nil, nil, fmt.Errorf("%w: purchase %s payment line %d", correctionErrMissingPurchaseFundingSnapshot, purchaseID, payment.LineNo)
 		}
 		first := snapshots[0]
 		alias := fmt.Sprintf("%s:correction-payment:%d", purchaseID, payment.LineNo)
 		rule := domain.PoolFundingRule{PoolID: alias, Version: int(first.FundingRuleVersion)}
 		for _, snapshot := range snapshots {
 			if snapshot.PoolID != first.PoolID || snapshot.FundingRuleVersion != first.FundingRuleVersion || snapshot.SettlementPolicy != first.SettlementPolicy || snapshot.SnapshotSource != first.SnapshotSource {
-				return nil, nil, fmt.Errorf("%w: purchase %s payment line %d is inconsistent", ErrMissingPurchaseFundingSnapshot, purchaseID, payment.LineNo)
+				return nil, nil, fmt.Errorf("%w: purchase %s payment line %d is inconsistent", correctionErrMissingPurchaseFundingSnapshot, purchaseID, payment.LineNo)
 			}
 			rule.FundingShares = append(rule.FundingShares, domain.MemberWeight{MemberID: snapshot.MemberID.String(), Weight: snapshot.FundingWeight})
 		}
@@ -78,7 +78,7 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 			rule.SettlementPolicy = first.SettlementPolicy.V
 		} else {
 			if len(snapshots) != 1 || first.FundingWeight != 1 {
-				return nil, nil, fmt.Errorf("%w: purchase %s personal payment line %d is inconsistent", ErrMissingPurchaseFundingSnapshot, purchaseID, payment.LineNo)
+				return nil, nil, fmt.Errorf("%w: purchase %s personal payment line %d is inconsistent", correctionErrMissingPurchaseFundingSnapshot, purchaseID, payment.LineNo)
 			}
 			rule.Kind = domain.FundingPoolPersonal
 			rule.OwnerMemberID = first.MemberID.String()
@@ -89,7 +89,7 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 		delete(snapshotsByLine, payment.LineNo)
 	}
 	if len(snapshotsByLine) != 0 {
-		return nil, nil, fmt.Errorf("%w: purchase %s has orphaned payment snapshots", ErrMissingPurchaseFundingSnapshot, purchaseID)
+		return nil, nil, fmt.Errorf("%w: purchase %s has orphaned payment snapshots", correctionErrMissingPurchaseFundingSnapshot, purchaseID)
 	}
 	allocatedPayments, err := domain.Allocate(amount, paymentWeights)
 	if err != nil {
@@ -116,7 +116,7 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 		return nil, nil, err
 	}
 	if len(burdens) == 0 {
-		return nil, nil, fmt.Errorf("%w: purchase %s has no member burden snapshot", ErrMissingPurchaseFundingSnapshot, purchaseID)
+		return nil, nil, fmt.Errorf("%w: purchase %s has no member burden snapshot", correctionErrMissingPurchaseFundingSnapshot, purchaseID)
 	}
 	versions := make(map[correctionFundingRuleVersion]struct{})
 	weightsByPool := make(map[gofrsuuid.UUID]map[gofrsuuid.UUID]int64)
@@ -125,7 +125,7 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 		key := correctionFundingRuleVersion{poolID: burden.PoolID, version: burden.FundingRuleVersion}
 		versions[key] = struct{}{}
 		if previous, found := versionsByPool[burden.PoolID]; found && previous != burden.FundingRuleVersion {
-			return nil, nil, fmt.Errorf("%w: purchase %s pool %s has inconsistent funding rule versions", ErrMissingPurchaseFundingSnapshot, purchaseID, burden.PoolID)
+			return nil, nil, fmt.Errorf("%w: purchase %s pool %s has inconsistent funding rule versions", correctionErrMissingPurchaseFundingSnapshot, purchaseID, burden.PoolID)
 		}
 		versionsByPool[burden.PoolID] = burden.FundingRuleVersion
 		memberWeights := weightsByPool[burden.PoolID]
@@ -134,7 +134,7 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 			weightsByPool[burden.PoolID] = memberWeights
 		}
 		if previous, found := memberWeights[burden.MemberID]; found && previous != burden.FundingWeight {
-			return nil, nil, fmt.Errorf("%w: purchase %s pool %s has inconsistent member weights", ErrMissingPurchaseFundingSnapshot, purchaseID, burden.PoolID)
+			return nil, nil, fmt.Errorf("%w: purchase %s pool %s has inconsistent member weights", correctionErrMissingPurchaseFundingSnapshot, purchaseID, burden.PoolID)
 		}
 		memberWeights[burden.MemberID] = burden.FundingWeight
 	}
@@ -175,14 +175,14 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 		allocationAmounts[poolID] = allocation.Amount
 	}
 	if len(allocationAmounts) != len(weightsByPool) {
-		return nil, nil, fmt.Errorf("%w: purchase %s correction allocation snapshot is inconsistent", ErrMissingPurchaseFundingSnapshot, purchaseID)
+		return nil, nil, fmt.Errorf("%w: purchase %s correction allocation snapshot is inconsistent", correctionErrMissingPurchaseFundingSnapshot, purchaseID)
 	}
 	fundingAllocations := make([]domain.PoolAmount, 0, len(allocationAmounts))
 	for poolID, storedMemberWeights := range weightsByPool {
 		key := correctionFundingRuleVersion{poolID: poolID, version: versionsByPool[poolID]}
 		storedRule, found := historicalByKey[key]
 		if !found {
-			return nil, nil, fmt.Errorf("%w: purchase %s pool %s funding rule version %d", ErrMissingPurchaseFundingSnapshot, purchaseID, poolID, key.version)
+			return nil, nil, fmt.Errorf("%w: purchase %s pool %s funding rule version %d", correctionErrMissingPurchaseFundingSnapshot, purchaseID, poolID, key.version)
 		}
 		allocationAlias := fmt.Sprintf("%s:correction-allocation:%s", purchaseID, poolID)
 		rule := domain.PoolFundingRule{PoolID: allocationAlias, Version: int(key.version)}
@@ -197,7 +197,7 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 		}
 		if storedRule.OwnerMemberID.Valid {
 			if len(memberWeights) != 1 || memberWeights[0].MemberID != storedRule.OwnerMemberID.V.String() || memberWeights[0].Weight != 1 {
-				return nil, nil, fmt.Errorf("%w: purchase %s personal allocation snapshot is inconsistent", ErrMissingPurchaseFundingSnapshot, purchaseID)
+				return nil, nil, fmt.Errorf("%w: purchase %s personal allocation snapshot is inconsistent", correctionErrMissingPurchaseFundingSnapshot, purchaseID)
 			}
 			rule.Kind = domain.FundingPoolPersonal
 			rule.OwnerMemberID = storedRule.OwnerMemberID.V.String()
