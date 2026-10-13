@@ -153,7 +153,15 @@ func TestPurchaseConcurrentUpdatesMergeDisjointFieldsAndConflictOnSameField(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Revision != sharedRevision+1 || loaded.Merchant != successfulMerchant || loaded.OccurredAt != occurredAt {
+	wantOccurredAt, err := parseTime(occurredAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotOccurredAt, err := parseTime(loaded.OccurredAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Revision != sharedRevision+1 || loaded.Merchant != successfulMerchant || !gotOccurredAt.Equal(wantOccurredAt) {
 		t.Fatalf("reloaded purchase does not contain the concurrent updates: revision=%d merchant=%q occurredAt=%q", loaded.Revision, loaded.Merchant, loaded.OccurredAt)
 	}
 }

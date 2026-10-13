@@ -325,7 +325,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 		t.Fatal(err)
 	}
 	if len(accountAnalysis.Changes) != 1 || accountAnalysis.Changes[0].ChangeYen != -100 || accountAnalysis.ClosingBalanceYen != accountAnalysis.OpeningBalanceYen-100 ||
-		accountBalanceSourceType(accountAnalysis.Changes[0].Source) != "CorrectionLedgerEntry" {
+		accountBalanceSourceType(accountAnalysis.Changes[0].Source) != "PurchaseItemCorrection" {
 		t.Fatalf("correction period card balance analysis did not reflect the refund: %#v", accountAnalysis)
 	}
 }

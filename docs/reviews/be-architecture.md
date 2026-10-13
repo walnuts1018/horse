@@ -251,8 +251,8 @@ Factoryであらゆる値を暗黙に補完するより、家庭・メンバー�
 | Bob ThenLoad / Preload | 購入一覧などで採用済み |
 | Bob Query Builder | 検索・集計で採用済み |
 | `google.golang.org/genai` | 採用済み — Gemini APIの通信に使用 |
-| `pgx.BeginFunc` | 積極活用 — Tx管理の簡素化 |
-| `otelpgx` | 採用 — DBトレーシング |
+| `pgx.BeginFunc` | 未採用 — 現在の`context.WithoutCancel`を使うRollbackと同じ挙動を保てる形が確認できていないため、手動のTx管理を継続 |
+| `otelpgx` | 未採用 — DBプールにpgx tracerを設定しておらず、SQL traceやプール統計を取得する運用要件も未確認 |
 | Bob Factory | 採用検討 — テストデータ生成 |
 | gqlgen DataLoader | Node参照には独自のバッチ処理を実装済み。追加導入は必要性を個別に判断 |
 | 別のORM（GORM・Ent） | 不要 — Bobで十分 |
