@@ -1,7 +1,5 @@
 enum FundingScheduleCadence {
   MONTHLY
-  WEEKLY
-  CUSTOM
 }
 
 type FundingSchedule implements Node {

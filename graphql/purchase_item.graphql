@@ -13,6 +13,17 @@ type PurchaseItem implements Node {
   revision: Int!
 }
 
+enum PurchaseItemChangedField {
+  NAME
+  AMOUNT_YEN
+  QUANTITY
+  PRINTED_UNIT_PRICE
+  CATEGORY_ID
+  PRODUCT_VARIANT_ID
+  ALLOCATIONS
+  TAGS
+}
+
 type PurchaseQuantity {
   numerator: String!
   denominator: String!

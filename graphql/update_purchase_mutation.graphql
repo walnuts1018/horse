@@ -12,7 +12,7 @@ input UpdatePurchaseInput {
   purchaseId: ID! @nodeID(of: "Purchase")
   baseRevision: Int!
   patch: PurchasePatch!
-  changedFields: [String!]!
+  changedFields: [PurchaseChangedField!]!
 }
 
 input PurchasePatch {

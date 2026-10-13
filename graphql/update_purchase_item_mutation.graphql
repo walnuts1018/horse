@@ -20,7 +20,7 @@ input UpdatePurchaseItemInput {
   productLearning: ProductLearningScope = ITEM_ONLY
   variantName: String
   allocations: [AllocationInput!]
-  changedFields: [String!]!
+  changedFields: [PurchaseItemChangedField!]!
 }
 
 enum ProductLearningScope {

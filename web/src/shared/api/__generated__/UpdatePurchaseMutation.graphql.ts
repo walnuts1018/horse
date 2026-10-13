@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<209e7aa2af46fee47cc438bd39c30246>>
+ * @generated SignedSource<<006818a9436b981400421bf5c21174d2>>
  * @lightSyntaxTransform
  */
 
@@ -9,9 +9,10 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type PurchaseChangedField = "MERCHANT" | "OCCURRED_AT" | "PAYMENT_ALLOCATIONS" | "%future added value";
 export type UpdatePurchaseInput = {
   baseRevision: number;
-  changedFields: ReadonlyArray<string>;
+  changedFields: ReadonlyArray<PurchaseChangedField>;
   patch: PurchasePatch;
   purchaseId: string;
 };

@@ -182,6 +182,7 @@ func (r *queryResolver) tags(ctx context.Context, householdID string, includeArc
 }
 
 func (r *mutationResolver) bulkUpdatePurchaseItems(ctx context.Context, input model.BulkUpdatePurchaseItemsInput) ([]*model.PurchaseItem, error) {
+	changedFields := purchaseItemChangedFieldKeys(input.ChangedFields)
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
@@ -189,15 +190,15 @@ func (r *mutationResolver) bulkUpdatePurchaseItems(ctx context.Context, input mo
 	if len(input.Targets) == 0 || len(input.Targets) > 100 || input.Patch == nil {
 		return nil, fmt.Errorf("%w: select between one and one hundred items", ErrBadInput)
 	}
-	if err := validateChangedFields(input.ChangedFields, "categoryId", "productVariantId", "allocations", "tags"); err != nil {
+	if err := validateChangedFields(changedFields, "categoryId", "productVariantId", "allocations", "tags"); err != nil {
 		return nil, err
 	}
-	for _, field := range input.ChangedFields {
+	for _, field := range changedFields {
 		if field == "allocations" && input.Patch.Allocations == nil || field == "tags" && input.Patch.TagIds == nil {
 			return nil, fmt.Errorf("%w: changed field has no value", ErrBadInput)
 		}
 	}
-	if input.Patch.CategoryID != nil && !slices.Contains(input.ChangedFields, "categoryId") || input.Patch.ProductVariantID != nil && !slices.Contains(input.ChangedFields, "productVariantId") || input.Patch.Allocations != nil && !slices.Contains(input.ChangedFields, "allocations") || input.Patch.TagIds != nil && !slices.Contains(input.ChangedFields, "tags") {
+	if input.Patch.CategoryID != nil && !slices.Contains(changedFields, "categoryId") || input.Patch.ProductVariantID != nil && !slices.Contains(changedFields, "productVariantId") || input.Patch.Allocations != nil && !slices.Contains(changedFields, "allocations") || input.Patch.TagIds != nil && !slices.Contains(changedFields, "tags") {
 		return nil, fmt.Errorf("%w: patch contains fields missing from changedFields", ErrBadInput)
 	}
 	seen := make(map[string]struct{}, len(input.Targets))
@@ -284,7 +285,7 @@ func (r *mutationResolver) bulkUpdatePurchaseItems(ctx context.Context, input mo
 		if _, err := updateBulkItem(ctx, tx, executor, item, purchases[item.PurchaseID], input, household.DefaultAllocationVersion); err != nil {
 			return nil, err
 		}
-		if err := writeEvent(ctx, tx, householdID.String(), "purchase.item.updated", item.ID.String(), item.Revision+1, input.ChangedFields, user.MemberID); err != nil {
+		if err := writeEvent(ctx, tx, householdID.String(), "purchase.item.updated", item.ID.String(), item.Revision+1, changedFields, user.MemberID); err != nil {
 			return nil, err
 		}
 	}
@@ -318,7 +319,7 @@ func (r *mutationResolver) bulkUpdatePurchaseItems(ctx context.Context, input mo
 }
 
 func updateBulkItem(ctx context.Context, tx pgx.Tx, executor bob.Executor, item *models.PurchaseItem, purchase *models.Purchase, input model.BulkUpdatePurchaseItemsInput, ruleVersion int64) (int64, error) {
-	changed := input.ChangedFields
+	changed := purchaseItemChangedFieldKeys(input.ChangedFields)
 	newRevision := item.Revision + 1
 	fieldRevisions, err := setFieldRevisions(item.FieldRevisions.Val, changed, newRevision)
 	if err != nil {

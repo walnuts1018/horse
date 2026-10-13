@@ -11,7 +11,7 @@ type BulkUpdatePurchaseItemsSuccess {
 input BulkUpdatePurchaseItemsInput {
   targets: [PurchaseItemTargetInput!]!
   patch: BulkPurchaseItemPatch!
-  changedFields: [String!]!
+  changedFields: [PurchaseItemChangedField!]!
 }
 
 input BulkPurchaseItemPatch {

@@ -15,6 +15,8 @@ import {
   type SourceKind,
   type UnmatchedObservationState,
 } from "../../../shared/api";
+import type { PurchaseChangedField } from "../../../shared/api/__generated__/UpdatePurchaseMutation.graphql";
+import type { PurchaseItemChangedField } from "../../../shared/api/__generated__/UpdatePurchaseItemMutation.graphql";
 import {
   bulkUpdatePurchaseItemsMutation,
   bulkUpdatePurchasesMutation,
@@ -50,6 +52,42 @@ const yen = (amount = 0) =>
   }).format(amount);
 const sameNullableString = (left?: string | null, right?: string | null) =>
   (left ?? "") === (right ?? "");
+const toPurchaseChangedFields = (fields: readonly string[]): PurchaseChangedField[] =>
+  fields.map((field) => {
+    switch (field) {
+      case "occurredAt":
+        return "OCCURRED_AT";
+      case "merchant":
+        return "MERCHANT";
+      case "paymentAllocations":
+        return "PAYMENT_ALLOCATIONS";
+      default:
+        throw new Error("不明な買い物の変更項目です");
+    }
+  });
+const toPurchaseItemChangedFields = (fields: readonly string[]): PurchaseItemChangedField[] =>
+  fields.map((field) => {
+    switch (field) {
+      case "name":
+        return "NAME";
+      case "amountYen":
+        return "AMOUNT_YEN";
+      case "quantity":
+        return "QUANTITY";
+      case "printedUnitPrice":
+        return "PRINTED_UNIT_PRICE";
+      case "categoryId":
+        return "CATEGORY_ID";
+      case "productVariantId":
+        return "PRODUCT_VARIANT_ID";
+      case "allocations":
+        return "ALLOCATIONS";
+      case "tags":
+        return "TAGS";
+      default:
+        throw new Error("不明な品目の変更項目です");
+    }
+  });
 const purchaseMonth = (occurredAt: string) =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
@@ -514,7 +552,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
               : {}),
           }
         : {}),
-      changedFields,
+      changedFields: toPurchaseItemChangedFields(changedFields),
     });
     try {
       await mutateUpdatePurchaseItem({
@@ -598,7 +636,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           purchaseId: purchase.id,
           baseRevision: purchase.revision,
           patch: changedPatch,
-          changedFields,
+          changedFields: toPurchaseChangedFields(changedFields),
         },
       });
       await refresh();
@@ -623,7 +661,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                   purchaseId: latest.id,
                   baseRevision: latest.revision,
                   patch: changedPatch,
-                  changedFields,
+                  changedFields: toPurchaseChangedFields(changedFields),
                 },
               });
               await refresh();
@@ -770,7 +808,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         input: {
           targets: targets.map(({ item }) => ({ itemId: item.id, baseRevision: item.revision })),
           patch,
-          changedFields,
+          changedFields: toPurchaseItemChangedFields(changedFields),
         },
       });
       const undoEntries: NonNullable<typeof bulkUndo> = targets.map(({ item }) => {
@@ -825,7 +863,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           input: {
             targets: group.map(({ itemId, baseRevision }) => ({ itemId, baseRevision })),
             patch: group[0].patch,
-            changedFields: group[0].changedFields,
+            changedFields: toPurchaseItemChangedFields(group[0].changedFields),
           },
         });
         undone += group.length;
@@ -871,7 +909,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                 : {}),
             },
           })),
-          changedFields,
+          changedFields: toPurchaseChangedFields(changedFields),
         },
       });
       for (const purchase of targets) {
@@ -925,7 +963,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             baseRevision: entry.baseRevision,
             patch: entry.patch,
           })),
-          changedFields: purchaseBulkUndo[0].changedFields,
+          changedFields: toPurchaseChangedFields(purchaseBulkUndo[0].changedFields),
         },
       });
       setPurchaseBulkUndo(null);

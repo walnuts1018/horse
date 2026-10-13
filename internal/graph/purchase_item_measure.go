@@ -24,9 +24,9 @@ type purchaseItemMeasure struct {
 	printedUnitPriceUnit                sql.Null[string]
 }
 
-func measureFromUpdate(input model.UpdatePurchaseItemInput, current purchaseItemMeasure) (purchaseItemMeasure, error) {
+func measureFromUpdate(input model.UpdatePurchaseItemInput, current purchaseItemMeasure, changedFields []string) (purchaseItemMeasure, error) {
 	updated := current
-	if containsChangedField(input.ChangedFields, "quantity") {
+	if containsChangedField(changedFields, "quantity") {
 		if !input.Quantity.IsSet() {
 			return purchaseItemMeasure{}, errors.New("changed quantity has no value")
 		}
@@ -44,7 +44,7 @@ func measureFromUpdate(input model.UpdatePurchaseItemInput, current purchaseItem
 	} else if input.Quantity.IsSet() {
 		return purchaseItemMeasure{}, errors.New("quantity is missing from changedFields")
 	}
-	if containsChangedField(input.ChangedFields, "printedUnitPrice") {
+	if containsChangedField(changedFields, "printedUnitPrice") {
 		if !input.PrintedUnitPrice.IsSet() {
 			return purchaseItemMeasure{}, errors.New("changed printed unit price has no value")
 		}

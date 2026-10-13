@@ -10,7 +10,7 @@ type BulkUpdatePurchasesSuccess {
 
 input BulkUpdatePurchasesInput {
   targets: [PurchaseUpdateTargetInput!]!
-  changedFields: [String!]!
+  changedFields: [PurchaseChangedField!]!
 }
 
 input BulkPurchasePatch {

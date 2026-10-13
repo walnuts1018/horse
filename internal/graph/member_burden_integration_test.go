@@ -98,7 +98,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		t.Fatalf("manual purchase origin was conflated with evidence state: %#v", purchase)
 	}
 	updatedAmount := model.Long(1200)
-	if _, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: &updatedAmount, ChangedFields: []string{"amountYen"}}); err != nil {
+	if _, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: &updatedAmount, ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldAmountYen}}); err != nil {
 		t.Fatal(err)
 	}
 	purchase, err = loadPurchase(ctx, db, purchase.ID)

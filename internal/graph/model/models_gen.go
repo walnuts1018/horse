@@ -415,7 +415,7 @@ type BulkPurchasePatch struct {
 type BulkUpdatePurchaseItemsInput struct {
 	Targets       []*PurchaseItemTargetInput `json:"targets"`
 	Patch         *BulkPurchaseItemPatch     `json:"patch"`
-	ChangedFields []string                   `json:"changedFields"`
+	ChangedFields []PurchaseItemChangedField `json:"changedFields"`
 }
 
 type BulkUpdatePurchaseItemsSuccess struct {
@@ -437,7 +437,7 @@ func (this BulkUpdatePurchaseItemsUserError) GetMessage() string         { retur
 
 type BulkUpdatePurchasesInput struct {
 	Targets       []*PurchaseUpdateTargetInput `json:"targets"`
-	ChangedFields []string                     `json:"changedFields"`
+	ChangedFields []PurchaseChangedField       `json:"changedFields"`
 }
 
 type BulkUpdatePurchasesSuccess struct {
@@ -1671,10 +1671,10 @@ type UnmatchedObservationEdge struct {
 }
 
 type UpdatePurchaseInput struct {
-	PurchaseID    string         `json:"purchaseId"`
-	BaseRevision  int            `json:"baseRevision"`
-	Patch         *PurchasePatch `json:"patch"`
-	ChangedFields []string       `json:"changedFields"`
+	PurchaseID    string                 `json:"purchaseId"`
+	BaseRevision  int                    `json:"baseRevision"`
+	Patch         *PurchasePatch         `json:"patch"`
+	ChangedFields []PurchaseChangedField `json:"changedFields"`
 }
 
 type UpdatePurchaseItemInput struct {
@@ -1689,7 +1689,7 @@ type UpdatePurchaseItemInput struct {
 	ProductLearning  *ProductLearningScope                     `json:"productLearning,omitempty"`
 	VariantName      *string                                   `json:"variantName,omitempty"`
 	Allocations      []*AllocationInput                        `json:"allocations,omitempty"`
-	ChangedFields    []string                                  `json:"changedFields"`
+	ChangedFields    []PurchaseItemChangedField                `json:"changedFields"`
 }
 
 type UpdatePurchaseItemSuccess struct {
@@ -1933,19 +1933,15 @@ type FundingScheduleCadence string
 
 const (
 	FundingScheduleCadenceMonthly FundingScheduleCadence = "MONTHLY"
-	FundingScheduleCadenceWeekly  FundingScheduleCadence = "WEEKLY"
-	FundingScheduleCadenceCustom  FundingScheduleCadence = "CUSTOM"
 )
 
 var AllFundingScheduleCadence = []FundingScheduleCadence{
 	FundingScheduleCadenceMonthly,
-	FundingScheduleCadenceWeekly,
-	FundingScheduleCadenceCustom,
 }
 
 func (e FundingScheduleCadence) IsValid() bool {
 	switch e {
-	case FundingScheduleCadenceMonthly, FundingScheduleCadenceWeekly, FundingScheduleCadenceCustom:
+	case FundingScheduleCadenceMonthly:
 		return true
 	}
 	return false
@@ -2325,6 +2321,130 @@ func (e *PurchaseChangeKind) UnmarshalJSON(b []byte) error {
 }
 
 func (e PurchaseChangeKind) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type PurchaseChangedField string
+
+const (
+	PurchaseChangedFieldOccurredAt         PurchaseChangedField = "OCCURRED_AT"
+	PurchaseChangedFieldMerchant           PurchaseChangedField = "MERCHANT"
+	PurchaseChangedFieldPaymentAllocations PurchaseChangedField = "PAYMENT_ALLOCATIONS"
+)
+
+var AllPurchaseChangedField = []PurchaseChangedField{
+	PurchaseChangedFieldOccurredAt,
+	PurchaseChangedFieldMerchant,
+	PurchaseChangedFieldPaymentAllocations,
+}
+
+func (e PurchaseChangedField) IsValid() bool {
+	switch e {
+	case PurchaseChangedFieldOccurredAt, PurchaseChangedFieldMerchant, PurchaseChangedFieldPaymentAllocations:
+		return true
+	}
+	return false
+}
+
+func (e PurchaseChangedField) String() string {
+	return string(e)
+}
+
+func (e *PurchaseChangedField) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = PurchaseChangedField(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid PurchaseChangedField", str)
+	}
+	return nil
+}
+
+func (e PurchaseChangedField) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *PurchaseChangedField) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e PurchaseChangedField) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type PurchaseItemChangedField string
+
+const (
+	PurchaseItemChangedFieldName             PurchaseItemChangedField = "NAME"
+	PurchaseItemChangedFieldAmountYen        PurchaseItemChangedField = "AMOUNT_YEN"
+	PurchaseItemChangedFieldQuantity         PurchaseItemChangedField = "QUANTITY"
+	PurchaseItemChangedFieldPrintedUnitPrice PurchaseItemChangedField = "PRINTED_UNIT_PRICE"
+	PurchaseItemChangedFieldCategoryID       PurchaseItemChangedField = "CATEGORY_ID"
+	PurchaseItemChangedFieldProductVariantID PurchaseItemChangedField = "PRODUCT_VARIANT_ID"
+	PurchaseItemChangedFieldAllocations      PurchaseItemChangedField = "ALLOCATIONS"
+	PurchaseItemChangedFieldTags             PurchaseItemChangedField = "TAGS"
+)
+
+var AllPurchaseItemChangedField = []PurchaseItemChangedField{
+	PurchaseItemChangedFieldName,
+	PurchaseItemChangedFieldAmountYen,
+	PurchaseItemChangedFieldQuantity,
+	PurchaseItemChangedFieldPrintedUnitPrice,
+	PurchaseItemChangedFieldCategoryID,
+	PurchaseItemChangedFieldProductVariantID,
+	PurchaseItemChangedFieldAllocations,
+	PurchaseItemChangedFieldTags,
+}
+
+func (e PurchaseItemChangedField) IsValid() bool {
+	switch e {
+	case PurchaseItemChangedFieldName, PurchaseItemChangedFieldAmountYen, PurchaseItemChangedFieldQuantity, PurchaseItemChangedFieldPrintedUnitPrice, PurchaseItemChangedFieldCategoryID, PurchaseItemChangedFieldProductVariantID, PurchaseItemChangedFieldAllocations, PurchaseItemChangedFieldTags:
+		return true
+	}
+	return false
+}
+
+func (e PurchaseItemChangedField) String() string {
+	return string(e)
+}
+
+func (e *PurchaseItemChangedField) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = PurchaseItemChangedField(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid PurchaseItemChangedField", str)
+	}
+	return nil
+}
+
+func (e PurchaseItemChangedField) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *PurchaseItemChangedField) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e PurchaseItemChangedField) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

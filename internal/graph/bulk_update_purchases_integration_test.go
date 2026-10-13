@@ -73,7 +73,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 	changedMerchant := "Updated first"
 	first, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{
 		PurchaseID: first.ID, BaseRevision: first.Revision,
-		Patch: &model.PurchasePatch{Merchant: &changedMerchant}, ChangedFields: []string{"merchant"},
+		Patch: &model.PurchasePatch{Merchant: &changedMerchant}, ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldMerchant},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +84,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 			{PurchaseID: first.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{OccurredAt: &newDate}},
 			{PurchaseID: second.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{OccurredAt: &newDate}},
 		},
-		ChangedFields: []string{"occurredAt"},
+		ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldOccurredAt},
 	})
 	if err != nil || len(updated) != 2 {
 		t.Fatalf("bulk update should merge stale disjoint fields: purchases=%#v error=%v", updated, err)
@@ -97,7 +97,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 	secondDate := "2026-05-12T12:00:00Z"
 	second, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{
 		PurchaseID: second.ID, BaseRevision: second.Revision,
-		Patch: &model.PurchasePatch{OccurredAt: &secondDate}, ChangedFields: []string{"occurredAt"},
+		Patch: &model.PurchasePatch{OccurredAt: &secondDate}, ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldOccurredAt},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +109,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 			{PurchaseID: first.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{Merchant: &atomicMerchant, OccurredAt: &newDate}},
 			{PurchaseID: second.ID, BaseRevision: second.Revision, Patch: &model.BulkPurchasePatch{Merchant: &atomicMerchant, OccurredAt: &conflictingDate}},
 		},
-		ChangedFields: []string{"merchant", "occurredAt"},
+		ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldMerchant, model.PurchaseChangedFieldOccurredAt},
 	})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("bulk update should report the overlapping stale field, got %v", err)

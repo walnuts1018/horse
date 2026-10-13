@@ -990,6 +990,7 @@ func syncPostedPurchaseAccounting(ctx context.Context, tx pgx.Tx, purchaseID str
 }
 
 func (r *mutationResolver) updatePurchase(ctx context.Context, input model.UpdatePurchaseInput) (*model.Purchase, error) {
+	changedFields := purchaseChangedFieldKeys(input.ChangedFields)
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
@@ -1050,10 +1051,10 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 	if input.BaseRevision > int(purchase.Revision) {
 		return nil, ErrConflict
 	}
-	if err := validateChangedFields(input.ChangedFields, "occurredAt", "merchant", "paymentAllocations"); err != nil {
+	if err := validateChangedFields(changedFields, "occurredAt", "merchant", "paymentAllocations"); err != nil {
 		return nil, err
 	}
-	for _, field := range input.ChangedFields {
+	for _, field := range changedFields {
 		switch field {
 		case "occurredAt":
 			if input.Patch == nil || input.Patch.OccurredAt == nil {
@@ -1069,10 +1070,10 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 			}
 		}
 	}
-	if input.Patch != nil && (input.Patch.OccurredAt != nil && !slices.Contains(input.ChangedFields, "occurredAt") || input.Patch.Merchant != nil && !slices.Contains(input.ChangedFields, "merchant") || input.Patch.PaymentAllocations != nil && !slices.Contains(input.ChangedFields, "paymentAllocations")) {
+	if input.Patch != nil && (input.Patch.OccurredAt != nil && !slices.Contains(changedFields, "occurredAt") || input.Patch.Merchant != nil && !slices.Contains(changedFields, "merchant") || input.Patch.PaymentAllocations != nil && !slices.Contains(changedFields, "paymentAllocations")) {
 		return nil, fmt.Errorf("%w: patch contains fields missing from changedFields", ErrBadInput)
 	}
-	conflict, err := valuesConflict(purchase.FieldRevisions.Val, input.BaseRevision, input.ChangedFields)
+	conflict, err := valuesConflict(purchase.FieldRevisions.Val, input.BaseRevision, changedFields)
 	if err != nil {
 		return nil, err
 	}
@@ -1080,24 +1081,24 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 		return nil, ErrConflict
 	}
 	newRevision := purchase.Revision + 1
-	updatedFields, err := setFieldRevisions(purchase.FieldRevisions.Val, input.ChangedFields, newRevision)
+	updatedFields, err := setFieldRevisions(purchase.FieldRevisions.Val, changedFields, newRevision)
 	if err != nil {
 		return nil, err
 	}
-	updatePayments := slices.Contains(input.ChangedFields, "paymentAllocations")
+	updatePayments := slices.Contains(changedFields, "paymentAllocations")
 	paymentAccountID := purchase.PaymentAccountID
 	if updatePayments {
 		paymentAccountID = sql.Null[gofrsuuid.UUID]{}
 	}
 	if input.Patch != nil {
-		if slices.Contains(input.ChangedFields, "occurredAt") {
+		if slices.Contains(changedFields, "occurredAt") {
 			occurredAt, err := parseTime(*input.Patch.OccurredAt)
 			if err != nil {
 				return nil, err
 			}
 			purchase.OccurredAt = occurredAt
 		}
-		if slices.Contains(input.ChangedFields, "merchant") {
+		if slices.Contains(changedFields, "merchant") {
 			value := strings.TrimSpace(*input.Patch.Merchant)
 			if len(value) > 240 {
 				return nil, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
@@ -1154,7 +1155,7 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 			return nil, err
 		}
 	}
-	if err := writeEvent(ctx, tx, householdID, "purchase.updated", input.PurchaseID, newRevision, input.ChangedFields, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, householdID, "purchase.updated", input.PurchaseID, newRevision, changedFields, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -1164,6 +1165,7 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 }
 
 func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.UpdatePurchaseItemInput) (*model.PurchaseItem, error) {
+	changedFields := purchaseItemChangedFieldKeys(input.ChangedFields)
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
@@ -1252,10 +1254,10 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if input.BaseRevision > int(item.Revision) {
 		return nil, ErrConflict
 	}
-	if err := validateChangedFields(input.ChangedFields, "name", "amountYen", "quantity", "printedUnitPrice", "categoryId", "productVariantId", "allocations"); err != nil {
+	if err := validateChangedFields(changedFields, "name", "amountYen", "quantity", "printedUnitPrice", "categoryId", "productVariantId", "allocations"); err != nil {
 		return nil, err
 	}
-	for _, field := range input.ChangedFields {
+	for _, field := range changedFields {
 		switch field {
 		case "name":
 			if input.Name == nil {
@@ -1271,16 +1273,16 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			}
 		}
 	}
-	if input.Name != nil && !slices.Contains(input.ChangedFields, "name") || input.AmountYen != nil && !slices.Contains(input.ChangedFields, "amountYen") ||
-		input.Quantity.IsSet() && !slices.Contains(input.ChangedFields, "quantity") ||
-		input.PrintedUnitPrice.IsSet() && !slices.Contains(input.ChangedFields, "printedUnitPrice") ||
-		input.CategoryID != nil && !slices.Contains(input.ChangedFields, "categoryId") || input.ProductVariantID != nil && !slices.Contains(input.ChangedFields, "productVariantId") || input.Allocations != nil && !slices.Contains(input.ChangedFields, "allocations") {
+	if input.Name != nil && !slices.Contains(changedFields, "name") || input.AmountYen != nil && !slices.Contains(changedFields, "amountYen") ||
+		input.Quantity.IsSet() && !slices.Contains(changedFields, "quantity") ||
+		input.PrintedUnitPrice.IsSet() && !slices.Contains(changedFields, "printedUnitPrice") ||
+		input.CategoryID != nil && !slices.Contains(changedFields, "categoryId") || input.ProductVariantID != nil && !slices.Contains(changedFields, "productVariantId") || input.Allocations != nil && !slices.Contains(changedFields, "allocations") {
 		return nil, fmt.Errorf("%w: patch contains fields missing from changedFields", ErrBadInput)
 	}
-	if input.ProductLearning != nil && !slices.Contains(input.ChangedFields, "productVariantId") {
+	if input.ProductLearning != nil && !slices.Contains(changedFields, "productVariantId") {
 		return nil, fmt.Errorf("%w: product learning requires a product variant change", ErrBadInput)
 	}
-	conflict, err := valuesConflict(item.FieldRevisions.Val, input.BaseRevision, input.ChangedFields)
+	conflict, err := valuesConflict(item.FieldRevisions.Val, input.BaseRevision, changedFields)
 	if err != nil {
 		return nil, err
 	}
@@ -1292,7 +1294,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 		printedUnitPriceYen: item.PrintedUnitPriceYen, printedUnitPriceQuantityNumerator: item.PrintedUnitPriceQuantityNumerator,
 		printedUnitPriceQuantityDenominator: item.PrintedUnitPriceQuantityDenominator, printedUnitPriceUnit: item.PrintedUnitPriceUnit,
 	}
-	newMeasure, err := measureFromUpdate(input, currentMeasure)
+	newMeasure, err := measureFromUpdate(input, currentMeasure, changedFields)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
@@ -1309,11 +1311,11 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			return nil, fmt.Errorf("%w: invalid item amount", ErrBadInput)
 		}
 	}
-	updateCategoryID := slices.Contains(input.ChangedFields, "categoryId")
+	updateCategoryID := slices.Contains(changedFields, "categoryId")
 	if updateCategoryID {
 		newCategory = input.CategoryID
 	}
-	updateProductVariantID := slices.Contains(input.ChangedFields, "productVariantId")
+	updateProductVariantID := slices.Contains(changedFields, "productVariantId")
 	newProductVariantID := productVariantID
 	if updateProductVariantID {
 		newProductVariantID = input.ProductVariantID
@@ -1445,7 +1447,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 		}
 	}
 	newRevision := revision + 1
-	updatedFields, err := setFieldRevisions(fieldRevisions, input.ChangedFields, newRevision)
+	updatedFields, err := setFieldRevisions(fieldRevisions, changedFields, newRevision)
 	if err != nil {
 		return nil, err
 	}
@@ -1587,7 +1589,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, householdID, "purchase.item.updated", input.ItemID, newRevision, input.ChangedFields, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, householdID, "purchase.item.updated", input.ItemID, newRevision, changedFields, user.MemberID); err != nil {
 		return nil, err
 	}
 	if status == string(model.PurchaseStatusPosted) {
@@ -3034,6 +3036,50 @@ func setFieldRevisions(current []byte, fields []string, revision int64) ([]byte,
 		revisions[field] = revision
 	}
 	return json.Marshal(revisions)
+}
+
+func purchaseChangedFieldKeys(fields []model.PurchaseChangedField) []string {
+	keys := make([]string, len(fields))
+	for i, field := range fields {
+		switch field {
+		case model.PurchaseChangedFieldOccurredAt:
+			keys[i] = "occurredAt"
+		case model.PurchaseChangedFieldMerchant:
+			keys[i] = "merchant"
+		case model.PurchaseChangedFieldPaymentAllocations:
+			keys[i] = "paymentAllocations"
+		default:
+			keys[i] = string(field)
+		}
+	}
+	return keys
+}
+
+func purchaseItemChangedFieldKeys(fields []model.PurchaseItemChangedField) []string {
+	keys := make([]string, len(fields))
+	for i, field := range fields {
+		switch field {
+		case model.PurchaseItemChangedFieldName:
+			keys[i] = "name"
+		case model.PurchaseItemChangedFieldAmountYen:
+			keys[i] = "amountYen"
+		case model.PurchaseItemChangedFieldQuantity:
+			keys[i] = "quantity"
+		case model.PurchaseItemChangedFieldPrintedUnitPrice:
+			keys[i] = "printedUnitPrice"
+		case model.PurchaseItemChangedFieldCategoryID:
+			keys[i] = "categoryId"
+		case model.PurchaseItemChangedFieldProductVariantID:
+			keys[i] = "productVariantId"
+		case model.PurchaseItemChangedFieldAllocations:
+			keys[i] = "allocations"
+		case model.PurchaseItemChangedFieldTags:
+			keys[i] = "tags"
+		default:
+			keys[i] = string(field)
+		}
+	}
+	return keys
 }
 
 func validateChangedFields(fields []string, allowed ...string) error {
