@@ -111,6 +111,7 @@ export function PurchaseCreatePage({
   const composing = useRef(false);
   const markUnsaved = () => {
     editVersion.current += 1;
+    onUnsavedChanges(true);
     setHasUnsavedChanges(true);
   };
   useEffect(() => {
@@ -169,14 +170,18 @@ export function PurchaseCreatePage({
       if (hasContent) await savePurchaseDraft(household.id, current);
       else await deletePurchaseDraft(household.id);
       setSavedAt(new Date());
-      if (editVersion.current === version) setHasUnsavedChanges(false);
+      if (editVersion.current === version) {
+        onUnsavedChanges(false);
+        setHasUnsavedChanges(false);
+      }
     } catch (reason) {
       if (editVersion.current === version) {
+        onUnsavedChanges(true);
         setDraftSaveError((reason as Error).message);
         setHasUnsavedChanges(true);
       }
     }
-  }, [household.id]);
+  }, [household.id, onUnsavedChanges]);
   useEffect(() => {
     let active = true;
     setStorageReady(false);
@@ -618,6 +623,7 @@ export function PurchaseCreatePage({
       updateCategory("", "default");
       setItems([]);
       setSavedAt(null);
+      onUnsavedChanges(false);
       setHasUnsavedChanges(false);
       onQueued(input.idempotencyKey);
     } catch (reason) {
