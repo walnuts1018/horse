@@ -2,6 +2,7 @@ package testinfra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -36,7 +37,7 @@ func StartPostgres(ctx context.Context) (string, func(context.Context) error, er
 	connectionURL, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		if terminateErr := container.Terminate(ctx); terminateErr != nil {
-			err = fmt.Errorf("%w; terminate PostgreSQL test container: %v", err, terminateErr)
+			err = errors.Join(err, fmt.Errorf("terminate PostgreSQL test container: %w", terminateErr))
 		}
 		return "", nil, fmt.Errorf("get PostgreSQL test connection URL: %w", err)
 	}

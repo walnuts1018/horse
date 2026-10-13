@@ -137,9 +137,9 @@ func (s *Service) BulkUpdateItems(ctx context.Context, command BulkUpdateItemsCo
 		if observed.HouseholdID != householdID {
 			return BulkUpdateItemsResult{}, fmt.Errorf("%w: all items must belong to one household", ErrBadInput)
 		}
-		purchase, ok := purchases[observed.PurchaseID]
+		_, ok := purchases[observed.PurchaseID]
 		if !ok {
-			purchase, queryErr = models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(observed.PurchaseID))), sm.ForUpdate()).One(ctx, executor)
+			purchase, queryErr := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(observed.PurchaseID))), sm.ForUpdate()).One(ctx, executor)
 			if queryErr != nil {
 				if errors.Is(queryErr, sql.ErrNoRows) {
 					return BulkUpdateItemsResult{}, ErrNotFound

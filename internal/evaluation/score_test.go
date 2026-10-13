@@ -6,7 +6,10 @@ import (
 	"github.com/walnuts1018/horse/internal/ingestion"
 )
 
-const appleItemName = "りんご"
+const (
+	appleItemName = "りんご"
+	currencyJPY   = "JPY"
+)
 
 func TestScoreSeparatesExtractionQualityAndEstimatedCost(t *testing.T) {
 	t.Parallel()
@@ -17,7 +20,7 @@ func TestScoreSeparatesExtractionQualityAndEstimatedCost(t *testing.T) {
 	firstRegion := ingestion.Region{Page: 0, Top: 0.1, Left: 0.1, Bottom: 0.3, Right: 0.4}
 	secondRegion := ingestion.Region{Page: 1, Top: 0.5, Left: 0.5, Bottom: 0.7, Right: 0.8}
 	expected := ingestion.Receipt{
-		Currency: "JPY", Total: 300,
+		Currency: currencyJPY, Total: 300,
 		Items: []ingestion.Item{
 			{PrintedName: appleItemName, Name: appleItemName, PrintedAmount: 100, PriceBasis: taxIncludedPriceBasis, Region: &firstRegion},
 			{PrintedName: "水", Name: "水", PrintedAmount: 200, PriceBasis: taxIncludedPriceBasis, Region: &secondRegion},
@@ -73,16 +76,16 @@ func TestScoreDoesNotTreatUnknownCostAsFree(t *testing.T) {
 func TestScoreReportsAccuracyCostAndLatencyPerModel(t *testing.T) {
 	t.Parallel()
 	expected := ingestion.Receipt{
-		Currency: "JPY", Total: 300,
+		Currency: currencyJPY, Total: 300,
 		Items: []ingestion.Item{
-			{PrintedName: "りんご", Name: "りんご", PrintedAmount: 100},
+			{PrintedName: appleItemName, Name: appleItemName, PrintedAmount: 100},
 			{PrintedName: "牛乳", Name: "牛乳", PrintedAmount: 200},
 		},
 	}
 	complete := expected
 	partial := ingestion.Receipt{
-		Currency: "JPY", Total: 100,
-		Items: []ingestion.Item{{PrintedName: "りんご", Name: "りんご", PrintedAmount: 100}},
+		Currency: currencyJPY, Total: 100,
+		Items: []ingestion.Item{{PrintedName: appleItemName, Name: appleItemName, PrintedAmount: 100}},
 	}
 	metrics := Score(Dataset{Version: "synthetic-v1", Cases: []Case{{
 		ID:       "model-comparison",

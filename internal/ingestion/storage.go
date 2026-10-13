@@ -25,7 +25,7 @@ type ObjectStore struct {
 	Bucket string
 }
 
-func NewObjectStore(endpoint, bucket, accessKey, secretKey string) (*ObjectStore, error) {
+func NewObjectStore(ctx context.Context, endpoint, bucket, accessKey, secretKey string) (*ObjectStore, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || (u.Path != "" && u.Path != "/") || u.User != nil || u.RawQuery != "" {
 		return nil, errors.New("invalid S3 endpoint")
@@ -33,7 +33,7 @@ func NewObjectStore(endpoint, bucket, accessKey, secretKey string) (*ObjectStore
 	if bucket == "" || (accessKey == "") != (secretKey == "") {
 		return nil, errors.New("S3 bucket and a complete credential pair are required")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	region := cmp.Or(os.Getenv("AWS_REGION"), os.Getenv("AWS_DEFAULT_REGION"), "us-east-1")
 	options := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(region), awsconfig.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired), awsconfig.WithResponseChecksumValidation(aws.ResponseChecksumValidationWhenRequired)}

@@ -116,7 +116,7 @@ func newTelemetry(ctx context.Context, logger *slog.Logger, cleanup *cleanupRegi
 		return nil, err
 	}
 	cleanup.Add(2, func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		if err := telemetry.Shutdown(shutdownCtx); err != nil {
 			logger.Warn("Shutting down telemetry failed", "error", err)
@@ -152,11 +152,11 @@ func newAuth(ctx context.Context, pool *pgxpool.Pool, cfg Config, logger *slog.L
 	return service, err
 }
 
-func newObjectStore(cfg Config, logger *slog.Logger) (*ingestion.ObjectStore, error) {
+func newObjectStore(ctx context.Context, cfg Config, logger *slog.Logger) (*ingestion.ObjectStore, error) {
 	if cfg.S3Endpoint == "" && cfg.S3Bucket == "" && cfg.S3AccessKeyID == "" && cfg.S3SecretAccessKey == "" {
 		return nil, nil
 	}
-	store, err := ingestion.NewObjectStore(cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKeyID, cfg.S3SecretAccessKey)
+	store, err := ingestion.NewObjectStore(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKeyID, cfg.S3SecretAccessKey)
 	if err != nil {
 		logger.Error("Initializing object store failed", "error", err)
 	}

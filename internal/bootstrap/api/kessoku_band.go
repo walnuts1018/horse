@@ -61,7 +61,7 @@ func InitializeAPI(ctx context.Context, cleanupRegistry0 *cleanupRegistry, logge
 			return ctx.Err()
 		}
 		var err1 error
-		objectStore, err1 = kessoku.Async(kessoku.Provide(newObjectStore)).Fn()(config, logger)
+		objectStore, err1 = kessoku.Async(kessoku.Provide(newObjectStore)).Fn()(ctx, config, logger)
 		if err1 != nil {
 			return err1
 		}
