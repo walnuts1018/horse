@@ -37,23 +37,35 @@ var printedJapaneseDate = regexp.MustCompile(`([0-9]{2,4}年)?[0-9]{1,2}月[0-9]
 
 var ErrInvalidCropPage = errors.New("invalid crop page")
 
+const (
+	maxOCRPDFPages         = 20
+	maxOCRResponseBytes    = 8 << 20
+	ocrImageRequestTimeout = 45 * time.Second
+	ocrPDFRequestTimeout   = 130 * time.Second
+)
+
 func (o OCR) Extract(ctx context.Context, document Document) ([]OCRLine, error) {
 	if o.Endpoint == "" {
 		return nil, errors.New("OCR is not configured")
 	}
-	if !strings.HasPrefix(document.MIMEType, "image/") {
-		return nil, errors.New("OCR requires an image")
+	timeout := ocrImageRequestTimeout
+	filename := "original"
+	if document.MIMEType == mimeTypePDF {
+		timeout = ocrPDFRequestTimeout
+		filename = "original.pdf"
+	} else if !strings.HasPrefix(document.MIMEType, "image/") {
+		return nil, errors.New("OCR requires an image or PDF")
 	}
 	u, err := url.Parse(o.Endpoint)
 	if err != nil {
 		return nil, errors.New("invalid OCR endpoint")
 	}
 	u = u.JoinPath("extract")
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	part, err := writer.CreateFormFile("image", "original")
+	part, err := writer.CreateFormFile("image", filename)
 	if err != nil {
 		return nil, fmt.Errorf("create OCR image part: %w", err)
 	}
@@ -70,28 +82,32 @@ func (o OCR) Extract(ctx context.Context, document Document) ([]OCRLine, error) 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	client := o.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 45 * time.Second}
+		client = &http.Client{Timeout: timeout}
 	}
 	response, err := client.Do(req)
 	if err != nil {
 		return nil, errors.New("OCR request failed")
 	}
-	payload, readErr := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	payload, readErr := io.ReadAll(io.LimitReader(response.Body, maxOCRResponseBytes+1))
 	closeErr := response.Body.Close()
-	if readErr != nil || closeErr != nil {
+	if readErr != nil || closeErr != nil || len(payload) > maxOCRResponseBytes {
 		return nil, errors.New("read OCR response failed")
 	}
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("OCR returned HTTP %d", response.StatusCode)
 	}
 	var result struct {
-		Lines []OCRLine `json:"lines"`
+		PageCount int       `json:"pageCount"`
+		Lines     []OCRLine `json:"lines"`
 	}
 	if err := json.Unmarshal(payload, &result); err != nil {
 		return nil, errors.New("invalid OCR response")
 	}
+	if result.PageCount < 1 || result.PageCount > maxOCRPDFPages || (document.MIMEType != mimeTypePDF && result.PageCount != 1) {
+		return nil, errors.New("invalid OCR page count")
+	}
 	for _, line := range result.Lines {
-		if !validRegion(line.Region) || line.Confidence < 0 || line.Confidence > 1 {
+		if !validRegion(line.Region) || line.Region.Page >= result.PageCount || line.Confidence < 0 || line.Confidence > 1 {
 			return nil, errors.New("invalid OCR line")
 		}
 	}

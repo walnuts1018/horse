@@ -58,6 +58,67 @@ func TestOCRCorroborationFindsUnmatchedItemRows(t *testing.T) {
 	}
 }
 
+func TestOCRExtractAcceptsLinesFromEachPDFPage(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/extract" {
+			t.Fatalf("unexpected OCR path: %s", r.URL.Path)
+		}
+		_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		reader := multipart.NewReader(r.Body, params["boundary"])
+		part, err := reader.NextPart()
+		if err != nil || part.FileName() != "original.pdf" {
+			t.Fatalf("PDF filename was not sent: part=%v err=%v", part, err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"pageCount":2,"lines":[{"text":"ヨーグルト 198","confidence":0.95,"region":{"page":0,"top":0.1,"left":0.1,"bottom":0.2,"right":0.9}},{"text":"月見バーガー 430","confidence":0.92,"region":{"page":1,"top":0.1,"left":0.1,"bottom":0.2,"right":0.9}}]}`))
+	}))
+	defer server.Close()
+
+	lines, err := (OCR{Endpoint: server.URL}).Extract(t.Context(), Document{MIMEType: mimeTypePDF, Data: []byte("pdf")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 2 || lines[0].Region.Page != 0 || lines[1].Region.Page != 1 {
+		t.Fatalf("unexpected PDF OCR lines: %+v", lines)
+	}
+}
+
+func TestOCRExtractRejectsLinesOutsidePDFPageCount(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"pageCount":2,"lines":[{"text":"ヨーグルト 198","confidence":0.95,"region":{"page":2,"top":0.1,"left":0.1,"bottom":0.2,"right":0.9}}]}`))
+	}))
+	defer server.Close()
+	if _, err := (OCR{Endpoint: server.URL}).Extract(t.Context(), Document{MIMEType: mimeTypePDF, Data: []byte("pdf")}); err == nil {
+		t.Fatal("OCR line outside the PDF page count was accepted")
+	}
+}
+
+func TestOCRCorroborationFailsClosedForUnavailableOrMismatchedPages(t *testing.T) {
+	t.Parallel()
+	region := Region{Page: 1, Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
+	receipt := Receipt{Items: []Item{{PrintedName: "ヨーグルト", PrintedAmount: 198, Region: &region}}}
+	t.Run("unavailable", func(t *testing.T) {
+		verification := Verification{Balanced: true}
+		applyOCRCorroboration(&verification, nil, errors.New("OCR timeout"))
+		if verification.Balanced || len(verification.Issues) == 0 {
+			t.Fatalf("OCR failure did not require review: %+v", verification)
+		}
+	})
+	t.Run("mismatched page", func(t *testing.T) {
+		verification := Verification{Receipt: receipt, Balanced: true}
+		applyOCRCorroboration(&verification, []OCRLine{{Text: yogurtReceiptLine, Region: Region{Page: 0, Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}}}, nil)
+		if verification.Balanced || len(verification.Issues) == 0 {
+			t.Fatalf("page mismatch did not require review: %+v", verification)
+		}
+	})
+}
+
 func TestOCRCropUsesRequestedPageAndValidatesPreview(t *testing.T) {
 	t.Parallel()
 	var pngData bytes.Buffer

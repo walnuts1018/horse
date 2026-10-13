@@ -3,6 +3,7 @@ import io
 import json
 import math
 import os
+import time
 from contextlib import asynccontextmanager
 
 import numpy as np
@@ -13,6 +14,11 @@ from starlette.responses import Response
 
 MAX_BYTES = 20 << 20
 Image.MAX_IMAGE_PIXELS = 40_000_000
+MAX_PDF_PAGES = 20
+MAX_PDF_PAGE_PIXELS = 4_000_000
+MAX_PDF_TOTAL_PIXELS = 40_000_000
+MAX_OCR_LINES = 10_000
+MAX_OCR_SECONDS = 120
 slot = asyncio.Lock()
 
 
@@ -44,23 +50,15 @@ def health():
     return {"ready": True}
 
 
-def extract_lines(data: bytes):
-    try:
-        with Image.open(io.BytesIO(data)) as image:
-            if image.width * image.height > Image.MAX_IMAGE_PIXELS:
-                raise ValueError("Image is too large")
-            width, height = image.size
-            pixels = np.array(image.convert("RGB"))
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, ValueError) as error:
-        raise HTTPException(status_code=400, detail="Invalid image") from error
+def extract_page_lines(pixels: np.ndarray, width: int, height: int, page: int, deadline: float):
+    if time.monotonic() >= deadline:
+        raise HTTPException(status_code=504, detail="OCR exceeded the processing time limit")
     lines = []
     for result in app.state.pipeline.predict(pixels):
         payload = result.json
         if callable(payload):
             payload = payload()
         if isinstance(payload, str):
-            import json
-
             payload = json.loads(payload)
         payload = payload.get("res", payload)
         texts = payload.get("rec_texts", [])
@@ -75,7 +73,7 @@ def extract_lines(data: bytes):
                     "text": text,
                     "confidence": float(score),
                     "region": {
-                        "page": 0,
+                        "page": page,
                         "top": max(0, min(1, top / height)),
                         "left": max(0, min(1, left / width)),
                         "bottom": max(0, min(1, bottom / height)),
@@ -83,7 +81,84 @@ def extract_lines(data: bytes):
                     },
                 }
             )
-    return {"lines": lines}
+            if len(lines) > MAX_OCR_LINES:
+                raise HTTPException(status_code=413, detail="OCR returned too many text lines")
+    if time.monotonic() >= deadline:
+        raise HTTPException(status_code=504, detail="OCR exceeded the processing time limit")
+    return lines
+
+
+def extract_pdf_lines(data: bytes, deadline: float):
+    import pypdfium2 as pdfium
+
+    pages = []
+    try:
+        pdf = pdfium.PdfDocument(data)
+    except Exception as error:
+        raise HTTPException(status_code=400, detail="Invalid PDF") from error
+    try:
+        page_count = len(pdf)
+        if page_count < 1 or page_count > MAX_PDF_PAGES:
+            raise HTTPException(status_code=413, detail="PDF page count exceeds the OCR limit")
+        total_pixels = 0
+        for page_number in range(page_count):
+            page = None
+            try:
+                page = pdf[page_number]
+                width, height = page.get_size()
+            except Exception as error:
+                if page is not None:
+                    page.close()
+                raise HTTPException(status_code=400, detail="Invalid PDF page") from error
+            if not math.isfinite(width) or not math.isfinite(height) or width <= 0 or height <= 0:
+                page.close()
+                raise HTTPException(status_code=400, detail="Invalid PDF page dimensions")
+            scale = min(2, math.sqrt(MAX_PDF_PAGE_PIXELS / (width * height)))
+            pages.append((page, scale))
+            expected_width = max(1, math.ceil(width * scale))
+            expected_height = max(1, math.ceil(height * scale))
+            page_pixels = expected_width * expected_height
+            total_pixels += page_pixels
+            if page_pixels > MAX_PDF_PAGE_PIXELS or total_pixels > MAX_PDF_TOTAL_PIXELS:
+                raise HTTPException(status_code=413, detail="PDF raster size exceeds the OCR limit")
+
+        lines = []
+        for page_number, (page, scale) in enumerate(pages):
+            if time.monotonic() >= deadline:
+                raise HTTPException(status_code=504, detail="OCR exceeded the processing time limit")
+            bitmap = page.render(scale=scale)
+            try:
+                with bitmap.to_pil() as image:
+                    with image.convert("RGB") as rgb_image:
+                        width, height = rgb_image.size
+                        if width * height > MAX_PDF_PAGE_PIXELS:
+                            raise HTTPException(status_code=413, detail="PDF raster size exceeds the OCR limit")
+                        pixels = np.array(rgb_image)
+            finally:
+                bitmap.close()
+            lines.extend(extract_page_lines(pixels, width, height, page_number, deadline))
+            if len(lines) > MAX_OCR_LINES:
+                raise HTTPException(status_code=413, detail="OCR returned too many text lines")
+        return {"pageCount": page_count, "lines": lines}
+    finally:
+        for page, _ in pages:
+            page.close()
+        pdf.close()
+
+
+def extract_lines(data: bytes):
+    deadline = time.monotonic() + MAX_OCR_SECONDS
+    if data.startswith(b"%PDF-"):
+        return extract_pdf_lines(data, deadline)
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            if image.width * image.height > Image.MAX_IMAGE_PIXELS:
+                raise ValueError("Image is too large")
+            width, height = image.size
+            pixels = np.array(image.convert("RGB"))
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, ValueError) as error:
+        raise HTTPException(status_code=400, detail="Invalid image") from error
+    return {"pageCount": 1, "lines": extract_page_lines(pixels, width, height, 0, deadline)}
 
 
 def crop_document(data: bytes, page: int, top: float, left: float, bottom: float, right: float):
@@ -140,7 +215,7 @@ async def extract(image: UploadFile = File(...)):
     try:
         data = await image.read(MAX_BYTES + 1)
         if not data or len(data) > MAX_BYTES:
-            raise HTTPException(status_code=413, detail="Image exceeds size limit")
+            raise HTTPException(status_code=413, detail="Document exceeds size limit")
         async with slot:
             return await run_in_threadpool(extract_lines, data)
     finally:

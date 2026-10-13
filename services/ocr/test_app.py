@@ -1,10 +1,12 @@
 import io
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from PIL import Image
 
-from app import crop_document
+from app import MAX_PDF_PAGES, crop_document, extract_lines
 
 
 class CropDocumentTest(unittest.TestCase):
@@ -50,6 +52,39 @@ class CropDocumentTest(unittest.TestCase):
     def test_crop_rejects_out_of_bounds_rectangle(self):
         with self.assertRaises(HTTPException):
             crop_document(self.image_document("PNG"), 0, 0.8, 0.2, 0.4, 0.8)
+
+
+class PDFOCRTest(unittest.TestCase):
+    def pdf_document(self, page_count):
+        pages = [Image.new("RGB", (100, 80), "white") for _ in range(page_count)]
+        source = io.BytesIO()
+        pages[0].save(source, format="PDF", save_all=True, append_images=pages[1:])
+        for page in pages:
+            page.close()
+        return source.getvalue()
+
+    def test_extracts_ocr_lines_with_original_page_indices(self):
+        payload = {
+            "rec_texts": ["ヨーグルト 198"],
+            "rec_scores": [0.95],
+            "rec_boxes": [[10, 10, 90, 30]],
+        }
+        pipeline = SimpleNamespace(
+            predict=lambda pixels: [SimpleNamespace(json={"res": payload})]
+        )
+        with patch("app.app.state.pipeline", pipeline, create=True):
+            result = extract_lines(self.pdf_document(2))
+
+        self.assertEqual(result["pageCount"], 2)
+        self.assertEqual([line["region"]["page"] for line in result["lines"]], [0, 1])
+
+    def test_rejects_pdf_over_page_limit_before_ocr(self):
+        pipeline = SimpleNamespace(predict=lambda pixels: self.fail("OCR ran for oversized PDF"))
+        with patch("app.app.state.pipeline", pipeline, create=True):
+            with self.assertRaises(HTTPException) as raised:
+                extract_lines(self.pdf_document(MAX_PDF_PAGES + 1))
+
+        self.assertEqual(raised.exception.status_code, 413)
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	}
 	var lines []OCRLine
 	var ocrErr error
-	if strings.HasPrefix(document.MIMEType, "image/") {
+	if requiresOCRCorroboration(document.MIMEType) {
 		lines, ocrErr = w.OCR.Extract(ctx, document)
 	}
 	hints, err := w.historyHints(ctx, j.HouseholdID, lines)
@@ -52,7 +52,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if err != nil {
 		return Verification{Receipt: receipt, Runs: runs}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "receipt_validation_failed"}
 	}
-	if len(document.MIMEType) >= 6 && document.MIMEType[:6] == "image/" {
+	if isImageDocument(document.MIMEType) {
 		if ocrErr == nil {
 			if err := transformVerification(&verified, lines, transform, transformPage); err != nil {
 				return Verification{}, fmt.Errorf("map evidence regions to original image: %w", err)
@@ -64,16 +64,11 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		verified.Transform = transform
 		verified.TransformPage = transformPage
 	}
-	verified.Runs = annotateRuns(runs, receipt, verified.Issues)
-	if len(document.MIMEType) >= 6 && document.MIMEType[:6] == "image/" {
-		if ocrErr != nil {
-			verified.Issues = append(verified.Issues, "独立したOCR読取を取得できませんでした。原本を確認してください。")
-		} else {
-			verified.OCRLines = lines
-			verified.Issues = append(verified.Issues, CompareOCR(verified.Receipt, lines)...)
-		}
-		verified.Balanced = len(verified.Issues) == 0
+	if requiresOCRCorroboration(document.MIMEType) {
+		verified.OCRLines = lines
+		applyOCRCorroboration(&verified, lines, ocrErr)
 	}
+	verified.Runs = annotateRuns(runs, receipt, verified.Issues)
 	if !verified.Balanced && len(verified.Runs) > 0 {
 		guidance := evidenceGuidance(verified.Issues, verified.OCRLines)
 		lastRun := latestSuccessfulRun(verified.Runs)
@@ -83,15 +78,14 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			if qualityErr == nil {
 				second, verifyErr := Verify(alternative)
 				if verifyErr == nil {
-					if err := transformReceiptRegions(&second, transform, transformPage); err != nil {
+					if err := transformReceiptRegionsForDocument(&second, document.MIMEType, transform, transformPage); err != nil {
 						return Verification{}, fmt.Errorf("map reviewed evidence regions to original image: %w", err)
 					}
-					second.Runs = annotateRuns(qualityRuns, alternative, second.Issues)
 					second.OCRLines = verified.OCRLines
-					if len(second.OCRLines) > 0 {
-						second.Issues = append(second.Issues, CompareOCR(second.Receipt, second.OCRLines)...)
-						second.Balanced = len(second.Issues) == 0
+					if requiresOCRCorroboration(document.MIMEType) {
+						applyOCRCorroboration(&second, second.OCRLines, ocrErr)
 					}
+					second.Runs = annotateRuns(qualityRuns, alternative, second.Issues)
 					if betterVerification(second, verified) {
 						verified.Receipt, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = second.Receipt, second.Issues, second.ComputedTotal, second.Balanced, second.Candidates
 					}
@@ -104,15 +98,14 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			if proErr == nil {
 				proVerification, verifyErr := Verify(proReceipt)
 				if verifyErr == nil {
-					if err := transformReceiptRegions(&proVerification, transform, transformPage); err != nil {
+					if err := transformReceiptRegionsForDocument(&proVerification, document.MIMEType, transform, transformPage); err != nil {
 						return Verification{}, fmt.Errorf("map reviewed evidence regions to original image: %w", err)
 					}
-					proVerification.Runs = annotateRuns(proRuns, proReceipt, proVerification.Issues)
 					proVerification.OCRLines = verified.OCRLines
-					if len(proVerification.OCRLines) > 0 {
-						proVerification.Issues = append(proVerification.Issues, CompareOCR(proVerification.Receipt, proVerification.OCRLines)...)
-						proVerification.Balanced = len(proVerification.Issues) == 0
+					if requiresOCRCorroboration(document.MIMEType) {
+						applyOCRCorroboration(&proVerification, proVerification.OCRLines, ocrErr)
 					}
+					proVerification.Runs = annotateRuns(proRuns, proReceipt, proVerification.Issues)
 					if betterVerification(proVerification, verified) {
 						verified.Receipt, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = proVerification.Receipt, proVerification.Issues, proVerification.ComputedTotal, proVerification.Balanced, proVerification.Candidates
 					}
@@ -162,4 +155,36 @@ func betterVerification(candidate, current Verification) bool {
 
 func supportsProReview(mimeType string) bool {
 	return strings.HasPrefix(mimeType, "image/") || mimeType == mimeTypePDF
+}
+
+func isImageDocument(mimeType string) bool {
+	return strings.HasPrefix(mimeType, "image/")
+}
+
+func requiresOCRCorroboration(mimeType string) bool {
+	return isImageDocument(mimeType) || mimeType == mimeTypePDF
+}
+
+func transformReceiptRegionsForDocument(verification *Verification, mimeType string, transform [9]float64, page int) error {
+	if isImageDocument(mimeType) {
+		return transformReceiptRegions(verification, transform, page)
+	}
+	verification.Transform = transform
+	verification.TransformPage = page
+	return nil
+}
+
+func applyOCRCorroboration(verification *Verification, lines []OCRLine, ocrErr error) {
+	if ocrErr != nil {
+		verification.Issues = append(verification.Issues, "独立したOCR読取を取得できませんでした。原本を確認してください。")
+		verification.Balanced = false
+		return
+	}
+	if len(lines) == 0 {
+		verification.Issues = append(verification.Issues, "独立したOCR読取に明細行がありません。原本を確認してください。")
+		verification.Balanced = false
+		return
+	}
+	verification.Issues = append(verification.Issues, CompareOCR(verification.Receipt, lines)...)
+	verification.Balanced = len(verification.Issues) == 0
 }
