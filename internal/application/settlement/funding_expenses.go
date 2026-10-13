@@ -16,7 +16,7 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gofrsuuid.UUID, start, end time.Time) ([]domain.FundingExpense, map[string]domain.PoolFundingRule, error) {
+func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gofrsuuid.UUID, start, end time.Time) (map[string][]domain.FundingExpense, map[string]domain.PoolFundingRule, error) {
 	const queryBatchSize = 500
 	uuidArgs := func(ids []gofrsuuid.UUID) []any {
 		args := make([]any, len(ids))
@@ -233,7 +233,7 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 			historicalRulesByKey[key] = historicalRule
 		}
 	}
-	expenses := make([]domain.FundingExpense, 0, len(purchases))
+	expensesByPeriod := make(map[string][]domain.FundingExpense)
 	rules := make(map[string]domain.PoolFundingRule)
 	for _, purchase := range purchases {
 		items := itemsByPurchase[purchase.ID]
@@ -349,7 +349,8 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 		if err != nil {
 			return nil, nil, fmt.Errorf("purchase %s: %w", purchase.ID, err)
 		}
-		expenses = append(expenses, split...)
+		period := accountingPeriod(purchase.OccurredAt)
+		expensesByPeriod[period] = append(expensesByPeriod[period], split...)
 	}
-	return expenses, rules, nil
+	return expensesByPeriod, rules, nil
 }

@@ -78,11 +78,24 @@ func calculatePeriodAccounting(ctx context.Context, db bob.Executor, householdID
 	if err != nil {
 		return nil, fmt.Errorf("%w: period must use YYYY-MM", ErrBadInput)
 	}
-	end := start.AddDate(0, 1, 0)
+	results, err := calculatePeriodsAccounting(ctx, db, householdID, start, start.AddDate(0, 1, 0))
+	if err != nil {
+		return nil, err
+	}
+	return results[period], nil
+}
+
+func calculatePeriodsAccounting(ctx context.Context, db bob.Executor, householdID string, start, end time.Time) (map[string][]domain.SettlementAmount, error) {
 	householdUUID, err := gofrsuuid.FromString(householdID)
 	if err != nil {
 		return nil, fmt.Errorf("parse household id: %w", err)
 	}
+	start = time.Date(start.Year(), start.Month(), 1, 0, 0, 0, 0, start.Location())
+	end = time.Date(end.Year(), end.Month(), 1, 0, 0, 0, 0, end.Location())
+	if !start.Before(end) {
+		return map[string][]domain.SettlementAmount{}, nil
+	}
+	firstPeriod, endPeriod := start.Format("2006-01"), end.Format("2006-01")
 	householdMembers, err := models.HouseholdMembers.Query(
 		sm.Where(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID))),
 		sm.OrderBy(models.HouseholdMembers.Columns.JoinedAt),
@@ -94,80 +107,13 @@ func calculatePeriodAccounting(ctx context.Context, db bob.Executor, householdID
 	if err := householdMembers.LoadMember(ctx, db); err != nil {
 		return nil, err
 	}
-	inputs := make([]domain.SettlementInput, 0, len(householdMembers))
-	memberIndex := make(map[string]int, len(householdMembers))
-	for _, householdMember := range householdMembers {
-		memberID := householdMember.MemberID.String()
-		memberIndex[memberID] = len(inputs)
-		inputs = append(inputs, domain.SettlementInput{MemberID: memberID, MemberName: householdMember.R.Member.DisplayName})
-	}
-	if err := addFundingAmounts(ctx, db, householdUUID, period, start, end, inputs, memberIndex); err != nil {
-		return nil, err
-	}
-	expenses, rules, err := loadFundingExpenses(ctx, db, householdUUID, start, end)
-	if err != nil {
-		return nil, err
-	}
-	changes, err := domain.CalculateExpenseAdjustments(expenses, rules)
-	if err != nil {
-		return nil, err
-	}
-	for _, change := range changes {
-		index, found := memberIndex[change.MemberID]
-		if !found {
-			return nil, domain.ErrInvalidFundingExpense
-		}
-		input := &inputs[index]
-		input.MonthlyAdjustmentYen, found = checkedAdd(input.MonthlyAdjustmentYen, change.MonthlyAdjustmentYen)
-		if !found {
-			return nil, domain.ErrInvalidFundingExpense
-		}
-		input.AdvanceCreditYen, found = checkedAdd(input.AdvanceCreditYen, change.AdvanceCreditYen)
-		if !found {
-			return nil, domain.ErrInvalidFundingExpense
-		}
-	}
-	adjustments, err := models.SettlementAdjustments.Query(sm.Where(psql.And(
-		models.SettlementAdjustments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.SettlementAdjustments.Columns.Period.EQ(psql.Arg(period)),
-	))).All(ctx, db)
-	if err != nil {
-		return nil, err
-	}
-	slices.SortFunc(adjustments, func(left, right *models.SettlementAdjustment) int {
-		return cmp.Compare(left.MemberID.String(), right.MemberID.String())
-	})
-	for _, adjustment := range adjustments {
-		index, found := memberIndex[adjustment.MemberID.String()]
-		if !found {
-			return nil, domain.ErrInvalidSettlement
-		}
-		inputs[index].MonthlyAdjustmentYen, found = checkedAdd(inputs[index].MonthlyAdjustmentYen, adjustment.AmountYen)
-		if !found {
-			return nil, domain.ErrInvalidSettlement
-		}
-	}
-	return domain.CalculateSettlement(inputs)
-}
-
-func CalculatePeriod(ctx context.Context, db bob.Executor, householdID, period string) ([]domain.SettlementAmount, error) {
-	return calculatePeriodAccounting(ctx, db, householdID, period)
-}
-
-func addFundingAmounts(ctx context.Context, db bob.Executor, householdUUID gofrsuuid.UUID, period string, start, end time.Time, inputs []domain.SettlementInput, memberIndex map[string]int) error {
-	type fundingKey struct{ memberID, poolID string }
-	type funding struct{ scheduled, paid int64 }
-	amounts := make(map[fundingKey]funding)
 	obligations, err := models.FundingObligations.Query(sm.Where(psql.And(
 		models.FundingObligations.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.FundingObligations.Columns.Period.EQ(psql.Arg(period)),
+		models.FundingObligations.Columns.Period.GTE(psql.Arg(firstPeriod)),
+		models.FundingObligations.Columns.Period.LT(psql.Arg(endPeriod)),
 	))).All(ctx, db)
 	if err != nil {
-		return err
-	}
-	for _, obligation := range obligations {
-		key := fundingKey{memberID: obligation.MemberID.String(), poolID: obligation.PoolID.String()}
-		amounts[key] = funding{scheduled: obligation.AmountYen, paid: obligation.PaidYen}
+		return nil, err
 	}
 	schedules, err := models.FundingSchedules.Query(sm.Where(psql.And(
 		models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
@@ -183,7 +129,93 @@ func addFundingAmounts(ctx context.Context, db bob.Executor, householdUUID gofrs
 		),
 	))).All(ctx, db)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	expensesByPeriod, rules, err := loadFundingExpenses(ctx, db, householdUUID, start, end)
+	if err != nil {
+		return nil, err
+	}
+	adjustments, err := models.SettlementAdjustments.Query(sm.Where(psql.And(
+		models.SettlementAdjustments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.SettlementAdjustments.Columns.Period.GTE(psql.Arg(firstPeriod)),
+		models.SettlementAdjustments.Columns.Period.LT(psql.Arg(endPeriod)),
+	))).All(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	obligationsByPeriod := make(map[string]models.FundingObligationSlice)
+	for _, obligation := range obligations {
+		obligationsByPeriod[obligation.Period] = append(obligationsByPeriod[obligation.Period], obligation)
+	}
+	adjustmentsByPeriod := make(map[string]models.SettlementAdjustmentSlice)
+	for _, adjustment := range adjustments {
+		adjustmentsByPeriod[adjustment.Period] = append(adjustmentsByPeriod[adjustment.Period], adjustment)
+	}
+	results := make(map[string][]domain.SettlementAmount)
+	for month := start; month.Before(end); month = month.AddDate(0, 1, 0) {
+		period := month.Format("2006-01")
+		inputs := make([]domain.SettlementInput, 0, len(householdMembers))
+		memberIndex := make(map[string]int, len(householdMembers))
+		for _, householdMember := range householdMembers {
+			memberID := householdMember.MemberID.String()
+			memberIndex[memberID] = len(inputs)
+			inputs = append(inputs, domain.SettlementInput{MemberID: memberID, MemberName: householdMember.R.Member.DisplayName})
+		}
+		if err := addFundingAmountsFromRows(month, month.AddDate(0, 1, 0), obligationsByPeriod[period], schedules, inputs, memberIndex); err != nil {
+			return nil, err
+		}
+		changes, err := domain.CalculateExpenseAdjustments(expensesByPeriod[period], rules)
+		if err != nil {
+			return nil, err
+		}
+		for _, change := range changes {
+			index, found := memberIndex[change.MemberID]
+			if !found {
+				return nil, domain.ErrInvalidFundingExpense
+			}
+			input := &inputs[index]
+			input.MonthlyAdjustmentYen, found = checkedAdd(input.MonthlyAdjustmentYen, change.MonthlyAdjustmentYen)
+			if !found {
+				return nil, domain.ErrInvalidFundingExpense
+			}
+			input.AdvanceCreditYen, found = checkedAdd(input.AdvanceCreditYen, change.AdvanceCreditYen)
+			if !found {
+				return nil, domain.ErrInvalidFundingExpense
+			}
+		}
+		periodAdjustments := adjustmentsByPeriod[period]
+		slices.SortFunc(periodAdjustments, func(left, right *models.SettlementAdjustment) int {
+			return cmp.Compare(left.MemberID.String(), right.MemberID.String())
+		})
+		for _, adjustment := range periodAdjustments {
+			index, found := memberIndex[adjustment.MemberID.String()]
+			if !found {
+				return nil, domain.ErrInvalidSettlement
+			}
+			inputs[index].MonthlyAdjustmentYen, found = checkedAdd(inputs[index].MonthlyAdjustmentYen, adjustment.AmountYen)
+			if !found {
+				return nil, domain.ErrInvalidSettlement
+			}
+		}
+		results[period], err = domain.CalculateSettlement(inputs)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return results, nil
+}
+
+func CalculatePeriod(ctx context.Context, db bob.Executor, householdID, period string) ([]domain.SettlementAmount, error) {
+	return calculatePeriodAccounting(ctx, db, householdID, period)
+}
+
+func addFundingAmountsFromRows(start, end time.Time, obligations models.FundingObligationSlice, schedules models.FundingScheduleSlice, inputs []domain.SettlementInput, memberIndex map[string]int) error {
+	type fundingKey struct{ memberID, poolID string }
+	type funding struct{ scheduled, paid int64 }
+	amounts := make(map[fundingKey]funding)
+	for _, obligation := range obligations {
+		key := fundingKey{memberID: obligation.MemberID.String(), poolID: obligation.PoolID.String()}
+		amounts[key] = funding{scheduled: obligation.AmountYen, paid: obligation.PaidYen}
 	}
 	slices.SortFunc(schedules, func(left, right *models.FundingSchedule) int {
 		if comparison := cmp.Compare(left.MemberID.String(), right.MemberID.String()); comparison != 0 {
@@ -193,6 +225,9 @@ func addFundingAmounts(ctx context.Context, db bob.Executor, householdUUID gofrs
 	})
 	scheduleAmounts := make(map[fundingKey]int64)
 	for _, schedule := range schedules {
+		if !schedule.Active && !schedule.EndsOn.Valid || !schedule.StartsOn.Before(end) || schedule.EndsOn.Valid && schedule.EndsOn.V.Before(start) {
+			continue
+		}
 		key := fundingKey{memberID: schedule.MemberID.String(), poolID: schedule.PoolID.String()}
 		var ok bool
 		scheduleAmounts[key], ok = checkedAdd(scheduleAmounts[key], schedule.AmountYen)

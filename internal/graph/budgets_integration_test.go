@@ -97,32 +97,32 @@ func TestBudgetConnectionPaginatesOverlappingBudgetsWithinHousehold(t *testing.T
 	}
 	firstEnd := "2026-01-31"
 	secondEnd := "2026-02-28"
-	firstDuplicate := insertBudget(householdID, "食費", "2025-12-01", &firstEnd)
-	secondDuplicate := insertBudget(householdID, "食費", "2026-01-01", &secondEnd)
-	lastMatching := insertBudget(householdID, "交通費", "2026-01-15", nil)
-	insertBudget(householdID, "対象外", "2026-02-01", nil)
-	insertBudget(otherHouseholdID, "世帯外", "2025-12-01", nil)
+	firstDuplicate := insertBudget(householdID, "A duplicate", "2025-12-01", &firstEnd)
+	secondDuplicate := insertBudget(householdID, "A duplicate", "2026-01-01", &secondEnd)
+	lastMatching := insertBudget(householdID, "B matching", "2026-01-15", nil)
+	insertBudget(householdID, "Z excluded", "2026-02-01", nil)
+	insertBudget(otherHouseholdID, "C outside household", "2025-12-01", nil)
 
 	pageSize := 1
 	firstPage, err := query.budgets(ctx, household.ID, "2026-01", nil, nil, &pageSize, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if firstPage.TotalCount != 3 || len(firstPage.Edges) != 1 || firstPage.Edges[0].Node.Name != "食費" || !firstPage.PageInfo.HasNextPage || firstPage.PageInfo.HasPreviousPage {
+	if firstPage.TotalCount != 3 || len(firstPage.Edges) != 1 || firstPage.Edges[0].Node.Name != "A duplicate" || !firstPage.PageInfo.HasNextPage || firstPage.PageInfo.HasPreviousPage {
 		t.Fatalf("unexpected first budget page: %#v", firstPage)
 	}
 	secondPage, err := query.budgets(ctx, household.ID, "2026-01", firstPage.PageInfo.EndCursor, nil, &pageSize, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(secondPage.Edges) != 1 || secondPage.Edges[0].Node.Name != "食費" || !secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage {
+	if len(secondPage.Edges) != 1 || secondPage.Edges[0].Node.Name != "A duplicate" || !secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage {
 		t.Fatalf("unexpected second budget page: %#v", secondPage)
 	}
 	thirdPage, err := query.budgets(ctx, household.ID, "2026-01", secondPage.PageInfo.EndCursor, nil, &pageSize, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(thirdPage.Edges) != 1 || thirdPage.Edges[0].Node.Name != "交通費" || thirdPage.PageInfo.HasNextPage || !thirdPage.PageInfo.HasPreviousPage {
+	if len(thirdPage.Edges) != 1 || thirdPage.Edges[0].Node.Name != "B matching" || thirdPage.PageInfo.HasNextPage || !thirdPage.PageInfo.HasPreviousPage {
 		t.Fatalf("unexpected third budget page: %#v", thirdPage)
 	}
 	firstID, secondID := firstDuplicate.String(), secondDuplicate.String()

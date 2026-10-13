@@ -1,6 +1,11 @@
 package purchase
 
-import "time"
+import (
+	"context"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
 
 type CreateCommand struct {
 	ActorID                    string
@@ -60,5 +65,25 @@ type PostCommand struct {
 }
 
 type PostResult struct {
+	PurchaseID string
+}
+
+type UpdateCommand struct {
+	ActorID            string
+	PurchaseID         string
+	BaseRevision       int64
+	OccurredAt         *time.Time
+	Merchant           *string
+	PaymentAllocations *[]Payment
+	ChangedFields      []string
+}
+
+type UpdateOperations struct {
+	LockAccountingPeriods func(context.Context, pgx.Tx, string, ...string) error
+	ReplacePayments       func(context.Context, pgx.Tx, string, string, []Payment) error
+	SyncAccounting        func(context.Context, pgx.Tx, string) error
+}
+
+type UpdateResult struct {
 	PurchaseID string
 }

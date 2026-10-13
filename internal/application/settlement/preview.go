@@ -103,11 +103,12 @@ func calculateSettlementPreviewWithRules(ctx context.Context, db bob.Executor, h
 	if firstOpen.After(target) {
 		firstOpen = target
 	}
+	periodInputs, err := calculatePeriodsAccounting(ctx, db, householdID, firstOpen, target.AddDate(0, 1, 0))
+	if err != nil {
+		return nil, err
+	}
 	for month := firstOpen; month.Before(target); month = month.AddDate(0, 1, 0) {
-		monthInputs, err := calculatePeriodAccounting(ctx, db, householdID, month.Format("2006-01"))
-		if err != nil {
-			return nil, err
-		}
+		monthInputs := periodInputs[month.Format("2006-01")]
 		for _, line := range monthInputs {
 			value, ok := checkedAdd(carry[line.MemberID], line.AmountDueYen)
 			if !ok {
@@ -116,10 +117,7 @@ func calculateSettlementPreviewWithRules(ctx context.Context, db bob.Executor, h
 			carry[line.MemberID] = value
 		}
 	}
-	current, err := calculatePeriodAccounting(ctx, db, householdID, period)
-	if err != nil {
-		return nil, err
-	}
+	current := periodInputs[period]
 	for index := range current {
 		current[index].CarryYen = carry[current[index].MemberID]
 		amountDue, ok := checkedAdd(current[index].AmountDueYen, current[index].CarryYen)
