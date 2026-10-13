@@ -2487,7 +2487,7 @@ a {
   flex-direction: column;
   flex-shrink: 0;
   width: min(30px, 68%);
-  height: 146px;
+  height: 139px;
   align-items: stretch;
   justify-content: flex-end;
 }
@@ -2502,6 +2502,15 @@ a {
 
 .category-negative {
   flex-direction: column;
+  height: 30px;
+  transform: scaleY(var(--chart-scale));
+  transform-origin: top;
+}
+
+.category-positive {
+  height: 108px;
+  transform: scaleY(var(--chart-scale));
+  transform-origin: bottom;
 }
 
 .category-stack i {
@@ -3924,6 +3933,18 @@ a {
 
   .month-column > b {
     font-size: 7px;
+  }
+
+  .category-stack {
+    height: 107px;
+  }
+
+  .category-positive {
+    height: 84px;
+  }
+
+  .category-negative {
+    height: 22px;
   }
 
   .burden-grid {

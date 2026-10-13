@@ -1,5 +1,5 @@
 import { BarChart3 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   readGraphql,
   type Household,
@@ -654,9 +654,11 @@ export function AnalysisPage({ household }: { household: Household }) {
                     <div className="category-stack">
                       <div
                         className="category-positive"
-                        style={{
-                          height: `${Math.max(1, (positiveTotal / maxCategoryPositive) * 108)}px`,
-                        }}
+                        style={
+                          {
+                            "--chart-scale": positiveTotal / maxCategoryPositive,
+                          } as CSSProperties
+                        }
                       >
                         {positiveSegments.map((segment) => (
                           <i
@@ -669,9 +671,11 @@ export function AnalysisPage({ household }: { household: Household }) {
                       <div className="category-baseline" />
                       <div
                         className="category-negative"
-                        style={{
-                          height: `${Math.max(1, (negativeTotal / maxCategoryNegative) * 30)}px`,
-                        }}
+                        style={
+                          {
+                            "--chart-scale": negativeTotal / maxCategoryNegative,
+                          } as CSSProperties
+                        }
                       >
                         {negativeSegments.map((segment) => (
                           <i
