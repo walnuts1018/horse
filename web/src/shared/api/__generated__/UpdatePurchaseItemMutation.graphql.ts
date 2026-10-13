@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5e68ccdb92ea30f8dff4c3ff03e63b6b>>
+ * @generated SignedSource<<0b66ea941157422f4b2737ef2a2f5cc9>>
  * @lightSyntaxTransform
  */
 
@@ -11,28 +11,28 @@ import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type ProductLearningScope = "ITEM_ONLY" | "MERCHANT_ALIAS" | "VARIANT_NAME" | "%future added value";
 export type UpdatePurchaseItemInput = {
-  allocations?: ReadonlyArray<AllocationInput> | null | undefined;
+  allocations?: ReadonlyArray<UpdatePurchaseItemAllocationInput> | null | undefined;
   amountYen?: any | null | undefined;
   baseRevision: number;
   categoryId?: string | null | undefined;
   itemId: string;
   name?: string | null | undefined;
-  printedUnitPrice?: PrintedUnitPriceInput | null | undefined;
+  printedUnitPrice?: UpdatePurchaseItemPrintedUnitPriceInput | null | undefined;
   productLearning?: ProductLearningScope | null | undefined;
   productVariantId?: string | null | undefined;
-  quantity?: PurchaseQuantityInput | null | undefined;
+  quantity?: UpdatePurchaseItemQuantityInput | null | undefined;
   variantName?: string | null | undefined;
 };
-export type PurchaseQuantityInput = {
+export type UpdatePurchaseItemQuantityInput = {
   denominator: string;
   numerator: string;
   unit: string;
 };
-export type PrintedUnitPriceInput = {
+export type UpdatePurchaseItemPrintedUnitPriceInput = {
   amountYen: any;
-  basis: PurchaseQuantityInput;
+  basis: UpdatePurchaseItemQuantityInput;
 };
-export type AllocationInput = {
+export type UpdatePurchaseItemAllocationInput = {
   poolId: string;
   weight: any;
 };

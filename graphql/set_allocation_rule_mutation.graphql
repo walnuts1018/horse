@@ -11,7 +11,12 @@ type SetAllocationRuleSuccess {
 input SetAllocationRuleInput {
   householdId: ID! @nodeID(of: "Household")
   target: AllocationRuleTargetInput!
-  allocations: [AllocationInput!]!
+  allocations: [SetAllocationRuleItemInput!]!
+}
+
+input SetAllocationRuleItemInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
 }
 
 input AllocationRuleTargetInput @oneOf {

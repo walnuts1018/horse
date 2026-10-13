@@ -14,7 +14,7 @@ input CreatePurchaseInput {
   occurredAt: DateTime!
   merchant: String!
   origin: PurchaseOrigin
-  paymentAllocations: [PurchasePaymentInput!]
+  paymentAllocations: [CreatePurchasePaymentInput!]
   sourceDocumentId: ID
   sourceReference: String
   receiptCandidateId: String
@@ -25,11 +25,32 @@ input CreatePurchaseInput {
 input PurchaseItemInput {
   name: String!
   amountYen: Long!
-  quantity: PurchaseQuantityInput
-  printedUnitPrice: PrintedUnitPriceInput
+  quantity: CreatePurchaseQuantityInput
+  printedUnitPrice: CreatePurchasePrintedUnitPriceInput
   categoryId: ID @nodeID(of: "Category")
   productVariantId: ID @nodeID(of: "ProductVariant")
-  allocations: [AllocationInput!]
+  allocations: [CreatePurchaseAllocationInput!]
+}
+
+input CreatePurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
+}
+
+input CreatePurchaseQuantityInput {
+  numerator: String!
+  denominator: String!
+  unit: String!
+}
+
+input CreatePurchasePrintedUnitPriceInput {
+  amountYen: Long!
+  basis: CreatePurchaseQuantityInput!
+}
+
+input CreatePurchaseAllocationInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
 }
 
 type CreatePurchaseUserError implements MutationError {

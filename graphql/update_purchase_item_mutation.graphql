@@ -13,13 +13,29 @@ input UpdatePurchaseItemInput {
   baseRevision: Int!
   name: String @goField(omittable: true)
   amountYen: Long @goField(omittable: true)
-  quantity: PurchaseQuantityInput @goField(omittable: true)
-  printedUnitPrice: PrintedUnitPriceInput @goField(omittable: true)
+  quantity: UpdatePurchaseItemQuantityInput @goField(omittable: true)
+  printedUnitPrice: UpdatePurchaseItemPrintedUnitPriceInput @goField(omittable: true)
   categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
   productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
   productLearning: ProductLearningScope = ITEM_ONLY
   variantName: String
-  allocations: [AllocationInput!] @goField(omittable: true)
+  allocations: [UpdatePurchaseItemAllocationInput!] @goField(omittable: true)
+}
+
+input UpdatePurchaseItemQuantityInput {
+  numerator: String!
+  denominator: String!
+  unit: String!
+}
+
+input UpdatePurchaseItemPrintedUnitPriceInput {
+  amountYen: Long!
+  basis: UpdatePurchaseItemQuantityInput!
+}
+
+input UpdatePurchaseItemAllocationInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
 }
 
 enum ProductLearningScope {

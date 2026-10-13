@@ -4,8 +4,3 @@ type Allocation {
   weight: Long!
   amountYen: Long
 }
-
-input AllocationInput {
-  poolId: ID! @nodeID(of: "Pool")
-  weight: Long!
-}

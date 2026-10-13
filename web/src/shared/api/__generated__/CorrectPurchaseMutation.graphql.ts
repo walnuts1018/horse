@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3aa5f2308bb5a9305063d170de467769>>
+ * @generated SignedSource<<a88735f0c6a7867a1092c7811395a1c3>>
  * @lightSyntaxTransform
  */
 
@@ -10,20 +10,20 @@
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type CorrectPurchaseInput = {
-  allocations?: ReadonlyArray<AllocationInput> | null | undefined;
+  allocations?: ReadonlyArray<CorrectPurchaseAllocationInput> | null | undefined;
   amountDeltaYen: any;
   householdId: string;
   idempotencyKey: string;
   itemId?: string | null | undefined;
-  paymentAllocations?: ReadonlyArray<PurchasePaymentInput> | null | undefined;
+  paymentAllocations?: ReadonlyArray<CorrectPurchasePaymentInput> | null | undefined;
   purchaseId: string;
   reason: string;
 };
-export type AllocationInput = {
+export type CorrectPurchaseAllocationInput = {
   poolId: string;
   weight: any;
 };
-export type PurchasePaymentInput = {
+export type CorrectPurchasePaymentInput = {
   amountYen: any;
   paymentAccountId: string;
 };

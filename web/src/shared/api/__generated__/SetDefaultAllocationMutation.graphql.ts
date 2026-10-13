@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0e7c8dbebe35df877eabf8c19f7d877b>>
+ * @generated SignedSource<<2a61ec18a1c22bcee670afde883f5bb0>>
  * @lightSyntaxTransform
  */
 
@@ -10,10 +10,10 @@
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type SetDefaultAllocationInput = {
-  allocations: ReadonlyArray<AllocationInput>;
+  allocations: ReadonlyArray<SetDefaultAllocationItemInput>;
   householdId: string;
 };
-export type AllocationInput = {
+export type SetDefaultAllocationItemInput = {
   poolId: string;
   weight: any;
 };

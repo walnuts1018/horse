@@ -16,8 +16,13 @@ input BulkUpdatePurchaseItemsInput {
 input BulkPurchaseItemPatch {
   categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
   productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
-  allocations: [AllocationInput!] @goField(omittable: true)
+  allocations: [BulkUpdatePurchaseItemsAllocationInput!] @goField(omittable: true)
   tagIds: [ID!] @nodeID(of: "Tag") @goField(omittable: true)
+}
+
+input BulkUpdatePurchaseItemsAllocationInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
 }
 
 input PurchaseItemTargetInput {

@@ -15,7 +15,12 @@ input BulkUpdatePurchasesInput {
 input BulkPurchasePatch {
   occurredAt: DateTime @goField(omittable: true)
   merchant: String @goField(omittable: true)
-  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
+  paymentAllocations: [BulkUpdatePurchasePaymentInput!] @goField(omittable: true)
+}
+
+input BulkUpdatePurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
 }
 
 input PurchaseUpdateTargetInput {

@@ -14,9 +14,19 @@ input CorrectPurchaseInput {
   itemId: ID @nodeID(of: "PurchaseItem")
   amountDeltaYen: Long!
   reason: String!
-  allocations: [AllocationInput!]
-  paymentAllocations: [PurchasePaymentInput!]
+  allocations: [CorrectPurchaseAllocationInput!]
+  paymentAllocations: [CorrectPurchasePaymentInput!]
   idempotencyKey: String!
+}
+
+input CorrectPurchaseAllocationInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
+}
+
+input CorrectPurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
 }
 
 type CorrectPurchaseUserError implements MutationError {

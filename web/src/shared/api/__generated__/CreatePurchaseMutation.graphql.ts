@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5b6196c403cf8f479cb9e86752c56dfd>>
+ * @generated SignedSource<<80d57db5ed7e49fba870997ea7e70062>>
  * @lightSyntaxTransform
  */
 
@@ -19,34 +19,34 @@ export type CreatePurchaseInput = {
   merchant: string;
   occurredAt: string;
   origin?: PurchaseOrigin | null | undefined;
-  paymentAllocations?: ReadonlyArray<PurchasePaymentInput> | null | undefined;
+  paymentAllocations?: ReadonlyArray<CreatePurchasePaymentInput> | null | undefined;
   receiptCandidateId?: string | null | undefined;
   sourceDocumentId?: string | null | undefined;
   sourceReference?: string | null | undefined;
 };
-export type PurchasePaymentInput = {
+export type CreatePurchasePaymentInput = {
   amountYen: any;
   paymentAccountId: string;
 };
 export type PurchaseItemInput = {
-  allocations?: ReadonlyArray<AllocationInput> | null | undefined;
+  allocations?: ReadonlyArray<CreatePurchaseAllocationInput> | null | undefined;
   amountYen: any;
   categoryId?: string | null | undefined;
   name: string;
-  printedUnitPrice?: PrintedUnitPriceInput | null | undefined;
+  printedUnitPrice?: CreatePurchasePrintedUnitPriceInput | null | undefined;
   productVariantId?: string | null | undefined;
-  quantity?: PurchaseQuantityInput | null | undefined;
+  quantity?: CreatePurchaseQuantityInput | null | undefined;
 };
-export type PurchaseQuantityInput = {
+export type CreatePurchaseQuantityInput = {
   denominator: string;
   numerator: string;
   unit: string;
 };
-export type PrintedUnitPriceInput = {
+export type CreatePurchasePrintedUnitPriceInput = {
   amountYen: any;
-  basis: PurchaseQuantityInput;
+  basis: CreatePurchaseQuantityInput;
 };
-export type AllocationInput = {
+export type CreatePurchaseAllocationInput = {
   poolId: string;
   weight: any;
 };

@@ -17,7 +17,12 @@ input UpdatePurchaseInput {
 input PurchasePatch {
   occurredAt: DateTime @goField(omittable: true)
   merchant: String @goField(omittable: true)
-  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
+  paymentAllocations: [UpdatePurchasePaymentInput!] @goField(omittable: true)
+}
+
+input UpdatePurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
 }
 
 type UpdatePurchaseUserError implements MutationError {

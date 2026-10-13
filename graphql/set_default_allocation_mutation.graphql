@@ -10,7 +10,12 @@ type SetDefaultAllocationSuccess {
 
 input SetDefaultAllocationInput {
   householdId: ID! @nodeID(of: "Household")
-  allocations: [AllocationInput!]!
+  allocations: [SetDefaultAllocationItemInput!]!
+}
+
+input SetDefaultAllocationItemInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
 }
 
 type SetDefaultAllocationUserError implements MutationError {

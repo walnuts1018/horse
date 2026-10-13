@@ -316,11 +316,6 @@ type Allocation struct {
 	AmountYen *Long  `json:"amountYen,omitempty"`
 }
 
-type AllocationInput struct {
-	PoolID string `json:"poolId"`
-	Weight Long   `json:"weight"`
-}
-
 type AllocationRule struct {
 	ID          string               `json:"id"`
 	HouseholdID string               `json:"householdId"`
@@ -1075,11 +1070,6 @@ type PrintedUnitPrice struct {
 	Basis     *PurchaseQuantity `json:"basis"`
 }
 
-type PrintedUnitPriceInput struct {
-	AmountYen Long                   `json:"amountYen"`
-	Basis     *PurchaseQuantityInput `json:"basis"`
-}
-
 type ProductAlias struct {
 	ID              string `json:"id"`
 	HouseholdID     string `json:"householdId"`
@@ -1269,18 +1259,7 @@ type PurchasePayment struct {
 	AmountYen        Long     `json:"amountYen"`
 }
 
-type PurchasePaymentInput struct {
-	PaymentAccountID string `json:"paymentAccountId"`
-	AmountYen        Long   `json:"amountYen"`
-}
-
 type PurchaseQuantity struct {
-	Numerator   string `json:"numerator"`
-	Denominator string `json:"denominator"`
-	Unit        string `json:"unit"`
-}
-
-type PurchaseQuantityInput struct {
 	Numerator   string `json:"numerator"`
 	Denominator string `json:"denominator"`
 	Unit        string `json:"unit"`

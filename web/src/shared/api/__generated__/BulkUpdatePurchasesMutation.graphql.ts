@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<c15496c69300f4f2fdbb243a5f7fb38c>>
+ * @generated SignedSource<<fbe7603673491edeb5e9d77693a04b79>>
  * @lightSyntaxTransform
  */
 
@@ -20,9 +20,9 @@ export type PurchaseUpdateTargetInput = {
 export type BulkPurchasePatch = {
   merchant?: string | null | undefined;
   occurredAt?: string | null | undefined;
-  paymentAllocations?: ReadonlyArray<PurchasePaymentInput> | null | undefined;
+  paymentAllocations?: ReadonlyArray<BulkUpdatePurchasePaymentInput> | null | undefined;
 };
-export type PurchasePaymentInput = {
+export type BulkUpdatePurchasePaymentInput = {
   amountYen: any;
   paymentAccountId: string;
 };

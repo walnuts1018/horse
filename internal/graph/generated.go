@@ -4870,17 +4870,20 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
 		ec.unmarshalInputAcceptHouseholdInvitationInput,
 		ec.unmarshalInputAccountOpeningBalanceInput,
-		ec.unmarshalInputAllocationInput,
 		ec.unmarshalInputAllocationRuleTargetInput,
 		ec.unmarshalInputArchiveBudgetInput,
 		ec.unmarshalInputArchiveRecurringExpenseInput,
 		ec.unmarshalInputArchiveTagInput,
 		ec.unmarshalInputBulkPurchaseItemPatch,
 		ec.unmarshalInputBulkPurchasePatch,
+		ec.unmarshalInputBulkUpdatePurchaseItemsAllocationInput,
 		ec.unmarshalInputBulkUpdatePurchaseItemsInput,
+		ec.unmarshalInputBulkUpdatePurchasePaymentInput,
 		ec.unmarshalInputBulkUpdatePurchasesInput,
 		ec.unmarshalInputClosePeriodInput,
+		ec.unmarshalInputCorrectPurchaseAllocationInput,
 		ec.unmarshalInputCorrectPurchaseInput,
+		ec.unmarshalInputCorrectPurchasePaymentInput,
 		ec.unmarshalInputCreateAccountInput,
 		ec.unmarshalInputCreateBudgetInput,
 		ec.unmarshalInputCreateCategoryInput,
@@ -4889,17 +4892,18 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputCreatePoolInput,
 		ec.unmarshalInputCreateProductConceptInput,
 		ec.unmarshalInputCreateProductVariantInput,
+		ec.unmarshalInputCreatePurchaseAllocationInput,
 		ec.unmarshalInputCreatePurchaseInput,
+		ec.unmarshalInputCreatePurchasePaymentInput,
+		ec.unmarshalInputCreatePurchasePrintedUnitPriceInput,
+		ec.unmarshalInputCreatePurchaseQuantityInput,
 		ec.unmarshalInputCreateRecurringExpenseInput,
 		ec.unmarshalInputCreateTagInput,
 		ec.unmarshalInputPoolFundingShareInput,
 		ec.unmarshalInputPostPurchaseInput,
-		ec.unmarshalInputPrintedUnitPriceInput,
 		ec.unmarshalInputPurchaseItemInput,
 		ec.unmarshalInputPurchaseItemTargetInput,
 		ec.unmarshalInputPurchasePatch,
-		ec.unmarshalInputPurchasePaymentInput,
-		ec.unmarshalInputPurchaseQuantityInput,
 		ec.unmarshalInputPurchaseUpdateTargetInput,
 		ec.unmarshalInputRecordAccountMovementInput,
 		ec.unmarshalInputRecordExternalIncomeInput,
@@ -4908,14 +4912,20 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputRecordTransferInput,
 		ec.unmarshalInputRevokeHouseholdInvitationInput,
 		ec.unmarshalInputSetAllocationRuleInput,
+		ec.unmarshalInputSetAllocationRuleItemInput,
 		ec.unmarshalInputSetCategoryArchivedInput,
 		ec.unmarshalInputSetDefaultAllocationInput,
+		ec.unmarshalInputSetDefaultAllocationItemInput,
 		ec.unmarshalInputSetFundingScheduleInput,
 		ec.unmarshalInputSetPoolFundingRuleInput,
 		ec.unmarshalInputSetProductAliasInput,
 		ec.unmarshalInputUpdateBudgetInput,
 		ec.unmarshalInputUpdatePurchaseInput,
+		ec.unmarshalInputUpdatePurchaseItemAllocationInput,
 		ec.unmarshalInputUpdatePurchaseItemInput,
+		ec.unmarshalInputUpdatePurchaseItemPrintedUnitPriceInput,
+		ec.unmarshalInputUpdatePurchaseItemQuantityInput,
+		ec.unmarshalInputUpdatePurchasePaymentInput,
 		ec.unmarshalInputUpdateRecurringExpenseInput,
 		ec.unmarshalInputUpdateTagInput,
 	)
@@ -5150,10 +5160,6 @@ extend type Query {
   amountYen: Long
 }
 
-input AllocationInput {
-  poolId: ID! @nodeID(of: "Pool")
-  weight: Long!
-}
 `, BuiltIn: false},
 	{Name: "../../graphql/allocation_rule.graphql", Input: `interface AllocationRuleTarget {
   name: String!
@@ -5285,8 +5291,13 @@ input BulkUpdatePurchaseItemsInput {
 input BulkPurchaseItemPatch {
   categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
   productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
-  allocations: [AllocationInput!] @goField(omittable: true)
+  allocations: [BulkUpdatePurchaseItemsAllocationInput!] @goField(omittable: true)
   tagIds: [ID!] @nodeID(of: "Tag") @goField(omittable: true)
+}
+
+input BulkUpdatePurchaseItemsAllocationInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
 }
 
 input PurchaseItemTargetInput {
@@ -5316,7 +5327,12 @@ input BulkUpdatePurchasesInput {
 input BulkPurchasePatch {
   occurredAt: DateTime @goField(omittable: true)
   merchant: String @goField(omittable: true)
-  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
+  paymentAllocations: [BulkUpdatePurchasePaymentInput!] @goField(omittable: true)
+}
+
+input BulkUpdatePurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
 }
 
 input PurchaseUpdateTargetInput {
@@ -5374,9 +5390,19 @@ input CorrectPurchaseInput {
   itemId: ID @nodeID(of: "PurchaseItem")
   amountDeltaYen: Long!
   reason: String!
-  allocations: [AllocationInput!]
-  paymentAllocations: [PurchasePaymentInput!]
+  allocations: [CorrectPurchaseAllocationInput!]
+  paymentAllocations: [CorrectPurchasePaymentInput!]
   idempotencyKey: String!
+}
+
+input CorrectPurchaseAllocationInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
+}
+
+input CorrectPurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
 }
 
 type CorrectPurchaseUserError implements MutationError {
@@ -5584,7 +5610,7 @@ input CreatePurchaseInput {
   occurredAt: DateTime!
   merchant: String!
   origin: PurchaseOrigin
-  paymentAllocations: [PurchasePaymentInput!]
+  paymentAllocations: [CreatePurchasePaymentInput!]
   sourceDocumentId: ID
   sourceReference: String
   receiptCandidateId: String
@@ -5595,11 +5621,32 @@ input CreatePurchaseInput {
 input PurchaseItemInput {
   name: String!
   amountYen: Long!
-  quantity: PurchaseQuantityInput
-  printedUnitPrice: PrintedUnitPriceInput
+  quantity: CreatePurchaseQuantityInput
+  printedUnitPrice: CreatePurchasePrintedUnitPriceInput
   categoryId: ID @nodeID(of: "Category")
   productVariantId: ID @nodeID(of: "ProductVariant")
-  allocations: [AllocationInput!]
+  allocations: [CreatePurchaseAllocationInput!]
+}
+
+input CreatePurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
+}
+
+input CreatePurchaseQuantityInput {
+  numerator: String!
+  denominator: String!
+  unit: String!
+}
+
+input CreatePurchasePrintedUnitPriceInput {
+  amountYen: Long!
+  basis: CreatePurchaseQuantityInput!
+}
+
+input CreatePurchaseAllocationInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
 }
 
 type CreatePurchaseUserError implements MutationError {
@@ -6028,11 +6075,6 @@ type PurchasePayment {
   amountYen: Long!
 }
 
-input PurchasePaymentInput {
-  paymentAccountId: ID! @nodeID(of: "Account")
-  amountYen: Long!
-}
-
 type PurchaseEdge {
   cursor: String!
   node: Purchase!
@@ -6084,20 +6126,9 @@ type PurchaseQuantity {
   unit: String!
 }
 
-input PurchaseQuantityInput {
-  numerator: String!
-  denominator: String!
-  unit: String!
-}
-
 type PrintedUnitPrice {
   amountYen: Long!
   basis: PurchaseQuantity!
-}
-
-input PrintedUnitPriceInput {
-  amountYen: Long!
-  basis: PurchaseQuantityInput!
 }
 
 type EffectiveUnitPrice {
@@ -6397,7 +6428,12 @@ type SetAllocationRuleSuccess {
 input SetAllocationRuleInput {
   householdId: ID! @nodeID(of: "Household")
   target: AllocationRuleTargetInput!
-  allocations: [AllocationInput!]!
+  allocations: [SetAllocationRuleItemInput!]!
+}
+
+input SetAllocationRuleItemInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
 }
 
 input AllocationRuleTargetInput @oneOf {
@@ -6444,7 +6480,12 @@ type SetDefaultAllocationSuccess {
 
 input SetDefaultAllocationInput {
   householdId: ID! @nodeID(of: "Household")
-  allocations: [AllocationInput!]!
+  allocations: [SetDefaultAllocationItemInput!]!
+}
+
+input SetDefaultAllocationItemInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
 }
 
 type SetDefaultAllocationUserError implements MutationError {
@@ -6646,13 +6687,29 @@ input UpdatePurchaseItemInput {
   baseRevision: Int!
   name: String @goField(omittable: true)
   amountYen: Long @goField(omittable: true)
-  quantity: PurchaseQuantityInput @goField(omittable: true)
-  printedUnitPrice: PrintedUnitPriceInput @goField(omittable: true)
+  quantity: UpdatePurchaseItemQuantityInput @goField(omittable: true)
+  printedUnitPrice: UpdatePurchaseItemPrintedUnitPriceInput @goField(omittable: true)
   categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
   productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
   productLearning: ProductLearningScope = ITEM_ONLY
   variantName: String
-  allocations: [AllocationInput!] @goField(omittable: true)
+  allocations: [UpdatePurchaseItemAllocationInput!] @goField(omittable: true)
+}
+
+input UpdatePurchaseItemQuantityInput {
+  numerator: String!
+  denominator: String!
+  unit: String!
+}
+
+input UpdatePurchaseItemPrintedUnitPriceInput {
+  amountYen: Long!
+  basis: UpdatePurchaseItemQuantityInput!
+}
+
+input UpdatePurchaseItemAllocationInput {
+  poolId: ID! @nodeID(of: "Pool")
+  weight: Long!
 }
 
 enum ProductLearningScope {
@@ -6685,7 +6742,12 @@ input UpdatePurchaseInput {
 input PurchasePatch {
   occurredAt: DateTime @goField(omittable: true)
   merchant: String @goField(omittable: true)
-  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
+  paymentAllocations: [UpdatePurchasePaymentInput!] @goField(omittable: true)
+}
+
+input UpdatePurchasePaymentInput {
+  paymentAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
 }
 
 type UpdatePurchaseUserError implements MutationError {
@@ -25855,63 +25917,6 @@ func (ec *executionContext) unmarshalInputAccountOpeningBalanceInput(ctx context
 	return it, nil
 }
 
-func (ec *executionContext) unmarshalInputAllocationInput(ctx context.Context, obj any) (model.AllocationInput, error) {
-	var it model.AllocationInput
-	if obj == nil {
-		return it, nil
-	}
-
-	asMap := map[string]any{}
-	for k, v := range obj.(map[string]any) {
-		asMap[k] = v
-	}
-
-	fieldsInOrder := [...]string{"poolId", "weight"}
-	for _, k := range fieldsInOrder {
-		v, ok := asMap[k]
-		if !ok {
-			continue
-		}
-		switch k {
-		case "poolId":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("poolId"))
-			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
-
-			directive1 := func(ctx context.Context) (any, error) {
-				of, err := ec.unmarshalNString2string(ctx, "Pool")
-				if err != nil {
-					var zeroVal string
-					return zeroVal, err
-				}
-				if ec.Directives.NodeID == nil {
-					var zeroVal string
-					return zeroVal, errors.New("directive nodeID is not implemented")
-				}
-				return ec.Directives.NodeID(ctx, obj, directive0, of)
-			}
-
-			tmp, err := directive1(ctx)
-			if err != nil {
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-			if data, ok := tmp.(string); ok {
-				it.PoolID = data
-			} else {
-				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-		case "weight":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("weight"))
-			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.Weight = data
-		}
-	}
-	return it, nil
-}
-
 func (ec *executionContext) unmarshalInputAllocationRuleTargetInput(ctx context.Context, obj any) (model.AllocationRuleTargetInput, error) {
 	var it model.AllocationRuleTargetInput
 	if obj == nil {
@@ -26299,7 +26304,7 @@ func (ec *executionContext) unmarshalInputBulkPurchaseItemPatch(ctx context.Cont
 			}
 		case "allocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("allocations"))
-			data, err := ec.unmarshalOAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
+			data, err := ec.unmarshalOBulkUpdatePurchaseItemsAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -26372,11 +26377,68 @@ func (ec *executionContext) unmarshalInputBulkPurchasePatch(ctx context.Context,
 			it.Merchant = graphql.OmittableOf(data)
 		case "paymentAllocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAllocations"))
-			data, err := ec.unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
+			data, err := ec.unmarshalOBulkUpdatePurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.PaymentAllocations = graphql.OmittableOf(data)
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputBulkUpdatePurchaseItemsAllocationInput(ctx context.Context, obj any) (model.AllocationInput, error) {
+	var it model.AllocationInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"poolId", "weight"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "poolId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("poolId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Pool")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PoolID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "weight":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("weight"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Weight = data
 		}
 	}
 	return it, nil
@@ -26414,6 +26476,63 @@ func (ec *executionContext) unmarshalInputBulkUpdatePurchaseItemsInput(ctx conte
 				return it, err
 			}
 			it.Patch = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputBulkUpdatePurchasePaymentInput(ctx context.Context, obj any) (model.PurchasePaymentInput, error) {
+	var it model.PurchasePaymentInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"paymentAccountId", "amountYen"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "paymentAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PaymentAccountID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "amountYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AmountYen = data
 		}
 	}
 	return it, nil
@@ -26508,6 +26627,63 @@ func (ec *executionContext) unmarshalInputClosePeriodInput(ctx context.Context, 
 				return it, err
 			}
 			it.ExpectedRevision = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputCorrectPurchaseAllocationInput(ctx context.Context, obj any) (model.AllocationInput, error) {
+	var it model.AllocationInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"poolId", "weight"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "poolId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("poolId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Pool")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PoolID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "weight":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("weight"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Weight = data
 		}
 	}
 	return it, nil
@@ -26630,14 +26806,14 @@ func (ec *executionContext) unmarshalInputCorrectPurchaseInput(ctx context.Conte
 			it.Reason = data
 		case "allocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("allocations"))
-			data, err := ec.unmarshalOAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
+			data, err := ec.unmarshalOCorrectPurchaseAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.Allocations = data
 		case "paymentAllocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAllocations"))
-			data, err := ec.unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
+			data, err := ec.unmarshalOCorrectPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -26649,6 +26825,63 @@ func (ec *executionContext) unmarshalInputCorrectPurchaseInput(ctx context.Conte
 				return it, err
 			}
 			it.IdempotencyKey = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputCorrectPurchasePaymentInput(ctx context.Context, obj any) (model.PurchasePaymentInput, error) {
+	var it model.PurchasePaymentInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"paymentAccountId", "amountYen"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "paymentAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PaymentAccountID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "amountYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AmountYen = data
 		}
 	}
 	return it, nil
@@ -27296,6 +27529,63 @@ func (ec *executionContext) unmarshalInputCreateProductVariantInput(ctx context.
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputCreatePurchaseAllocationInput(ctx context.Context, obj any) (model.AllocationInput, error) {
+	var it model.AllocationInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"poolId", "weight"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "poolId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("poolId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Pool")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PoolID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "weight":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("weight"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Weight = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputCreatePurchaseInput(ctx context.Context, obj any) (model.CreatePurchaseInput, error) {
 	var it model.CreatePurchaseInput
 	if obj == nil {
@@ -27371,7 +27661,7 @@ func (ec *executionContext) unmarshalInputCreatePurchaseInput(ctx context.Contex
 			it.Origin = data
 		case "paymentAllocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAllocations"))
-			data, err := ec.unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
+			data, err := ec.unmarshalOCreatePurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -27411,6 +27701,144 @@ func (ec *executionContext) unmarshalInputCreatePurchaseInput(ctx context.Contex
 				return it, err
 			}
 			it.Items = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputCreatePurchasePaymentInput(ctx context.Context, obj any) (model.PurchasePaymentInput, error) {
+	var it model.PurchasePaymentInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"paymentAccountId", "amountYen"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "paymentAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PaymentAccountID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "amountYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AmountYen = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputCreatePurchasePrintedUnitPriceInput(ctx context.Context, obj any) (model.PrintedUnitPriceInput, error) {
+	var it model.PrintedUnitPriceInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"amountYen", "basis"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "amountYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AmountYen = data
+		case "basis":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("basis"))
+			data, err := ec.unmarshalNCreatePurchaseQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Basis = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputCreatePurchaseQuantityInput(ctx context.Context, obj any) (model.PurchaseQuantityInput, error) {
+	var it model.PurchaseQuantityInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"numerator", "denominator", "unit"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "numerator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("numerator"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Numerator = data
+		case "denominator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("denominator"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Denominator = data
+		case "unit":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("unit"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Unit = data
 		}
 	}
 	return it, nil
@@ -27751,43 +28179,6 @@ func (ec *executionContext) unmarshalInputPostPurchaseInput(ctx context.Context,
 	return it, nil
 }
 
-func (ec *executionContext) unmarshalInputPrintedUnitPriceInput(ctx context.Context, obj any) (model.PrintedUnitPriceInput, error) {
-	var it model.PrintedUnitPriceInput
-	if obj == nil {
-		return it, nil
-	}
-
-	asMap := map[string]any{}
-	for k, v := range obj.(map[string]any) {
-		asMap[k] = v
-	}
-
-	fieldsInOrder := [...]string{"amountYen", "basis"}
-	for _, k := range fieldsInOrder {
-		v, ok := asMap[k]
-		if !ok {
-			continue
-		}
-		switch k {
-		case "amountYen":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
-			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.AmountYen = data
-		case "basis":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("basis"))
-			data, err := ec.unmarshalNPurchaseQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.Basis = data
-		}
-	}
-	return it, nil
-}
-
 func (ec *executionContext) unmarshalInputPurchaseItemInput(ctx context.Context, obj any) (model.PurchaseItemInput, error) {
 	var it model.PurchaseItemInput
 	if obj == nil {
@@ -27822,14 +28213,14 @@ func (ec *executionContext) unmarshalInputPurchaseItemInput(ctx context.Context,
 			it.AmountYen = data
 		case "quantity":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("quantity"))
-			data, err := ec.unmarshalOPurchaseQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx, v)
+			data, err := ec.unmarshalOCreatePurchaseQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.Quantity = data
 		case "printedUnitPrice":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("printedUnitPrice"))
-			data, err := ec.unmarshalOPrintedUnitPriceInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPrintedUnitPriceInput(ctx, v)
+			data, err := ec.unmarshalOCreatePurchasePrintedUnitPriceInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPrintedUnitPriceInput(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -27894,7 +28285,7 @@ func (ec *executionContext) unmarshalInputPurchaseItemInput(ctx context.Context,
 			}
 		case "allocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("allocations"))
-			data, err := ec.unmarshalOAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
+			data, err := ec.unmarshalOCreatePurchaseAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -27995,112 +28386,11 @@ func (ec *executionContext) unmarshalInputPurchasePatch(ctx context.Context, obj
 			it.Merchant = graphql.OmittableOf(data)
 		case "paymentAllocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAllocations"))
-			data, err := ec.unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
+			data, err := ec.unmarshalOUpdatePurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.PaymentAllocations = graphql.OmittableOf(data)
-		}
-	}
-	return it, nil
-}
-
-func (ec *executionContext) unmarshalInputPurchasePaymentInput(ctx context.Context, obj any) (model.PurchasePaymentInput, error) {
-	var it model.PurchasePaymentInput
-	if obj == nil {
-		return it, nil
-	}
-
-	asMap := map[string]any{}
-	for k, v := range obj.(map[string]any) {
-		asMap[k] = v
-	}
-
-	fieldsInOrder := [...]string{"paymentAccountId", "amountYen"}
-	for _, k := range fieldsInOrder {
-		v, ok := asMap[k]
-		if !ok {
-			continue
-		}
-		switch k {
-		case "paymentAccountId":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
-			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
-
-			directive1 := func(ctx context.Context) (any, error) {
-				of, err := ec.unmarshalNString2string(ctx, "Account")
-				if err != nil {
-					var zeroVal string
-					return zeroVal, err
-				}
-				if ec.Directives.NodeID == nil {
-					var zeroVal string
-					return zeroVal, errors.New("directive nodeID is not implemented")
-				}
-				return ec.Directives.NodeID(ctx, obj, directive0, of)
-			}
-
-			tmp, err := directive1(ctx)
-			if err != nil {
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-			if data, ok := tmp.(string); ok {
-				it.PaymentAccountID = data
-			} else {
-				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-		case "amountYen":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
-			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.AmountYen = data
-		}
-	}
-	return it, nil
-}
-
-func (ec *executionContext) unmarshalInputPurchaseQuantityInput(ctx context.Context, obj any) (model.PurchaseQuantityInput, error) {
-	var it model.PurchaseQuantityInput
-	if obj == nil {
-		return it, nil
-	}
-
-	asMap := map[string]any{}
-	for k, v := range obj.(map[string]any) {
-		asMap[k] = v
-	}
-
-	fieldsInOrder := [...]string{"numerator", "denominator", "unit"}
-	for _, k := range fieldsInOrder {
-		v, ok := asMap[k]
-		if !ok {
-			continue
-		}
-		switch k {
-		case "numerator":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("numerator"))
-			data, err := ec.unmarshalNString2string(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.Numerator = data
-		case "denominator":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("denominator"))
-			data, err := ec.unmarshalNString2string(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.Denominator = data
-		case "unit":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("unit"))
-			data, err := ec.unmarshalNString2string(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.Unit = data
 		}
 	}
 	return it, nil
@@ -29142,11 +29432,68 @@ func (ec *executionContext) unmarshalInputSetAllocationRuleInput(ctx context.Con
 			it.Target = data
 		case "allocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("allocations"))
-			data, err := ec.unmarshalNAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
+			data, err := ec.unmarshalNSetAllocationRuleItemInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.Allocations = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputSetAllocationRuleItemInput(ctx context.Context, obj any) (model.AllocationInput, error) {
+	var it model.AllocationInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"poolId", "weight"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "poolId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("poolId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Pool")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PoolID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "weight":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("weight"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Weight = data
 		}
 	}
 	return it, nil
@@ -29256,11 +29603,68 @@ func (ec *executionContext) unmarshalInputSetDefaultAllocationInput(ctx context.
 			}
 		case "allocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("allocations"))
-			data, err := ec.unmarshalNAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
+			data, err := ec.unmarshalNSetDefaultAllocationItemInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.Allocations = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputSetDefaultAllocationItemInput(ctx context.Context, obj any) (model.AllocationInput, error) {
+	var it model.AllocationInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"poolId", "weight"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "poolId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("poolId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Pool")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PoolID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "weight":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("weight"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Weight = data
 		}
 	}
 	return it, nil
@@ -29821,6 +30225,63 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseInput(ctx context.Contex
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputUpdatePurchaseItemAllocationInput(ctx context.Context, obj any) (model.AllocationInput, error) {
+	var it model.AllocationInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"poolId", "weight"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "poolId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("poolId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Pool")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PoolID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "weight":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("weight"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Weight = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputUpdatePurchaseItemInput(ctx context.Context, obj any) (model.UpdatePurchaseItemInput, error) {
 	var it model.UpdatePurchaseItemInput
 	if obj == nil {
@@ -29893,14 +30354,14 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseItemInput(ctx context.Co
 			it.AmountYen = graphql.OmittableOf(data)
 		case "quantity":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("quantity"))
-			data, err := ec.unmarshalOPurchaseQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx, v)
+			data, err := ec.unmarshalOUpdatePurchaseItemQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.Quantity = graphql.OmittableOf(data)
 		case "printedUnitPrice":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("printedUnitPrice"))
-			data, err := ec.unmarshalOPrintedUnitPriceInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPrintedUnitPriceInput(ctx, v)
+			data, err := ec.unmarshalOUpdatePurchaseItemPrintedUnitPriceInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPrintedUnitPriceInput(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -29979,11 +30440,149 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseItemInput(ctx context.Co
 			it.VariantName = data
 		case "allocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("allocations"))
-			data, err := ec.unmarshalOAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
+			data, err := ec.unmarshalOUpdatePurchaseItemAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.Allocations = graphql.OmittableOf(data)
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputUpdatePurchaseItemPrintedUnitPriceInput(ctx context.Context, obj any) (model.PrintedUnitPriceInput, error) {
+	var it model.PrintedUnitPriceInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"amountYen", "basis"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "amountYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AmountYen = data
+		case "basis":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("basis"))
+			data, err := ec.unmarshalNUpdatePurchaseItemQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Basis = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputUpdatePurchaseItemQuantityInput(ctx context.Context, obj any) (model.PurchaseQuantityInput, error) {
+	var it model.PurchaseQuantityInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"numerator", "denominator", "unit"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "numerator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("numerator"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Numerator = data
+		case "denominator":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("denominator"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Denominator = data
+		case "unit":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("unit"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Unit = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputUpdatePurchasePaymentInput(ctx context.Context, obj any) (model.PurchasePaymentInput, error) {
+	var it model.PurchasePaymentInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"paymentAccountId", "amountYen"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "paymentAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PaymentAccountID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "amountYen":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
+			data, err := ec.unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AmountYen = data
 		}
 	}
 	return it, nil
@@ -42719,25 +43318,6 @@ func (ec *executionContext) marshalNAllocation2ᚖgithubᚗcomᚋwalnuts1018ᚋh
 	return ec._Allocation(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx context.Context, v any) ([]*model.AllocationInput, error) {
-	vSlice := graphql.CoerceList(v)
-	var err error
-	res := make([]*model.AllocationInput, len(vSlice))
-	for i := range vSlice {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx, vSlice[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return res, nil
-}
-
-func (ec *executionContext) unmarshalNAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx context.Context, v any) (*model.AllocationInput, error) {
-	res, err := ec.unmarshalInputAllocationInput(ctx, v)
-	return &res, graphql.ErrorOnPath(ctx, err)
-}
-
 func (ec *executionContext) marshalNAllocationRule2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRule(ctx context.Context, sel ast.SelectionSet, v *model.AllocationRule) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -42896,6 +43476,11 @@ func (ec *executionContext) unmarshalNBulkPurchasePatch2ᚖgithubᚗcomᚋwalnut
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNBulkUpdatePurchaseItemsAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx context.Context, v any) (*model.AllocationInput, error) {
+	res, err := ec.unmarshalInputBulkUpdatePurchaseItemsAllocationInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNBulkUpdatePurchaseItemsInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchaseItemsInput(ctx context.Context, v any) (model.BulkUpdatePurchaseItemsInput, error) {
 	res, err := ec.unmarshalInputBulkUpdatePurchaseItemsInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -42909,6 +43494,11 @@ func (ec *executionContext) marshalNBulkUpdatePurchaseItemsResult2githubᚗcom�
 		return graphql.Null
 	}
 	return ec._BulkUpdatePurchaseItemsResult(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNBulkUpdatePurchasePaymentInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInput(ctx context.Context, v any) (*model.PurchasePaymentInput, error) {
+	res, err := ec.unmarshalInputBulkUpdatePurchasePaymentInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalNBulkUpdatePurchasesInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesInput(ctx context.Context, v any) (model.BulkUpdatePurchasesInput, error) {
@@ -42967,9 +43557,19 @@ func (ec *executionContext) marshalNClosePeriodResult2githubᚗcomᚋwalnuts1018
 	return ec._ClosePeriodResult(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNCorrectPurchaseAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx context.Context, v any) (*model.AllocationInput, error) {
+	res, err := ec.unmarshalInputCorrectPurchaseAllocationInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNCorrectPurchaseInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCorrectPurchaseInput(ctx context.Context, v any) (model.CorrectPurchaseInput, error) {
 	res, err := ec.unmarshalInputCorrectPurchaseInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNCorrectPurchasePaymentInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInput(ctx context.Context, v any) (*model.PurchasePaymentInput, error) {
+	res, err := ec.unmarshalInputCorrectPurchasePaymentInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalNCorrectPurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCorrectPurchaseResult(ctx context.Context, sel ast.SelectionSet, v model.CorrectPurchaseResult) graphql.Marshaler {
@@ -43102,9 +43702,24 @@ func (ec *executionContext) marshalNCreateProductVariantResult2githubᚗcomᚋwa
 	return ec._CreateProductVariantResult(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNCreatePurchaseAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx context.Context, v any) (*model.AllocationInput, error) {
+	res, err := ec.unmarshalInputCreatePurchaseAllocationInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNCreatePurchaseInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatePurchaseInput(ctx context.Context, v any) (model.CreatePurchaseInput, error) {
 	res, err := ec.unmarshalInputCreatePurchaseInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNCreatePurchasePaymentInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInput(ctx context.Context, v any) (*model.PurchasePaymentInput, error) {
+	res, err := ec.unmarshalInputCreatePurchasePaymentInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNCreatePurchaseQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx context.Context, v any) (*model.PurchaseQuantityInput, error) {
+	res, err := ec.unmarshalInputCreatePurchaseQuantityInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalNCreatePurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatePurchaseResult(ctx context.Context, sel ast.SelectionSet, v model.CreatePurchaseResult) graphql.Marshaler {
@@ -44089,11 +44704,6 @@ func (ec *executionContext) marshalNPurchasePayment2ᚖgithubᚗcomᚋwalnuts101
 	return ec._PurchasePayment(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNPurchasePaymentInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInput(ctx context.Context, v any) (*model.PurchasePaymentInput, error) {
-	res, err := ec.unmarshalInputPurchasePaymentInput(ctx, v)
-	return &res, graphql.ErrorOnPath(ctx, err)
-}
-
 func (ec *executionContext) marshalNPurchaseQuantity2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantity(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseQuantity) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -44102,11 +44712,6 @@ func (ec *executionContext) marshalNPurchaseQuantity2ᚖgithubᚗcomᚋwalnuts10
 		return graphql.Null
 	}
 	return ec._PurchaseQuantity(ctx, sel, v)
-}
-
-func (ec *executionContext) unmarshalNPurchaseQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx context.Context, v any) (*model.PurchaseQuantityInput, error) {
-	res, err := ec.unmarshalInputPurchaseQuantityInput(ctx, v)
-	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalNPurchaseStatus2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseStatus(ctx context.Context, v any) (model.PurchaseStatus, error) {
@@ -44289,6 +44894,25 @@ func (ec *executionContext) unmarshalNSetAllocationRuleInput2githubᚗcomᚋwaln
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNSetAllocationRuleItemInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx context.Context, v any) ([]*model.AllocationInput, error) {
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.AllocationInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNSetAllocationRuleItemInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalNSetAllocationRuleItemInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx context.Context, v any) (*model.AllocationInput, error) {
+	res, err := ec.unmarshalInputSetAllocationRuleItemInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) marshalNSetAllocationRuleResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetAllocationRuleResult(ctx context.Context, sel ast.SelectionSet, v model.SetAllocationRuleResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -44317,6 +44941,25 @@ func (ec *executionContext) marshalNSetCategoryArchivedResult2githubᚗcomᚋwal
 func (ec *executionContext) unmarshalNSetDefaultAllocationInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetDefaultAllocationInput(ctx context.Context, v any) (model.SetDefaultAllocationInput, error) {
 	res, err := ec.unmarshalInputSetDefaultAllocationInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNSetDefaultAllocationItemInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx context.Context, v any) ([]*model.AllocationInput, error) {
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.AllocationInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNSetDefaultAllocationItemInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalNSetDefaultAllocationItemInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx context.Context, v any) (*model.AllocationInput, error) {
+	res, err := ec.unmarshalInputSetDefaultAllocationItemInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalNSetDefaultAllocationResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetDefaultAllocationResult(ctx context.Context, sel ast.SelectionSet, v model.SetDefaultAllocationResult) graphql.Marshaler {
@@ -44627,9 +45270,19 @@ func (ec *executionContext) unmarshalNUpdatePurchaseInput2githubᚗcomᚋwalnuts
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNUpdatePurchaseItemAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx context.Context, v any) (*model.AllocationInput, error) {
+	res, err := ec.unmarshalInputUpdatePurchaseItemAllocationInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNUpdatePurchaseItemInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseItemInput(ctx context.Context, v any) (model.UpdatePurchaseItemInput, error) {
 	res, err := ec.unmarshalInputUpdatePurchaseItemInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNUpdatePurchaseItemQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx context.Context, v any) (*model.PurchaseQuantityInput, error) {
+	res, err := ec.unmarshalInputUpdatePurchaseItemQuantityInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalNUpdatePurchaseItemResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseItemResult(ctx context.Context, sel ast.SelectionSet, v model.UpdatePurchaseItemResult) graphql.Marshaler {
@@ -44640,6 +45293,11 @@ func (ec *executionContext) marshalNUpdatePurchaseItemResult2githubᚗcomᚋwaln
 		return graphql.Null
 	}
 	return ec._UpdatePurchaseItemResult(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNUpdatePurchasePaymentInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInput(ctx context.Context, v any) (*model.PurchasePaymentInput, error) {
+	res, err := ec.unmarshalInputUpdatePurchasePaymentInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalNUpdatePurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseResult(ctx context.Context, sel ast.SelectionSet, v model.UpdatePurchaseResult) graphql.Marshaler {
@@ -44850,23 +45508,6 @@ func (ec *executionContext) unmarshalOAccountOpeningBalanceInput2ᚖgithubᚗcom
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) unmarshalOAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx context.Context, v any) ([]*model.AllocationInput, error) {
-	if v == nil {
-		return nil, nil
-	}
-	vSlice := graphql.CoerceList(v)
-	var err error
-	res := make([]*model.AllocationInput, len(vSlice))
-	for i := range vSlice {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx, vSlice[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return res, nil
-}
-
 func (ec *executionContext) unmarshalOBoolean2bool(ctx context.Context, v any) (bool, error) {
 	res, err := graphql.UnmarshalBoolean(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -44895,6 +45536,124 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	_ = ctx
 	res := graphql.MarshalBoolean(*v)
 	return res
+}
+
+func (ec *executionContext) unmarshalOBulkUpdatePurchaseItemsAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx context.Context, v any) ([]*model.AllocationInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.AllocationInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNBulkUpdatePurchaseItemsAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalOBulkUpdatePurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx context.Context, v any) ([]*model.PurchasePaymentInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.PurchasePaymentInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNBulkUpdatePurchasePaymentInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalOCorrectPurchaseAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx context.Context, v any) ([]*model.AllocationInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.AllocationInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNCorrectPurchaseAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalOCorrectPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx context.Context, v any) ([]*model.PurchasePaymentInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.PurchasePaymentInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNCorrectPurchasePaymentInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalOCreatePurchaseAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx context.Context, v any) ([]*model.AllocationInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.AllocationInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNCreatePurchaseAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalOCreatePurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx context.Context, v any) ([]*model.PurchasePaymentInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.PurchasePaymentInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNCreatePurchasePaymentInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalOCreatePurchasePrintedUnitPriceInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPrintedUnitPriceInput(ctx context.Context, v any) (*model.PrintedUnitPriceInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputCreatePurchasePrintedUnitPriceInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalOCreatePurchaseQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx context.Context, v any) (*model.PurchaseQuantityInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputCreatePurchaseQuantityInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx context.Context, v any) (*model.Date, error) {
@@ -45051,14 +45810,6 @@ func (ec *executionContext) marshalOPrintedUnitPrice2ᚖgithubᚗcomᚋwalnuts10
 	return ec._PrintedUnitPrice(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOPrintedUnitPriceInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPrintedUnitPriceInput(ctx context.Context, v any) (*model.PrintedUnitPriceInput, error) {
-	if v == nil {
-		return nil, nil
-	}
-	res, err := ec.unmarshalInputPrintedUnitPriceInput(ctx, v)
-	return &res, graphql.ErrorOnPath(ctx, err)
-}
-
 func (ec *executionContext) unmarshalOProductLearningScope2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐProductLearningScope(ctx context.Context, v any) (*model.ProductLearningScope, error) {
 	if v == nil {
 		return nil, nil
@@ -45091,36 +45842,11 @@ func (ec *executionContext) marshalOPurchaseOrigin2ᚖgithubᚗcomᚋwalnuts1018
 	return v
 }
 
-func (ec *executionContext) unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx context.Context, v any) ([]*model.PurchasePaymentInput, error) {
-	if v == nil {
-		return nil, nil
-	}
-	vSlice := graphql.CoerceList(v)
-	var err error
-	res := make([]*model.PurchasePaymentInput, len(vSlice))
-	for i := range vSlice {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNPurchasePaymentInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInput(ctx, vSlice[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return res, nil
-}
-
 func (ec *executionContext) marshalOPurchaseQuantity2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantity(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseQuantity) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._PurchaseQuantity(ctx, sel, v)
-}
-
-func (ec *executionContext) unmarshalOPurchaseQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx context.Context, v any) (*model.PurchaseQuantityInput, error) {
-	if v == nil {
-		return nil, nil
-	}
-	res, err := ec.unmarshalInputPurchaseQuantityInput(ctx, v)
-	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalOSharedPoolSettlementPolicy2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSharedPoolSettlementPolicy(ctx context.Context, v any) (*model.SharedPoolSettlementPolicy, error) {
@@ -45187,6 +45913,56 @@ func (ec *executionContext) marshalOUnmatchedObservationState2ᚖgithubᚗcomᚋ
 		return graphql.Null
 	}
 	return v
+}
+
+func (ec *executionContext) unmarshalOUpdatePurchaseItemAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx context.Context, v any) ([]*model.AllocationInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.AllocationInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNUpdatePurchaseItemAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalOUpdatePurchaseItemPrintedUnitPriceInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPrintedUnitPriceInput(ctx context.Context, v any) (*model.PrintedUnitPriceInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputUpdatePurchaseItemPrintedUnitPriceInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalOUpdatePurchaseItemQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx context.Context, v any) (*model.PurchaseQuantityInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputUpdatePurchaseItemQuantityInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalOUpdatePurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx context.Context, v any) ([]*model.PurchasePaymentInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.PurchasePaymentInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNUpdatePurchasePaymentInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
 }
 
 func (ec *executionContext) unmarshalOYearMonth2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx context.Context, v any) (*model.YearMonth, error) {

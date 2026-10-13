@@ -43,11 +43,6 @@ type PurchasePayment {
   amountYen: Long!
 }
 
-input PurchasePaymentInput {
-  paymentAccountId: ID! @nodeID(of: "Account")
-  amountYen: Long!
-}
-
 type PurchaseEdge {
   cursor: String!
   node: Purchase!

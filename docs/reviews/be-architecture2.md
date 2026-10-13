@@ -229,81 +229,17 @@ Bob
 
 会計仕訳は数件程度なので、現在の実装が即座に性能問題になるわけではありません。しかし、複数品目の購入や履歴インポートまで考えると、複数行を扱う処理を積極的にバルクINSERTへ寄せることで、DB往復回数とコード量を減らせます。
 
-## 4. 精算処理のDBアクセスがN+1になっている
+## 4. 精算処理をApplication層へ移行する
 
-優先度：高 / 保守性とパフォーマンスの両方に影響
+優先度：高 / 保守性への影響
 
-[accounting.go: loadFundingExpenses](https://github.com/walnuts1018/horse/blob/be514744182bd6cc1ffe1847ea588b801c2db894/internal/graph/accounting.go#L427-L625)
+`loadFundingExpenses`は購入品目・決済・負担スナップショット・負担履歴を購入ID最大500件単位でまとめて取得するため、購入ごとにクエリを発行するN+1は解消されています。
 
-現在の`loadFundingExpenses`は、対象月の購入を取得したあと、各購入について個別に以下を読み出しています。
+一方、`calculateSettlementPreviewWithRules`は最後に締めた月から対象月まで各月の精算を個別に再計算します。長期間締めていない家庭では、対象期間の月数に応じて同じ基礎データを繰り返し読み込みます。また、精算の取得と計算は引き続きGraphQL Resolver配下にあります。
 
-- 購入品目
-- 決済内訳
-- 支払元スナップショット
-- 各品目のメンバー負担
-- 必要に応じて過去の負担ルール
+精算処理をApplication層へ移す際は、期間内の購入・決済・負担スナップショット・訂正・予定入金・実入金をまとめた入力を用意し、純粋な精算計算とDB読み込みを分けてください。複数月のプレビューでは、期間ごとの読み込みを再利用できる形にしてください。
 
-購入数を\\(P\\)、品目数を\\(I\\)とすると、DBへの問い合わせ数は概ね \\(O(P+I)\\) で増加します。
-
-家庭で1か月に100件の買い物があり、1件当たり10品目なら、相当な数のSQLが発生する可能性があります。
-
-さらに、`calculateSettlementPreviewWithRules`は未締めの過去月を順番に再計算するため、月数が増えると同じ処理が繰り返されます。
-
-修正方針
-
-まずは購入一覧の`loadPurchases`ですでに利用しているBobの一括リレーションロードを、精算でも使用してください。
-
-参照：[helpers.go: loadPurchases](https://github.com/walnuts1018/horse/blob/be514744182bd6cc1ffe1847ea588b801c2db894/internal/graph/helpers.go#L249-L335)
-
-そのうえで、次のような単位に整理するとよいです。
-
-```
-type SettlementRepository interface {
-    LoadPeriodFacts(
-        ctx context.Context,
-        householdID uuid.UUID,
-        period YearMonth,
-    ) (PeriodFacts, error)
-}
-```
-
-`PeriodFacts`には、購入・決済・負担スナップショット・訂正・予定入金・実入金をまとめて渡します。
-
-純粋な計算部分は、DBへの問い合わせなしで`PeriodFacts`から精算結果を作る構成にします。
-
-これなら、DB読み取りの最適化と精算の計算テストを独立させられます。
-
-なお、単に`DataLoader`を導入するだけで解決しようとするより、精算専用の一括取得クエリを用意する方が適切です。
-
-GraphQLのリレーションフィールドで発生するN+1については、gqlgenの公式ガイドが紹介するDataLoaderも有効です。
-
-[image](https://www.google.com/s2/favicons?domain=https://gqlgen.com\&sz=32)
-
-gqlgen
-
-## 5. GraphQLの`nodes(ids:)`もバッチ処理したい
-
-[nodes.go: nodes](https://github.com/walnuts1018/horse/blob/be514744182bd6cc1ffe1847ea588b801c2db894/internal/graph/nodes.go#L35-L55)
-
-現在の実装は次の方式です。
-
-```
-for index, id := range ids {
-    node, err := r.node(ctx, id)
-    // ...
-    result[index] = node
-}
-```
-
-`nodes(ids:)`はRelayとの相性がよい重要なクエリですが、各Nodeを順番に読み取ると、取得するNode数に比例してDBアクセスが増えます。
-
-型ごとにIDをまとめ、Bobの`IN`条件で取得して、元の順番へ戻す構成が適しています。
-
-例えば、20個の`Purchase`と10個の`Account`なら、30件の個別取得ではなく、Purchase群とAccount群をそれぞれ一括取得する方針です。
-
-異なる家庭のNodeが混ざる場合でも、現在の所属チェックは維持してください。
-
-## 6. トランザクションと共通処理をもっと簡潔にできる
+## 5. トランザクションと共通処理をもっと簡潔にできる
 
 現在のMutationには、次のパターンが多数あります。
 
@@ -345,9 +281,9 @@ err := pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
 
 大きなUnit of Workフレームワークを追加する必要はありません。
 
-## 7. 型とエラーの扱いを整理する
+## 6. 型とエラーの扱いを整理する
 
-### 7.1 ID変換の失敗を黙って無視しない
+### 6.1 ID変換の失敗を黙って無視しない
 
 [purchase/service.go: parseUUID](https://github.com/walnuts1018/horse/blob/be514744182bd6cc1ffe1847ea588b801c2db894/internal/application/purchase/service.go#L520-L530)
 
@@ -366,7 +302,7 @@ func parseUUID(value string) gofrsuuid.UUID {
 
 API入力では必ず変換エラーを返し、`newUUID()`のように生成結果が有効であることを保証できる経路だけ、別のヘルパーを使うべきです。
 
-### 7.2 Application共通のエラー型を用意する
+### 6.2 Application共通のエラー型を用意する
 
 現在、GraphQLの`ErrBadInput`、`ErrConflict`、`ErrNotFound`は`purchase`パッケージで定義されたエラーを参照しています。
 
@@ -380,7 +316,7 @@ GraphQL層ではそれを`BAD_USER_INPUT`、`CONFLICT`、`NOT_FOUND`へ変換し
 
 ただし、エラーをすべて汎用文字列に変換するのではなく、ドメイン固有の原因を`errors.Is`や`errors.As`で判定できるようにしてください。
 
-## 8. 取り込みWorkerも責務を分けたい
+## 7. 取り込みWorkerも責務を分けたい
 
 優先度：中
 
@@ -405,7 +341,7 @@ GraphQL層ではそれを`BAD_USER_INPUT`、`CONFLICT`、`NOT_FOUND`へ変換し
 
 ただし、API呼び出しのたびに`genai.NewClient`を生成しているため、将来高並列で処理するなら、無料・有料ルートそれぞれのクライアントを再利用できる設計を検討できます。現時点では優先度は高くありません。
 
-## 9. GoのLinterももう少し厳しくしたい
+## 8. GoのLinterももう少し厳しくしたい
 
 現在の`.golangci.yml`は比較的シンプルです。
 
@@ -439,7 +375,7 @@ GitHub
 
 また、Linterを強化することで大量の形式的な警告が増えるなら、無理に全ルールを有効にすべきではありません。
 
-## 10. ライブラリ採用の最終判断
+## 9. ライブラリ採用の最終判断
 
 | 技術・ライブラリ | 判断 | 理由 |
 | ----------------------- | ------- | ----------------------------- |

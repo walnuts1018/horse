@@ -31,3 +31,45 @@ models:
   Node:
     model:
       - github.com/walnuts1018/horse/internal/graph/model.Node
+  CreatePurchaseAllocationInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.AllocationInput
+  CorrectPurchaseAllocationInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.AllocationInput
+  UpdatePurchaseItemAllocationInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.AllocationInput
+  BulkUpdatePurchaseItemsAllocationInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.AllocationInput
+  SetDefaultAllocationItemInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.AllocationInput
+  SetAllocationRuleItemInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.AllocationInput
+  CreatePurchasePaymentInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PurchasePaymentInput
+  CorrectPurchasePaymentInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PurchasePaymentInput
+  UpdatePurchasePaymentInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PurchasePaymentInput
+  BulkUpdatePurchasePaymentInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PurchasePaymentInput
+  CreatePurchaseQuantityInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PurchaseQuantityInput
+  UpdatePurchaseItemQuantityInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PurchaseQuantityInput
+  CreatePurchasePrintedUnitPriceInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PrintedUnitPriceInput
+  UpdatePurchaseItemPrintedUnitPriceInput:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PrintedUnitPriceInput

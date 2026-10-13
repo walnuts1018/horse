@@ -19,20 +19,9 @@ type PurchaseQuantity {
   unit: String!
 }
 
-input PurchaseQuantityInput {
-  numerator: String!
-  denominator: String!
-  unit: String!
-}
-
 type PrintedUnitPrice {
   amountYen: Long!
   basis: PurchaseQuantity!
-}
-
-input PrintedUnitPriceInput {
-  amountYen: Long!
-  basis: PurchaseQuantityInput!
 }
 
 type EffectiveUnitPrice {

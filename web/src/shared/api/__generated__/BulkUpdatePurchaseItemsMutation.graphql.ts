@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ceb7e6734491dab9c16911b2c0a0b505>>
+ * @generated SignedSource<<7fd5d4146abcdcfb467c186a1120fd15>>
  * @lightSyntaxTransform
  */
 
@@ -18,12 +18,12 @@ export type PurchaseItemTargetInput = {
   itemId: string;
 };
 export type BulkPurchaseItemPatch = {
-  allocations?: ReadonlyArray<AllocationInput> | null | undefined;
+  allocations?: ReadonlyArray<BulkUpdatePurchaseItemsAllocationInput> | null | undefined;
   categoryId?: string | null | undefined;
   productVariantId?: string | null | undefined;
   tagIds?: ReadonlyArray<string> | null | undefined;
 };
-export type AllocationInput = {
+export type BulkUpdatePurchaseItemsAllocationInput = {
   poolId: string;
   weight: any;
 };

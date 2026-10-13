@@ -26,7 +26,6 @@ import (
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
-	"uuid"
 )
 
 var (
@@ -88,7 +87,7 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 	}
 	actorUUID, err := gofrsuuid.FromString(input.ActorID)
 	if err != nil {
-		return CreateResult{}, err
+		return CreateResult{}, fmt.Errorf("%w: invalid actor id", ErrBadInput)
 	}
 	executor := bobpgx.NewTx(tx, nil)
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
@@ -133,6 +132,7 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 	if periodRow.Status == "CLOSED" {
 		return CreateResult{}, fmt.Errorf("%w: accounting period is closed", ErrConflict)
 	}
+	var sourceDocumentUUID *gofrsuuid.UUID
 	if input.SourceDocumentID != nil {
 		sourceReference := ""
 		if input.SourceReference != nil {
@@ -145,6 +145,7 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 		if parseErr != nil {
 			return CreateResult{}, fmt.Errorf("%w: invalid source document id", ErrBadInput)
 		}
+		sourceDocumentUUID = &documentUUID
 		document, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(documentUUID))), sm.ForUpdate()).One(ctx, executor)
 		if errors.Is(err, sql.ErrNoRows) {
 			return CreateResult{}, ErrNotFound
@@ -201,14 +202,22 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 		if err != nil {
 			return CreateResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
 		}
-		categoryID := item.CategoryID
+		var categoryUUID, variantUUID *gofrsuuid.UUID
+		if item.CategoryID != nil {
+			id, parseErr := gofrsuuid.FromString(*item.CategoryID)
+			if parseErr != nil {
+				return CreateResult{}, fmt.Errorf("%w: invalid category id", ErrBadInput)
+			}
+			categoryUUID = &id
+		}
 		if item.ProductVariantID != nil {
-			variantUUID, parseErr := gofrsuuid.FromString(*item.ProductVariantID)
+			id, parseErr := gofrsuuid.FromString(*item.ProductVariantID)
 			if parseErr != nil {
 				return CreateResult{}, fmt.Errorf("%w: invalid product variant id", ErrBadInput)
 			}
+			variantUUID = &id
 			variant, err := models.ProductVariants.Query(sm.Where(psql.And(
-				models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)),
+				models.ProductVariants.Columns.ID.EQ(psql.Arg(id)),
 				models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 			))).One(ctx, executor)
 			if errors.Is(err, sql.ErrNoRows) || err == nil && variant.Archived {
@@ -227,12 +236,12 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 			if err != nil {
 				return CreateResult{}, err
 			}
-			if categoryID == nil && concept.CategoryID.Valid {
-				id := concept.CategoryID.V.String()
-				categoryID = &id
+			if categoryUUID == nil && concept.CategoryID.Valid {
+				id := concept.CategoryID.V
+				categoryUUID = &id
 			}
 		}
-		weights, appliedRuleID, appliedRuleVersion := defaults, (*string)(nil), ruleVersion
+		weights, appliedRuleID, appliedRuleVersion := defaults, (*gofrsuuid.UUID)(nil), ruleVersion
 		allocationOverride := len(item.Allocations) > 0
 		if allocationOverride {
 			weights = make([]domain.Weight, 0, len(item.Allocations))
@@ -246,7 +255,7 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 				return CreateResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
 			}
 		} else {
-			ruleWeights, ruleID, revision, err := allocationRuleWeights(ctx, tx, householdUUID, categoryID, item.ProductVariantID, merchantRuleKey)
+			ruleWeights, ruleID, revision, err := allocationRuleWeights(ctx, tx, householdUUID, categoryUUID, variantUUID, merchantRuleKey)
 			if err != nil {
 				return CreateResult{}, err
 			}
@@ -261,11 +270,11 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 		itemUUID := newUUID()
 		itemName, itemAmount := strings.TrimSpace(item.Name), item.AmountYen
 		var categoryValue, variantValue sql.Null[gofrsuuid.UUID]
-		if categoryID != nil {
-			categoryValue = sql.Null[gofrsuuid.UUID]{V: parseUUID(*categoryID), Valid: true}
+		if categoryUUID != nil {
+			categoryValue = sql.Null[gofrsuuid.UUID]{V: *categoryUUID, Valid: true}
 		}
-		if item.ProductVariantID != nil {
-			variantValue = sql.Null[gofrsuuid.UUID]{V: parseUUID(*item.ProductVariantID), Valid: true}
+		if variantUUID != nil {
+			variantValue = sql.Null[gofrsuuid.UUID]{V: *variantUUID, Valid: true}
 		}
 		if _, err := models.PurchaseItems.Insert(&models.PurchaseItemSetter{
 			ID: &itemUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, Name: &itemName,
@@ -278,10 +287,13 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 		}
 		purchaseItemUUIDs = append(purchaseItemUUIDs, itemUUID)
 		for _, allocation := range allocated {
-			poolUUID := parseUUID(allocation.PoolID)
+			poolUUID, err := gofrsuuid.FromString(allocation.PoolID)
+			if err != nil {
+				return CreateResult{}, fmt.Errorf("%w: invalid allocation pool id", ErrBadInput)
+			}
 			var ruleUUID sql.Null[gofrsuuid.UUID]
 			if appliedRuleID != nil {
-				ruleUUID = sql.Null[gofrsuuid.UUID]{V: parseUUID(*appliedRuleID), Valid: true}
+				ruleUUID = sql.Null[gofrsuuid.UUID]{V: *appliedRuleID, Valid: true}
 			}
 			if _, err := models.ItemAllocations.Insert(&models.ItemAllocationSetter{
 				HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, ItemID: &itemUUID, PoolID: &poolUUID,
@@ -308,7 +320,7 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 		return CreateResult{}, err
 	}
 	if input.SourceDocumentID != nil {
-		if err := linkSourceDocument(ctx, executor, householdUUID, purchaseUUID, createdBy, purchaseItemUUIDs, input); err != nil {
+		if err := linkSourceDocument(ctx, executor, householdUUID, purchaseUUID, createdBy, *sourceDocumentUUID, purchaseItemUUIDs, input); err != nil {
 			return CreateResult{}, err
 		}
 	}
@@ -374,7 +386,7 @@ func validUnit(value string) bool {
 	return slices.Contains([]string{"個", "本", "枚", "袋", "箱", "g", "kg", "ml", "L"}, value)
 }
 
-func allocationRuleWeights(ctx context.Context, tx pgx.Tx, householdID gofrsuuid.UUID, categoryID, variantID *string, merchant string) ([]domain.Weight, *string, int64, error) {
+func allocationRuleWeights(ctx context.Context, tx pgx.Tx, householdID gofrsuuid.UUID, categoryID, variantID *gofrsuuid.UUID, merchant string) ([]domain.Weight, *gofrsuuid.UUID, int64, error) {
 	executor := bobpgx.NewTx(tx, nil)
 	var candidates []*models.AllocationRule
 	appendRule := func(expression psql.Expression) error {
@@ -390,18 +402,14 @@ func allocationRuleWeights(ctx context.Context, tx pgx.Tx, householdID gofrsuuid
 	}
 	var conceptID *gofrsuuid.UUID
 	if variantID != nil {
-		variantUUID, err := gofrsuuid.FromString(*variantID)
-		if err != nil {
-			return nil, nil, 0, err
-		}
-		variant, err := models.ProductVariants.Query(sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID))))).One(ctx, executor)
+		variant, err := models.ProductVariants.Query(sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.ProductVariants.Columns.ID.EQ(psql.Arg(*variantID))))).One(ctx, executor)
 		if err == nil {
 			id := variant.ConceptID
 			conceptID = &id
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return nil, nil, 0, err
 		}
-		if err := appendRule(models.AllocationRules.Columns.ProductVariantID.EQ(psql.Arg(variantUUID))); err != nil {
+		if err := appendRule(models.AllocationRules.Columns.ProductVariantID.EQ(psql.Arg(*variantID))); err != nil {
 			return nil, nil, 0, err
 		}
 	}
@@ -411,11 +419,7 @@ func allocationRuleWeights(ctx context.Context, tx pgx.Tx, householdID gofrsuuid
 		}
 	}
 	if categoryID != nil {
-		id, err := gofrsuuid.FromString(*categoryID)
-		if err != nil {
-			return nil, nil, 0, err
-		}
-		if err := appendRule(models.AllocationRules.Columns.CategoryID.EQ(psql.Arg(id))); err != nil {
+		if err := appendRule(models.AllocationRules.Columns.CategoryID.EQ(psql.Arg(*categoryID))); err != nil {
 			return nil, nil, 0, err
 		}
 	}
@@ -439,7 +443,7 @@ func allocationRuleWeights(ctx context.Context, tx pgx.Tx, householdID gofrsuuid
 	if len(weights) == 0 {
 		return nil, nil, 0, errors.New("allocation rule has no weights")
 	}
-	id := rule.ID.String()
+	id := rule.ID
 	return weights, &id, rule.Revision, nil
 }
 
@@ -490,7 +494,7 @@ func replacePayments(ctx context.Context, executor bob.Executor, householdID, pu
 	for i, payment := range payments {
 		accountID, err := gofrsuuid.FromString(payment.AccountID)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: invalid payment account id", ErrBadInput)
 		}
 		lineNo, amount := int32(i+1), payment.AmountYen
 		if _, err := models.PurchasePayments.Insert(&models.PurchasePaymentSetter{HouseholdID: &householdID, PurchaseID: &purchaseID, LineNo: &lineNo, AccountID: &accountID, AmountYen: &amount}).Exec(ctx, executor); err != nil {
@@ -523,8 +527,7 @@ func accountingPeriod(value time.Time) string {
 func normalizeMerchant(value string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
 }
-func parseUUID(value string) gofrsuuid.UUID { id, _ := gofrsuuid.FromString(value); return id }
-func newUUID() gofrsuuid.UUID               { return parseUUID(uuid.NewV7().String()) }
+func newUUID() gofrsuuid.UUID { return gofrsuuid.Must(gofrsuuid.NewV7()) }
 func validateIdempotencyFingerprint(existing *models.IdempotencyKey, fingerprint [sha256.Size]byte) error {
 	if !existing.RequestFingerprint.Valid || !slices.Equal(existing.RequestFingerprint.V, fingerprint[:]) {
 		return fmt.Errorf("%w: idempotency key was used with a different request", ErrConflict)
@@ -532,8 +535,7 @@ func validateIdempotencyFingerprint(existing *models.IdempotencyKey, fingerprint
 	return nil
 }
 
-func linkSourceDocument(ctx context.Context, executor bob.Executor, householdID, purchaseID, actorID gofrsuuid.UUID, itemIDs []gofrsuuid.UUID, input CreateCommand) error {
-	documentID := parseUUID(*input.SourceDocumentID)
+func linkSourceDocument(ctx context.Context, executor bob.Executor, householdID, purchaseID, actorID, documentID gofrsuuid.UUID, itemIDs []gofrsuuid.UUID, input CreateCommand) error {
 	sourceReference := ""
 	if input.SourceReference != nil {
 		sourceReference = *input.SourceReference
