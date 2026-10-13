@@ -1,0 +1,61 @@
+extend type Mutation {
+  createTag(input: CreateTagInput!): CreateTagResult!
+}
+
+union CreateTagResult = CreateTagSuccess | CreateTagUserError
+
+type CreateTagSuccess {
+  result: Tag!
+}
+
+input CreateTagInput {
+  householdId: ID! @nodeID(of: "Household")
+  name: String!
+}
+
+type CreateTagUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
+extend type Mutation {
+  updateTag(input: UpdateTagInput!): UpdateTagResult!
+}
+
+union UpdateTagResult = UpdateTagSuccess | UpdateTagUserError
+
+type UpdateTagSuccess {
+  result: Tag!
+}
+
+input UpdateTagInput {
+  tagId: ID! @nodeID(of: "Tag")
+  baseRevision: Int!
+  name: String!
+}
+
+type UpdateTagUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
+extend type Mutation {
+  archiveTag(input: ArchiveTagInput!): ArchiveTagResult!
+}
+
+input ArchiveTagInput {
+  tagId: ID! @nodeID(of: "Tag")
+  baseRevision: Int!
+  archived: Boolean!
+}
+
+union ArchiveTagResult = ArchiveTagSuccess | ArchiveTagUserError
+
+type ArchiveTagSuccess {
+  result: Tag!
+}
+
+type ArchiveTagUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

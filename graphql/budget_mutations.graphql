@@ -1,0 +1,70 @@
+extend type Mutation {
+  createBudget(input: CreateBudgetInput!): CreateBudgetResult!
+}
+
+union CreateBudgetResult = CreateBudgetSuccess | CreateBudgetUserError
+
+type CreateBudgetSuccess {
+  result: Budget!
+}
+
+input CreateBudgetInput {
+  householdId: ID! @nodeID(of: "Household")
+  categoryId: ID @nodeID(of: "Category")
+  name: String!
+  amountYen: Long!
+  startsOn: Date!
+  endsOn: Date
+}
+
+type CreateBudgetUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
+extend type Mutation {
+  updateBudget(input: UpdateBudgetInput!): UpdateBudgetResult!
+}
+
+union UpdateBudgetResult = UpdateBudgetSuccess | UpdateBudgetUserError
+
+type UpdateBudgetSuccess {
+  result: Budget!
+}
+
+input UpdateBudgetInput {
+  householdId: ID! @nodeID(of: "Household")
+  budgetId: ID! @nodeID(of: "Budget")
+  baseRevision: Int!
+  categoryId: ID @nodeID(of: "Category")
+  name: String!
+  amountYen: Long!
+  startsOn: Date!
+  endsOn: Date
+}
+
+type UpdateBudgetUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
+extend type Mutation {
+  archiveBudget(input: ArchiveBudgetInput!): ArchiveBudgetResult!
+}
+
+input ArchiveBudgetInput {
+  budgetId: ID! @nodeID(of: "Budget")
+  baseRevision: Int!
+  archived: Boolean!
+}
+
+union ArchiveBudgetResult = ArchiveBudgetSuccess | ArchiveBudgetUserError
+
+type ArchiveBudgetSuccess {
+  result: Budget!
+}
+
+type ArchiveBudgetUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

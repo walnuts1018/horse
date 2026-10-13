@@ -1,0 +1,47 @@
+extend type Mutation {
+  setDefaultAllocation(input: SetDefaultAllocationInput!): SetDefaultAllocationResult!
+}
+
+union SetDefaultAllocationResult = SetDefaultAllocationSuccess | SetDefaultAllocationUserError
+
+type SetDefaultAllocationSuccess {
+  result: Household!
+}
+
+input SetDefaultAllocationInput {
+  householdId: ID! @nodeID(of: "Household")
+  allocations: [AllocationInput!]!
+}
+
+type SetDefaultAllocationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
+extend type Mutation {
+  setAllocationRule(input: SetAllocationRuleInput!): SetAllocationRuleResult!
+}
+
+union SetAllocationRuleResult = SetAllocationRuleSuccess | SetAllocationRuleUserError
+
+type SetAllocationRuleSuccess {
+  result: AllocationRule!
+}
+
+input SetAllocationRuleInput {
+  householdId: ID! @nodeID(of: "Household")
+  target: AllocationRuleTargetInput!
+  allocations: [AllocationInput!]!
+}
+
+input AllocationRuleTargetInput @oneOf {
+  categoryId: ID @nodeID(of: "Category")
+  merchant: String
+  productConceptId: ID @nodeID(of: "ProductConcept")
+  productVariantId: ID @nodeID(of: "ProductVariant")
+}
+
+type SetAllocationRuleUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
