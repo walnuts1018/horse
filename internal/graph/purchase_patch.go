@@ -1,25 +1,12 @@
 package graph
 
 import (
-	"encoding/json/v2"
 	"fmt"
 	"slices"
 
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
-func setFieldRevisions(current []byte, fields []string, revision int64) ([]byte, error) {
-	var revisions map[string]int64
-	if len(current) == 0 {
-		revisions = make(map[string]int64)
-	} else if err := json.Unmarshal(current, &revisions); err != nil {
-		return nil, err
-	}
-	for _, field := range fields {
-		revisions[field] = revision
-	}
-	return json.Marshal(revisions)
-}
 func purchasePatchChangedFieldKeys(patch *model.PurchasePatch) ([]string, error) {
 	if patch == nil {
 		return nil, fmt.Errorf("%w: missing purchase patch", ErrBadInput)
@@ -136,22 +123,4 @@ func validateChangedFields(fields []string, allowed ...string) error {
 		seen[field] = struct{}{}
 	}
 	return nil
-}
-func valuesConflict(fieldRevisions []byte, base int, fields []string) (bool, error) {
-	if base < 1 {
-		return true, nil
-	}
-	var revisions map[string]int64
-	if len(fieldRevisions) == 0 {
-		return false, nil
-	}
-	if err := json.Unmarshal(fieldRevisions, &revisions); err != nil {
-		return false, err
-	}
-	for _, field := range fields {
-		if revisions[field] > int64(base) {
-			return true, nil
-		}
-	}
-	return false, nil
 }

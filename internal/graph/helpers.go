@@ -14,13 +14,11 @@ import (
 	"uuid"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/auth"
-	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -516,23 +514,4 @@ func graphAccount(account *models.Account) *model.Account {
 		result.PoolID = &poolID
 	}
 	return result
-}
-
-func loadWeights(ctx context.Context, tx pgx.Tx, householdID string, version int64) ([]domain.Weight, error) {
-	householdUUID, err := gofrsuuid.FromString(householdID)
-	if err != nil {
-		return nil, err
-	}
-	defaults, err := models.AllocationDefaults.Query(sm.Where(psql.And(
-		models.AllocationDefaults.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.AllocationDefaults.Columns.Version.EQ(psql.Arg(version)),
-	)), sm.OrderBy(models.AllocationDefaults.Columns.PoolID)).All(ctx, bobpgx.NewTx(tx, nil))
-	if err != nil {
-		return nil, err
-	}
-	weights := make([]domain.Weight, 0, len(defaults))
-	for _, allocation := range defaults {
-		weights = append(weights, domain.Weight{PoolID: allocation.PoolID.String(), Value: allocation.Weight})
-	}
-	return weights, nil
 }

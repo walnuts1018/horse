@@ -26,6 +26,7 @@ import (
 const (
 	loanTransferLedgerEntryType      = "LoanTransferLedgerEntry"
 	repaymentTransferLedgerEntryType = "RepaymentTransferLedgerEntry"
+	testMerchant                     = "Shop"
 )
 
 func accountBalanceSourceType(source model.AccountBalanceSource) string {
@@ -890,6 +891,130 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 	nextLines := settlementByMember(t, settlementData(t, next).Lines)
 	if nextLines[memberA].PriorBalanceYen != 400 || nextLines[memberA].AmountDueYen != 400 || nextLines[memberB].PriorBalanceYen != -400 || nextLines[memberB].AmountDueYen != -400 {
 		t.Fatalf("closed balance did not become the sole next-month carry: %#v", nextLines)
+	}
+}
+
+func TestPersonalCardPaysSharedPoolPurchase(t *testing.T) {
+	t.Parallel()
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := t.Context()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	memberA, memberB := uuid.NewV7().String(), uuid.NewV7().String()
+	for id, name := range map[string]string{memberA: "A", memberB: "B"} {
+		memberID := generatedUUID(id)
+		subject := "personal-card-shared-purchase:" + id
+		if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberID, OidcSubject: &subject, DisplayName: &name}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(generatedUUID(memberA))))).Exec(t.Context(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(generatedUUID(memberB))))).Exec(t.Context(), bobpgx.NewPool(db))
+	}()
+	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "personal-card-shared-purchase:" + memberA, DisplayName: "A"})
+	resolver := &mutationResolver{Resolver: &Resolver{DB: db}}
+	household, err := resolver.createHousehold(ctx, model.CreateHouseholdInput{Name: "personal card shared purchase"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	householdUUID := generatedUUID(household.ID)
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(t.Context(), bobpgx.NewPool(db))
+	}()
+	memberBUUID := generatedUUID(memberB)
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberBUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	personalA, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "A personal", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sharedPool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testSharedPoolName, Kind: model.PoolKindShared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fundingRule := range []model.SetPoolFundingRuleInput{
+		{HouseholdID: household.ID, PoolID: personalA.ID, Configuration: personalPoolFundingConfiguration(memberA), ExpectedVersion: 1},
+		{HouseholdID: household.ID, PoolID: sharedPool.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, model.SharedPoolSettlementPolicyBalanceToStandard), ExpectedVersion: 1},
+	} {
+		if _, err := resolver.setPoolFundingRule(ctx, fundingRule); err != nil {
+			t.Fatal(err)
+		}
+	}
+	card, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "A personal card", Kind: model.AccountKindCard, PoolID: &personalA.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-04-10T12:00:00Z", Merchant: testMerchant,
+		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: card.ID, AmountYen: 1000}},
+		Items:              []*model.PurchaseItemInput{{Name: "Shared groceries", AmountYen: 1000, Allocations: []*model.AllocationInput{{PoolID: sharedPool.ID, Weight: 1}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	posted, err := resolver.postPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchaseUUID := generatedUUID(posted.ID)
+	journals, err := models.Journals.Query(sm.Where(psql.And(
+		models.Journals.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.Journals.Columns.SourceKind.EQ(psql.Arg("PURCHASE")),
+		models.Journals.Columns.SourceID.EQ(psql.Arg(purchaseUUID)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(journals) != 1 {
+		t.Fatalf("posted purchase should have one journal: journals=%d error=%v", len(journals), err)
+	}
+	entries, err := models.JournalEntries.Query(sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(journals[0].ID)))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var debits, credits, cardCredits int64
+	for _, entry := range entries {
+		debits += entry.DebitYen
+		credits += entry.CreditYen
+		if entry.AccountID.Valid && entry.AccountID.V == generatedUUID(card.ID) {
+			cardCredits += entry.CreditYen
+		}
+	}
+	if len(entries) != 2 || debits != 1000 || credits != 1000 || cardCredits != 1000 {
+		t.Fatalf("personal card purchase journal should balance and credit the payer account: entries=%#v debits=%d credits=%d cardCredits=%d", entries, debits, credits, cardCredits)
+	}
+	balances, err := (&Resolver{DB: db}).Query().AccountBalances(ctx, household.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cardBalanceFound := false
+	for _, balance := range balances {
+		if balance.AccountID == card.ID {
+			cardBalanceFound = true
+			if balance.BalanceYen != 1000 {
+				t.Fatalf("personal card balance should reflect the posted purchase: got %d want 1000", balance.BalanceYen)
+			}
+		}
+	}
+	if !cardBalanceFound {
+		t.Fatal("personal card balance was not returned")
+	}
+	settlement, err := resolver.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: testApril2026, ExpectedRevision: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := settlementByMember(t, settlementData(t, settlement).Lines)
+	if lines[memberA].AdvanceCreditYen != 400 || lines[memberA].AmountDueYen != -400 || lines[memberB].MonthlyAdjustmentYen != 400 || lines[memberB].AmountDueYen != 400 {
+		t.Fatalf("shared purchase paid by A's personal card should settle the 60/40 responsibility against A's 1000 yen advance: %#v", lines)
 	}
 }
 

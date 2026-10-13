@@ -9,12 +9,11 @@ import (
 	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
-	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	productapp "github.com/walnuts1018/horse/internal/application/product"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 	productquery "github.com/walnuts1018/horse/internal/postgres/query"
@@ -31,47 +30,13 @@ func (r *mutationResolver) createProductConcept(ctx context.Context, input model
 	if err != nil {
 		return nil, err
 	}
-	name := strings.TrimSpace(input.Name)
-	normalized := normalizeProductText(name)
-	if normalized == "" || len(name) > 240 {
-		return nil, fmt.Errorf("%w: invalid product concept name", ErrBadInput)
-	}
-	tx, err := r.DB.Begin(ctx)
+	created, err := productapp.NewService(r.DB).CreateConcept(ctx, productapp.CreateConceptCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, Name: input.Name, CategoryID: input.CategoryID,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	householdUUID, _ := gofrsuuid.FromString(input.HouseholdID)
-	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForShare()).One(ctx, bobpgx.NewTx(tx, nil)); errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	} else if err != nil {
-		return nil, err
-	}
-	id := newID()
-	idUUID, _ := gofrsuuid.FromString(id)
-	var categoryID *gofrsuuid.UUID
-	if input.CategoryID != nil {
-		categoryValue, parseErr := gofrsuuid.FromString(*input.CategoryID)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		categoryID = &categoryValue
-	}
-	categoryValue := sql.Null[gofrsuuid.UUID]{}
-	if categoryID != nil {
-		categoryValue = sql.Null[gofrsuuid.UUID]{V: *categoryID, Valid: true}
-	}
-	conceptFields := &models.ProductConceptSetter{ID: &idUUID, HouseholdID: &householdUUID, Name: &name, NormalizedName: &normalized, CategoryID: &categoryValue}
-	if _, err := models.ProductConcepts.Insert(conceptFields).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
-		return nil, err
-	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "product.concept.created", id, 1, []string{fieldName, fieldCategoryID}, user.MemberID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return loadProductConcept(ctx, bobpgx.NewPool(r.DB), id)
+	return loadProductConcept(ctx, bobpgx.NewPool(r.DB), created.ID)
 }
 
 func (r *mutationResolver) createProductVariant(ctx context.Context, input model.CreateProductVariantInput) (*model.ProductVariant, error) {
@@ -79,47 +44,14 @@ func (r *mutationResolver) createProductVariant(ctx context.Context, input model
 	if err != nil {
 		return nil, err
 	}
-	name := strings.TrimSpace(input.Name)
-	normalized := normalizeProductText(name)
-	if normalized == "" || len(name) > 240 || input.Barcode != nil && strings.TrimSpace(*input.Barcode) == "" {
-		return nil, fmt.Errorf("%w: invalid product variant", ErrBadInput)
-	}
-	brand, packageSize := trimOptional(input.Brand), trimOptional(input.PackageSize)
-	tx, err := r.DB.Begin(ctx)
+	created, err := productapp.NewService(r.DB).CreateVariant(ctx, productapp.CreateVariantCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, ConceptID: input.ConceptID, Name: input.Name,
+		Brand: input.Brand, PackageSize: input.PackageSize, Barcode: input.Barcode,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	householdUUID, _ := gofrsuuid.FromString(input.HouseholdID)
-	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForShare()).One(ctx, bobpgx.NewTx(tx, nil)); errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	} else if err != nil {
-		return nil, err
-	}
-	conceptUUID, _ := gofrsuuid.FromString(input.ConceptID)
-	if _, err := models.ProductConcepts.Query(sm.Where(psql.And(models.ProductConcepts.Columns.ID.EQ(psql.Arg(conceptUUID)), models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductConcepts.Columns.Archived)))).One(ctx, bobpgx.NewTx(tx, nil)); errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	} else if err != nil {
-		return nil, err
-	}
-	id := newID()
-	idUUID, _ := gofrsuuid.FromString(id)
-	barcode := nullableTrimmed(input.Barcode)
-	barcodeValue := sql.Null[string]{}
-	if barcodeString, ok := barcode.(string); ok {
-		barcodeValue = sql.Null[string]{V: barcodeString, Valid: true}
-	}
-	conceptVariant := &models.ProductVariantSetter{ID: &idUUID, HouseholdID: &householdUUID, ConceptID: &conceptUUID, Name: &name, NormalizedName: &normalized, Brand: &brand, PackageSize: &packageSize, Barcode: &barcodeValue}
-	if _, err := models.ProductVariants.Insert(conceptVariant).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
-		return nil, err
-	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "product.variant.created", id, 1, []string{fieldName, fieldConceptID}, user.MemberID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return loadProductVariant(ctx, bobpgx.NewPool(r.DB), id)
+	return loadProductVariant(ctx, bobpgx.NewPool(r.DB), created.ID)
 }
 
 func (r *mutationResolver) setProductAlias(ctx context.Context, input model.SetProductAliasInput) (*model.ProductAlias, error) {
@@ -127,71 +59,13 @@ func (r *mutationResolver) setProductAlias(ctx context.Context, input model.SetP
 	if err != nil {
 		return nil, err
 	}
-	alias := strings.TrimSpace(input.Alias)
-	merchantKey, normalizedAlias := normalizeMerchant(input.Merchant), normalizeProductText(alias)
-	if alias == "" || len(alias) > 240 || merchantKey == "" || len(merchantKey) > 240 {
-		return nil, fmt.Errorf("%w: invalid merchant product alias", ErrBadInput)
-	}
-	tx, err := r.DB.Begin(ctx)
+	alias, err := productapp.NewService(r.DB).SetAlias(ctx, productapp.SetAliasCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, VariantID: input.VariantID, Merchant: input.Merchant, Alias: input.Alias,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	householdUUID, _ := gofrsuuid.FromString(input.HouseholdID)
-	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForUpdate()).One(ctx, bobpgx.NewTx(tx, nil)); errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	} else if err != nil {
-		return nil, err
-	}
-	variantUUID, _ := gofrsuuid.FromString(input.VariantID)
-	if _, err := models.ProductVariants.Query(sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)), psql.Not(models.ProductVariants.Columns.Archived)))).One(ctx, bobpgx.NewTx(tx, nil)); errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	} else if err != nil {
-		return nil, err
-	}
-	var aliasID string
-	if err := upsertProductAlias(ctx, tx, input.HouseholdID, input.VariantID, merchantKey, alias, normalizedAlias, &aliasID); err != nil {
-		return nil, err
-	}
-	aliasUUID, _ := gofrsuuid.FromString(aliasID)
-	aliasRow, err := models.ProductAliases.Query(sm.Where(models.ProductAliases.Columns.ID.EQ(psql.Arg(aliasUUID)))).One(ctx, bobpgx.NewTx(tx, nil))
-	if err != nil {
-		return nil, err
-	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "product.alias.learned", aliasID, aliasRow.Revision, []string{fieldAlias, fieldVariantID, fieldMerchant}, user.MemberID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return loadProductAlias(ctx, bobpgx.NewPool(r.DB), aliasID)
-}
-
-func upsertProductAlias(ctx context.Context, tx pgx.Tx, householdID, variantID, merchantKey, alias, normalizedAlias string, aliasID *string) error {
-	idValue, _ := gofrsuuid.FromString(newID())
-	householdValue, _ := gofrsuuid.FromString(householdID)
-	variantValue, _ := gofrsuuid.FromString(variantID)
-	row, err := models.ProductAliases.Insert(
-		&models.ProductAliasSetter{ID: &idValue, HouseholdID: &householdValue, VariantID: &variantValue, MerchantKey: &merchantKey, AliasText: &alias, NormalizedAlias: &normalizedAlias},
-		im.OnConflict("household_id", "merchant_key", "normalized_alias").DoUpdate(
-			im.SetCol("variant_id").To(im.Excluded("variant_id")),
-			im.SetCol("alias_text").To(im.Excluded("alias_text")),
-			im.SetCol("revision").To(models.ProductAliases.Columns.Revision.Plus(psql.Arg(1))),
-			im.SetCol("updated_at").To(psql.F("now")),
-		),
-	).One(ctx, bobpgx.NewTx(tx, nil))
-	if err != nil {
-		return err
-	}
-	*aliasID = row.ID.String()
-	return nil
-}
-
-func trimOptional(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return strings.TrimSpace(*value)
+	return loadProductAlias(ctx, bobpgx.NewPool(r.DB), alias.ID)
 }
 
 func optionalProductAttribute(value string) *string {
@@ -199,17 +73,6 @@ func optionalProductAttribute(value string) *string {
 		return nil
 	}
 	return &value
-}
-
-func nullableTrimmed(value *string) any {
-	if value == nil {
-		return nil
-	}
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return nil
-	}
-	return trimmed
 }
 
 func loadProductConcept(ctx context.Context, db productDB, conceptID string) (*model.ProductConcept, error) {

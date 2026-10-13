@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/graph/model"
@@ -103,6 +104,52 @@ func TestTagConnectionPaginatesWithinHouseholdAndFiltersArchivedTags(t *testing.
 	}
 	if allTags.TotalCount != 3 || len(allTags.Edges) != 3 || allTags.Edges[1].Node.Name != "B" || !allTags.Edges[1].Node.Archived {
 		t.Fatalf("includeArchived did not return all tags in stable order: %#v", allTags)
+	}
+
+	unauthorizedID := uuid.NewV7().String()
+	unauthorizedCtx := auth.WithPrincipal(ctx, auth.Principal{MemberID: unauthorizedID, Subject: "tag-unauthorized"})
+	if _, err := mutation.updateTag(unauthorizedCtx, model.UpdateTagInput{TagID: tags["A"].ID, BaseRevision: tags["A"].Revision, Name: "Unauthorized"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unauthorized tag update error = %v; want ErrNotFound", err)
+	}
+
+	updatedTag, err := mutation.updateTag(ctx, model.UpdateTagInput{TagID: tags["A"].ID, BaseRevision: tags["A"].Revision, Name: "A updated"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedTag.Name != "A updated" || updatedTag.Revision != tags["A"].Revision+1 {
+		t.Fatalf("updated tag = %#v; want name A updated at revision 2", updatedTag)
+	}
+	if _, err := mutation.archiveTag(ctx, updatedTag.ID, tags["A"].Revision, true); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale tag archive error = %v; want ErrConflict", err)
+	}
+	archivedTag, err := mutation.archiveTag(ctx, updatedTag.ID, updatedTag.Revision, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !archivedTag.Archived || archivedTag.Revision != updatedTag.Revision+1 {
+		t.Fatalf("archived tag = %#v; want archived at revision 3", archivedTag)
+	}
+	events, err := models.HouseholdEvents.Query(sm.Where(psql.And(
+		models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.HouseholdEvents.Columns.EntityID.EQ(psql.Arg(generatedUUID(tags["A"].ID))),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("tag lifecycle events = %#v; want created, updated, and archived events", events)
+	}
+	eventsByType := make(map[string]*models.HouseholdEvent, len(events))
+	for _, event := range events {
+		eventsByType[event.Type] = event
+	}
+	updatedEvent := eventsByType["tag.updated"]
+	archivedEvent := eventsByType["tag.archived"]
+	if updatedEvent == nil || updatedEvent.Revision != 2 || string(updatedEvent.ChangedFields.Val) != `["name"]` || !updatedEvent.ActorID.Valid || updatedEvent.ActorID.V != memberUUID {
+		t.Fatalf("tag.updated event = %#v; want revision 2 with name field", updatedEvent)
+	}
+	if archivedEvent == nil || archivedEvent.Revision != 3 || string(archivedEvent.ChangedFields.Val) != `["archived"]` || !archivedEvent.ActorID.Valid || archivedEvent.ActorID.V != memberUUID {
+		t.Fatalf("tag.archived event = %#v; want revision 3 with archived field", archivedEvent)
 	}
 
 	otherHousehold, err := mutation.createHousehold(ctx, model.CreateHouseholdInput{Name: "other tag connection integration"})

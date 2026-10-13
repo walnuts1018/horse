@@ -2,244 +2,62 @@ package graph
 
 import (
 	"context"
-	"database/sql"
-	stdjson "encoding/json"
-	"errors"
-	"fmt"
-	"slices"
-	"strings"
-	"time"
 
-	gofrsuuid "github.com/gofrs/uuid/v5"
-	"github.com/stephenafamo/bob/dialect/psql"
-	"github.com/stephenafamo/bob/dialect/psql/sm"
-	"github.com/stephenafamo/bob/dialect/psql/um"
-	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
-	"github.com/stephenafamo/bob/types"
+	purchaseapp "github.com/walnuts1018/horse/internal/application/purchase"
 	"github.com/walnuts1018/horse/internal/graph/model"
-	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
-
-type bulkPurchaseTarget struct {
-	input          *model.PurchaseUpdateTargetInput
-	changedFields  []string
-	id             gofrsuuid.UUID
-	observedHouse  gofrsuuid.UUID
-	observedAt     time.Time
-	targetAt       time.Time
-	purchase       *models.Purchase
-	payments       []model.PurchasePaymentInput
-	updatePayments bool
-}
 
 func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.BulkUpdatePurchasesInput) ([]*model.Purchase, error) {
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(input.Targets) == 0 || len(input.Targets) > 100 {
-		return nil, fmt.Errorf("%w: select between one and one hundred purchases", ErrBadInput)
-	}
-	seen := make(map[string]struct{}, len(input.Targets))
+	command := purchaseapp.BulkUpdateCommand{ActorID: user.MemberID, Targets: make([]purchaseapp.BulkUpdateTarget, 0, len(input.Targets))}
 	for _, target := range input.Targets {
 		if target == nil || target.Patch == nil {
-			return nil, fmt.Errorf("%w: missing purchase target or patch", ErrBadInput)
+			return nil, ErrBadInput
 		}
-		if _, ok := seen[target.PurchaseID]; ok {
-			return nil, fmt.Errorf("%w: duplicate purchase target", ErrBadInput)
-		}
-		seen[target.PurchaseID] = struct{}{}
-		changedFields, err := bulkPurchasePatchChangedFieldKeys(target.Patch)
+		fields, err := bulkPurchasePatchChangedFieldKeys(target.Patch)
 		if err != nil {
 			return nil, err
 		}
-		if err := validateChangedFields(changedFields, fieldOccurredAt, fieldMerchant, fieldPaymentAllocations); err != nil {
-			return nil, err
+		bulkTarget := purchaseapp.BulkUpdateTarget{
+			PurchaseID: target.PurchaseID, BaseRevision: int64(target.BaseRevision), ChangedFields: fields,
 		}
+		if target.Patch.OccurredAt.IsSet() {
+			occurredAt, err := parseTime(*target.Patch.OccurredAt.Value())
+			if err != nil {
+				return nil, err
+			}
+			bulkTarget.OccurredAt = &occurredAt
+		}
+		if target.Patch.Merchant.IsSet() {
+			bulkTarget.Merchant = target.Patch.Merchant.Value()
+		}
+		if target.Patch.PaymentAllocations.IsSet() {
+			allocations := make([]purchaseapp.Payment, 0, len(target.Patch.PaymentAllocations.Value()))
+			for _, allocation := range target.Patch.PaymentAllocations.Value() {
+				if allocation == nil {
+					allocations = append(allocations, purchaseapp.Payment{})
+					continue
+				}
+				allocations = append(allocations, purchaseapp.Payment{AccountID: allocation.PaymentAccountID, AmountYen: int64(allocation.AmountYen)})
+			}
+			bulkTarget.PaymentAllocations = &allocations
+		}
+		command.Targets = append(command.Targets, bulkTarget)
 	}
-
-	tx, err := r.DB.Begin(ctx)
+	result, err := purchaseapp.NewService(r.DB).BulkUpdate(ctx, command)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	executor := bobpgx.NewTx(tx, nil)
-	targets := make([]bulkPurchaseTarget, 0, len(input.Targets))
-	var householdID gofrsuuid.UUID
-	periods := make([]string, 0, len(input.Targets)*2)
-	for _, target := range input.Targets {
-		id, parseErr := gofrsuuid.FromString(target.PurchaseID)
-		if parseErr != nil {
-			return nil, ErrNotFound
-		}
-		purchase, queryErr := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(id)))).One(ctx, executor)
-		if errors.Is(queryErr, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		if queryErr != nil {
-			return nil, queryErr
-		}
-		if len(targets) == 0 {
-			householdID = purchase.HouseholdID
-			if _, err := requireMember(ctx, r.DB, householdID.String()); err != nil {
-				return nil, err
-			}
-		} else if householdID != purchase.HouseholdID {
-			return nil, fmt.Errorf("%w: all purchases must belong to one household", ErrBadInput)
-		}
-		changedFields, err := bulkPurchasePatchChangedFieldKeys(target.Patch)
+	purchases := make([]*model.Purchase, 0, len(result.PurchaseIDs))
+	for _, purchaseID := range result.PurchaseIDs {
+		purchase, err := loadPurchase(ctx, r.DB, purchaseID)
 		if err != nil {
 			return nil, err
 		}
-		targetAt := purchase.OccurredAt
-		if slices.Contains(changedFields, fieldOccurredAt) {
-			targetAt, err = parseTime(*target.Patch.OccurredAt.Value())
-			if err != nil {
-				return nil, err
-			}
-		}
-		periods = append(periods, accountingPeriod(purchase.OccurredAt), accountingPeriod(targetAt))
-		targets = append(targets, bulkPurchaseTarget{
-			input: target, changedFields: changedFields, id: id, observedHouse: purchase.HouseholdID,
-			observedAt: purchase.OccurredAt, targetAt: targetAt,
-		})
+		purchases = append(purchases, purchase)
 	}
-	if err := lockAccountingPeriods(ctx, tx, householdID.String(), periods...); err != nil {
-		return nil, err
-	}
-	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForShare()).One(ctx, executor); err != nil {
-		return nil, err
-	}
-	lockOrder := slices.Clone(targets)
-	slices.SortFunc(lockOrder, func(left, right bulkPurchaseTarget) int {
-		return strings.Compare(left.id.String(), right.id.String())
-	})
-	purchases := make(map[gofrsuuid.UUID]*models.Purchase, len(targets))
-	preparedTargets := make(map[gofrsuuid.UUID]bulkPurchaseTarget, len(targets))
-	for _, target := range lockOrder {
-		purchase, queryErr := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(target.id))), sm.ForUpdate()).One(ctx, executor)
-		if errors.Is(queryErr, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		if queryErr != nil {
-			return nil, queryErr
-		}
-		if purchase.HouseholdID != target.observedHouse || !purchase.OccurredAt.Equal(target.observedAt) {
-			return nil, ErrConflict
-		}
-		if purchase.Status != string(model.PurchaseStatusDraft) && purchase.Status != string(model.PurchaseStatusPosted) {
-			return nil, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
-		}
-		if target.input.BaseRevision > int(purchase.Revision) {
-			return nil, ErrConflict
-		}
-		conflict, err := valuesConflict(purchase.FieldRevisions.Val, target.input.BaseRevision, target.changedFields)
-		if err != nil {
-			return nil, err
-		}
-		if conflict {
-			return nil, ErrConflict
-		}
-		if slices.Contains(target.changedFields, fieldOccurredAt) {
-			target.targetAt, err = parseTime(*target.input.Patch.OccurredAt.Value())
-			if err != nil {
-				return nil, err
-			}
-		}
-		if slices.Contains(target.changedFields, fieldMerchant) && len(strings.TrimSpace(*target.input.Patch.Merchant.Value())) > 240 {
-			return nil, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
-		}
-		target.updatePayments = slices.Contains(target.changedFields, fieldPaymentAllocations)
-		if target.updatePayments {
-			target.payments, err = validatePurchasePaymentInputs(ctx, tx, householdID.String(), target.input.Patch.PaymentAllocations.Value())
-			if err != nil {
-				return nil, err
-			}
-			items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(target.id)))).All(ctx, executor)
-			if err != nil {
-				return nil, err
-			}
-			var total int64
-			for _, item := range items {
-				var ok bool
-				total, ok = checkedAdd(total, item.AmountYen)
-				if !ok {
-					return nil, fmt.Errorf("%w: purchase total is too large", ErrBadInput)
-				}
-			}
-			if purchase.Status == string(model.PurchaseStatusPosted) {
-				var paid int64
-				for _, payment := range target.payments {
-					var ok bool
-					paid, ok = checkedAdd(paid, int64(payment.AmountYen))
-					if !ok {
-						return nil, fmt.Errorf("%w: payment total is too large", ErrBadInput)
-					}
-				}
-				if paid != total {
-					return nil, fmt.Errorf("%w: payment allocations must equal purchase total", ErrBadInput)
-				}
-			}
-		}
-		target.purchase = purchase
-		purchases[target.id] = purchase
-		preparedTargets[target.id] = target
-	}
-
-	for i := range targets {
-		target := &targets[i]
-		*target = preparedTargets[target.id]
-		target.purchase = purchases[target.id]
-		patch := target.input.Patch
-		purchase := target.purchase
-		newRevision := purchase.Revision + 1
-		fieldRevisions, err := setFieldRevisions(purchase.FieldRevisions.Val, target.changedFields, newRevision)
-		if err != nil {
-			return nil, err
-		}
-		occurredAt := purchase.OccurredAt
-		if slices.Contains(target.changedFields, fieldOccurredAt) {
-			occurredAt = target.targetAt
-		}
-		merchant := purchase.Merchant
-		if slices.Contains(target.changedFields, fieldMerchant) {
-			merchant = strings.TrimSpace(*patch.Merchant.Value())
-		}
-		paymentAccountID := purchase.PaymentAccountID
-		if target.updatePayments {
-			paymentAccountID = sql.Null[gofrsuuid.UUID]{}
-			if err := replacePurchasePaymentRows(ctx, tx, householdID.String(), target.input.PurchaseID, target.payments); err != nil {
-				return nil, err
-			}
-		}
-		fieldValue := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(fieldRevisions)}
-		if _, err := models.Purchases.Update((&models.PurchaseSetter{
-			OccurredAt: &occurredAt, Merchant: &merchant, PaymentAccountID: &paymentAccountID,
-			Revision: &newRevision, FieldRevisions: &fieldValue,
-		}).UpdateMod(), um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(target.id))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
-			return nil, err
-		}
-		purchase.OccurredAt = occurredAt
-		purchase.Merchant = merchant
-		if purchase.Status == string(model.PurchaseStatusPosted) {
-			if err := syncPostedPurchaseAccounting(ctx, tx, target.input.PurchaseID); err != nil {
-				return nil, err
-			}
-		}
-		if err := writeEvent(ctx, tx, householdID.String(), "purchase.updated", target.input.PurchaseID, newRevision, target.changedFields, user.MemberID); err != nil {
-			return nil, err
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	result := make([]*model.Purchase, 0, len(targets))
-	for _, target := range targets {
-		purchase, err := loadPurchase(ctx, r.DB, target.input.PurchaseID)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, purchase)
-	}
-	return result, nil
+	return purchases, nil
 }

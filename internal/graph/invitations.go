@@ -2,10 +2,7 @@ package graph
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,15 +11,12 @@ import (
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
-	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
-	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	invitationapp "github.com/walnuts1018/horse/internal/application/invitation"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
-
-const maxInvitationLifetime = 30 * 24 * time.Hour
 
 func (r *mutationResolver) createHouseholdInvitation(ctx context.Context, input model.CreateHouseholdInvitationInput) (*model.CreatedHouseholdInvitation, error) {
 	user, err := principal(ctx)
@@ -33,56 +27,18 @@ func (r *mutationResolver) createHouseholdInvitation(ctx context.Context, input 
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now().UTC()
-	if !expiresAt.After(now) || expiresAt.After(now.Add(maxInvitationLifetime)) {
-		return nil, fmt.Errorf("%w: invitation expiry must be within 30 days", ErrBadInput)
-	}
-	rawToken := make([]byte, 32)
-	if _, err := rand.Read(rawToken); err != nil {
-		return nil, fmt.Errorf("generate invitation token: %w", err)
-	}
-	token := base64.RawURLEncoding.EncodeToString(rawToken)
-	tokenHash := sha256.Sum256(rawToken)
-	tx, err := r.DB.Begin(ctx)
+	created, err := invitationapp.NewService(r.DB).Create(ctx, invitationapp.CreateCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, ExpiresAt: expiresAt,
+	})
 	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	if err := requireHouseholdOwner(ctx, bobpgx.NewTx(tx, nil), input.HouseholdID, user.MemberID); err != nil {
-		return nil, err
-	}
-	id := newID()
-	var createdAt, storedExpiresAt time.Time
-	idValue, _ := gofrsuuid.FromString(id)
-	householdValue, _ := gofrsuuid.FromString(input.HouseholdID)
-	createdBy, _ := gofrsuuid.FromString(user.MemberID)
-	expiresValue, hashValue := expiresAt, tokenHash[:]
-	createdInvitation, err := models.HouseholdInvitations.Insert(&models.HouseholdInvitationSetter{ID: &idValue, HouseholdID: &householdValue, TokenHash: &hashValue, ExpiresAt: &expiresValue, CreatedBy: &createdBy}).One(ctx, bobpgx.NewTx(tx, nil))
-	if err != nil {
-		return nil, err
-	}
-	createdAt, storedExpiresAt = createdInvitation.CreatedAt, createdInvitation.ExpiresAt
-	household, err := models.Households.Update(
-		um.Where(models.Households.Columns.ID.EQ(psql.Arg(input.HouseholdID))),
-		um.SetCol("revision").To(models.Households.Columns.Revision.Plus(psql.Arg(1))),
-		um.SetCol("updated_at").To(psql.F("now")),
-	).One(ctx, bobpgx.NewTx(tx, nil))
-	if err != nil {
-		return nil, err
-	}
-	revision := household.Revision
-	if err := writeEvent(ctx, tx, input.HouseholdID, "household.invitation.created", id, revision, []string{"invitations"}, user.MemberID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return &model.CreatedHouseholdInvitation{
 		Invitation: &model.PendingHouseholdInvitation{HouseholdInvitation: &model.HouseholdInvitation{
-			ID: id, HouseholdID: input.HouseholdID,
-			ExpiresAt: timeString(storedExpiresAt), CreatedAt: timeString(createdAt),
+			ID: created.ID, HouseholdID: input.HouseholdID,
+			ExpiresAt: timeString(created.ExpiresAt), CreatedAt: timeString(created.CreatedAt),
 		}},
-		Token: token,
+		Token: created.Token,
 	}, nil
 }
 
@@ -211,55 +167,13 @@ func (r *mutationResolver) revokeHouseholdInvitation(ctx context.Context, househ
 	if err != nil {
 		return nil, err
 	}
-	tx, err := r.DB.Begin(ctx)
+	invitation, err := invitationapp.NewService(r.DB).Revoke(ctx, invitationapp.RevokeCommand{
+		ActorID: user.MemberID, HouseholdID: householdID, InvitationID: invitationID,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	if err := requireHouseholdOwner(ctx, bobpgx.NewTx(tx, nil), householdID, user.MemberID); err != nil {
-		return nil, err
-	}
-	invitationRow, err := models.HouseholdInvitations.Query(
-		sm.Where(psql.And(
-			models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(invitationID)),
-			models.HouseholdInvitations.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-		)),
-		sm.ForUpdate(),
-	).One(ctx, bobpgx.NewTx(tx, nil))
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	if invitationRow.AcceptedAt.Valid {
-		return nil, ErrConflict
-	}
-	if !invitationRow.RevokedAt.Valid {
-		revokedAt := time.Now()
-		invitationRow, err = models.HouseholdInvitations.Update(
-			um.Where(models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(invitationRow.ID))),
-			um.SetCol("revoked_at").To(psql.Arg(revokedAt)),
-		).One(ctx, bobpgx.NewTx(tx, nil))
-		if err != nil {
-			return nil, err
-		}
-		household, err := models.Households.Update(
-			um.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))),
-			um.SetCol("revision").To(models.Households.Columns.Revision.Plus(psql.Arg(1))),
-			um.SetCol("updated_at").To(psql.F("now")),
-		).One(ctx, bobpgx.NewTx(tx, nil))
-		if err != nil {
-			return nil, err
-		}
-		if err := writeEvent(ctx, tx, householdID, "household.invitation.revoked", invitationID, household.Revision, []string{"invitations"}, user.MemberID); err != nil {
-			return nil, err
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return householdInvitationModel(invitationRow, time.Now()), nil
+	return invitationStateModel(invitation), nil
 }
 
 func (r *mutationResolver) acceptHouseholdInvitation(ctx context.Context, token string) (*model.Household, error) {
@@ -267,77 +181,25 @@ func (r *mutationResolver) acceptHouseholdInvitation(ctx context.Context, token 
 	if err != nil {
 		return nil, err
 	}
-	rawToken, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil || len(rawToken) != 32 {
-		return nil, ErrNotFound
-	}
-	tokenHash := sha256.Sum256(rawToken)
-	tx, err := r.DB.Begin(ctx)
+	householdID, err := invitationapp.NewService(r.DB).Accept(ctx, invitationapp.AcceptCommand{MemberID: user.MemberID, Token: token})
 	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	invitationRow, err := models.HouseholdInvitations.Query(
-		sm.Where(models.HouseholdInvitations.Columns.TokenHash.EQ(psql.Arg(tokenHash[:]))),
-		sm.ForUpdate(),
-	).One(ctx, bobpgx.NewTx(tx, nil))
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	if invitationRow.RevokedAt.Valid || invitationRow.AcceptedAt.Valid || !invitationRow.ExpiresAt.After(time.Now()) {
-		return nil, ErrConflict
-	}
-	householdID := invitationRow.HouseholdID.String()
-	_, err = models.HouseholdMembers.Query(sm.Where(psql.And(
-		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(invitationRow.HouseholdID)),
-		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(user.MemberID)),
-	))).One(ctx, bobpgx.NewTx(tx, nil))
-	if err == nil {
-		return nil, ErrConflict
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-	memberUUID, _ := gofrsuuid.FromString(user.MemberID)
-	householdUUID := invitationRow.HouseholdID
-	role := "MEMBER"
-	_, err = models.HouseholdMembers.Insert(
-		&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberUUID, Role: &role},
-		im.OnConflict("household_id", "member_id").DoNothing(),
-	).One(ctx, bobpgx.NewTx(tx, nil))
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrConflict
-	}
-	if err != nil {
-		return nil, err
-	}
-	acceptedBy, _ := gofrsuuid.FromString(user.MemberID)
-	acceptedAt := time.Now()
-	if _, err := models.HouseholdInvitations.Update(
-		um.Where(models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(invitationRow.ID))),
-		um.SetCol("accepted_by").To(psql.Arg(acceptedBy)),
-		um.SetCol("accepted_at").To(psql.Arg(acceptedAt)),
-	).One(ctx, bobpgx.NewTx(tx, nil)); err != nil {
-		return nil, err
-	}
-	household, err := models.Households.Update(
-		um.Where(models.Households.Columns.ID.EQ(psql.Arg(invitationRow.HouseholdID))),
-		um.SetCol("revision").To(models.Households.Columns.Revision.Plus(psql.Arg(1))),
-		um.SetCol("updated_at").To(psql.F("now")),
-	).One(ctx, bobpgx.NewTx(tx, nil))
-	if err != nil {
-		return nil, err
-	}
-	if err := writeEvent(ctx, tx, householdID, "household.member.joined", user.MemberID, household.Revision, []string{fieldMembers}, user.MemberID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return loadHousehold(ctx, r.DB, householdID)
+}
+
+func invitationStateModel(state invitationapp.InvitationState) model.HouseholdInvitationVariant {
+	invitation := &model.HouseholdInvitation{
+		ID: state.ID, HouseholdID: state.HouseholdID,
+		ExpiresAt: timeString(state.ExpiresAt), CreatedAt: timeString(state.CreatedAt),
+	}
+	if state.AcceptedAt.Valid {
+		return &model.AcceptedHouseholdInvitation{HouseholdInvitation: invitation, AcceptedAt: timeString(state.AcceptedAt.V)}
+	}
+	if state.RevokedAt.Valid {
+		return &model.RevokedHouseholdInvitation{HouseholdInvitation: invitation, RevokedAt: timeString(state.RevokedAt.V)}
+	}
+	return &model.ExpiredHouseholdInvitation{HouseholdInvitation: invitation}
 }
 
 func requireHouseholdOwner(ctx context.Context, db bob.Executor, householdID, memberID string) error {

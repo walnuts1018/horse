@@ -258,7 +258,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	purchaseAt := time.Date(originalMonth.Year(), originalMonth.Month(), 10, 12, 0, 0, 0, accountingLocation)
 	originalPeriod, correctionPeriod := accountingPeriod(purchaseAt), accountingPeriod(now)
 	purchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
-		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(purchaseAt.UTC().Format(time.RFC3339)), Merchant: "Shop",
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(purchaseAt.UTC().Format(time.RFC3339)), Merchant: testMerchant,
 		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 1000}},
 		Items:              []*model.PurchaseItemInput{{Name: "Shared item", AmountYen: 1000, Allocations: []*model.AllocationInput{{PoolID: sharedPool.ID, Weight: 1}}}},
 	})

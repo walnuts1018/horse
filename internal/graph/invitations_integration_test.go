@@ -81,6 +81,14 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if placeholderID == "" {
 		t.Fatal("household placeholder member was not created")
 	}
+	for _, expiresAt := range []time.Time{time.Now().Add(-time.Minute), time.Now().Add(31 * 24 * time.Hour)} {
+		_, err := resolver.createHouseholdInvitation(ownerCtx, model.CreateHouseholdInvitationInput{
+			HouseholdID: household.ID, ExpiresAt: model.DateTime(expiresAt.Format(time.RFC3339Nano)),
+		})
+		if !errors.Is(err, ErrBadInput) {
+			t.Fatalf("invalid invitation expiry must be rejected: expiresAt=%s error=%v", expiresAt, err)
+		}
+	}
 
 	createInvitation := func(expiresAt time.Time) *model.CreatedHouseholdInvitation {
 		t.Helper()
@@ -113,6 +121,19 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if !bytes.Equal(storedHash, expectedHash[:]) {
 		t.Fatal("database must store only the SHA256 invitation token hash")
 	}
+	householdUUID, _ := gofrsuuid.FromString(household.ID)
+	ownerUUID, _ := gofrsuuid.FromString(ownerID)
+	createdEvent, err := models.HouseholdEvents.Query(sm.Where(psql.And(
+		models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.HouseholdEvents.Columns.Type.EQ(psql.Arg("household.invitation.created")),
+		models.HouseholdEvents.Columns.EntityID.EQ(psql.Arg(activeID)),
+	))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if createdEvent.Revision != 2 || !createdEvent.ActorID.Valid || createdEvent.ActorID.V != ownerUUID || string(createdEvent.ChangedFields.Val) != `["invitations"]` {
+		t.Fatalf("invitation event has wrong revision, actor, or changed fields: %#v", createdEvent)
+	}
 	ownerQuery := (&Resolver{DB: db}).Query()
 	listed, err := ownerQuery.HouseholdInvitations(ownerCtx, household.ID, nil, nil, nil, nil)
 	if err != nil || len(listed.Edges) != 1 || listed.Edges[0].Node.GetID() != active.Invitation.GetID() {
@@ -143,7 +164,6 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if _, ok := listed.Edges[0].Node.(*model.AcceptedHouseholdInvitation); !ok {
 		t.Fatalf("accepted invitation variant was not returned: type=%T", listed.Edges[0].Node)
 	}
-	householdUUID, _ := gofrsuuid.FromString(household.ID)
 	memberUUID, _ := gofrsuuid.FromString(memberID)
 	memberRows, err := models.HouseholdMembers.Query(sm.Where(psql.And(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberUUID)), models.HouseholdMembers.Columns.Role.EQ(psql.S("MEMBER"))))).All(ctx, bobpgx.NewPool(db))
 	memberCount := len(memberRows)

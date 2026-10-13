@@ -12,7 +12,6 @@ import (
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
-	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	tagapp "github.com/walnuts1018/horse/internal/application/tag"
 	"github.com/walnuts1018/horse/internal/graph/model"
@@ -38,45 +37,13 @@ func (r *mutationResolver) updateTag(ctx context.Context, input model.UpdateTagI
 	if err != nil {
 		return nil, err
 	}
-	id, err := gofrsuuid.FromString(input.TagID)
-	if err != nil {
-		return nil, ErrNotFound
-	}
-	name := strings.TrimSpace(input.Name)
-	if name == "" || len(name) > 80 {
-		return nil, fmt.Errorf("%w: invalid tag name", ErrBadInput)
-	}
-	tx, err := r.DB.Begin(ctx)
+	tag, err := tagapp.NewService(r.DB).Update(ctx, tagapp.UpdateCommand{
+		ActorID: user.MemberID, TagID: input.TagID, BaseRevision: input.BaseRevision, Name: input.Name,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	executor := bobpgx.NewTx(tx, nil)
-	tag, err := models.Tags.Query(sm.Where(models.Tags.Columns.ID.EQ(psql.Arg(id))), sm.ForUpdate()).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	if _, err := requireMember(ctx, r.DB, tag.HouseholdID.String()); err != nil {
-		return nil, err
-	}
-	if int(tag.Revision) != input.BaseRevision {
-		return nil, ErrConflict
-	}
-	revision := tag.Revision + 1
-	if _, err := models.Tags.Update((&models.TagSetter{Name: &name, Revision: &revision}).UpdateMod(), um.Where(models.Tags.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
-		return nil, err
-	}
-	if err := writeEvent(ctx, tx, tag.HouseholdID.String(), "tag.updated", input.TagID, revision, []string{fieldName}, user.MemberID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	tag.Name, tag.Revision = name, revision
-	return tagModel(tag), nil
+	return &model.Tag{ID: tag.ID, HouseholdID: tag.HouseholdID, Name: tag.Name, Archived: tag.Archived, Revision: int(tag.Revision)}, nil
 }
 
 func (r *mutationResolver) archiveTag(ctx context.Context, tagID string, baseRevision int, archived bool) (*model.Tag, error) {
@@ -84,41 +51,13 @@ func (r *mutationResolver) archiveTag(ctx context.Context, tagID string, baseRev
 	if err != nil {
 		return nil, err
 	}
-	id, err := gofrsuuid.FromString(tagID)
-	if err != nil {
-		return nil, ErrNotFound
-	}
-	tx, err := r.DB.Begin(ctx)
+	tag, err := tagapp.NewService(r.DB).Archive(ctx, tagapp.ArchiveCommand{
+		ActorID: user.MemberID, TagID: tagID, BaseRevision: baseRevision, Archived: archived,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	executor := bobpgx.NewTx(tx, nil)
-	tag, err := models.Tags.Query(sm.Where(models.Tags.Columns.ID.EQ(psql.Arg(id))), sm.ForUpdate()).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	if _, err := requireMember(ctx, r.DB, tag.HouseholdID.String()); err != nil {
-		return nil, err
-	}
-	if int(tag.Revision) != baseRevision {
-		return nil, ErrConflict
-	}
-	revision := tag.Revision + 1
-	if _, err := models.Tags.Update((&models.TagSetter{Archived: &archived, Revision: &revision}).UpdateMod(), um.Where(models.Tags.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
-		return nil, err
-	}
-	if err := writeEvent(ctx, tx, tag.HouseholdID.String(), "tag.archived", tagID, revision, []string{fieldArchived}, user.MemberID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	tag.Archived, tag.Revision = archived, revision
-	return tagModel(tag), nil
+	return &model.Tag{ID: tag.ID, HouseholdID: tag.HouseholdID, Name: tag.Name, Archived: tag.Archived, Revision: int(tag.Revision)}, nil
 }
 
 func tagModel(row *models.Tag) *model.Tag {

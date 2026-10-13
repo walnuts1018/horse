@@ -89,7 +89,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	occurredAt := purchaseDate.UTC().Format(time.RFC3339)
 	period := accountingPeriod(purchaseDate)
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
-		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(occurredAt), Merchant: "Shop", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 1000}},
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(occurredAt), Merchant: testMerchant, PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 1000}},
 		Items: []*model.PurchaseItemInput{{Name: testItemName, AmountYen: 1000}},
 	})
 	if err != nil {
@@ -141,7 +141,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	}
 	jobID := generatedUUID(uuid.NewV7().String())
 	jobVersion, jobStatus := int32(1), "succeeded"
-	jobResult := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`{"receipt":{"merchant":"Shop","purchasedAt":"` + occurredAt + `","items":[{"name":"item","amount":1000}],"total":1000}}`)}
+	jobResult := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`{"receipt":{"merchant":"` + testMerchant + `","purchasedAt":"` + occurredAt + `","items":[{"name":"item","amount":1000}],"total":1000}}`)}
 	jobResultValue := sql.Null[types.JSON[stdjson.RawMessage]]{V: jobResult, Valid: true}
 	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &jobID, HouseholdID: &householdID, SourceDocumentID: &sourceDocumentID, Version: &jobVersion, Status: &jobStatus, Result: &jobResultValue}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
