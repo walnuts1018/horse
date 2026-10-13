@@ -1,0 +1,228 @@
+.settingsLayout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.settingsSection {
+  padding: 18px 18px 15px;
+}
+
+.panelHeading {
+  align-items: center;
+}
+
+.panelHeading h2 {
+  font-size: 15px;
+}
+
+.poolFundingCard {
+  padding: 5px 0 12px;
+  border-bottom: 1px solid #eff2ef;
+}
+
+.poolFundingForm {
+  display: grid;
+  gap: 11px;
+  padding: 5px 0 0 44px;
+}
+
+.poolFundingForm > label {
+  display: grid;
+  gap: 5px;
+  color: #5f6d65;
+  font-size: 10px;
+}
+
+.poolFundingForm select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #e9ede9;
+  border-radius: 8px;
+  padding: 0 9px;
+  color: #53635a;
+  background: #fff;
+  font-size: 11px;
+}
+
+.poolFundingShares {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 12px;
+}
+
+.poolFundingShares > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: #5f6d65;
+  font-size: 10px;
+}
+
+.invitationIssued {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.invitationIssued input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 9px;
+  font-size: 10px;
+}
+
+.settingsRows {
+  margin: 10px 0 12px;
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 49px;
+  border-bottom: 1px solid #f0f3f0;
+}
+
+.settingRow:last-child {
+  border: 0;
+}
+
+.settingRow > div:nth-child(2) {
+  flex: 1;
+}
+
+.settingRow b,
+.settingRow small {
+  display: block;
+}
+
+.settingRow b {
+  font-size: 10px;
+  color: #526259;
+}
+
+.settingRow small {
+  font-size: 8px;
+  color: #5f6d65;
+  margin-top: 3px;
+}
+
+.settingRow > svg {
+  color: #aeb7b1;
+}
+
+.settingRow > input {
+  min-width: 0;
+  max-width: 220px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 8px;
+}
+
+.settingRow progress {
+  width: 100%;
+  height: 8px;
+  border: 0;
+  border-radius: 99px;
+  background: #edf1ed;
+  accent-color: #4d8963;
+}
+
+.settingRow progress::-webkit-progress-bar {
+  border-radius: 99px;
+  background: #edf1ed;
+}
+
+.settingRow progress::-webkit-progress-value {
+  border-radius: 99px;
+  background: #4d8963;
+}
+
+.poolAvatar {
+  width: 29px;
+  height: 29px;
+  font-size: 10px;
+}
+
+.accountAvatar {
+  width: 29px;
+  height: 29px;
+  border-radius: 9px;
+  background: #f1f1e7;
+  color: #8e8e68;
+  display: grid;
+  place-items: center;
+}
+
+.allocationSettings {
+  display: grid;
+  gap: 8px;
+  margin: 17px 0;
+}
+
+.allocationSettings > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #5f6d65;
+  font-size: 10px;
+}
+
+.settingsSave {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #eef1ee;
+  padding-top: 12px;
+  color: #5f6d65;
+  font-size: 8px;
+}
+
+.settingsSaveButton {
+  height: 33px;
+  font-size: 9px;
+}
+
+.memberSection {
+  grid-column: 1/-1;
+}
+
+.memberSection .settingRow {
+  max-width: 490px;
+}
+
+@media (width <= 760px) {
+  .settingsLayout {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .memberSection {
+    grid-column: 1;
+  }
+
+  .settingsSection {
+    padding: 15px 13px;
+  }
+
+  .poolFundingForm {
+    padding-left: 0;
+  }
+}
+
+@media (width <= 700px) {
+  .invitationIssued {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settingRow small,
+  .settingsSave .button {
+    font-size: 10px;
+  }
+}

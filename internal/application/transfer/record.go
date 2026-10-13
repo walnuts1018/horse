@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	jsonv1 "encoding/json"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -20,7 +18,6 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
-	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -465,15 +462,5 @@ func checkedAdd(left, right int64) (int64, bool) {
 }
 
 func writeEvent(ctx context.Context, tx pgx.Tx, householdID, entityID gofrsuuid.UUID, eventType string, revision int64, fields []string, actorID gofrsuuid.UUID) error {
-	encoded, err := json.Marshal(fields)
-	if err != nil {
-		return err
-	}
-	changedFields := types.JSON[jsonv1.RawMessage]{Val: encoded}
-	actor := sql.Null[gofrsuuid.UUID]{V: actorID, Valid: true}
-	_, err = models.HouseholdEvents.Insert(&models.HouseholdEventSetter{
-		HouseholdID: &householdID, Type: &eventType, EntityID: &entityID, Revision: &revision,
-		ChangedFields: &changedFields, ActorID: &actor,
-	}).Exec(ctx, bobpgx.NewTx(tx, nil))
-	return err
+	return accounting.RecordEvent(ctx, bobpgx.NewTx(tx, nil), householdID, entityID, eventType, revision, fields, actorID)
 }

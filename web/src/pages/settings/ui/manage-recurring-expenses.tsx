@@ -1,3 +1,4 @@
+import styles from "./settings-page.module.css";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Check } from "lucide-react";
 import { readGraphql, type Household, type RecurringExpense } from "../../../shared/api";
@@ -157,8 +158,8 @@ export function ManageRecurringExpenses({
   };
 
   return (
-    <section className="panel settings-section" hidden={hidden}>
-      <div className="panel-heading">
+    <section className={`panel ${styles.settingsSection}`} hidden={hidden}>
+      <div className={`panel-heading ${styles.panelHeading}`}>
         <div>
           <span className="eyebrow">予定</span>
           <h2>定期支出</h2>
@@ -167,9 +168,9 @@ export function ManageRecurringExpenses({
           {recurring.filter((expense) => !expense.archived).length}
         </span>
       </div>
-      <div className="settings-rows">
+      <div className={styles.settingsRows}>
         {recurring.map((expense) => (
-          <div className="setting-row" key={expense.id}>
+          <div className={styles.settingRow} key={expense.id}>
             <div>
               <b>{expense.name}</b>
               <small>

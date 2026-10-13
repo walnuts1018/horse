@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	stdjson "encoding/json"
-	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -20,7 +18,6 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
-	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -363,17 +360,7 @@ func lockPeriod(ctx context.Context, tx pgx.Tx, householdID gofrsuuid.UUID, occu
 }
 
 func writeEvent(ctx context.Context, tx pgx.Tx, householdID gofrsuuid.UUID, eventType string, entityID gofrsuuid.UUID, revision int64, fields []string, actorID gofrsuuid.UUID) error {
-	encoded, err := jsonv2.Marshal(fields)
-	if err != nil {
-		return err
-	}
-	changedFields := types.JSON[stdjson.RawMessage]{Val: encoded}
-	actor := sql.Null[gofrsuuid.UUID]{V: actorID, Valid: true}
-	_, err = models.HouseholdEvents.Insert(&models.HouseholdEventSetter{
-		HouseholdID: &householdID, Type: &eventType, EntityID: &entityID, Revision: &revision,
-		ChangedFields: &changedFields, ActorID: &actor,
-	}).Exec(ctx, bobpgx.NewTx(tx, nil))
-	return err
+	return accounting.RecordEvent(ctx, bobpgx.NewTx(tx, nil), householdID, entityID, eventType, revision, fields, actorID)
 }
 
 func movementResult(row *models.AccountMovement) MovementResult {

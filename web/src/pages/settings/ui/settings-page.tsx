@@ -1,3 +1,4 @@
+import styles from "./settings-page.module.css";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Activity, Check, Plus } from "lucide-react";
 import { readGraphql, type Household, type AccountBalance } from "../../../shared/api";
@@ -225,7 +226,7 @@ export function SettingsPage({
           </button>
         ))}
       </nav>
-      <div className="settings-layout" onChangeCapture={trackFormChange}>
+      <div className={styles.settingsLayout} onChangeCapture={trackFormChange}>
         <ManageAccountSettings
           household={household}
           balances={balances}
@@ -242,8 +243,11 @@ export function SettingsPage({
           hidden={activeSettingsTab !== "accounts"}
           refreshRevision={balanceHistoryRevision}
         />
-        <section className="panel settings-section" hidden={activeSettingsTab !== "catalog"}>
-          <div className="panel-heading">
+        <section
+          className={`panel ${styles.settingsSection}`}
+          hidden={activeSettingsTab !== "catalog"}
+        >
+          <div className={`panel-heading ${styles.panelHeading}`}>
             <div>
               <span className="eyebrow">品目の分類</span>
               <h2>カテゴリ</h2>
@@ -284,12 +288,12 @@ export function SettingsPage({
           </form>
         </section>
         <section
-          className="panel settings-section"
+          className={`panel ${styles.settingsSection}`}
           hidden={activeSettingsTab !== "allocation"}
           id="default-allocation-settings"
           style={{ scrollMarginTop: 80 }}
         >
-          <div className="panel-heading">
+          <div className={`panel-heading ${styles.panelHeading}`}>
             <div>
               <span className="eyebrow">買い物の初期値</span>
               <h2>標準の負担割合</h2>
@@ -299,7 +303,7 @@ export function SettingsPage({
             </span>
           </div>
           <form data-unsaved-id="default-allocation" onSubmit={saveAllocation}>
-            <div className="allocation-settings">
+            <div className={styles.allocationSettings}>
               {household.pools.map((pool) => (
                 <label key={pool.id}>
                   <span>{pool.name}</span>
@@ -319,9 +323,12 @@ export function SettingsPage({
                 </label>
               ))}
             </div>
-            <div className="settings-save">
+            <div className={styles.settingsSave}>
               <span>変更後の買い物から適用</span>
-              <button className="button button-primary" disabled={pending}>
+              <button
+                className={`button button-primary ${styles.settingsSaveButton}`}
+                disabled={pending}
+              >
                 <Check size={16} />
                 保存
               </button>
@@ -385,17 +392,17 @@ export function SettingsPage({
           }}
         />
         <section
-          className="panel settings-section member-section"
+          className={`panel ${styles.settingsSection} ${styles.memberSection}`}
           hidden={activeSettingsTab !== "members"}
         >
-          <div className="panel-heading">
+          <div className={`panel-heading ${styles.panelHeading}`}>
             <div>
               <span className="eyebrow">共同編集</span>
               <h2>メンバー</h2>
             </div>
           </div>
           {household.members.map((member) => (
-            <div className="setting-row" key={member.id}>
+            <div className={styles.settingRow} key={member.id}>
               <div className="profile-avatar">{member.displayName.slice(0, 1)}</div>
               <div>
                 <b>{member.displayName}</b>

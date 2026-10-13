@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { readGraphql, type ProductSuggestion } from "../../../shared/api";
-import { productSuggestionsQuery } from "../../../entities/product";
+import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
 
 export function ProductVariantSelect({
   householdId,
@@ -34,15 +33,10 @@ export function ProductVariantSelect({
     let active = true;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      void readGraphql<{ productSuggestions: ProductSuggestion[] }>(productSuggestionsQuery, {
-        householdId,
-        query,
-        merchant: merchant.trim() || null,
-        first: 8,
-      })
+      void readProductSuggestions(householdId, query, merchant.trim() || null, 8)
         .then((result) => {
           if (!active) return;
-          setSuggestions(result.productSuggestions);
+          setSuggestions(result);
           setSuggestionsQuery(query);
         })
         .catch(() => active && setSuggestions([]))

@@ -1,3 +1,4 @@
+import styles from "./settings-page.module.css";
 import { useEffect } from "react";
 import { Check, Plus } from "lucide-react";
 import type { Household } from "../../../shared/api";
@@ -23,18 +24,18 @@ export function ManageAllocationCatalog({
 
   return (
     <>
-      <section className="panel settings-section" hidden={allocationHidden}>
-        <div className="panel-heading">
+      <section className={`panel ${styles.settingsSection}`} hidden={allocationHidden}>
+        <div className={`panel-heading ${styles.panelHeading}`}>
           <div>
             <span className="eyebrow">自動負担</span>
             <h2>優先ルール</h2>
           </div>
           <span className="count-badge">{model.allocationRulesCount}</span>
         </div>
-        <div className="settings-rows">
+        <div className={styles.settingsRows}>
           {model.allocationRules.map((rule) => (
-            <div className="setting-row" key={rule.id}>
-              <div className="pool-avatar">
+            <div className={styles.settingRow} key={rule.id}>
+              <div className={`pool-avatar ${styles.poolAvatar}`}>
                 {rule.target.__typename === "Category"
                   ? "分"
                   : rule.target.__typename === "MerchantAllocationRuleTarget"
@@ -140,7 +141,7 @@ export function ManageAllocationCatalog({
               )}
             </select>
           )}
-          <div className="allocation-settings">
+          <div className={styles.allocationSettings}>
             {household.pools.map((pool) => (
               <label key={pool.id}>
                 <span>{pool.name}</span>
@@ -166,18 +167,18 @@ export function ManageAllocationCatalog({
           </button>
         </form>
       </section>
-      <section className="panel settings-section" hidden={catalogHidden}>
-        <div className="panel-heading">
+      <section className={`panel ${styles.settingsSection}`} hidden={catalogHidden}>
+        <div className={`panel-heading ${styles.panelHeading}`}>
           <div>
             <span className="eyebrow">商品カタログ</span>
             <h2>商品とバリエーション</h2>
           </div>
           <span className="count-badge">{model.catalog.length}</span>
         </div>
-        <div className="settings-rows">
+        <div className={styles.settingsRows}>
           {model.catalog.map((product) => (
-            <div className="setting-row" key={product.id}>
-              <div className="pool-avatar">品</div>
+            <div className={styles.settingRow} key={product.id}>
+              <div className={`pool-avatar ${styles.poolAvatar}`}>品</div>
               <div>
                 <b>{product.name}</b>
                 <small>

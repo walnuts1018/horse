@@ -31,6 +31,10 @@ export type {
   ProductCatalogQuery$data,
 } from "./__generated__/ProductCatalogQuery.graphql";
 export type {
+  ProductSuggestionsQuery,
+  ProductSuggestionsQuery$data,
+} from "./__generated__/ProductSuggestionsQuery.graphql";
+export type {
   HomeSummaryQuery,
   HomeSummaryQuery$data,
 } from "./__generated__/HomeSummaryQuery.graphql";
@@ -38,6 +42,10 @@ export type {
   MonthlyCategorySpendingQuery,
   MonthlyCategorySpendingQuery$data,
 } from "./__generated__/MonthlyCategorySpendingQuery.graphql";
+export type {
+  MonthlyMemberSpendingQuery,
+  MonthlyMemberSpendingQuery$data,
+} from "./__generated__/MonthlyMemberSpendingQuery.graphql";
 export type {
   SettlementQuery,
   SettlementQuery$data,

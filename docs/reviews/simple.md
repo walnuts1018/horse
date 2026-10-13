@@ -24,19 +24,19 @@
 
 [use-household-purchases.ts](../../web/src/entities/purchase/api/use-household-purchases.ts)は生成されたPurchaseList fragmentの品目型を受け取る明示的なEntity mapperを使い、`as unknown as PurchaseItem[]`を解消しています。
 
-購入作成・記帳と品目更新の変数変換はPurchase Entity内の生成型mapperへ移し、Mutation名による共通基盤の分岐と`as never`を削除しました。購入履歴の2画面、口座活動、配賦ルール、予算、タグ、定期支出、商品カタログ、ホームの概要・月間支出・精算結果の読み込みもRelay生成operationと明示mapperへ移し、これらのread pathは`normalizeGraphQLValue()`を通りません。`readGraphql<T>`を使うほかのoperationとMutation結果の共通変換、手書き通信型は残っています。
+購入作成・記帳と品目更新の変数変換はPurchase Entity内の生成型mapperへ移し、Mutation名による共通基盤の分岐と`as never`を削除しました。購入履歴の2画面、口座活動、配賦ルール、予算、タグ、定期支出、商品カタログ、商品候補、ホームの概要・月間支出・精算結果、分析の月間支出・メンバー別支出の読み込みもRelay生成operationと明示mapperへ移し、これらのread pathは`normalizeGraphQLValue()`を通りません。`readGraphql<T>`を使うほかのoperationとMutation結果の共通変換、手書き通信型は残っています。
 
 ## 3. 中優先：会計の共通規則が複数パッケージに重複している
 
-イベント記録と冪等性検証には複数のApplication実装が残っています。
+イベント記録は`accounting.RecordEvent`へ集約しました。冪等性検証は操作ごとにfingerprintとresourceの契約が異なるため、共通化していません。
 
 口座の初期残高、口座間移動、外部入金は`accounting.BuildEntries()`と`InsertEntries()`を使うように統一し、借貸行の生成と検証の重複を解消しました。
 
-会計期間と符号付き整数のオーバーフロー検知は`accounting`へ集約済みです。イベント記録と冪等性検証の共通化は未対応です。
+会計期間、符号付き整数のオーバーフロー検知、イベント記録は`accounting`へ集約済みです。冪等性検証の共通化は未対応です。
 
 ## 4. 中優先：画面固有CSSと重要な純粋処理が分離されていない
 
-[global.css](../../web/src/app/styles/global.css)は4,728行あり、画面固有のスタイルも含みます。帳簿検索と精算のstyle、スマートフォンのroot overscroll制御をページ単位へ移しました。共通デザイントークンと汎用UIを残し、ほかの画面固有規則も機能単位のCSSへ分ける余地があります。
+[global.css](../../web/src/app/styles/global.css)は4,522行あり、画面固有のスタイルも含みます。帳簿検索、精算、設定画面専用のstyle、スマートフォンのroot overscroll制御をページ単位へ移しました。共通デザイントークンと汎用UIを残し、ほかの画面固有規則も機能単位のCSSへ分ける余地があります。
 
 画像座標の行列演算は[importsのmodel](../../web/src/pages/imports/model/evidence-geometry.ts)へ分離しました。`web/src`には`.test.ts`、`.test.tsx`、`.spec.ts`、`.spec.tsx`がなく、`web/package.json`にもテスト用スクリプトがありません。購入データ変換、Outbox、矩形範囲の処理など、純粋関数として分離できる重要処理の検証は未整備です。
 
@@ -52,7 +52,7 @@
 | --- | --- |
 | P1 | 大きなReact画面の機能・状態分割 |
 | P1 | Relay生成型と明示的mapperを中心にした通信境界 |
-| P2 | イベント記録と冪等性の共通化 |
+| P2 | 操作ごとの冪等性検証の重複 |
 | P2 | 画面固有CSSの分離と重要な純粋処理の検証 |
 | P3 | 必要性を測定した後の購入読み取りモデル分割 |
 

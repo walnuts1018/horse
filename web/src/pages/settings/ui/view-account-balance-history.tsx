@@ -1,3 +1,4 @@
+import styles from "./settings-page.module.css";
 import { useEffect, useRef, useState } from "react";
 import { readGraphql, type AccountBalanceAnalysis, type Household } from "../../../shared/api";
 import { accountBalanceAnalysisQuery } from "../api/account-balance-analysis";
@@ -176,8 +177,8 @@ export function ViewAccountBalanceHistory({
     ) ?? 1;
 
   return (
-    <section className="panel settings-section account-balance-analysis" hidden={hidden}>
-      <div className="panel-heading">
+    <section className={`panel ${styles.settingsSection} account-balance-analysis`} hidden={hidden}>
+      <div className={`panel-heading ${styles.panelHeading}`}>
         <div>
           <span className="eyebrow">口座別の仕訳</span>
           <h2>残高の増減</h2>

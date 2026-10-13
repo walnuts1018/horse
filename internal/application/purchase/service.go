@@ -627,14 +627,7 @@ func ensureAccountingPeriod(ctx context.Context, executor bob.Executor, househol
 }
 
 func writeEvent(ctx context.Context, tx pgx.Tx, householdID, entityID gofrsuuid.UUID, eventType string, revision int64, fields []string, actorID gofrsuuid.UUID) error {
-	encoded, err := stdjson.Marshal(fields)
-	if err != nil {
-		return err
-	}
-	changedFields := types.JSON[stdjson.RawMessage]{Val: encoded}
-	actor := sql.Null[gofrsuuid.UUID]{V: actorID, Valid: true}
-	_, err = models.HouseholdEvents.Insert(&models.HouseholdEventSetter{HouseholdID: &householdID, Type: &eventType, EntityID: &entityID, Revision: &revision, ChangedFields: &changedFields, ActorID: &actor}).Exec(ctx, bobpgx.NewTx(tx, nil))
-	return err
+	return accounting.RecordEvent(ctx, bobpgx.NewTx(tx, nil), householdID, entityID, eventType, revision, fields, actorID)
 }
 
 func normalizeMerchant(value string) string {

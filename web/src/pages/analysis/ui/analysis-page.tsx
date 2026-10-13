@@ -1,14 +1,15 @@
 import { BarChart3 } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import {
-  readGraphql,
   type Household,
   type Budget,
   type Purchase,
   type RecurringExpense,
-  monthlyCategorySpendingQuery,
 } from "../../../shared/api";
-import { monthlyMemberSpendingQuery } from "../api/operations";
+import {
+  readAnalysisCategorySpending,
+  readAnalysisMemberSpending,
+} from "../api/read-analysis-spending";
 import { readBudgets } from "../../../entities/budget";
 import { readRecurringExpenses } from "../../../entities/recurring-expense";
 import { useHouseholdPurchases } from "../../../entities/purchase";
@@ -222,12 +223,8 @@ export function AnalysisPage({ household }: { household: Household }) {
     let active = true;
     setSpendingLoading(true);
     setSpendingError("");
-    void readGraphql<{ monthlyCategorySpending: typeof spending }>(monthlyCategorySpendingQuery, {
-      householdId: household.id,
-      from: months[0],
-      to: finalMonth,
-    })
-      .then((result) => active && setSpending(result.monthlyCategorySpending))
+    void readAnalysisCategorySpending(household.id, months[0], finalMonth)
+      .then((result) => active && setSpending(result))
       .catch((reason) => active && setSpendingError((reason as Error).message))
       .finally(() => active && setSpendingLoading(false));
     return () => {
@@ -244,25 +241,11 @@ export function AnalysisPage({ household }: { household: Household }) {
     setMemberSpendingLoading(true);
     setMemberSpendingError("");
     setHasUnattributedPurchases(false);
-    void readGraphql<{
-      monthlyMemberSpending: {
-        items: Array<{
-          period: string;
-          memberId: string;
-          memberName: string;
-          amountYen: number;
-        }>;
-        hasUnattributedPurchases: boolean;
-      };
-    }>(monthlyMemberSpendingQuery, {
-      householdId: household.id,
-      from: months[0],
-      to: finalMonth,
-    })
+    void readAnalysisMemberSpending(household.id, months[0], finalMonth)
       .then((result) => {
         if (!active) return;
-        setMemberSpending(result.monthlyMemberSpending.items);
-        setHasUnattributedPurchases(result.monthlyMemberSpending.hasUnattributedPurchases);
+        setMemberSpending(result.items);
+        setHasUnattributedPurchases(result.hasUnattributedPurchases);
       })
       .catch((reason) => active && setMemberSpendingError((reason as Error).message))
       .finally(() => active && setMemberSpendingLoading(false));

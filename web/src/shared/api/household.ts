@@ -334,12 +334,6 @@ export type ProductConcept = {
   revision: number;
   variants: ProductVariant[];
 };
-export type ProductSuggestion = {
-  concept: ProductConcept;
-  variant: ProductVariant;
-  matchedName: string;
-  score: number;
-};
 type HouseholdInvitationFields = {
   id: string;
   householdId: string;

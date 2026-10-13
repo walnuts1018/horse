@@ -244,16 +244,5 @@ func purchaseUpdateFieldRevisions(current []byte, fields []string, revision int6
 }
 
 func insertPurchaseUpdateEvent(ctx context.Context, executor bob.Executor, householdID, actorID, purchaseID gofrsuuid.UUID, revision int64, fields []string) error {
-	changedFields, err := stdjson.Marshal(fields)
-	if err != nil {
-		return err
-	}
-	eventType := "purchase.updated"
-	actor := sql.Null[gofrsuuid.UUID]{V: actorID, Valid: true}
-	encodedFields := types.JSON[stdjson.RawMessage]{Val: changedFields}
-	_, err = models.HouseholdEvents.Insert(&models.HouseholdEventSetter{
-		HouseholdID: &householdID, Type: &eventType, EntityID: &purchaseID, Revision: &revision,
-		ChangedFields: &encodedFields, ActorID: &actor,
-	}).Exec(ctx, executor)
-	return err
+	return accounting.RecordEvent(ctx, executor, householdID, purchaseID, "purchase.updated", revision, fields, actorID)
 }

@@ -1,3 +1,4 @@
+import styles from "./settings-page.module.css";
 import { useEffect } from "react";
 import { Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import {
@@ -47,23 +48,23 @@ export function ManageAccountSettings({
   return (
     <>
       <section
-        className="panel settings-section"
+        className={`panel ${styles.settingsSection}`}
         hidden={hidden}
         id="pool-settings"
         style={{ scrollMarginTop: 80 }}
       >
-        <div className="panel-heading">
+        <div className={`panel-heading ${styles.panelHeading}`}>
           <div>
             <span className="eyebrow">負担先</span>
             <h2>マネープール</h2>
           </div>
           <span className="count-badge">{household.pools.length}</span>
         </div>
-        <div className="settings-rows">
+        <div className={styles.settingsRows}>
           {household.pools.map((pool) => (
-            <div className="pool-funding-card" key={pool.id}>
-              <div className="setting-row">
-                <div className="pool-avatar">{pool.name.slice(0, 1)}</div>
+            <div className={styles.poolFundingCard} key={pool.id}>
+              <div className={styles.settingRow}>
+                <div className={`pool-avatar ${styles.poolAvatar}`}>{pool.name.slice(0, 1)}</div>
                 <div>
                   <b>{pool.name}</b>
                   <small>
@@ -78,7 +79,7 @@ export function ManageAccountSettings({
                 <ChevronRight size={16} />
               </div>
               <form
-                className="pool-funding-form"
+                className={styles.poolFundingForm}
                 data-unsaved-id={`pool-funding:${pool.id}`}
                 onSubmit={(event) => void model.saveFundingRule(event, pool.id)}
               >
@@ -123,7 +124,7 @@ export function ManageAccountSettings({
                         <option value="REIMBURSE_PERSONAL">予算外支出の補填</option>
                       </select>
                     </label>
-                    <div className="pool-funding-shares">
+                    <div className={styles.poolFundingShares}>
                       {household.members.map((member) => (
                         <label key={member.id}>
                           <span>{member.displayName}</span>
@@ -180,22 +181,22 @@ export function ManageAccountSettings({
         </form>
       </section>
       <section
-        className="panel settings-section"
+        className={`panel ${styles.settingsSection}`}
         hidden={hidden}
         id="payment-source-settings"
         style={{ scrollMarginTop: 80 }}
       >
-        <div className="panel-heading">
+        <div className={`panel-heading ${styles.panelHeading}`}>
           <div>
             <span className="eyebrow">決済に使う口座・カード</span>
             <h2>決済元</h2>
           </div>
           <span className="count-badge">{household.accounts.length}</span>
         </div>
-        <div className="settings-rows">
+        <div className={styles.settingsRows}>
           {household.accounts.map((account) => (
-            <div className="setting-row" key={account.id}>
-              <div className="account-avatar">
+            <div className={styles.settingRow} key={account.id}>
+              <div className={styles.accountAvatar}>
                 <Wallet size={16} />
               </div>
               <div>

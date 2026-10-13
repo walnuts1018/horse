@@ -1,3 +1,4 @@
+import styles from "./settings-page.module.css";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Check } from "lucide-react";
 import { readGraphql, type Budget, type Household } from "../../../shared/api";
@@ -131,8 +132,8 @@ export function ManageBudgets({
   };
 
   return (
-    <section className="panel settings-section" hidden={hidden}>
-      <div className="panel-heading">
+    <section className={`panel ${styles.settingsSection}`} hidden={hidden}>
+      <div className={`panel-heading ${styles.panelHeading}`}>
         <div>
           <span className="eyebrow">予算と実績</span>
           <h2>月次予算</h2>
@@ -144,12 +145,12 @@ export function ManageBudgets({
           onChange={(event) => setBudgetPeriod(event.target.value)}
         />
       </div>
-      <div className="settings-rows">
+      <div className={styles.settingsRows}>
         {budgets.map((budget) => {
           const ratio =
             budget.amountYen > 0 ? Math.min(100, (budget.actualYen / budget.amountYen) * 100) : 0;
           return (
-            <div className="setting-row" key={budget.id}>
+            <div className={styles.settingRow} key={budget.id}>
               <div>
                 <b>{budget.name}</b>
                 <small>

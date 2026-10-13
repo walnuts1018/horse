@@ -1,3 +1,4 @@
+import styles from "./settings-page.module.css";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { readGraphql, type Tag } from "../../../shared/api";
@@ -114,8 +115,8 @@ export function ManageTags({
   };
 
   return (
-    <section className="panel settings-section" hidden={hidden}>
-      <div className="panel-heading">
+    <section className={`panel ${styles.settingsSection}`} hidden={hidden}>
+      <div className={`panel-heading ${styles.panelHeading}`}>
         <div>
           <span className="eyebrow">品目管理</span>
           <h2>タグ</h2>
@@ -123,9 +124,9 @@ export function ManageTags({
         <span className="count-badge">{tags.filter((tag) => !tag.archived).length}</span>
       </div>
       {loadError && <InlineError message={loadError} />}
-      <div className="settings-rows">
+      <div className={styles.settingsRows}>
         {tags.map((tag) => (
-          <div className="setting-row" key={tag.id}>
+          <div className={styles.settingRow} key={tag.id}>
             <input
               aria-label={`${tag.name}のタグ名`}
               value={tagDrafts[tag.id] ?? tag.name}

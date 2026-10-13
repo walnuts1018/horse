@@ -1,3 +1,4 @@
+import styles from "./settings-page.module.css";
 import { ArrowLeftRight, Check, Plus } from "lucide-react";
 import { useEffect } from "react";
 import type { Household } from "../../../shared/api";
@@ -36,8 +37,8 @@ export function ManageAccountActivity({
   useEffect(() => onPendingChange(activity.pending), [activity.pending, onPendingChange]);
 
   return (
-    <section className="panel settings-section" hidden={hidden}>
-      <div className="panel-heading">
+    <section className={`panel ${styles.settingsSection}`} hidden={hidden}>
+      <div className={`panel-heading ${styles.panelHeading}`}>
         <div>
           <span className="eyebrow">口座間の移動</span>
           <h2>資金移動</h2>
@@ -194,9 +195,9 @@ export function ManageAccountActivity({
           {activity.pendingMovementIntent ? "同じ移動を再試行" : "記録"}
         </button>
       </form>
-      <div className="settings-rows">
+      <div className={styles.settingsRows}>
         {activity.incomes.map((income) => (
-          <div className="setting-row" key={income.id}>
+          <div className={styles.settingRow} key={income.id}>
             <div>
               <b>外部入金</b>
               <small>
@@ -219,7 +220,7 @@ export function ManageAccountActivity({
           </button>
         )}
         {activity.movements.map((movement) => (
-          <div className="setting-row" key={movement.id}>
+          <div className={styles.settingRow} key={movement.id}>
             <div>
               <b>{movement.kind === "CARD_BILL_PAYMENT" ? "カード請求の支払い" : "口座移動"}</b>
               <small>

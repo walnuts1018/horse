@@ -8,13 +8,8 @@ import {
 } from "react";
 import { Plus, ReceiptJapaneseYen, Search, X } from "lucide-react";
 import { z } from "zod";
-import {
-  readGraphql,
-  type Household,
-  type ProductSuggestion,
-  type Purchase,
-} from "../../../shared/api";
-import { productSuggestionsQuery } from "../../../entities/product";
+import { type Household, type Purchase } from "../../../shared/api";
+import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
 import type { PurchaseDraftItem } from "../../../shared/lib";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
 import { EditPurchaseItemAllocations } from "./edit-purchase-item-allocations";
@@ -159,13 +154,8 @@ export function EditPurchaseItems({
     }
     let active = true;
     const timer = window.setTimeout(() => {
-      void readGraphql<{ productSuggestions: ProductSuggestion[] }>(productSuggestionsQuery, {
-        householdId,
-        query,
-        merchant: merchant.trim() || null,
-        first: 6,
-      })
-        .then((result) => active && setProductSuggestions(result.productSuggestions))
+      void readProductSuggestions(householdId, query, merchant.trim() || null, 6)
+        .then((result) => active && setProductSuggestions(result))
         .catch(() => active && setProductSuggestions([]));
     }, 220);
     return () => {

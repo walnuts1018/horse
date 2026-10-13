@@ -2457,83 +2457,6 @@ form.ledger-filters .select-filter input[type="number"] {
   color: #516258;
 }
 
-.settings-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-
-.settings-section {
-  padding: 18px 18px 15px;
-}
-
-.settings-section .panel-heading {
-  align-items: center;
-}
-
-.settings-section .panel-heading h2 {
-  font-size: 15px;
-}
-
-.pool-funding-card {
-  padding: 5px 0 12px;
-  border-bottom: 1px solid #eff2ef;
-}
-
-.pool-funding-form {
-  display: grid;
-  gap: 11px;
-  padding: 5px 0 0 44px;
-}
-
-.pool-funding-form > label {
-  display: grid;
-  gap: 5px;
-  color: #5f6d65;
-  font-size: 10px;
-}
-
-.pool-funding-form select {
-  width: 100%;
-  min-height: 34px;
-  border: 1px solid #e9ede9;
-  border-radius: 8px;
-  padding: 0 9px;
-  color: #53635a;
-  background: #fff;
-  font-size: 11px;
-}
-
-.pool-funding-shares {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px 12px;
-}
-
-.pool-funding-shares > label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  color: #5f6d65;
-  font-size: 10px;
-}
-
-.invitation-issued {
-  display: flex;
-  gap: 8px;
-  margin: 10px 0;
-}
-
-.invitation-issued input {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0 9px;
-  font-size: 10px;
-}
-
 .invitation-prompt {
   display: flex;
   align-items: center;
@@ -2564,62 +2487,6 @@ form.ledger-filters .select-filter input[type="number"] {
   background: #f3f6f2;
   color: #5f6d65;
   font-size: 9px;
-  display: grid;
-  place-items: center;
-}
-
-.settings-rows {
-  margin: 10px 0 12px;
-}
-
-.setting-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 49px;
-  border-bottom: 1px solid #f0f3f0;
-}
-
-.setting-row:last-child {
-  border: 0;
-}
-
-.setting-row > div:nth-child(2) {
-  flex: 1;
-}
-
-.setting-row b,
-.setting-row small {
-  display: block;
-}
-
-.setting-row b {
-  font-size: 10px;
-  color: #526259;
-}
-
-.setting-row small {
-  font-size: 8px;
-  color: #5f6d65;
-  margin-top: 3px;
-}
-
-.setting-row > svg {
-  color: #aeb7b1;
-}
-
-.pool-avatar {
-  width: 29px;
-  height: 29px;
-  font-size: 10px;
-}
-
-.account-avatar {
-  width: 29px;
-  height: 29px;
-  border-radius: 9px;
-  background: #f1f1e7;
-  color: #8e8e68;
   display: grid;
   place-items: center;
 }
@@ -2682,20 +2549,6 @@ form.ledger-filters .select-filter input[type="number"] {
   background: #f2edf7;
 }
 
-.allocation-settings {
-  display: grid;
-  gap: 8px;
-  margin: 17px 0;
-}
-
-.allocation-settings > label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: #5f6d65;
-  font-size: 10px;
-}
-
 .number-field {
   width: 86px;
   height: 31px;
@@ -2721,29 +2574,6 @@ form.ledger-filters .select-filter input[type="number"] {
   color: #5f6d65;
   font-size: 9px;
   margin-left: 5px;
-}
-
-.settings-save {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-top: 1px solid #eef1ee;
-  padding-top: 12px;
-  color: #5f6d65;
-  font-size: 8px;
-}
-
-.settings-save .button {
-  height: 33px;
-  font-size: 9px;
-}
-
-.member-section {
-  grid-column: 1/-1;
-}
-
-.member-section .setting-row {
-  max-width: 490px;
 }
 
 .dropzone {
@@ -3696,23 +3526,6 @@ form.ledger-filters .select-filter input[type="number"] {
     height: 45px;
   }
 
-  .settings-layout {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .member-section {
-    grid-column: 1;
-  }
-
-  .settings-section {
-    padding: 15px 13px;
-  }
-
-  .pool-funding-form {
-    padding-left: 0;
-  }
-
   .inline-create {
     flex-wrap: wrap;
   }
@@ -4241,15 +4054,6 @@ form.ledger-filters .select-filter input[type="number"] {
   color: var(--muted);
 }
 
-.setting-row > input {
-  min-width: 0;
-  max-width: 220px;
-  height: 34px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 0 8px;
-}
-
 .account-balance-analysis .analysis-controls {
   display: flex;
   flex-wrap: wrap;
@@ -4365,8 +4169,7 @@ form.ledger-filters .select-filter input[type="number"] {
   background: #fff4e8;
 }
 
-.analysis-budget-row progress,
-.setting-row progress {
+.analysis-budget-row progress {
   width: 100%;
   height: 8px;
   border: 0;
@@ -4375,14 +4178,12 @@ form.ledger-filters .select-filter input[type="number"] {
   accent-color: #4d8963;
 }
 
-.analysis-budget-row progress::-webkit-progress-bar,
-.setting-row progress::-webkit-progress-bar {
+.analysis-budget-row progress::-webkit-progress-bar {
   border-radius: 99px;
   background: #edf1ed;
 }
 
-.analysis-budget-row progress::-webkit-progress-value,
-.setting-row progress::-webkit-progress-value {
+.analysis-budget-row progress::-webkit-progress-value {
   border-radius: 99px;
   background: #4d8963;
 }
@@ -4583,11 +4384,6 @@ form.ledger-filters .select-filter input[type="number"] {
     margin-inline: 12px;
   }
 
-  .invitation-issued {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
   .conflict-panel {
     align-items: stretch;
     flex-direction: column;
@@ -4712,7 +4508,6 @@ form.ledger-filters .select-filter input[type="number"] {
   .month-column > span,
   .category-row,
   .category-row > strong,
-  .setting-row small,
   .number-field small,
   .create-household label,
   .drop-caption,
@@ -4720,7 +4515,6 @@ form.ledger-filters .select-filter input[type="number"] {
   .file-review-row small,
   .import-note,
   .inline-create .button,
-  .settings-save .button,
   .mobile-dock :is(button, a) span,
   .mobile-dock .dock-add span {
     font-size: 10px;

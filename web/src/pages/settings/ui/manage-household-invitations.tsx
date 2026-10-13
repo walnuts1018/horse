@@ -1,3 +1,4 @@
+import styles from "./settings-page.module.css";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import {
@@ -119,8 +120,8 @@ export function ManageHouseholdInvitations({
   };
 
   return (
-    <section className="panel settings-section" hidden={hidden}>
-      <div className="panel-heading">
+    <section className={`panel ${styles.settingsSection}`} hidden={hidden}>
+      <div className={`panel-heading ${styles.panelHeading}`}>
         <div>
           <span className="eyebrow">共同編集</span>
           <h2>招待</h2>
@@ -152,7 +153,7 @@ export function ManageHouseholdInvitations({
         </button>
       </form>
       {invitationLink && (
-        <div className="invitation-issued">
+        <div className={styles.invitationIssued}>
           <input aria-label="招待リンク" readOnly value={invitationLink} />
           <button
             type="button"
@@ -168,10 +169,10 @@ export function ManageHouseholdInvitations({
           </button>
         </div>
       )}
-      <div className="settings-rows">
+      <div className={styles.settingsRows}>
         {invitations.map((invitation) => (
-          <div className="setting-row" key={invitation.id}>
-            <div className="pool-avatar">招</div>
+          <div className={styles.settingRow} key={invitation.id}>
+            <div className={`pool-avatar ${styles.poolAvatar}`}>招</div>
             <div>
               <b>{new Date(invitation.expiresAt).toLocaleDateString("ja-JP")}まで</b>
               <small>
