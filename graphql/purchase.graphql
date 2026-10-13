@@ -1,3 +1,11 @@
+enum SourceKind {
+  RECEIPT
+  ORDER
+  EMAIL
+  CARD
+  BANK
+}
+
 type Purchase implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)

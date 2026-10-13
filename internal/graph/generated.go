@@ -5979,7 +5979,15 @@ extend type Query {
   aliases: [ProductAlias!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/purchase.graphql", Input: `type Purchase implements Node {
+	{Name: "../../graphql/purchase.graphql", Input: `enum SourceKind {
+  RECEIPT
+  ORDER
+  EMAIL
+  CARD
+  BANK
+}
+
+type Purchase implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   occurredAt: DateTime!
@@ -6524,14 +6532,6 @@ type SettlementLine {
 
 extend type Query {
   settlement(householdId: ID! @nodeID(of: "Household"), period: YearMonth!): Settlement!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/source_kind.graphql", Input: `enum SourceKind {
-  RECEIPT
-  ORDER
-  EMAIL
-  CARD
-  BANK
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/tag.graphql", Input: `type Tag implements Node {

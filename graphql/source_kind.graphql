@@ -1,7 +1,0 @@
-enum SourceKind {
-  RECEIPT
-  ORDER
-  EMAIL
-  CARD
-  BANK
-}
