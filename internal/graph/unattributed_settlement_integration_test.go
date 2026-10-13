@@ -106,7 +106,7 @@ func TestSettlementRejectsPostedPurchasePaidFromAccountWithoutPool(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback(context.Background())
+	defer func() { _ = tx.Rollback(context.Background()) }()
 	executor := bobpgx.NewTx(tx, nil)
 	if _, err := models.PurchasePayments.Update((&models.PurchasePaymentSetter{AmountYen: &firstAmount}).UpdateMod(), um.Where(psql.And(
 		models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
