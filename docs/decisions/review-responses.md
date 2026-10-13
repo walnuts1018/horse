@@ -184,7 +184,7 @@ runtimeの`internal/**/*.go`を監査し、直接のSQL文文字列、`psql.Raw`
 
 商品カタログ一覧、商品候補、残高一覧と履歴、招待一覧、ホームの概要・月間支出・精算結果、分析の月間支出・メンバー別支出、Settlement・貸付残高、未照合観測をpage/entity所有のAPI・mapperへ移しました。Relay生成型を入力にし、手書き通信型と対象read pathの`readGraphql<T>`を除去しました。画面のfallback・pagination・更新依存を維持しました。残る`readGraphql<T>`利用はMutationです。
 
-設定画面専用のレイアウト、section、行、負担設定、招待リンクのstyleを`pages/settings/ui/settings-page.module.css`へ移しました。設定画面以外でも使う招待prompt、件数badge、avatarの基本形はglobal stylesheetに残しました。`global.css`は4,522行です。
+設定画面専用のレイアウト、section、行、負担設定、招待リンクのstyleと、購入作成専用の見出し、詳細フォーム、outboxのstyleを各pageのCSS moduleへ移しました。設定画面以外でも使う招待prompt、件数badge、avatarの基本形と購入・帳簿間で共有する入力styleはglobal stylesheetに残しました。`global.css`は4,392行です。
 
 HouseholdEventのJSON化とBob insertを`accounting.RecordEvent`へ集約し、購入・入金・振替・planningから呼び出しました。冪等性検証は各操作でfingerprintとresourceの契約が異なり、同じ処理へまとめると契約を曖昧にするため、個別に維持します。対象ApplicationのGoテストと`golangci-lint`が成功しました。
 

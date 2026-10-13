@@ -333,8 +333,8 @@ export function PurchaseCreatePage({
           </button>
           <h1>買い物を追加</h1>
         </div>
-        <span className="save-status">
-          <span className="status-dot" />
+        <span className={`save-status ${styles.saveStatus}`}>
+          <span className={`status-dot ${styles.statusDot}`} />
           {draftStatus}
         </span>
       </div>
@@ -418,10 +418,10 @@ export function PurchaseCreatePage({
       </PurchaseItemsComposer>
       {householdOutbox.length > 0 && (
         <section className={`panel purchase-outbox ${styles.outbox}`}>
-          <div className="panel-heading">
+          <div className={`panel-heading ${styles.outboxHeading}`}>
             <div>
               <span className="eyebrow">送信待ち</span>
-              <h2>{householdOutbox.length}件</h2>
+              <h2 className={styles.outboxCount}>{householdOutbox.length}件</h2>
             </div>
           </div>
           {householdOutbox.map((entry) => {
@@ -435,7 +435,7 @@ export function PurchaseCreatePage({
                   ? "オフライン保存済み"
                   : "送信待ち";
             return (
-              <div className="purchase-outbox-row" key={entry.input.idempotencyKey}>
+              <div className={styles.outboxRow} key={entry.input.idempotencyKey}>
                 <div>
                   <b>{entry.input.merchant || "店名未入力"}</b>
                   <small>
@@ -443,10 +443,10 @@ export function PurchaseCreatePage({
                     {yen(entry.input.items.reduce((total, item) => total + item.amountYen, 0))}
                   </small>
                   {entry.lastError && (
-                    <small className="purchase-outbox-error">{entry.lastError}</small>
+                    <small className={styles.outboxError}>{entry.lastError}</small>
                   )}
                 </div>
-                <div className="purchase-outbox-actions">
+                <div className={styles.outboxActions}>
                   {failed && (
                     <button
                       type="button"

@@ -36,7 +36,7 @@
 
 ## 4. 中優先：画面固有CSSと重要な純粋処理が分離されていない
 
-[global.css](../../web/src/app/styles/global.css)は4,522行あり、画面固有のスタイルも含みます。帳簿検索、精算、設定画面専用のstyle、スマートフォンのroot overscroll制御をページ単位へ移しました。共通デザイントークンと汎用UIを残し、ほかの画面固有規則も機能単位のCSSへ分ける余地があります。
+[global.css](../../web/src/app/styles/global.css)は4,392行あり、画面固有のスタイルも含みます。帳簿検索、精算、設定、購入作成の専用styleとスマートフォンのroot overscroll制御をページ単位へ移しました。共通デザイントークンと汎用UIを残し、ほかの画面固有規則も機能単位のCSSへ分ける余地があります。
 
 画像座標の行列演算は[importsのmodel](../../web/src/pages/imports/model/evidence-geometry.ts)へ分離しました。`web/src`には`.test.ts`、`.test.tsx`、`.spec.ts`、`.spec.tsx`がなく、`web/package.json`にもテスト用スクリプトがありません。購入データ変換、Outbox、矩形範囲の処理など、純粋関数として分離できる重要処理の検証は未整備です。
 
