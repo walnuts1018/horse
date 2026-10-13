@@ -62,11 +62,11 @@ export function App() {
     select: (state) => `${state.location.pathname}${state.location.searchStr}`,
   });
   const page = appPageFromPath(pathname);
-  const outbox = usePurchaseOutbox();
   const createAndPostPurchase = useCreateAndPostPurchase();
   const [viewer, setViewer] = useState<{ id: string; displayName: string; email?: string } | null>(
     null,
   );
+  const outbox = usePurchaseOutbox(viewer?.id);
   const [households, setHouseholds] = useState<Array<{ id: string; name: string }>>([]);
   const [householdRetryVersion, setHouseholdRetryVersion] = useState(0);
   const [household, setHousehold] = useState<Household | null>(null);
@@ -264,14 +264,16 @@ export function App() {
         let claimed = false;
         let leaseRenewal: number | undefined;
         try {
-          const request = await claimPurchaseOutbox(key, owner);
+          const request = await claimPurchaseOutbox(viewer.id, entry.input.householdId, key, owner);
           if (!request) return;
           claimed = true;
           leaseRenewal = window.setInterval(() => {
-            void renewPurchaseOutboxLease(key, owner).catch(() => {});
+            void renewPurchaseOutboxLease(viewer.id, entry.input.householdId, key, owner).catch(
+              () => {},
+            );
           }, 10_000);
           await createAndPostPurchase(request.input);
-          await completePurchaseOutbox(key, owner);
+          await completePurchaseOutbox(viewer.id, entry.input.householdId, key, owner);
           if (currentHouseholdId.current === request.input.householdId) {
             await refreshHouseholdRef.current(request.input.householdId);
             showNoticeRef.current("買い物を帳簿に追加しました", "success");
@@ -290,7 +292,13 @@ export function App() {
                       ["AbortError", "NetworkError"].includes(reason.name))
                   ? "接続を確認してから再送してください"
                   : "買い物を送信できませんでした。再送または破棄してください";
-            await markPurchaseOutboxFailed(key, owner, message).catch(() => {});
+            await markPurchaseOutboxFailed(
+              viewer.id,
+              entry.input.householdId,
+              key,
+              owner,
+              message,
+            ).catch(() => {});
           }
         } finally {
           if (leaseRenewal !== undefined) window.clearInterval(leaseRenewal);

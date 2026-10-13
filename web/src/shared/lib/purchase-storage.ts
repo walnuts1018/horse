@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CreatePurchaseInput } from "../api";
 
 export type PurchaseDraftItem = {
@@ -25,6 +25,9 @@ export type PurchaseDraft = {
 };
 
 export type PurchaseOutboxEntry = {
+  storageKey: string;
+  memberId: string;
+  householdId: string;
   idempotencyKey: string;
   input: CreatePurchaseInput;
   status: "PENDING" | "FAILED";
@@ -38,12 +41,24 @@ export type PurchaseOutboxEntry = {
 const databaseName = "horse-browser-data";
 const legacyDraftsStore = "purchase-drafts";
 const legacyOutboxStore = "purchase-outbox";
-const draftsStore = "purchase-drafts-v2";
-const outboxStore = "purchase-outbox-v2";
+const unscopedDraftsStore = "purchase-drafts-v2";
+const unscopedOutboxStore = "purchase-outbox-v2";
+const draftsStore = "purchase-drafts-v3";
+const outboxStore = "purchase-outbox-v3";
 const outboxChangeEvent = "horse:purchase-outbox-change";
 const databaseReloadEvent = "horse:database-reload-required";
 const leaseMilliseconds = 30_000;
-const databaseVersion = 2;
+const databaseVersion = 3;
+
+function draftStorageKey(memberId: string, householdId: string) {
+  if (!memberId) throw new Error("ログイン中のメンバーを確認できません");
+  return JSON.stringify([memberId, householdId]);
+}
+
+function outboxStorageKey(memberId: string, householdId: string, idempotencyKey: string) {
+  if (!memberId) throw new Error("ログイン中のメンバーを確認できません");
+  return JSON.stringify([memberId, householdId, idempotencyKey]);
+}
 
 function requestDatabaseReload(message: string) {
   if (typeof window !== "undefined")
@@ -80,7 +95,7 @@ function migrateDraft(value: unknown, key: IDBValidKey) {
   return { ...draft, householdId };
 }
 
-function migrateOutbox(value: unknown, key: IDBValidKey): PurchaseOutboxEntry | undefined {
+function migrateOutbox(value: unknown, key: IDBValidKey): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object") return undefined;
   const entry = value as Record<string, unknown>;
   const input = (entry.input ?? entry.request ?? entry) as CreatePurchaseInput | undefined;
@@ -99,7 +114,7 @@ function migrateOutbox(value: unknown, key: IDBValidKey): PurchaseOutboxEntry | 
     status: entry.status === "FAILED" ? "FAILED" : "PENDING",
     createdAt: typeof entry.createdAt === "number" ? entry.createdAt : Date.now(),
     updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : Date.now(),
-  } as PurchaseOutboxEntry;
+  };
 }
 
 function normalizePurchaseInput(input: CreatePurchaseInput): CreatePurchaseInput {
@@ -130,13 +145,22 @@ function openDatabase() {
       const database = request.result;
       const transaction = request.transaction;
       if (!transaction) return;
-      if (!database.objectStoreNames.contains(draftsStore))
-        database.createObjectStore(draftsStore, { keyPath: "householdId" });
-      if (!database.objectStoreNames.contains(outboxStore))
-        database.createObjectStore(outboxStore, { keyPath: "idempotencyKey" });
-      if (event.oldVersion < databaseVersion) {
-        migrateStore(transaction, legacyDraftsStore, draftsStore, migrateDraft);
-        migrateStore(transaction, legacyOutboxStore, outboxStore, migrateOutbox);
+      if (event.oldVersion < 2) {
+        if (!database.objectStoreNames.contains(unscopedDraftsStore))
+          database.createObjectStore(unscopedDraftsStore, { keyPath: "householdId" });
+        if (!database.objectStoreNames.contains(unscopedOutboxStore))
+          database.createObjectStore(unscopedOutboxStore, { keyPath: "idempotencyKey" });
+        migrateStore(transaction, legacyDraftsStore, unscopedDraftsStore, migrateDraft);
+        migrateStore(transaction, legacyOutboxStore, unscopedOutboxStore, migrateOutbox);
+      }
+      if (event.oldVersion < 3) {
+        if (!database.objectStoreNames.contains(draftsStore))
+          database.createObjectStore(draftsStore, { keyPath: "storageKey" });
+        if (!database.objectStoreNames.contains(outboxStore)) {
+          const store = database.createObjectStore(outboxStore, { keyPath: "storageKey" });
+          store.createIndex("memberId", "memberId");
+          store.createIndex("memberHousehold", ["memberId", "householdId"]);
+        }
       }
     };
     request.onsuccess = () => {
@@ -244,12 +268,12 @@ function readValue<T>(storeName: string, key: IDBValidKey) {
   );
 }
 
-function readAll<T>(storeName: string) {
+function readAllByIndex<T>(storeName: string, indexName: string, key: IDBValidKey) {
   return openDatabase().then(
     (database) =>
       new Promise<T[]>((resolve, reject) => {
         const transaction = database.transaction(storeName, "readonly");
-        const request = transaction.objectStore(storeName).getAll();
+        const request = transaction.objectStore(storeName).index(indexName).getAll(key);
         let values: T[] = [];
         request.onsuccess = () => {
           values = request.result as T[];
@@ -266,70 +290,63 @@ function readAll<T>(storeName: string) {
   );
 }
 
-export async function loadPurchaseDraft(householdId: string): Promise<PurchaseDraft | undefined> {
-  const current = await readValue<PurchaseDraft & { householdId: string; cleared?: boolean }>(
+export async function loadPurchaseDraft(
+  memberId: string,
+  householdId: string,
+): Promise<PurchaseDraft | undefined> {
+  const storageKey = draftStorageKey(memberId, householdId);
+  const current = await readValue<PurchaseDraft & { storageKey: string; cleared?: boolean }>(
     draftsStore,
-    householdId,
+    storageKey,
   );
   if (current?.cleared) {
-    try {
-      localStorage.removeItem(`horse:draft:${householdId}`);
-    } catch {
-      // 保存済みの削除記録を優先し、古い下書きの再移行を防ぐ。
-    }
     return undefined;
   }
   if (current) return current;
-  const legacyKey = `horse:draft:${householdId}`;
-  try {
-    const legacy = localStorage.getItem(legacyKey);
-    if (!legacy) return undefined;
-    const draft = JSON.parse(legacy) as Partial<PurchaseDraft>;
-    const migrated: PurchaseDraft & { householdId: string } = {
-      householdId,
-      merchant: draft.merchant ?? "",
-      occurredAt: draft.occurredAt ?? "",
-      paymentAccountId: draft.paymentAccountId ?? "",
-      itemName: draft.itemName ?? "",
-      itemAmount: draft.itemAmount ?? "",
-      categoryId: draft.categoryId ?? "",
-      items: draft.items ?? [],
-    };
-    await writeValue(draftsStore, migrated);
-    localStorage.removeItem(legacyKey);
-    return migrated;
-  } catch {
-    throw new Error("以前の下書きを移行できませんでした。ブラウザの保存容量を確認してください");
-  }
+  return undefined;
 }
 
-export function savePurchaseDraft(householdId: string, draft: PurchaseDraft) {
-  return writeValue(draftsStore, { ...draft, householdId });
+export function savePurchaseDraft(memberId: string, householdId: string, draft: PurchaseDraft) {
+  return writeValue(draftsStore, { ...draft, storageKey: draftStorageKey(memberId, householdId) });
 }
 
-export function deletePurchaseDraft(householdId: string) {
-  return writeValue(draftsStore, { householdId, cleared: true });
+export function deletePurchaseDraft(memberId: string, householdId: string) {
+  return writeValue(draftsStore, {
+    storageKey: draftStorageKey(memberId, householdId),
+    cleared: true,
+  });
 }
 
-export async function listPurchaseOutbox() {
-  return readAll<PurchaseOutboxEntry>(outboxStore);
+export async function listPurchaseOutbox(memberId: string, householdId?: string) {
+  return readAllByIndex<PurchaseOutboxEntry>(
+    outboxStore,
+    householdId ? "memberHousehold" : "memberId",
+    householdId ? [memberId, householdId] : memberId,
+  );
 }
 
-export async function enqueuePurchase(input: CreatePurchaseInput) {
+export async function enqueuePurchase(input: CreatePurchaseInput, memberId: string) {
   input = normalizePurchaseInput(input);
   const now = Date.now();
+  const storageKey = outboxStorageKey(memberId, input.householdId, input.idempotencyKey);
   const database = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction([draftsStore, outboxStore], "readwrite");
       transaction.objectStore(outboxStore).put({
+        storageKey,
+        memberId,
+        householdId: input.householdId,
         idempotencyKey: input.idempotencyKey,
         input,
         status: "PENDING",
         createdAt: now,
         updatedAt: now,
       } satisfies PurchaseOutboxEntry);
-      transaction.objectStore(draftsStore).put({ householdId: input.householdId, cleared: true });
+      transaction.objectStore(draftsStore).put({
+        storageKey: draftStorageKey(memberId, input.householdId),
+        cleared: true,
+      });
       transaction.oncomplete = () => resolve();
       transaction.onerror = () =>
         reject(transaction.error ?? new Error("送信待ちを保存できません"));
@@ -339,15 +356,12 @@ export async function enqueuePurchase(input: CreatePurchaseInput) {
   } finally {
     database.close();
   }
-  try {
-    localStorage.removeItem(`horse:draft:${input.householdId}`);
-  } catch {
-    // IndexedDBに移行済みのため、削除に失敗しても送信データを保持する。
-  }
   notifyOutboxChanged();
 }
 
 export async function claimPurchaseOutbox(
+  memberId: string,
+  householdId: string,
   idempotencyKey: string,
   owner: string,
 ): Promise<PurchaseOutboxEntry | undefined> {
@@ -355,11 +369,18 @@ export async function claimPurchaseOutbox(
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(outboxStore, "readwrite");
     const store = transaction.objectStore(outboxStore);
-    const request = store.get(idempotencyKey);
+    const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
     let claimed: PurchaseOutboxEntry | undefined;
     request.onsuccess = () => {
       const entry = request.result as PurchaseOutboxEntry | undefined;
-      if (!entry || entry.status !== "PENDING" || (entry.leaseUntil ?? 0) > Date.now()) return;
+      if (
+        !entry ||
+        entry.memberId !== memberId ||
+        entry.householdId !== householdId ||
+        entry.status !== "PENDING" ||
+        (entry.leaseUntil ?? 0) > Date.now()
+      )
+        return;
       claimed = {
         ...entry,
         input: normalizePurchaseInput(entry.input),
@@ -386,6 +407,8 @@ export async function claimPurchaseOutbox(
 }
 
 export async function markPurchaseOutboxFailed(
+  memberId: string,
+  householdId: string,
   idempotencyKey: string,
   owner: string,
   message: string,
@@ -395,10 +418,16 @@ export async function markPurchaseOutboxFailed(
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(outboxStore, "readwrite");
       const store = transaction.objectStore(outboxStore);
-      const request = store.get(idempotencyKey);
+      const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
       request.onsuccess = () => {
         const entry = request.result as PurchaseOutboxEntry | undefined;
-        if (!entry || entry.leaseOwner !== owner) return;
+        if (
+          !entry ||
+          entry.memberId !== memberId ||
+          entry.householdId !== householdId ||
+          entry.leaseOwner !== owner
+        )
+          return;
         store.put({
           ...entry,
           status: "FAILED",
@@ -420,16 +449,26 @@ export async function markPurchaseOutboxFailed(
   notifyOutboxChanged();
 }
 
-export async function completePurchaseOutbox(idempotencyKey: string, owner: string) {
+export async function completePurchaseOutbox(
+  memberId: string,
+  householdId: string,
+  idempotencyKey: string,
+  owner: string,
+) {
   const database = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(outboxStore, "readwrite");
       const store = transaction.objectStore(outboxStore);
-      const request = store.get(idempotencyKey);
+      const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
       request.onsuccess = () => {
         const entry = request.result as PurchaseOutboxEntry | undefined;
-        if (entry?.leaseOwner === owner) store.delete(idempotencyKey);
+        if (
+          entry?.memberId === memberId &&
+          entry.householdId === householdId &&
+          entry.leaseOwner === owner
+        )
+          store.delete(outboxStorageKey(memberId, householdId, idempotencyKey));
       };
       transaction.oncomplete = () => resolve();
       transaction.onerror = () =>
@@ -443,16 +482,28 @@ export async function completePurchaseOutbox(idempotencyKey: string, owner: stri
   notifyOutboxChanged();
 }
 
-export async function renewPurchaseOutboxLease(idempotencyKey: string, owner: string) {
+export async function renewPurchaseOutboxLease(
+  memberId: string,
+  householdId: string,
+  idempotencyKey: string,
+  owner: string,
+) {
   const database = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(outboxStore, "readwrite");
       const store = transaction.objectStore(outboxStore);
-      const request = store.get(idempotencyKey);
+      const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
       request.onsuccess = () => {
         const entry = request.result as PurchaseOutboxEntry | undefined;
-        if (!entry || entry.status !== "PENDING" || entry.leaseOwner !== owner) return;
+        if (
+          !entry ||
+          entry.memberId !== memberId ||
+          entry.householdId !== householdId ||
+          entry.status !== "PENDING" ||
+          entry.leaseOwner !== owner
+        )
+          return;
         store.put({ ...entry, leaseUntil: Date.now() + leaseMilliseconds, updatedAt: Date.now() });
       };
       transaction.oncomplete = () => resolve();
@@ -467,16 +518,20 @@ export async function renewPurchaseOutboxLease(idempotencyKey: string, owner: st
   notifyOutboxChanged();
 }
 
-export async function retryPurchaseOutbox(idempotencyKey: string) {
+export async function retryPurchaseOutbox(
+  memberId: string,
+  householdId: string,
+  idempotencyKey: string,
+) {
   const database = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(outboxStore, "readwrite");
       const store = transaction.objectStore(outboxStore);
-      const request = store.get(idempotencyKey);
+      const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
       request.onsuccess = () => {
         const entry = request.result as PurchaseOutboxEntry | undefined;
-        if (!entry) return;
+        if (!entry || entry.memberId !== memberId || entry.householdId !== householdId) return;
         store.put({
           ...entry,
           status: "PENDING",
@@ -498,27 +553,45 @@ export async function retryPurchaseOutbox(idempotencyKey: string) {
   notifyOutboxChanged();
 }
 
-export async function discardPurchaseOutbox(idempotencyKey: string) {
-  await deleteValue(outboxStore, idempotencyKey);
+export async function discardPurchaseOutbox(
+  memberId: string,
+  householdId: string,
+  idempotencyKey: string,
+) {
+  await deleteValue(outboxStore, outboxStorageKey(memberId, householdId, idempotencyKey));
   notifyOutboxChanged();
 }
 
-export function usePurchaseOutbox() {
+export function usePurchaseOutbox(memberId?: string, householdId?: string) {
   const [entries, setEntries] = useState<PurchaseOutboxEntry[]>([]);
+  const [entriesMemberId, setEntriesMemberId] = useState<string>();
   const [online, setOnline] = useState<boolean | null>(null);
-  const [ready, setReady] = useState(false);
+  const [readyMemberId, setReadyMemberId] = useState<string>();
   const [storageError, setStorageError] = useState("");
   const [reloadMessage, setReloadMessage] = useState("");
+  const memberIdRef = useRef(memberId);
+  memberIdRef.current = memberId;
   const refresh = useCallback(async () => {
+    if (!memberId) {
+      setEntries([]);
+      setEntriesMemberId(undefined);
+      setStorageError("");
+      setReadyMemberId(undefined);
+      return;
+    }
     try {
-      setEntries(await listPurchaseOutbox());
+      const currentEntries = await listPurchaseOutbox(memberId, householdId);
+      if (memberIdRef.current !== memberId) return;
+      setEntries(currentEntries);
+      setEntriesMemberId(memberId);
       setStorageError("");
     } catch (reason) {
+      if (memberIdRef.current !== memberId) return;
       setStorageError((reason as Error).message);
     } finally {
-      setReady(true);
+      if (memberIdRef.current === memberId) setReadyMemberId(memberId);
     }
-  }, []);
+  }, [memberId, householdId]);
   useEffect(() => {
     const updateOnline = () => setOnline(navigator.onLine);
     const updateOutbox = () => void refresh();
@@ -549,17 +622,30 @@ export function usePurchaseOutbox() {
   }, [hasPendingEntries, refresh]);
   const retry = useCallback(
     async (idempotencyKey: string) => {
-      await retryPurchaseOutbox(idempotencyKey);
+      if (!memberId) return;
+      if (!householdId) return;
+      await retryPurchaseOutbox(memberId, householdId, idempotencyKey);
       await refresh();
     },
-    [refresh],
+    [memberId, householdId, refresh],
   );
   const discard = useCallback(
     async (idempotencyKey: string) => {
-      await discardPurchaseOutbox(idempotencyKey);
+      if (!memberId) return;
+      if (!householdId) return;
+      await discardPurchaseOutbox(memberId, householdId, idempotencyKey);
       await refresh();
     },
-    [refresh],
+    [memberId, householdId, refresh],
   );
-  return { entries, online, ready, storageError, reloadMessage, refresh, retry, discard };
+  return {
+    entries: memberId && entriesMemberId === memberId ? entries : [],
+    online,
+    ready: !memberId || readyMemberId === memberId,
+    storageError,
+    reloadMessage,
+    refresh,
+    retry,
+    discard,
+  };
 }

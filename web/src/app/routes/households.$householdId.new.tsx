@@ -5,12 +5,13 @@ import { useHouseholdRouteContext } from "../household-route-context";
 export const Route = createFileRoute("/households/$householdId/new")({ component: NewPurchase });
 
 function NewPurchase() {
-  const { household, onBackFromPurchase, onPurchaseQueued, reportUnsavedChanges } =
+  const { household, viewerId, onBackFromPurchase, onPurchaseQueued, reportUnsavedChanges } =
     useHouseholdRouteContext();
-  if (!household) return null;
+  if (!household || !viewerId) return null;
   return (
     <PurchaseCreatePage
       household={household}
+      memberId={viewerId}
       onBack={onBackFromPurchase}
       onUnsavedChanges={reportUnsavedChanges}
       onQueued={onPurchaseQueued}

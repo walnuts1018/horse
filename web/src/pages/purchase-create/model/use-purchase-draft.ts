@@ -7,12 +7,14 @@ import {
 } from "../../../shared/lib";
 
 export function usePurchaseDraft({
+  memberId,
   householdId,
   draft,
   restore,
   onLoadError,
   onUnsavedChanges,
 }: {
+  memberId: string;
   householdId: string;
   draft: PurchaseDraft;
   restore: (draft: PurchaseDraft) => void;
@@ -20,7 +22,7 @@ export function usePurchaseDraft({
   onUnsavedChanges: (unsaved: boolean) => void;
 }) {
   const [storageReady, setStorageReady] = useState(false);
-  const [draftHouseholdId, setDraftHouseholdId] = useState<string | null>(null);
+  const [draftScope, setDraftScope] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState("");
@@ -32,6 +34,7 @@ export function usePurchaseDraft({
   const skipNextSave = useRef(false);
   const hasLocalDraft = useRef(false);
   const editVersion = useRef(0);
+  const scope = JSON.stringify([memberId, householdId]);
   draftRef.current = draft;
   restoreRef.current = restore;
   onLoadErrorRef.current = onLoadError;
@@ -57,8 +60,8 @@ export function usePurchaseDraft({
       );
     setSaveError("");
     try {
-      if (hasContent) await savePurchaseDraft(householdId, current);
-      else await deletePurchaseDraft(householdId);
+      if (hasContent) await savePurchaseDraft(memberId, householdId, current);
+      else await deletePurchaseDraft(memberId, householdId);
       setSavedAt(new Date());
       if (editVersion.current === version) {
         onUnsavedChangesRef.current(false);
@@ -71,13 +74,13 @@ export function usePurchaseDraft({
         setHasUnsavedChanges(true);
       }
     }
-  }, [householdId]);
+  }, [memberId, householdId]);
 
   useEffect(() => {
     let active = true;
     setStorageReady(false);
-    setDraftHouseholdId(null);
-    void loadPurchaseDraft(householdId)
+    setDraftScope(null);
+    void loadPurchaseDraft(memberId, householdId)
       .then((loaded) => {
         if (!active) return;
         if (loaded) {
@@ -85,17 +88,17 @@ export function usePurchaseDraft({
           restoreRef.current(loaded);
           setSavedAt(new Date());
         }
-        setDraftHouseholdId(householdId);
+        setDraftScope(scope);
       })
       .catch((reason) => active && onLoadErrorRef.current(reason as Error))
       .finally(() => active && setStorageReady(true));
     return () => {
       active = false;
     };
-  }, [householdId]);
+  }, [memberId, householdId, scope]);
 
   useEffect(() => {
-    if (!storageReady || draftHouseholdId !== householdId) return;
+    if (!storageReady || draftScope !== scope) return;
     if (skipNextSave.current) {
       skipNextSave.current = false;
       return;
@@ -105,12 +108,12 @@ export function usePurchaseDraft({
     return () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
     };
-  }, [householdId, storageReady, draftHouseholdId, draft, persistDraft]);
+  }, [scope, storageReady, draftScope, draft, persistDraft]);
 
   useEffect(
     () => () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
-      if (storageReady && draftHouseholdId === householdId) {
+      if (storageReady && draftScope === scope) {
         const current = draftRef.current;
         if (
           hasLocalDraft.current ||
@@ -119,11 +122,11 @@ export function usePurchaseDraft({
           current.itemAmount ||
           current.items.length
         )
-          void savePurchaseDraft(householdId, current);
-        else void deletePurchaseDraft(householdId);
+          void savePurchaseDraft(memberId, householdId, current);
+        else void deletePurchaseDraft(memberId, householdId);
       }
     },
-    [householdId, storageReady, draftHouseholdId],
+    [memberId, householdId, storageReady, draftScope, scope],
   );
 
   const queued = useCallback(() => {

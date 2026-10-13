@@ -4,66 +4,217 @@ import { beforeEach, describe, expect, it } from "vitest";
 const {
   claimPurchaseOutbox,
   completePurchaseOutbox,
+  discardPurchaseOutbox,
   enqueuePurchase,
   listPurchaseOutbox,
+  loadPurchaseDraft,
   markPurchaseOutboxFailed,
   retryPurchaseOutbox,
+  savePurchaseDraft,
 } = await import("./purchase-storage");
+
+const databaseName = "horse-browser-data";
 
 function deleteDatabase() {
   return new Promise<void>((resolve, reject) => {
-    const request = indexedDB.deleteDatabase("horse-browser-data");
+    const request = indexedDB.deleteDatabase(databaseName);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
     request.onblocked = () => reject(new Error("データベースの削除がブロックされました"));
   });
 }
 
+function seedUnscopedVersionTwoRecords() {
+  return new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open(databaseName, 2);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      database.createObjectStore("purchase-drafts-v2", { keyPath: "householdId" });
+      database.createObjectStore("purchase-outbox-v2", { keyPath: "idempotencyKey" });
+    };
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction(
+        ["purchase-drafts-v2", "purchase-outbox-v2"],
+        "readwrite",
+      );
+      transaction.objectStore("purchase-drafts-v2").put({
+        householdId: "household-1",
+        merchant: "所有者不明の下書き",
+      });
+      transaction.objectStore("purchase-outbox-v2").put({
+        idempotencyKey: "legacy-request",
+        input: {
+          idempotencyKey: "legacy-request",
+          householdId: "household-1",
+          occurredAt: "2026-10-14T00:00:00Z",
+          merchant: "所有者不明の送信待ち",
+          items: [{ name: "商品", amountYen: 100 }],
+        },
+        status: "PENDING",
+      });
+      transaction.oncomplete = () => {
+        database.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        database.close();
+        reject(transaction.error);
+      };
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function readUnscopedRecords() {
+  return new Promise<{ draft: unknown; outbox: unknown }>((resolve, reject) => {
+    const request = indexedDB.open(databaseName, 3);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction(
+        ["purchase-drafts-v2", "purchase-outbox-v2"],
+        "readonly",
+      );
+      const draft = transaction.objectStore("purchase-drafts-v2").get("household-1");
+      const outbox = transaction.objectStore("purchase-outbox-v2").get("legacy-request");
+      transaction.oncomplete = () => {
+        database.close();
+        resolve({ draft: draft.result, outbox: outbox.result });
+      };
+      transaction.onerror = () => {
+        database.close();
+        reject(transaction.error);
+      };
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
 describe("purchase outbox storage", () => {
   beforeEach(deleteDatabase);
 
-  it("並行claimを一方に限定し、failure後の再送でも同じキーを使って完了時に削除する", async () => {
+  it("claimと再送で同じ冪等キーを維持し、所有者のclaimだけを完了できる", async () => {
+    const memberId = "member-1";
     const idempotencyKey = "purchase-request-1";
-    const input = {
-      idempotencyKey,
-      householdId: "household-1",
-      occurredAt: "2026-10-14T00:00:00Z",
-      merchant: "テスト店舗",
-      items: [{ name: "テスト商品", amountYen: 100 }],
-    };
-    await enqueuePurchase(input);
+    await enqueuePurchase(
+      {
+        idempotencyKey,
+        householdId: "household-1",
+        occurredAt: "2026-10-14T00:00:00Z",
+        merchant: "テスト店舗",
+        items: [{ name: "テスト商品", amountYen: 100 }],
+      },
+      memberId,
+    );
 
     const [firstClaim, secondClaim] = await Promise.all([
-      claimPurchaseOutbox(idempotencyKey, "worker-1"),
-      claimPurchaseOutbox(idempotencyKey, "worker-2"),
+      claimPurchaseOutbox(memberId, "household-1", idempotencyKey, "worker-1"),
+      claimPurchaseOutbox(memberId, "household-1", idempotencyKey, "worker-2"),
     ]);
     const claims = [firstClaim, secondClaim].filter((claim) => claim !== undefined);
     expect(claims).toHaveLength(1);
     const claim = claims[0];
     if (!claim?.leaseOwner) throw new Error("claimしたownerが見つかりません");
 
-    await markPurchaseOutboxFailed(idempotencyKey, claim.leaseOwner, "temporary failure");
-    const failed = await listPurchaseOutbox();
-    expect(failed).toHaveLength(1);
-    expect(failed[0]).toMatchObject({
+    await markPurchaseOutboxFailed(
+      memberId,
+      "household-1",
       idempotencyKey,
-      input: { idempotencyKey },
-      status: "FAILED",
-      lastError: "temporary failure",
+      claim.leaseOwner,
+      "temporary failure",
+    );
+    expect(await listPurchaseOutbox(memberId)).toMatchObject([
+      { idempotencyKey, memberId, status: "FAILED", lastError: "temporary failure" },
+    ]);
+
+    await retryPurchaseOutbox(memberId, "household-1", idempotencyKey);
+    const retryClaim = await claimPurchaseOutbox(
+      memberId,
+      "household-1",
+      idempotencyKey,
+      "worker-3",
+    );
+    expect(retryClaim).toMatchObject({ idempotencyKey, memberId });
+    await completePurchaseOutbox(memberId, "household-1", idempotencyKey, "worker-3");
+    expect(await listPurchaseOutbox(memberId)).toEqual([]);
+  });
+
+  it("同じ家庭の下書きとOutboxをmemberIdで分離する", async () => {
+    const householdId = "household-shared";
+    const idempotencyKey = "same-idempotency-key";
+    await savePurchaseDraft("member-a", householdId, {
+      merchant: "Aの下書き",
+      occurredAt: "2026-10-14T00:00:00Z",
+      itemName: "",
+      itemAmount: "",
+      categoryId: "",
+      items: [],
+    });
+    await savePurchaseDraft("member-b", householdId, {
+      merchant: "Bの下書き",
+      occurredAt: "2026-10-14T00:00:00Z",
+      itemName: "",
+      itemAmount: "",
+      categoryId: "",
+      items: [],
+    });
+    expect(await loadPurchaseDraft("member-a", householdId)).toMatchObject({
+      merchant: "Aの下書き",
+    });
+    expect(await loadPurchaseDraft("member-b", householdId)).toMatchObject({
+      merchant: "Bの下書き",
     });
 
-    await retryPurchaseOutbox(idempotencyKey);
-    const retried = await listPurchaseOutbox();
-    expect(retried).toHaveLength(1);
-    expect(retried[0]).toMatchObject({
+    const input = {
       idempotencyKey,
-      input: { idempotencyKey },
-      status: "PENDING",
-    });
+      householdId,
+      occurredAt: "2026-10-14T00:00:00Z",
+      merchant: "テスト店舗",
+      items: [{ name: "テスト商品", amountYen: 100 }],
+    };
+    await enqueuePurchase(input, "member-a");
+    await enqueuePurchase(input, "member-b");
+    await enqueuePurchase({ ...input, householdId: "household-other" }, "member-a");
+    expect(await listPurchaseOutbox("member-a", householdId)).toMatchObject([
+      { memberId: "member-a", householdId },
+    ]);
+    expect(await listPurchaseOutbox("member-b", householdId)).toMatchObject([
+      { memberId: "member-b", householdId },
+    ]);
+    expect(await listPurchaseOutbox("member-a", "household-other")).toMatchObject([
+      { memberId: "member-a", householdId: "household-other" },
+    ]);
 
-    const retryClaim = await claimPurchaseOutbox(idempotencyKey, "worker-3");
-    expect(retryClaim).toMatchObject({ idempotencyKey, input: { idempotencyKey } });
-    await completePurchaseOutbox(idempotencyKey, "worker-3");
-    expect(await listPurchaseOutbox()).toEqual([]);
+    expect(
+      await claimPurchaseOutbox("member-a", householdId, idempotencyKey, "owner-a"),
+    ).toMatchObject({
+      memberId: "member-a",
+    });
+    expect(
+      await claimPurchaseOutbox("member-b", householdId, idempotencyKey, "owner-b"),
+    ).toMatchObject({
+      memberId: "member-b",
+    });
+    await completePurchaseOutbox("member-b", householdId, idempotencyKey, "owner-a");
+    expect(await listPurchaseOutbox("member-b", householdId)).toHaveLength(1);
+    await completePurchaseOutbox("member-a", householdId, idempotencyKey, "owner-a");
+    expect(await listPurchaseOutbox("member-a", householdId)).toEqual([]);
+    await discardPurchaseOutbox("member-b", householdId, idempotencyKey);
+    expect(await listPurchaseOutbox("member-b", householdId)).toEqual([]);
+  });
+
+  it("所有者不明の旧データを送信対象から外し、IndexedDBから削除しない", async () => {
+    await seedUnscopedVersionTwoRecords();
+
+    expect(await loadPurchaseDraft("member-a", "household-1")).toBeUndefined();
+    expect(await listPurchaseOutbox("member-a")).toEqual([]);
+    expect(await listPurchaseOutbox("member-b")).toEqual([]);
+    expect(
+      await claimPurchaseOutbox("member-a", "household-1", "legacy-request", "worker-a"),
+    ).toBeUndefined();
+
+    const records = await readUnscopedRecords();
+    expect(records.draft).toMatchObject({ merchant: "所有者不明の下書き" });
+    expect(records.outbox).toMatchObject({ input: { merchant: "所有者不明の送信待ち" } });
   });
 });

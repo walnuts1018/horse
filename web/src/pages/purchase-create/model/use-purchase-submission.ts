@@ -5,6 +5,7 @@ import type { PaymentDraft } from "./purchase-payments";
 import { convertPurchaseItems } from "./purchase-items";
 
 export function usePurchaseSubmission({
+  memberId,
   household,
   merchant,
   occurredAt,
@@ -16,6 +17,7 @@ export function usePurchaseSubmission({
   onQueued,
   onSaved,
 }: {
+  memberId: string;
   household: Household;
   merchant: string;
   occurredAt: string;
@@ -34,6 +36,14 @@ export function usePurchaseSubmission({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (saving.current) return;
+    if (!memberId.trim()) {
+      setMessage("ログイン中のメンバーを確認できません");
+      return;
+    }
+    if (!household.members.some((member) => member.id === memberId)) {
+      setMessage("この家計簿のメンバーを確認できません");
+      return;
+    }
     if (!items.length) {
       setMessage("品目を1つ以上追加してください");
       return;
@@ -57,18 +67,21 @@ export function usePurchaseSubmission({
     try {
       cancelScheduledSave();
       const idempotencyKey = makeIdempotencyKey();
-      await enqueuePurchase({
-        idempotencyKey,
-        householdId: household.id,
-        occurredAt: new Date(occurredAt).toISOString(),
-        merchant: merchant.trim(),
-        origin: "MANUAL",
-        paymentAllocations: paymentRows.map((payment) => ({
-          paymentAccountId: payment.paymentAccountId,
-          amountYen: paymentAmount(payment),
-        })),
-        items: convertPurchaseItems(items),
-      });
+      await enqueuePurchase(
+        {
+          idempotencyKey,
+          householdId: household.id,
+          occurredAt: new Date(occurredAt).toISOString(),
+          merchant: merchant.trim(),
+          origin: "MANUAL",
+          paymentAllocations: paymentRows.map((payment) => ({
+            paymentAccountId: payment.paymentAccountId,
+            amountYen: paymentAmount(payment),
+          })),
+          items: convertPurchaseItems(items),
+        },
+        memberId,
+      );
       onSaved();
       onQueued(idempotencyKey);
     } catch (reason) {

@@ -29,11 +29,13 @@ const sum = (numbers: number[]) => numbers.reduce((total, value) => total + valu
 
 export function PurchaseCreatePage({
   household,
+  memberId,
   onBack,
   onQueued,
   onUnsavedChanges,
 }: {
   household: Household;
+  memberId: string;
   onBack: () => void;
   onQueued: (idempotencyKey: string) => void;
   onUnsavedChanges: (unsaved: boolean) => void;
@@ -48,7 +50,7 @@ export function PurchaseCreatePage({
   const markUnsavedRef = useRef<() => void>(() => {});
   const markUnsaved = () => markUnsavedRef.current();
   const [copiedPurchase, setCopiedPurchase] = useState<Purchase | null>(null);
-  const outbox = usePurchaseOutbox();
+  const outbox = usePurchaseOutbox(memberId, household.id);
   const householdOutbox = outbox.entries.filter(
     (entry) => entry.input.householdId === household.id,
   );
@@ -74,6 +76,7 @@ export function PurchaseCreatePage({
     [merchant, occurredAt, paymentRows, paymentAutoTotal, itemTotal, itemsValue],
   );
   const draftPersistence = usePurchaseDraft({
+    memberId,
     householdId: household.id,
     draft,
     restore: (loaded) => {
@@ -145,6 +148,7 @@ export function PurchaseCreatePage({
   const paymentAmount = payments.amount;
   const paymentDifference = payments.difference;
   const submission = usePurchaseSubmission({
+    memberId,
     household,
     merchant,
     occurredAt,
