@@ -239,3 +239,7 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 購入画面の`convertPurchaseItems`をpage model内の純粋関数として分離しました。`fast-check`の300反復で、1〜30件の任意品目について金額合計の保持と正の配賦weightだけを送る性質を確認します。Vitest、Frontend型検査、lint、FSD、format検査が成功しました。
 
 `fake-indexeddb` v6.2.5を使った実IndexedDBテストを追加しました。Outboxの同一entryを並行claimしても一方のownerだけが取得し、失敗後の再送でも元の冪等キーを保ち、成功後にentryが削除されることを1つの経路で確認します。Frontendの対象test、型検査、FSD、format検査が成功したため、Outbox処理のテスト不足をレビューから削除しました。
+
+### 2026年10月14日の公開URL遷移確認
+
+公開環境の合成検証用家庭で`imports`から`settlement`へ移動し、URL更新、`settlement`の直接再読み込み、ブラウザーの戻る・進むでrouteと画面が一致することを確認しました。未保存入力中の離脱確認と他routeは未確認のため、UXレビューの該当項目は検証範囲を限定して残しました。

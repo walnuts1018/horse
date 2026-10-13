@@ -13,6 +13,7 @@ import {
   type HomeSummary,
 } from "../api/read-home-dashboard";
 import { SetupGuidance } from "./setup-guidance";
+import "./home-page.css";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {

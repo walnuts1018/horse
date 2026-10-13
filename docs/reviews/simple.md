@@ -4,7 +4,7 @@
 
 ## 画面固有CSSと重要な処理の境界
 
-[global.css](../../web/src/app/styles/global.css)は2,424行あり、ホームなどの画面固有規則が残ります。分析・購入登録・帳簿・取り込み・口座残高履歴に続き、精算の`funding`と`loan`規則もpage stylesheetへ移しました。残りの規則も所有するpage sliceへ分離する必要があります。
+[global.css](../../web/src/app/styles/global.css)は2,094行あり、共通規則と複数画面で使う購入行・見出し・パネル、および未分離の他画面固有規則が残ります。ホーム画面だけで使う規則は[home-page.css](../../web/src/pages/home/ui/home-page.css)へ移しました。残るレビュー範囲は、共通規則の所有先と他画面固有規則のpage sliceへの分離可否です。
 
 ## GraphQLの購入読み込み範囲
 

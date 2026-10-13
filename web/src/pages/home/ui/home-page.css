@@ -1,0 +1,351 @@
+.welcome-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 27px;
+}
+
+.welcome-row h1 {
+  font-family: "Noto Sans JP Variable", "Noto Sans JP", sans-serif;
+  font-size: 27px;
+  letter-spacing: -0.05em;
+  margin: 7px 0 4px;
+  color: #263a32;
+}
+
+.welcome-row p {
+  font-size: 12px;
+  color: #5f6d65;
+  margin: 0;
+}
+
+.welcome-row > .button {
+  margin-top: 9px;
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 13px;
+  margin-bottom: 20px;
+}
+
+.quick-card {
+  height: 76px;
+  border: 1px solid #e9eeea;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  text-align: left;
+  padding: 0 17px;
+  gap: 13px;
+  cursor: pointer;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+
+.quick-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 20px #31594313;
+}
+
+.quick-card > svg {
+  margin-left: auto;
+  color: #a7b1ab;
+  width: 16px;
+}
+
+.quick-main {
+  background: #f0f7f2;
+  border-color: #e1eee5;
+}
+
+.quick-icon {
+  width: 38px;
+  height: 38px;
+  background: #dfefe4;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #34785e;
+}
+
+.quick-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.8;
+}
+
+.quick-amber {
+  background: #fbf0dd;
+  color: #b77e32;
+}
+
+.quick-card b,
+.quick-card small {
+  display: block;
+}
+
+.quick-card b {
+  font-size: 12px;
+  color: #34463d;
+}
+
+.quick-card small {
+  font-size: 10px;
+  color: #5f6d65;
+  margin-top: 5px;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 14px;
+}
+
+.spend-panel,
+.settle-card {
+  padding: 19px 20px 15px;
+  min-height: 230px;
+}
+
+.mini-chart {
+  margin-top: 14px;
+}
+
+.mini-bars {
+  height: 91px;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.bar-track {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: linear-gradient(to top, #f2f6f1 1px, transparent 1px);
+  border-radius: 6px 6px 2px 2px;
+}
+
+.bar-track i {
+  display: block;
+  width: 100%;
+  min-height: 3px;
+  border-radius: 5px 5px 2px 2px;
+  background: #b7d7c3;
+}
+
+.bar-track i.bar-current {
+  background: #59a483;
+}
+
+.chart-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 7px;
+  font-size: 8px;
+  color: #5f6d65;
+}
+
+.spend-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 15px;
+  padding-top: 11px;
+  border-top: 1px solid #f0f2ef;
+  color: #5f6d65;
+  font-size: 10px;
+}
+
+.spend-footer b {
+  color: #53655b;
+  margin-left: 4px;
+}
+
+.settle-card {
+  background: #f5f8f2;
+  border-color: #e8eee3;
+}
+
+.settle-icon {
+  width: 32px;
+  height: 32px;
+  background: #e7efe0;
+  color: #70905c;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+}
+
+.settle-line {
+  margin-top: 21px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #5f6d65;
+  font-size: 10px;
+}
+
+.settle-line .status-dot {
+  width: 6px;
+  height: 6px;
+  box-shadow: none;
+  background: #9da871;
+}
+
+.settle-card .button {
+  margin-top: 13px;
+  height: 34px;
+  font-size: 10px;
+  background: #e7efe1;
+}
+
+.recent-panel {
+  padding: 0 18px;
+}
+
+@media (width <= 760px) {
+  .welcome-row {
+    align-items: flex-start;
+    margin-bottom: 20px;
+  }
+
+  .welcome-row h1 {
+    font-size: 24px;
+  }
+
+  .welcome-row p {
+    font-size: 10px;
+  }
+
+  .welcome-row > .button {
+    height: 37px;
+    padding: 0 10px;
+    font-size: 9px;
+    margin-top: 22px;
+    gap: 4px;
+  }
+
+  .quick-actions {
+    gap: 9px;
+    margin-bottom: 13px;
+  }
+
+  .quick-card {
+    height: 68px;
+    padding: 0 10px;
+    gap: 8px;
+    border-radius: 12px;
+  }
+
+  .quick-icon {
+    width: 31px;
+    height: 31px;
+    border-radius: 10px;
+  }
+
+  .quick-icon svg {
+    width: 16px;
+  }
+
+  .quick-card b {
+    font-size: 9px;
+  }
+
+  .quick-card small {
+    font-size: 8px;
+  }
+
+  .quick-card > svg {
+    width: 13px;
+  }
+
+  .overview-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .spend-panel,
+  .settle-card {
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .spend-panel .mini-chart {
+    margin-top: 9px;
+  }
+
+  .mini-bars {
+    height: 67px;
+    gap: 7px;
+  }
+
+  .spend-footer {
+    margin-top: 10px;
+    padding-top: 9px;
+  }
+
+  .settle-card .panel-heading h2 {
+    font-size: 18px;
+  }
+
+  .settle-line {
+    margin-top: 11px;
+  }
+
+  .settle-card .button {
+    margin-top: 9px;
+  }
+
+  .section-heading {
+    margin-top: 23px;
+  }
+
+  .recent-panel {
+    padding: 0 12px;
+  }
+}
+
+@media (width <= 380px) {
+  .quick-card {
+    gap: 6px;
+    padding: 0 7px;
+  }
+
+  .quick-card b {
+    font-size: 8px;
+  }
+
+  .quick-card small {
+    font-size: 7px;
+  }
+
+  .quick-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .welcome-row > .button {
+    font-size: 8px;
+  }
+}
+
+@media (width <= 760px) {
+  .welcome-row p,
+  .welcome-row > .button,
+  .quick-card b,
+  .quick-card small {
+    font-size: max(var(--mobile-font-supporting), 1em);
+  }
+
+  .quick-card small,
+  .chart-labels {
+    font-size: 10px;
+  }
+}
