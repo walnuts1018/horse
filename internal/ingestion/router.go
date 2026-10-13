@@ -135,7 +135,7 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 		if client.ProjectRoute == ProjectPaid {
 			routeTier = tier
 		}
-		receipt, run, err := client.ExtractRun(ctx, document, hints, GeminiRequestOptions{ThinkingLevel: thinking, ServiceTier: routeTier, Guidance: options.Guidance, Reason: options.Reason})
+		receipt, run, err := client.ExtractRun(ctx, document, hints, GeminiRequestOptions{ThinkingLevel: thinking, ServiceTier: routeTier, Guidance: options.Guidance, Reason: options.Reason, SourceKind: sourceKind})
 		runs = append(runs, run)
 		if err == nil {
 			runs[len(runs)-1].Receipt = &receipt

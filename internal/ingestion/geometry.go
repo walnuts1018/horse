@@ -66,5 +66,29 @@ func transformReceiptRegions(verification *Verification, transform [9]float64, p
 		mapped.Page = page
 		verification.Receipt.Items[i].Region = &mapped
 	}
+	for i := range verification.Statements {
+		region := verification.Statements[i].Region
+		if region == nil {
+			continue
+		}
+		mapped, err := transformRegion(*region, transform)
+		if err != nil {
+			return err
+		}
+		mapped.Page = page
+		verification.Statements[i].Region = &mapped
+	}
+	for i := range verification.Receipt.Statements {
+		region := verification.Receipt.Statements[i].Region
+		if region == nil {
+			continue
+		}
+		mapped, err := transformRegion(*region, transform)
+		if err != nil {
+			return err
+		}
+		mapped.Page = page
+		verification.Receipt.Statements[i].Region = &mapped
+	}
 	return nil
 }

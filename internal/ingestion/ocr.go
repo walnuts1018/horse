@@ -236,6 +236,56 @@ func CompareOCR(receipt Receipt, lines []OCRLine) []string {
 	return issues
 }
 
+func CompareStatementOCR(entries []StatementEntry, lines []OCRLine) []string {
+	var issues []string
+	regions := make([]Region, 0, len(entries))
+	for i, entry := range entries {
+		if entry.Region == nil || !validRegion(*entry.Region) {
+			issues = append(issues, fmt.Sprintf("取引%dの画像領域が未確定です。", i+1))
+			continue
+		}
+		regions = append(regions, *entry.Region)
+		var texts []string
+		for _, line := range lines {
+			if line.Confidence >= 0.5 && overlap(*entry.Region, line.Region) > 0.2 {
+				texts = append(texts, line.Text)
+			}
+		}
+		joined := strings.Join(texts, " ")
+		if !strings.Contains(normalize(joined), normalize(entry.Merchant)) {
+			issues = append(issues, fmt.Sprintf("取引%dの利用先とOCR読取を確認してください。", i+1))
+		}
+		amountFound := false
+		for _, number := range printedNumber.FindAllString(joined, -1) {
+			amount, err := strconv.ParseInt(strings.ReplaceAll(number, ",", ""), 10, 64)
+			if err == nil && abs(amount) == abs(entry.Amount) {
+				amountFound = true
+				break
+			}
+		}
+		if !amountFound {
+			issues = append(issues, fmt.Sprintf("取引%dの印字金額とOCR読取を確認してください。", i+1))
+		}
+	}
+	for _, line := range lines {
+		if line.Confidence < 0.5 || !validRegion(line.Region) || !hasPrintedAmount(line.Text) || !hasLetters(line.Text) || isReceiptSummaryLine(line.Text) {
+			continue
+		}
+		matched := false
+		for _, region := range regions {
+			if overlap(region, line.Region) > 0.2 {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			issues = append(issues, "OCRにのみ読み取られた取引候補を確認してください。")
+			break
+		}
+	}
+	return issues
+}
+
 func hasUnmatchedReceiptLine(lines []OCRLine, regions []Region) bool {
 	for _, line := range lines {
 		if line.Confidence < 0.5 || !validRegion(line.Region) || !hasPrintedAmount(line.Text) || !hasLetters(line.Text) || isReceiptSummaryLine(line.Text) {

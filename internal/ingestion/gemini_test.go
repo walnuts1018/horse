@@ -14,7 +14,7 @@ import (
 func TestReceiptSchemaMatchesJSONTypesAndRequiredFields(t *testing.T) {
 	t.Parallel()
 	ignoredFields := map[reflect.Type]map[string]bool{
-		reflect.TypeFor[Receipt](): {"Model": true, "PromptVersion": true, "InputTokens": true, "OutputTokens": true},
+		reflect.TypeFor[Receipt](): {"Model": true, "PromptVersion": true, "InputTokens": true, "OutputTokens": true, "Statements": true},
 		reflect.TypeFor[Item]():    {"GrossAmount": true, "Verification": true},
 	}
 	optionalFields := map[reflect.Type]map[string]bool{
@@ -22,6 +22,27 @@ func TestReceiptSchemaMatchesJSONTypesAndRequiredFields(t *testing.T) {
 		reflect.TypeFor[Item]():    {"CategoryHint": true},
 	}
 	assertSchemaMatchesType(t, reflect.TypeFor[Receipt](), receiptSchema(), ignoredFields, optionalFields)
+}
+
+func TestGeminiExtractsSourceKindSpecificStatementRows(t *testing.T) {
+	t.Parallel()
+	region := `{"page":0,"top":0.1,"left":0.1,"bottom":0.2,"right":0.9}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeGeminiSuccess(w, `{"transactions":[{"kind":"CARD_PURCHASE","occurredAt":"2026-10-12T12:00:00+09:00","merchant":"Market","amount":-1234,"transactionId":"tx-1","orderId":"","cardLast4":"1234","region":`+region+`}],"warnings":[]}`)
+	}))
+	defer server.Close()
+	gemini := Gemini{APIKey: testGeminiAPIKey, Model: "test-model", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
+	receipt, _, err := gemini.ExtractRun(t.Context(), Document{MIMEType: mimeTypePDF, Data: []byte("synthetic pdf bytes")}, nil, GeminiRequestOptions{SourceKind: statementSourceCard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := VerifyStatements(statementSourceCard, receipt.Statements, receipt.Warnings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(verified.Statements) != 1 || verified.Statements[0].Amount != -1234 || verified.Statements[0].SourceReference != "row:1" || verified.Statements[0].Region.Page != 0 {
+		t.Fatalf("statement extraction lost signed amount or source geometry: %+v", verified.Statements)
+	}
 }
 
 func assertSchemaMatchesType(t *testing.T, typ reflect.Type, schema map[string]any, ignoredFields, optionalFields map[reflect.Type]map[string]bool) {

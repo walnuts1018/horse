@@ -12,6 +12,13 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if err != nil {
 		return Verification{}, err
 	}
+	if document.MIMEType == mimeTypeEmail {
+		email, parseErr := parseEmail(document.Data)
+		if parseErr == nil && email.Body == "" && len(email.Attachments) > 0 {
+			issue := "メール本文が空のため、添付ファイルを個別に確認してください。"
+			return Verification{Receipt: Receipt{Warnings: []string{issue}}, Issues: []string{issue}, Balanced: false}, nil
+		}
+	}
 	if document.MIMEType == mimeTypeCSV && (j.SourceKind == statementSourceCard || j.SourceKind == statementSourceBank) {
 		entries, err := ParseStatementCSV(document.Data, j.SourceKind)
 		if err != nil {
@@ -48,9 +55,9 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if err != nil {
 		return Verification{Runs: runs}, err
 	}
-	verified, err := Verify(receipt)
+	verified, err := verifyExtraction(j.SourceKind, receipt)
 	if err != nil {
-		return Verification{Receipt: receipt, Runs: runs}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "receipt_validation_failed"}
+		return Verification{Receipt: receipt, Runs: runs}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "extraction_validation_failed"}
 	}
 	if isImageDocument(document.MIMEType) {
 		if ocrErr == nil {
@@ -66,7 +73,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	}
 	if requiresOCRCorroboration(document.MIMEType) {
 		verified.OCRLines = lines
-		applyOCRCorroboration(&verified, lines, ocrErr)
+		applySourceOCRCorroboration(&verified, j.SourceKind, lines, ocrErr)
 	}
 	verified.Runs = annotateRuns(runs, receipt, verified.Issues)
 	if !verified.Balanced && len(verified.Runs) > 0 {
@@ -76,18 +83,18 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			alternative, qualityRuns, qualityErr := w.Router.Generate(ctx, j.SourceKind, document, hints, w.Router.QualityOptions(j.SourceKind, *lastRun, guidance))
 			verified.Runs = append(verified.Runs, qualityRuns...)
 			if qualityErr == nil {
-				second, verifyErr := Verify(alternative)
+				second, verifyErr := verifyExtraction(j.SourceKind, alternative)
 				if verifyErr == nil {
 					if err := transformReceiptRegionsForDocument(&second, document.MIMEType, transform, transformPage); err != nil {
 						return Verification{}, fmt.Errorf("map reviewed evidence regions to original image: %w", err)
 					}
 					second.OCRLines = verified.OCRLines
 					if requiresOCRCorroboration(document.MIMEType) {
-						applyOCRCorroboration(&second, second.OCRLines, ocrErr)
+						applySourceOCRCorroboration(&second, j.SourceKind, second.OCRLines, ocrErr)
 					}
 					second.Runs = annotateRuns(qualityRuns, alternative, second.Issues)
 					if betterVerification(second, verified) {
-						verified.Receipt, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = second.Receipt, second.Issues, second.ComputedTotal, second.Balanced, second.Candidates
+						verified.Receipt, verified.Statements, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = second.Receipt, second.Statements, second.Issues, second.ComputedTotal, second.Balanced, second.Candidates
 					}
 				}
 			}
@@ -96,24 +103,57 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			proReceipt, proRuns, proErr := w.Router.Generate(ctx, j.SourceKind, document, hints, w.Router.ProOptions(request.Purpose, evidenceGuidance(verified.Issues, verified.OCRLines)))
 			verified.Runs = append(verified.Runs, proRuns...)
 			if proErr == nil {
-				proVerification, verifyErr := Verify(proReceipt)
+				proVerification, verifyErr := verifyExtraction(j.SourceKind, proReceipt)
 				if verifyErr == nil {
 					if err := transformReceiptRegionsForDocument(&proVerification, document.MIMEType, transform, transformPage); err != nil {
 						return Verification{}, fmt.Errorf("map reviewed evidence regions to original image: %w", err)
 					}
 					proVerification.OCRLines = verified.OCRLines
 					if requiresOCRCorroboration(document.MIMEType) {
-						applyOCRCorroboration(&proVerification, proVerification.OCRLines, ocrErr)
+						applySourceOCRCorroboration(&proVerification, j.SourceKind, proVerification.OCRLines, ocrErr)
 					}
 					proVerification.Runs = annotateRuns(proRuns, proReceipt, proVerification.Issues)
 					if betterVerification(proVerification, verified) {
-						verified.Receipt, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = proVerification.Receipt, proVerification.Issues, proVerification.ComputedTotal, proVerification.Balanced, proVerification.Candidates
+						verified.Receipt, verified.Statements, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = proVerification.Receipt, proVerification.Statements, proVerification.Issues, proVerification.ComputedTotal, proVerification.Balanced, proVerification.Candidates
 					}
 				}
 			}
 		}
 	}
 	return verified, nil
+}
+
+func verifyExtraction(sourceKind string, receipt Receipt) (Verification, error) {
+	if sourceKind == statementSourceCard || sourceKind == statementSourceBank {
+		verified, err := VerifyStatements(sourceKind, receipt.Statements, receipt.Warnings)
+		if err != nil {
+			return Verification{}, err
+		}
+		verified.Receipt = receipt
+		verified.Receipt.Statements = verified.Statements
+		verified.Receipt.Warnings = verified.Issues
+		return verified, nil
+	}
+	return Verify(receipt)
+}
+
+func applySourceOCRCorroboration(verification *Verification, sourceKind string, lines []OCRLine, ocrErr error) {
+	if sourceKind != statementSourceCard && sourceKind != statementSourceBank {
+		applyOCRCorroboration(verification, lines, ocrErr)
+		return
+	}
+	if ocrErr != nil {
+		verification.Issues = append(verification.Issues, "独立したOCR読取を取得できませんでした。原本を確認してください。")
+		verification.Balanced = false
+		return
+	}
+	if len(lines) == 0 {
+		verification.Issues = append(verification.Issues, "独立したOCR読取に明細行がありません。原本を確認してください。")
+		verification.Balanced = false
+		return
+	}
+	verification.Issues = append(verification.Issues, CompareStatementOCR(verification.Statements, lines)...)
+	verification.Balanced = len(verification.Issues) == 0
 }
 
 func appendPreviousRuns(runs []ExtractionRun, previous []byte) []ExtractionRun {

@@ -58,6 +58,32 @@ func TestOCRCorroborationFindsUnmatchedItemRows(t *testing.T) {
 	}
 }
 
+func TestStatementOCRCorroborationRequiresMerchantAmountAndAllRows(t *testing.T) {
+	t.Parallel()
+	first := Region{Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
+	second := Region{Top: 0.25, Left: 0.1, Bottom: 0.35, Right: 0.9}
+	entries := []StatementEntry{
+		{Merchant: "Market", Amount: -1234, Region: &first},
+		{Merchant: "Cafe", Amount: 500, Region: &second},
+	}
+	lines := []OCRLine{
+		{Text: "Market -1,234", Confidence: 0.95, Region: first},
+		{Text: "Cafe 500", Confidence: 0.95, Region: second},
+	}
+	if issues := CompareStatementOCR(entries, lines); len(issues) != 0 {
+		t.Fatalf("matching statement rows were not corroborated: %v", issues)
+	}
+	lines[1].Text = "Cafe 501"
+	if issues := CompareStatementOCR(entries, lines); len(issues) != 1 {
+		t.Fatalf("amount disagreement was not flagged: %v", issues)
+	}
+	lines[1].Text = "Cafe 500"
+	lines = append(lines, OCRLine{Text: "Bakery 300", Confidence: 0.95, Region: Region{Top: 0.4, Left: 0.1, Bottom: 0.5, Right: 0.9}})
+	if issues := CompareStatementOCR(entries, lines); len(issues) != 1 || issues[0] != "OCRにのみ読み取られた取引候補を確認してください。" {
+		t.Fatalf("unmatched transaction row was not reported: %v", issues)
+	}
+}
+
 func TestOCRExtractAcceptsLinesFromEachPDFPage(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

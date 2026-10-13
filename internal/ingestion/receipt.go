@@ -70,6 +70,7 @@ type Receipt struct {
 	Total           int64               `json:"total"`
 	Payments        []Payment           `json:"payments"`
 	Warnings        []string            `json:"warnings"`
+	Statements      []StatementEntry    `json:"statements,omitempty"`
 	Model           string              `json:"model"`
 	PromptVersion   string              `json:"promptVersion"`
 	InputTokens     int64               `json:"inputTokens"`

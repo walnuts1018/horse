@@ -56,3 +56,28 @@ func TestStatementSourceReferencesAreStableAndUnique(t *testing.T) {
 		t.Fatalf("reconciliation references differed from parsed references: %+v", observations)
 	}
 }
+
+func TestVerifyStatementsPreservesSignedTransactionsAndFailsClosed(t *testing.T) {
+	t.Parallel()
+	region := Region{Page: 1, Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
+	entry := StatementEntry{Kind: statementKindCardPurchase, OccurredAt: "2026-10-12T12:00:00+09:00", Merchant: "Market", Amount: -1234, Region: &region}
+	verified, err := VerifyStatements(statementSourceCard, []StatementEntry{entry}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(verified.Statements) != 1 || verified.Statements[0].Amount != -1234 || verified.Statements[0].Row != 1 || verified.Statements[0].SourceReference != "row:1" {
+		t.Fatalf("verification changed transaction evidence: %+v", verified.Statements)
+	}
+	if _, err := VerifyStatements(statementSourceCard, []StatementEntry{entry, entry}, nil); err == nil {
+		t.Fatal("overlapping transaction regions were accepted")
+	}
+	for _, invalid := range []StatementEntry{
+		{Kind: statementKindCardPurchase, OccurredAt: entry.OccurredAt, Merchant: entry.Merchant, Amount: entry.Amount},
+		{Kind: statementKindCardPurchase, OccurredAt: "2026-10-12", Merchant: entry.Merchant, Amount: entry.Amount, Region: &region},
+		{Kind: "ACCOUNT_TRANSFER", OccurredAt: entry.OccurredAt, Merchant: entry.Merchant, Amount: entry.Amount, Region: &region},
+	} {
+		if _, err := VerifyStatements(statementSourceCard, []StatementEntry{invalid}, nil); err == nil {
+			t.Fatalf("invalid transaction accepted: %+v", invalid)
+		}
+	}
+}

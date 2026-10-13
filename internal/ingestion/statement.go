@@ -5,21 +5,81 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type StatementEntry struct {
-	Row             int    `json:"row"`
-	SourceReference string `json:"sourceReference,omitempty"`
-	Kind            string `json:"kind"`
-	OccurredAt      string `json:"occurredAt"`
-	Merchant        string `json:"merchant"`
-	Amount          int64  `json:"amount"`
-	TransactionID   string `json:"transactionId"`
-	OrderID         string `json:"orderId"`
-	CardLast4       string `json:"cardLast4"`
+	Row             int     `json:"row"`
+	SourceReference string  `json:"sourceReference,omitempty"`
+	Kind            string  `json:"kind"`
+	OccurredAt      string  `json:"occurredAt"`
+	Merchant        string  `json:"merchant"`
+	Amount          int64   `json:"amount"`
+	TransactionID   string  `json:"transactionId"`
+	OrderID         string  `json:"orderId"`
+	CardLast4       string  `json:"cardLast4"`
+	Region          *Region `json:"region,omitempty"`
+}
+
+func VerifyStatements(sourceKind string, entries []StatementEntry, warnings []string) (Verification, error) {
+	if sourceKind != statementSourceCard && sourceKind != statementSourceBank || len(entries) == 0 || len(entries) > 1000 || len(warnings) > 100 {
+		return Verification{}, errors.New("invalid statement extraction")
+	}
+	warnings = slices.Clone(warnings)
+	for _, warning := range warnings {
+		if strings.TrimSpace(warning) == "" || len(warning) > 1024 {
+			return Verification{}, errors.New("invalid statement warning")
+		}
+	}
+	verified := make([]StatementEntry, len(entries))
+	copy(verified, entries)
+	for i := range verified {
+		entry := &verified[i]
+		occurredAt, err := time.Parse(time.RFC3339, entry.OccurredAt)
+		if err != nil || entry.Merchant == "" || len(entry.Merchant) > 1024 || strings.TrimSpace(entry.Merchant) != entry.Merchant || !validAmount(entry.Amount) || entry.Region == nil || !validRegion(*entry.Region) || entry.Region.Page >= maxOCRPDFPages || entry.TransactionID != "" && len(entry.TransactionID) > 256 || entry.OrderID != "" && len(entry.OrderID) > 256 || entry.CardLast4 != "" && (len(entry.CardLast4) != 4 || !allASCIIDigits(entry.CardLast4)) {
+			return Verification{}, fmt.Errorf("invalid statement transaction at index %d", i)
+		}
+		for previous := range verified[:i] {
+			if entry.Region.Page == verified[previous].Region.Page && overlap(*entry.Region, *verified[previous].Region) > 0.6 {
+				return Verification{}, fmt.Errorf("overlapping statement transaction regions at index %d", i)
+			}
+		}
+		if sourceKind == statementSourceCard {
+			if entry.Kind != statementKindCardPurchase && entry.Kind != "REFUND" {
+				return Verification{}, fmt.Errorf("invalid card transaction kind at index %d", i)
+			}
+		} else if !validBankStatementKind(entry.Kind) {
+			return Verification{}, fmt.Errorf("invalid bank transaction kind at index %d", i)
+		} else if entry.Kind == "UNCLASSIFIED" {
+			warnings = append(warnings, fmt.Sprintf("取引%dの種別が未確定です。", i+1))
+		}
+		entry.OccurredAt = occurredAt.Format(time.RFC3339)
+		entry.Row = i + 1
+		entry.SourceReference = statementSourceReference(i + 1)
+	}
+	issues := append([]string(nil), warnings...)
+	return Verification{Receipt: Receipt{Statements: verified, Warnings: slices.Clone(warnings)}, Statements: verified, Issues: issues, Balanced: len(issues) == 0}, nil
+}
+
+func validBankStatementKind(kind string) bool {
+	switch kind {
+	case statementKindPayment, "CARD_BILL_PAYMENT", "ACCOUNT_TRANSFER", "REFUND", "UNCLASSIFIED":
+		return true
+	default:
+		return false
+	}
+}
+
+func allASCIIDigits(value string) bool {
+	for _, digit := range value {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // ParseStatementCSVはカード利用と銀行資金移動を区別し、複数行を独立した観測として保持する。
