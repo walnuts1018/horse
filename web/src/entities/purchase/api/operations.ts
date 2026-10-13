@@ -3,8 +3,8 @@ import { graphql } from "react-relay";
 export const purchasesQuery = graphql`
   query PurchasesQuery(
     $householdId: ID!
-    $from: String
-    $to: String
+    $from: DateTime
+    $to: DateTime
     $origin: PurchaseOrigin
     $hasEvidence: Boolean
     $first: Int
@@ -25,8 +25,8 @@ export const purchaseListFragment = graphql`
   fragment PurchaseListFragment on Query
   @argumentDefinitions(
     householdId: { type: "ID!" }
-    from: { type: "String" }
-    to: { type: "String" }
+    from: { type: "DateTime" }
+    to: { type: "DateTime" }
     origin: { type: "PurchaseOrigin" }
     hasEvidence: { type: "Boolean" }
     first: { type: "Int", defaultValue: 100 }

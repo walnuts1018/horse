@@ -8,7 +8,6 @@ export const householdInvitationsQuery = graphql`
         node {
           id
           householdId
-          role
           status
           expiresAt
           createdAt
@@ -35,7 +34,6 @@ export const createHouseholdInvitationMutation = graphql`
           invitation {
             id
             householdId
-            role
             status
             expiresAt
             createdAt

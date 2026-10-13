@@ -474,7 +474,7 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 	}
 	connection := &model.LedgerConnection{Edges: make([]*model.LedgerEdge, 0, len(entries)), TotalCount: int(count), PageInfo: pageInfo}
 	for _, row := range entries {
-		entry := &model.LedgerEntryData{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, Currency: "JPY", OccurredAt: timeString(row.OccurredAt), Description: row.Description, AmountYen: graphLong(row.AmountYen), CreatedAt: timeString(row.CreatedAt)}
+		entry := &model.LedgerEntryData{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, Currency: "JPY", OccurredAt: string(timeString(row.OccurredAt)), Description: row.Description, AmountYen: graphLong(row.AmountYen), CreatedAt: string(timeString(row.CreatedAt))}
 		if row.FromMemberID.Valid {
 			v := row.FromMemberID.V.String()
 			entry.FromMemberID = &v
@@ -540,7 +540,7 @@ func (r *queryResolver) settlement(ctx context.Context, householdID, period stri
 			names[member.MemberID] = member.R.Member.DisplayName
 		}
 		slices.SortFunc(lines, func(a, b *models.SettlementLine) int { return cmp.Compare(names[a.MemberID], names[b.MemberID]) })
-		result := &model.Settlement{HouseholdID: householdID, Period: period, Status: model.SettlementStatusClosed, Revision: int(run.Revision), Lines: make([]*model.SettlementLine, 0, len(lines))}
+		result := &model.Settlement{HouseholdID: householdID, Period: model.YearMonth(period), Status: model.SettlementStatusClosed, Revision: int(run.Revision), Lines: make([]*model.SettlementLine, 0, len(lines))}
 		created := timeString(run.CreatedAt)
 		result.CreatedAt = &created
 		for _, line := range lines {
@@ -548,7 +548,7 @@ func (r *queryResolver) settlement(ctx context.Context, householdID, period stri
 		}
 		return result, nil
 	}
-	result := &model.Settlement{HouseholdID: householdID, Period: period, Status: model.SettlementStatusOpen, Revision: 0, Lines: make([]*model.SettlementLine, 0)}
+	result := &model.Settlement{HouseholdID: householdID, Period: model.YearMonth(period), Status: model.SettlementStatusOpen, Revision: 0, Lines: make([]*model.SettlementLine, 0)}
 	settlement, err := calculateSettlementPreview(ctx, queryExecutor(r.DB), householdID, period)
 	if err != nil {
 		return nil, err

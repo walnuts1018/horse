@@ -447,7 +447,6 @@ type ComplexityRoot struct {
 		HouseholdID func(childComplexity int) int
 		ID          func(childComplexity int) int
 		RevokedAt   func(childComplexity int) int
-		Role        func(childComplexity int) int
 		Status      func(childComplexity int) int
 	}
 
@@ -738,30 +737,30 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		AccountBalanceAnalysis  func(childComplexity int, householdID string, accountID string, from string, to string) int
+		AccountBalanceAnalysis  func(childComplexity int, householdID string, accountID string, from model.YearMonth, to model.YearMonth) int
 		AccountBalances         func(childComplexity int, householdID string) int
 		AccountIncomes          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		AccountMovements        func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		AllocationRules         func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		Budgets                 func(childComplexity int, householdID string, period string) int
+		Budgets                 func(childComplexity int, householdID string, period model.YearMonth) int
 		FundingSchedules        func(childComplexity int, householdID string, active *bool, after *string, before *string, first *int, last *int) int
 		Household               func(childComplexity int, id string) int
 		HouseholdInvitations    func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		Households              func(childComplexity int) int
 		Ledger                  func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		LoanBalances            func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		MonthlyCategorySpending func(childComplexity int, householdID string, from string, to string) int
-		MonthlyMemberSpending   func(childComplexity int, householdID string, from string, to string) int
+		MonthlyCategorySpending func(childComplexity int, householdID string, from model.YearMonth, to model.YearMonth) int
+		MonthlyMemberSpending   func(childComplexity int, householdID string, from model.YearMonth, to model.YearMonth) int
 		Node                    func(childComplexity int, id string) int
 		Nodes                   func(childComplexity int, ids []string) int
 		ProductCatalog          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		ProductSuggestions      func(childComplexity int, householdID string, query string, merchant *string, first *int) int
 		PurchaseCorrections     func(childComplexity int, purchaseID string) int
-		Purchases               func(childComplexity int, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) int
+		Purchases               func(childComplexity int, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) int
 		RecurringExpenses       func(childComplexity int, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) int
-		Settlement              func(childComplexity int, householdID string, period string) int
+		Settlement              func(childComplexity int, householdID string, period model.YearMonth) int
 		Tags                    func(childComplexity int, householdID string, includeArchived *bool) int
-		UnmatchedObservations   func(childComplexity int, householdID string, from *string, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) int
+		UnmatchedObservations   func(childComplexity int, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) int
 		Viewer                  func(childComplexity int) int
 	}
 
@@ -1197,27 +1196,27 @@ type QueryResolver interface {
 	Node(ctx context.Context, id string) (model.Node, error)
 	Nodes(ctx context.Context, ids []string) ([]model.Node, error)
 	AccountBalances(ctx context.Context, householdID string) ([]*model.AccountBalance, error)
-	AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from string, to string) (*model.AccountBalanceAnalysis, error)
+	AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from model.YearMonth, to model.YearMonth) (*model.AccountBalanceAnalysis, error)
 	AccountIncomes(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AccountIncomeConnection, error)
 	AccountMovements(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AccountMovementConnection, error)
 	AllocationRules(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AllocationRuleConnection, error)
-	Budgets(ctx context.Context, householdID string, period string) ([]*model.Budget, error)
+	Budgets(ctx context.Context, householdID string, period model.YearMonth) ([]*model.Budget, error)
 	FundingSchedules(ctx context.Context, householdID string, active *bool, after *string, before *string, first *int, last *int) (*model.FundingScheduleConnection, error)
 	Households(ctx context.Context) ([]*model.Household, error)
 	Household(ctx context.Context, id string) (*model.Household, error)
 	HouseholdInvitations(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.HouseholdInvitationConnection, error)
 	Ledger(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.LedgerConnection, error)
 	LoanBalances(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.LoanBalanceConnection, error)
-	MonthlyCategorySpending(ctx context.Context, householdID string, from string, to string) ([]*model.MonthlyCategorySpending, error)
-	MonthlyMemberSpending(ctx context.Context, householdID string, from string, to string) (*model.MonthlyMemberSpendingReport, error)
+	MonthlyCategorySpending(ctx context.Context, householdID string, from model.YearMonth, to model.YearMonth) ([]*model.MonthlyCategorySpending, error)
+	MonthlyMemberSpending(ctx context.Context, householdID string, from model.YearMonth, to model.YearMonth) (*model.MonthlyMemberSpendingReport, error)
 	ProductCatalog(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.ProductConceptConnection, error)
 	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first *int) ([]*model.ProductSuggestion, error)
-	Purchases(ctx context.Context, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
+	Purchases(ctx context.Context, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
 	PurchaseCorrections(ctx context.Context, purchaseID string) ([]*model.PurchaseCorrection, error)
 	RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
-	Settlement(ctx context.Context, householdID string, period string) (*model.Settlement, error)
+	Settlement(ctx context.Context, householdID string, period model.YearMonth) (*model.Settlement, error)
 	Tags(ctx context.Context, householdID string, includeArchived *bool) ([]*model.Tag, error)
-	UnmatchedObservations(ctx context.Context, householdID string, from *string, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) (*model.UnmatchedObservationConnection, error)
+	UnmatchedObservations(ctx context.Context, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) (*model.UnmatchedObservationConnection, error)
 	Viewer(ctx context.Context) (*model.Viewer, error)
 }
 type RecurringExpenseResolver interface {
@@ -2452,12 +2451,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.HouseholdInvitation.RevokedAt(childComplexity), true
-	case "HouseholdInvitation.role":
-		if e.ComplexityRoot.HouseholdInvitation.Role == nil {
-			break
-		}
-
-		return e.ComplexityRoot.HouseholdInvitation.Role(childComplexity), true
 	case "HouseholdInvitation.status":
 		if e.ComplexityRoot.HouseholdInvitation.Status == nil {
 			break
@@ -3815,7 +3808,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.AccountBalanceAnalysis(childComplexity, args["householdId"].(string), args["accountId"].(string), args["from"].(string), args["to"].(string)), true
+		return e.ComplexityRoot.Query.AccountBalanceAnalysis(childComplexity, args["householdId"].(string), args["accountId"].(string), args["from"].(model.YearMonth), args["to"].(model.YearMonth)), true
 	case "Query.accountBalances":
 		if e.ComplexityRoot.Query.AccountBalances == nil {
 			break
@@ -3870,7 +3863,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Budgets(childComplexity, args["householdId"].(string), args["period"].(string)), true
+		return e.ComplexityRoot.Query.Budgets(childComplexity, args["householdId"].(string), args["period"].(model.YearMonth)), true
 	case "Query.fundingSchedules":
 		if e.ComplexityRoot.Query.FundingSchedules == nil {
 			break
@@ -3943,7 +3936,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.MonthlyCategorySpending(childComplexity, args["householdId"].(string), args["from"].(string), args["to"].(string)), true
+		return e.ComplexityRoot.Query.MonthlyCategorySpending(childComplexity, args["householdId"].(string), args["from"].(model.YearMonth), args["to"].(model.YearMonth)), true
 	case "Query.monthlyMemberSpending":
 		if e.ComplexityRoot.Query.MonthlyMemberSpending == nil {
 			break
@@ -3954,7 +3947,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.MonthlyMemberSpending(childComplexity, args["householdId"].(string), args["from"].(string), args["to"].(string)), true
+		return e.ComplexityRoot.Query.MonthlyMemberSpending(childComplexity, args["householdId"].(string), args["from"].(model.YearMonth), args["to"].(model.YearMonth)), true
 	case "Query.node":
 		if e.ComplexityRoot.Query.Node == nil {
 			break
@@ -4020,7 +4013,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Purchases(childComplexity, args["householdId"].(string), args["from"].(*string), args["to"].(*string), args["origin"].(*model.PurchaseOrigin), args["hasEvidence"].(*bool), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
+		return e.ComplexityRoot.Query.Purchases(childComplexity, args["householdId"].(string), args["from"].(*model.DateTime), args["to"].(*model.DateTime), args["origin"].(*model.PurchaseOrigin), args["hasEvidence"].(*bool), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.recurringExpenses":
 		if e.ComplexityRoot.Query.RecurringExpenses == nil {
 			break
@@ -4042,7 +4035,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Settlement(childComplexity, args["householdId"].(string), args["period"].(string)), true
+		return e.ComplexityRoot.Query.Settlement(childComplexity, args["householdId"].(string), args["period"].(model.YearMonth)), true
 	case "Query.tags":
 		if e.ComplexityRoot.Query.Tags == nil {
 			break
@@ -4064,7 +4057,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.UnmatchedObservations(childComplexity, args["householdId"].(string), args["from"].(*string), args["to"].(*string), args["sourceKind"].(*model.SourceKind), args["state"].(*model.UnmatchedObservationState), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
+		return e.ComplexityRoot.Query.UnmatchedObservations(childComplexity, args["householdId"].(string), args["from"].(*model.YearMonth), args["to"].(*model.YearMonth), args["sourceKind"].(*model.SourceKind), args["state"].(*model.UnmatchedObservationState), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.viewer":
 		if e.ComplexityRoot.Query.Viewer == nil {
 			break
@@ -5050,15 +5043,15 @@ extend type Query {
 	{Name: "../../graphql/account_balance_analysis.graphql", Input: `type AccountBalanceAnalysis {
   accountId: ID! @goField(forceResolver: true)
   currency: String!
-  from: String!
-  to: String!
+  from: YearMonth!
+  to: YearMonth!
   openingBalanceYen: Long!
   closingBalanceYen: Long!
   changes: [AccountBalanceChange!]!
 }
 
 type AccountBalanceChange {
-  occurredAt: String!
+  occurredAt: DateTime!
   source: Node!
   description: String!
   changeYen: Long!
@@ -5066,7 +5059,7 @@ type AccountBalanceChange {
 }
 
 extend type Query {
-  accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: String!, to: String!): AccountBalanceAnalysis!
+  accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: YearMonth!, to: YearMonth!): AccountBalanceAnalysis!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/account_income.graphql", Input: `type AccountIncome implements Node {
@@ -5075,9 +5068,9 @@ extend type Query {
   accountId: ID! @goField(forceResolver: true)
   amountYen: Long!
   currency: String!
-  occurredAt: String!
+  occurredAt: DateTime!
   description: String!
-  createdAt: String!
+  createdAt: DateTime!
 }
 
 type AccountIncomeEdge {
@@ -5099,13 +5092,13 @@ extend type Query {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   kind: AccountMovementKind!
-  occurredAt: String!
+  occurredAt: DateTime!
   fromAccountId: ID! @goField(forceResolver: true)
   toAccountId: ID! @goField(forceResolver: true)
   amountYen: Long!
   currency: String!
   description: String!
-  createdAt: String!
+  createdAt: DateTime!
 }
 
 type AccountMovementEdge {
@@ -5245,14 +5238,14 @@ type ArchiveTagUserError implements MutationError {
   amountYen: Long!
   actualYen: Long!
   remainingYen: Long!
-  startsOn: String!
-  endsOn: String
+  startsOn: Date!
+  endsOn: Date
   archived: Boolean!
   revision: Int!
 }
 
 extend type Query {
-  budgets(householdId: ID! @nodeID(of: "Household"), period: String!): [Budget!]!
+  budgets(householdId: ID! @nodeID(of: "Household"), period: YearMonth!): [Budget!]!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/bulk_update_purchase_items_mutation.graphql", Input: `extend type Mutation {
@@ -5317,7 +5310,7 @@ enum BulkUpdatePurchasesChangedField {
 }
 
 input BulkPurchasePatch {
-  occurredAt: String
+  occurredAt: DateTime
   merchant: String
   paymentAllocations: [PurchasePaymentInput!]
 }
@@ -5352,7 +5345,7 @@ type ClosePeriodSuccess {
 
 input ClosePeriodInput {
   householdId: ID! @nodeID(of: "Household")
-  period: String!
+  period: YearMonth!
   expectedRevision: Int!
 }
 
@@ -5387,16 +5380,6 @@ type CorrectPurchaseUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/correction_ledger_entry.graphql", Input: `type CorrectionLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  purchase: Purchase!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/create_account_mutation.graphql", Input: `extend type Mutation {
   createAccount(input: CreateAccountInput!): CreateAccountResult!
 }
@@ -5417,7 +5400,7 @@ input CreateAccountInput {
 
 input AccountOpeningBalanceInput {
   amountYen: Long!
-  at: String!
+  at: DateTime!
 }
 
 type CreateAccountUserError implements MutationError {
@@ -5440,8 +5423,8 @@ input CreateBudgetInput {
   categoryId: ID @nodeID(of: "Category")
   name: String!
   amountYen: Long!
-  startsOn: String!
-  endsOn: String
+  startsOn: Date!
+  endsOn: Date
 }
 
 type CreateBudgetUserError implements MutationError {
@@ -5487,7 +5470,7 @@ type CreateHouseholdInvitationSuccess {
 
 input CreateHouseholdInvitationInput {
   householdId: ID! @nodeID(of: "Household")
-  expiresAt: String!
+  expiresAt: DateTime!
 }
 
 type CreateHouseholdInvitationUserError implements MutationError {
@@ -5594,7 +5577,7 @@ type CreatePurchaseSuccess {
 input CreatePurchaseInput {
   idempotencyKey: String!
   householdId: ID! @nodeID(of: "Household")
-  occurredAt: String!
+  occurredAt: DateTime!
   merchant: String!
   origin: PurchaseOrigin
   paymentAllocations: [PurchasePaymentInput!]
@@ -5638,9 +5621,9 @@ input CreateRecurringExpenseInput {
   categoryId: ID @nodeID(of: "Category")
   paymentAccountId: ID @nodeID(of: "Account")
   cadence: RecurringExpenseCadence!
-  startsOn: String!
-  nextDueOn: String!
-  endsOn: String
+  startsOn: Date!
+  nextDueOn: Date!
+  endsOn: Date
 }
 
 type CreateRecurringExpenseUserError implements MutationError {
@@ -5668,17 +5651,6 @@ type CreateTagUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/funding_ledger_entry.graphql", Input: `type FundingLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  member: Member!
-  pool: Pool!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/funding_schedule.graphql", Input: `enum FundingScheduleCadence {
   MONTHLY
 }
@@ -5690,10 +5662,10 @@ type FundingSchedule implements Node {
   poolId: ID! @goField(forceResolver: true)
   amountYen: Long!
   cadence: FundingScheduleCadence!
-  startsOn: String!
-  endsOn: String
+  startsOn: Date!
+  endsOn: Date
   active: Boolean!
-  createdAt: String!
+  createdAt: DateTime!
 }
 
 type FundingScheduleEdge {
@@ -5720,8 +5692,8 @@ extend type Query {
   accounts: [Account!]!
   categories: [Category!]!
   defaultAllocation: [Allocation!]!
-  createdAt: String!
-  updatedAt: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
 }
 
 extend type Query {
@@ -5739,12 +5711,11 @@ extend type Query {
 type HouseholdInvitation implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
-  role: String!
   status: HouseholdInvitationStatus!
-  expiresAt: String!
-  createdAt: String!
-  revokedAt: String
-  acceptedAt: String
+  expiresAt: DateTime!
+  createdAt: DateTime!
+  revokedAt: DateTime
+  acceptedAt: DateTime
 }
 
 type HouseholdInvitationEdge {
@@ -5764,11 +5735,62 @@ extend type Query {
 `, BuiltIn: false},
 	{Name: "../../graphql/ledger_entry.graphql", Input: `interface LedgerEntry implements Node {
   id: ID! @goField(forceResolver: true)
-  occurredAt: String!
+  occurredAt: DateTime!
   description: String!
   amountYen: Long!
   currency: String!
-  createdAt: String!
+  createdAt: DateTime!
+}
+
+type CorrectionLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  purchase: Purchase!
+}
+
+type FundingLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  member: Member!
+  pool: Pool!
+}
+
+type PurchaseLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  purchase: Purchase!
+}
+
+type TransferLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+  transferKind: TransferKind!
+  loan: LoanBalance
+}
+
+enum TransferKind {
+  ADVANCE
+  LOAN
+  REPAYMENT
+  GIFT
 }
 
 type LedgerEdge {
@@ -5793,7 +5815,7 @@ extend type Query {
   principalYen: Long!
   repaidYen: Long!
   balanceYen: Long!
-  createdAt: String!
+  createdAt: DateTime!
 }
 
 type LoanBalanceEdge {
@@ -5811,25 +5833,30 @@ extend type Query {
   loanBalances(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): LoanBalanceConnection!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/member.graphql", Input: `type Member implements Node {
+	{Name: "../../graphql/member.graphql", Input: `enum MemberRole {
+  OWNER
+  MEMBER
+}
+
+type Member implements Node {
   id: ID! @goField(forceResolver: true)
   displayName: String!
-  role: String!
+  role: MemberRole!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/monthly_category_spending.graphql", Input: `type MonthlyCategorySpending {
-  period: String!
+  period: YearMonth!
   categoryId: ID @goField(forceResolver: true)
   categoryName: String
   amountYen: Long!
 }
 
 extend type Query {
-  monthlyCategorySpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): [MonthlyCategorySpending!]!
+  monthlyCategorySpending(householdId: ID! @nodeID(of: "Household"), from: YearMonth!, to: YearMonth!): [MonthlyCategorySpending!]!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/monthly_member_spending.graphql", Input: `type MonthlyMemberSpending {
-  period: String!
+  period: YearMonth!
   memberId: ID! @goField(forceResolver: true)
   memberName: String!
   amountYen: Long!
@@ -5841,7 +5868,7 @@ type MonthlyMemberSpendingReport {
 }
 
 extend type Query {
-  monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): MonthlyMemberSpendingReport!
+  monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: YearMonth!, to: YearMonth!): MonthlyMemberSpendingReport!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/pool.graphql", Input: `type Pool implements Node {
@@ -5955,7 +5982,7 @@ extend type Query {
 	{Name: "../../graphql/purchase.graphql", Input: `type Purchase implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
-  occurredAt: String!
+  occurredAt: DateTime!
   merchant: String!
   origin: PurchaseOrigin!
   hasEvidence: Boolean!
@@ -5967,8 +5994,8 @@ extend type Query {
   currency: String!
   revision: Int!
   status: PurchaseStatus!
-  createdAt: String!
-  updatedAt: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
 }
 
 enum PurchaseStatus {
@@ -6007,7 +6034,7 @@ type PurchaseConnection {
 }
 
 extend type Query {
-  purchases(householdId: ID! @nodeID(of: "Household"), from: String, to: String, origin: PurchaseOrigin, hasEvidence: Boolean, after: String, before: String, first: Int, last: Int): PurchaseConnection!
+  purchases(householdId: ID! @nodeID(of: "Household"), from: DateTime, to: DateTime, origin: PurchaseOrigin, hasEvidence: Boolean, after: String, before: String, first: Int, last: Int): PurchaseConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/purchase_correction.graphql", Input: `type PurchaseCorrection implements Node {
@@ -6015,8 +6042,8 @@ extend type Query {
   itemId: ID @goField(forceResolver: true)
   amountDeltaYen: Long!
   reason: String!
-  occurredAt: String!
-  settlementMonth: String!
+  occurredAt: DateTime!
+  settlementMonth: YearMonth!
   paymentAllocations: [PurchasePayment!]!
 }
 
@@ -6066,16 +6093,6 @@ type EffectiveUnitPrice {
   denominator: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/purchase_ledger_entry.graphql", Input: `type PurchaseLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  purchase: Purchase!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/purchase_subscription.graphql", Input: `type PurchaseChange {
   cursor: String!
   kind: PurchaseChangeKind!
@@ -6083,7 +6100,7 @@ type EffectiveUnitPrice {
   entityId: ID! @goField(forceResolver: true)
   revision: Int!
   changedFields: [String!]!
-  occurredAt: String!
+  occurredAt: DateTime!
 }
 
 enum PurchaseChangeKind {
@@ -6119,7 +6136,7 @@ input RecordAccountMovementInput {
   fromAccountId: ID! @nodeID(of: "Account")
   toAccountId: ID! @nodeID(of: "Account")
   amountYen: Long!
-  occurredAt: String!
+  occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
 }
@@ -6143,7 +6160,7 @@ input RecordExternalIncomeInput {
   householdId: ID! @nodeID(of: "Household")
   accountId: ID! @nodeID(of: "Account")
   amountYen: Long!
-  occurredAt: String!
+  occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
 }
@@ -6168,7 +6185,7 @@ input RecordFundingInput {
   memberId: ID! @nodeID(of: "Member")
   poolId: ID! @nodeID(of: "Pool")
   amountYen: Long!
-  occurredAt: String!
+  occurredAt: DateTime!
   idempotencyKey: String!
   sourceAccountId: ID @nodeID(of: "Account")
   destinationAccountId: ID @nodeID(of: "Account")
@@ -6197,7 +6214,7 @@ input RecordRepaymentInput {
   paymentAccountId: ID @nodeID(of: "Account")
   destinationAccountId: ID @nodeID(of: "Account")
   amountYen: Long!
-  occurredAt: String!
+  occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
 }
@@ -6225,7 +6242,7 @@ input RecordTransferInput {
   paymentAccountId: ID @nodeID(of: "Account")
   destinationAccountId: ID @nodeID(of: "Account")
   amountYen: Long!
-  occurredAt: String!
+  occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
 }
@@ -6251,9 +6268,9 @@ type RecordTransferUserError implements MutationError {
   categoryId: ID @goField(forceResolver: true)
   paymentAccountId: ID @goField(forceResolver: true)
   cadence: RecurringExpenseCadence!
-  startsOn: String!
-  nextDueOn: String!
-  endsOn: String
+  startsOn: Date!
+  nextDueOn: Date!
+  endsOn: Date
   archived: Boolean!
   revision: Int!
 }
@@ -6299,7 +6316,10 @@ type RevokeHouseholdInvitationUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/schema.graphql", Input: `scalar Long
+	{Name: "../../graphql/schema.graphql", Input: `scalar Date
+scalar DateTime
+scalar Long
+scalar YearMonth
 
 directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
 directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
@@ -6415,8 +6435,8 @@ input SetFundingScheduleInput {
   poolId: ID! @nodeID(of: "Pool")
   amountYen: Long!
   cadence: FundingScheduleCadence!
-  startsOn: String!
-  endsOn: String
+  startsOn: Date!
+  endsOn: Date
 }
 
 type SetFundingScheduleUserError implements MutationError {
@@ -6483,11 +6503,11 @@ type SetProductAliasUserError implements MutationError {
 type Settlement implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
-  period: String!
+  period: YearMonth!
   status: SettlementStatus!
   revision: Int!
   lines: [SettlementLine!]!
-  createdAt: String
+  createdAt: DateTime
 }
 
 type SettlementLine {
@@ -6503,7 +6523,7 @@ type SettlementLine {
 }
 
 extend type Query {
-  settlement(householdId: ID! @nodeID(of: "Household"), period: String!): Settlement!
+  settlement(householdId: ID! @nodeID(of: "Household"), period: YearMonth!): Settlement!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/source_kind.graphql", Input: `enum SourceKind {
@@ -6526,26 +6546,6 @@ extend type Query {
   tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/transfer_ledger_entry.graphql", Input: `type TransferLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  fromMember: Member!
-  toMember: Member!
-  transferKind: TransferKind!
-  loan: LoanBalance
-}
-
-enum TransferKind {
-  ADVANCE
-  LOAN
-  REPAYMENT
-  GIFT
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/unmatched_observation.graphql", Input: `type UnmatchedObservation implements Node {
   id: ID! @goField(forceResolver: true)
   documentId: ID!
@@ -6554,7 +6554,7 @@ enum TransferKind {
   sourceKind: SourceKind!
   state: UnmatchedObservationState!
   merchant: String!
-  occurredAt: String
+  occurredAt: DateTime
   amountYen: Long!
   orderId: String!
   transactionId: String!
@@ -6577,7 +6577,7 @@ type UnmatchedObservationConnection {
 }
 
 extend type Query {
-  unmatchedObservations(householdId: ID! @nodeID(of: "Household"), from: String, to: String, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, before: String, first: Int, last: Int): UnmatchedObservationConnection!
+  unmatchedObservations(householdId: ID! @nodeID(of: "Household"), from: YearMonth, to: YearMonth, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, before: String, first: Int, last: Int): UnmatchedObservationConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/update_budget_mutation.graphql", Input: `extend type Mutation {
@@ -6597,8 +6597,8 @@ input UpdateBudgetInput {
   categoryId: ID @nodeID(of: "Category")
   name: String!
   amountYen: Long!
-  startsOn: String!
-  endsOn: String
+  startsOn: Date!
+  endsOn: Date
 }
 
 type UpdateBudgetUserError implements MutationError {
@@ -6670,7 +6670,7 @@ input UpdatePurchaseInput {
 }
 
 input PurchasePatch {
-  occurredAt: String
+  occurredAt: DateTime
   merchant: String
   paymentAllocations: [PurchasePaymentInput!]
 }
@@ -6706,9 +6706,9 @@ input UpdateRecurringExpenseInput {
   categoryId: ID @nodeID(of: "Category")
   paymentAccountId: ID @nodeID(of: "Account")
   cadence: RecurringExpenseCadence!
-  startsOn: String!
-  nextDueOn: String!
-  endsOn: String
+  startsOn: Date!
+  nextDueOn: Date!
+  endsOn: Date
 }
 
 type UpdateRecurringExpenseUserError implements MutationError {
@@ -7111,8 +7111,6 @@ func (ec *executionContext) childFields_HouseholdInvitation(ctx context.Context,
 		return ec.fieldContext_HouseholdInvitation_id(ctx, field)
 	case "householdId":
 		return ec.fieldContext_HouseholdInvitation_householdId(ctx, field)
-	case "role":
-		return ec.fieldContext_HouseholdInvitation_role(ctx, field)
 	case "status":
 		return ec.fieldContext_HouseholdInvitation_status(ctx, field)
 	case "expiresAt":
@@ -8439,16 +8437,16 @@ func (ec *executionContext) field_Query_accountBalanceAnalysis_args(ctx context.
 	}
 	args["accountId"] = arg1
 	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "from",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNString2string(ctx, v)
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
 	args["from"] = arg2
 	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "to",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNString2string(ctx, v)
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -8881,8 +8879,8 @@ func (ec *executionContext) field_Query_budgets_args(ctx context.Context, rawArg
 	}
 	args["householdId"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "period",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNString2string(ctx, v)
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -9367,16 +9365,16 @@ func (ec *executionContext) field_Query_monthlyCategorySpending_args(ctx context
 	}
 	args["householdId"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "from",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNString2string(ctx, v)
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
 	args["from"] = arg1
 	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "to",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNString2string(ctx, v)
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -9440,16 +9438,16 @@ func (ec *executionContext) field_Query_monthlyMemberSpending_args(ctx context.C
 	}
 	args["householdId"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "from",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNString2string(ctx, v)
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
 	args["from"] = arg1
 	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "to",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNString2string(ctx, v)
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -9768,16 +9766,16 @@ func (ec *executionContext) field_Query_purchases_args(ctx context.Context, rawA
 	}
 	args["householdId"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "from",
-		func(ctx context.Context, v any) (*string, error) {
-			return ec.unmarshalOString2ᚖstring(ctx, v)
+		func(ctx context.Context, v any) (*model.DateTime, error) {
+			return ec.unmarshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
 	args["from"] = arg1
 	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "to",
-		func(ctx context.Context, v any) (*string, error) {
-			return ec.unmarshalOString2ᚖstring(ctx, v)
+		func(ctx context.Context, v any) (*model.DateTime, error) {
+			return ec.unmarshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -9986,8 +9984,8 @@ func (ec *executionContext) field_Query_settlement_args(ctx context.Context, raw
 	}
 	args["householdId"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "period",
-		func(ctx context.Context, v any) (string, error) {
-			return ec.unmarshalNString2string(ctx, v)
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -10116,16 +10114,16 @@ func (ec *executionContext) field_Query_unmatchedObservations_args(ctx context.C
 	}
 	args["householdId"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "from",
-		func(ctx context.Context, v any) (*string, error) {
-			return ec.unmarshalOString2ᚖstring(ctx, v)
+		func(ctx context.Context, v any) (*model.YearMonth, error) {
+			return ec.unmarshalOYearMonth2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
 	args["from"] = arg1
 	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "to",
-		func(ctx context.Context, v any) (*string, error) {
-			return ec.unmarshalOString2ᚖstring(ctx, v)
+		func(ctx context.Context, v any) (*model.YearMonth, error) {
+			return ec.unmarshalOYearMonth2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -10649,15 +10647,15 @@ func (ec *executionContext) _AccountBalanceAnalysis_from(ctx context.Context, fi
 			return obj.From, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.YearMonth) graphql.Marshaler {
+			return ec.marshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_AccountBalanceAnalysis_from(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AccountBalanceAnalysis", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("AccountBalanceAnalysis", field, false, false, errors.New("field of type YearMonth does not have child fields"))
 }
 
 func (ec *executionContext) _AccountBalanceAnalysis_to(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceAnalysis) (ret graphql.Marshaler) {
@@ -10672,15 +10670,15 @@ func (ec *executionContext) _AccountBalanceAnalysis_to(ctx context.Context, fiel
 			return obj.To, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.YearMonth) graphql.Marshaler {
+			return ec.marshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_AccountBalanceAnalysis_to(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AccountBalanceAnalysis", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("AccountBalanceAnalysis", field, false, false, errors.New("field of type YearMonth does not have child fields"))
 }
 
 func (ec *executionContext) _AccountBalanceAnalysis_openingBalanceYen(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceAnalysis) (ret graphql.Marshaler) {
@@ -10773,15 +10771,15 @@ func (ec *executionContext) _AccountBalanceChange_occurredAt(ctx context.Context
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_AccountBalanceChange_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _AccountBalanceChange_source(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
@@ -11012,15 +11010,15 @@ func (ec *executionContext) _AccountIncome_occurredAt(ctx context.Context, field
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_AccountIncome_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _AccountIncome_description(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
@@ -11058,15 +11056,15 @@ func (ec *executionContext) _AccountIncome_createdAt(ctx context.Context, field 
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_AccountIncome_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("AccountIncome", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _AccountIncomeConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncomeConnection) (ret graphql.Marshaler) {
@@ -11292,15 +11290,15 @@ func (ec *executionContext) _AccountMovement_occurredAt(ctx context.Context, fie
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_AccountMovement_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AccountMovement", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("AccountMovement", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _AccountMovement_fromAccountId(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovement) (ret graphql.Marshaler) {
@@ -11430,15 +11428,15 @@ func (ec *executionContext) _AccountMovement_createdAt(ctx context.Context, fiel
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_AccountMovement_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AccountMovement", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("AccountMovement", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _AccountMovementConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovementConnection) (ret graphql.Marshaler) {
@@ -12440,15 +12438,15 @@ func (ec *executionContext) _Budget_startsOn(ctx context.Context, field graphql.
 			return obj.StartsOn, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.Date) graphql.Marshaler {
+			return ec.marshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_Budget_startsOn(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Budget", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Budget", field, false, false, errors.New("field of type Date does not have child fields"))
 }
 
 func (ec *executionContext) _Budget_endsOn(ctx context.Context, field graphql.CollectedField, obj *model.Budget) (ret graphql.Marshaler) {
@@ -12463,15 +12461,15 @@ func (ec *executionContext) _Budget_endsOn(ctx context.Context, field graphql.Co
 			return obj.EndsOn, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Date) graphql.Marshaler {
+			return ec.marshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, selections, v)
 		},
 		true,
 		false,
 	)
 }
 func (ec *executionContext) fieldContext_Budget_endsOn(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Budget", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Budget", field, false, false, errors.New("field of type Date does not have child fields"))
 }
 
 func (ec *executionContext) _Budget_archived(ctx context.Context, field graphql.CollectedField, obj *model.Budget) (ret graphql.Marshaler) {
@@ -12959,15 +12957,15 @@ func (ec *executionContext) _CorrectionLedgerEntry_occurredAt(ctx context.Contex
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_CorrectionLedgerEntry_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("CorrectionLedgerEntry", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("CorrectionLedgerEntry", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _CorrectionLedgerEntry_description(ctx context.Context, field graphql.CollectedField, obj *model.CorrectionLedgerEntry) (ret graphql.Marshaler) {
@@ -13051,15 +13049,15 @@ func (ec *executionContext) _CorrectionLedgerEntry_createdAt(ctx context.Context
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_CorrectionLedgerEntry_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("CorrectionLedgerEntry", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("CorrectionLedgerEntry", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _CorrectionLedgerEntry_purchase(ctx context.Context, field graphql.CollectedField, obj *model.CorrectionLedgerEntry) (ret graphql.Marshaler) {
@@ -14088,15 +14086,15 @@ func (ec *executionContext) _FundingLedgerEntry_occurredAt(ctx context.Context, 
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_FundingLedgerEntry_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("FundingLedgerEntry", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("FundingLedgerEntry", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _FundingLedgerEntry_description(ctx context.Context, field graphql.CollectedField, obj *model.FundingLedgerEntry) (ret graphql.Marshaler) {
@@ -14180,15 +14178,15 @@ func (ec *executionContext) _FundingLedgerEntry_createdAt(ctx context.Context, f
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_FundingLedgerEntry_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("FundingLedgerEntry", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("FundingLedgerEntry", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _FundingLedgerEntry_member(ctx context.Context, field graphql.CollectedField, obj *model.FundingLedgerEntry) (ret graphql.Marshaler) {
@@ -14405,15 +14403,15 @@ func (ec *executionContext) _FundingSchedule_startsOn(ctx context.Context, field
 			return obj.StartsOn, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.Date) graphql.Marshaler {
+			return ec.marshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_FundingSchedule_startsOn(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("FundingSchedule", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("FundingSchedule", field, false, false, errors.New("field of type Date does not have child fields"))
 }
 
 func (ec *executionContext) _FundingSchedule_endsOn(ctx context.Context, field graphql.CollectedField, obj *model.FundingSchedule) (ret graphql.Marshaler) {
@@ -14428,15 +14426,15 @@ func (ec *executionContext) _FundingSchedule_endsOn(ctx context.Context, field g
 			return obj.EndsOn, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Date) graphql.Marshaler {
+			return ec.marshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, selections, v)
 		},
 		true,
 		false,
 	)
 }
 func (ec *executionContext) fieldContext_FundingSchedule_endsOn(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("FundingSchedule", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("FundingSchedule", field, false, false, errors.New("field of type Date does not have child fields"))
 }
 
 func (ec *executionContext) _FundingSchedule_active(ctx context.Context, field graphql.CollectedField, obj *model.FundingSchedule) (ret graphql.Marshaler) {
@@ -14474,15 +14472,15 @@ func (ec *executionContext) _FundingSchedule_createdAt(ctx context.Context, fiel
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_FundingSchedule_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("FundingSchedule", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("FundingSchedule", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _FundingScheduleConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.FundingScheduleConnection) (ret graphql.Marshaler) {
@@ -14868,15 +14866,15 @@ func (ec *executionContext) _Household_createdAt(ctx context.Context, field grap
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_Household_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Household", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Household", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _Household_updatedAt(ctx context.Context, field graphql.CollectedField, obj *model.Household) (ret graphql.Marshaler) {
@@ -14891,15 +14889,15 @@ func (ec *executionContext) _Household_updatedAt(ctx context.Context, field grap
 			return obj.UpdatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_Household_updatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Household", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Household", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _HouseholdInvitation_id(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
@@ -14948,29 +14946,6 @@ func (ec *executionContext) fieldContext_HouseholdInvitation_householdId(_ conte
 	return graphql.NewScalarFieldContext("HouseholdInvitation", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
-func (ec *executionContext) _HouseholdInvitation_role(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_HouseholdInvitation_role(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			return obj.Role, nil
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_HouseholdInvitation_role(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
-}
-
 func (ec *executionContext) _HouseholdInvitation_status(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -15006,15 +14981,15 @@ func (ec *executionContext) _HouseholdInvitation_expiresAt(ctx context.Context, 
 			return obj.ExpiresAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_HouseholdInvitation_expiresAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _HouseholdInvitation_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
@@ -15029,15 +15004,15 @@ func (ec *executionContext) _HouseholdInvitation_createdAt(ctx context.Context, 
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_HouseholdInvitation_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _HouseholdInvitation_revokedAt(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
@@ -15052,15 +15027,15 @@ func (ec *executionContext) _HouseholdInvitation_revokedAt(ctx context.Context, 
 			return obj.RevokedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.DateTime) graphql.Marshaler {
+			return ec.marshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		false,
 	)
 }
 func (ec *executionContext) fieldContext_HouseholdInvitation_revokedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _HouseholdInvitation_acceptedAt(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitation) (ret graphql.Marshaler) {
@@ -15075,15 +15050,15 @@ func (ec *executionContext) _HouseholdInvitation_acceptedAt(ctx context.Context,
 			return obj.AcceptedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.DateTime) graphql.Marshaler {
+			return ec.marshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		false,
 	)
 }
 func (ec *executionContext) fieldContext_HouseholdInvitation_acceptedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("HouseholdInvitation", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _HouseholdInvitationConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdInvitationConnection) (ret graphql.Marshaler) {
@@ -15520,15 +15495,15 @@ func (ec *executionContext) _LoanBalance_createdAt(ctx context.Context, field gr
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_LoanBalance_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("LoanBalance", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("LoanBalance", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _LoanBalanceConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalanceConnection) (ret graphql.Marshaler) {
@@ -15731,15 +15706,15 @@ func (ec *executionContext) _Member_role(ctx context.Context, field graphql.Coll
 			return obj.Role, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.MemberRole) graphql.Marshaler {
+			return ec.marshalNMemberRole2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMemberRole(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_Member_role(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Member", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Member", field, false, false, errors.New("field of type MemberRole does not have child fields"))
 }
 
 func (ec *executionContext) _MonthlyCategorySpending_period(ctx context.Context, field graphql.CollectedField, obj *model.MonthlyCategorySpending) (ret graphql.Marshaler) {
@@ -15754,15 +15729,15 @@ func (ec *executionContext) _MonthlyCategorySpending_period(ctx context.Context,
 			return obj.Period, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.YearMonth) graphql.Marshaler {
+			return ec.marshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_MonthlyCategorySpending_period(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("MonthlyCategorySpending", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("MonthlyCategorySpending", field, false, false, errors.New("field of type YearMonth does not have child fields"))
 }
 
 func (ec *executionContext) _MonthlyCategorySpending_categoryId(ctx context.Context, field graphql.CollectedField, obj *model.MonthlyCategorySpending) (ret graphql.Marshaler) {
@@ -15846,15 +15821,15 @@ func (ec *executionContext) _MonthlyMemberSpending_period(ctx context.Context, f
 			return obj.Period, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.YearMonth) graphql.Marshaler {
+			return ec.marshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_MonthlyMemberSpending_period(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("MonthlyMemberSpending", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("MonthlyMemberSpending", field, false, false, errors.New("field of type YearMonth does not have child fields"))
 }
 
 func (ec *executionContext) _MonthlyMemberSpending_memberId(ctx context.Context, field graphql.CollectedField, obj *model.MonthlyMemberSpending) (ret graphql.Marshaler) {
@@ -18999,15 +18974,15 @@ func (ec *executionContext) _Purchase_occurredAt(ctx context.Context, field grap
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_Purchase_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _Purchase_merchant(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
@@ -19302,15 +19277,15 @@ func (ec *executionContext) _Purchase_createdAt(ctx context.Context, field graph
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_Purchase_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _Purchase_updatedAt(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
@@ -19325,15 +19300,15 @@ func (ec *executionContext) _Purchase_updatedAt(ctx context.Context, field graph
 			return obj.UpdatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_Purchase_updatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _PurchaseChange_cursor(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseChange) (ret graphql.Marshaler) {
@@ -19486,15 +19461,15 @@ func (ec *executionContext) _PurchaseChange_occurredAt(ctx context.Context, fiel
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_PurchaseChange_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("PurchaseChange", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("PurchaseChange", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _PurchaseConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseConnection) (ret graphql.Marshaler) {
@@ -19711,15 +19686,15 @@ func (ec *executionContext) _PurchaseCorrection_occurredAt(ctx context.Context, 
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_PurchaseCorrection_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("PurchaseCorrection", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("PurchaseCorrection", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _PurchaseCorrection_settlementMonth(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseCorrection) (ret graphql.Marshaler) {
@@ -19734,15 +19709,15 @@ func (ec *executionContext) _PurchaseCorrection_settlementMonth(ctx context.Cont
 			return obj.SettlementMonth, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.YearMonth) graphql.Marshaler {
+			return ec.marshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_PurchaseCorrection_settlementMonth(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("PurchaseCorrection", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("PurchaseCorrection", field, false, false, errors.New("field of type YearMonth does not have child fields"))
 }
 
 func (ec *executionContext) _PurchaseCorrection_paymentAllocations(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseCorrection) (ret graphql.Marshaler) {
@@ -20188,15 +20163,15 @@ func (ec *executionContext) _PurchaseLedgerEntry_occurredAt(ctx context.Context,
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_PurchaseLedgerEntry_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("PurchaseLedgerEntry", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("PurchaseLedgerEntry", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _PurchaseLedgerEntry_description(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseLedgerEntry) (ret graphql.Marshaler) {
@@ -20280,15 +20255,15 @@ func (ec *executionContext) _PurchaseLedgerEntry_createdAt(ctx context.Context, 
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_PurchaseLedgerEntry_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("PurchaseLedgerEntry", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("PurchaseLedgerEntry", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _PurchaseLedgerEntry_purchase(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseLedgerEntry) (ret graphql.Marshaler) {
@@ -20612,7 +20587,7 @@ func (ec *executionContext) _Query_accountBalanceAnalysis(ctx context.Context, f
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().AccountBalanceAnalysis(ctx, fc.Args["householdId"].(string), fc.Args["accountId"].(string), fc.Args["from"].(string), fc.Args["to"].(string))
+			return ec.Resolvers.Query().AccountBalanceAnalysis(ctx, fc.Args["householdId"].(string), fc.Args["accountId"].(string), fc.Args["from"].(model.YearMonth), fc.Args["to"].(model.YearMonth))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountBalanceAnalysis) graphql.Marshaler {
@@ -20788,7 +20763,7 @@ func (ec *executionContext) _Query_budgets(ctx context.Context, field graphql.Co
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Budgets(ctx, fc.Args["householdId"].(string), fc.Args["period"].(string))
+			return ec.Resolvers.Query().Budgets(ctx, fc.Args["householdId"].(string), fc.Args["period"].(model.YearMonth))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.Budget) graphql.Marshaler {
@@ -21084,7 +21059,7 @@ func (ec *executionContext) _Query_monthlyCategorySpending(ctx context.Context, 
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().MonthlyCategorySpending(ctx, fc.Args["householdId"].(string), fc.Args["from"].(string), fc.Args["to"].(string))
+			return ec.Resolvers.Query().MonthlyCategorySpending(ctx, fc.Args["householdId"].(string), fc.Args["from"].(model.YearMonth), fc.Args["to"].(model.YearMonth))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.MonthlyCategorySpending) graphql.Marshaler {
@@ -21128,7 +21103,7 @@ func (ec *executionContext) _Query_monthlyMemberSpending(ctx context.Context, fi
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().MonthlyMemberSpending(ctx, fc.Args["householdId"].(string), fc.Args["from"].(string), fc.Args["to"].(string))
+			return ec.Resolvers.Query().MonthlyMemberSpending(ctx, fc.Args["householdId"].(string), fc.Args["from"].(model.YearMonth), fc.Args["to"].(model.YearMonth))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.MonthlyMemberSpendingReport) graphql.Marshaler {
@@ -21260,7 +21235,7 @@ func (ec *executionContext) _Query_purchases(ctx context.Context, field graphql.
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Purchases(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*string), fc.Args["to"].(*string), fc.Args["origin"].(*model.PurchaseOrigin), fc.Args["hasEvidence"].(*bool), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
+			return ec.Resolvers.Query().Purchases(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*model.DateTime), fc.Args["to"].(*model.DateTime), fc.Args["origin"].(*model.PurchaseOrigin), fc.Args["hasEvidence"].(*bool), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.PurchaseConnection) graphql.Marshaler {
@@ -21392,7 +21367,7 @@ func (ec *executionContext) _Query_settlement(ctx context.Context, field graphql
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Settlement(ctx, fc.Args["householdId"].(string), fc.Args["period"].(string))
+			return ec.Resolvers.Query().Settlement(ctx, fc.Args["householdId"].(string), fc.Args["period"].(model.YearMonth))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.Settlement) graphql.Marshaler {
@@ -21480,7 +21455,7 @@ func (ec *executionContext) _Query_unmatchedObservations(ctx context.Context, fi
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().UnmatchedObservations(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*string), fc.Args["to"].(*string), fc.Args["sourceKind"].(*model.SourceKind), fc.Args["state"].(*model.UnmatchedObservationState), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
+			return ec.Resolvers.Query().UnmatchedObservations(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*model.YearMonth), fc.Args["to"].(*model.YearMonth), fc.Args["sourceKind"].(*model.SourceKind), fc.Args["state"].(*model.UnmatchedObservationState), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.UnmatchedObservationConnection) graphql.Marshaler {
@@ -22231,15 +22206,15 @@ func (ec *executionContext) _RecurringExpense_startsOn(ctx context.Context, fiel
 			return obj.StartsOn, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.Date) graphql.Marshaler {
+			return ec.marshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_RecurringExpense_startsOn(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("RecurringExpense", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("RecurringExpense", field, false, false, errors.New("field of type Date does not have child fields"))
 }
 
 func (ec *executionContext) _RecurringExpense_nextDueOn(ctx context.Context, field graphql.CollectedField, obj *model.RecurringExpense) (ret graphql.Marshaler) {
@@ -22254,15 +22229,15 @@ func (ec *executionContext) _RecurringExpense_nextDueOn(ctx context.Context, fie
 			return obj.NextDueOn, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.Date) graphql.Marshaler {
+			return ec.marshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_RecurringExpense_nextDueOn(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("RecurringExpense", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("RecurringExpense", field, false, false, errors.New("field of type Date does not have child fields"))
 }
 
 func (ec *executionContext) _RecurringExpense_endsOn(ctx context.Context, field graphql.CollectedField, obj *model.RecurringExpense) (ret graphql.Marshaler) {
@@ -22277,15 +22252,15 @@ func (ec *executionContext) _RecurringExpense_endsOn(ctx context.Context, field 
 			return obj.EndsOn, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Date) graphql.Marshaler {
+			return ec.marshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, selections, v)
 		},
 		true,
 		false,
 	)
 }
 func (ec *executionContext) fieldContext_RecurringExpense_endsOn(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("RecurringExpense", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("RecurringExpense", field, false, false, errors.New("field of type Date does not have child fields"))
 }
 
 func (ec *executionContext) _RecurringExpense_archived(ctx context.Context, field graphql.CollectedField, obj *model.RecurringExpense) (ret graphql.Marshaler) {
@@ -23080,15 +23055,15 @@ func (ec *executionContext) _Settlement_period(ctx context.Context, field graphq
 			return obj.Period, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.YearMonth) graphql.Marshaler {
+			return ec.marshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_Settlement_period(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Settlement", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Settlement", field, false, false, errors.New("field of type YearMonth does not have child fields"))
 }
 
 func (ec *executionContext) _Settlement_status(ctx context.Context, field graphql.CollectedField, obj *model.Settlement) (ret graphql.Marshaler) {
@@ -23181,15 +23156,15 @@ func (ec *executionContext) _Settlement_createdAt(ctx context.Context, field gra
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.DateTime) graphql.Marshaler {
+			return ec.marshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		false,
 	)
 }
 func (ec *executionContext) fieldContext_Settlement_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Settlement", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("Settlement", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _SettlementLine_memberId(ctx context.Context, field graphql.CollectedField, obj *model.SettlementLine) (ret graphql.Marshaler) {
@@ -23593,15 +23568,15 @@ func (ec *executionContext) _TransferLedgerEntry_occurredAt(ctx context.Context,
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_TransferLedgerEntry_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("TransferLedgerEntry", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("TransferLedgerEntry", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _TransferLedgerEntry_description(ctx context.Context, field graphql.CollectedField, obj *model.TransferLedgerEntry) (ret graphql.Marshaler) {
@@ -23685,15 +23660,15 @@ func (ec *executionContext) _TransferLedgerEntry_createdAt(ctx context.Context, 
 			return obj.CreatedAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
 func (ec *executionContext) fieldContext_TransferLedgerEntry_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("TransferLedgerEntry", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("TransferLedgerEntry", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _TransferLedgerEntry_fromMember(ctx context.Context, field graphql.CollectedField, obj *model.TransferLedgerEntry) (ret graphql.Marshaler) {
@@ -23988,15 +23963,15 @@ func (ec *executionContext) _UnmatchedObservation_occurredAt(ctx context.Context
 			return obj.OccurredAt, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.DateTime) graphql.Marshaler {
+			return ec.marshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
 		},
 		true,
 		false,
 	)
 }
 func (ec *executionContext) fieldContext_UnmatchedObservation_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type String does not have child fields"))
+	return graphql.NewScalarFieldContext("UnmatchedObservation", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
 func (ec *executionContext) _UnmatchedObservation_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.UnmatchedObservation) (ret graphql.Marshaler) {
@@ -25817,7 +25792,7 @@ func (ec *executionContext) unmarshalInputAccountOpeningBalanceInput(ctx context
 			it.AmountYen = data
 		case "at":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("at"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -26213,7 +26188,7 @@ func (ec *executionContext) unmarshalInputBulkPurchasePatch(ctx context.Context,
 		switch k {
 		case "occurredAt":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			data, err := ec.unmarshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -26365,7 +26340,7 @@ func (ec *executionContext) unmarshalInputClosePeriodInput(ctx context.Context, 
 			}
 		case "period":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("period"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -26713,14 +26688,14 @@ func (ec *executionContext) unmarshalInputCreateBudgetInput(ctx context.Context,
 			it.AmountYen = data
 		case "startsOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("startsOn"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.StartsOn = data
 		case "endsOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("endsOn"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			data, err := ec.unmarshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -26900,7 +26875,7 @@ func (ec *executionContext) unmarshalInputCreateHouseholdInvitationInput(ctx con
 			}
 		case "expiresAt":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("expiresAt"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -27219,7 +27194,7 @@ func (ec *executionContext) unmarshalInputCreatePurchaseInput(ctx context.Contex
 			}
 		case "occurredAt":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -27418,21 +27393,21 @@ func (ec *executionContext) unmarshalInputCreateRecurringExpenseInput(ctx contex
 			it.Cadence = data
 		case "startsOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("startsOn"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.StartsOn = data
 		case "nextDueOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("nextDueOn"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.NextDueOn = data
 		case "endsOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("endsOn"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			data, err := ec.unmarshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -27850,7 +27825,7 @@ func (ec *executionContext) unmarshalInputPurchasePatch(ctx context.Context, obj
 		switch k {
 		case "occurredAt":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			data, err := ec.unmarshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -28154,7 +28129,7 @@ func (ec *executionContext) unmarshalInputRecordAccountMovementInput(ctx context
 			it.AmountYen = data
 		case "occurredAt":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -28259,7 +28234,7 @@ func (ec *executionContext) unmarshalInputRecordExternalIncomeInput(ctx context.
 			it.AmountYen = data
 		case "occurredAt":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -28391,7 +28366,7 @@ func (ec *executionContext) unmarshalInputRecordFundingInput(ctx context.Context
 			it.AmountYen = data
 		case "occurredAt":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -28659,7 +28634,7 @@ func (ec *executionContext) unmarshalInputRecordRepaymentInput(ctx context.Conte
 			it.AmountYen = data
 		case "occurredAt":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -28856,7 +28831,7 @@ func (ec *executionContext) unmarshalInputRecordTransferInput(ctx context.Contex
 			it.AmountYen = data
 		case "occurredAt":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("occurredAt"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -29337,14 +29312,14 @@ func (ec *executionContext) unmarshalInputSetFundingScheduleInput(ctx context.Co
 			it.Cadence = data
 		case "startsOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("startsOn"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.StartsOn = data
 		case "endsOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("endsOn"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			data, err := ec.unmarshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -29696,14 +29671,14 @@ func (ec *executionContext) unmarshalInputUpdateBudgetInput(ctx context.Context,
 			it.AmountYen = data
 		case "startsOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("startsOn"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.StartsOn = data
 		case "endsOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("endsOn"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			data, err := ec.unmarshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -30126,21 +30101,21 @@ func (ec *executionContext) unmarshalInputUpdateRecurringExpenseInput(ctx contex
 			it.Cadence = data
 		case "startsOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("startsOn"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.StartsOn = data
 		case "nextDueOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("nextDueOn"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
 			it.NextDueOn = data
 		case "endsOn":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("endsOn"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			data, err := ec.unmarshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -35730,11 +35705,6 @@ func (ec *executionContext) _HouseholdInvitation(ctx context.Context, sel ast.Se
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "role":
-			out.Values[i] = ec._HouseholdInvitation_role(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&out.Invalids, 1)
-			}
 		case "status":
 			out.Values[i] = ec._HouseholdInvitation_status(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -43035,6 +43005,26 @@ func (ec *executionContext) marshalNCreatedHouseholdInvitation2ᚖgithubᚗcom�
 	return ec._CreatedHouseholdInvitation(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx context.Context, v any) (model.Date, error) {
+	var res model.Date
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx context.Context, sel ast.SelectionSet, v model.Date) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) unmarshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx context.Context, v any) (model.DateTime, error) {
+	var res model.DateTime
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx context.Context, sel ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNFundingSchedule2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐFundingSchedule(ctx context.Context, sel ast.SelectionSet, v *model.FundingSchedule) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -43360,6 +43350,16 @@ func (ec *executionContext) marshalNMember2ᚖgithubᚗcomᚋwalnuts1018ᚋhorse
 		return graphql.Null
 	}
 	return ec._Member(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNMemberRole2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMemberRole(ctx context.Context, v any) (model.MemberRole, error) {
+	var res model.MemberRole
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNMemberRole2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMemberRole(ctx context.Context, sel ast.SelectionSet, v model.MemberRole) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) marshalNMonthlyCategorySpending2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMonthlyCategorySpendingᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.MonthlyCategorySpending) graphql.Marshaler {
@@ -44590,6 +44590,16 @@ func (ec *executionContext) marshalNViewer2ᚖgithubᚗcomᚋwalnuts1018ᚋhorse
 	return ec._Viewer(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx context.Context, v any) (model.YearMonth, error) {
+	var res model.YearMonth
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx context.Context, sel ast.SelectionSet, v model.YearMonth) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalN__Directive2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐDirective(ctx context.Context, sel ast.SelectionSet, v introspection.Directive) graphql.Marshaler {
 	return ec.___Directive(ctx, sel, &v)
 }
@@ -44783,6 +44793,38 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	_ = ctx
 	res := graphql.MarshalBoolean(*v)
 	return res
+}
+
+func (ec *executionContext) unmarshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx context.Context, v any) (*model.Date, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.Date)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalODate2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx context.Context, sel ast.SelectionSet, v *model.Date) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
+func (ec *executionContext) unmarshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx context.Context, v any) (*model.DateTime, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.DateTime)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx context.Context, sel ast.SelectionSet, v *model.DateTime) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
 }
 
 func (ec *executionContext) marshalOEffectiveUnitPrice2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐEffectiveUnitPrice(ctx context.Context, sel ast.SelectionSet, v *model.EffectiveUnitPrice) graphql.Marshaler {
@@ -45039,6 +45081,22 @@ func (ec *executionContext) unmarshalOUnmatchedObservationState2ᚖgithubᚗcom�
 }
 
 func (ec *executionContext) marshalOUnmatchedObservationState2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUnmatchedObservationState(ctx context.Context, sel ast.SelectionSet, v *model.UnmatchedObservationState) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
+func (ec *executionContext) unmarshalOYearMonth2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx context.Context, v any) (*model.YearMonth, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.YearMonth)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOYearMonth2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx context.Context, sel ast.SelectionSet, v *model.YearMonth) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}

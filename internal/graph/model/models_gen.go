@@ -91,11 +91,11 @@ type LedgerEntry interface {
 	IsNode()
 	IsLedgerEntry()
 	GetID() string
-	GetOccurredAt() string
+	GetOccurredAt() DateTime
 	GetDescription() string
 	GetAmountYen() Long
 	GetCurrency() string
-	GetCreatedAt() string
+	GetCreatedAt() DateTime
 }
 
 type MutationError interface {
@@ -215,30 +215,30 @@ type AccountBalance struct {
 type AccountBalanceAnalysis struct {
 	AccountID         string                  `json:"accountId"`
 	Currency          string                  `json:"currency"`
-	From              string                  `json:"from"`
-	To                string                  `json:"to"`
+	From              YearMonth               `json:"from"`
+	To                YearMonth               `json:"to"`
 	OpeningBalanceYen Long                    `json:"openingBalanceYen"`
 	ClosingBalanceYen Long                    `json:"closingBalanceYen"`
 	Changes           []*AccountBalanceChange `json:"changes"`
 }
 
 type AccountBalanceChange struct {
-	OccurredAt  string `json:"occurredAt"`
-	Source      Node   `json:"source"`
-	Description string `json:"description"`
-	ChangeYen   Long   `json:"changeYen"`
-	BalanceYen  Long   `json:"balanceYen"`
+	OccurredAt  DateTime `json:"occurredAt"`
+	Source      Node     `json:"source"`
+	Description string   `json:"description"`
+	ChangeYen   Long     `json:"changeYen"`
+	BalanceYen  Long     `json:"balanceYen"`
 }
 
 type AccountIncome struct {
-	ID          string `json:"id"`
-	HouseholdID string `json:"householdId"`
-	AccountID   string `json:"accountId"`
-	AmountYen   Long   `json:"amountYen"`
-	Currency    string `json:"currency"`
-	OccurredAt  string `json:"occurredAt"`
-	Description string `json:"description"`
-	CreatedAt   string `json:"createdAt"`
+	ID          string   `json:"id"`
+	HouseholdID string   `json:"householdId"`
+	AccountID   string   `json:"accountId"`
+	AmountYen   Long     `json:"amountYen"`
+	Currency    string   `json:"currency"`
+	OccurredAt  DateTime `json:"occurredAt"`
+	Description string   `json:"description"`
+	CreatedAt   DateTime `json:"createdAt"`
 }
 
 func (AccountIncome) IsNode() {}
@@ -258,13 +258,13 @@ type AccountMovement struct {
 	ID            string              `json:"id"`
 	HouseholdID   string              `json:"householdId"`
 	Kind          AccountMovementKind `json:"kind"`
-	OccurredAt    string              `json:"occurredAt"`
+	OccurredAt    DateTime            `json:"occurredAt"`
 	FromAccountID string              `json:"fromAccountId"`
 	ToAccountID   string              `json:"toAccountId"`
 	AmountYen     Long                `json:"amountYen"`
 	Currency      string              `json:"currency"`
 	Description   string              `json:"description"`
-	CreatedAt     string              `json:"createdAt"`
+	CreatedAt     DateTime            `json:"createdAt"`
 }
 
 func (AccountMovement) IsNode() {}
@@ -281,8 +281,8 @@ type AccountMovementEdge struct {
 }
 
 type AccountOpeningBalanceInput struct {
-	AmountYen Long   `json:"amountYen"`
-	At        string `json:"at"`
+	AmountYen Long     `json:"amountYen"`
+	At        DateTime `json:"at"`
 }
 
 type Allocation struct {
@@ -399,8 +399,8 @@ type Budget struct {
 	AmountYen    Long    `json:"amountYen"`
 	ActualYen    Long    `json:"actualYen"`
 	RemainingYen Long    `json:"remainingYen"`
-	StartsOn     string  `json:"startsOn"`
-	EndsOn       *string `json:"endsOn,omitempty"`
+	StartsOn     Date    `json:"startsOn"`
+	EndsOn       *Date   `json:"endsOn,omitempty"`
 	Archived     bool    `json:"archived"`
 	Revision     int     `json:"revision"`
 }
@@ -415,7 +415,7 @@ type BulkPurchaseItemPatch struct {
 }
 
 type BulkPurchasePatch struct {
-	OccurredAt         *string                 `json:"occurredAt,omitempty"`
+	OccurredAt         *DateTime               `json:"occurredAt,omitempty"`
 	Merchant           *string                 `json:"merchant,omitempty"`
 	PaymentAllocations []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
 }
@@ -475,9 +475,9 @@ type Category struct {
 func (Category) IsNode() {}
 
 type ClosePeriodInput struct {
-	HouseholdID      string `json:"householdId"`
-	Period           string `json:"period"`
-	ExpectedRevision int    `json:"expectedRevision"`
+	HouseholdID      string    `json:"householdId"`
+	Period           YearMonth `json:"period"`
+	ExpectedRevision int       `json:"expectedRevision"`
 }
 
 type ClosePeriodSuccess struct {
@@ -527,21 +527,21 @@ func (this CorrectPurchaseUserError) GetMessage() string         { return this.M
 
 type CorrectionLedgerEntry struct {
 	ID          string    `json:"id"`
-	OccurredAt  string    `json:"occurredAt"`
+	OccurredAt  DateTime  `json:"occurredAt"`
 	Description string    `json:"description"`
 	AmountYen   Long      `json:"amountYen"`
 	Currency    string    `json:"currency"`
-	CreatedAt   string    `json:"createdAt"`
+	CreatedAt   DateTime  `json:"createdAt"`
 	Purchase    *Purchase `json:"purchase"`
 }
 
-func (CorrectionLedgerEntry) IsLedgerEntry()              {}
-func (this CorrectionLedgerEntry) GetID() string          { return this.ID }
-func (this CorrectionLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
-func (this CorrectionLedgerEntry) GetDescription() string { return this.Description }
-func (this CorrectionLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
-func (this CorrectionLedgerEntry) GetCurrency() string    { return this.Currency }
-func (this CorrectionLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
+func (CorrectionLedgerEntry) IsLedgerEntry()               {}
+func (this CorrectionLedgerEntry) GetID() string           { return this.ID }
+func (this CorrectionLedgerEntry) GetOccurredAt() DateTime { return this.OccurredAt }
+func (this CorrectionLedgerEntry) GetDescription() string  { return this.Description }
+func (this CorrectionLedgerEntry) GetAmountYen() Long      { return this.AmountYen }
+func (this CorrectionLedgerEntry) GetCurrency() string     { return this.Currency }
+func (this CorrectionLedgerEntry) GetCreatedAt() DateTime  { return this.CreatedAt }
 
 func (CorrectionLedgerEntry) IsNode() {}
 
@@ -575,8 +575,8 @@ type CreateBudgetInput struct {
 	CategoryID  *string `json:"categoryId,omitempty"`
 	Name        string  `json:"name"`
 	AmountYen   Long    `json:"amountYen"`
-	StartsOn    string  `json:"startsOn"`
-	EndsOn      *string `json:"endsOn,omitempty"`
+	StartsOn    Date    `json:"startsOn"`
+	EndsOn      *Date   `json:"endsOn,omitempty"`
 }
 
 type CreateBudgetSuccess struct {
@@ -625,8 +625,8 @@ type CreateHouseholdInput struct {
 }
 
 type CreateHouseholdInvitationInput struct {
-	HouseholdID string `json:"householdId"`
-	ExpiresAt   string `json:"expiresAt"`
+	HouseholdID string   `json:"householdId"`
+	ExpiresAt   DateTime `json:"expiresAt"`
 }
 
 type CreateHouseholdInvitationSuccess struct {
@@ -738,7 +738,7 @@ func (this CreateProductVariantUserError) GetMessage() string         { return t
 type CreatePurchaseInput struct {
 	IdempotencyKey             string                  `json:"idempotencyKey"`
 	HouseholdID                string                  `json:"householdId"`
-	OccurredAt                 string                  `json:"occurredAt"`
+	OccurredAt                 DateTime                `json:"occurredAt"`
 	Merchant                   string                  `json:"merchant"`
 	Origin                     *PurchaseOrigin         `json:"origin,omitempty"`
 	PaymentAllocations         []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
@@ -774,9 +774,9 @@ type CreateRecurringExpenseInput struct {
 	CategoryID       *string                 `json:"categoryId,omitempty"`
 	PaymentAccountID *string                 `json:"paymentAccountId,omitempty"`
 	Cadence          RecurringExpenseCadence `json:"cadence"`
-	StartsOn         string                  `json:"startsOn"`
-	NextDueOn        string                  `json:"nextDueOn"`
-	EndsOn           *string                 `json:"endsOn,omitempty"`
+	StartsOn         Date                    `json:"startsOn"`
+	NextDueOn        Date                    `json:"nextDueOn"`
+	EndsOn           *Date                   `json:"endsOn,omitempty"`
 }
 
 type CreateRecurringExpenseSuccess struct {
@@ -829,23 +829,23 @@ type EffectiveUnitPrice struct {
 }
 
 type FundingLedgerEntry struct {
-	ID          string  `json:"id"`
-	OccurredAt  string  `json:"occurredAt"`
-	Description string  `json:"description"`
-	AmountYen   Long    `json:"amountYen"`
-	Currency    string  `json:"currency"`
-	CreatedAt   string  `json:"createdAt"`
-	Member      *Member `json:"member"`
-	Pool        *Pool   `json:"pool"`
+	ID          string   `json:"id"`
+	OccurredAt  DateTime `json:"occurredAt"`
+	Description string   `json:"description"`
+	AmountYen   Long     `json:"amountYen"`
+	Currency    string   `json:"currency"`
+	CreatedAt   DateTime `json:"createdAt"`
+	Member      *Member  `json:"member"`
+	Pool        *Pool    `json:"pool"`
 }
 
-func (FundingLedgerEntry) IsLedgerEntry()              {}
-func (this FundingLedgerEntry) GetID() string          { return this.ID }
-func (this FundingLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
-func (this FundingLedgerEntry) GetDescription() string { return this.Description }
-func (this FundingLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
-func (this FundingLedgerEntry) GetCurrency() string    { return this.Currency }
-func (this FundingLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
+func (FundingLedgerEntry) IsLedgerEntry()               {}
+func (this FundingLedgerEntry) GetID() string           { return this.ID }
+func (this FundingLedgerEntry) GetOccurredAt() DateTime { return this.OccurredAt }
+func (this FundingLedgerEntry) GetDescription() string  { return this.Description }
+func (this FundingLedgerEntry) GetAmountYen() Long      { return this.AmountYen }
+func (this FundingLedgerEntry) GetCurrency() string     { return this.Currency }
+func (this FundingLedgerEntry) GetCreatedAt() DateTime  { return this.CreatedAt }
 
 func (FundingLedgerEntry) IsNode() {}
 
@@ -856,10 +856,10 @@ type FundingSchedule struct {
 	PoolID      string                 `json:"poolId"`
 	AmountYen   Long                   `json:"amountYen"`
 	Cadence     FundingScheduleCadence `json:"cadence"`
-	StartsOn    string                 `json:"startsOn"`
-	EndsOn      *string                `json:"endsOn,omitempty"`
+	StartsOn    Date                   `json:"startsOn"`
+	EndsOn      *Date                  `json:"endsOn,omitempty"`
 	Active      bool                   `json:"active"`
-	CreatedAt   string                 `json:"createdAt"`
+	CreatedAt   DateTime               `json:"createdAt"`
 }
 
 func (FundingSchedule) IsNode() {}
@@ -884,8 +884,8 @@ type Household struct {
 	Accounts          []*Account    `json:"accounts"`
 	Categories        []*Category   `json:"categories"`
 	DefaultAllocation []*Allocation `json:"defaultAllocation"`
-	CreatedAt         string        `json:"createdAt"`
-	UpdatedAt         string        `json:"updatedAt"`
+	CreatedAt         DateTime      `json:"createdAt"`
+	UpdatedAt         DateTime      `json:"updatedAt"`
 }
 
 func (Household) IsNode() {}
@@ -893,12 +893,11 @@ func (Household) IsNode() {}
 type HouseholdInvitation struct {
 	ID          string                    `json:"id"`
 	HouseholdID string                    `json:"householdId"`
-	Role        string                    `json:"role"`
 	Status      HouseholdInvitationStatus `json:"status"`
-	ExpiresAt   string                    `json:"expiresAt"`
-	CreatedAt   string                    `json:"createdAt"`
-	RevokedAt   *string                   `json:"revokedAt,omitempty"`
-	AcceptedAt  *string                   `json:"acceptedAt,omitempty"`
+	ExpiresAt   DateTime                  `json:"expiresAt"`
+	CreatedAt   DateTime                  `json:"createdAt"`
+	RevokedAt   *DateTime                 `json:"revokedAt,omitempty"`
+	AcceptedAt  *DateTime                 `json:"acceptedAt,omitempty"`
 }
 
 func (HouseholdInvitation) IsNode() {}
@@ -926,13 +925,13 @@ type LedgerEdge struct {
 }
 
 type LoanBalance struct {
-	ID               string `json:"id"`
-	LenderMemberID   string `json:"lenderMemberId"`
-	BorrowerMemberID string `json:"borrowerMemberId"`
-	PrincipalYen     Long   `json:"principalYen"`
-	RepaidYen        Long   `json:"repaidYen"`
-	BalanceYen       Long   `json:"balanceYen"`
-	CreatedAt        string `json:"createdAt"`
+	ID               string   `json:"id"`
+	LenderMemberID   string   `json:"lenderMemberId"`
+	BorrowerMemberID string   `json:"borrowerMemberId"`
+	PrincipalYen     Long     `json:"principalYen"`
+	RepaidYen        Long     `json:"repaidYen"`
+	BalanceYen       Long     `json:"balanceYen"`
+	CreatedAt        DateTime `json:"createdAt"`
 }
 
 func (LoanBalance) IsNode() {}
@@ -949,25 +948,25 @@ type LoanBalanceEdge struct {
 }
 
 type Member struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"displayName"`
-	Role        string `json:"role"`
+	ID          string     `json:"id"`
+	DisplayName string     `json:"displayName"`
+	Role        MemberRole `json:"role"`
 }
 
 func (Member) IsNode() {}
 
 type MonthlyCategorySpending struct {
-	Period       string  `json:"period"`
-	CategoryID   *string `json:"categoryId,omitempty"`
-	CategoryName *string `json:"categoryName,omitempty"`
-	AmountYen    Long    `json:"amountYen"`
+	Period       YearMonth `json:"period"`
+	CategoryID   *string   `json:"categoryId,omitempty"`
+	CategoryName *string   `json:"categoryName,omitempty"`
+	AmountYen    Long      `json:"amountYen"`
 }
 
 type MonthlyMemberSpending struct {
-	Period     string `json:"period"`
-	MemberID   string `json:"memberId"`
-	MemberName string `json:"memberName"`
-	AmountYen  Long   `json:"amountYen"`
+	Period     YearMonth `json:"period"`
+	MemberID   string    `json:"memberId"`
+	MemberName string    `json:"memberName"`
+	AmountYen  Long      `json:"amountYen"`
 }
 
 type MonthlyMemberSpendingReport struct {
@@ -1103,7 +1102,7 @@ func (ProductVariant) IsNode() {}
 type Purchase struct {
 	ID                 string                `json:"id"`
 	HouseholdID        string                `json:"householdId"`
-	OccurredAt         string                `json:"occurredAt"`
+	OccurredAt         DateTime              `json:"occurredAt"`
 	Merchant           string                `json:"merchant"`
 	Origin             PurchaseOrigin        `json:"origin"`
 	HasEvidence        bool                  `json:"hasEvidence"`
@@ -1115,8 +1114,8 @@ type Purchase struct {
 	Currency           string                `json:"currency"`
 	Revision           int                   `json:"revision"`
 	Status             PurchaseStatus        `json:"status"`
-	CreatedAt          string                `json:"createdAt"`
-	UpdatedAt          string                `json:"updatedAt"`
+	CreatedAt          DateTime              `json:"createdAt"`
+	UpdatedAt          DateTime              `json:"updatedAt"`
 }
 
 func (Purchase) IsNode() {}
@@ -1128,7 +1127,7 @@ type PurchaseChange struct {
 	EntityID      string               `json:"entityId"`
 	Revision      int                  `json:"revision"`
 	ChangedFields []string             `json:"changedFields"`
-	OccurredAt    string               `json:"occurredAt"`
+	OccurredAt    DateTime             `json:"occurredAt"`
 }
 
 type PurchaseConnection struct {
@@ -1143,8 +1142,8 @@ type PurchaseCorrection struct {
 	ItemID             *string            `json:"itemId,omitempty"`
 	AmountDeltaYen     Long               `json:"amountDeltaYen"`
 	Reason             string             `json:"reason"`
-	OccurredAt         string             `json:"occurredAt"`
-	SettlementMonth    string             `json:"settlementMonth"`
+	OccurredAt         DateTime           `json:"occurredAt"`
+	SettlementMonth    YearMonth          `json:"settlementMonth"`
 	PaymentAllocations []*PurchasePayment `json:"paymentAllocations"`
 }
 
@@ -1189,26 +1188,26 @@ type PurchaseItemTargetInput struct {
 
 type PurchaseLedgerEntry struct {
 	ID          string    `json:"id"`
-	OccurredAt  string    `json:"occurredAt"`
+	OccurredAt  DateTime  `json:"occurredAt"`
 	Description string    `json:"description"`
 	AmountYen   Long      `json:"amountYen"`
 	Currency    string    `json:"currency"`
-	CreatedAt   string    `json:"createdAt"`
+	CreatedAt   DateTime  `json:"createdAt"`
 	Purchase    *Purchase `json:"purchase"`
 }
 
-func (PurchaseLedgerEntry) IsLedgerEntry()              {}
-func (this PurchaseLedgerEntry) GetID() string          { return this.ID }
-func (this PurchaseLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
-func (this PurchaseLedgerEntry) GetDescription() string { return this.Description }
-func (this PurchaseLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
-func (this PurchaseLedgerEntry) GetCurrency() string    { return this.Currency }
-func (this PurchaseLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
+func (PurchaseLedgerEntry) IsLedgerEntry()               {}
+func (this PurchaseLedgerEntry) GetID() string           { return this.ID }
+func (this PurchaseLedgerEntry) GetOccurredAt() DateTime { return this.OccurredAt }
+func (this PurchaseLedgerEntry) GetDescription() string  { return this.Description }
+func (this PurchaseLedgerEntry) GetAmountYen() Long      { return this.AmountYen }
+func (this PurchaseLedgerEntry) GetCurrency() string     { return this.Currency }
+func (this PurchaseLedgerEntry) GetCreatedAt() DateTime  { return this.CreatedAt }
 
 func (PurchaseLedgerEntry) IsNode() {}
 
 type PurchasePatch struct {
-	OccurredAt         *string                 `json:"occurredAt,omitempty"`
+	OccurredAt         *DateTime               `json:"occurredAt,omitempty"`
 	Merchant           *string                 `json:"merchant,omitempty"`
 	PaymentAllocations []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
 }
@@ -1251,7 +1250,7 @@ type RecordAccountMovementInput struct {
 	FromAccountID  string              `json:"fromAccountId"`
 	ToAccountID    string              `json:"toAccountId"`
 	AmountYen      Long                `json:"amountYen"`
-	OccurredAt     string              `json:"occurredAt"`
+	OccurredAt     DateTime            `json:"occurredAt"`
 	Description    string              `json:"description"`
 	IdempotencyKey string              `json:"idempotencyKey"`
 }
@@ -1274,12 +1273,12 @@ func (this RecordAccountMovementUserError) GetCode() MutationErrorCode { return 
 func (this RecordAccountMovementUserError) GetMessage() string         { return this.Message }
 
 type RecordExternalIncomeInput struct {
-	HouseholdID    string `json:"householdId"`
-	AccountID      string `json:"accountId"`
-	AmountYen      Long   `json:"amountYen"`
-	OccurredAt     string `json:"occurredAt"`
-	Description    string `json:"description"`
-	IdempotencyKey string `json:"idempotencyKey"`
+	HouseholdID    string   `json:"householdId"`
+	AccountID      string   `json:"accountId"`
+	AmountYen      Long     `json:"amountYen"`
+	OccurredAt     DateTime `json:"occurredAt"`
+	Description    string   `json:"description"`
+	IdempotencyKey string   `json:"idempotencyKey"`
 }
 
 type RecordExternalIncomeSuccess struct {
@@ -1300,14 +1299,14 @@ func (this RecordExternalIncomeUserError) GetCode() MutationErrorCode { return t
 func (this RecordExternalIncomeUserError) GetMessage() string         { return this.Message }
 
 type RecordFundingInput struct {
-	HouseholdID          string  `json:"householdId"`
-	MemberID             string  `json:"memberId"`
-	PoolID               string  `json:"poolId"`
-	AmountYen            Long    `json:"amountYen"`
-	OccurredAt           string  `json:"occurredAt"`
-	IdempotencyKey       string  `json:"idempotencyKey"`
-	SourceAccountID      *string `json:"sourceAccountId,omitempty"`
-	DestinationAccountID *string `json:"destinationAccountId,omitempty"`
+	HouseholdID          string   `json:"householdId"`
+	MemberID             string   `json:"memberId"`
+	PoolID               string   `json:"poolId"`
+	AmountYen            Long     `json:"amountYen"`
+	OccurredAt           DateTime `json:"occurredAt"`
+	IdempotencyKey       string   `json:"idempotencyKey"`
+	SourceAccountID      *string  `json:"sourceAccountId,omitempty"`
+	DestinationAccountID *string  `json:"destinationAccountId,omitempty"`
 }
 
 type RecordFundingSuccess struct {
@@ -1328,16 +1327,16 @@ func (this RecordFundingUserError) GetCode() MutationErrorCode { return this.Cod
 func (this RecordFundingUserError) GetMessage() string         { return this.Message }
 
 type RecordRepaymentInput struct {
-	HouseholdID          string  `json:"householdId"`
-	FromMemberID         string  `json:"fromMemberId"`
-	ToMemberID           string  `json:"toMemberId"`
-	LoanID               string  `json:"loanId"`
-	PaymentAccountID     *string `json:"paymentAccountId,omitempty"`
-	DestinationAccountID *string `json:"destinationAccountId,omitempty"`
-	AmountYen            Long    `json:"amountYen"`
-	OccurredAt           string  `json:"occurredAt"`
-	Description          string  `json:"description"`
-	IdempotencyKey       string  `json:"idempotencyKey"`
+	HouseholdID          string   `json:"householdId"`
+	FromMemberID         string   `json:"fromMemberId"`
+	ToMemberID           string   `json:"toMemberId"`
+	LoanID               string   `json:"loanId"`
+	PaymentAccountID     *string  `json:"paymentAccountId,omitempty"`
+	DestinationAccountID *string  `json:"destinationAccountId,omitempty"`
+	AmountYen            Long     `json:"amountYen"`
+	OccurredAt           DateTime `json:"occurredAt"`
+	Description          string   `json:"description"`
+	IdempotencyKey       string   `json:"idempotencyKey"`
 }
 
 type RecordRepaymentSuccess struct {
@@ -1365,7 +1364,7 @@ type RecordTransferInput struct {
 	PaymentAccountID     *string           `json:"paymentAccountId,omitempty"`
 	DestinationAccountID *string           `json:"destinationAccountId,omitempty"`
 	AmountYen            Long              `json:"amountYen"`
-	OccurredAt           string            `json:"occurredAt"`
+	OccurredAt           DateTime          `json:"occurredAt"`
 	Description          string            `json:"description"`
 	IdempotencyKey       string            `json:"idempotencyKey"`
 }
@@ -1397,9 +1396,9 @@ type RecurringExpense struct {
 	CategoryID       *string                 `json:"categoryId,omitempty"`
 	PaymentAccountID *string                 `json:"paymentAccountId,omitempty"`
 	Cadence          RecurringExpenseCadence `json:"cadence"`
-	StartsOn         string                  `json:"startsOn"`
-	NextDueOn        string                  `json:"nextDueOn"`
-	EndsOn           *string                 `json:"endsOn,omitempty"`
+	StartsOn         Date                    `json:"startsOn"`
+	NextDueOn        Date                    `json:"nextDueOn"`
+	EndsOn           *Date                   `json:"endsOn,omitempty"`
 	Archived         bool                    `json:"archived"`
 	Revision         int                     `json:"revision"`
 }
@@ -1515,8 +1514,8 @@ type SetFundingScheduleInput struct {
 	PoolID      string                 `json:"poolId"`
 	AmountYen   Long                   `json:"amountYen"`
 	Cadence     FundingScheduleCadence `json:"cadence"`
-	StartsOn    string                 `json:"startsOn"`
-	EndsOn      *string                `json:"endsOn,omitempty"`
+	StartsOn    Date                   `json:"startsOn"`
+	EndsOn      *Date                  `json:"endsOn,omitempty"`
 }
 
 type SetFundingScheduleSuccess struct {
@@ -1589,11 +1588,11 @@ func (this SetProductAliasUserError) GetMessage() string         { return this.M
 type Settlement struct {
 	ID          string            `json:"id"`
 	HouseholdID string            `json:"householdId"`
-	Period      string            `json:"period"`
+	Period      YearMonth         `json:"period"`
 	Status      SettlementStatus  `json:"status"`
 	Revision    int               `json:"revision"`
 	Lines       []*SettlementLine `json:"lines"`
-	CreatedAt   *string           `json:"createdAt,omitempty"`
+	CreatedAt   *DateTime         `json:"createdAt,omitempty"`
 }
 
 func (Settlement) IsNode() {}
@@ -1625,24 +1624,24 @@ func (Tag) IsNode() {}
 
 type TransferLedgerEntry struct {
 	ID           string       `json:"id"`
-	OccurredAt   string       `json:"occurredAt"`
+	OccurredAt   DateTime     `json:"occurredAt"`
 	Description  string       `json:"description"`
 	AmountYen    Long         `json:"amountYen"`
 	Currency     string       `json:"currency"`
-	CreatedAt    string       `json:"createdAt"`
+	CreatedAt    DateTime     `json:"createdAt"`
 	FromMember   *Member      `json:"fromMember"`
 	ToMember     *Member      `json:"toMember"`
 	TransferKind TransferKind `json:"transferKind"`
 	Loan         *LoanBalance `json:"loan,omitempty"`
 }
 
-func (TransferLedgerEntry) IsLedgerEntry()              {}
-func (this TransferLedgerEntry) GetID() string          { return this.ID }
-func (this TransferLedgerEntry) GetOccurredAt() string  { return this.OccurredAt }
-func (this TransferLedgerEntry) GetDescription() string { return this.Description }
-func (this TransferLedgerEntry) GetAmountYen() Long     { return this.AmountYen }
-func (this TransferLedgerEntry) GetCurrency() string    { return this.Currency }
-func (this TransferLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
+func (TransferLedgerEntry) IsLedgerEntry()               {}
+func (this TransferLedgerEntry) GetID() string           { return this.ID }
+func (this TransferLedgerEntry) GetOccurredAt() DateTime { return this.OccurredAt }
+func (this TransferLedgerEntry) GetDescription() string  { return this.Description }
+func (this TransferLedgerEntry) GetAmountYen() Long      { return this.AmountYen }
+func (this TransferLedgerEntry) GetCurrency() string     { return this.Currency }
+func (this TransferLedgerEntry) GetCreatedAt() DateTime  { return this.CreatedAt }
 
 func (TransferLedgerEntry) IsNode() {}
 
@@ -1654,7 +1653,7 @@ type UnmatchedObservation struct {
 	SourceKind      SourceKind                `json:"sourceKind"`
 	State           UnmatchedObservationState `json:"state"`
 	Merchant        string                    `json:"merchant"`
-	OccurredAt      *string                   `json:"occurredAt,omitempty"`
+	OccurredAt      *DateTime                 `json:"occurredAt,omitempty"`
 	AmountYen       Long                      `json:"amountYen"`
 	OrderID         string                    `json:"orderId"`
 	TransactionID   string                    `json:"transactionId"`
@@ -1680,8 +1679,8 @@ type UpdateBudgetInput struct {
 	CategoryID   *string `json:"categoryId,omitempty"`
 	Name         string  `json:"name"`
 	AmountYen    Long    `json:"amountYen"`
-	StartsOn     string  `json:"startsOn"`
-	EndsOn       *string `json:"endsOn,omitempty"`
+	StartsOn     Date    `json:"startsOn"`
+	EndsOn       *Date   `json:"endsOn,omitempty"`
 }
 
 type UpdateBudgetSuccess struct {
@@ -1767,9 +1766,9 @@ type UpdateRecurringExpenseInput struct {
 	CategoryID       *string                 `json:"categoryId,omitempty"`
 	PaymentAccountID *string                 `json:"paymentAccountId,omitempty"`
 	Cadence          RecurringExpenseCadence `json:"cadence"`
-	StartsOn         string                  `json:"startsOn"`
-	NextDueOn        string                  `json:"nextDueOn"`
-	EndsOn           *string                 `json:"endsOn,omitempty"`
+	StartsOn         Date                    `json:"startsOn"`
+	NextDueOn        Date                    `json:"nextDueOn"`
+	EndsOn           *Date                   `json:"endsOn,omitempty"`
 }
 
 type UpdateRecurringExpenseSuccess struct {
@@ -2215,6 +2214,61 @@ func (e *HouseholdInvitationStatus) UnmarshalJSON(b []byte) error {
 }
 
 func (e HouseholdInvitationStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type MemberRole string
+
+const (
+	MemberRoleOwner  MemberRole = "OWNER"
+	MemberRoleMember MemberRole = "MEMBER"
+)
+
+var AllMemberRole = []MemberRole{
+	MemberRoleOwner,
+	MemberRoleMember,
+}
+
+func (e MemberRole) IsValid() bool {
+	switch e {
+	case MemberRoleOwner, MemberRoleMember:
+		return true
+	}
+	return false
+}
+
+func (e MemberRole) String() string {
+	return string(e)
+}
+
+func (e *MemberRole) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = MemberRole(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid MemberRole", str)
+	}
+	return nil
+}
+
+func (e MemberRole) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *MemberRole) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e MemberRole) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

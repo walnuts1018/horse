@@ -20,7 +20,7 @@ enum BulkUpdatePurchasesChangedField {
 }
 
 input BulkPurchasePatch {
-  occurredAt: String
+  occurredAt: DateTime
   merchant: String
   paymentAllocations: [PurchasePaymentInput!]
 }

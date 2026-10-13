@@ -84,7 +84,7 @@ func (r *queryResolver) monthlyCategorySpending(ctx context.Context, householdID
 		if err != nil {
 			return nil, err
 		}
-		entry := &model.MonthlyCategorySpending{Period: row.Period, AmountYen: graphLong(amount)}
+		entry := &model.MonthlyCategorySpending{Period: model.YearMonth(row.Period), AmountYen: graphLong(amount)}
 		if row.CategoryID.Valid {
 			id, name := row.CategoryID.V.String(), row.CategoryName.V
 			entry.CategoryID, entry.CategoryName = &id, &name
@@ -141,7 +141,7 @@ func (r *queryResolver) monthlyMemberSpending(ctx context.Context, householdID, 
 		if err != nil {
 			return nil, err
 		}
-		result.Items = append(result.Items, &model.MonthlyMemberSpending{Period: row.Period, MemberID: row.MemberID.String(), MemberName: row.MemberName, AmountYen: graphLong(amount)})
+		result.Items = append(result.Items, &model.MonthlyMemberSpending{Period: model.YearMonth(row.Period), MemberID: row.MemberID.String(), MemberName: row.MemberName, AmountYen: graphLong(amount)})
 	}
 	result.HasUnattributedPurchases, err = hasUnattributedMonthlySpending(ctx, queryExecutor(r.DB), hhID, start, end)
 	if err != nil {

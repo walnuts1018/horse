@@ -15,8 +15,8 @@ input UpdateBudgetInput {
   categoryId: ID @nodeID(of: "Category")
   name: String!
   amountYen: Long!
-  startsOn: String!
-  endsOn: String
+  startsOn: Date!
+  endsOn: Date
 }
 
 type UpdateBudgetUserError implements MutationError {

@@ -6,12 +6,12 @@ type Budget implements Node {
   amountYen: Long!
   actualYen: Long!
   remainingYen: Long!
-  startsOn: String!
-  endsOn: String
+  startsOn: Date!
+  endsOn: Date
   archived: Boolean!
   revision: Int!
 }
 
 extend type Query {
-  budgets(householdId: ID! @nodeID(of: "Household"), period: String!): [Budget!]!
+  budgets(householdId: ID! @nodeID(of: "Household"), period: YearMonth!): [Budget!]!
 }

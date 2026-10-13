@@ -8,9 +8,9 @@ type RecurringExpense implements Node {
   categoryId: ID @goField(forceResolver: true)
   paymentAccountId: ID @goField(forceResolver: true)
   cadence: RecurringExpenseCadence!
-  startsOn: String!
-  nextDueOn: String!
-  endsOn: String
+  startsOn: Date!
+  nextDueOn: Date!
+  endsOn: Date
   archived: Boolean!
   revision: Int!
 }

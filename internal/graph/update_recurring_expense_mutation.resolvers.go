@@ -16,7 +16,7 @@ func (r *mutationResolver) UpdateRecurringExpense(ctx context.Context, input mod
 	result, err := r.setRecurringExpense(ctx, recurringExpenseWriteInput{
 		HouseholdID: input.HouseholdID, ExpenseID: &input.ExpenseID, BaseRevision: &input.BaseRevision, Name: input.Name, Merchant: input.Merchant,
 		AmountYen: int64(input.AmountYen), CategoryID: input.CategoryID, PaymentAccountID: input.PaymentAccountID,
-		Cadence: input.Cadence.String(), StartsOn: input.StartsOn, NextDueOn: input.NextDueOn, EndsOn: input.EndsOn,
+		Cadence: input.Cadence.String(), StartsOn: string(input.StartsOn), NextDueOn: string(input.NextDueOn), EndsOn: stringPointer(input.EndsOn),
 	})
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {

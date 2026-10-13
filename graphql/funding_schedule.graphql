@@ -9,10 +9,10 @@ type FundingSchedule implements Node {
   poolId: ID! @goField(forceResolver: true)
   amountYen: Long!
   cadence: FundingScheduleCadence!
-  startsOn: String!
-  endsOn: String
+  startsOn: Date!
+  endsOn: Date
   active: Boolean!
-  createdAt: String!
+  createdAt: DateTime!
 }
 
 type FundingScheduleEdge {

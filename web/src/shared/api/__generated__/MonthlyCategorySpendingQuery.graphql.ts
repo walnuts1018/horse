@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<c9c42c5213921c5288e3241da300fbb7>>
+ * @generated SignedSource<<1427edb1ed325fd030b0cd9e29e6e17e>>
  * @lightSyntaxTransform
  */
 
@@ -125,16 +125,16 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "c0f6006c4be35d42432bc3c4d5c92407",
+    "cacheID": "66e07d8d67b5330b602843eba6864172",
     "id": null,
     "metadata": {},
     "name": "MonthlyCategorySpendingQuery",
     "operationKind": "query",
-    "text": "query MonthlyCategorySpendingQuery(\n  $householdId: ID!\n  $from: String!\n  $to: String!\n) {\n  monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {\n    period\n    categoryId\n    categoryName\n    amountYen\n  }\n}\n"
+    "text": "query MonthlyCategorySpendingQuery(\n  $householdId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n) {\n  monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {\n    period\n    categoryId\n    categoryName\n    amountYen\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d3ca070c8be6943884bdda40e3f9b2d7";
+(node as any).hash = "af6708650e0f81d34cbcc5cf2e8b1be7";
 
 export default node;

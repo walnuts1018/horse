@@ -1,5 +1,5 @@
 type MonthlyMemberSpending {
-  period: String!
+  period: YearMonth!
   memberId: ID! @goField(forceResolver: true)
   memberName: String!
   amountYen: Long!
@@ -11,5 +11,5 @@ type MonthlyMemberSpendingReport {
 }
 
 extend type Query {
-  monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): MonthlyMemberSpendingReport!
+  monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: YearMonth!, to: YearMonth!): MonthlyMemberSpendingReport!
 }

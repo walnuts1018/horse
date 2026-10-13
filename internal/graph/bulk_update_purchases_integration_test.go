@@ -78,7 +78,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	newDate := "2026-05-11T12:00:00Z"
+	newDate := model.DateTime("2026-05-11T12:00:00Z")
 	updated, err := resolver.bulkUpdatePurchases(ctx, model.BulkUpdatePurchasesInput{
 		Targets: []*model.PurchaseUpdateTargetInput{
 			{PurchaseID: first.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{OccurredAt: &newDate}},
@@ -94,7 +94,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 	}
 	first = updated[0]
 	second = updated[1]
-	secondDate := "2026-05-12T12:00:00Z"
+	secondDate := model.DateTime("2026-05-12T12:00:00Z")
 	second, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{
 		PurchaseID: second.ID, BaseRevision: second.Revision,
 		Patch: &model.PurchasePatch{OccurredAt: &secondDate}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldOccurredAt},
@@ -103,7 +103,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 		t.Fatal(err)
 	}
 	atomicMerchant := "Must roll back"
-	conflictingDate := "2026-05-13T12:00:00Z"
+	conflictingDate := model.DateTime("2026-05-13T12:00:00Z")
 	_, err = resolver.bulkUpdatePurchases(ctx, model.BulkUpdatePurchasesInput{
 		Targets: []*model.PurchaseUpdateTargetInput{
 			{PurchaseID: first.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{Merchant: &atomicMerchant, OccurredAt: &newDate}},

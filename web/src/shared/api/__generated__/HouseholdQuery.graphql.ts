@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<06f248906a40247d9075f7766534750d>>
+ * @generated SignedSource<<0a58b12c55a437cdb3414027e294e533>>
  * @lightSyntaxTransform
  */
 
@@ -9,6 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type AccountKind = "BANK" | "CARD" | "CASH" | "OTHER" | "%future added value";
+export type MemberRole = "MEMBER" | "OWNER" | "%future added value";
 export type PoolKind = "PERSONAL" | "SHARED" | "%future added value";
 export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL" | "%future added value";
 export type HouseholdQuery$variables = {
@@ -36,7 +37,7 @@ export type HouseholdQuery$data = {
     readonly members: ReadonlyArray<{
       readonly displayName: string;
       readonly id: string;
-      readonly role: string;
+      readonly role: MemberRole;
     }>;
     readonly name: string;
     readonly pools: ReadonlyArray<{

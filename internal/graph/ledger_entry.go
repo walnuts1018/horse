@@ -16,7 +16,8 @@ import (
 )
 
 func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.LedgerEntryData) (model.LedgerEntry, error) {
-	baseID, occurredAt, description, amount, currency, createdAt := value.ID, value.OccurredAt, value.Description, value.AmountYen, value.Currency, value.CreatedAt
+	baseID, description, amount, currency := value.ID, value.Description, value.AmountYen, value.Currency
+	occurredAt, createdAt := model.DateTime(value.OccurredAt), model.DateTime(value.CreatedAt)
 	switch value.Kind {
 	case "PURCHASE", "CORRECTION":
 		if value.SourcePurchaseID == nil {

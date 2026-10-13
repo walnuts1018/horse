@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<61cee1e5fff21870279349bf98329e88>>
+ * @generated SignedSource<<98310786260969e86136b7d4f660b5de>>
  * @lightSyntaxTransform
  */
 
@@ -228,16 +228,16 @@ return {
     "selections": (v4/*:: as any*/)
   },
   "params": {
-    "cacheID": "80588403d7e79728280600e72262497c",
+    "cacheID": "5e87f3e289693fd8eb74bbeaa154750f",
     "id": null,
     "metadata": {},
     "name": "AccountBalanceAnalysisQuery",
     "operationKind": "query",
-    "text": "query AccountBalanceAnalysisQuery(\n  $householdId: ID!\n  $accountId: ID!\n  $from: String!\n  $to: String!\n) {\n  accountBalanceAnalysis(householdId: $householdId, accountId: $accountId, from: $from, to: $to) {\n    accountId\n    currency\n    from\n    to\n    openingBalanceYen\n    closingBalanceYen\n    changes {\n      occurredAt\n      source {\n        id\n        __typename\n      }\n      description\n      changeYen\n      balanceYen\n    }\n  }\n}\n"
+    "text": "query AccountBalanceAnalysisQuery(\n  $householdId: ID!\n  $accountId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n) {\n  accountBalanceAnalysis(householdId: $householdId, accountId: $accountId, from: $from, to: $to) {\n    accountId\n    currency\n    from\n    to\n    openingBalanceYen\n    closingBalanceYen\n    changes {\n      occurredAt\n      source {\n        id\n        __typename\n      }\n      description\n      changeYen\n      balanceYen\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "aeb59550281e9aaadd9cbd85ff753470";
+(node as any).hash = "77d92cbae42a434f107dc0c08ac85dd0";
 
 export default node;

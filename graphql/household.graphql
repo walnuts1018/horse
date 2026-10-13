@@ -7,8 +7,8 @@ type Household implements Node {
   accounts: [Account!]!
   categories: [Category!]!
   defaultAllocation: [Allocation!]!
-  createdAt: String!
-  updatedAt: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
 }
 
 extend type Query {

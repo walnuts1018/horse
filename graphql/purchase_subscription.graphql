@@ -5,7 +5,7 @@ type PurchaseChange {
   entityId: ID! @goField(forceResolver: true)
   revision: Int!
   changedFields: [String!]!
-  occurredAt: String!
+  occurredAt: DateTime!
 }
 
 enum PurchaseChangeKind {

@@ -197,7 +197,7 @@ export type LoanBalance = {
   repaidYen: number;
   balanceYen: number;
 };
-export type Member = { id: string; displayName: string; role: string };
+export type Member = { id: string; displayName: string; role: "OWNER" | "MEMBER" };
 export type Household = {
   id: string;
   name: string;
@@ -268,7 +268,6 @@ export type ProductSuggestion = {
 export type HouseholdInvitation = {
   id: string;
   householdId: string;
-  role: string;
   status: "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED";
   expiresAt: string;
   createdAt: string;

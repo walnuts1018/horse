@@ -14,8 +14,8 @@ import (
 )
 
 // UnmatchedObservations is the resolver for the unmatchedObservations field.
-func (r *queryResolver) UnmatchedObservations(ctx context.Context, householdID string, from *string, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) (*model.UnmatchedObservationConnection, error) {
-	return r.unmatchedObservations(ctx, householdID, from, to, sourceKind, state, after, before, first, last)
+func (r *queryResolver) UnmatchedObservations(ctx context.Context, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) (*model.UnmatchedObservationConnection, error) {
+	return r.unmatchedObservations(ctx, householdID, yearMonthPointer(from), yearMonthPointer(to), sourceKind, state, after, before, first, last)
 }
 
 // ID is the resolver for the id field.

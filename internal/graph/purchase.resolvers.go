@@ -27,8 +27,8 @@ func (r *purchasePaymentResolver) PaymentAccountID(ctx context.Context, obj *mod
 }
 
 // Purchases is the resolver for the purchases field.
-func (r *queryResolver) Purchases(ctx context.Context, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error) {
-	return r.purchases(ctx, householdID, from, to, origin, hasEvidence, after, before, first, last)
+func (r *queryResolver) Purchases(ctx context.Context, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error) {
+	return r.purchases(ctx, householdID, dateTimePointer(from), dateTimePointer(to), origin, hasEvidence, after, before, first, last)
 }
 
 // Purchase returns PurchaseResolver implementation.

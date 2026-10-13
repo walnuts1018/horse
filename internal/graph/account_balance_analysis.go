@@ -147,7 +147,7 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 		})
 	}
 	return &model.AccountBalanceAnalysis{
-		AccountID: accountUUID.String(), Currency: "JPY", From: from, To: to,
+		AccountID: accountUUID.String(), Currency: "JPY", From: model.YearMonth(from), To: model.YearMonth(to),
 		OpeningBalanceYen: graphLong(openingBalance), ClosingBalanceYen: graphLong(balance), Changes: result,
 	}, nil
 }

@@ -3,8 +3,8 @@ import { graphql } from "react-relay";
 export const unmatchedObservationsQuery = graphql`
   query UnmatchedObservationsQuery(
     $householdId: ID!
-    $from: String
-    $to: String
+    $from: YearMonth
+    $to: YearMonth
     $sourceKind: SourceKind
     $state: UnmatchedObservationState
     $after: String

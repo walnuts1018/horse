@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob"
@@ -24,7 +25,7 @@ func fundingScheduleModel(row *models.FundingSchedule) *model.FundingSchedule {
 	return &model.FundingSchedule{
 		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), MemberID: row.MemberID.String(), PoolID: row.PoolID.String(),
 		AmountYen: graphLong(row.AmountYen), Cadence: model.FundingScheduleCadence(row.Cadence),
-		StartsOn: row.StartsOn.Format("2006-01-02"), EndsOn: endsOn, Active: row.Active, CreatedAt: timeString(row.CreatedAt),
+		StartsOn: model.Date(row.StartsOn.Format(time.DateOnly)), EndsOn: datePointer(endsOn), Active: row.Active, CreatedAt: timeString(row.CreatedAt),
 	}
 }
 

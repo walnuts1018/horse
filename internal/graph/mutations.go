@@ -1894,8 +1894,8 @@ func loadLedgerEntry(ctx context.Context, db *pgxpool.Pool, entryID string) (*mo
 		return nil, err
 	}
 	result := &model.LedgerEntryData{
-		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, OccurredAt: timeString(row.OccurredAt),
-		Description: row.Description, AmountYen: graphLong(row.AmountYen), Currency: "JPY", CreatedAt: timeString(row.CreatedAt),
+		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, OccurredAt: string(timeString(row.OccurredAt)),
+		Description: row.Description, AmountYen: graphLong(row.AmountYen), Currency: "JPY", CreatedAt: string(timeString(row.CreatedAt)),
 	}
 	if row.FromMemberID.Valid {
 		value := row.FromMemberID.V.String()
@@ -1954,7 +1954,7 @@ func (r *mutationResolver) recordTransfer(ctx context.Context, input model.Recor
 		HouseholdID: input.HouseholdID, FromMemberID: input.FromMemberID, ToMemberID: input.ToMemberID,
 		Kind: model.TransferKind(input.Kind), PaymentAccountID: input.PaymentAccountID,
 		DestinationAccountID: input.DestinationAccountID, AmountYen: input.AmountYen,
-		OccurredAt: input.OccurredAt, Description: input.Description, IdempotencyKey: input.IdempotencyKey,
+		OccurredAt: string(input.OccurredAt), Description: input.Description, IdempotencyKey: input.IdempotencyKey,
 	})
 }
 
@@ -1963,7 +1963,7 @@ func (r *mutationResolver) recordRepayment(ctx context.Context, input model.Reco
 		HouseholdID: input.HouseholdID, FromMemberID: input.FromMemberID, ToMemberID: input.ToMemberID,
 		Kind: model.TransferKindRepayment, LoanID: &input.LoanID, PaymentAccountID: input.PaymentAccountID,
 		DestinationAccountID: input.DestinationAccountID, AmountYen: input.AmountYen,
-		OccurredAt: input.OccurredAt, Description: input.Description, IdempotencyKey: input.IdempotencyKey,
+		OccurredAt: string(input.OccurredAt), Description: input.Description, IdempotencyKey: input.IdempotencyKey,
 	})
 }
 
@@ -2472,7 +2472,8 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 	if err != nil {
 		return nil, err
 	}
-	periodStart, err := parseAccountingPeriod(input.Period)
+	period := string(input.Period)
+	periodStart, err := parseAccountingPeriod(period)
 	if err != nil {
 		return nil, fmt.Errorf("%w: period must use YYYY-MM", ErrBadInput)
 	}
@@ -2491,13 +2492,13 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 	}
 	openStatus, zeroRevision := "OPEN", int64(0)
 	if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
-		HouseholdID: &householdUUID, Period: &input.Period, Status: &openStatus, Revision: &zeroRevision,
+		HouseholdID: &householdUUID, Period: &period, Status: &openStatus, Revision: &zeroRevision,
 	}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
 	periodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
 		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(input.Period)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
 	)), sm.ForUpdate()).One(ctx, executor)
 	if err != nil {
 		return nil, err
@@ -2540,7 +2541,7 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 		scheduleID := sql.Null[gofrsuuid.UUID]{V: item.ID, Valid: true}
 		if _, err := models.FundingObligations.Insert(&models.FundingObligationSetter{
 			ID: func() *gofrsuuid.UUID { id := generatedUUID(newID()); return &id }(), HouseholdID: &householdUUID, ScheduleID: &scheduleID,
-			MemberID: &item.MemberID, PoolID: &item.PoolID, Period: &input.Period, AmountYen: &item.AmountYen,
+			MemberID: &item.MemberID, PoolID: &item.PoolID, Period: &period, AmountYen: &item.AmountYen,
 		}, im.OnConflict("household_id", "member_id", "pool_id", "period").DoUpdate(
 			im.SetCol("schedule_id").To(im.Excluded("schedule_id")),
 			im.SetCol("amount_yen").To(im.Excluded("amount_yen")),
@@ -2552,7 +2553,7 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 	if err != nil {
 		return nil, err
 	}
-	lines, err := calculateSettlementPreviewWithRules(ctx, executor, input.HouseholdID, input.Period)
+	lines, err := calculateSettlementPreviewWithRules(ctx, executor, input.HouseholdID, period)
 	if err != nil {
 		return nil, err
 	}
@@ -2566,7 +2567,7 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 	closedStatus := "CLOSED"
 	snapshot := types.JSON[stdjson.RawMessage]{Val: fundingSnapshot}
 	if _, err := models.SettlementRuns.Insert(&models.SettlementRunSetter{
-		ID: &settlementUUID, HouseholdID: &householdUUID, Period: &input.Period, Revision: &newRevision,
+		ID: &settlementUUID, HouseholdID: &householdUUID, Period: &period, Revision: &newRevision,
 		Status: &closedStatus, CreatedBy: &userUUID, FundingSnapshot: &snapshot,
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
@@ -2607,7 +2608,7 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 		Status: &closedStatus, Revision: &newRevision, ClosedBy: &closedBy, ClosedAt: &closedAt,
 	}).UpdateMod(), um.Where(psql.And(
 		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(input.Period)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
 	))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
@@ -2617,7 +2618,7 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return (&queryResolver{r.Resolver}).settlement(ctx, input.HouseholdID, input.Period)
+	return (&queryResolver{r.Resolver}).settlement(ctx, input.HouseholdID, string(input.Period))
 }
 
 func (r *mutationResolver) correctPurchase(ctx context.Context, input model.CorrectPurchaseInput) (*model.Purchase, error) {
@@ -3135,8 +3136,8 @@ func valuesConflict(fieldRevisions []byte, base int, fields []string) (bool, err
 	return false, nil
 }
 
-func parseDate(value string) (time.Time, error) {
-	parsed, err := time.Parse("2006-01-02", value)
+func parseDate[T ~string](value T) (time.Time, error) {
+	parsed, err := time.Parse(time.DateOnly, string(value))
 	if err != nil {
 		return time.Time{}, fmt.Errorf("%w: date must use YYYY-MM-DD", ErrBadInput)
 	}

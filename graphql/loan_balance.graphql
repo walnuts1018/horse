@@ -5,7 +5,7 @@ type LoanBalance implements Node {
   principalYen: Long!
   repaidYen: Long!
   balanceYen: Long!
-  createdAt: String!
+  createdAt: DateTime!
 }
 
 type LoanBalanceEdge {

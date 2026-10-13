@@ -55,15 +55,51 @@ func requireMember(ctx context.Context, db *pgxpool.Pool, householdID string) (a
 	return user, nil
 }
 
-func parseTime(value string) (time.Time, error) {
-	parsed, err := time.Parse(time.RFC3339Nano, value)
+func parseTime[T ~string](value T) (time.Time, error) {
+	parsed, err := time.Parse(time.RFC3339Nano, string(value))
 	if err != nil {
 		return time.Time{}, fmt.Errorf("%w: timestamp must use RFC3339", ErrBadInput)
 	}
 	return parsed.UTC(), nil
 }
 
-func timeString(value time.Time) string { return value.UTC().Format(time.RFC3339Nano) }
+func timeString(value time.Time) model.DateTime {
+	return model.DateTime(value.UTC().Format(time.RFC3339Nano))
+}
+
+func stringValue[T ~string](value T) string { return string(value) }
+
+func stringPointer[T ~string](value *T) *string {
+	if value == nil {
+		return nil
+	}
+	result := string(*value)
+	return &result
+}
+
+func datePointer(value *string) *model.Date {
+	if value == nil {
+		return nil
+	}
+	result := model.Date(*value)
+	return &result
+}
+
+func dateTimePointer(value *model.DateTime) *string {
+	if value == nil {
+		return nil
+	}
+	result := string(*value)
+	return &result
+}
+
+func yearMonthPointer(value *model.YearMonth) *string {
+	if value == nil {
+		return nil
+	}
+	result := string(*value)
+	return &result
+}
 
 func newID() string { return uuid.NewV7().String() }
 
@@ -101,7 +137,7 @@ func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*
 	}
 	for _, householdMember := range householdMembers {
 		result.Members = append(result.Members, &model.Member{
-			ID: householdMember.MemberID.String(), DisplayName: householdMember.R.Member.DisplayName, Role: householdMember.Role,
+			ID: householdMember.MemberID.String(), DisplayName: householdMember.R.Member.DisplayName, Role: model.MemberRole(householdMember.Role),
 		})
 	}
 	pools, err := models.Pools.Query(
@@ -429,14 +465,14 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 			correction := &model.PurchaseCorrection{
 				ID: storedCorrection.ID.String(), AmountDeltaYen: graphLong(storedCorrection.AmountDeltaYen),
 				Reason: storedCorrection.Reason, OccurredAt: timeString(storedCorrection.R.Journal.OccurredAt),
-				SettlementMonth: accountingPeriod(purchase.OccurredAt), PaymentAllocations: make([]*model.PurchasePayment, 0),
+				SettlementMonth: model.YearMonth(accountingPeriod(purchase.OccurredAt)), PaymentAllocations: make([]*model.PurchasePayment, 0),
 			}
 			if storedCorrection.ItemID.Valid {
 				itemID := storedCorrection.ItemID.V.String()
 				correction.ItemID = &itemID
 			}
 			if storedCorrection.EffectivePeriod.Valid {
-				correction.SettlementMonth = storedCorrection.EffectivePeriod.V
+				correction.SettlementMonth = model.YearMonth(storedCorrection.EffectivePeriod.V)
 			}
 			for _, storedPayment := range storedCorrection.R.CorrectionPayments {
 				correction.PaymentAllocations = append(correction.PaymentAllocations, &model.PurchasePayment{

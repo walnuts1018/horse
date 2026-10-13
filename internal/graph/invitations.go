@@ -78,7 +78,7 @@ func (r *mutationResolver) createHouseholdInvitation(ctx context.Context, input 
 		return nil, err
 	}
 	return &model.CreatedHouseholdInvitation{
-		Invitation: &model.HouseholdInvitation{ID: id, HouseholdID: input.HouseholdID, Role: "MEMBER", Status: model.HouseholdInvitationStatusPending, ExpiresAt: timeString(storedExpiresAt), CreatedAt: timeString(createdAt)},
+		Invitation: &model.HouseholdInvitation{ID: id, HouseholdID: input.HouseholdID, Status: model.HouseholdInvitationStatusPending, ExpiresAt: timeString(storedExpiresAt), CreatedAt: timeString(createdAt)},
 		Token:      token,
 	}, nil
 }
@@ -188,7 +188,7 @@ func (r *queryResolver) householdInvitations(ctx context.Context, householdID st
 
 func householdInvitationModel(row *models.HouseholdInvitation, now time.Time) *model.HouseholdInvitation {
 	return &model.HouseholdInvitation{
-		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Role: row.Role,
+		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(),
 		ExpiresAt: timeString(row.ExpiresAt), CreatedAt: timeString(row.CreatedAt),
 		RevokedAt:  optionalTimeString(invitationTimePointer(row.RevokedAt)),
 		AcceptedAt: optionalTimeString(invitationTimePointer(row.AcceptedAt)),
@@ -249,7 +249,7 @@ func (r *mutationResolver) revokeHouseholdInvitation(ctx context.Context, househ
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	invitation := model.HouseholdInvitation{ID: invitationRow.ID.String(), HouseholdID: invitationRow.HouseholdID.String(), Role: invitationRow.Role}
+	invitation := model.HouseholdInvitation{ID: invitationRow.ID.String(), HouseholdID: invitationRow.HouseholdID.String()}
 	invitation.ExpiresAt, invitation.CreatedAt = timeString(invitationRow.ExpiresAt), timeString(invitationRow.CreatedAt)
 	invitation.RevokedAt, invitation.AcceptedAt = optionalTimeString(invitationTimePointer(invitationRow.RevokedAt)), optionalTimeString(invitationTimePointer(invitationRow.AcceptedAt))
 	invitation.Status = householdInvitationStatus(invitationRow.AcceptedAt, invitationRow.RevokedAt, invitationRow.ExpiresAt, time.Now())
@@ -371,7 +371,7 @@ func invitationTimePointer(value sql.Null[time.Time]) *time.Time {
 	return &value.V
 }
 
-func optionalTimeString(value *time.Time) *string {
+func optionalTimeString(value *time.Time) *model.DateTime {
 	if value == nil {
 		return nil
 	}

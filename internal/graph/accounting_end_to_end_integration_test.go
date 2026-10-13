@@ -56,7 +56,7 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(context.Background(), bobpgx.NewPool(db))
 	}()
 
-	openingAt := "2026-05-01T00:00:00Z"
+	openingAt := model.DateTime("2026-05-01T00:00:00Z")
 	fromAccount, err := mutation.createAccount(ctx, model.CreateAccountInput{
 		HouseholdID: household.ID, Name: "Operating", Kind: model.AccountKindBank,
 		OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(1000), At: openingAt},
@@ -204,7 +204,7 @@ func TestConcurrentLoanRepaymentsCannotExceedPrincipal(t *testing.T) {
 			<-start
 			_, err := mutation.recordRepayment(ctx, model.RecordRepaymentInput{
 				HouseholdID: household.ID, FromMemberID: borrowerID, ToMemberID: lenderID, LoanID: *loan.TransferID,
-				AmountYen: 60, OccurredAt: period + "-15T12:00:00Z", Description: "Repayment", IdempotencyKey: uuid.NewV7().String(),
+				AmountYen: 60, OccurredAt: model.DateTime(period + "-15T12:00:00Z"), Description: "Repayment", IdempotencyKey: uuid.NewV7().String(),
 			})
 			results <- err
 		}()

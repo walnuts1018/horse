@@ -13,7 +13,7 @@ input RecordFundingInput {
   memberId: ID! @nodeID(of: "Member")
   poolId: ID! @nodeID(of: "Pool")
   amountYen: Long!
-  occurredAt: String!
+  occurredAt: DateTime!
   idempotencyKey: String!
   sourceAccountId: ID @nodeID(of: "Account")
   destinationAccountId: ID @nodeID(of: "Account")

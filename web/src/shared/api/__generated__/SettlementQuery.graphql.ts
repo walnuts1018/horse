@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<41b5857607172211b32664d5ba754569>>
+ * @generated SignedSource<<1984b8867d48d9f23b615d1e000a9874>>
  * @lightSyntaxTransform
  */
 
@@ -213,16 +213,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "4214cbb4d20227981b8c3de44987b44a",
+    "cacheID": "b43123b43947785df9180d71e1967a20",
     "id": null,
     "metadata": {},
     "name": "SettlementQuery",
     "operationKind": "query",
-    "text": "query SettlementQuery(\n  $householdId: ID!\n  $period: String!\n) {\n  settlement(householdId: $householdId, period: $period) {\n    period\n    status\n    revision\n    lines {\n      memberId\n      memberName\n      scheduledYen\n      paidYen\n      carryYen\n      priorBalanceYen\n      monthlyAdjustmentYen\n      advanceCreditYen\n      amountDueYen\n    }\n    id\n  }\n}\n"
+    "text": "query SettlementQuery(\n  $householdId: ID!\n  $period: YearMonth!\n) {\n  settlement(householdId: $householdId, period: $period) {\n    period\n    status\n    revision\n    lines {\n      memberId\n      memberName\n      scheduledYen\n      paidYen\n      carryYen\n      priorBalanceYen\n      monthlyAdjustmentYen\n      advanceCreditYen\n      amountDueYen\n    }\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "186ff6623f2c5f68749aa105e41a1134";
+(node as any).hash = "8d28377ec545fa9b1dfd9f53c91e6bc2";
 
 export default node;

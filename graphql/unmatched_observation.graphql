@@ -6,7 +6,7 @@ type UnmatchedObservation implements Node {
   sourceKind: SourceKind!
   state: UnmatchedObservationState!
   merchant: String!
-  occurredAt: String
+  occurredAt: DateTime
   amountYen: Long!
   orderId: String!
   transactionId: String!
@@ -29,5 +29,5 @@ type UnmatchedObservationConnection {
 }
 
 extend type Query {
-  unmatchedObservations(householdId: ID! @nodeID(of: "Household"), from: String, to: String, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, before: String, first: Int, last: Int): UnmatchedObservationConnection!
+  unmatchedObservations(householdId: ID! @nodeID(of: "Household"), from: YearMonth, to: YearMonth, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, before: String, first: Int, last: Int): UnmatchedObservationConnection!
 }

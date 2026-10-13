@@ -4,5 +4,10 @@
   "language": "typescript",
   "artifactDirectory": "./src/shared/api/__generated__",
   "eagerEsModules": true,
-  "useImportTypeSyntax": true
+  "useImportTypeSyntax": true,
+  "customScalarTypes": {
+    "Date": "string",
+    "DateTime": "string",
+    "YearMonth": "string"
+  }
 }

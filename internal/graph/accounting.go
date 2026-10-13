@@ -33,8 +33,8 @@ var accountingLocation = time.FixedZone("JST", 9*60*60)
 
 func accountingPeriod(value time.Time) string { return value.In(accountingLocation).Format("2006-01") }
 
-func parseAccountingPeriod(value string) (time.Time, error) {
-	return time.ParseInLocation("2006-01", value, accountingLocation)
+func parseAccountingPeriod[T ~string](value T) (time.Time, error) {
+	return time.ParseInLocation("2006-01", string(value), accountingLocation)
 }
 
 func (r *mutationResolver) setPoolFundingRule(ctx context.Context, input model.SetPoolFundingRuleInput) (*model.Pool, error) {

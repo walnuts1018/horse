@@ -14,8 +14,8 @@ input SetFundingScheduleInput {
   poolId: ID! @nodeID(of: "Pool")
   amountYen: Long!
   cadence: FundingScheduleCadence!
-  startsOn: String!
-  endsOn: String
+  startsOn: Date!
+  endsOn: Date
 }
 
 type SetFundingScheduleUserError implements MutationError {

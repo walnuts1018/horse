@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1163e43f8f193cee39c1a1f0702fed14>>
+ * @generated SignedSource<<339ff74926063e70fc6ed125ca53f1af>>
  * @lightSyntaxTransform
  */
 
@@ -164,16 +164,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "eea64b8ea00793b49b93840598aea09c",
+    "cacheID": "3df73b7b1f336fff83ebfa1300edde72",
     "id": null,
     "metadata": {},
     "name": "BudgetsQuery",
     "operationKind": "query",
-    "text": "query BudgetsQuery(\n  $householdId: ID!\n  $period: String!\n) {\n  budgets(householdId: $householdId, period: $period) {\n    id\n    householdId\n    categoryId\n    name\n    amountYen\n    actualYen\n    remainingYen\n    startsOn\n    endsOn\n    archived\n    revision\n  }\n}\n"
+    "text": "query BudgetsQuery(\n  $householdId: ID!\n  $period: YearMonth!\n) {\n  budgets(householdId: $householdId, period: $period) {\n    id\n    householdId\n    categoryId\n    name\n    amountYen\n    actualYen\n    remainingYen\n    startsOn\n    endsOn\n    archived\n    revision\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "6f2ddb9aec910b43587a306376404993";
+(node as any).hash = "8bd8acb39ca7fada1a0db2936e128b2a";
 
 export default node;

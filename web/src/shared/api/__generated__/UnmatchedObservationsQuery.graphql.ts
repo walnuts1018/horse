@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b15c2d895b9d3b01cfac859b273aedac>>
+ * @generated SignedSource<<ccc45fdea7cfd61fc514c4c4710739c5>>
  * @lightSyntaxTransform
  */
 
@@ -365,16 +365,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "3f0b55d52ea85226cad4157cb01397d3",
+    "cacheID": "f9745234b3e144e516c85d97777676ac",
     "id": null,
     "metadata": {},
     "name": "UnmatchedObservationsQuery",
     "operationKind": "query",
-    "text": "query UnmatchedObservationsQuery(\n  $householdId: ID!\n  $from: String\n  $to: String\n  $sourceKind: SourceKind\n  $state: UnmatchedObservationState\n  $after: String\n  $first: Int\n) {\n  unmatchedObservations(householdId: $householdId, from: $from, to: $to, sourceKind: $sourceKind, state: $state, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        documentId\n        sourceReference\n        purchaseId\n        sourceKind\n        state\n        merchant\n        occurredAt\n        amountYen\n        orderId\n        transactionId\n        id\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query UnmatchedObservationsQuery(\n  $householdId: ID!\n  $from: YearMonth\n  $to: YearMonth\n  $sourceKind: SourceKind\n  $state: UnmatchedObservationState\n  $after: String\n  $first: Int\n) {\n  unmatchedObservations(householdId: $householdId, from: $from, to: $to, sourceKind: $sourceKind, state: $state, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        documentId\n        sourceReference\n        purchaseId\n        sourceKind\n        state\n        merchant\n        occurredAt\n        amountYen\n        orderId\n        transactionId\n        id\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "0b7dd5fbc1cf2e314bb3e0b78d7bf693";
+(node as any).hash = "be9e1b684687be76af9d3287a59032ce";
 
 export default node;

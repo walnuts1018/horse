@@ -4,9 +4,9 @@ type AccountIncome implements Node {
   accountId: ID! @goField(forceResolver: true)
   amountYen: Long!
   currency: String!
-  occurredAt: String!
+  occurredAt: DateTime!
   description: String!
-  createdAt: String!
+  createdAt: DateTime!
 }
 
 type AccountIncomeEdge {

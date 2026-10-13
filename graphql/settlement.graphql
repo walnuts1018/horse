@@ -6,11 +6,11 @@ enum SettlementStatus {
 type Settlement implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
-  period: String!
+  period: YearMonth!
   status: SettlementStatus!
   revision: Int!
   lines: [SettlementLine!]!
-  createdAt: String
+  createdAt: DateTime
 }
 
 type SettlementLine {
@@ -26,5 +26,5 @@ type SettlementLine {
 }
 
 extend type Query {
-  settlement(householdId: ID! @nodeID(of: "Household"), period: String!): Settlement!
+  settlement(householdId: ID! @nodeID(of: "Household"), period: YearMonth!): Settlement!
 }

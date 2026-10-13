@@ -16,9 +16,9 @@ input CreateRecurringExpenseInput {
   categoryId: ID @nodeID(of: "Category")
   paymentAccountId: ID @nodeID(of: "Account")
   cadence: RecurringExpenseCadence!
-  startsOn: String!
-  nextDueOn: String!
-  endsOn: String
+  startsOn: Date!
+  nextDueOn: Date!
+  endsOn: Date
 }
 
 type CreateRecurringExpenseUserError implements MutationError {

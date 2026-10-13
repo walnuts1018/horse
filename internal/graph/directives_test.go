@@ -100,7 +100,7 @@ func TestNodeReferenceResolversReturnGlobalIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decodedKind != "Settlement" || decodedHouseholdID != householdID || decodedPeriod != settlement.Period {
+	if decodedKind != "Settlement" || decodedHouseholdID != householdID || decodedPeriod != string(settlement.Period) {
 		t.Fatalf("Settlement node ID decoded to %q, %q, %q", decodedKind, decodedHouseholdID, decodedPeriod)
 	}
 }

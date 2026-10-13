@@ -88,7 +88,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	occurredAt := purchaseDate.UTC().Format(time.RFC3339)
 	period := accountingPeriod(purchaseDate)
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
-		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: occurredAt, Merchant: "Shop", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 1000}},
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(occurredAt), Merchant: "Shop", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 1000}},
 		Items: []*model.PurchaseItemInput{{Name: "item", AmountYen: 1000}},
 	})
 	if err != nil {
@@ -145,8 +145,8 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &jobID, HouseholdID: &householdID, SourceDocumentID: &sourceDocumentID, Version: &jobVersion, Status: &jobStatus, Result: &jobResultValue}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	queryFrom := period
-	queryTo := period
+	queryFrom := model.YearMonth(period)
+	queryTo := model.YearMonth(period)
 	kind, candidateState := model.SourceKindReceipt, model.UnmatchedObservationStateUnmatched
 	observations, err := query.UnmatchedObservations(ctx, household.ID, &queryFrom, &queryTo, &kind, &candidateState, nil, nil, nil, nil)
 	if err != nil || observations.TotalCount != 1 || len(observations.Edges) != 1 || observations.Edges[0].Node.State != model.UnmatchedObservationStateUnmatched {
@@ -161,7 +161,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if err != nil || observations.TotalCount != 1 || observations.Edges[0].Node.PurchaseID == nil || *observations.Edges[0].Node.PurchaseID != purchase.ID {
 		t.Fatalf("confirmed observation did not retain its purchase link: connection=%#v error=%v", observations, err)
 	}
-	if _, err := resolver.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: period, ExpectedRevision: 0}); err != nil {
+	if _, err := resolver.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: model.YearMonth(period), ExpectedRevision: 0}); err != nil {
 		t.Fatal(err)
 	}
 	policy := model.SharedPoolSettlementPolicyBalanceToStandard
@@ -176,7 +176,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if err != nil || len(corrections) != 1 || !corrections[0].EffectivePeriod.Valid || corrections[0].EffectivePeriod.V == period {
 		t.Fatalf("closed-period correction must be booked in another effective month: corrections=%#v error=%v", corrections, err)
 	}
-	report, err := (&Resolver{DB: db}).Query().MonthlyMemberSpending(ctx, household.ID, period, period)
+	report, err := (&Resolver{DB: db}).Query().MonthlyMemberSpending(ctx, household.ID, model.YearMonth(period), model.YearMonth(period))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,15 +187,15 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if report.HasUnattributedPurchases || amountByMember[memberA] != 660 || amountByMember[memberB] != 440 {
 		t.Fatalf("historical spending changed after rule edit or correction used the wrong month: report=%#v", report)
 	}
-	categoryReport, err := query.MonthlyCategorySpending(ctx, household.ID, period, period)
+	categoryReport, err := query.MonthlyCategorySpending(ctx, household.ID, model.YearMonth(period), model.YearMonth(period))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(categoryReport) != 1 || categoryReport[0].Period != period || categoryReport[0].CategoryID != nil || categoryReport[0].CategoryName != nil || int64(categoryReport[0].AmountYen) != 1100 {
+	if len(categoryReport) != 1 || string(categoryReport[0].Period) != period || categoryReport[0].CategoryID != nil || categoryReport[0].CategoryName != nil || int64(categoryReport[0].AmountYen) != 1100 {
 		t.Fatalf("monthly category spending changed the purchase month or correction amount: %#v", categoryReport)
 	}
 	secondPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
-		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: now.UTC().Format(time.RFC3339), Merchant: "Another shop",
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(now.UTC().Format(time.RFC3339)), Merchant: "Another shop",
 		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 300}},
 		Items:              []*model.PurchaseItemInput{{Name: "another item", AmountYen: 300}},
 	})
@@ -258,7 +258,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		t.Fatalf("second purchase relations crossed with another purchase: %#v", listedSecondPurchase)
 	}
 	outsiderContext := auth.WithPrincipal(t.Context(), auth.Principal{MemberID: outsider, Subject: "burden-integration:" + outsider, DisplayName: "Outsider"})
-	if _, err := (&Resolver{DB: db}).Query().MonthlyMemberSpending(outsiderContext, household.ID, period, period); err == nil {
+	if _, err := (&Resolver{DB: db}).Query().MonthlyMemberSpending(outsiderContext, household.ID, model.YearMonth(period), model.YearMonth(period)); err == nil {
 		t.Fatal("a member outside the household must not read its spending report")
 	}
 }

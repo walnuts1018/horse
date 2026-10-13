@@ -16,7 +16,7 @@ input UpdatePurchaseInput {
 }
 
 input PurchasePatch {
-  occurredAt: String
+  occurredAt: DateTime
   merchant: String
   paymentAllocations: [PurchasePaymentInput!]
 }

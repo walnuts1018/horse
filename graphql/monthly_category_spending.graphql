@@ -1,10 +1,10 @@
 type MonthlyCategorySpending {
-  period: String!
+  period: YearMonth!
   categoryId: ID @goField(forceResolver: true)
   categoryName: String
   amountYen: Long!
 }
 
 extend type Query {
-  monthlyCategorySpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): [MonthlyCategorySpending!]!
+  monthlyCategorySpending(householdId: ID! @nodeID(of: "Household"), from: YearMonth!, to: YearMonth!): [MonthlyCategorySpending!]!
 }

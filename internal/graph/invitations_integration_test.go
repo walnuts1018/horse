@@ -84,12 +84,12 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 
 	createInvitation := func(expiresAt time.Time) *model.CreatedHouseholdInvitation {
 		t.Helper()
-		invitation, err := resolver.createHouseholdInvitation(ownerCtx, model.CreateHouseholdInvitationInput{HouseholdID: household.ID, ExpiresAt: expiresAt.Format(time.RFC3339Nano)})
+		invitation, err := resolver.createHouseholdInvitation(ownerCtx, model.CreateHouseholdInvitationInput{HouseholdID: household.ID, ExpiresAt: model.DateTime(expiresAt.Format(time.RFC3339Nano))})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if invitation.Invitation.Role != "MEMBER" || invitation.Invitation.Status != model.HouseholdInvitationStatusPending || len(invitation.Token) != 43 {
-			t.Fatalf("unexpected invitation: role=%q status=%q token length=%d", invitation.Invitation.Role, invitation.Invitation.Status, len(invitation.Token))
+		if invitation.Invitation.Status != model.HouseholdInvitationStatusPending || len(invitation.Token) != 43 {
+			t.Fatalf("unexpected invitation: status=%q token length=%d", invitation.Invitation.Status, len(invitation.Token))
 		}
 		return invitation
 	}
@@ -106,6 +106,9 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if storedInvitation.Role != "MEMBER" {
+		t.Fatalf("invitation role must be fixed to MEMBER, got %q", storedInvitation.Role)
+	}
 	storedHash = storedInvitation.TokenHash
 	if !bytes.Equal(storedHash, expectedHash[:]) {
 		t.Fatal("database must store only the SHA256 invitation token hash")
@@ -121,7 +124,7 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if _, err := ownerQuery.HouseholdInvitations(ownerCtx, otherHousehold.ID, nil, nil, nil, nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("owner must not list another household's invitations: error=%v", err)
 	}
-	if _, err := resolver.createHouseholdInvitation(memberCtx, model.CreateHouseholdInvitationInput{HouseholdID: household.ID, ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano)}); !errors.Is(err, ErrNotFound) {
+	if _, err := resolver.createHouseholdInvitation(memberCtx, model.CreateHouseholdInvitationInput{HouseholdID: household.ID, ExpiresAt: model.DateTime(time.Now().Add(time.Hour).Format(time.RFC3339Nano))}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("non-owner must not create invitations: error=%v", err)
 	}
 	if _, err := resolver.revokeHouseholdInvitation(ownerCtx, otherHousehold.ID, active.Invitation.ID); !errors.Is(err, ErrNotFound) {

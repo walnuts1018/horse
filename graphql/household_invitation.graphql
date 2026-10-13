@@ -8,12 +8,11 @@ enum HouseholdInvitationStatus {
 type HouseholdInvitation implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
-  role: String!
   status: HouseholdInvitationStatus!
-  expiresAt: String!
-  createdAt: String!
-  revokedAt: String
-  acceptedAt: String
+  expiresAt: DateTime!
+  createdAt: DateTime!
+  revokedAt: DateTime
+  acceptedAt: DateTime
 }
 
 type HouseholdInvitationEdge {

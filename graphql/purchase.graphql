@@ -1,7 +1,7 @@
 type Purchase implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
-  occurredAt: String!
+  occurredAt: DateTime!
   merchant: String!
   origin: PurchaseOrigin!
   hasEvidence: Boolean!
@@ -13,8 +13,8 @@ type Purchase implements Node {
   currency: String!
   revision: Int!
   status: PurchaseStatus!
-  createdAt: String!
-  updatedAt: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
 }
 
 enum PurchaseStatus {
@@ -53,5 +53,5 @@ type PurchaseConnection {
 }
 
 extend type Query {
-  purchases(householdId: ID! @nodeID(of: "Household"), from: String, to: String, origin: PurchaseOrigin, hasEvidence: Boolean, after: String, before: String, first: Int, last: Int): PurchaseConnection!
+  purchases(householdId: ID! @nodeID(of: "Household"), from: DateTime, to: DateTime, origin: PurchaseOrigin, hasEvidence: Boolean, after: String, before: String, first: Int, last: Int): PurchaseConnection!
 }

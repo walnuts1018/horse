@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4e88a7b2c056f946d035d53d0d7789e4>>
+ * @generated SignedSource<<26d065a6a43bf270e49f9436a83c7f74>>
  * @lightSyntaxTransform
  */
 
@@ -25,7 +25,6 @@ export type HouseholdInvitationsQuery$data = {
         readonly householdId: string;
         readonly id: string;
         readonly revokedAt: string | null | undefined;
-        readonly role: string;
         readonly status: HouseholdInvitationStatus;
       };
     }>;
@@ -117,13 +116,6 @@ v3 = [
                 "args": null,
                 "kind": "ScalarField",
                 "name": "householdId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "role",
                 "storageKey": null
               },
               {
@@ -229,16 +221,16 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "38567f5601dfed5ecb81500a52a5d593",
+    "cacheID": "97126121c11edf8a39d8498b012bc07a",
     "id": null,
     "metadata": {},
     "name": "HouseholdInvitationsQuery",
     "operationKind": "query",
-    "text": "query HouseholdInvitationsQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  householdInvitations(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        role\n        status\n        expiresAt\n        createdAt\n        revokedAt\n        acceptedAt\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query HouseholdInvitationsQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  householdInvitations(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        status\n        expiresAt\n        createdAt\n        revokedAt\n        acceptedAt\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d1b53848c17c487e328ca4a2597fc8c4";
+(node as any).hash = "69276aa719710a5ceaa59de861f06276";
 
 export default node;

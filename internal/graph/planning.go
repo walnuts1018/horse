@@ -607,14 +607,14 @@ func (r *queryResolver) budgets(ctx context.Context, householdID, period string)
 }
 
 func budgetModel(ctx context.Context, db *pgxpool.Pool, row *models.Budget, month *time.Time) (*model.Budget, error) {
-	result := &model.Budget{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Name: row.Name, AmountYen: graphLong(row.AmountYen), StartsOn: row.StartsOn.Format(time.DateOnly), Archived: row.Archived, Revision: int(row.Revision)}
+	result := &model.Budget{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Name: row.Name, AmountYen: graphLong(row.AmountYen), StartsOn: model.Date(row.StartsOn.Format(time.DateOnly)), Archived: row.Archived, Revision: int(row.Revision)}
 	if row.CategoryID.Valid {
 		id := row.CategoryID.V.String()
 		result.CategoryID = &id
 	}
 	if row.EndsOn.Valid {
 		end := row.EndsOn.V.Format(time.DateOnly)
-		result.EndsOn = &end
+		result.EndsOn = datePointer(&end)
 	}
 	if month == nil {
 		return result, nil
@@ -793,7 +793,7 @@ func (r *mutationResolver) archiveRecurringExpense(ctx context.Context, expenseI
 }
 
 func recurringExpenseModel(row *models.RecurringExpense) *model.RecurringExpense {
-	result := &model.RecurringExpense{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Name: row.Name, Merchant: row.Merchant, AmountYen: graphLong(row.AmountYen), Currency: row.Currency, Cadence: model.RecurringExpenseCadence(row.Cadence), StartsOn: row.StartsOn.Format(time.DateOnly), NextDueOn: row.NextDueOn.Format(time.DateOnly), Archived: row.Archived, Revision: int(row.Revision)}
+	result := &model.RecurringExpense{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Name: row.Name, Merchant: row.Merchant, AmountYen: graphLong(row.AmountYen), Currency: row.Currency, Cadence: model.RecurringExpenseCadence(row.Cadence), StartsOn: model.Date(row.StartsOn.Format(time.DateOnly)), NextDueOn: model.Date(row.NextDueOn.Format(time.DateOnly)), Archived: row.Archived, Revision: int(row.Revision)}
 	if row.CategoryID.Valid {
 		id := row.CategoryID.V.String()
 		result.CategoryID = &id
@@ -804,7 +804,7 @@ func recurringExpenseModel(row *models.RecurringExpense) *model.RecurringExpense
 	}
 	if row.EndsOn.Valid {
 		date := row.EndsOn.V.Format(time.DateOnly)
-		result.EndsOn = &date
+		result.EndsOn = datePointer(&date)
 	}
 	return result
 }

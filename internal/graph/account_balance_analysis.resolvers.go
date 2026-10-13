@@ -17,8 +17,8 @@ func (r *accountBalanceAnalysisResolver) AccountID(ctx context.Context, obj *mod
 }
 
 // AccountBalanceAnalysis is the resolver for the accountBalanceAnalysis field.
-func (r *queryResolver) AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from string, to string) (*model.AccountBalanceAnalysis, error) {
-	return r.accountBalanceAnalysis(ctx, householdID, accountID, from, to)
+func (r *queryResolver) AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from model.YearMonth, to model.YearMonth) (*model.AccountBalanceAnalysis, error) {
+	return r.accountBalanceAnalysis(ctx, householdID, accountID, string(from), string(to))
 }
 
 // AccountBalanceAnalysis returns AccountBalanceAnalysisResolver implementation.

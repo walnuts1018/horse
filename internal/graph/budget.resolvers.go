@@ -27,8 +27,8 @@ func (r *budgetResolver) CategoryID(ctx context.Context, obj *model.Budget) (*st
 }
 
 // Budgets is the resolver for the budgets field.
-func (r *queryResolver) Budgets(ctx context.Context, householdID string, period string) ([]*model.Budget, error) {
-	return r.budgets(ctx, householdID, period)
+func (r *queryResolver) Budgets(ctx context.Context, householdID string, period model.YearMonth) ([]*model.Budget, error) {
+	return r.budgets(ctx, householdID, string(period))
 }
 
 // Budget returns BudgetResolver implementation.

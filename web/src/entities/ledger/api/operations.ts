@@ -132,8 +132,8 @@ export const accountBalanceAnalysisQuery = graphql`
   query AccountBalanceAnalysisQuery(
     $householdId: ID!
     $accountId: ID!
-    $from: String!
-    $to: String!
+    $from: YearMonth!
+    $to: YearMonth!
   ) {
     accountBalanceAnalysis(householdId: $householdId, accountId: $accountId, from: $from, to: $to) {
       accountId

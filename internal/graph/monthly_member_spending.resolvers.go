@@ -17,8 +17,8 @@ func (r *monthlyMemberSpendingResolver) MemberID(ctx context.Context, obj *model
 }
 
 // MonthlyMemberSpending is the resolver for the monthlyMemberSpending field.
-func (r *queryResolver) MonthlyMemberSpending(ctx context.Context, householdID string, from string, to string) (*model.MonthlyMemberSpendingReport, error) {
-	return r.monthlyMemberSpending(ctx, householdID, from, to)
+func (r *queryResolver) MonthlyMemberSpending(ctx context.Context, householdID string, from model.YearMonth, to model.YearMonth) (*model.MonthlyMemberSpendingReport, error) {
+	return r.monthlyMemberSpending(ctx, householdID, string(from), string(to))
 }
 
 // MonthlyMemberSpending returns MonthlyMemberSpendingResolver implementation.

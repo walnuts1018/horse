@@ -14,7 +14,7 @@ input RecordAccountMovementInput {
   fromAccountId: ID! @nodeID(of: "Account")
   toAccountId: ID! @nodeID(of: "Account")
   amountYen: Long!
-  occurredAt: String!
+  occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
 }

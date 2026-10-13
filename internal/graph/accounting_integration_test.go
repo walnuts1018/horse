@@ -321,7 +321,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	occurredAt := "2026-04-13T12:00:00Z"
+	occurredAt := model.DateTime("2026-04-13T12:00:00Z")
 	purchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: 1, Patch: &model.PurchasePatch{OccurredAt: &occurredAt}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldOccurredAt}})
 	if err != nil {
 		t.Fatalf("disjoint stale fields should merge: %v", err)
@@ -515,7 +515,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatal(err)
 	}
 	postedMerchant := "edited after posting"
-	postedOccurredAt := "2026-04-14T12:00:00Z"
+	postedOccurredAt := model.DateTime("2026-04-14T12:00:00Z")
 	postedPurchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: postedPurchase.ID, BaseRevision: postedPurchase.Revision, Patch: &model.PurchasePatch{
 		Merchant: &postedMerchant, OccurredAt: &postedOccurredAt,
 	}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldMerchant, model.UpdatePurchaseChangedFieldOccurredAt}})
@@ -548,7 +548,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if len(ledgerRows) > 0 {
 		ledgerDescription, ledgerAmount, ledgerOccurredAt = ledgerRows[0].Description, ledgerRows[0].AmountYen, ledgerRows[0].OccurredAt.UTC().Format("2006-01-02T15:04:05Z")
 	}
-	if err != nil || len(ledgerRows) != 1 || ledgerDescription != postedMerchant || ledgerAmount != 700 || ledgerOccurredAt != postedOccurredAt {
+	if err != nil || len(ledgerRows) != 1 || ledgerDescription != postedMerchant || ledgerAmount != 700 || ledgerOccurredAt != string(postedOccurredAt) {
 		t.Fatalf("posted purchase ledger was not updated atomically: description=%q amount=%d occurredAt=%q error=%v", ledgerDescription, ledgerAmount, ledgerOccurredAt, err)
 	}
 	journals, err := models.Journals.Query(sm.Where(models.Journals.Columns.SourceID.EQ(psql.Arg(postedPurchaseUUID)))).All(ctx, bobpgx.NewPool(db))
@@ -868,7 +868,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	openingAt := "2026-05-01T00:00:00Z"
+	openingAt := model.DateTime("2026-05-01T00:00:00Z")
 	lenderAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Lender bank", Kind: model.AccountKindBank, PoolID: &lenderPool.ID, OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(5000), At: openingAt}})
 	if err != nil {
 		t.Fatal(err)
@@ -978,7 +978,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if len(settlement.Lines) != 2 {
 		t.Fatalf("expected two member settlement lines: %#v", settlement.Lines)
 	}
-	settlementNodeID, err := encodeSettlementNodeID(household.ID, settlement.Period)
+	settlementNodeID, err := encodeSettlementNodeID(household.ID, string(settlement.Period))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1126,12 +1126,12 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if _, err := resolver.correctPurchase(ctx, correctionInput); err != nil {
 		t.Fatalf("retrying a full refund with the same request should succeed: %v", err)
 	}
-	correctionOccurredAt, err := time.Parse(time.RFC3339Nano, correctedPurchase.Corrections[0].OccurredAt)
+	correctionOccurredAt, err := time.Parse(time.RFC3339Nano, string(correctedPurchase.Corrections[0].OccurredAt))
 	if err != nil {
 		t.Fatal(err)
 	}
 	correctionMonth := accountingPeriod(correctionOccurredAt)
-	correctionAnalysis, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, cardAccount.ID, correctionMonth, correctionMonth)
+	correctionAnalysis, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, cardAccount.ID, model.YearMonth(correctionMonth), model.YearMonth(correctionMonth))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1226,7 +1226,7 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, occurredAt := range []string{"2026-09-30T23:59:59+09:00", "2026-10-01T00:00:00+09:00"} {
-		purchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: occurredAt, Merchant: "boundary", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 100}}, Items: []*model.PurchaseItemInput{{Name: "boundary item", AmountYen: 100}}})
+		purchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(occurredAt), Merchant: "boundary", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 100}}, Items: []*model.PurchaseItemInput{{Name: "boundary item", AmountYen: 100}}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1234,13 +1234,13 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	spending, err := apiResolver.Query().MonthlyCategorySpending(ctx, household.ID, "2026-09", "2026-10")
+	spending, err := apiResolver.Query().MonthlyCategorySpending(ctx, household.ID, model.YearMonth("2026-09"), model.YearMonth("2026-10"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	spendingByPeriod := make(map[string]int64, len(spending))
 	for _, item := range spending {
-		spendingByPeriod[item.Period] += int64(item.AmountYen)
+		spendingByPeriod[string(item.Period)] += int64(item.AmountYen)
 	}
 	if spendingByPeriod["2026-09"] != 100 || spendingByPeriod["2026-10"] != 100 {
 		t.Fatalf("monthly spending did not follow Japan time boundaries: %#v", spendingByPeriod)

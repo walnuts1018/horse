@@ -3,8 +3,8 @@ type PurchaseCorrection implements Node {
   itemId: ID @goField(forceResolver: true)
   amountDeltaYen: Long!
   reason: String!
-  occurredAt: String!
-  settlementMonth: String!
+  occurredAt: DateTime!
+  settlementMonth: YearMonth!
   paymentAllocations: [PurchasePayment!]!
 }
 

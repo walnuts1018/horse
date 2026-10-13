@@ -10,7 +10,7 @@ type ClosePeriodSuccess {
 
 input ClosePeriodInput {
   householdId: ID! @nodeID(of: "Household")
-  period: String!
+  period: YearMonth!
   expectedRevision: Int!
 }
 

@@ -12,9 +12,18 @@ resolver:
   package: graph
   filename_template: "{name}.resolvers.go"
 models:
+  Date:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.Date
+  DateTime:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.DateTime
   Long:
     model:
       - github.com/walnuts1018/horse/internal/graph/model.Long
+  YearMonth:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.YearMonth
   ID:
     model:
       - github.com/99designs/gqlgen/graphql.ID

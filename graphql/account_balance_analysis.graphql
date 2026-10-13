@@ -1,15 +1,15 @@
 type AccountBalanceAnalysis {
   accountId: ID! @goField(forceResolver: true)
   currency: String!
-  from: String!
-  to: String!
+  from: YearMonth!
+  to: YearMonth!
   openingBalanceYen: Long!
   closingBalanceYen: Long!
   changes: [AccountBalanceChange!]!
 }
 
 type AccountBalanceChange {
-  occurredAt: String!
+  occurredAt: DateTime!
   source: Node!
   description: String!
   changeYen: Long!
@@ -17,5 +17,5 @@ type AccountBalanceChange {
 }
 
 extend type Query {
-  accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: String!, to: String!): AccountBalanceAnalysis!
+  accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: YearMonth!, to: YearMonth!): AccountBalanceAnalysis!
 }

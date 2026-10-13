@@ -11,7 +11,7 @@ type CreatePurchaseSuccess {
 input CreatePurchaseInput {
   idempotencyKey: String!
   householdId: ID! @nodeID(of: "Household")
-  occurredAt: String!
+  occurredAt: DateTime!
   merchant: String!
   origin: PurchaseOrigin
   paymentAllocations: [PurchasePaymentInput!]

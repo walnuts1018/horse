@@ -131,7 +131,7 @@ func (r *queryResolver) unmatchedObservations(ctx context.Context, householdID s
 					continue
 				}
 			}
-			var occurredAt *string
+			var occurredAt *model.DateTime
 			if !observation.OccurredAt.IsZero() {
 				value := timeString(observation.OccurredAt)
 				occurredAt = &value

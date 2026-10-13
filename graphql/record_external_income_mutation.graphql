@@ -12,7 +12,7 @@ input RecordExternalIncomeInput {
   householdId: ID! @nodeID(of: "Household")
   accountId: ID! @nodeID(of: "Account")
   amountYen: Long!
-  occurredAt: String!
+  occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
 }

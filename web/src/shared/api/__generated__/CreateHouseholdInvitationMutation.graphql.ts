@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<faab4b13ede8b18d88bcf26f4433bb1b>>
+ * @generated SignedSource<<e7172bb7ce5cf4417b3dc4d3afab2251>>
  * @lightSyntaxTransform
  */
 
@@ -30,7 +30,6 @@ export type CreateHouseholdInvitationMutation$data = {
         readonly householdId: string;
         readonly id: string;
         readonly revokedAt: string | null | undefined;
-        readonly role: string;
         readonly status: HouseholdInvitationStatus;
       };
       readonly token: string;
@@ -110,13 +109,6 @@ v1 = [
                     "args": null,
                     "kind": "ScalarField",
                     "name": "householdId",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "role",
                     "storageKey": null
                   },
                   {
@@ -207,16 +199,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "02d38680b59ec435599c4d3c13c6db30",
+    "cacheID": "c25652f5c18428562907ae34d295bd4d",
     "id": null,
     "metadata": {},
     "name": "CreateHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateHouseholdInvitationMutation(\n  $input: CreateHouseholdInvitationInput!\n) {\n  createHouseholdInvitation(input: $input) {\n    __typename\n    ... on CreateHouseholdInvitationSuccess {\n      result {\n        token\n        invitation {\n          id\n          householdId\n          role\n          status\n          expiresAt\n          createdAt\n          revokedAt\n          acceptedAt\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreateHouseholdInvitationMutation(\n  $input: CreateHouseholdInvitationInput!\n) {\n  createHouseholdInvitation(input: $input) {\n    __typename\n    ... on CreateHouseholdInvitationSuccess {\n      result {\n        token\n        invitation {\n          id\n          householdId\n          status\n          expiresAt\n          createdAt\n          revokedAt\n          acceptedAt\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "7fd18b7806a3fb1a8ba3f4bfd86ced7d";
+(node as any).hash = "840a2558d0698575d8204c1df85eed1a";
 
 export default node;

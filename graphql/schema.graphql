@@ -1,4 +1,7 @@
+scalar Date
+scalar DateTime
 scalar Long
+scalar YearMonth
 
 directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
 directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION

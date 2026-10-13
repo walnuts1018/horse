@@ -12,13 +12,13 @@ import (
 )
 
 // Settlement is the resolver for the settlement field.
-func (r *queryResolver) Settlement(ctx context.Context, householdID string, period string) (*model.Settlement, error) {
-	return r.settlement(ctx, householdID, period)
+func (r *queryResolver) Settlement(ctx context.Context, householdID string, period model.YearMonth) (*model.Settlement, error) {
+	return r.settlement(ctx, householdID, string(period))
 }
 
 // ID is the resolver for the id field.
 func (r *settlementResolver) ID(ctx context.Context, obj *model.Settlement) (string, error) {
-	return encodeSettlementNodeID(obj.HouseholdID, obj.Period)
+	return encodeSettlementNodeID(obj.HouseholdID, string(obj.Period))
 }
 
 // HouseholdID is the resolver for the householdId field.

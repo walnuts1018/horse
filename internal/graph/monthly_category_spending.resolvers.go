@@ -17,8 +17,8 @@ func (r *monthlyCategorySpendingResolver) CategoryID(ctx context.Context, obj *m
 }
 
 // MonthlyCategorySpending is the resolver for the monthlyCategorySpending field.
-func (r *queryResolver) MonthlyCategorySpending(ctx context.Context, householdID string, from string, to string) ([]*model.MonthlyCategorySpending, error) {
-	return r.monthlyCategorySpending(ctx, householdID, from, to)
+func (r *queryResolver) MonthlyCategorySpending(ctx context.Context, householdID string, from model.YearMonth, to model.YearMonth) ([]*model.MonthlyCategorySpending, error) {
+	return r.monthlyCategorySpending(ctx, householdID, string(from), string(to))
 }
 
 // MonthlyCategorySpending returns MonthlyCategorySpendingResolver implementation.

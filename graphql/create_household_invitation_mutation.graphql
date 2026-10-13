@@ -15,7 +15,7 @@ type CreateHouseholdInvitationSuccess {
 
 input CreateHouseholdInvitationInput {
   householdId: ID! @nodeID(of: "Household")
-  expiresAt: String!
+  expiresAt: DateTime!
 }
 
 type CreateHouseholdInvitationUserError implements MutationError {

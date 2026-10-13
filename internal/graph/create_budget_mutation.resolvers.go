@@ -15,7 +15,7 @@ import (
 func (r *mutationResolver) CreateBudget(ctx context.Context, input model.CreateBudgetInput) (model.CreateBudgetResult, error) {
 	result, err := r.setBudget(ctx, budgetWriteInput{
 		HouseholdID: input.HouseholdID, CategoryID: input.CategoryID, Name: input.Name,
-		AmountYen: int64(input.AmountYen), StartsOn: input.StartsOn, EndsOn: input.EndsOn,
+		AmountYen: int64(input.AmountYen), StartsOn: string(input.StartsOn), EndsOn: stringPointer(input.EndsOn),
 	})
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {

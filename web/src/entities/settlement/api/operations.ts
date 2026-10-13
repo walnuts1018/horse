@@ -1,7 +1,7 @@
 import { graphql } from "react-relay";
 
 export const settlementQuery = graphql`
-  query SettlementQuery($householdId: ID!, $period: String!) {
+  query SettlementQuery($householdId: ID!, $period: YearMonth!) {
     settlement(householdId: $householdId, period: $period) {
       period
       status
