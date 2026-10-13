@@ -10,8 +10,7 @@
 | -------------------------------------------------------------------------------- | --------------------------------------- |
 | [Bob Factory](https://bob.stephenafamo.com/docs/code-generation/factories/) | 統合テストのDBレコード生成、Fixtureの簡素化 |
 | [Bob Query Generation](https://bob.stephenafamo.com/docs/code-generation/intro/) | 複雑なSQLの型付きGoコード生成 |
-| [caarlos0/env](https://github.com/caarlos0/env) | 環境変数の読み取り・デフォルト値・型変換・必須チェック |
-| [validator/v10](https://github.com/go-playground/validator) | API入力と設定値の構造的な検証 |
+| [validator/v10](https://github.com/go-playground/validator) | API入力の構造的な検証 |
 | [go-message](https://github.com/emersion/go-message) | RFC対応のメールヘッダー、MIME、添付ファイル、文字コード解析 |
 | [html-to-markdown/v2](https://github.com/JohannesKaufmann/html-to-markdown) | HTML注文メールを構造を保ったMarkdownへ変換 |
 | [mimetype](https://github.com/gabriel-vasile/mimetype) | アップロードファイルの内容に基づくMIME判定 |
@@ -19,7 +18,7 @@
 | [testify](https://github.com/stretchr/testify) | テストアサーション、失敗時の差分表示、テスト構造の改善 |
 | [testcontainers-go](https://golang.testcontainers.org/) | PostgreSQL / RabbitMQを使った自動統合テスト |
 
-### 特におすすめの3つ
+### 特におすすめの項目
 
 Bob Factory + Query Generation
 
@@ -32,35 +31,6 @@ Bob Factory + Query Generation
 Bob
 
 +1
-
-caarlos0/env
-
-現在の`cmd/worker/main.go`には、環境変数の取得、パース、エラーハンドリング、デフォルト値の設定が長く書かれています。
-
-これを次のような構造体へ置き換えられます。
-
-```
-type WorkerConfig struct {
-    DatabaseURL string `env:"DATABASE_URL,notEmpty"`
-    RabbitMQURL string `env:"RABBITMQ_URL,notEmpty"`
-
-    GeminiEnabled bool `env:"GEMINI_ENABLED" envDefault:"false"`
-    FreeAPIKey     string `env:"GEMINI_FREE_API_KEY"`
-    PaidAPIKey     string `env:"GEMINI_PAID_API_KEY"`
-
-    USDJPYRate float64 `env:"GEMINI_USDJPY_RATE" envDefault:"158.535"`
-}
-
-cfg, err := env.ParseAs[WorkerConfig]()
-```
-
-さらに`validator`で、Geminiを有効にしたときはAPIキーを最低1つ必要とする、といったフィールド間の検証を実施できます。
-
-[image](https://www.google.com/s2/favicons?domain=https://pkg.go.dev\&sz=32)
-
-Go Packages
-
-`envDefault`の為替レートは上のコードでは現行値に合わせた例です。実際の費用計測では取得日時とレートの出典も保持し、永続的に固定しないようにします。
 
 go-message + html-to-markdown
 
@@ -187,13 +157,13 @@ internal/
 
 1. 購入・会計処理の統一 — `application/purchase`への移行を完成させ、会計仕訳と負担スナップショットの更新処理を一元化。
 2. Bobの活用強化 — Factory・Query Generationを有効にし、精算処理のN+1を解消。
-3. メール・設定・HTTPの自前コード削減 — go-message、html-to-markdown、caarlos0/env、validator、chiを導入。
+3. メール・HTTPの自前コード削減 — go-message、html-to-markdown、chiを導入。
 4. テスト基盤を共通化 — Bob FactoryとTestcontainersで、複雑なセットアップコードを削減。
 
 ### 最終的なおすすめ
 
 Bob、gqlgen、pgxは入れ替えず、Factory・Query Generation・DataLoaderなどの周辺機能を積極的に活用する。
 
-メール、設定、HTTP、テストについては新しいライブラリを導入して自前実装を減らす。
+メール、HTTP、テストについては新しいライブラリを導入して自前実装を減らす。
 
 特にHorseはまだ未リリースなので、これらの変更を今行うメリットが大きいです。

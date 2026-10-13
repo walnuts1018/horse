@@ -10,8 +10,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.5
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.1
 	github.com/aws/smithy-go v1.28.1
+	github.com/caarlos0/env/v11 v11.4.1
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/exaring/otelpgx v0.12.0
+	github.com/go-playground/validator/v10 v10.30.5
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/rabbitmq/amqp091-go v1.15.0
@@ -74,10 +76,13 @@ require (
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/go-playground/locales v0.14.1 // indirect
+	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-sql-driver/mysql v1.7.2-0.20231213112541-0004702b931d // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
@@ -102,6 +107,7 @@ require (
 	github.com/knadh/koanf/providers/env v0.1.0 // indirect
 	github.com/knadh/koanf/providers/file v0.1.0 // indirect
 	github.com/knadh/koanf/v2 v2.1.0 // indirect
+	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect

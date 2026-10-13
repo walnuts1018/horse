@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/walnuts1018/horse/internal/config"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/observability"
 	"github.com/walnuts1018/horse/internal/postgres"
@@ -26,6 +26,10 @@ func main() {
 func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	settings, err := config.LoadWorker()
+	if err != nil {
+		return err
+	}
 	telemetry, err := observability.New(ctx, "horse-worker")
 	if err != nil {
 		return err
@@ -37,68 +41,33 @@ func run() error {
 			slog.Warn("Shutdown worker telemetry failed")
 		}
 	}()
-	if os.Getenv("DATABASE_URL") == "" {
-		return errors.New("DATABASE_URL is required")
-	}
-	freeAPIKey, paidAPIKey := os.Getenv("GEMINI_FREE_API_KEY"), os.Getenv("GEMINI_PAID_API_KEY")
-	geminiEnabled, err := strconv.ParseBool(os.Getenv("GEMINI_ENABLED"))
-	if err != nil && os.Getenv("GEMINI_ENABLED") != "" {
-		return errors.New("GEMINI_ENABLED must be true or false")
-	}
-	if !geminiEnabled {
+	if !settings.GeminiEnabled {
 		slog.Info("Gemini extraction is disabled; source documents remain queued")
-	} else if freeAPIKey == "" && paidAPIKey == "" {
-		slog.Warn("Gemini is enabled but no API keys are configured; only deterministic statement imports are available")
 	}
-	usdJPY := 158.535
-	rate := os.Getenv("USDJPY_RATE")
-	if rate == "" {
-		rate = os.Getenv("GEMINI_USDJPY_RATE")
-	}
-	if value := rate; value != "" {
-		parsed, err := strconv.ParseFloat(value, 64)
-		if err != nil || parsed <= 0 {
-			return errors.New("GEMINI_USDJPY_RATE must be a positive number")
-		}
-		usdJPY = parsed
-	}
-	rateSource := os.Getenv("USDJPY_RATE_SOURCE")
-	if rateSource == "" {
-		rateSource = "application_default"
-		if rate != "" {
-			rateSource = "operator_config"
-		}
-	}
-	rateAsOf := os.Getenv("USDJPY_RATE_AS_OF")
-	if rateAsOf != "" {
-		if _, err := time.Parse("2006-01-02", rateAsOf); err != nil {
-			return errors.New("USDJPY_RATE_AS_OF must use YYYY-MM-DD")
-		}
-	}
-	db, err := postgres.NewPool(ctx, os.Getenv("DATABASE_URL"))
+	db, err := postgres.NewPool(ctx, settings.DatabaseURL)
 	if err != nil {
 		return errors.New("initialize worker database failed")
 	}
 	defer db.Close()
-	store, err := ingestion.NewObjectStore(os.Getenv("S3_ENDPOINT"), os.Getenv("S3_BUCKET"), os.Getenv("S3_ACCESS_KEY_ID"), os.Getenv("S3_SECRET_ACCESS_KEY"))
+	store, err := ingestion.NewObjectStore(settings.S3Endpoint, settings.S3Bucket, settings.S3AccessKeyID, settings.S3SecretAccessKey)
 	if err != nil {
 		return err
 	}
 	worker := ingestion.Worker{
 		DB:            db,
 		Store:         store,
-		GeminiEnabled: geminiEnabled && (freeAPIKey != "" || paidAPIKey != ""),
+		GeminiEnabled: settings.GeminiEnabled && (settings.GeminiFreeAPIKey != "" || settings.GeminiPaidAPIKey != ""),
 		Router: ingestion.GeminiRouter{
-			Free:             ingestion.Gemini{APIKey: freeAPIKey, Project: os.Getenv("GEMINI_FREE_PROJECT_ID")},
-			Paid:             ingestion.Gemini{APIKey: paidAPIKey, Project: os.Getenv("GEMINI_PAID_PROJECT_ID")},
-			FlashModel:       os.Getenv("GEMINI_FLASH_MODEL"),
-			LiteModel:        os.Getenv("GEMINI_LITE_MODEL"),
-			ProModel:         os.Getenv("GEMINI_PRO_MODEL"),
-			USDJPYRate:       usdJPY,
-			USDJPYRateSource: rateSource,
-			USDJPYRateAsOf:   rateAsOf,
+			Free:             ingestion.Gemini{APIKey: settings.GeminiFreeAPIKey, Project: settings.GeminiFreeProject},
+			Paid:             ingestion.Gemini{APIKey: settings.GeminiPaidAPIKey, Project: settings.GeminiPaidProject},
+			FlashModel:       settings.GeminiFlashModel,
+			LiteModel:        settings.GeminiLiteModel,
+			ProModel:         settings.GeminiProModel,
+			USDJPYRate:       settings.EffectiveUSDJPYRate(),
+			USDJPYRateSource: settings.EffectiveUSDJPYRateSource(),
+			USDJPYRateAsOf:   settings.USDJPYRateAsOf,
 		},
-		OCR: ingestion.OCR{Endpoint: os.Getenv("OCR_URL")},
+		OCR: ingestion.OCR{Endpoint: settings.OCRURL},
 	}
 	health, err := startHealthServer(db)
 	if err != nil {
@@ -120,8 +89,8 @@ func run() error {
 		}
 	}()
 	for ctx.Err() == nil {
-		if queue == nil && os.Getenv("RABBITMQ_URL") != "" {
-			queue, err = ingestion.NewQueue(os.Getenv("RABBITMQ_URL"))
+		if queue == nil && settings.RabbitMQURL != "" {
+			queue, err = ingestion.NewQueue(settings.RabbitMQURL)
 			if err != nil {
 				slog.Warn("Extraction queue unavailable; recovering jobs from database", "error", err)
 			}
