@@ -104,7 +104,7 @@ func TestHomeSummaryUsesPurchaseDaysAndPostedSpending(t *testing.T) {
 	}
 	if _, err := resolver.correctPurchase(ctx, model.CorrectPurchaseInput{
 		HouseholdID: household.ID, Target: &model.CorrectPurchaseTargetInput{Item: &model.PurchaseCorrectionItemTargetInput{PurchaseID: yesterdayPurchase.ID, ItemID: yesterdayPurchase.Items[0].ID}},
-		AmountDeltaYen: -30, Reason: "Refund", IdempotencyKey: uuid.NewV7().String(),
+		AmountDeltaYen: -30, Reason: testCorrectionRefundReason, IdempotencyKey: uuid.NewV7().String(),
 	}); err != nil {
 		t.Fatal(err)
 	}

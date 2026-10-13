@@ -111,7 +111,7 @@ func TestCorrectionRollsBackWhenPostedPurchaseMemberBurdenSnapshotIsMissing(t *t
 	_, err = resolver.correctPurchase(ctx, model.CorrectPurchaseInput{
 		HouseholdID:    household.ID,
 		Target:         &model.CorrectPurchaseTargetInput{Purchase: &model.PurchaseCorrectionPurchaseTargetInput{PurchaseID: purchase.ID}},
-		AmountDeltaYen: -100, Reason: "Refund", IdempotencyKey: correctionKey,
+		AmountDeltaYen: -100, Reason: testCorrectionRefundReason, IdempotencyKey: correctionKey,
 	})
 	if !errors.Is(err, ErrMissingPurchaseFundingSnapshot) {
 		t.Fatalf("correction with a missing posted burden snapshot returned %v; want ErrMissingPurchaseFundingSnapshot", err)
