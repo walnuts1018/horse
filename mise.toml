@@ -39,6 +39,11 @@ description = "フロントエンドの型検査"
 dir = "web"
 run = "pnpm exec tsc --noEmit"
 
+[tasks."web:test"]
+description = "フロントエンドのテスト"
+dir = "web"
+run = "pnpm test"
+
 [tasks."web:relay"]
 description = "Relayの型と操作の生成"
 dir = "web"
