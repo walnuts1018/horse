@@ -182,6 +182,10 @@ Purchaseの履歴QueryをRelay生成operationへ移し、Purchase Entityのmappe
 
 runtimeの`internal/**/*.go`を監査し、直接のSQL文文字列、`psql.Raw`、Bob以外からの`Query`・`Exec`・`Prepare`呼び出しがないことを確認しました。GraphQL filter統合テストは専用PostgreSQLで成功し、既存fixtureの件数と順序を正しく反映しました。会計fixtureの1円購入は負担先poolを固定してUUID順に依存する端数差を除きました。Webの型検査、FSD、lint、format、Relay検証、本番buildと差分検査が成功しました。
 
+商品カタログ一覧とホームの概要・月間支出・精算結果をpage/entity所有のAPI・mapperへ移しました。Relay生成型を入力にし、通信Connection型の手書き定義と`readGraphql<T>`を除去します。画面のfallbackと既存更新依存を維持しました。
+
+2026年10月14日に合成PNGをPaid Projectの`gemini-3.8-flash`へ1回送信しました。応答は店名「合成テスト店」、品目2件、8%税情報、合計378円を含み、modelVersionは`gemini-3.8-flash`でした。usage metadataは入力1,731token、出力295tokenです。公式のStandard料金を用いた推定額は$0.0024045（当時のアプリ為替158.535円/$で約0.38円）で、実請求額ではありません（[Gemini API料金表](https://ai.google.dev/gemini-api/docs/pricing)）。合成画像と一時Job、Pod、ServiceAccount、NetworkPolicyは削除し、APIキー値は読み取らず出力していません。
+
 ### 保守性・シンプルさレビューの画面分割とRelay読み込み
 
 設定、取込、帳簿、購入作成、精算の画面から機能別UIと状態を同じ`pages`slice内へ分けました。画面固有の機能で再利用先がないため、独立した`features`sliceは追加しません。設定の口座活動・配賦ルールと購入履歴はRelay生成operationを使い、各所有sliceのmapperで画面・Entityの型へ明示的に変換します。口座活動mapperはQueryが返す口座の`id`と`name`だけを扱い、未取得のフィールドを補いません。購入履歴の`PurchaseItem`汎用変換は削除し、LedgerEntry変換とMutation結果の共通処理は既存利用が残るため維持します。

@@ -1,24 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { BookOpen, ChevronRight, Plus, ReceiptJapaneseYen, Upload, Wallet } from "lucide-react";
-import {
-  monthlyCategorySpendingQuery,
-  readGraphql,
-  type Household,
-  type Purchase,
-  type Settlement,
-} from "../../../shared/api";
-import { settlementQuery } from "../../../entities/settlement";
+import { type Household, type Purchase } from "../../../shared/api";
 import { EmptyState } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { japanMonth } from "../../../shared/lib";
-import { homeSummaryQuery } from "../api/home-summary";
+import {
+  readHomeMonthlySpending,
+  readHomeSettlement,
+  readHomeSummary,
+  type HomeSettlement,
+  type HomeSummary,
+} from "../api/read-home-dashboard";
 import { SetupGuidance } from "./setup-guidance";
-
-type HomeSummary = {
-  dailySpending: Array<{ date: string; amountYen: number }>;
-  monthlyItemCount: number;
-};
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -42,13 +36,11 @@ export function HomePage({
     .join("|");
   const [monthTotal, setMonthTotal] = useState<number | null>(null);
   const [homeSummary, setHomeSummary] = useState<HomeSummary | null>(null);
-  const [settlement, setSettlement] = useState<Settlement | null>(null);
+  const [settlement, setSettlement] = useState<HomeSettlement | null>(null);
   useEffect(() => {
     let active = true;
-    void readGraphql<{ homeSummary: HomeSummary }>(homeSummaryQuery, {
-      householdId: household.id,
-    })
-      .then(({ homeSummary: summary }) => {
+    void readHomeSummary(household.id)
+      .then((summary) => {
         if (active) setHomeSummary(summary);
       })
       .catch(() => active && setHomeSummary(null));
@@ -58,14 +50,8 @@ export function HomePage({
   }, [household.id, totalCount, purchaseRevision]);
   useEffect(() => {
     let active = true;
-    void readGraphql<{
-      monthlyCategorySpending: Array<{ period: string; amountYen: number }>;
-    }>(monthlyCategorySpendingQuery, {
-      householdId: household.id,
-      from: currentMonth,
-      to: currentMonth,
-    })
-      .then(({ monthlyCategorySpending }) => {
+    void readHomeMonthlySpending(household.id, currentMonth)
+      .then((monthlyCategorySpending) => {
         if (active)
           setMonthTotal(
             sum(
@@ -81,11 +67,8 @@ export function HomePage({
     };
   }, [household.id, currentMonth, totalCount, purchaseRevision]);
   useEffect(() => {
-    void readGraphql<{ settlement: Settlement }>(settlementQuery, {
-      householdId: household.id,
-      period: currentMonth,
-    })
-      .then((data) => setSettlement(data.settlement))
+    void readHomeSettlement(household.id, currentMonth)
+      .then(setSettlement)
       .catch(() => setSettlement(null));
   }, [household.id, currentMonth]);
   const nextDue = sum(settlement?.lines?.map((line) => line.amountDueYen) ?? []);

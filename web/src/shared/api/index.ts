@@ -26,3 +26,19 @@ export type {
   RecurringExpensesQuery,
   RecurringExpensesQuery$data,
 } from "./__generated__/RecurringExpensesQuery.graphql";
+export type {
+  ProductCatalogQuery,
+  ProductCatalogQuery$data,
+} from "./__generated__/ProductCatalogQuery.graphql";
+export type {
+  HomeSummaryQuery,
+  HomeSummaryQuery$data,
+} from "./__generated__/HomeSummaryQuery.graphql";
+export type {
+  MonthlyCategorySpendingQuery,
+  MonthlyCategorySpendingQuery$data,
+} from "./__generated__/MonthlyCategorySpendingQuery.graphql";
+export type {
+  SettlementQuery,
+  SettlementQuery$data,
+} from "./__generated__/SettlementQuery.graphql";
