@@ -14,6 +14,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	tagapp "github.com/walnuts1018/horse/internal/application/tag"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -23,39 +24,13 @@ func (r *mutationResolver) createTag(ctx context.Context, input model.CreateTagI
 	if err != nil {
 		return nil, err
 	}
-	name := strings.TrimSpace(input.Name)
-	if name == "" || len(name) > 80 {
-		return nil, fmt.Errorf("%w: invalid tag name", ErrBadInput)
-	}
-	householdID, err := gofrsuuid.FromString(input.HouseholdID)
-	if err != nil {
-		return nil, ErrNotFound
-	}
-	tx, err := r.DB.Begin(ctx)
+	tag, err := tagapp.NewService(r.DB).Create(ctx, tagapp.CreateCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, Name: input.Name,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	executor := bobpgx.NewTx(tx, nil)
-	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	id := generatedUUID(newID())
-	revision := int64(1)
-	row, err := models.Tags.Insert(&models.TagSetter{ID: &id, HouseholdID: &householdID, Name: &name, Revision: &revision}).One(ctx, executor)
-	if err != nil {
-		return nil, err
-	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "tag.created", id.String(), revision, []string{fieldName}, user.MemberID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return tagModel(row), nil
+	return &model.Tag{ID: tag.ID, HouseholdID: tag.HouseholdID, Name: tag.Name, Archived: tag.Archived, Revision: int(tag.Revision)}, nil
 }
 
 func (r *mutationResolver) updateTag(ctx context.Context, input model.UpdateTagInput) (*model.Tag, error) {

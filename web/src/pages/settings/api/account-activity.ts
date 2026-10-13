@@ -1,11 +1,12 @@
 import { fetchQuery } from "react-relay";
 import {
   getRelayEnvironment,
-  readGraphql,
   type AccountIncomesQuery,
   type AccountIncomesQuery$data,
   type AccountMovementsQuery,
   type AccountMovementsQuery$data,
+  type RecordAccountMovementMutation,
+  type RecordExternalIncomeMutation,
 } from "../../../shared/api";
 import {
   accountIncomesQuery,
@@ -13,6 +14,7 @@ import {
   recordAccountMovementMutation,
   recordExternalIncomeMutation,
 } from "../../../entities/ledger";
+import { commitSettingsMutation } from "./commit-mutation";
 
 type AccountMovementRecord =
   AccountMovementsQuery$data["accountMovements"]["edges"][number]["node"];
@@ -137,10 +139,32 @@ function mapIncome(record: AccountIncomeRecord): AccountActivityIncome {
   };
 }
 
-export function recordAccountActivityIncome(input: Record<string, unknown>) {
-  return readGraphql(recordExternalIncomeMutation, { input });
+export function recordAccountActivityIncome(
+  input: RecordExternalIncomeMutation["variables"]["input"],
+) {
+  return commitSettingsMutation<
+    RecordExternalIncomeMutation,
+    NonNullable<RecordExternalIncomeMutation["response"]["recordExternalIncome"]["result"]>
+  >(
+    recordExternalIncomeMutation,
+    { input },
+    (response) => response.recordExternalIncome,
+    "RecordExternalIncomeSuccess",
+    "外部入金を記録できませんでした",
+  );
 }
 
-export function recordAccountActivityMovement(input: Record<string, unknown>) {
-  return readGraphql(recordAccountMovementMutation, { input });
+export function recordAccountActivityMovement(
+  input: RecordAccountMovementMutation["variables"]["input"],
+) {
+  return commitSettingsMutation<
+    RecordAccountMovementMutation,
+    NonNullable<RecordAccountMovementMutation["response"]["recordAccountMovement"]["result"]>
+  >(
+    recordAccountMovementMutation,
+    { input },
+    (response) => response.recordAccountMovement,
+    "RecordAccountMovementSuccess",
+    "口座移動を記録できませんでした",
+  );
 }

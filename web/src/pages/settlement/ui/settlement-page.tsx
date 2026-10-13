@@ -1,22 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowDownLeft, ArrowLeftRight, Check, Plus } from "lucide-react";
-import {
-  makeIdempotencyKey,
-  readGraphql,
-  type Household,
-  type Settlement,
-} from "../../../shared/api";
-import { closePeriodMutation } from "../../../entities/settlement";
-import {
-  recordFundingMutation,
-  recordTransferMutation,
-  useHouseholdLedger,
-} from "../../../entities/ledger";
+import { makeIdempotencyKey, type Household, type Settlement } from "../../../shared/api";
+import { useHouseholdLedger } from "../../../entities/ledger";
 import { InlineError } from "../../../shared/ui";
 import { japanMonth } from "../../../shared/lib";
 import "./settlement-page.css";
 import { formatSettlementYen as yen, settlementTotalDue } from "../model/settlement-view";
 import { readSettlement } from "../api/read-settlement";
+import {
+  closeSettlementPeriod,
+  recordSettlementFunding,
+  recordSettlementTransfer,
+} from "../api/settlement-mutations";
 import {
   clearFundingIntent,
   clearTransferIntent,
@@ -186,7 +181,7 @@ export function SettlementPage({
       if (!intent.input.poolId) throw new Error("入金先のプールがありません");
       saveFundingIntent(household.id, memberId, intent);
       setPendingFunding((current) => ({ ...current, [memberId]: intent }));
-      await readGraphql(recordFundingMutation, { input: intent.input });
+      await recordSettlementFunding(intent.input);
       clearFundingIntent(household.id, memberId);
       setPendingFunding((current) => {
         const next = { ...current };
@@ -217,8 +212,10 @@ export function SettlementPage({
     setPending(true);
     setSuccess("");
     try {
-      await readGraphql(closePeriodMutation, {
-        input: { householdId: targetHouseholdId, period: targetPeriod, expectedRevision },
+      await closeSettlementPeriod({
+        householdId: targetHouseholdId,
+        period: targetPeriod,
+        expectedRevision,
       });
       setCloseConfirmationOpen(false);
       await load();
@@ -268,7 +265,10 @@ export function SettlementPage({
       };
       saveTransferIntent(household.id, intent);
       setPendingTransfer(intent);
-      await readGraphql(recordTransferMutation, { input: intent.input });
+      if (intent.input.kind === "REPAYMENT") {
+        throw new Error("貸付残高から返済を再試行してください");
+      }
+      await recordSettlementTransfer(intent.input);
       clearTransferIntent(household.id);
       setPendingTransfer(null);
       setTransferAmount("");

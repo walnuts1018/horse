@@ -676,13 +676,6 @@ function unwrapMutationResults(response: Record<string, unknown>) {
   );
 }
 
-export async function readGraphql<T>(
-  operation: GraphQLTaggedNode,
-  variables: Record<string, unknown> = {},
-): Promise<T> {
-  return executeGraphql<T, Record<string, unknown>>(operation, variables);
-}
-
 export async function getViewer(): Promise<{ id: string; displayName: string; email?: string }> {
   const response = await fetch("/auth/me", { credentials: "include" });
   if (!response.ok)

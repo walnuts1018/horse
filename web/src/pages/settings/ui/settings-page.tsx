@@ -1,12 +1,12 @@
 import styles from "./settings-page.module.css";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Activity, Check, Plus } from "lucide-react";
-import { readGraphql, type Household, type AccountBalance } from "../../../shared/api";
+import { type Household, type AccountBalance } from "../../../shared/api";
 import {
-  createCategoryMutation,
-  setCategoryArchivedMutation,
-  setDefaultAllocationMutation,
-} from "../api/operations";
+  createCategory as createCategoryMutation,
+  setCategoryArchived as setCategoryArchivedMutation,
+  setDefaultAllocation as setDefaultAllocationMutation,
+} from "../api/category-management";
 import { ManageHouseholdInvitations } from "./manage-household-invitations";
 import { ManageBudgets } from "./manage-budgets";
 import { ManageRecurringExpenses } from "./manage-recurring-expenses";
@@ -137,14 +137,10 @@ export function SettingsPage({
   useEffect(() => {
     void refreshPlanning().catch((reason) => onNotice((reason as Error).message, "error"));
   }, [household.id, isOwner]);
-  const saveMutation = async (
-    mutation: Parameters<typeof readGraphql>[0],
-    input: Record<string, unknown>,
-    formID: string,
-  ): Promise<boolean> => {
+  const saveMutation = async (mutation: () => Promise<void>, formID: string): Promise<boolean> => {
     setPending(true);
     try {
-      await readGraphql<Record<string, unknown>>(mutation, { input });
+      await mutation();
       await onRefresh();
       markFormClean(formID);
       onNotice("設定を保存しました", "success");
@@ -159,34 +155,34 @@ export function SettingsPage({
   const addCategory = (event: FormEvent) => {
     event.preventDefault();
     void saveMutation(
-      createCategoryMutation,
-      {
-        householdId: household.id,
-        name: categoryName.trim(),
-      },
+      () =>
+        createCategoryMutation({
+          householdId: household.id,
+          name: categoryName.trim(),
+        }),
       "create-category",
     ).then((saved) => saved && setCategoryName(""));
   };
   const saveAllocation = (event: FormEvent) => {
     event.preventDefault();
     void saveMutation(
-      setDefaultAllocationMutation,
-      {
-        householdId: household.id,
-        allocations: household.pools
-          .map((pool) => ({
-            poolId: pool.id,
-            weight: Math.max(0, Number(shareWeights[pool.id]) || 0),
-          }))
-          .filter((item) => item.weight > 0),
-      },
+      () =>
+        setDefaultAllocationMutation({
+          householdId: household.id,
+          allocations: household.pools
+            .map((pool) => ({
+              poolId: pool.id,
+              weight: Math.max(0, Number(shareWeights[pool.id]) || 0),
+            }))
+            .filter((item) => item.weight > 0),
+        }),
       "default-allocation",
     );
   };
   const archiveCategory = async (categoryId: string, archived: boolean) => {
     setPending(true);
     try {
-      await readGraphql(setCategoryArchivedMutation, { input: { categoryId, archived } });
+      await setCategoryArchivedMutation({ categoryId, archived });
       await onRefresh();
       onNotice(archived ? "カテゴリを非表示にしました" : "カテゴリを再表示しました", "success");
     } catch (reason) {

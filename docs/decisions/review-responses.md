@@ -174,7 +174,13 @@ Purchaseの履歴QueryをRelay生成operationへ移し、Purchase Entityのmappe
 
 ### 2026年10月14日のレビュー対応
 
+`CreateTag`のタグ名検証、household行ロック、Bob DSL insert、`tag.created`イベント記録、transactionを`internal/application/tag`へ移しました。GraphQL Resolverには認可、Service呼び出し、結果変換を残しました。`go test ./internal/application/tag ./internal/graph -v`と`mise run lint`が成功しました。`HORSE_TEST_DATABASE_URL`が未設定のため、既存の`TestTagConnectionPaginatesWithinHouseholdAndFiltersArchivedTags`を含むGraphQL DB統合テストはskipされています。更新・アーカイブ操作など、Resolver内にtransaction境界が残るMutationは未解決としてレビューに残します。
+
 招待の発行・失効を設定pageのAPIへ移し、Relay生成Mutation型と結果unionの明示的な分岐を使うようにしました。招待一覧のread pathと合わせ、設定UIから`readGraphql<T>`とunsafe castを除去しました。発行tokenの表示、一時IDの保持、一覧更新順は維持しています。型検査、FSD検査、lint、format、Relay検証が成功しました。
+
+カテゴリ、標準負担割合、口座、資金拠出ルール、負担ルール、商品、入出金、予算、タグ、定期支出の設定Mutationをpage APIへ移しました。Relay生成variablesとresponse型を使い、success、`MutationError`、未知の結果を明示的に処理します。精算の入金、送金、返済、期間締めも生成Mutation型へ移し、snapshot revisionと成功後の再取得順を維持しました。未使用になった共有`readGraphql<T>`を削除しました。
+
+Ledgerの品目一括編集は選択、適用、Undoをpage内のmodelとUIへ分離しました。revision競合時の一括rollbackとfilter変更時のselection解除は維持し、既存の一括更新統合テストを実行しました。購入の競合再取得はRelay生成`PurchaseHistoryQuery`とPurchase Entityのmapperを使い、100件単位のcursor走査をoperation変数へ反映しました。Importsのレシート確認フォームを同じpage sliceの専用UIへ移しました。Web型検査、FSD検査、lint、format、Relay検証が成功しました。
 
 購入証拠の取得状態と表示をLedgerの同sliceにあるAPI・model・UIへ分離しました。画像・PDF表示、品目ハイライト、取得エラーを維持し、`ledger-page.tsx`は1,775行から1,695行になりました。取込検索条件はURLクエリから復元し、適用、戻る、進むで同期します。原本ファイル名はAPIが返す保存値を優先します。
 

@@ -1,13 +1,13 @@
 import styles from "./settings-page.module.css";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Check } from "lucide-react";
-import { readGraphql, type Household, type RecurringExpense } from "../../../shared/api";
+import { type Household, type RecurringExpense } from "../../../shared/api";
+import { readRecurringExpenses } from "../../../entities/recurring-expense";
 import {
-  archiveRecurringExpenseMutation,
-  createRecurringExpenseMutation,
-  readRecurringExpenses,
-  updateRecurringExpenseMutation,
-} from "../../../entities/recurring-expense";
+  archiveRecurringExpense,
+  createRecurringExpense,
+  updateRecurringExpense,
+} from "../api/recurring-expense-management";
 
 const localDate = () => new Date().toISOString().slice(0, 10);
 const yen = (amount: number) =>
@@ -82,15 +82,13 @@ export function ManageRecurringExpenses({
         endsOn: recurringEndsOn || null,
       };
       if (editingRecurring) {
-        await readGraphql(updateRecurringExpenseMutation, {
-          input: {
-            ...input,
-            expenseId: editingRecurring.id,
-            baseRevision: editingRecurring.revision,
-          },
+        await updateRecurringExpense({
+          ...input,
+          expenseId: editingRecurring.id,
+          baseRevision: editingRecurring.revision,
         });
       } else {
-        await readGraphql(createRecurringExpenseMutation, { input });
+        await createRecurringExpense(input);
       }
       onFormClean("recurring-expense");
       setEditingRecurring(null);
@@ -122,16 +120,14 @@ export function ManageRecurringExpenses({
     setRecurringEndsOn(expense.endsOn ?? "");
   };
 
-  const archiveRecurringExpense = async (expense: RecurringExpense) => {
+  const toggleRecurringExpenseVisibility = async (expense: RecurringExpense) => {
     setPending(true);
     onPendingChange(true);
     try {
-      await readGraphql(archiveRecurringExpenseMutation, {
-        input: {
-          expenseId: expense.id,
-          baseRevision: expense.revision,
-          archived: !expense.archived,
-        },
+      await archiveRecurringExpense({
+        expenseId: expense.id,
+        baseRevision: expense.revision,
+        archived: !expense.archived,
       });
       await refresh();
       onNotice(expense.archived ? "定期支出を再表示しました" : "定期支出を終了しました", "success");
@@ -193,7 +189,7 @@ export function ManageRecurringExpenses({
             <button
               className="text-button"
               disabled={pending}
-              onClick={() => void archiveRecurringExpense(expense)}
+              onClick={() => void toggleRecurringExpenseVisibility(expense)}
             >
               {expense.archived ? "再表示" : "終了"}
             </button>

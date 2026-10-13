@@ -1,14 +1,10 @@
 import styles from "./settings-page.module.css";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
-import { readGraphql, type Tag } from "../../../shared/api";
+import { type Tag } from "../../../shared/api";
 import { InlineError } from "../../../shared/ui";
-import {
-  archiveTagMutation,
-  createTagMutation,
-  readTags,
-  updateTagMutation,
-} from "../../../entities/tag";
+import { readTags } from "../../../entities/tag";
+import { archiveTag, createTag, updateTag } from "../api/tag-management";
 
 export function ManageTags({
   householdId,
@@ -64,7 +60,7 @@ export function ManageTags({
     setPending(true);
     onPendingChange(true);
     try {
-      await readGraphql(createTagMutation, { input: { householdId, name } });
+      await createTag({ householdId, name });
       onFormClean("create-tag");
       setTagName("");
       await refresh();
@@ -83,9 +79,7 @@ export function ManageTags({
     setPending(true);
     onPendingChange(true);
     try {
-      await readGraphql(updateTagMutation, {
-        input: { tagId: tag.id, baseRevision: tag.revision, name },
-      });
+      await updateTag({ tagId: tag.id, baseRevision: tag.revision, name });
       onFormClean(`tag:${tag.id}`);
       await refresh(tag.id);
       onNotice("タグ名を保存しました", "success");
@@ -97,13 +91,11 @@ export function ManageTags({
     }
   };
 
-  const archiveTag = async (tag: Tag) => {
+  const toggleTagVisibility = async (tag: Tag) => {
     setPending(true);
     onPendingChange(true);
     try {
-      await readGraphql(archiveTagMutation, {
-        input: { tagId: tag.id, baseRevision: tag.revision, archived: !tag.archived },
-      });
+      await archiveTag({ tagId: tag.id, baseRevision: tag.revision, archived: !tag.archived });
       await refresh();
       onNotice(tag.archived ? "タグを再表示しました" : "タグを非表示にしました", "success");
     } catch (reason) {
@@ -158,7 +150,11 @@ export function ManageTags({
                 取消
               </button>
             )}
-            <button className="text-button" disabled={pending} onClick={() => void archiveTag(tag)}>
+            <button
+              className="text-button"
+              disabled={pending}
+              onClick={() => void toggleTagVisibility(tag)}
+            >
               {tag.archived ? "再表示" : "非表示"}
             </button>
           </div>

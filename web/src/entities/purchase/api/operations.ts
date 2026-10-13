@@ -7,8 +7,8 @@ export const purchasesQuery = graphql`
 `;
 
 export const purchaseHistoryQuery = graphql`
-  query PurchaseHistoryQuery($filter: PurchaseFilter!, $first: Int) {
-    purchases(filter: $filter, first: $first) {
+  query PurchaseHistoryQuery($filter: PurchaseFilter!, $first: Int, $after: String) {
+    purchases(filter: $filter, after: $after, first: $first) {
       edges {
         cursor
         node {

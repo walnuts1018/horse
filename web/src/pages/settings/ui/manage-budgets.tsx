@@ -1,13 +1,9 @@
 import styles from "./settings-page.module.css";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Check } from "lucide-react";
-import { readGraphql, type Budget, type Household } from "../../../shared/api";
-import {
-  archiveBudgetMutation,
-  createBudgetMutation,
-  readBudgets,
-  updateBudgetMutation,
-} from "../../../entities/budget";
+import { type Budget, type Household } from "../../../shared/api";
+import { readBudgets } from "../../../entities/budget";
+import { archiveBudget, createBudget, updateBudget } from "../api/budget-management";
 
 const currentMonth = () =>
   new Intl.DateTimeFormat("en-CA", {
@@ -82,11 +78,13 @@ export function ManageBudgets({
         endsOn: editingBudget?.endsOn ?? null,
       };
       if (editingBudget) {
-        await readGraphql(updateBudgetMutation, {
-          input: { ...input, budgetId: editingBudget.id, baseRevision: editingBudget.revision },
+        await updateBudget({
+          ...input,
+          budgetId: editingBudget.id,
+          baseRevision: editingBudget.revision,
         });
       } else {
-        await readGraphql(createBudgetMutation, { input });
+        await createBudget(input);
       }
       onFormClean("budget");
       setEditingBudget(null);
@@ -110,16 +108,14 @@ export function ManageBudgets({
     setBudgetAmount(String(budget.amountYen));
   };
 
-  const archiveBudget = async (budget: Budget) => {
+  const toggleBudgetVisibility = async (budget: Budget) => {
     setPending(true);
     onPendingChange(true);
     try {
-      await readGraphql(archiveBudgetMutation, {
-        input: {
-          budgetId: budget.id,
-          baseRevision: budget.revision,
-          archived: !budget.archived,
-        },
+      await archiveBudget({
+        budgetId: budget.id,
+        baseRevision: budget.revision,
+        archived: !budget.archived,
       });
       await refresh();
       onNotice(budget.archived ? "予算を再表示しました" : "予算を非表示にしました", "success");
@@ -167,7 +163,7 @@ export function ManageBudgets({
               <button
                 className="text-button"
                 disabled={pending}
-                onClick={() => void archiveBudget(budget)}
+                onClick={() => void toggleBudgetVisibility(budget)}
               >
                 非表示
               </button>

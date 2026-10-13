@@ -1,10 +1,13 @@
 import { fetchQuery } from "react-relay";
 import {
   getRelayEnvironment,
-  readGraphql,
   type AllocationRule,
   type AllocationRulesQuery,
   type AllocationRulesQuery$data,
+  type CreateProductConceptMutation,
+  type CreateProductVariantMutation,
+  type SetAllocationRuleMutation,
+  type SetProductAliasMutation,
 } from "../../../shared/api";
 import { readProductCatalog } from "../../../entities/product";
 import { allocationRulesQuery, setAllocationRuleMutation } from "./operations";
@@ -13,6 +16,7 @@ import {
   createProductVariantMutation,
   setProductAliasMutation,
 } from "../../../entities/product";
+import { commitSettingsMutation } from "./commit-mutation";
 
 export async function readAllocationRules(householdId: string, after?: string) {
   const data = await fetchQuery<AllocationRulesQuery>(
@@ -68,18 +72,54 @@ export function readCatalog(householdId: string) {
   return readProductCatalog(householdId);
 }
 
-export function setAllocationRule(input: Record<string, unknown>) {
-  return readGraphql(setAllocationRuleMutation, { input });
+export function setAllocationRule(input: SetAllocationRuleMutation["variables"]["input"]) {
+  return commitSettingsMutation<
+    SetAllocationRuleMutation,
+    NonNullable<SetAllocationRuleMutation["response"]["setAllocationRule"]["result"]>
+  >(
+    setAllocationRuleMutation,
+    { input },
+    (response) => response.setAllocationRule,
+    "SetAllocationRuleSuccess",
+    "負担ルールを保存できませんでした",
+  );
 }
 
-export function createCatalogConcept(input: Record<string, unknown>) {
-  return readGraphql(createProductConceptMutation, { input });
+export function createCatalogConcept(input: CreateProductConceptMutation["variables"]["input"]) {
+  return commitSettingsMutation<
+    CreateProductConceptMutation,
+    NonNullable<CreateProductConceptMutation["response"]["createProductConcept"]["result"]>
+  >(
+    createProductConceptMutation,
+    { input },
+    (response) => response.createProductConcept,
+    "CreateProductConceptSuccess",
+    "商品分類を作成できませんでした",
+  );
 }
 
-export function createCatalogVariant(input: Record<string, unknown>) {
-  return readGraphql(createProductVariantMutation, { input });
+export function createCatalogVariant(input: CreateProductVariantMutation["variables"]["input"]) {
+  return commitSettingsMutation<
+    CreateProductVariantMutation,
+    NonNullable<CreateProductVariantMutation["response"]["createProductVariant"]["result"]>
+  >(
+    createProductVariantMutation,
+    { input },
+    (response) => response.createProductVariant,
+    "CreateProductVariantSuccess",
+    "商品バリエーションを作成できませんでした",
+  );
 }
 
-export function createCatalogAlias(input: Record<string, unknown>) {
-  return readGraphql(setProductAliasMutation, { input });
+export function createCatalogAlias(input: SetProductAliasMutation["variables"]["input"]) {
+  return commitSettingsMutation<
+    SetProductAliasMutation,
+    NonNullable<SetProductAliasMutation["response"]["setProductAlias"]["result"]>
+  >(
+    setProductAliasMutation,
+    { input },
+    (response) => response.setProductAlias,
+    "SetProductAliasSuccess",
+    "商品別名を保存できませんでした",
+  );
 }

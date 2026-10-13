@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Check, Plus, Wallet } from "lucide-react";
-import {
-  makeIdempotencyKey,
-  readGraphql,
-  type Household,
-  type LoanBalance,
-} from "../../../shared/api";
-import { recordRepaymentMutation } from "../../../entities/ledger";
+import { makeIdempotencyKey, type Household, type LoanBalance } from "../../../shared/api";
 import { readLoanBalances } from "../api/read-settlement";
+import { recordSettlementRepayment } from "../api/settlement-mutations";
 import { InlineError } from "../../../shared/ui";
 import {
   clearTransferIntent,
@@ -186,19 +181,17 @@ export function SettlementLoans({
       onPendingIntentChange(true);
       const input = intent.input;
       if (input.kind !== "REPAYMENT") throw new Error("返済情報が不正です");
-      await readGraphql(recordRepaymentMutation, {
-        input: {
-          householdId: input.householdId,
-          fromMemberId: input.fromMemberId,
-          toMemberId: input.toMemberId,
-          paymentAccountId: input.paymentAccountId,
-          destinationAccountId: input.destinationAccountId,
-          amountYen: input.amountYen,
-          occurredAt: input.occurredAt,
-          description: input.description,
-          idempotencyKey: input.idempotencyKey,
-          loanId: input.loanId,
-        },
+      await recordSettlementRepayment({
+        householdId: input.householdId,
+        fromMemberId: input.fromMemberId,
+        toMemberId: input.toMemberId,
+        paymentAccountId: input.paymentAccountId,
+        destinationAccountId: input.destinationAccountId,
+        amountYen: input.amountYen,
+        occurredAt: input.occurredAt,
+        description: input.description,
+        idempotencyKey: input.idempotencyKey,
+        loanId: input.loanId,
       });
       clearTransferIntent(household.id);
       setPendingIntent(null);

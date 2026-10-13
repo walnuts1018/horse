@@ -9,6 +9,7 @@ import {
   type SharedPoolSettlementPolicy,
 } from "../../../shared/api";
 import { useAccountSettings } from "../model/account-settings";
+import type { AccountKind, PoolKind } from "../api/account-settings";
 
 const yen = (amount: number) =>
   new Intl.NumberFormat("ja-JP", {
@@ -169,7 +170,7 @@ export function ManageAccountSettings({
           />
           <select
             value={model.poolKind}
-            onChange={(event) => model.setPoolKind(event.target.value)}
+            onChange={(event) => model.setPoolKind(event.target.value as PoolKind)}
           >
             <option value="PERSONAL">個人</option>
             <option value="SHARED">共用</option>
@@ -232,7 +233,7 @@ export function ManageAccountSettings({
           />
           <select
             value={model.accountKind}
-            onChange={(event) => model.setAccountKind(event.target.value)}
+            onChange={(event) => model.setAccountKind(event.target.value as AccountKind)}
           >
             <option value="BANK">銀行</option>
             <option value="CASH">現金</option>

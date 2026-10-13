@@ -5,7 +5,13 @@ import {
   type Household,
   type SharedPoolSettlementPolicy,
 } from "../../../shared/api";
-import { createAccount, createPool, setPoolFundingRule } from "../api/account-settings";
+import {
+  createAccount,
+  createPool,
+  setPoolFundingRule,
+  type AccountKind,
+  type PoolKind,
+} from "../api/account-settings";
 
 export function useAccountSettings({
   household,
@@ -23,10 +29,10 @@ export function useAccountSettings({
   const onNoticeRef = useRef(onNotice);
   const onFormCleanRef = useRef(onFormClean);
   const [poolName, setPoolName] = useState("");
-  const [poolKind, setPoolKind] = useState("PERSONAL");
+  const [poolKind, setPoolKind] = useState<PoolKind>("PERSONAL");
   const [accountName, setAccountName] = useState("");
   const [accountPool, setAccountPool] = useState("");
-  const [accountKind, setAccountKind] = useState("BANK");
+  const [accountKind, setAccountKind] = useState<AccountKind>("BANK");
   const [openingBalanceYen, setOpeningBalanceYen] = useState("");
   const [openingBalanceAt, setOpeningBalanceAt] = useState(() => {
     const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
