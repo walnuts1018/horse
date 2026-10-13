@@ -1,0 +1,75 @@
+import { describe, expect, it } from "vitest";
+import {
+  receiptDateInputValue,
+  receiptOccurredAt,
+  persistedStatementConfirmationKeys,
+  statementConfirmationIssue,
+  statementSourceReference,
+} from "./imports";
+
+describe("receipt purchase date confirmation", () => {
+  it("does not invent a date when extraction has no date", () => {
+    expect(receiptDateInputValue()).toBe("");
+    expect(receiptOccurredAt()).toBeNull();
+  });
+
+  it("uses the extracted date in Japan time for the date input", () => {
+    expect(receiptDateInputValue("2025-04-01T00:30:00+09:00")).toBe("2025-04-01");
+  });
+
+  it("turns an explicit date into noon in Japan", () => {
+    expect(receiptOccurredAt(undefined, "2025-04-01")).toBe("2025-04-01T03:00:00.000Z");
+  });
+
+  it("rejects invalid manual dates and malformed extracted dates", () => {
+    expect(receiptOccurredAt(undefined, "2025-02-30")).toBeNull();
+    expect(receiptOccurredAt("invalid-date")).toBeNull();
+  });
+});
+
+describe("statement purchase confirmation", () => {
+  const entry = {
+    row: 2,
+    kind: "CARD_PURCHASE",
+    occurredAt: "2025-04-01T12:00:00+09:00",
+    merchant: "Market",
+    amount: 100,
+  };
+
+  it("rejects return and refund amounts instead of changing their sign", () => {
+    expect(statementConfirmationIssue({ ...entry, amount: -100 })).toBe(
+      "返品・返金は確定できません",
+    );
+  });
+
+  it("rejects zero, unsafe, and date-less purchase entries", () => {
+    expect(statementConfirmationIssue({ ...entry, amount: 0 })).toBe("明細金額を確認してください");
+    expect(statementConfirmationIssue({ ...entry, amount: Number.MAX_SAFE_INTEGER + 1 })).toBe(
+      "明細金額を確認してください",
+    );
+    expect(statementConfirmationIssue({ ...entry, occurredAt: "" })).toBe(
+      "購入日を確認してください",
+    );
+  });
+
+  it("allows positive card purchases", () => {
+    expect(statementConfirmationIssue(entry)).toBeUndefined();
+  });
+
+  it("uses the parser row reference even when a transaction ID exists", () => {
+    expect(
+      statementSourceReference({ ...entry, sourceReference: "row:9", transactionId: "7" }),
+    ).toBe("row:9");
+    expect(statementSourceReference(entry)).toBe("row:2");
+  });
+
+  it("restores confirmed rows from document data after reload", () => {
+    expect(
+      persistedStatementConfirmationKeys({
+        id: "document-1",
+        status: "SUCCEEDED",
+        confirmations: [{ sourceReference: "row:2", purchaseId: "purchase-1" }],
+      }),
+    ).toEqual(["document-1:row:2"]);
+  });
+});

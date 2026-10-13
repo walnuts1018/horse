@@ -28,6 +28,7 @@ export type MatchCandidate = {
 export type ObservationCandidates = { sourceReference: string; matches: MatchCandidate[] };
 export type StatementEntry = {
   row: number;
+  sourceReference?: string;
   kind: string;
   occurredAt: string;
   merchant: string;
@@ -36,6 +37,60 @@ export type StatementEntry = {
   orderId?: string;
   cardLast4?: string;
 };
+
+export function receiptDateInputValue(purchasedAt?: string): string {
+  if (!purchasedAt) return "";
+  const date = new Date(purchasedAt);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+export function receiptOccurredAt(purchasedAt?: string, manualDate?: string): string | null {
+  if (manualDate !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(manualDate)) return null;
+    const calendarDate = new Date(`${manualDate}T00:00:00.000Z`);
+    if (
+      Number.isNaN(calendarDate.getTime()) ||
+      calendarDate.toISOString().slice(0, 10) !== manualDate
+    ) {
+      return null;
+    }
+    return new Date(`${manualDate}T12:00:00+09:00`).toISOString();
+  }
+  if (!purchasedAt) return null;
+  const date = new Date(purchasedAt);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+export function statementConfirmationIssue(entry: StatementEntry): string | undefined {
+  if (entry.kind !== "CARD_PURCHASE") return undefined;
+  if (!Number.isSafeInteger(entry.amount) || entry.amount <= 0) {
+    return entry.amount < 0 ? "返品・返金は確定できません" : "明細金額を確認してください";
+  }
+  if (!entry.occurredAt || Number.isNaN(new Date(entry.occurredAt).getTime())) {
+    return "購入日を確認してください";
+  }
+  return undefined;
+}
+
+export function statementSourceReference(entry: StatementEntry): string {
+  return entry.sourceReference || `row:${entry.row}`;
+}
+
+export function persistedStatementConfirmationKeys(document?: DocumentReview): string[] {
+  if (!document) return [];
+  return (document.confirmations ?? []).map(
+    (confirmation) => `${document.id}:${confirmation.sourceReference}`,
+  );
+}
+
 export type ReceiptPayment = { method: string; cardLast4?: string; amount: number };
 export type VerificationCandidate = {
   id: string;

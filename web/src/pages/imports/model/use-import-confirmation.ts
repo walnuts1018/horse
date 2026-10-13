@@ -15,6 +15,13 @@ import type {
   ReviewTarget,
   StatementEntry,
 } from "./imports";
+import {
+  receiptDateInputValue,
+  receiptOccurredAt,
+  persistedStatementConfirmationKeys,
+  statementConfirmationIssue,
+  statementSourceReference,
+} from "./imports";
 
 export function useImportConfirmation({
   household,
@@ -38,7 +45,13 @@ export function useImportConfirmation({
     household.id,
     100,
   );
-  const [confirmedStatements, setConfirmedStatements] = useState<Set<string>>(() => new Set());
+  const [locallyConfirmedStatements, setConfirmedStatements] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const confirmedStatements = new Set([
+    ...locallyConfirmedStatements,
+    ...persistedStatementConfirmationKeys(selectedDocument),
+  ]);
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
   const [reviewTargetIndex, setReviewTargetIndex] = useState(0);
   const [manualAmountOverrides, setManualAmountOverrides] = useState<Record<string, boolean>>({});
@@ -46,6 +59,7 @@ export function useImportConfirmation({
     Record<string, string>
   >({});
   const [receiptPayments, setReceiptPayments] = useState<Record<string, ReceiptPaymentDraft[]>>({});
+  const [manualPurchaseDates, setManualPurchaseDates] = useState<Record<string, string>>({});
   const paymentAccountId = household.accounts[0]?.id ?? "";
 
   const normalizeName = (name: string) =>
@@ -120,6 +134,10 @@ export function useImportConfirmation({
             : [],
         ),
         ...(() => {
+          const needsPurchaseDate = !receiptOccurredAt(
+            selectedDocument.result?.receipt?.purchasedAt,
+            manualPurchaseDates[selectedDocument.id],
+          );
           const selectedCandidate = selectedDocument.result?.candidates?.find(
             (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
           );
@@ -138,6 +156,9 @@ export function useImportConfirmation({
           const needsPaymentReview =
             household.accounts.length > 0 && paymentsTotal !== receiptTotal(selectedDocument);
           return [
+            ...(needsPurchaseDate
+              ? [{ key: "date", label: "購入日", elementId: "receipt-review-purchase-date" }]
+              : []),
             ...(needsAmountReview
               ? [
                   {
@@ -215,8 +236,19 @@ export function useImportConfirmation({
     );
   };
 
+  const purchaseDateFor = (document: DocumentReview) =>
+    manualPurchaseDates[document.id] ??
+    receiptDateInputValue(document.result?.receipt?.purchasedAt);
+
+  const editPurchaseDate = (documentId: string, date: string) => {
+    editedReceiptDocuments.current.add(documentId);
+    markUnsaved();
+    setManualPurchaseDates((current) => ({ ...current, [documentId]: date }));
+  };
+
   const confirm = async (document: DocumentReview) => {
     const receipt = document.result?.receipt;
+    const occurredAt = receiptOccurredAt(receipt?.purchasedAt, manualPurchaseDates[document.id]);
     const items = receipt?.items ?? [];
     const candidateID = selectedCandidates[document.id] ?? "";
     const candidate = document.result?.candidates?.find((item) => item.id === candidateID);
@@ -230,6 +262,7 @@ export function useImportConfirmation({
       0,
     );
     if (!items.length) throw new Error("確定できる品目がありません");
+    if (!occurredAt) throw new Error("購入日を入力してください");
     if (document.result?.candidates?.length && !selectedCandidates[document.id]) {
       throw new Error("税計算候補を選択してください");
     }
@@ -268,9 +301,7 @@ export function useImportConfirmation({
       householdId: household.id,
       origin: "AI",
       sourceDocumentId: document.id,
-      occurredAt: receipt?.purchasedAt
-        ? new Date(receipt.purchasedAt).toISOString()
-        : new Date().toISOString(),
+      occurredAt,
       merchant: receipt?.merchant ?? "",
       paymentAllocations: paymentDraft
         .filter((payment) => payment.paymentAccountId && payment.amountYen > 0)
@@ -290,9 +321,9 @@ export function useImportConfirmation({
 
   const confirmStatement = async (document: DocumentReview, entry: StatementEntry) => {
     if (!document.result || entry.kind !== "CARD_PURCHASE") return;
-    const reference = entry.transactionId
-      ? `transaction:${entry.transactionId}`
-      : `row:${entry.row}`;
+    const issue = statementConfirmationIssue(entry);
+    if (issue) throw new Error(issue);
+    const reference = statementSourceReference(entry);
     const key = `${document.id}:${reference}`;
     if (confirmedStatements.has(key)) return;
     await createAndPostPurchase({
@@ -303,13 +334,11 @@ export function useImportConfirmation({
       sourceReference: reference,
       occurredAt: new Date(entry.occurredAt).toISOString(),
       merchant: entry.merchant,
-      paymentAllocations: paymentAccountId
-        ? [{ paymentAccountId, amountYen: Math.abs(entry.amount) }]
-        : [],
+      paymentAllocations: paymentAccountId ? [{ paymentAccountId, amountYen: entry.amount }] : [],
       items: [
         {
           name: entry.merchant || "カード利用",
-          amountYen: Math.abs(entry.amount),
+          amountYen: entry.amount,
           allocations: null,
         },
       ],
@@ -337,6 +366,8 @@ export function useImportConfirmation({
     setManualAmountOverrideReasons,
     receiptPayments,
     setReceiptPayments,
+    purchaseDateFor,
+    editPurchaseDate,
     suggestedCategoryId,
     receiptItemAmount,
     receiptTotal,

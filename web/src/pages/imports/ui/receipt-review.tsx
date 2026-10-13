@@ -18,10 +18,12 @@ type ReceiptReviewProps = {
   activeReviewTarget: ReviewTarget | undefined;
   paymentDraftFor: (document: DocumentReview) => ReceiptPaymentDraft[];
   receiptTotal: (document: DocumentReview) => number;
+  purchaseDate: string;
   markUnsaved: () => void;
   setReviewTargetIndex: Dispatch<SetStateAction<number>>;
   setReceiptPayments: Dispatch<SetStateAction<Record<string, ReceiptPaymentDraft[]>>>;
   editItem: (documentId: string, index: number, patch: Partial<ExtractedItem>) => void;
+  onPurchaseDateChange: (date: string) => void;
   onMerchantChange: (merchant: string) => void;
   suggestedCategoryId: (item: ExtractedItem) => string;
   selectedCandidates: Record<string, string>;
@@ -42,10 +44,12 @@ export function ReceiptReview({
   activeReviewTarget,
   paymentDraftFor,
   receiptTotal,
+  purchaseDate,
   markUnsaved,
   setReviewTargetIndex,
   setReceiptPayments,
   editItem,
+  onPurchaseDateChange,
   onMerchantChange,
   suggestedCategoryId,
   selectedCandidates,
@@ -95,6 +99,18 @@ export function ReceiptReview({
             <input
               value={selectedDocument.result.receipt.merchant ?? ""}
               onChange={(event) => onMerchantChange(event.target.value)}
+            />
+          </label>
+        </div>
+        <div className="review-merchant">
+          <label>
+            購入日（必須）
+            <input
+              id="receipt-review-purchase-date"
+              type="date"
+              required
+              value={purchaseDate}
+              onChange={(event) => onPurchaseDateChange(event.target.value)}
             />
           </label>
         </div>
@@ -431,7 +447,7 @@ export function ReceiptReview({
         </div>
         <button
           className="button button-primary button-wide"
-          disabled={pending}
+          disabled={pending || !purchaseDate}
           onClick={() => onConfirm()}
         >
           <Check size={16} />

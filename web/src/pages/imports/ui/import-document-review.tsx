@@ -68,10 +68,12 @@ export function ImportDocumentReview({
               activeReviewTarget={review.activeReviewTarget}
               paymentDraftFor={review.paymentDraftFor}
               receiptTotal={review.receiptTotal}
+              purchaseDate={review.purchaseDateFor(document)}
               markUnsaved={onDirty}
               setReviewTargetIndex={review.setReviewTargetIndex}
               setReceiptPayments={review.setReceiptPayments}
               editItem={review.editItem}
+              onPurchaseDateChange={(date) => review.editPurchaseDate(document.id, date)}
               onMerchantChange={(merchant) => review.editMerchant(document.id, merchant)}
               suggestedCategoryId={review.suggestedCategoryId}
               selectedCandidates={review.selectedCandidates}

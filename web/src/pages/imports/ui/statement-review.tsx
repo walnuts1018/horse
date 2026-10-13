@@ -1,4 +1,10 @@
-import { yen, type DocumentReview, type StatementEntry } from "../model/imports";
+import {
+  statementConfirmationIssue,
+  statementSourceReference,
+  yen,
+  type DocumentReview,
+  type StatementEntry,
+} from "../model/imports";
 
 export function StatementReview({
   document,
@@ -23,11 +29,10 @@ export function StatementReview({
         </div>
       </div>
       {statements.map((entry) => {
-        const reference = entry.transactionId
-          ? `transaction:${entry.transactionId}`
-          : `row:${entry.row}`;
+        const reference = statementSourceReference(entry);
         const key = `${document.id}:${reference}`;
         const confirmed = confirmedStatements.has(key);
+        const issue = statementConfirmationIssue(entry);
         return (
           <div
             className="statement-row"
@@ -43,15 +48,18 @@ export function StatementReview({
             </div>
             <div className="statement-row-action">
               <strong>{yen(entry.amount)}</strong>
-              {entry.kind === "CARD_PURCHASE" && (
-                <button
-                  className="text-button"
-                  disabled={pending || confirmed}
-                  onClick={() => onConfirm(entry)}
-                >
-                  {confirmed ? "追加済み" : "購入に追加"}
-                </button>
-              )}
+              {entry.kind === "CARD_PURCHASE" &&
+                (issue ? (
+                  <small>{issue}</small>
+                ) : (
+                  <button
+                    className="text-button"
+                    disabled={pending || confirmed}
+                    onClick={() => onConfirm(entry)}
+                  >
+                    {confirmed ? "追加済み" : "購入に追加"}
+                  </button>
+                ))}
             </div>
           </div>
         );
