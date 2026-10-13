@@ -115,7 +115,7 @@ func (b *nodeBatch) loadCatalogPlanningNodes(ctx context.Context) error {
 				if variant.Barcode.Valid {
 					barcode = new(variant.Barcode.V)
 				}
-				value.Target = &model.ProductVariant{ID: variant.ID.String(), HouseholdID: variant.HouseholdID.String(), ConceptID: variant.ConceptID.String(), Name: variant.Name, NormalizedName: variant.NormalizedName, Brand: new(variant.Brand), PackageSize: new(variant.PackageSize), Barcode: barcode, Archived: variant.Archived, Revision: int(variant.Revision)}
+				value.Target = &model.ProductVariant{ID: variant.ID.String(), HouseholdID: variant.HouseholdID.String(), ConceptID: variant.ConceptID.String(), Name: variant.Name, NormalizedName: variant.NormalizedName, Brand: optionalProductAttribute(variant.Brand), PackageSize: optionalProductAttribute(variant.PackageSize), Barcode: barcode, Archived: variant.Archived, Revision: int(variant.Revision)}
 			case rule.MerchantKey.Valid:
 				value.Target = model.MerchantAllocationRuleTarget{Name: rule.MerchantKey.V}
 			default:

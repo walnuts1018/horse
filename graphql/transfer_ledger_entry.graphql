@@ -1,0 +1,56 @@
+interface TransferLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+}
+
+type AdvanceTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+}
+
+type LoanTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+  loan: LoanBalance!
+}
+
+type RepaymentTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+  loan: LoanBalance!
+}
+
+type GiftTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+}

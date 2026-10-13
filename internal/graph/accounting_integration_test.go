@@ -745,6 +745,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if spending[0].CategoryID == nil || *spending[0].CategoryID != category.ID || spending[0].AmountYen != 700 {
 		t.Fatalf("category spending mismatch: %#v", spending[0])
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, generatedUUID(householdID))
 }
 
 func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing.T) {

@@ -210,7 +210,10 @@ export function App() {
       return;
     }
     const target = requestedHousehold;
-    if (currentHouseholdId.current === target.id) return;
+    if (currentHouseholdId.current === target.id) {
+      setHouseholdLoading(false);
+      return;
+    }
     let active = true;
     setHouseholdLoading(true);
     void read<{ household: Household }>(householdQuery, { id: target.id })

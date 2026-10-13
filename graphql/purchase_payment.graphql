@@ -1,0 +1,5 @@
+type PurchasePayment {
+  paymentAccountId: ID! @goField(forceResolver: true)
+  account: Account!
+  amountYen: Long!
+}

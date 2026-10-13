@@ -213,8 +213,8 @@ func loadAllocationRules(ctx context.Context, executor bob.Executor, householdID
 			}
 			value.Target = &model.ProductVariant{
 				ID: variant.ID.String(), HouseholdID: variant.HouseholdID.String(), ConceptID: variant.ConceptID.String(),
-				Name: variant.Name, NormalizedName: variant.NormalizedName, Brand: new(variant.Brand),
-				PackageSize: new(variant.PackageSize), Barcode: barcode, Archived: variant.Archived,
+				Name: variant.Name, NormalizedName: variant.NormalizedName, Brand: optionalProductAttribute(variant.Brand),
+				PackageSize: optionalProductAttribute(variant.PackageSize), Barcode: barcode, Archived: variant.Archived,
 				Revision: int(variant.Revision),
 			}
 		case rule.MerchantKey.Valid:
@@ -339,8 +339,8 @@ func loadAllocationRule(ctx context.Context, db *pgxpool.Pool, ruleID string) (*
 		}
 		result.Target = &model.ProductVariant{
 			ID: variant.ID.String(), HouseholdID: variant.HouseholdID.String(), ConceptID: variant.ConceptID.String(),
-			Name: variant.Name, NormalizedName: variant.NormalizedName, Brand: new(variant.Brand),
-			PackageSize: new(variant.PackageSize), Barcode: barcode, Archived: variant.Archived,
+			Name: variant.Name, NormalizedName: variant.NormalizedName, Brand: optionalProductAttribute(variant.Brand),
+			PackageSize: optionalProductAttribute(variant.PackageSize), Barcode: barcode, Archived: variant.Archived,
 			Revision: int(variant.Revision),
 		}
 	} else if rule.MerchantKey.Valid {

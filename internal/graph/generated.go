@@ -6292,6 +6292,16 @@ type CorrectPurchaseUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/correction_ledger_entry.graphql", Input: `type CorrectionLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  purchase: Purchase!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/create_account_mutation.graphql", Input: `extend type Mutation {
   createAccount(input: CreateAccountInput!): CreateAccountResult!
 }
@@ -6584,6 +6594,17 @@ type CreateTagUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/funding_ledger_entry.graphql", Input: `type FundingLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  member: Member!
+  pool: Pool! @goField(forceResolver: true)
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/funding_schedule.graphql", Input: `enum FundingScheduleCadence {
   MONTHLY
 }
@@ -6707,94 +6728,6 @@ extend type Query {
   amountYen: Long!
   currency: String!
   createdAt: DateTime!
-}
-
-type CorrectionLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  purchase: Purchase!
-}
-
-type FundingLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  member: Member!
-  pool: Pool! @goField(forceResolver: true)
-}
-
-type PurchaseLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  purchase: Purchase!
-}
-
-interface TransferLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  fromMember: Member!
-  toMember: Member!
-}
-
-type AdvanceTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  fromMember: Member!
-  toMember: Member!
-}
-
-type LoanTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  fromMember: Member!
-  toMember: Member!
-  loan: LoanBalance!
-}
-
-type RepaymentTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  fromMember: Member!
-  toMember: Member!
-  loan: LoanBalance!
-}
-
-type GiftTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  fromMember: Member!
-  toMember: Member!
 }
 
 type LedgerEdge {
@@ -7110,12 +7043,6 @@ enum PurchaseOrigin {
   UNKNOWN
 }
 
-type PurchasePayment {
-  paymentAccountId: ID! @goField(forceResolver: true)
-  account: Account!
-  amountYen: Long!
-}
-
 type PurchaseEdge {
   cursor: String!
   node: Purchase!
@@ -7211,6 +7138,22 @@ type PrintedUnitPrice {
 type EffectiveUnitPrice {
   numeratorYen: String!
   denominator: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/purchase_ledger_entry.graphql", Input: `type PurchaseLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  purchase: Purchase!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/purchase_payment.graphql", Input: `type PurchasePayment {
+  paymentAccountId: ID! @goField(forceResolver: true)
+  account: Account!
+  amountYen: Long!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/purchase_subscription.graphql", Input: `type PurchaseChange {
@@ -7720,6 +7663,63 @@ type TagConnection {
 
 extend type Query {
   tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean! = false, after: String, before: String, first: Int, last: Int): TagConnection!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/transfer_ledger_entry.graphql", Input: `interface TransferLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+}
+
+type AdvanceTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+}
+
+type LoanTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+  loan: LoanBalance!
+}
+
+type RepaymentTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+  loan: LoanBalance!
+}
+
+type GiftTransferLedgerEntry implements LedgerEntry & TransferLedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/update_budget_mutation.graphql", Input: `extend type Mutation {

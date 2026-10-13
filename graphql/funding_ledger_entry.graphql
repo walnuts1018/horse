@@ -1,0 +1,10 @@
+type FundingLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  member: Member!
+  pool: Pool! @goField(forceResolver: true)
+}

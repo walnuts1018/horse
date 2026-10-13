@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
@@ -139,6 +141,48 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 			t.Fatalf("account analysis did not reflect its side of the transfer: account=%s analysis=%#v", expected.accountID, analysis)
 		}
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, generatedUUID(household.ID))
+}
+
+func assertHouseholdJournalsBalance(t *testing.T, ctx context.Context, db *pgxpool.Pool, householdID gofrsuuid.UUID) {
+	t.Helper()
+	executor := bobpgx.NewPool(db)
+	journals, err := models.Journals.Query(sm.Where(models.Journals.Columns.HouseholdID.EQ(psql.Arg(householdID)))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(journals) == 0 {
+		t.Fatal("household has no journals to verify")
+	}
+	type journalBalance struct {
+		debit, credit int64
+		entries       int
+	}
+	journalIDs := make([]bob.Expression, 0, len(journals))
+	balances := make(map[gofrsuuid.UUID]*journalBalance, len(journals))
+	for _, journal := range journals {
+		journalIDs = append(journalIDs, psql.Arg(journal.ID))
+		balances[journal.ID] = &journalBalance{}
+	}
+	entries, err := models.JournalEntries.Query(sm.Where(models.JournalEntries.Columns.JournalID.In(journalIDs...))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		balance := balances[entry.JournalID]
+		balance.debit += entry.DebitYen
+		balance.credit += entry.CreditYen
+		balance.entries++
+	}
+	for _, journal := range journals {
+		balance := balances[journal.ID]
+		if balance.debit != balance.credit {
+			t.Errorf("journal %s (%s) is unbalanced: debit=%d credit=%d", journal.ID, journal.SourceKind, balance.debit, balance.credit)
+		}
+		if balance.entries == 0 {
+			t.Errorf("journal %s (%s) has no entries", journal.ID, journal.SourceKind)
+		}
+	}
 }
 
 func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeriod(t *testing.T) {
@@ -262,6 +306,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	if len(correctionEntries) != 2 || correctionDebits != 100 || correctionCredits != 100 {
 		t.Fatalf("correction journal must balance at the refund amount: entries=%#v debits=%d credits=%d", correctionEntries, correctionDebits, correctionCredits)
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, generatedUUID(household.ID))
 	ledgerEntries, err := models.LedgerEntries.Query(sm.Where(psql.And(
 		models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.LedgerEntries.Columns.Kind.EQ(psql.Arg(sourceKindCorrection)),
@@ -445,4 +490,5 @@ func TestConcurrentLoanRepaymentsCannotExceedPrincipal(t *testing.T) {
 	if len(repayments) != 1 || repaid != 60 || repaid > 100 {
 		t.Fatalf("repayment rows must remain within the loan principal: rows=%#v total=%d", repayments, repaid)
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, householdUUID)
 }
