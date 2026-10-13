@@ -1,4 +1,4 @@
-import { commitMutation, fetchQuery, useMutation } from "react-relay";
+import { commitMutation, fetchQuery } from "react-relay";
 import {
   Environment,
   Network,
@@ -9,7 +9,7 @@ import {
   type GraphQLResponse,
   type OperationType,
 } from "relay-runtime";
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 
 export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL";
 export type PoolFundingShare = { memberId: string; memberName: string; weight: number };
@@ -486,34 +486,55 @@ export async function executeGraphql<T, V extends OperationType["variables"]>(
 }
 
 export function useGraphqlMutation<T = unknown>(operation: GraphQLTaggedNode) {
-  const [commit, isInFlight] = useMutation(operation as never);
   const name = (operation as { params?: { name?: string } }).params?.name;
+  const inFlightRef = useRef(0);
+  const [inFlightCount, setInFlightCount] = useState(0);
   const mutate = useCallback(
     (variables: Record<string, unknown>) =>
-      new Promise<T>((resolve, reject) =>
-        commit({
-          variables: normalizePurchaseVariables(name, variables) as never,
-          onCompleted: (response: unknown, errors?: readonly { message: string }[] | null) => {
-            if (errors?.length) {
-              reject(new ApiError(errors[0].message));
-              return;
-            }
-            try {
-              resolve(
-                normalizeGraphQLValue(
-                  unwrapMutationResults(response as Record<string, unknown>),
-                ) as T,
-              );
-            } catch (reason) {
+      new Promise<T>((resolve, reject) => {
+        inFlightRef.current += 1;
+        setInFlightCount(inFlightRef.current);
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          inFlightRef.current -= 1;
+          setInFlightCount(inFlightRef.current);
+        };
+        try {
+          commitMutation(getRelayEnvironment(), {
+            mutation: operation,
+            variables: normalizePurchaseVariables(name, variables) as never,
+            onCompleted: (response, errors) => {
+              finish();
+              if (errors?.length) {
+                const error = errors[0] as Error & { extensions?: { code?: string } };
+                reject(new ApiError(error.message, error.extensions?.code));
+                return;
+              }
+              try {
+                resolve(
+                  normalizeGraphQLValue(
+                    unwrapMutationResults(response as Record<string, unknown>),
+                  ) as T,
+                );
+              } catch (reason) {
+                reject(reason);
+              }
+            },
+            onError: (reason) => {
+              finish();
               reject(reason);
-            }
-          },
-          onError: reject,
-        }),
-      ),
-    [commit, name],
+            },
+          });
+        } catch (reason) {
+          finish();
+          reject(reason);
+        }
+      }),
+    [name, operation],
   );
-  return { mutate, isInFlight };
+  return { mutate, isInFlight: inFlightCount > 0 };
 }
 
 function normalizePurchaseVariables(

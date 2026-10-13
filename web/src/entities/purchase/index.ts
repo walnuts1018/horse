@@ -5,6 +5,7 @@ export type { PurchaseChangesSubscription } from "../../shared/api/__generated__
 export type { PurchaseListFragment$key } from "../../shared/api/__generated__/PurchaseListFragment.graphql";
 export type { BulkPurchaseItemChangedField } from "../../shared/api/__generated__/BulkUpdatePurchaseItemsMutation.graphql";
 export type { PurchaseChangedField } from "../../shared/api/__generated__/UpdatePurchaseMutation.graphql";
+export type { BulkPurchaseChangedField } from "../../shared/api/__generated__/BulkUpdatePurchasesMutation.graphql";
 export type { PurchaseItemChangedField } from "../../shared/api/__generated__/UpdatePurchaseItemMutation.graphql";
 export {
   bulkUpdatePurchaseItemsMutation,
