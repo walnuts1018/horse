@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Activity, ArrowLeftRight, Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import {
+  makeIdempotencyKey,
   readGraphql,
   isPersonalPool,
   isSharedPool,
@@ -66,6 +67,16 @@ import {
   recordExternalIncomeMutation,
 } from "../../../entities/ledger";
 import { InlineError } from "../../../shared/ui";
+import {
+  clearAccountIncomeIntent,
+  clearAccountMovementIntent,
+  getAccountIncomeIntent,
+  getAccountMovementIntent,
+  saveAccountIncomeIntent,
+  saveAccountMovementIntent,
+  type AccountIncomeIntent,
+  type AccountMovementIntent,
+} from "../model/pending-account-mutations";
 
 const currentMonth = () =>
   new Intl.DateTimeFormat("en-CA", {
@@ -75,6 +86,10 @@ const currentMonth = () =>
   }).format(new Date());
 const localDateTime = () => {
   const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
+  return date.toISOString().slice(0, 16);
+};
+const localDateTimeFromIso = (value: string) => {
+  const date = new Date(Date.parse(value) - new Date().getTimezoneOffset() * 60_000);
   return date.toISOString().slice(0, 16);
 };
 const yen = (amount: number) =>
@@ -256,6 +271,9 @@ export function SettingsPage({
   const [movementAmount, setMovementAmount] = useState("");
   const [movementDescription, setMovementDescription] = useState("");
   const [movementDate, setMovementDate] = useState(localDateTime);
+  const [pendingIncomeIntent, setPendingIncomeIntent] = useState<AccountIncomeIntent | null>(null);
+  const [pendingMovementIntent, setPendingMovementIntent] =
+    useState<AccountMovementIntent | null>(null);
   useEffect(() => {
     onUnsavedChanges(pending || dirtyForms.size > 0);
   }, [dirtyForms, onUnsavedChanges, pending]);
@@ -610,6 +628,30 @@ export function SettingsPage({
     };
   }, [household.id, budgetPeriod]);
   useEffect(() => {
+    const incomeIntent = getAccountIncomeIntent(household.id);
+    if (incomeIntent) {
+      setPendingIncomeIntent(incomeIntent);
+      setIncomeAccountId(incomeIntent.input.accountId);
+      setIncomeAmount(String(incomeIntent.input.amountYen));
+      setIncomeDate(localDateTimeFromIso(incomeIntent.input.occurredAt));
+      setIncomeDescription(incomeIntent.input.description);
+    } else {
+      setPendingIncomeIntent(null);
+    }
+    const movementIntent = getAccountMovementIntent(household.id);
+    if (movementIntent) {
+      setPendingMovementIntent(movementIntent);
+      setMovementKind(movementIntent.input.kind);
+      setMovementFrom(movementIntent.input.fromAccountId);
+      setMovementTo(movementIntent.input.toAccountId);
+      setMovementAmount(String(movementIntent.input.amountYen));
+      setMovementDate(localDateTimeFromIso(movementIntent.input.occurredAt));
+      setMovementDescription(movementIntent.input.description);
+    } else {
+      setPendingMovementIntent(null);
+    }
+  }, [household.id]);
+  useEffect(() => {
     const sourceAccounts = household.accounts.filter((account) =>
       movementKind === "TRANSFER" ? account.kind !== "CARD" : account.kind === "BANK",
     );
@@ -834,22 +876,36 @@ export function SettingsPage({
   };
   const saveMovement = async (event: FormEvent) => {
     event.preventDefault();
-    if (!movementFrom || !movementTo || movementFrom === movementTo || !Number(movementAmount))
+    if (
+      !pendingMovementIntent &&
+      (!movementFrom || !movementTo || movementFrom === movementTo || !Number(movementAmount))
+    )
       return;
     setPending(true);
     try {
-      await readGraphql(recordAccountMovementMutation, {
-        input: {
-          householdId: household.id,
-          kind: movementKind,
-          fromAccountId: movementFrom,
-          toAccountId: movementTo,
-          amountYen: Number(movementAmount),
-          occurredAt: new Date(movementDate).toISOString(),
-          description: movementDescription.trim(),
-          idempotencyKey: crypto.randomUUID(),
-        },
-      });
+      const intent =
+        pendingMovementIntent ??
+        (() => {
+          const idempotencyKey = makeIdempotencyKey();
+          return {
+            idempotencyKey,
+            input: {
+              householdId: household.id,
+              kind: movementKind,
+              fromAccountId: movementFrom,
+              toAccountId: movementTo,
+              amountYen: Number(movementAmount),
+              occurredAt: new Date(movementDate).toISOString(),
+              description: movementDescription.trim(),
+              idempotencyKey,
+            },
+          };
+        })();
+      saveAccountMovementIntent(household.id, intent);
+      setPendingMovementIntent(intent);
+      await readGraphql(recordAccountMovementMutation, { input: intent.input });
+      clearAccountMovementIntent(household.id);
+      setPendingMovementIntent(null);
       markFormClean("account-movement");
       setMovementAmount("");
       setMovementDescription("");
@@ -868,19 +924,30 @@ export function SettingsPage({
   };
   const saveIncome = async (event: FormEvent) => {
     event.preventDefault();
-    if (!incomeAccountId || !Number(incomeAmount)) return;
+    if (!pendingIncomeIntent && (!incomeAccountId || !Number(incomeAmount))) return;
     setPending(true);
     try {
-      await readGraphql(recordExternalIncomeMutation, {
-        input: {
-          householdId: household.id,
-          accountId: incomeAccountId,
-          amountYen: Number(incomeAmount),
-          occurredAt: new Date(incomeDate).toISOString(),
-          description: incomeDescription.trim(),
-          idempotencyKey: crypto.randomUUID(),
-        },
-      });
+      const intent =
+        pendingIncomeIntent ??
+        (() => {
+          const idempotencyKey = makeIdempotencyKey();
+          return {
+            idempotencyKey,
+            input: {
+              householdId: household.id,
+              accountId: incomeAccountId,
+              amountYen: Number(incomeAmount),
+              occurredAt: new Date(incomeDate).toISOString(),
+              description: incomeDescription.trim(),
+              idempotencyKey,
+            },
+          };
+        })();
+      saveAccountIncomeIntent(household.id, intent);
+      setPendingIncomeIntent(intent);
+      await readGraphql(recordExternalIncomeMutation, { input: intent.input });
+      clearAccountIncomeIntent(household.id);
+      setPendingIncomeIntent(null);
       markFormClean("account-income");
       setIncomeAmount("");
       setIncomeDescription("");
@@ -2344,6 +2411,7 @@ export function SettingsPage({
               入金先
               <select
                 value={incomeAccountId}
+                disabled={pending || Boolean(pendingIncomeIntent)}
                 onChange={(event) => setIncomeAccountId(event.target.value)}
                 required
               >
@@ -2361,6 +2429,7 @@ export function SettingsPage({
               aria-label="入金額"
               type="number"
               min="1"
+              disabled={pending || Boolean(pendingIncomeIntent)}
               value={incomeAmount}
               onChange={(event) => setIncomeAmount(event.target.value)}
               placeholder="入金額"
@@ -2369,18 +2438,23 @@ export function SettingsPage({
             <input
               aria-label="入金日時"
               type="datetime-local"
+              disabled={pending || Boolean(pendingIncomeIntent)}
               value={incomeDate}
               onChange={(event) => setIncomeDate(event.target.value)}
               required
             />
             <input
               value={incomeDescription}
+              disabled={pending || Boolean(pendingIncomeIntent)}
               onChange={(event) => setIncomeDescription(event.target.value)}
               placeholder="入金の摘要"
             />
-            <button className="button button-soft" disabled={pending || !incomeAccountId}>
+            <button
+              className="button button-soft"
+              disabled={pending || (!pendingIncomeIntent && !incomeAccountId)}
+            >
               <Plus size={15} />
-              入金を記録
+              {pendingIncomeIntent ? "入金を再試行" : "入金を記録"}
             </button>
           </form>
           <form
@@ -2390,6 +2464,7 @@ export function SettingsPage({
           >
             <select
               value={movementKind}
+              disabled={pending || Boolean(pendingMovementIntent)}
               onChange={(event) =>
                 setMovementKind(event.target.value as "TRANSFER" | "CARD_BILL_PAYMENT")
               }
@@ -2400,6 +2475,7 @@ export function SettingsPage({
             <select
               aria-label="移動元"
               value={movementFrom}
+              disabled={pending || Boolean(pendingMovementIntent)}
               onChange={(event) => setMovementFrom(event.target.value)}
               required
             >
@@ -2417,6 +2493,7 @@ export function SettingsPage({
             <select
               aria-label="移動先"
               value={movementTo}
+              disabled={pending || Boolean(pendingMovementIntent)}
               onChange={(event) => setMovementTo(event.target.value)}
               required
             >
@@ -2435,6 +2512,7 @@ export function SettingsPage({
               aria-label="移動額"
               type="number"
               min="1"
+              disabled={pending || Boolean(pendingMovementIntent)}
               value={movementAmount}
               onChange={(event) => setMovementAmount(event.target.value)}
               placeholder="金額"
@@ -2443,21 +2521,27 @@ export function SettingsPage({
             <input
               aria-label="移動日時"
               type="datetime-local"
+              disabled={pending || Boolean(pendingMovementIntent)}
               value={movementDate}
               onChange={(event) => setMovementDate(event.target.value)}
               required
             />
             <input
               value={movementDescription}
+              disabled={pending || Boolean(pendingMovementIntent)}
               onChange={(event) => setMovementDescription(event.target.value)}
               placeholder="摘要"
             />
             <button
               className="button button-primary"
-              disabled={pending || !movementFrom || !movementTo || movementFrom === movementTo}
+              disabled={
+                pending ||
+                (!pendingMovementIntent &&
+                  (!movementFrom || !movementTo || movementFrom === movementTo))
+              }
             >
               <Check size={15} />
-              記録
+              {pendingMovementIntent ? "同じ移動を再試行" : "記録"}
             </button>
           </form>
           <div className="settings-rows">
