@@ -1,7 +1,1 @@
-~/ghq/github.com/walnuts1018/picca を参考に、
-
-- Dockerfileを最新機能で改善する
-- GitHub ActionsでImageをビルドしてpushできるようにする。
-  - ただし、releaseとは関係なく、mainブランチpush時に自動ビルドしてpushする。GitHub TagとかReleaseによるバージョン管理は不要。ただしimage tagはいい感じにsemverっぽくする（renovate用）
-- push時、attestation/provenance/sbomなども適切につける
-- nodeとgoのimageをまとめるな。goの方はdistroless debianにできる。nodeもdistrolessにできるかも？
+Webの実行イメージをpiccaと同じNode 24のdistrolessに変更した。CIでのイメージ公開、infraへのdigest反映、公開Podの起動とHTTP応答を確認後、この項目を削除する。
