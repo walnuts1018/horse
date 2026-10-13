@@ -286,10 +286,10 @@ type AccountOpeningBalanceInput struct {
 }
 
 type Allocation struct {
-	PoolID    string  `json:"poolId"`
-	PoolName  *string `json:"poolName,omitempty"`
-	Weight    Long    `json:"weight"`
-	AmountYen *Long   `json:"amountYen,omitempty"`
+	PoolID    string `json:"poolId"`
+	PoolName  string `json:"poolName"`
+	Weight    Long   `json:"weight"`
+	AmountYen *Long  `json:"amountYen,omitempty"`
 }
 
 type AllocationInput struct {

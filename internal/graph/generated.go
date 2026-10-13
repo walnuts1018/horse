@@ -5123,7 +5123,7 @@ extend type Query {
 `, BuiltIn: false},
 	{Name: "../../graphql/allocation.graphql", Input: `type Allocation {
   poolId: ID! @goField(forceResolver: true)
-  poolName: String
+  poolName: String!
   weight: Long!
   amountYen: Long
 }
@@ -5378,6 +5378,16 @@ input CorrectPurchaseInput {
 type CorrectPurchaseUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/correction_ledger_entry.graphql", Input: `type CorrectionLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  purchase: Purchase!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/create_account_mutation.graphql", Input: `extend type Mutation {
@@ -5651,6 +5661,17 @@ type CreateTagUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/funding_ledger_entry.graphql", Input: `type FundingLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  member: Member!
+  pool: Pool!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/funding_schedule.graphql", Input: `enum FundingScheduleCadence {
   MONTHLY
 }
@@ -5740,57 +5761,6 @@ extend type Query {
   amountYen: Long!
   currency: String!
   createdAt: DateTime!
-}
-
-type CorrectionLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  purchase: Purchase!
-}
-
-type FundingLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  member: Member!
-  pool: Pool!
-}
-
-type PurchaseLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  purchase: Purchase!
-}
-
-type TransferLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  fromMember: Member!
-  toMember: Member!
-  transferKind: TransferKind!
-  loan: LoanBalance
-}
-
-enum TransferKind {
-  ADVANCE
-  LOAN
-  REPAYMENT
-  GIFT
 }
 
 type LedgerEdge {
@@ -6091,6 +6061,16 @@ input PrintedUnitPriceInput {
 type EffectiveUnitPrice {
   numeratorYen: String!
   denominator: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/purchase_ledger_entry.graphql", Input: `type PurchaseLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  purchase: Purchase!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/purchase_subscription.graphql", Input: `type PurchaseChange {
@@ -6544,6 +6524,26 @@ extend type Query {
 
 extend type Query {
   tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/transfer_ledger_entry.graphql", Input: `type TransferLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+  transferKind: TransferKind!
+  loan: LoanBalance
+}
+
+enum TransferKind {
+  ADVANCE
+  LOAN
+  REPAYMENT
+  GIFT
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/unmatched_observation.graphql", Input: `type UnmatchedObservation implements Node {
@@ -11616,11 +11616,11 @@ func (ec *executionContext) _Allocation_poolName(ctx context.Context, field grap
 			return obj.PoolName, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
 		},
 		true,
-		false,
+		true,
 	)
 }
 func (ec *executionContext) fieldContext_Allocation_poolName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -32770,7 +32770,7 @@ func (ec *executionContext) _Allocation(ctx context.Context, sel ast.SelectionSe
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "poolName":
 			out.Values[i] = ec._Allocation_poolName(ctx, field, obj)
-			if out.Values[i] == graphql.RequiredNull {
+			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "weight":

@@ -67,8 +67,6 @@ func timeString(value time.Time) model.DateTime {
 	return model.DateTime(value.UTC().Format(time.RFC3339Nano))
 }
 
-func stringValue[T ~string](value T) string { return string(value) }
-
 func stringPointer[T ~string](value *T) *string {
 	if value == nil {
 		return nil
@@ -255,9 +253,8 @@ func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*
 		if pool == nil {
 			continue
 		}
-		poolName := pool.Name
 		result.DefaultAllocation = append(result.DefaultAllocation, &model.Allocation{
-			PoolID: pool.ID, PoolName: &poolName, Weight: graphLong(allocation.Weight),
+			PoolID: pool.ID, PoolName: pool.Name, Weight: graphLong(allocation.Weight),
 		})
 	}
 	return &result, nil
@@ -431,10 +428,9 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 				if storedAllocation.R.Pool == nil {
 					return nil, fmt.Errorf("item allocation for item %s has no pool", storedItem.ID)
 				}
-				poolName := storedAllocation.R.Pool.Name
 				amount := graphLong(storedAllocation.AmountYen)
 				item.Allocations = append(item.Allocations, &model.Allocation{
-					PoolID: storedAllocation.PoolID.String(), PoolName: &poolName,
+					PoolID: storedAllocation.PoolID.String(), PoolName: storedAllocation.R.Pool.Name,
 					Weight: graphLong(storedAllocation.Weight), AmountYen: &amount,
 				})
 			}

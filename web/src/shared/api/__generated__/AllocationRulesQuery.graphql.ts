@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<13155522404b4de2b2a8756405a8e64d>>
+ * @generated SignedSource<<03b92befa1399e7742c0391519bd50da>>
  * @lightSyntaxTransform
  */
 
@@ -22,7 +22,7 @@ export type AllocationRulesQuery$data = {
         readonly allocations: ReadonlyArray<{
           readonly amountYen: any | null | undefined;
           readonly poolId: string;
-          readonly poolName: string | null | undefined;
+          readonly poolName: string;
           readonly weight: any;
         }>;
         readonly categoryId: string | null | undefined;

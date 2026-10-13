@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8e80f8338ddd303937543f5de70dbd9e>>
+ * @generated SignedSource<<302262b04802eed1218a7b02a6db5362>>
  * @lightSyntaxTransform
  */
 
@@ -50,7 +50,7 @@ export type UpdatePurchaseItemMutation$data = {
       readonly allocations: ReadonlyArray<{
         readonly amountYen: any | null | undefined;
         readonly poolId: string;
-        readonly poolName: string | null | undefined;
+        readonly poolName: string;
         readonly weight: any;
       }>;
       readonly amountYen: any;

@@ -1,6 +1,6 @@
 type Allocation {
   poolId: ID! @goField(forceResolver: true)
-  poolName: String
+  poolName: String!
   weight: Long!
   amountYen: Long
 }

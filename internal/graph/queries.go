@@ -270,8 +270,7 @@ func loadAllocationRule(ctx context.Context, db *pgxpool.Pool, ruleID string) (*
 		if weight.R.Pool == nil {
 			return nil, fmt.Errorf("allocation rule weight %s has no pool", weight.PoolID)
 		}
-		poolName := weight.R.Pool.Name
-		result.Allocations = append(result.Allocations, &model.Allocation{PoolID: weight.PoolID.String(), PoolName: &poolName, Weight: graphLong(weight.Weight)})
+		result.Allocations = append(result.Allocations, &model.Allocation{PoolID: weight.PoolID.String(), PoolName: weight.R.Pool.Name, Weight: graphLong(weight.Weight)})
 	}
 	return result, nil
 }

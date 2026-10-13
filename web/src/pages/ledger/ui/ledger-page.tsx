@@ -1609,13 +1609,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                       {household.categories.find((category) => category.id === item.categoryId)
                         ?.name ?? "未分類"}
                       {item.allocations.length > 0 &&
-                        ` · ${item.allocations
-                          .map(
-                            (allocation) =>
-                              household.pools.find((pool) => pool.id === allocation.poolId)?.name ??
-                              allocation.poolName,
-                          )
-                          .join("・")}`}
+                        ` · ${item.allocations.map((allocation) => allocation.poolName).join("・")}`}
                       {item.tags.length > 0 && ` · ${item.tags.map((tag) => tag.name).join("・")}`}
                     </span>
                   </div>
@@ -2211,10 +2205,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                             <b>{yen(item.amountYen)}</b>
                             <span>
                               {item.allocations
-                                .map(
-                                  (allocation) =>
-                                    `${allocation.poolName ?? household.pools.find((pool) => pool.id === allocation.poolId)?.name ?? ""} ${allocation.weight}`,
-                                )
+                                .map((allocation) => `${allocation.poolName} ${allocation.weight}`)
                                 .join(" / ")}
                             </span>
                             {item.tags.length > 0 && (

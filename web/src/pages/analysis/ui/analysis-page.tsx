@@ -93,7 +93,6 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
         purchase.occurredAt,
       );
       for (const allocation of item.allocations) {
-        const pool = household.pools.find((candidate) => candidate.id === allocation.poolId);
         const amount =
           allocation.amountYen ??
           Math.round(
@@ -103,7 +102,7 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
         add(
           "pool",
           allocation.poolId,
-          pool?.name ?? allocation.poolName ?? "プール",
+          allocation.poolName,
           amount,
           month,
           purchase.occurredAt,

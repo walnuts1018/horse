@@ -25,7 +25,7 @@ export type Pool = {
 };
 export type Account = { id: string; name: string; kind: string; poolId?: string | null };
 export type Category = { id: string; name: string; archived?: boolean };
-export type Allocation = { poolId: string; poolName?: string; weight: number; amountYen?: number };
+export type Allocation = { poolId: string; poolName: string; weight: number; amountYen?: number };
 export type Tag = {
   id: string;
   householdId: string;

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4a5a1714fc702ef750a82a6f045b101b>>
+ * @generated SignedSource<<d1945caa8c2b0d57f95017b786c3a59a>>
  * @lightSyntaxTransform
  */
 
@@ -41,7 +41,7 @@ export type PurchaseListFragment$data = {
           readonly allocations: ReadonlyArray<{
             readonly amountYen: any | null | undefined;
             readonly poolId: string;
-            readonly poolName: string | null | undefined;
+            readonly poolName: string;
             readonly weight: any;
           }>;
           readonly amountYen: any;

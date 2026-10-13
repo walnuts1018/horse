@@ -7,57 +7,6 @@ interface LedgerEntry implements Node {
   createdAt: DateTime!
 }
 
-type CorrectionLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  purchase: Purchase!
-}
-
-type FundingLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  member: Member!
-  pool: Pool!
-}
-
-type PurchaseLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  purchase: Purchase!
-}
-
-type TransferLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  fromMember: Member!
-  toMember: Member!
-  transferKind: TransferKind!
-  loan: LoanBalance
-}
-
-enum TransferKind {
-  ADVANCE
-  LOAN
-  REPAYMENT
-  GIFT
-}
-
 type LedgerEdge {
   cursor: String!
   node: LedgerEntry!
