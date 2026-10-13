@@ -8,24 +8,20 @@
 
 | ファイル | 行数 | `useState`の呼び出し数 |
 | --- | ---: | ---: |
-| [settings-page.tsx](../../web/src/pages/settings/ui/settings-page.tsx) | 410 | 10 |
-| [ledger-page.tsx](../../web/src/pages/ledger/ui/ledger-page.tsx) | 1,149 | 3 |
-| [imports-page.tsx](../../web/src/pages/imports/ui/imports-page.tsx) | 866 | 8 |
-| [purchase-create-page.tsx](../../web/src/pages/purchase-create/ui/purchase-create-page.tsx) | 497 | 10 |
-| [settlement-page.tsx](../../web/src/pages/settlement/ui/settlement-page.tsx) | 596 | 19 |
+| [settings-page.tsx](../../web/src/pages/settings/ui/settings-page.tsx) | 149 | 0 |
+| [ledger-page.tsx](../../web/src/pages/ledger/ui/ledger-page.tsx) | 1,148 | 3 |
+| [imports-page.tsx](../../web/src/pages/imports/ui/imports-page.tsx) | 756 | 7 |
+| [purchase-create-page.tsx](../../web/src/pages/purchase-create/ui/purchase-create-page.tsx) | 498 | 9 |
+| [settlement-page.tsx](../../web/src/pages/settlement/ui/settlement-page.tsx) | 287 | 8 |
 | [analysis-page.tsx](../../web/src/pages/analysis/ui/analysis-page.tsx) | 647 | 10 |
 
 親画面には画面遷移、検索条件、読込結果の調整が残っています。特に`LedgerPage`、`ImportsPage`、`SettlementPage`は一覧と複数の操作状態を持つため、次の分割では機能単位で変更できる範囲を基準にします。
 
-## 2. 高優先：Relay Mutationの型境界
-
-read pathとアプリ起動時のQueryはRelay生成型とEntity mapperを使います。一方、`useGraphqlMutation()`は変数を`Record<string, unknown>`で受け取り、結果をジェネリック型へcastします。成功unionのunwrapとLedgerEntryの`__typename`変換も共通APIが担当しています。残るMutationを型付きEntity APIへ移し、特定のGraphQL operationを前提とする変換を共有基盤から取り除く必要があります。
-
-## 3. 中優先：画面固有CSSと重要な処理の境界
+## 2. 中優先：画面固有CSSと重要な処理の境界
 
 [global.css](../../web/src/app/styles/global.css)は4,194行あり、画面固有規則が残っています。既存の画面別CSS moduleへ移せる規則を引き続き確認します。`web/src`にはフロントエンドのテストランナーがなく、購入データ変換やOutboxなどの重要な純粋処理を安定して検証する手段がありません。
 
-## 4. 低優先：GraphQLの購入読み込みが広い関連データを組み立てる
+## 3. 低優先：GraphQLの購入読み込みが広い関連データを組み立てる
 
 [loadPurchases](../../internal/graph/helpers.go)は購入に対し、口座、証拠、確認、品目、支払、訂正、品目配賦、タグなどをまとめて読み込み、GraphQLモデルを構築します。Bobのバッチローダーを利用してN+1は避けていますが、一覧で一部のフィールドしか使わない場合にも広い関連データを読み込みます。
 
@@ -36,7 +32,6 @@ read pathとアプリ起動時のQueryはRelay生成型とEntity mapperを使い
 | 優先 | 対象 |
 | --- | --- |
 | P1 | 大きなReact画面の機能・状態分割 |
-| P1 | Relay Mutationの型境界 |
 | P2 | 画面固有CSSと重要な処理の境界 |
 | P3 | 必要性を測定した後の購入読み取りモデル分割 |
 

@@ -46,7 +46,7 @@ export function ManageAccountActivity({
         <ArrowLeftRight size={18} />
       </div>
       <form
-        className="allocation-rule-form"
+        className={`allocation-rule-form ${styles.accountActivityForm}`}
         data-unsaved-id="account-income"
         onSubmit={(event) => void activity.saveIncome(event)}
       >
@@ -103,7 +103,7 @@ export function ManageAccountActivity({
         </button>
       </form>
       <form
-        className="allocation-rule-form"
+        className={`allocation-rule-form ${styles.accountActivityForm}`}
         data-unsaved-id="account-movement"
         onSubmit={(event) => void activity.saveMovement(event)}
       >

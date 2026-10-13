@@ -226,3 +226,10 @@
     font-size: 10px;
   }
 }
+
+@media (width <= 760px) {
+  .accountActivityForm > input,
+  .accountActivityForm > select {
+    min-height: 44px;
+  }
+}

@@ -1,12 +1,9 @@
 import styles from "./settings-page.module.css";
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
-import { Activity, Check, Plus } from "lucide-react";
-import { type Household, type AccountBalance } from "../../../shared/api";
-import {
-  createCategory as createCategoryMutation,
-  setCategoryArchived as setCategoryArchivedMutation,
-  setDefaultAllocation as setDefaultAllocationMutation,
-} from "../api/category-management";
+import type { Household } from "../../../shared/api";
+import { useSettingsNavigation } from "../model/settings-navigation";
+import { useSettingsChangeTracking } from "../model/settings-change-tracking";
+import { useSettingsAccountBalances } from "../model/account-balances";
+import { useSettingsMutations } from "../model/settings-mutations";
 import { ManageHouseholdInvitations } from "./manage-household-invitations";
 import { ManageBudgets } from "./manage-budgets";
 import { ManageRecurringExpenses } from "./manage-recurring-expenses";
@@ -15,23 +12,10 @@ import { ViewAccountBalanceHistory } from "./view-account-balance-history";
 import { ManageAccountActivity } from "./manage-account-activity";
 import { ManageAllocationCatalog } from "./manage-allocation-catalog";
 import { ManageAccountSettings } from "./manage-account-settings";
-import { readAccountBalances } from "../api/read-account-balances";
-
-type SettingsTab = "accounts" | "allocation" | "catalog" | "planning" | "members";
-
-const settingsTabs: { id: SettingsTab; label: string }[] = [
-  { id: "accounts", label: "口座" },
-  { id: "allocation", label: "負担" },
-  { id: "catalog", label: "分類" },
-  { id: "planning", label: "予算" },
-  { id: "members", label: "メンバー" },
-];
-
-const settingsTabByHash: Record<string, SettingsTab> = {
-  "pool-settings": "accounts",
-  "payment-source-settings": "accounts",
-  "default-allocation-settings": "allocation",
-};
+import { SettingsTabs } from "./settings-tabs";
+import { ManageCategoriesSection } from "./manage-categories-section";
+import { ManageDefaultAllocationSection } from "./manage-default-allocation-section";
+import { SettingsMembersSection } from "./settings-members-section";
 
 export function SettingsPage({
   household,
@@ -46,151 +30,19 @@ export function SettingsPage({
   onUnsavedChanges: (unsaved: boolean) => void;
   isOwner: boolean;
 }) {
-  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("accounts");
-  const [setupHashTarget, setSetupHashTarget] = useState<string | null>(null);
-  const [categoryName, setCategoryName] = useState("");
-  const [shareWeights, setShareWeights] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
-      household.pools.map((pool) => [pool.id, String(pool.defaultShareWeight || 1)]),
-    ),
-  );
-  const [pending, setPending] = useState(false);
-  const [allocationCatalogPending, setAllocationCatalogPending] = useState(false);
-  const [accountSettingsPending, setAccountSettingsPending] = useState(false);
-  const [accountActivityPending, setAccountActivityPending] = useState(false);
-  const [tagPending, setTagPending] = useState(false);
-  const [invitationPending, setInvitationPending] = useState(false);
-  const [dirtyForms, setDirtyForms] = useState<Set<string>>(() => new Set());
-  const [budgetPending, setBudgetPending] = useState(false);
-  const [recurringPending, setRecurringPending] = useState(false);
-  const [balances, setBalances] = useState<AccountBalance[]>([]);
-  const [balanceHistoryRevision, setBalanceHistoryRevision] = useState(0);
-  useEffect(() => {
-    onUnsavedChanges(
-      pending ||
-        accountActivityPending ||
-        allocationCatalogPending ||
-        accountSettingsPending ||
-        tagPending ||
-        budgetPending ||
-        recurringPending ||
-        invitationPending ||
-        dirtyForms.size > 0,
-    );
-  }, [
-    accountActivityPending,
-    allocationCatalogPending,
-    accountSettingsPending,
-    budgetPending,
-    dirtyForms,
-    invitationPending,
-    onUnsavedChanges,
-    pending,
-    recurringPending,
-    tagPending,
-  ]);
-  useEffect(() => () => onUnsavedChanges(false), [onUnsavedChanges]);
-  useEffect(() => {
-    const selectSettingsTabFromHash = () => {
-      const sectionId = window.location.hash.slice(1);
-      const tab = settingsTabByHash[sectionId];
-      if (!tab) {
-        setSetupHashTarget(null);
-        return;
-      }
-      setActiveSettingsTab(tab);
-      setSetupHashTarget(sectionId);
-    };
-    selectSettingsTabFromHash();
-    window.addEventListener("hashchange", selectSettingsTabFromHash);
-    return () => window.removeEventListener("hashchange", selectSettingsTabFromHash);
-  }, []);
-  useEffect(() => {
-    if (!setupHashTarget || settingsTabByHash[setupHashTarget] !== activeSettingsTab) return;
-    document.getElementById(setupHashTarget)?.scrollIntoView({ block: "start" });
-    setSetupHashTarget(null);
-  }, [activeSettingsTab, setupHashTarget]);
-  const markFormDirty = (formID: string) => {
-    setDirtyForms((current) => {
-      if (current.has(formID)) return current;
-      const next = new Set(current);
-      next.add(formID);
-      return next;
-    });
-  };
-  const markFormClean = (formID: string) => {
-    setDirtyForms((current) => {
-      if (!current.has(formID)) return current;
-      const next = new Set(current);
-      next.delete(formID);
-      return next;
-    });
-  };
-  const trackFormChange = (event: ChangeEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof Element)) return;
-    const form = event.target.closest<HTMLFormElement>("form[data-unsaved-id]");
-    if (form?.dataset.unsavedId) markFormDirty(form.dataset.unsavedId);
-  };
-  const refreshPlanning = async () => {
-    setBalances(await readAccountBalances(household.id));
-  };
-  useEffect(() => {
-    void refreshPlanning().catch((reason) => onNotice((reason as Error).message, "error"));
-  }, [household.id, isOwner]);
-  const saveMutation = async (mutation: () => Promise<void>, formID: string): Promise<boolean> => {
-    setPending(true);
-    try {
-      await mutation();
-      await onRefresh();
-      markFormClean(formID);
-      onNotice("設定を保存しました", "success");
-      return true;
-    } catch (reason) {
-      onNotice((reason as Error).message, "error");
-      return false;
-    } finally {
-      setPending(false);
-    }
-  };
-  const addCategory = (event: FormEvent) => {
-    event.preventDefault();
-    void saveMutation(
-      () =>
-        createCategoryMutation({
-          householdId: household.id,
-          name: categoryName.trim(),
-        }),
-      "create-category",
-    ).then((saved) => saved && setCategoryName(""));
-  };
-  const saveAllocation = (event: FormEvent) => {
-    event.preventDefault();
-    void saveMutation(
-      () =>
-        setDefaultAllocationMutation({
-          householdId: household.id,
-          allocations: household.pools
-            .map((pool) => ({
-              poolId: pool.id,
-              weight: Math.max(0, Number(shareWeights[pool.id]) || 0),
-            }))
-            .filter((item) => item.weight > 0),
-        }),
-      "default-allocation",
-    );
-  };
-  const archiveCategory = async (categoryId: string, archived: boolean) => {
-    setPending(true);
-    try {
-      await setCategoryArchivedMutation({ categoryId, archived });
-      await onRefresh();
-      onNotice(archived ? "カテゴリを非表示にしました" : "カテゴリを再表示しました", "success");
-    } catch (reason) {
-      onNotice((reason as Error).message, "error");
-    } finally {
-      setPending(false);
-    }
-  };
+  const navigation = useSettingsNavigation();
+  const changes = useSettingsChangeTracking(onUnsavedChanges);
+  const balances = useSettingsAccountBalances({ household, isOwner, onNotice });
+  const mutations = useSettingsMutations({
+    household,
+    onRefresh,
+    onNotice,
+    markFormClean: changes.markFormClean,
+    setPending: changes.setPending,
+  });
+  const activeTab = navigation.activeSettingsTab;
+  const isPending = changes.isPending;
+
   return (
     <>
       <div className="page-heading">
@@ -200,210 +52,97 @@ export function SettingsPage({
           <p>{household.name}の口座、決済元、カテゴリ</p>
         </div>
       </div>
-      <nav
-        aria-label="設定項目"
-        style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}
-      >
-        {settingsTabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={`button ${activeSettingsTab === tab.id ? "button-primary" : "button-soft"}`}
-            aria-pressed={activeSettingsTab === tab.id}
-            onClick={() => {
-              setActiveSettingsTab(tab.id);
-              setSetupHashTarget(null);
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-      <div className={styles.settingsLayout} onChangeCapture={trackFormChange}>
+      <SettingsTabs activeTab={activeTab} onSelect={navigation.selectTab} />
+      <div className={styles.settingsLayout} onChangeCapture={changes.trackFormChange}>
         <ManageAccountSettings
           household={household}
-          balances={balances}
-          hidden={activeSettingsTab !== "accounts"}
+          balances={balances.balances}
+          hidden={activeTab !== "accounts"}
           onRefresh={onRefresh}
-          onRefreshBalances={refreshPlanning}
+          onRefreshBalances={balances.refresh}
           onNotice={onNotice}
-          onFormClean={markFormClean}
-          onPendingChange={setAccountSettingsPending}
+          onFormClean={changes.markFormClean}
+          onPendingChange={(pending) => changes.setPending("account-settings", pending)}
         />
         <ViewAccountBalanceHistory
           householdId={household.id}
           accounts={household.accounts}
-          hidden={activeSettingsTab !== "accounts"}
-          refreshRevision={balanceHistoryRevision}
+          hidden={activeTab !== "accounts"}
+          refreshRevision={balances.historyRevision}
         />
-        <section
-          className={`panel ${styles.settingsSection}`}
-          hidden={activeSettingsTab !== "catalog"}
-        >
-          <div className={`panel-heading ${styles.panelHeading}`}>
-            <div>
-              <span className="eyebrow">品目の分類</span>
-              <h2>カテゴリ</h2>
-            </div>
-            <span className="count-badge">
-              {household.categories.filter((category) => !category.archived).length}
-            </span>
-          </div>
-          <div className="category-management">
-            {household.categories.map((category, index) => (
-              <div className="category-management-row" key={category.id}>
-                <span
-                  className={`category-tag swatch-bg-${index % 6} ${category.archived ? "category-archived" : ""}`}
-                >
-                  {category.name}
-                </span>
-                <button
-                  className="text-button"
-                  disabled={pending}
-                  onClick={() => void archiveCategory(category.id, !category.archived)}
-                >
-                  {category.archived ? "再表示" : "非表示"}
-                </button>
-              </div>
-            ))}
-          </div>
-          <form className="inline-create" data-unsaved-id="create-category" onSubmit={addCategory}>
-            <input
-              value={categoryName}
-              onChange={(e) => setCategoryName(e.target.value)}
-              placeholder="カテゴリ名"
-              required
-            />
-            <button className="button button-soft" disabled={pending}>
-              <Plus size={15} />
-              追加
-            </button>
-          </form>
-        </section>
-        <section
-          className={`panel ${styles.settingsSection}`}
-          hidden={activeSettingsTab !== "allocation"}
-          id="default-allocation-settings"
-          style={{ scrollMarginTop: 80 }}
-        >
-          <div className={`panel-heading ${styles.panelHeading}`}>
-            <div>
-              <span className="eyebrow">買い物の初期値</span>
-              <h2>標準の負担割合</h2>
-            </div>
-            <span className="count-badge">
-              <Activity size={14} />
-            </span>
-          </div>
-          <form data-unsaved-id="default-allocation" onSubmit={saveAllocation}>
-            <div className={styles.allocationSettings}>
-              {household.pools.map((pool) => (
-                <label key={pool.id}>
-                  <span>{pool.name}</span>
-                  <div className="number-field">
-                    <input
-                      inputMode="numeric"
-                      value={shareWeights[pool.id] ?? ""}
-                      onChange={(e) =>
-                        setShareWeights((current) => ({
-                          ...current,
-                          [pool.id]: e.target.value.replace(/\D/g, ""),
-                        }))
-                      }
-                    />
-                    <small>比</small>
-                  </div>
-                </label>
-              ))}
-            </div>
-            <div className={styles.settingsSave}>
-              <span>変更後の買い物から適用</span>
-              <button
-                className={`button button-primary ${styles.settingsSaveButton}`}
-                disabled={pending}
-              >
-                <Check size={16} />
-                保存
-              </button>
-            </div>
-          </form>
-        </section>
+        <ManageCategoriesSection
+          categories={household.categories}
+          categoryName={mutations.categoryName}
+          disabled={isPending("settings")}
+          hidden={activeTab !== "catalog"}
+          onCategoryNameChange={mutations.setCategoryName}
+          onAdd={mutations.addCategory}
+          onArchive={(categoryId, archived) => void mutations.archiveCategory(categoryId, archived)}
+        />
+        <ManageDefaultAllocationSection
+          pools={household.pools}
+          shareWeights={mutations.shareWeights}
+          disabled={isPending("settings")}
+          hidden={activeTab !== "allocation"}
+          onShareWeightChange={(poolId, weight) =>
+            mutations.setShareWeights((current) => ({ ...current, [poolId]: weight }))
+          }
+          onSave={mutations.saveAllocation}
+        />
         <ManageAllocationCatalog
           household={household}
-          allocationHidden={activeSettingsTab !== "allocation"}
-          catalogHidden={activeSettingsTab !== "catalog"}
+          allocationHidden={activeTab !== "allocation"}
+          catalogHidden={activeTab !== "catalog"}
           onNotice={onNotice}
-          onFormClean={markFormClean}
-          onPendingChange={setAllocationCatalogPending}
+          onFormClean={changes.markFormClean}
+          onPendingChange={(pending) => changes.setPending("allocation-catalog", pending)}
         />
         {isOwner && (
           <ManageHouseholdInvitations
             householdId={household.id}
-            hidden={activeSettingsTab !== "members"}
-            disabled={pending || invitationPending}
+            hidden={activeTab !== "members"}
+            disabled={isPending("settings") || isPending("invitations")}
             onNotice={onNotice}
-            onPendingChange={setInvitationPending}
-            onInvitationFormSaved={() => markFormClean("create-invitation")}
+            onPendingChange={(pending) => changes.setPending("invitations", pending)}
+            onInvitationFormSaved={() => changes.markFormClean("create-invitation")}
           />
         )}
         <ManageTags
           householdId={household.id}
-          hidden={activeSettingsTab !== "catalog"}
+          hidden={activeTab !== "catalog"}
           onNotice={onNotice}
-          onFormDirty={markFormDirty}
-          onFormClean={markFormClean}
-          onPendingChange={setTagPending}
+          onFormDirty={changes.markFormDirty}
+          onFormClean={changes.markFormClean}
+          onPendingChange={(pending) => changes.setPending("tags", pending)}
         />
         <ManageBudgets
           householdId={household.id}
           categories={household.categories}
-          hidden={activeSettingsTab !== "planning"}
+          hidden={activeTab !== "planning"}
           onNotice={onNotice}
-          onFormDirty={markFormDirty}
-          onFormClean={markFormClean}
-          onPendingChange={setBudgetPending}
+          onFormDirty={changes.markFormDirty}
+          onFormClean={changes.markFormClean}
+          onPendingChange={(pending) => changes.setPending("budgets", pending)}
         />
         <ManageRecurringExpenses
           householdId={household.id}
           categories={household.categories}
           accounts={household.accounts}
-          hidden={activeSettingsTab !== "planning"}
+          hidden={activeTab !== "planning"}
           onNotice={onNotice}
-          onFormDirty={markFormDirty}
-          onFormClean={markFormClean}
-          onPendingChange={setRecurringPending}
+          onFormDirty={changes.markFormDirty}
+          onFormClean={changes.markFormClean}
+          onPendingChange={(pending) => changes.setPending("recurring-expenses", pending)}
         />
         <ManageAccountActivity
           household={household}
-          hidden={activeSettingsTab !== "accounts"}
+          hidden={activeTab !== "accounts"}
           onNotice={onNotice}
-          onFormClean={markFormClean}
-          onPendingChange={setAccountActivityPending}
-          onRecorded={async () => {
-            await refreshPlanning();
-            setBalanceHistoryRevision((revision) => revision + 1);
-          }}
+          onFormClean={changes.markFormClean}
+          onPendingChange={(pending) => changes.setPending("account-activity", pending)}
+          onRecorded={balances.refreshAfterActivity}
         />
-        <section
-          className={`panel ${styles.settingsSection} ${styles.memberSection}`}
-          hidden={activeSettingsTab !== "members"}
-        >
-          <div className={`panel-heading ${styles.panelHeading}`}>
-            <div>
-              <span className="eyebrow">共同編集</span>
-              <h2>メンバー</h2>
-            </div>
-          </div>
-          {household.members.map((member) => (
-            <div className={styles.settingRow} key={member.id}>
-              <div className="profile-avatar">{member.displayName.slice(0, 1)}</div>
-              <div>
-                <b>{member.displayName}</b>
-                <small>{member.role === "OWNER" ? "オーナー" : "メンバー"}</small>
-              </div>
-            </div>
-          ))}
-        </section>
+        <SettingsMembersSection members={household.members} hidden={activeTab !== "members"} />
       </div>
     </>
   );
