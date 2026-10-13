@@ -69,16 +69,26 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	pool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Personal", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
+		t.Fatal(err)
+	}
 	tag, err := mutation.createTag(ctx, model.CreateTagInput{HouseholdID: household.ID, Name: "weekly"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	makePurchase := func(merchant, itemName, date string, categoryID, accountID *string) *model.Purchase {
+	makePurchase := func(merchant, itemName, date string, categoryID, accountID, poolID *string) *model.Purchase {
 		t.Helper()
 		input := model.CreatePurchaseInput{
 			IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID,
 			OccurredAt: model.DateTime(date), Merchant: merchant,
 			Items: []*model.PurchaseItemInput{{Name: itemName, AmountYen: 100, CategoryID: categoryID}},
+		}
+		if poolID != nil {
+			input.Items[0].Allocations = []*model.AllocationInput{{PoolID: *poolID, Weight: 1}}
 		}
 		if accountID != nil {
 			input.PaymentAllocations = []*model.PurchasePaymentInput{{PaymentAccountID: *accountID, AmountYen: 100}}
@@ -89,8 +99,9 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 		}
 		return purchase
 	}
-	matched := makePurchase("Market", "Apple", "2026-04-10T12:00:00Z", &category.ID, &account.ID)
-	unmatched := makePurchase("Hardware", "Hammer", "2026-05-10T12:00:00Z", nil, nil)
+	matched := makePurchase("Market", "Apple", "2026-04-10T12:00:00Z", &category.ID, &account.ID, &pool.ID)
+	matchedLater := makePurchase("Market", "Apple Juice", "2026-04-20T12:00:00Z", &category.ID, nil, nil)
+	unmatched := makePurchase("Hardware", "Hammer", "2026-05-10T12:00:00Z", nil, nil, nil)
 	matchedUUID, err := gofrsuuid.FromString(matched.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -112,15 +123,19 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.TotalCount != 1 || len(first.Edges) != 1 || first.Edges[0].Node.ID != matched.ID {
-		t.Fatalf("search filter returned %#v; want the matching purchase", first)
+	if first.TotalCount != 2 || len(first.Edges) != 1 || first.Edges[0].Node.ID != matchedLater.ID {
+		t.Fatalf("search filter returned %#v; want the newest matching purchase", first)
 	}
-	if first.PageInfo.HasNextPage {
-		t.Fatal("a single matching purchase must not report another page")
+	if !first.PageInfo.HasNextPage || first.PageInfo.EndCursor == nil {
+		t.Fatal("search filter must retain pagination after database filtering")
+	}
+	second, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, new("appl"), nil, nil, nil, nil, nil, first.PageInfo.EndCursor, nil, new(1), nil)
+	if err != nil || second.TotalCount != 2 || len(second.Edges) != 1 || second.Edges[0].Node.ID != matched.ID || second.PageInfo.HasNextPage {
+		t.Fatalf("second filtered page returned %#v, error %v", second, err)
 	}
 
 	categoryResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, &category.ID, nil, nil, nil, nil, nil, nil, new(10), nil)
-	if err != nil || categoryResult.TotalCount != 1 || categoryResult.Edges[0].Node.ID != matched.ID {
+	if err != nil || categoryResult.TotalCount != 2 || len(categoryResult.Edges) != 2 {
 		t.Fatalf("category filter returned %#v, error %v", categoryResult, err)
 	}
 	uncategorizedResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, new(true), nil, nil, nil, nil, nil, new(10), nil)
@@ -135,9 +150,13 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	if err != nil || accountResult.TotalCount != 1 || accountResult.Edges[0].Node.ID != matched.ID {
 		t.Fatalf("payment account filter returned %#v, error %v", accountResult, err)
 	}
-	dateResult, err := query.purchases(ctx, household.ID, new("2026-04-01T00:00:00Z"), new("2026-05-01T00:00:00Z"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, new(10), nil)
+	dateResult, err := query.purchases(ctx, household.ID, new("2026-04-01T00:00:00Z"), new("2026-04-15T00:00:00Z"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, new(10), nil)
 	if err != nil || dateResult.TotalCount != 1 || dateResult.Edges[0].Node.ID != matched.ID {
 		t.Fatalf("date filter returned %#v, error %v", dateResult, err)
+	}
+	poolResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, nil, &pool.ID, nil, nil, new(10), nil)
+	if err != nil || poolResult.TotalCount != 1 || len(poolResult.Edges) != 1 || poolResult.Edges[0].Node.ID != matched.ID {
+		t.Fatalf("pool filter returned %#v, error %v", poolResult, err)
 	}
 	if _, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, &category.ID, new(true), nil, nil, nil, nil, nil, new(10), nil); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("simultaneous category and uncategorized filters returned %v; want bad input", err)

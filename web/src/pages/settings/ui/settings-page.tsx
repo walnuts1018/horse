@@ -108,6 +108,22 @@ const balanceChangeSource = (sourceType: string) =>
     AccountIncome: "外部入金",
   })[sourceType] ?? "仕訳";
 
+type SettingsTab = "accounts" | "allocation" | "catalog" | "planning" | "members";
+
+const settingsTabs: { id: SettingsTab; label: string }[] = [
+  { id: "accounts", label: "口座" },
+  { id: "allocation", label: "負担" },
+  { id: "catalog", label: "分類" },
+  { id: "planning", label: "予算" },
+  { id: "members", label: "メンバー" },
+];
+
+const settingsTabByHash: Record<string, SettingsTab> = {
+  "pool-settings": "accounts",
+  "payment-source-settings": "accounts",
+  "default-allocation-settings": "allocation",
+};
+
 export function SettingsPage({
   household,
   onRefresh,
@@ -121,6 +137,8 @@ export function SettingsPage({
   onUnsavedChanges: (unsaved: boolean) => void;
   isOwner: boolean;
 }) {
+  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("accounts");
+  const [setupHashTarget, setSetupHashTarget] = useState<string | null>(null);
   const [poolName, setPoolName] = useState("");
   const [poolKind, setPoolKind] = useState("PERSONAL");
   const [accountName, setAccountName] = useState("");
@@ -242,6 +260,26 @@ export function SettingsPage({
     onUnsavedChanges(pending || dirtyForms.size > 0);
   }, [dirtyForms, onUnsavedChanges, pending]);
   useEffect(() => () => onUnsavedChanges(false), [onUnsavedChanges]);
+  useEffect(() => {
+    const selectSettingsTabFromHash = () => {
+      const sectionId = window.location.hash.slice(1);
+      const tab = settingsTabByHash[sectionId];
+      if (!tab) {
+        setSetupHashTarget(null);
+        return;
+      }
+      setActiveSettingsTab(tab);
+      setSetupHashTarget(sectionId);
+    };
+    selectSettingsTabFromHash();
+    window.addEventListener("hashchange", selectSettingsTabFromHash);
+    return () => window.removeEventListener("hashchange", selectSettingsTabFromHash);
+  }, []);
+  useEffect(() => {
+    if (!setupHashTarget || settingsTabByHash[setupHashTarget] !== activeSettingsTab) return;
+    document.getElementById(setupHashTarget)?.scrollIntoView({ block: "start" });
+    setSetupHashTarget(null);
+  }, [activeSettingsTab, setupHashTarget]);
   const markFormDirty = (formID: string) => {
     setDirtyForms((current) => {
       if (current.has(formID)) return current;
@@ -1150,9 +1188,29 @@ export function SettingsPage({
           <p>{household.name}の口座、決済元、カテゴリ</p>
         </div>
       </div>
+      <nav
+        aria-label="設定項目"
+        style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}
+      >
+        {settingsTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`button ${activeSettingsTab === tab.id ? "button-primary" : "button-soft"}`}
+            aria-pressed={activeSettingsTab === tab.id}
+            onClick={() => {
+              setActiveSettingsTab(tab.id);
+              setSetupHashTarget(null);
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
       <div className="settings-layout" onChangeCapture={trackFormChange}>
         <section
           className="panel settings-section"
+          hidden={activeSettingsTab !== "accounts"}
           id="pool-settings"
           style={{ scrollMarginTop: 80 }}
         >
@@ -1280,7 +1338,10 @@ export function SettingsPage({
             </button>
           </form>
         </section>
-        <section className="panel settings-section account-balance-analysis">
+        <section
+          className="panel settings-section account-balance-analysis"
+          hidden={activeSettingsTab !== "accounts"}
+        >
           <div className="panel-heading">
             <div>
               <span className="eyebrow">口座別の仕訳</span>
@@ -1392,6 +1453,7 @@ export function SettingsPage({
         </section>
         <section
           className="panel settings-section"
+          hidden={activeSettingsTab !== "accounts"}
           id="payment-source-settings"
           style={{ scrollMarginTop: 80 }}
         >
@@ -1475,7 +1537,7 @@ export function SettingsPage({
             </button>
           </form>
         </section>
-        <section className="panel settings-section">
+        <section className="panel settings-section" hidden={activeSettingsTab !== "catalog"}>
           <div className="panel-heading">
             <div>
               <span className="eyebrow">品目の分類</span>
@@ -1518,6 +1580,7 @@ export function SettingsPage({
         </section>
         <section
           className="panel settings-section"
+          hidden={activeSettingsTab !== "allocation"}
           id="default-allocation-settings"
           style={{ scrollMarginTop: 80 }}
         >
@@ -1560,7 +1623,7 @@ export function SettingsPage({
             </div>
           </form>
         </section>
-        <section className="panel settings-section">
+        <section className="panel settings-section" hidden={activeSettingsTab !== "allocation"}>
           <div className="panel-heading">
             <div>
               <span className="eyebrow">自動負担</span>
@@ -1699,7 +1762,7 @@ export function SettingsPage({
             </button>
           </form>
         </section>
-        <section className="panel settings-section">
+        <section className="panel settings-section" hidden={activeSettingsTab !== "catalog"}>
           <div className="panel-heading">
             <div>
               <span className="eyebrow">商品カタログ</span>
@@ -1840,7 +1903,7 @@ export function SettingsPage({
           </form>
         </section>
         {isOwner && (
-          <section className="panel settings-section">
+          <section className="panel settings-section" hidden={activeSettingsTab !== "members"}>
             <div className="panel-heading">
               <div>
                 <span className="eyebrow">共同編集</span>
@@ -1934,7 +1997,7 @@ export function SettingsPage({
             )}
           </section>
         )}
-        <section className="panel settings-section">
+        <section className="panel settings-section" hidden={activeSettingsTab !== "catalog"}>
           <div className="panel-heading">
             <div>
               <span className="eyebrow">品目管理</span>
@@ -2004,7 +2067,7 @@ export function SettingsPage({
             </button>
           </form>
         </section>
-        <section className="panel settings-section">
+        <section className="panel settings-section" hidden={activeSettingsTab !== "planning"}>
           <div className="panel-heading">
             <div>
               <span className="eyebrow">予算と実績</span>
@@ -2107,7 +2170,7 @@ export function SettingsPage({
             )}
           </form>
         </section>
-        <section className="panel settings-section">
+        <section className="panel settings-section" hidden={activeSettingsTab !== "planning"}>
           <div className="panel-heading">
             <div>
               <span className="eyebrow">予定</span>
@@ -2264,7 +2327,7 @@ export function SettingsPage({
             )}
           </form>
         </section>
-        <section className="panel settings-section">
+        <section className="panel settings-section" hidden={activeSettingsTab !== "accounts"}>
           <div className="panel-heading">
             <div>
               <span className="eyebrow">口座間の移動</span>
@@ -2445,7 +2508,10 @@ export function SettingsPage({
             )}
           </div>
         </section>
-        <section className="panel settings-section member-section">
+        <section
+          className="panel settings-section member-section"
+          hidden={activeSettingsTab !== "members"}
+        >
           <div className="panel-heading">
             <div>
               <span className="eyebrow">共同編集</span>

@@ -2423,14 +2423,14 @@ export function LedgerPage({
           </button>
         </div>
       )}
-      {recordMode === "purchases" && moreError && filtersActive && (
+      {recordMode === "purchases" && viewMode === "purchases" && moreError && hasNextPage && (
         <div className="ledger-more">
           <button
             className="button button-soft"
             disabled={loadingMore}
             onClick={() => void loadMore()}
           >
-            {loadingMore ? "読み込み中" : "検索範囲を読み込む"}
+            {loadingMore ? "読み込み中" : "取得を再試行"}
           </button>
         </div>
       )}

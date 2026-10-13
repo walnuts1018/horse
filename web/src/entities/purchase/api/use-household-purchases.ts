@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchQuery,
   requestSubscription,
@@ -68,11 +68,21 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   const query = useLazyLoadQuery<PurchasesQuery>(purchasesQuery, variables, {
     fetchPolicy: "store-or-network",
   });
+  const requestKey = JSON.stringify(variables);
+  const activeRequestKey = useRef(requestKey);
   const { data, hasNext, isLoadingNext, loadNext, refetch } = usePaginationFragment<
     PurchasesQuery,
     PurchaseListFragment$key
   >(purchaseListFragment, query);
-  const [moreError, setMoreError] = useState("");
+  const [moreErrorState, setMoreErrorState] = useState<{
+    requestKey: string;
+    message: string;
+  } | null>(null);
+  const moreError = moreErrorState?.requestKey === requestKey ? moreErrorState.message : "";
+  useEffect(() => {
+    activeRequestKey.current = requestKey;
+    setMoreErrorState(null);
+  }, [requestKey]);
   const [completeCorrections, setCompleteCorrections] = useState<
     Record<string, NonNullable<Purchase["corrections"]>>
   >({});
@@ -108,7 +118,7 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
           completeCorrections[`${node.id}:${node.revision}`] === undefined,
       );
       if (purchasesMissingCorrections.length === 0) return;
-      setMoreError("");
+      setMoreErrorState(null);
       const loadedByPurchase: Record<string, NonNullable<Purchase["corrections"]>> = {};
       try {
         await Promise.all(
@@ -137,29 +147,35 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
         if (!cancelled) setCompleteCorrections((current) => ({ ...current, ...loadedByPurchase }));
       } catch (error) {
         if (!cancelled)
-          setMoreError(
-            error instanceof Error ? error.message : "購入の訂正履歴を取得できませんでした",
-          );
+          setMoreErrorState({
+            requestKey,
+            message:
+              error instanceof Error ? error.message : "購入の訂正履歴を取得できませんでした",
+          });
       }
     };
     void loadCorrections();
     return () => {
       cancelled = true;
     };
-  }, [completeCorrections, data.purchases.edges]);
+  }, [completeCorrections, data.purchases.edges, requestKey]);
   const refresh = useCallback(() => {
-    setMoreError("");
+    setMoreErrorState(null);
     refetch(variables, { fetchPolicy: "network-only" });
   }, [refetch, variables]);
   const loadMore = useCallback(() => {
     if (!hasNext || isLoadingNext) return;
-    setMoreError("");
+    setMoreErrorState(null);
     loadNext(first, {
       onComplete: (error) => {
-        if (error) setMoreError(error?.message || "購入履歴を取得できませんでした");
+        if (error && activeRequestKey.current === requestKey)
+          setMoreErrorState({
+            requestKey,
+            message: error.message || "購入履歴を取得できませんでした",
+          });
       },
     });
-  }, [first, hasNext, isLoadingNext, loadNext]);
+  }, [first, hasNext, isLoadingNext, loadNext, requestKey]);
 
   useEffect(() => {
     const subscription = requestSubscription<PurchaseChangesSubscription>(getRelayEnvironment(), {

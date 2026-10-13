@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import {
   AlertCircle,
   Camera,
@@ -123,6 +123,8 @@ type PendingUpload = {
   status: "queued" | "uploading" | "failed";
   error?: string;
 };
+type NormalizedCrop = { left: number; top: number; right: number; bottom: number };
+type CameraDraft = { file: File; src: string; crop: NormalizedCrop | null };
 type DocumentFilters = {
   store: string;
   from: string;
@@ -149,6 +151,21 @@ const documentListURL = (householdId: string, filters: DocumentFilters, after?: 
   return `/documents?${query.toString()}`;
 };
 const identityTransform: PreviewTransform = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("画像を読み込めませんでした"));
+    image.src = src;
+  });
+const canvasBlob = (canvas: HTMLCanvasElement, type: string) =>
+  new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("画像を変換できませんでした"))),
+      type,
+      0.92,
+    );
+  });
 const invertTransform = (matrix: PreviewTransform): PreviewTransform | null => {
   const [a, b, c, d, e, f, g, h, i] = matrix;
   const A = e * i - f * h;
@@ -325,7 +342,10 @@ export function ImportsPage({
   const createAndPostPurchase = useCreateAndPostPurchase();
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const cameraImageRef = useRef<HTMLImageElement>(null);
+  const cameraCropStart = useRef<{ x: number; y: number } | null>(null);
   const [files, setFiles] = useState<PendingUpload[]>([]);
+  const [cameraDraft, setCameraDraft] = useState<CameraDraft | null>(null);
   const editedReceiptDocuments = useRef(new Set<string>());
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [csvKinds, setCsvKinds] = useState<Record<string, "card" | "bank">>({});
@@ -381,6 +401,10 @@ export function ImportsPage({
   );
   const selectedDocument = documents.find((document) => document.id === selected);
   const targetPurchase = recentPurchases.find((purchase) => purchase.id === targetPurchaseId);
+  useEffect(() => {
+    if (!cameraDraft) return;
+    return () => URL.revokeObjectURL(cameraDraft.src);
+  }, [cameraDraft?.src]);
   const normalizeName = (name: string) =>
     name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ja-JP");
   const suggestedCategoryId = (item: ExtractedItem) => {
@@ -741,6 +765,94 @@ export function ImportsPage({
         ? `対応していない形式: ${unsupported.map((file) => file.name).join("、")}`
         : "",
     );
+  };
+  const reviewCameraFile = (selected: FileList | null) => {
+    const file = selected?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/") || !isSupportedFile(file)) {
+      setMessage("画像を選択してください");
+      return;
+    }
+    setCameraDraft({ file, src: URL.createObjectURL(file), crop: null });
+    setMessage("");
+  };
+  const rotateCameraDraft = async () => {
+    if (!cameraDraft) return;
+    try {
+      const image = await loadImage(cameraDraft.src);
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalHeight;
+      canvas.height = image.naturalWidth;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("画像を回転できませんでした");
+      context.translate(canvas.width, 0);
+      context.rotate(Math.PI / 2);
+      context.drawImage(image, 0, 0);
+      const type = ["image/jpeg", "image/png", "image/webp"].includes(cameraDraft.file.type)
+        ? cameraDraft.file.type
+        : "image/jpeg";
+      const blob = await canvasBlob(canvas, type);
+      const file = new File([blob], cameraDraft.file.name, {
+        type,
+        lastModified: cameraDraft.file.lastModified,
+      });
+      setCameraDraft({ file, src: URL.createObjectURL(file), crop: null });
+    } catch (reason) {
+      setMessage((reason as Error).message);
+    }
+  };
+  const updateCameraCrop = (event: PointerEvent<HTMLDivElement>, finish = false) => {
+    const bounds = cameraImageRef.current?.getBoundingClientRect();
+    const start = cameraCropStart.current;
+    if (!bounds || !start) return;
+    const point = {
+      x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+    };
+    const crop = {
+      left: Math.min(start.x, point.x),
+      top: Math.min(start.y, point.y),
+      right: Math.max(start.x, point.x),
+      bottom: Math.max(start.y, point.y),
+    };
+    if (finish) {
+      cameraCropStart.current = null;
+      if (crop.right - crop.left < 0.02 || crop.bottom - crop.top < 0.02) {
+        setCameraDraft((current) => (current ? { ...current, crop: null } : current));
+        return;
+      }
+    }
+    setCameraDraft((current) => (current ? { ...current, crop } : current));
+  };
+  const addCameraDraft = async () => {
+    if (!cameraDraft) return;
+    try {
+      let file = cameraDraft.file;
+      if (cameraDraft.crop) {
+        const image = await loadImage(cameraDraft.src);
+        const { left, top, right, bottom } = cameraDraft.crop;
+        const x = Math.round(left * image.naturalWidth);
+        const y = Math.round(top * image.naturalHeight);
+        const width = Math.max(1, Math.round((right - left) * image.naturalWidth));
+        const height = Math.max(1, Math.round((bottom - top) * image.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("画像を切り抜けませんでした");
+        context.drawImage(image, x, y, width, height, 0, 0, width, height);
+        const blob = await canvasBlob(canvas, cameraDraft.file.type || "image/jpeg");
+        file = new File([blob], cameraDraft.file.name, {
+          type: blob.type,
+          lastModified: cameraDraft.file.lastModified,
+        });
+      }
+      markUnsaved();
+      setFiles((current) => [...current, { id: crypto.randomUUID(), file, status: "queued" }]);
+      setCameraDraft(null);
+    } catch (reason) {
+      setMessage((reason as Error).message);
+    }
   };
   const uploadFiles = async () => {
     if (!files.length) return;
@@ -1177,10 +1289,134 @@ export function ImportsPage({
         capture="environment"
         hidden
         onChange={(event) => {
-          addFiles(event.currentTarget.files);
+          reviewCameraFile(event.currentTarget.files);
           event.currentTarget.value = "";
         }}
       />
+      {cameraDraft && (
+        <div
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setCameraDraft(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+            background: "rgb(20 30 24 / 68%)",
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="camera-review-title"
+            className="panel"
+            style={{ width: "min(720px, 100%)", maxHeight: "100%", overflow: "auto", padding: 20 }}
+          >
+            <div className="panel-heading">
+              <div>
+                <span className="eyebrow">撮影画像</span>
+                <h2 id="camera-review-title">内容を確認</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="撮影画像を破棄"
+                onClick={() => setCameraDraft(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div
+              onPointerDown={(event) => {
+                const bounds = cameraImageRef.current?.getBoundingClientRect();
+                if (!bounds) return;
+                const start = {
+                  x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+                  y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+                };
+                cameraCropStart.current = start;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setCameraDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        crop: { left: start.x, top: start.y, right: start.x, bottom: start.y },
+                      }
+                    : current,
+                );
+              }}
+              onPointerMove={(event) => updateCameraCrop(event)}
+              onPointerUp={(event) => updateCameraCrop(event, true)}
+              onPointerCancel={() => {
+                cameraCropStart.current = null;
+              }}
+              style={{
+                position: "relative",
+                margin: "16px auto",
+                width: "fit-content",
+                maxWidth: "100%",
+                maxHeight: "min(62vh, 620px)",
+                touchAction: "none",
+                cursor: "crosshair",
+                lineHeight: 0,
+                background: "#17201a",
+              }}
+            >
+              <img
+                ref={cameraImageRef}
+                src={cameraDraft.src}
+                alt="撮影した画像"
+                style={{ display: "block", maxWidth: "100%", maxHeight: "min(62vh, 620px)" }}
+              />
+              {cameraDraft.crop && (
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    left: `${cameraDraft.crop.left * 100}%`,
+                    top: `${cameraDraft.crop.top * 100}%`,
+                    width: `${(cameraDraft.crop.right - cameraDraft.crop.left) * 100}%`,
+                    height: `${(cameraDraft.crop.bottom - cameraDraft.crop.top) * 100}%`,
+                    border: "2px solid #fff",
+                    boxShadow: "0 0 0 9999px rgb(0 0 0 / 38%)",
+                  }}
+                />
+              )}
+            </div>
+            <div className="import-actions" style={{ justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="button button-soft"
+                onClick={() => void rotateCameraDraft()}
+              >
+                回転
+              </button>
+              {cameraDraft.crop && (
+                <button
+                  type="button"
+                  className="button button-soft"
+                  onClick={() =>
+                    setCameraDraft((current) => (current ? { ...current, crop: null } : current))
+                  }
+                >
+                  切り抜きを解除
+                </button>
+              )}
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => void addCameraDraft()}
+              >
+                画像を追加
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       <div className="import-layout">
         <section
           className={`dropzone ${dragging ? "dropzone-active" : ""}`}

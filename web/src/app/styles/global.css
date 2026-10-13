@@ -4750,17 +4750,28 @@ a {
   }
 }
 
-@media (width <= 760px) and (pointer: coarse) {
+@media (width <= 760px) {
   .button,
   .icon-button,
   .text-button,
   .row-remove,
-  .button-add {
+  .button-add,
+  .menu-toggle,
+  .close-menu,
+  .search-pill,
+  .select-filter,
+  .field-group select,
+  .entry-form > select,
+  .item-edit-row select,
+  .payment-allocation-row > select {
     min-height: 44px;
   }
 
   .icon-button,
-  .row-remove {
+  .row-remove,
+  .menu-toggle,
+  .close-menu,
+  .search-pill {
     min-width: 44px;
   }
 }
@@ -4820,5 +4831,41 @@ a {
 
   :is(.settlement-breakdown, .month-column > b) {
     font-size: max(var(--mobile-font-dense), 1em);
+  }
+
+  .quick-card small,
+  .chart-labels,
+  .summary-card small,
+  .household-name small,
+  .nav-label,
+  .shared-avatars i,
+  .profile-row small,
+  .entry-hint kbd,
+  .period-chip,
+  .purchase-description span,
+  .field-group label,
+  .suggestions button span,
+  .product-suggestions button > small,
+  .selected-product-label,
+  .settlement-person span,
+  .settlement-amount > small,
+  .settlement-amount .text-button,
+  .funding-entry small,
+  .chart-legend,
+  .month-column > span,
+  .category-row,
+  .category-row > strong,
+  .setting-row small,
+  .number-field small,
+  .create-household label,
+  .drop-caption,
+  .file-review-row b,
+  .file-review-row small,
+  .import-note,
+  .inline-create .button,
+  .settings-save .button,
+  .mobile-dock :is(button, a) span,
+  .mobile-dock .dock-add span {
+    font-size: 10px;
   }
 }
