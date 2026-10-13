@@ -223,3 +223,11 @@ HouseholdEventのJSON化とBob insertを`accounting.RecordEvent`へ集約し、�
 Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール、プール資金拠出ルール、招待の発行・取消・受諾、商品概念・バリアント・別名、一括購入・品目更新をApplication Serviceへ移しました。カテゴリとタグの作成・更新・archiveもService経由です。DB書き込みはBob DSLを使い、認可、revision競合、会計期間lock、会計状態の更新、event記録を各ユースケースのtransactionに含めています。ResolverにはGraphQL値の変換、認可後のService呼び出し、結果の再読込を残しました。
 
 `TestSetDefaultAndRulePersistVersionsWeightsAndEvents`、`TestSetFundingRuleValidatesAndVersionsHouseholdRule`、`TestPlanningMutationsAreAtomicAndHouseholdScoped`、`TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts`、`TestHouseholdInvitationLifecycle`、`TestProductCatalogAndSuggestionsPreserveExpectedOrdering`、カテゴリ・タグの統合テストを、最新migrationを適用した一時DBで確認しました。一時DBはテスト後に削除し、既存の`horse`DBを変更していません。実行時Goコードを調べ、Bob DSLを経由しないSQL文字列のDB呼び出しがないことも確認しました。
+
+### 2026年10月14日のライブラリ導入
+
+`picca`を参照し、`echo/v5` v5.3.1をAPI・WorkerのHTTPルーティングへ導入しました。HTTP serverのtimeout、SSE、標準`http.Handler`との接続、GETに対するHEADを維持します。`kessoku` v1.1.1はAPI・Worker起動時の依存構築に使い、generator sourceとgenerated fileを各packageの`kessoku.go`・`kessoku_band.go`へ揃えました。`testcontainers-go` v0.38.0はGraphQL統合テストでPostgreSQL 18を起動し、既存Atlas migrationを適用します。CIから`HORSE_TEST_DATABASE_URL`が渡される場合は既存PostgreSQL serviceを再利用します。
+
+文書アップロードでは`mimetype` v1.4.15の内容判定を使い、テキストと確認したデータに限ってCSV・EML・TXT拡張子をfallbackとして受け付けます。メール解析は`go-message` v0.18.2へ移し、`html-to-markdown/v2` v2.5.2のtable pluginでHTML注文メールの表を保ちます。最大文書サイズ、MIME深度、part数、添付警告、plain text優先を維持しました。`web`では`vitest` v5.0.3と`fast-check` v4.10.2を導入し、Ledger URL検索条件のparse/serialize往復不変条件を500回検査します。GraphQLのMIME・HTTP、メール解析、Worker/API injector、GraphQL DB統合、property testの対象テストは成功しました。
+
+`chi`はEchoと重複するため、Bob Query GenerationはSQL文字列を入力として生SQLを直接書かない方針と競合するため採用しません。DataLoaderや`retry-go`は既存のBob一括取得とDB永続job retryに対する追加効果を確認できません。`testify`の一括導入は標準`testing`の明示的な失敗理由を失う置換が多いため見送りました。
