@@ -193,6 +193,13 @@ func trimOptional(value *string) string {
 	return strings.TrimSpace(*value)
 }
 
+func optionalProductAttribute(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
 func nullableTrimmed(value *string) any {
 	if value == nil {
 		return nil
@@ -240,7 +247,7 @@ func loadProductVariant(ctx context.Context, db productDB, variantID string) (*m
 	} else if err != nil {
 		return nil, err
 	}
-	variant := model.ProductVariant{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), ConceptID: row.ConceptID.String(), Name: row.Name, NormalizedName: row.NormalizedName, Brand: row.Brand, PackageSize: row.PackageSize, Archived: row.Archived, Revision: int(row.Revision)}
+	variant := model.ProductVariant{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), ConceptID: row.ConceptID.String(), Name: row.Name, NormalizedName: row.NormalizedName, Brand: optionalProductAttribute(row.Brand), PackageSize: optionalProductAttribute(row.PackageSize), Archived: row.Archived, Revision: int(row.Revision)}
 	if row.Barcode.Valid {
 		variant.Barcode = &row.Barcode.V
 	}
@@ -579,7 +586,7 @@ func productConceptFromRow(row *models.ProductConcept) *model.ProductConcept {
 }
 
 func productVariantFromRow(row *models.ProductVariant) *model.ProductVariant {
-	variant := &model.ProductVariant{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), ConceptID: row.ConceptID.String(), Name: row.Name, NormalizedName: row.NormalizedName, Brand: row.Brand, PackageSize: row.PackageSize, Archived: row.Archived, Revision: int(row.Revision)}
+	variant := &model.ProductVariant{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), ConceptID: row.ConceptID.String(), Name: row.Name, NormalizedName: row.NormalizedName, Brand: optionalProductAttribute(row.Brand), PackageSize: optionalProductAttribute(row.PackageSize), Archived: row.Archived, Revision: int(row.Revision)}
 	if row.Barcode.Valid {
 		variant.Barcode = &row.Barcode.V
 	}

@@ -133,13 +133,16 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 			return nil, fmt.Errorf("%w: account running balance exceeds int64", ErrBadInput)
 		}
 		sourceKind := change.journal.SourceKind
-		sourceID := change.journal.SourceID.String()
+		source, err := r.accountBalanceSource(ctx, householdID, change.journal)
+		if err != nil {
+			return nil, err
+		}
 		description := descriptions[accountSourceKey(sourceKind, change.journal.SourceID)]
 		if description == "" {
-			description = sourceKind
+			description = accountSourceDescription(sourceKind)
 		}
 		result = append(result, &model.AccountBalanceChange{
-			OccurredAt: timeString(change.journal.OccurredAt), SourceKind: sourceKind, SourceID: sourceID,
+			OccurredAt: timeString(change.journal.OccurredAt), Source: source,
 			Description: description, ChangeYen: graphLong(change.amount), BalanceYen: graphLong(balance),
 		})
 	}
@@ -147,6 +150,69 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 		AccountID: accountUUID.String(), Currency: "JPY", From: from, To: to,
 		OpeningBalanceYen: graphLong(openingBalance), ClosingBalanceYen: graphLong(balance), Changes: result,
 	}, nil
+}
+
+func (r *queryResolver) accountBalanceSource(ctx context.Context, householdID string, journal *models.Journal) (model.Node, error) {
+	kind, id := "", journal.SourceID.String()
+	switch journal.SourceKind {
+	case "ACCOUNT_OPENING_BALANCE":
+		kind = "Account"
+	case "PURCHASE":
+		kind = "Purchase"
+	case "CORRECTION":
+		kind = "PurchaseCorrection"
+	case "FUNDING":
+		kind = "LedgerEntry"
+	case "TRANSFER":
+		transferID := journal.SourceID
+		householdUUID, err := gofrsuuid.FromString(householdID)
+		if err != nil {
+			return nil, ErrNotFound
+		}
+		transfer, err := models.Transfers.Query(sm.Where(psql.And(
+			models.Transfers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.Transfers.Columns.ID.EQ(psql.Arg(transferID)),
+		))).One(ctx, queryExecutor(r.DB))
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		kind, id = "LedgerEntry", transfer.LedgerEntryID.String()
+	case "ACCOUNT_MOVEMENT":
+		kind = "AccountMovement"
+	case "ACCOUNT_INCOME":
+		kind = "AccountIncome"
+	default:
+		return nil, fmt.Errorf("unknown account balance source kind %q", journal.SourceKind)
+	}
+	globalID, err := encodeNodeID(kind, id)
+	if err != nil {
+		return nil, err
+	}
+	return r.node(ctx, globalID)
+}
+
+func accountSourceDescription(kind string) string {
+	switch kind {
+	case "ACCOUNT_OPENING_BALANCE":
+		return "初期残高"
+	case "PURCHASE":
+		return "購入"
+	case "CORRECTION":
+		return "訂正"
+	case "FUNDING":
+		return "資金拠出"
+	case "TRANSFER":
+		return "送金"
+	case "ACCOUNT_MOVEMENT":
+		return "口座振替"
+	case "ACCOUNT_INCOME":
+		return "外部入金"
+	default:
+		return "仕訳"
+	}
 }
 
 type accountBalanceJournalChange struct {

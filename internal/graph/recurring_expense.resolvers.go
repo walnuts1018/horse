@@ -12,8 +12,12 @@ import (
 )
 
 // RecurringExpenses is the resolver for the recurringExpenses field.
-func (r *queryResolver) RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool) ([]*model.RecurringExpense, error) {
-	return r.recurringExpenses(ctx, householdID, includeArchived != nil && *includeArchived)
+func (r *queryResolver) RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool, after *string, first *int) (*model.RecurringExpenseConnection, error) {
+	pageSize := 50
+	if first != nil {
+		pageSize = *first
+	}
+	return r.recurringExpenseConnection(ctx, householdID, includeArchived != nil && *includeArchived, after, pageSize)
 }
 
 // ID is the resolver for the id field.

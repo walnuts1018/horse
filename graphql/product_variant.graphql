@@ -4,8 +4,8 @@ type ProductVariant implements Node {
   conceptId: ID! @goField(forceResolver: true)
   name: String!
   normalizedName: String!
-  brand: String!
-  packageSize: String!
+  brand: String
+  packageSize: String
   barcode: String
   archived: Boolean!
   revision: Int!

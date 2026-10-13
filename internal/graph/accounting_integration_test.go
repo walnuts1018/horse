@@ -23,6 +23,31 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+func accountBalanceSourceType(source model.Node) string {
+	switch source.(type) {
+	case *model.Account:
+		return "Account"
+	case *model.AccountIncome:
+		return "AccountIncome"
+	case *model.AccountMovement:
+		return "AccountMovement"
+	case *model.CorrectionLedgerEntry:
+		return "CorrectionLedgerEntry"
+	case *model.FundingLedgerEntry:
+		return "FundingLedgerEntry"
+	case *model.Purchase:
+		return "Purchase"
+	case *model.PurchaseCorrection:
+		return "PurchaseCorrection"
+	case *model.PurchaseLedgerEntry:
+		return "PurchaseLedgerEntry"
+	case *model.TransferLedgerEntry:
+		return "TransferLedgerEntry"
+	default:
+		return ""
+	}
+}
+
 func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -945,6 +970,18 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if len(settlement.Lines) != 2 {
 		t.Fatalf("expected two member settlement lines: %#v", settlement.Lines)
 	}
+	settlementNodeID, err := encodeSettlementNodeID(household.ID, settlement.Period)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settlementNode, err := (&Resolver{DB: db}).Query().Node(ctx, settlementNodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedSettlement, ok := settlementNode.(*model.Settlement)
+	if !ok || loadedSettlement.HouseholdID != household.ID || loadedSettlement.Period != settlement.Period {
+		t.Fatalf("settlement node did not resolve by household and period: %#v", settlementNode)
+	}
 	linesByMember := settlementByMember(t, settlement.Lines)
 	borrowerLine := linesByMember[memberB]
 	if borrowerLine == nil || borrowerLine.MonthlyAdjustmentYen != 5000 || borrowerLine.PaidYen != 5000 || borrowerLine.AmountDueYen != 0 {
@@ -1019,24 +1056,24 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if analysis.OpeningBalanceYen != 5000 || analysis.ClosingBalanceYen != 4250 || len(analysis.Changes) != 4 {
 		t.Fatalf("shared account history did not include the prior-period baseline and every in-period movement: %#v", analysis)
 	}
-	wantKinds := []string{"FUNDING", "TRANSFER", "ACCOUNT_MOVEMENT", "ACCOUNT_INCOME"}
-	for index, wantKind := range wantKinds {
-		if analysis.Changes[index].SourceKind != wantKind {
-			t.Fatalf("account history is not chronological or omitted a source type: got %#v want source kinds %v", analysis.Changes, wantKinds)
+	wantTypes := []string{"FundingLedgerEntry", "TransferLedgerEntry", "AccountMovement", "AccountIncome"}
+	for index, wantType := range wantTypes {
+		if sourceType := accountBalanceSourceType(analysis.Changes[index].Source); sourceType != wantType {
+			t.Fatalf("account history is not chronological or omitted a source type: got %#v want source types %v", analysis.Changes, wantTypes)
 		}
 	}
 	borrowerHistory, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, borrowerAccount.ID, "2026-06", "2026-06")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if borrowerHistory.OpeningBalanceYen != 5000 || borrowerHistory.ClosingBalanceYen != 5000 || len(borrowerHistory.Changes) != 2 || borrowerHistory.Changes[0].SourceKind != "TRANSFER" || borrowerHistory.Changes[0].ChangeYen != 5000 || borrowerHistory.Changes[1].SourceKind != "FUNDING" || borrowerHistory.Changes[1].ChangeYen != -5000 {
+	if borrowerHistory.OpeningBalanceYen != 5000 || borrowerHistory.ClosingBalanceYen != 5000 || len(borrowerHistory.Changes) != 2 || accountBalanceSourceType(borrowerHistory.Changes[0].Source) != "TransferLedgerEntry" || borrowerHistory.Changes[0].ChangeYen != 5000 || accountBalanceSourceType(borrowerHistory.Changes[1].Source) != "FundingLedgerEntry" || borrowerHistory.Changes[1].ChangeYen != -5000 {
 		t.Fatalf("borrower account history did not track loan proceeds and attributed funding outflow: %#v", borrowerHistory)
 	}
 	lenderHistory, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, "2026-06", "2026-06")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lenderHistory.OpeningBalanceYen != 5000 || lenderHistory.ClosingBalanceYen != 5000 || len(lenderHistory.Changes) != 2 || lenderHistory.Changes[0].SourceKind != "TRANSFER" || lenderHistory.Changes[0].ChangeYen != -5000 || lenderHistory.Changes[1].SourceKind != "TRANSFER" || lenderHistory.Changes[1].ChangeYen != 5000 {
+	if lenderHistory.OpeningBalanceYen != 5000 || lenderHistory.ClosingBalanceYen != 5000 || len(lenderHistory.Changes) != 2 || accountBalanceSourceType(lenderHistory.Changes[0].Source) != "TransferLedgerEntry" || lenderHistory.Changes[0].ChangeYen != -5000 || accountBalanceSourceType(lenderHistory.Changes[1].Source) != "TransferLedgerEntry" || lenderHistory.Changes[1].ChangeYen != 5000 {
 		t.Fatalf("lender account history did not track outgoing loan and repayment receipt: %#v", lenderHistory)
 	}
 	beforeOpening, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, "2026-04", "2026-04")
@@ -1050,7 +1087,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if openingMonth.OpeningBalanceYen != 0 || openingMonth.ClosingBalanceYen != 5000 || len(openingMonth.Changes) != 1 || openingMonth.Changes[0].SourceKind != "ACCOUNT_OPENING_BALANCE" {
+	if openingMonth.OpeningBalanceYen != 0 || openingMonth.ClosingBalanceYen != 5000 || len(openingMonth.Changes) != 1 || accountBalanceSourceType(openingMonth.Changes[0].Source) != "Account" {
 		t.Fatalf("the opening balance did not appear at its effective date: %#v", openingMonth)
 	}
 	cardAnalysis, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, cardAccount.ID, "2026-06", "2026-06")
@@ -1086,7 +1123,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(correctionAnalysis.Changes) != 1 || correctionAnalysis.Changes[0].SourceKind != "CORRECTION" || correctionAnalysis.Changes[0].Description != "Full return" || correctionAnalysis.Changes[0].ChangeYen != -1000 || correctionAnalysis.ClosingBalanceYen != -1000 {
+	if len(correctionAnalysis.Changes) != 1 || accountBalanceSourceType(correctionAnalysis.Changes[0].Source) != "PurchaseCorrection" || correctionAnalysis.Changes[0].Description != "Full return" || correctionAnalysis.Changes[0].ChangeYen != -1000 || correctionAnalysis.ClosingBalanceYen != -1000 {
 		t.Fatalf("account history omitted the card refund correction: %#v", correctionAnalysis)
 	}
 	correctionInput.AmountDeltaYen = -500

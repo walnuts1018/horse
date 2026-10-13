@@ -76,8 +76,7 @@ export type AccountMovement = {
 export type AccountBalance = { accountId: string; balanceYen: number; currency: string };
 export type AccountBalanceChange = {
   occurredAt: string;
-  sourceKind: string;
-  sourceId: string;
+  source: { id: string; __typename: string };
   description: string;
   changeYen: number;
   balanceYen: number;
@@ -242,8 +241,8 @@ export type ProductVariant = {
   conceptId: string;
   name: string;
   normalizedName: string;
-  brand: string;
-  packageSize: string;
+  brand?: string | null;
+  packageSize?: string | null;
   barcode?: string | null;
   archived: boolean;
   revision: number;

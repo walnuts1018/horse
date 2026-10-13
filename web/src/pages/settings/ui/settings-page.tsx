@@ -29,7 +29,7 @@ import {
 import { archiveBudgetMutation, budgetsQuery, setBudgetMutation } from "../../../entities/budget";
 import {
   archiveRecurringExpenseMutation,
-  recurringExpensesQuery,
+  readRecurringExpenses,
   setRecurringExpenseMutation,
 } from "../../../entities/recurring-expense";
 import {
@@ -83,16 +83,18 @@ const shiftMonth = (month: string, offset: number) => {
   const shifted = monthIndex(month) + offset;
   return `${Math.floor(shifted / 12)}-${String((shifted % 12) + 1).padStart(2, "0")}`;
 };
-const balanceChangeSource = (sourceKind: string) =>
+const balanceChangeSource = (sourceType: string) =>
   ({
-    PURCHASE: "購入",
-    CORRECTION: "訂正",
-    FUNDING: "資金拠出",
-    TRANSFER: "送金",
-    ACCOUNT_MOVEMENT: "口座振替",
-    ACCOUNT_INCOME: "外部入金",
-    ACCOUNT_OPENING_BALANCE: "初期残高",
-  })[sourceKind] ?? sourceKind;
+    Account: "初期残高",
+    Purchase: "購入",
+    PurchaseCorrection: "訂正",
+    PurchaseLedgerEntry: "購入",
+    CorrectionLedgerEntry: "訂正",
+    FundingLedgerEntry: "資金拠出",
+    TransferLedgerEntry: "送金",
+    AccountMovement: "口座振替",
+    AccountIncome: "外部入金",
+  })[sourceType] ?? "仕訳";
 
 export function SettingsPage({
   household,
@@ -299,10 +301,7 @@ export function SettingsPage({
           householdId: household.id,
           period: budgetPeriod,
         }),
-        readGraphql<{ recurringExpenses: RecurringExpense[] }>(recurringExpensesQuery, {
-          householdId: household.id,
-          includeArchived: true,
-        }),
+        readRecurringExpenses(household.id, true),
         readGraphql<{
           accountMovements: {
             edges: { node: AccountMovement }[];
@@ -327,7 +326,7 @@ export function SettingsPage({
       ]);
     setTags(tagResult.tags);
     setBudgets(budgetResult.budgets);
-    setRecurring(recurringResult.recurringExpenses);
+    setRecurring(recurringResult);
     setMovements(movementResult.accountMovements.edges.map((edge) => edge.node));
     setMovementCursor(movementResult.accountMovements.pageInfo.endCursor);
     setMovementHasNextPage(movementResult.accountMovements.pageInfo.hasNextPage);
@@ -1194,10 +1193,10 @@ export function SettingsPage({
                 {visibleBalanceChanges.map((change, index) => (
                   <div
                     className="account-balance-change"
-                    key={`${change.sourceId}-${change.occurredAt}-${index}`}
+                    key={`${change.source.id}-${change.occurredAt}-${index}`}
                   >
                     <div className="account-balance-change-copy">
-                      <b>{change.description || balanceChangeSource(change.sourceKind)}</b>
+                      <b>{change.description || balanceChangeSource(change.source.__typename)}</b>
                       <small>
                         {new Date(change.occurredAt).toLocaleString("ja-JP", {
                           month: "numeric",
@@ -1205,7 +1204,7 @@ export function SettingsPage({
                           hour: "2-digit",
                           minute: "2-digit",
                         })}{" "}
-                        · {balanceChangeSource(change.sourceKind)}
+                        · {balanceChangeSource(change.source.__typename)}
                       </small>
                     </div>
                     <div className="account-balance-change-bar">

@@ -805,3 +805,81 @@ func (r *queryResolver) recurringExpenses(ctx context.Context, householdID strin
 	}
 	return result, nil
 }
+
+func (r *queryResolver) recurringExpenseConnection(ctx context.Context, householdID string, includeArchived bool, after *string, first int) (*model.RecurringExpenseConnection, error) {
+	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
+		return nil, err
+	}
+	pageSize, _, err := pageDirection(after, nil, &first, nil)
+	if err != nil {
+		return nil, err
+	}
+	hhID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	executor := queryExecutor(r.DB)
+	filters := []bob.Expression{models.RecurringExpenses.Columns.HouseholdID.EQ(psql.Arg(hhID))}
+	if !includeArchived {
+		filters = append(filters, models.RecurringExpenses.Columns.Archived.EQ(psql.Arg(false)))
+	}
+	baseFilter := psql.And(filters...)
+	count, err := models.RecurringExpenses.Query(sm.Where(baseFilter)).Count(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if afterID, err := cursorID(after, "RecurringExpense"); err != nil {
+		return nil, err
+	} else if afterID != nil {
+		cursorID, err := gofrsuuid.FromString(*afterID)
+		if err != nil {
+			return nil, fmt.Errorf("parse recurring expense cursor: %w", err)
+		}
+		cursor, err := models.RecurringExpenses.Query(sm.Where(psql.And(
+			models.RecurringExpenses.Columns.ID.EQ(psql.Arg(cursorID)),
+			baseFilter,
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, psql.Or(
+			models.RecurringExpenses.Columns.NextDueOn.GT(psql.Arg(cursor.NextDueOn)),
+			psql.And(
+				models.RecurringExpenses.Columns.NextDueOn.EQ(psql.Arg(cursor.NextDueOn)),
+				models.RecurringExpenses.Columns.ID.GT(psql.Arg(cursor.ID)),
+			),
+		))
+	}
+	rows, err := models.RecurringExpenses.Query(
+		sm.Where(psql.And(filters...)),
+		sm.OrderBy(models.RecurringExpenses.Columns.NextDueOn),
+		sm.OrderBy(models.RecurringExpenses.Columns.ID),
+		sm.Limit(pageSize+1),
+	).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	hasNextPage := len(rows) > pageSize
+	if hasNextPage {
+		rows = rows[:pageSize]
+	}
+	connection := &model.RecurringExpenseConnection{
+		Edges:      make([]*model.RecurringExpenseEdge, 0, len(rows)),
+		TotalCount: int(count),
+		PageInfo:   &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: after != nil && *after != ""},
+	}
+	for _, row := range rows {
+		connection.Edges = append(connection.Edges, &model.RecurringExpenseEdge{
+			Cursor: encodeCursor("RecurringExpense", row.ID.String()),
+			Node:   recurringExpenseModel(row),
+		})
+	}
+	if len(rows) > 0 {
+		start, end := encodeCursor("RecurringExpense", rows[0].ID.String()), encodeCursor("RecurringExpense", rows[len(rows)-1].ID.String())
+		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &start, &end
+	}
+	return connection, nil
+}

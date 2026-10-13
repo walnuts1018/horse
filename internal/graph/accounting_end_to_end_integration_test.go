@@ -134,7 +134,7 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 			t.Fatal(err)
 		}
 		if analysis.OpeningBalanceYen != model.Long(expected.opening) || analysis.ClosingBalanceYen != model.Long(expected.closing) ||
-			len(analysis.Changes) != 1 || analysis.Changes[0].ChangeYen != model.Long(expected.change) || analysis.Changes[0].SourceKind != "ACCOUNT_MOVEMENT" {
+			len(analysis.Changes) != 1 || analysis.Changes[0].ChangeYen != model.Long(expected.change) || accountBalanceSourceType(analysis.Changes[0].Source) != "AccountMovement" {
 			t.Fatalf("account analysis did not reflect its side of the transfer: account=%s analysis=%#v", expected.accountID, analysis)
 		}
 	}

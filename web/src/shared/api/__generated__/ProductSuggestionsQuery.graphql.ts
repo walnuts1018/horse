@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b28ddea0a07d4980ce8aee199805d0ec>>
+ * @generated SignedSource<<1d8b6ea448e8b3d1bc722bd9f6e889fe>>
  * @lightSyntaxTransform
  */
 
@@ -24,10 +24,10 @@ export type ProductSuggestionsQuery$data = {
     readonly matchedName: string;
     readonly score: number;
     readonly variant: {
-      readonly brand: string;
+      readonly brand: string | null | undefined;
       readonly id: string;
       readonly name: string;
-      readonly packageSize: string;
+      readonly packageSize: string | null | undefined;
     };
   }>;
 };

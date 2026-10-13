@@ -3,7 +3,9 @@ enum SettlementStatus {
   CLOSED
 }
 
-type Settlement {
+type Settlement implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
   period: String!
   status: SettlementStatus!
   revision: Int!

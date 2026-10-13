@@ -12,10 +12,13 @@ var nodeTypes = map[string]struct{}{
 	"Account": {}, "AccountIncome": {}, "AccountMovement": {}, "AllocationRule": {},
 	"Budget": {}, "Category": {}, "Household": {}, "HouseholdInvitation": {}, "LoanBalance": {}, "Member": {},
 	"LedgerEntry": {}, "Pool": {}, "ProductAlias": {}, "ProductConcept": {}, "ProductVariant": {}, "Purchase": {},
-	"PurchaseCorrection": {}, "PurchaseItem": {}, "RecurringExpense": {}, "Tag": {}, "UnmatchedObservation": {},
+	"PurchaseCorrection": {}, "PurchaseItem": {}, "RecurringExpense": {}, "Settlement": {}, "Tag": {}, "UnmatchedObservation": {},
 }
 
 func encodeNodeID(kind, raw string) (string, error) {
+	if kind == "Settlement" {
+		return "", fmt.Errorf("Settlement node ID requires household and period")
+	}
 	if _, ok := nodeTypes[kind]; !ok {
 		return "", fmt.Errorf("unknown node type %q", kind)
 	}
@@ -24,6 +27,17 @@ func encodeNodeID(kind, raw string) (string, error) {
 		return "", fmt.Errorf("invalid %s node ID", kind)
 	}
 	return base64.RawURLEncoding.EncodeToString(append(append([]byte(kind), ':'), id[:]...)), nil
+}
+
+func encodeSettlementNodeID(householdID, period string) (string, error) {
+	if _, err := uuid.FromString(householdID); err != nil {
+		return "", fmt.Errorf("invalid Settlement household ID")
+	}
+	if _, err := parseAccountingPeriod(period); err != nil {
+		return "", fmt.Errorf("invalid Settlement period")
+	}
+	payload := "Settlement:" + householdID + ":" + period
+	return base64.RawURLEncoding.EncodeToString([]byte(payload)), nil
 }
 
 func encodeNodeIDPtr(kind string, raw *string) (*string, error) {

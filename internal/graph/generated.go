@@ -58,6 +58,7 @@ type ResolverRoot interface {
 	PurchasePayment() PurchasePaymentResolver
 	Query() QueryResolver
 	RecurringExpense() RecurringExpenseResolver
+	Settlement() SettlementResolver
 	SettlementLine() SettlementLineResolver
 	Tag() TagResolver
 	TransferLedgerEntry() TransferLedgerEntryResolver
@@ -106,8 +107,7 @@ type ComplexityRoot struct {
 		ChangeYen   func(childComplexity int) int
 		Description func(childComplexity int) int
 		OccurredAt  func(childComplexity int) int
-		SourceID    func(childComplexity int) int
-		SourceKind  func(childComplexity int) int
+		Source      func(childComplexity int) int
 	}
 
 	AccountIncome struct {
@@ -699,7 +699,7 @@ type ComplexityRoot struct {
 		ProductSuggestions      func(childComplexity int, householdID string, query string, merchant *string, first *int) int
 		PurchaseCorrections     func(childComplexity int, purchaseID string) int
 		Purchases               func(childComplexity int, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) int
-		RecurringExpenses       func(childComplexity int, householdID string, includeArchived *bool) int
+		RecurringExpenses       func(childComplexity int, householdID string, includeArchived *bool, after *string, first *int) int
 		Settlement              func(childComplexity int, householdID string, period string) int
 		Tags                    func(childComplexity int, householdID string, includeArchived *bool) int
 		UnmatchedObservations   func(childComplexity int, householdID string, from *string, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) int
@@ -766,6 +766,17 @@ type ComplexityRoot struct {
 		PaymentAccountID func(childComplexity int) int
 		Revision         func(childComplexity int) int
 		StartsOn         func(childComplexity int) int
+	}
+
+	RecurringExpenseConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	RecurringExpenseEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
 	}
 
 	RevokeHouseholdInvitationSuccess struct {
@@ -850,11 +861,13 @@ type ComplexityRoot struct {
 	}
 
 	Settlement struct {
-		CreatedAt func(childComplexity int) int
-		Lines     func(childComplexity int) int
-		Period    func(childComplexity int) int
-		Revision  func(childComplexity int) int
-		Status    func(childComplexity int) int
+		CreatedAt   func(childComplexity int) int
+		HouseholdID func(childComplexity int) int
+		ID          func(childComplexity int) int
+		Lines       func(childComplexity int) int
+		Period      func(childComplexity int) int
+		Revision    func(childComplexity int) int
+		Status      func(childComplexity int) int
 	}
 
 	SettlementLine struct {
@@ -1126,7 +1139,7 @@ type QueryResolver interface {
 	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first *int) ([]*model.ProductSuggestion, error)
 	Purchases(ctx context.Context, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
 	PurchaseCorrections(ctx context.Context, purchaseID string) ([]*model.PurchaseCorrection, error)
-	RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool) ([]*model.RecurringExpense, error)
+	RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool, after *string, first *int) (*model.RecurringExpenseConnection, error)
 	Settlement(ctx context.Context, householdID string, period string) (*model.Settlement, error)
 	Tags(ctx context.Context, householdID string, includeArchived *bool) ([]*model.Tag, error)
 	UnmatchedObservations(ctx context.Context, householdID string, from *string, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) (*model.UnmatchedObservationConnection, error)
@@ -1138,6 +1151,10 @@ type RecurringExpenseResolver interface {
 
 	CategoryID(ctx context.Context, obj *model.RecurringExpense) (*string, error)
 	PaymentAccountID(ctx context.Context, obj *model.RecurringExpense) (*string, error)
+}
+type SettlementResolver interface {
+	ID(ctx context.Context, obj *model.Settlement) (string, error)
+	HouseholdID(ctx context.Context, obj *model.Settlement) (string, error)
 }
 type SettlementLineResolver interface {
 	MemberID(ctx context.Context, obj *model.SettlementLine) (string, error)
@@ -1304,18 +1321,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AccountBalanceChange.OccurredAt(childComplexity), true
-	case "AccountBalanceChange.sourceId":
-		if e.ComplexityRoot.AccountBalanceChange.SourceID == nil {
+	case "AccountBalanceChange.source":
+		if e.ComplexityRoot.AccountBalanceChange.Source == nil {
 			break
 		}
 
-		return e.ComplexityRoot.AccountBalanceChange.SourceID(childComplexity), true
-	case "AccountBalanceChange.sourceKind":
-		if e.ComplexityRoot.AccountBalanceChange.SourceKind == nil {
-			break
-		}
-
-		return e.ComplexityRoot.AccountBalanceChange.SourceKind(childComplexity), true
+		return e.ComplexityRoot.AccountBalanceChange.Source(childComplexity), true
 
 	case "AccountIncome.accountId":
 		if e.ComplexityRoot.AccountIncome.AccountID == nil {
@@ -3727,7 +3738,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.RecurringExpenses(childComplexity, args["householdId"].(string), args["includeArchived"].(*bool)), true
+		return e.ComplexityRoot.Query.RecurringExpenses(childComplexity, args["householdId"].(string), args["includeArchived"].(*bool), args["after"].(*string), args["first"].(*int)), true
 	case "Query.settlement":
 		if e.ComplexityRoot.Query.Settlement == nil {
 			break
@@ -3953,6 +3964,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.RecurringExpense.StartsOn(childComplexity), true
 
+	case "RecurringExpenseConnection.edges":
+		if e.ComplexityRoot.RecurringExpenseConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecurringExpenseConnection.Edges(childComplexity), true
+	case "RecurringExpenseConnection.pageInfo":
+		if e.ComplexityRoot.RecurringExpenseConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecurringExpenseConnection.PageInfo(childComplexity), true
+	case "RecurringExpenseConnection.totalCount":
+		if e.ComplexityRoot.RecurringExpenseConnection.TotalCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecurringExpenseConnection.TotalCount(childComplexity), true
+
+	case "RecurringExpenseEdge.cursor":
+		if e.ComplexityRoot.RecurringExpenseEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecurringExpenseEdge.Cursor(childComplexity), true
+	case "RecurringExpenseEdge.node":
+		if e.ComplexityRoot.RecurringExpenseEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RecurringExpenseEdge.Node(childComplexity), true
+
 	case "RevokeHouseholdInvitationSuccess.result":
 		if e.ComplexityRoot.RevokeHouseholdInvitationSuccess.Result == nil {
 			break
@@ -4139,6 +4182,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Settlement.CreatedAt(childComplexity), true
+	case "Settlement.householdId":
+		if e.ComplexityRoot.Settlement.HouseholdID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Settlement.HouseholdID(childComplexity), true
+	case "Settlement.id":
+		if e.ComplexityRoot.Settlement.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Settlement.ID(childComplexity), true
 	case "Settlement.lines":
 		if e.ComplexityRoot.Settlement.Lines == nil {
 			break
@@ -4669,8 +4724,7 @@ extend type Query {
 
 type AccountBalanceChange {
   occurredAt: String!
-  sourceKind: String!
-  sourceId: ID!
+  source: Node!
   description: String!
   changeYen: Long!
   balanceYen: Long!
@@ -5476,8 +5530,8 @@ extend type Query {
   conceptId: ID! @goField(forceResolver: true)
   name: String!
   normalizedName: String!
-  brand: String!
-  packageSize: String!
+  brand: String
+  packageSize: String
   barcode: String
   archived: Boolean!
   revision: Int!
@@ -5753,7 +5807,18 @@ type RecordTransferUserError implements MutationError {
 }
 
 extend type Query {
-  recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [RecurringExpense!]!
+  recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false, after: String, first: Int = 50): RecurringExpenseConnection!
+}
+
+type RecurringExpenseEdge {
+  cursor: String!
+  node: RecurringExpense!
+}
+
+type RecurringExpenseConnection {
+  edges: [RecurringExpenseEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/revoke_household_invitation_mutation.graphql", Input: `extend type Mutation {
@@ -5990,7 +6055,9 @@ type SetRecurringExpenseUserError implements MutationError {
   CLOSED
 }
 
-type Settlement {
+type Settlement implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
   period: String!
   status: SettlementStatus!
   revision: Int!
@@ -6221,10 +6288,8 @@ func (ec *executionContext) childFields_AccountBalanceChange(ctx context.Context
 	switch field.Name {
 	case "occurredAt":
 		return ec.fieldContext_AccountBalanceChange_occurredAt(ctx, field)
-	case "sourceKind":
-		return ec.fieldContext_AccountBalanceChange_sourceKind(ctx, field)
-	case "sourceId":
-		return ec.fieldContext_AccountBalanceChange_sourceId(ctx, field)
+	case "source":
+		return ec.fieldContext_AccountBalanceChange_source(ctx, field)
 	case "description":
 		return ec.fieldContext_AccountBalanceChange_description(ctx, field)
 	case "changeYen":
@@ -6963,8 +7028,34 @@ func (ec *executionContext) childFields_RecurringExpense(ctx context.Context, fi
 	return nil, fmt.Errorf("no field named %q was found under type RecurringExpense", field.Name)
 }
 
+func (ec *executionContext) childFields_RecurringExpenseConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_RecurringExpenseConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_RecurringExpenseConnection_pageInfo(ctx, field)
+	case "totalCount":
+		return ec.fieldContext_RecurringExpenseConnection_totalCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type RecurringExpenseConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_RecurringExpenseEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_RecurringExpenseEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_RecurringExpenseEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type RecurringExpenseEdge", field.Name)
+}
+
 func (ec *executionContext) childFields_Settlement(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
+	case "id":
+		return ec.fieldContext_Settlement_id(ctx, field)
+	case "householdId":
+		return ec.fieldContext_Settlement_householdId(ctx, field)
 	case "period":
 		return ec.fieldContext_Settlement_period(ctx, field)
 	case "status":
@@ -9378,6 +9469,22 @@ func (ec *executionContext) field_Query_recurringExpenses_args(ctx context.Conte
 		return nil, err
 	}
 	args["includeArchived"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg3
 	return args, nil
 }
 
@@ -10169,50 +10276,36 @@ func (ec *executionContext) fieldContext_AccountBalanceChange_occurredAt(_ conte
 	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
-func (ec *executionContext) _AccountBalanceChange_sourceKind(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
+func (ec *executionContext) _AccountBalanceChange_source(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
 		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_AccountBalanceChange_sourceKind(ctx, field)
+			return ec.fieldContext_AccountBalanceChange_source(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
-			return obj.SourceKind, nil
+			return obj.Source, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.Node) graphql.Marshaler {
+			return ec.marshalNNode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐNode(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
-func (ec *executionContext) fieldContext_AccountBalanceChange_sourceKind(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type String does not have child fields"))
-}
-
-func (ec *executionContext) _AccountBalanceChange_sourceId(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_AccountBalanceChange_sourceId(ctx, field)
+func (ec *executionContext) fieldContext_AccountBalanceChange_source(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountBalanceChange",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
 		},
-		func(ctx context.Context) (any, error) {
-			return obj.SourceID, nil
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNID2string(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_AccountBalanceChange_sourceId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type ID does not have child fields"))
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _AccountBalanceChange_description(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChange) (ret graphql.Marshaler) {
@@ -17589,11 +17682,11 @@ func (ec *executionContext) _ProductVariant_brand(ctx context.Context, field gra
 			return obj.Brand, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
 		},
 		true,
-		true,
+		false,
 	)
 }
 func (ec *executionContext) fieldContext_ProductVariant_brand(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -17612,11 +17705,11 @@ func (ec *executionContext) _ProductVariant_packageSize(ctx context.Context, fie
 			return obj.PackageSize, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
-			return ec.marshalNString2string(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
 		},
 		true,
-		true,
+		false,
 	)
 }
 func (ec *executionContext) fieldContext_ProductVariant_packageSize(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -19903,11 +19996,11 @@ func (ec *executionContext) _Query_recurringExpenses(ctx context.Context, field 
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().RecurringExpenses(ctx, fc.Args["householdId"].(string), fc.Args["includeArchived"].(*bool))
+			return ec.Resolvers.Query().RecurringExpenses(ctx, fc.Args["householdId"].(string), fc.Args["includeArchived"].(*bool), fc.Args["after"].(*string), fc.Args["first"].(*int))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []*model.RecurringExpense) graphql.Marshaler {
-			return ec.marshalNRecurringExpense2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpenseᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.RecurringExpenseConnection) graphql.Marshaler {
+			return ec.marshalNRecurringExpenseConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpenseConnection(ctx, selections, v)
 		},
 		true,
 		true,
@@ -19920,7 +20013,7 @@ func (ec *executionContext) fieldContext_Query_recurringExpenses(ctx context.Con
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_RecurringExpense(ctx, field)
+			return ec.childFields_RecurringExpenseConnection(ctx, field)
 		},
 	}
 	defer func() {
@@ -20889,6 +20982,148 @@ func (ec *executionContext) fieldContext_RecurringExpense_revision(_ context.Con
 	return graphql.NewScalarFieldContext("RecurringExpense", field, false, false, errors.New("field of type Int does not have child fields"))
 }
 
+func (ec *executionContext) _RecurringExpenseConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.RecurringExpenseConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecurringExpenseConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.RecurringExpenseEdge) graphql.Marshaler {
+			return ec.marshalNRecurringExpenseEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpenseEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecurringExpenseConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RecurringExpenseConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_RecurringExpenseEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RecurringExpenseConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.RecurringExpenseConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecurringExpenseConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecurringExpenseConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RecurringExpenseConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RecurringExpenseConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.RecurringExpenseConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecurringExpenseConnection_totalCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecurringExpenseConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecurringExpenseConnection", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _RecurringExpenseEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.RecurringExpenseEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecurringExpenseEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecurringExpenseEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RecurringExpenseEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _RecurringExpenseEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.RecurringExpenseEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RecurringExpenseEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.RecurringExpense) graphql.Marshaler {
+			return ec.marshalNRecurringExpense2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpense(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RecurringExpenseEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RecurringExpenseEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_RecurringExpense(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _RevokeHouseholdInvitationSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.RevokeHouseholdInvitationSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -21580,6 +21815,52 @@ func (ec *executionContext) _SetRecurringExpenseUserError_message(ctx context.Co
 }
 func (ec *executionContext) fieldContext_SetRecurringExpenseUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("SetRecurringExpenseUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Settlement_id(ctx context.Context, field graphql.CollectedField, obj *model.Settlement) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Settlement_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Settlement().ID(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Settlement_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Settlement", field, true, true, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _Settlement_householdId(ctx context.Context, field graphql.CollectedField, obj *model.Settlement) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Settlement_householdId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Settlement().HouseholdID(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Settlement_householdId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Settlement", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
 func (ec *executionContext) _Settlement_period(ctx context.Context, field graphql.CollectedField, obj *model.Settlement) (ret graphql.Marshaler) {
@@ -28663,6 +28944,13 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 			return graphql.Null
 		}
 		return ec._Tag(ctx, sel, obj)
+	case model.Settlement:
+		return ec._Settlement(ctx, sel, &obj)
+	case *model.Settlement:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._Settlement(ctx, sel, obj)
 	case model.RecurringExpense:
 		return ec._RecurringExpense(ctx, sel, &obj)
 	case *model.RecurringExpense:
@@ -29692,13 +29980,8 @@ func (ec *executionContext) _AccountBalanceChange(ctx context.Context, sel ast.S
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "sourceKind":
-			out.Values[i] = ec._AccountBalanceChange_sourceKind(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "sourceId":
-			out.Values[i] = ec._AccountBalanceChange_sourceId(ctx, field, obj)
+		case "source":
+			out.Values[i] = ec._AccountBalanceChange_source(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -34879,12 +35162,12 @@ func (ec *executionContext) _ProductVariant(ctx context.Context, sel ast.Selecti
 			}
 		case "brand":
 			out.Values[i] = ec._ProductVariant_brand(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
+			if out.Values[i] == graphql.RequiredNull {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "packageSize":
 			out.Values[i] = ec._ProductVariant_packageSize(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
+			if out.Values[i] == graphql.RequiredNull {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "barcode":
@@ -36977,6 +37260,97 @@ func (ec *executionContext) _RecurringExpense(ctx context.Context, sel ast.Selec
 	return out
 }
 
+var recurringExpenseConnectionImplementors = []string{"RecurringExpenseConnection"}
+
+func (ec *executionContext) _RecurringExpenseConnection(ctx context.Context, sel ast.SelectionSet, obj *model.RecurringExpenseConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, recurringExpenseConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RecurringExpenseConnection")
+		case "edges":
+			out.Values[i] = ec._RecurringExpenseConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._RecurringExpenseConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._RecurringExpenseConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var recurringExpenseEdgeImplementors = []string{"RecurringExpenseEdge"}
+
+func (ec *executionContext) _RecurringExpenseEdge(ctx context.Context, sel ast.SelectionSet, obj *model.RecurringExpenseEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, recurringExpenseEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RecurringExpenseEdge")
+		case "cursor":
+			out.Values[i] = ec._RecurringExpenseEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._RecurringExpenseEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var revokeHouseholdInvitationSuccessImplementors = []string{"RevokeHouseholdInvitationSuccess", "RevokeHouseholdInvitationResult"}
 
 func (ec *executionContext) _RevokeHouseholdInvitationSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.RevokeHouseholdInvitationSuccess) graphql.Marshaler {
@@ -37706,7 +38080,7 @@ func (ec *executionContext) _SetRecurringExpenseUserError(ctx context.Context, s
 	return out
 }
 
-var settlementImplementors = []string{"Settlement"}
+var settlementImplementors = []string{"Settlement", "Node"}
 
 func (ec *executionContext) _Settlement(ctx context.Context, sel ast.SelectionSet, obj *model.Settlement) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, settlementImplementors)
@@ -37718,30 +38092,106 @@ func (ec *executionContext) _Settlement(ctx context.Context, sel ast.SelectionSe
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Settlement")
+		case "id":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Settlement_id(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "householdId":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Settlement_householdId(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "period":
 			out.Values[i] = ec._Settlement_period(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "status":
 			out.Values[i] = ec._Settlement_status(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "revision":
 			out.Values[i] = ec._Settlement_revision(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "lines":
 			out.Values[i] = ec._Settlement_lines(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "createdAt":
 			out.Values[i] = ec._Settlement_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.RequiredNull {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -40015,6 +40465,16 @@ func (ec *executionContext) marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018
 	return v
 }
 
+func (ec *executionContext) marshalNNode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐNode(ctx context.Context, sel ast.SelectionSet, v model.Node) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Node(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNNode2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐNode(ctx context.Context, sel ast.SelectionSet, v []model.Node) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -40567,11 +41027,31 @@ func (ec *executionContext) marshalNRecordTransferResult2githubᚗcomᚋwalnuts1
 	return ec._RecordTransferResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNRecurringExpense2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpenseᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.RecurringExpense) graphql.Marshaler {
+func (ec *executionContext) marshalNRecurringExpense2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpense(ctx context.Context, sel ast.SelectionSet, v *model.RecurringExpense) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._RecurringExpense(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNRecurringExpenseConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpenseConnection(ctx context.Context, sel ast.SelectionSet, v *model.RecurringExpenseConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._RecurringExpenseConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNRecurringExpenseEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpenseEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.RecurringExpenseEdge) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNRecurringExpense2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpense(ctx, sel, v[i])
+		return ec.marshalNRecurringExpenseEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpenseEdge(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -40583,14 +41063,14 @@ func (ec *executionContext) marshalNRecurringExpense2ᚕᚖgithubᚗcomᚋwalnut
 	return ret
 }
 
-func (ec *executionContext) marshalNRecurringExpense2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpense(ctx context.Context, sel ast.SelectionSet, v *model.RecurringExpense) graphql.Marshaler {
+func (ec *executionContext) marshalNRecurringExpenseEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpenseEdge(ctx context.Context, sel ast.SelectionSet, v *model.RecurringExpenseEdge) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
-	return ec._RecurringExpense(ctx, sel, v)
+	return ec._RecurringExpenseEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNRevokeHouseholdInvitationResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRevokeHouseholdInvitationResult(ctx context.Context, sel ast.SelectionSet, v model.RevokeHouseholdInvitationResult) graphql.Marshaler {

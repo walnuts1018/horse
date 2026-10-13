@@ -1,22 +1,41 @@
 import { graphql } from "react-relay";
 
 export const recurringExpensesQuery = graphql`
-  query RecurringExpensesQuery($householdId: ID!, $includeArchived: Boolean) {
-    recurringExpenses(householdId: $householdId, includeArchived: $includeArchived) {
-      id
-      householdId
-      name
-      merchant
-      amountYen
-      currency
-      categoryId
-      paymentAccountId
-      cadence
-      startsOn
-      nextDueOn
-      endsOn
-      archived
-      revision
+  query RecurringExpensesQuery(
+    $householdId: ID!
+    $includeArchived: Boolean
+    $after: String
+    $first: Int
+  ) {
+    recurringExpenses(
+      householdId: $householdId
+      includeArchived: $includeArchived
+      after: $after
+      first: $first
+    ) {
+      edges {
+        cursor
+        node {
+          id
+          householdId
+          name
+          merchant
+          amountYen
+          currency
+          categoryId
+          paymentAccountId
+          cadence
+          startsOn
+          nextDueOn
+          endsOn
+          archived
+          revision
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
     }
   }
 `;

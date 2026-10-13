@@ -212,8 +212,7 @@ type AccountBalanceAnalysis struct {
 
 type AccountBalanceChange struct {
 	OccurredAt  string `json:"occurredAt"`
-	SourceKind  string `json:"sourceKind"`
-	SourceID    string `json:"sourceId"`
+	Source      Node   `json:"source"`
 	Description string `json:"description"`
 	ChangeYen   Long   `json:"changeYen"`
 	BalanceYen  Long   `json:"balanceYen"`
@@ -974,8 +973,8 @@ type ProductVariant struct {
 	ConceptID      string          `json:"conceptId"`
 	Name           string          `json:"name"`
 	NormalizedName string          `json:"normalizedName"`
-	Brand          string          `json:"brand"`
-	PackageSize    string          `json:"packageSize"`
+	Brand          *string         `json:"brand,omitempty"`
+	PackageSize    *string         `json:"packageSize,omitempty"`
 	Barcode        *string         `json:"barcode,omitempty"`
 	Archived       bool            `json:"archived"`
 	Revision       int             `json:"revision"`
@@ -1279,6 +1278,17 @@ type RecurringExpense struct {
 
 func (RecurringExpense) IsNode() {}
 
+type RecurringExpenseConnection struct {
+	Edges      []*RecurringExpenseEdge `json:"edges"`
+	PageInfo   *PageInfo               `json:"pageInfo"`
+	TotalCount int                     `json:"totalCount"`
+}
+
+type RecurringExpenseEdge struct {
+	Cursor string            `json:"cursor"`
+	Node   *RecurringExpense `json:"node"`
+}
+
 type RevokeHouseholdInvitationSuccess struct {
 	Result *HouseholdInvitation `json:"result"`
 }
@@ -1499,12 +1509,16 @@ func (this SetRecurringExpenseUserError) GetCode() MutationErrorCode { return th
 func (this SetRecurringExpenseUserError) GetMessage() string         { return this.Message }
 
 type Settlement struct {
-	Period    string            `json:"period"`
-	Status    SettlementStatus  `json:"status"`
-	Revision  int               `json:"revision"`
-	Lines     []*SettlementLine `json:"lines"`
-	CreatedAt *string           `json:"createdAt,omitempty"`
+	ID          string            `json:"id"`
+	HouseholdID string            `json:"householdId"`
+	Period      string            `json:"period"`
+	Status      SettlementStatus  `json:"status"`
+	Revision    int               `json:"revision"`
+	Lines       []*SettlementLine `json:"lines"`
+	CreatedAt   *string           `json:"createdAt,omitempty"`
 }
+
+func (Settlement) IsNode() {}
 
 type SettlementLine struct {
 	MemberID             string `json:"memberId"`

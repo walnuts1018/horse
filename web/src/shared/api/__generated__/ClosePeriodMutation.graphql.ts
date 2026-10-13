@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<d0c330f61b256f46f7da2c6f25fde758>>
+ * @generated SignedSource<<fbb3a5396c3094d8e9ae571d2438f64a>>
  * @lightSyntaxTransform
  */
 
@@ -45,97 +45,102 @@ var v0 = [
 ],
 v1 = [
   {
-    "alias": null,
-    "args": [
-      {
-        "kind": "Variable",
-        "name": "input",
-        "variableName": "input"
-      }
-    ],
-    "concreteType": null,
-    "kind": "LinkedField",
-    "name": "closePeriod",
-    "plural": false,
-    "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "__typename",
-        "storageKey": null
-      },
-      {
-        "kind": "InlineFragment",
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "Settlement",
-            "kind": "LinkedField",
-            "name": "result",
-            "plural": false,
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "period",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "status",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "revision",
-                "storageKey": null
-              }
-            ],
-            "storageKey": null
-          }
-        ],
-        "type": "ClosePeriodSuccess",
-        "abstractKey": null
-      },
-      {
-        "kind": "InlineFragment",
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "code",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "message",
-            "storageKey": null
-          }
-        ],
-        "type": "MutationError",
-        "abstractKey": "__isMutationError"
-      }
-    ],
-    "storageKey": null
+    "kind": "Variable",
+    "name": "input",
+    "variableName": "input"
   }
-];
+],
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "__typename",
+  "storageKey": null
+},
+v3 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "period",
+  "storageKey": null
+},
+v4 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "status",
+  "storageKey": null
+},
+v5 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "revision",
+  "storageKey": null
+},
+v6 = {
+  "kind": "InlineFragment",
+  "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "code",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "message",
+      "storageKey": null
+    }
+  ],
+  "type": "MutationError",
+  "abstractKey": "__isMutationError"
+};
 return {
   "fragment": {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
     "name": "ClosePeriodMutation",
-    "selections": (v1/*:: as any*/),
+    "selections": [
+      {
+        "alias": null,
+        "args": (v1/*:: as any*/),
+        "concreteType": null,
+        "kind": "LinkedField",
+        "name": "closePeriod",
+        "plural": false,
+        "selections": [
+          (v2/*:: as any*/),
+          {
+            "kind": "InlineFragment",
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "Settlement",
+                "kind": "LinkedField",
+                "name": "result",
+                "plural": false,
+                "selections": [
+                  (v3/*:: as any*/),
+                  (v4/*:: as any*/),
+                  (v5/*:: as any*/)
+                ],
+                "storageKey": null
+              }
+            ],
+            "type": "ClosePeriodSuccess",
+            "abstractKey": null
+          },
+          (v6/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ],
     "type": "Mutation",
     "abstractKey": null
   },
@@ -144,15 +149,57 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "ClosePeriodMutation",
-    "selections": (v1/*:: as any*/)
+    "selections": [
+      {
+        "alias": null,
+        "args": (v1/*:: as any*/),
+        "concreteType": null,
+        "kind": "LinkedField",
+        "name": "closePeriod",
+        "plural": false,
+        "selections": [
+          (v2/*:: as any*/),
+          {
+            "kind": "InlineFragment",
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "Settlement",
+                "kind": "LinkedField",
+                "name": "result",
+                "plural": false,
+                "selections": [
+                  (v3/*:: as any*/),
+                  (v4/*:: as any*/),
+                  (v5/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "id",
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "type": "ClosePeriodSuccess",
+            "abstractKey": null
+          },
+          (v6/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ]
   },
   "params": {
-    "cacheID": "ac0250c1ae1d1eec441f007522bcc67e",
+    "cacheID": "79845cd95cabc18ab73ad7a889f54488",
     "id": null,
     "metadata": {},
     "name": "ClosePeriodMutation",
     "operationKind": "mutation",
-    "text": "mutation ClosePeriodMutation(\n  $input: ClosePeriodInput!\n) {\n  closePeriod(input: $input) {\n    __typename\n    ... on ClosePeriodSuccess {\n      result {\n        period\n        status\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation ClosePeriodMutation(\n  $input: ClosePeriodInput!\n) {\n  closePeriod(input: $input) {\n    __typename\n    ... on ClosePeriodSuccess {\n      result {\n        period\n        status\n        revision\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

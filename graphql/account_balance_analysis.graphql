@@ -10,8 +10,7 @@ type AccountBalanceAnalysis {
 
 type AccountBalanceChange {
   occurredAt: String!
-  sourceKind: String!
-  sourceId: ID!
+  source: Node!
   description: String!
   changeYen: Long!
   balanceYen: Long!

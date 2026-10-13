@@ -81,4 +81,21 @@ func TestNodeReferenceResolversReturnGlobalIDs(t *testing.T) {
 	if lenderGlobalID != wantLenderGlobalID || borrowerGlobalID != wantBorrowerGlobalID {
 		t.Fatalf("LoanBalance member IDs = %q, %q; want %q, %q", lenderGlobalID, borrowerGlobalID, wantLenderGlobalID, wantBorrowerGlobalID)
 	}
+
+	settlement := &model.Settlement{HouseholdID: householdID, Period: "2026-10"}
+	settlementGlobalID, err := (&Resolver{}).Settlement().ID(t.Context(), settlement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedKind, payload, err := decodeGlobalNodeID(settlementGlobalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedHouseholdID, decodedPeriod, err := decodeSettlementNodeID(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decodedKind != "Settlement" || decodedHouseholdID != householdID || decodedPeriod != settlement.Period {
+		t.Fatalf("Settlement node ID decoded to %q, %q, %q", decodedKind, decodedHouseholdID, decodedPeriod)
+	}
 }

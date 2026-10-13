@@ -197,12 +197,24 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expenses, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil)
+	nextRecurring, err := resolver.setRecurringExpense(ctx, model.SetRecurringExpenseInput{HouseholdID: household.ID, Name: "Phone", Merchant: "Telco", AmountYen: 2000, CategoryID: &category.ID, Cadence: "MONTHLY", StartsOn: "2026-04-01", NextDueOn: "2026-06-01"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(expenses) != 1 || expenses[0].ID != recurring.ID || expenses[0].NextDueOn != "2026-05-01" {
+	first := 1
+	expenses, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil, nil, &first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(expenses.Edges) != 1 || expenses.Edges[0].Node.ID != recurring.ID || expenses.Edges[0].Node.NextDueOn != "2026-05-01" || expenses.TotalCount != 2 || !expenses.PageInfo.HasNextPage || expenses.PageInfo.EndCursor == nil {
 		t.Fatalf("recurring expense metadata did not round-trip: %#v", expenses)
+	}
+	secondPage, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil, expenses.PageInfo.EndCursor, &first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secondPage.Edges) != 1 || secondPage.Edges[0].Node.ID != nextRecurring.ID || secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage {
+		t.Fatalf("recurring expense pagination did not advance by cursor: %#v", secondPage)
 	}
 	bank, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Bank", Kind: model.AccountKindBank})
 	if err != nil {
@@ -242,9 +254,9 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if err != nil || len(firstPage.Edges) != 1 || firstPage.Edges[0].Node.ID != movement.ID || !firstPage.PageInfo.HasNextPage || firstPage.TotalCount != 2 || firstPage.PageInfo.EndCursor == nil {
 		t.Fatalf("first account movement page failed: connection=%#v error=%v", firstPage, err)
 	}
-	secondPage, err := query.AccountMovements(ctx, household.ID, firstPage.PageInfo.EndCursor, &pageSize)
-	if err != nil || len(secondPage.Edges) != 1 || secondPage.Edges[0].Node.ID == movement.ID || secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage {
-		t.Fatalf("next account movement page failed: connection=%#v error=%v", secondPage, err)
+	nextMovementPage, err := query.AccountMovements(ctx, household.ID, firstPage.PageInfo.EndCursor, &pageSize)
+	if err != nil || len(nextMovementPage.Edges) != 1 || nextMovementPage.Edges[0].Node.ID == movement.ID || nextMovementPage.PageInfo.HasNextPage || !nextMovementPage.PageInfo.HasPreviousPage {
+		t.Fatalf("next account movement page failed: connection=%#v error=%v", nextMovementPage, err)
 	}
 	storedMovement, err := models.AccountMovements.Query(sm.Where(models.AccountMovements.Columns.ID.EQ(psql.Arg(generatedUUID(movement.ID))))).One(ctx, bobpgx.NewPool(db))
 	if err != nil {

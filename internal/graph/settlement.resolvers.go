@@ -16,12 +16,28 @@ func (r *queryResolver) Settlement(ctx context.Context, householdID string, peri
 	return r.settlement(ctx, householdID, period)
 }
 
+// ID is the resolver for the id field.
+func (r *settlementResolver) ID(ctx context.Context, obj *model.Settlement) (string, error) {
+	return encodeSettlementNodeID(obj.HouseholdID, obj.Period)
+}
+
+// HouseholdID is the resolver for the householdId field.
+func (r *settlementResolver) HouseholdID(ctx context.Context, obj *model.Settlement) (string, error) {
+	return encodeNodeID("Household", obj.HouseholdID)
+}
+
 // MemberID is the resolver for the memberId field.
 func (r *settlementLineResolver) MemberID(ctx context.Context, obj *model.SettlementLine) (string, error) {
 	return encodeNodeID("Member", obj.MemberID)
 }
 
+// Settlement returns SettlementResolver implementation.
+func (r *Resolver) Settlement() SettlementResolver { return &settlementResolver{r} }
+
 // SettlementLine returns SettlementLineResolver implementation.
 func (r *Resolver) SettlementLine() SettlementLineResolver { return &settlementLineResolver{r} }
 
-type settlementLineResolver struct{ *Resolver }
+type (
+	settlementResolver     struct{ *Resolver }
+	settlementLineResolver struct{ *Resolver }
+)

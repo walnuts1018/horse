@@ -144,8 +144,10 @@ export const accountBalanceAnalysisQuery = graphql`
       closingBalanceYen
       changes {
         occurredAt
-        sourceKind
-        sourceId
+        source {
+          id
+          __typename
+        }
         description
         changeYen
         balanceYen

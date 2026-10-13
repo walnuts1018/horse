@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<df05ae09427bd91aab706b9a76c71d05>>
+ * @generated SignedSource<<3e69eaab3689d5d5be69620119649adb>>
  * @lightSyntaxTransform
  */
 
@@ -34,13 +34,13 @@ export type ProductCatalogQuery$data = {
           }>;
           readonly archived: boolean;
           readonly barcode: string | null | undefined;
-          readonly brand: string;
+          readonly brand: string | null | undefined;
           readonly conceptId: string;
           readonly householdId: string;
           readonly id: string;
           readonly name: string;
           readonly normalizedName: string;
-          readonly packageSize: string;
+          readonly packageSize: string | null | undefined;
           readonly revision: number;
         }>;
       };

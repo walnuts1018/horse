@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -29,6 +30,13 @@ func (r *queryResolver) node(ctx context.Context, id string) (model.Node, error)
 			return nil, err
 		}
 		return r.findUnmatchedObservation(ctx, documentID, sourceReference)
+	}
+	if kind == "Settlement" {
+		householdID, period, err := decodeSettlementNodeID(rawID)
+		if err != nil {
+			return nil, err
+		}
+		return r.settlement(ctx, householdID, period)
 	}
 	return r.findNode(ctx, kind, rawID)
 }
@@ -58,7 +66,7 @@ func decodeGlobalNodeID(globalID string) (string, string, error) {
 	if _, ok := nodeTypes[kind]; !ok {
 		return "", "", fmt.Errorf("unknown node type %q", kind)
 	}
-	if kind == "UnmatchedObservation" {
+	if kind == "UnmatchedObservation" || kind == "Settlement" {
 		return kind, string(payload), nil
 	}
 	if len(payload) != 16 {
@@ -83,6 +91,20 @@ func decodeUnmatchedNodeID(payload string) (string, string, error) {
 		return uuid.UUID(documentID).String(), string(rest[4:]), nil
 	}
 	return "", "", errors.New("invalid UnmatchedObservation node ID payload")
+}
+
+func decodeSettlementNodeID(payload string) (string, string, error) {
+	householdID, period, ok := strings.Cut(payload, ":")
+	if !ok {
+		return "", "", errors.New("invalid Settlement node ID payload")
+	}
+	if _, err := uuid.FromString(householdID); err != nil {
+		return "", "", errors.New("invalid Settlement household ID")
+	}
+	if _, err := parseAccountingPeriod(period); err != nil {
+		return "", "", errors.New("invalid Settlement period")
+	}
+	return householdID, period, nil
 }
 
 func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.Node, error) {

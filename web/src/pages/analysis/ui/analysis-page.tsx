@@ -10,7 +10,7 @@ import {
 } from "../../../shared/api";
 import { monthlyMemberSpendingQuery } from "../api/operations";
 import { budgetsQuery } from "../../../entities/budget";
-import { recurringExpensesQuery } from "../../../entities/recurring-expense";
+import { readRecurringExpenses } from "../../../entities/recurring-expense";
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { InlineError } from "../../../shared/ui";
 import { japanMonth } from "../../../shared/lib";
@@ -289,11 +289,8 @@ export function AnalysisPage({ household }: { household: Household }) {
   useEffect(() => {
     let active = true;
     setRecurringError("");
-    void readGraphql<{ recurringExpenses: RecurringExpense[] }>(recurringExpensesQuery, {
-      householdId: household.id,
-      includeArchived: false,
-    })
-      .then((result) => active && setRecurringExpenses(result.recurringExpenses))
+    void readRecurringExpenses(household.id)
+      .then((expenses) => active && setRecurringExpenses(expenses))
       .catch((reason) => active && setRecurringError((reason as Error).message));
     return () => {
       active = false;
