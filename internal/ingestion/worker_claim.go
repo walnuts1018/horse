@@ -32,46 +32,47 @@ func (w *Worker) claim(ctx context.Context, jobID string) (job, bool, error) {
 	}()
 	var candidate *models.ExtractionJob
 	var document *models.SourceDocument
-	skipped := make([]bob.Expression, 0)
-	for {
-		conditions := []bob.Expression{
-			models.ExtractionJobs.Columns.FailureCount.LT(psql.Arg(5)),
-			models.ExtractionJobs.Columns.Status.EQ(psql.Arg(extractionStatusQueued)),
-			models.ExtractionJobs.Columns.AvailableAt.LTE(psql.Arg(time.Now())),
+	conditions := []bob.Expression{
+		models.ExtractionJobs.Columns.FailureCount.LT(psql.Arg(5)),
+		models.ExtractionJobs.Columns.Status.EQ(psql.Arg(extractionStatusQueued)),
+		models.ExtractionJobs.Columns.AvailableAt.LTE(psql.Arg(time.Now())),
+	}
+	if jobID != "" {
+		id, parseErr := gofrsuuid.FromString(jobID)
+		if parseErr != nil {
+			return job{}, false, fmt.Errorf("claim extraction job: %w", parseErr)
 		}
-		if jobID != "" {
-			id, parseErr := gofrsuuid.FromString(jobID)
-			if parseErr != nil {
-				return job{}, false, fmt.Errorf("claim extraction job: %w", parseErr)
-			}
-			conditions = append(conditions, models.ExtractionJobs.Columns.ID.EQ(psql.Arg(id)))
-		}
-		if len(skipped) > 0 {
-			conditions = append(conditions, models.ExtractionJobs.Columns.ID.NotIn(skipped...))
-		}
-		candidate, err = models.ExtractionJobs.Query(
-			sm.Where(psql.And(conditions...)),
-			sm.OrderBy(models.ExtractionJobs.Columns.AvailableAt),
-			sm.OrderBy(models.ExtractionJobs.Columns.ID),
-			sm.ForUpdate().SkipLocked(), sm.Limit(1),
-		).One(claimCtx, executor)
-		if errors.Is(err, sql.ErrNoRows) {
-			return job{}, false, nil
-		}
-		if err != nil {
-			return job{}, false, fmt.Errorf("claim extraction job: %w", err)
-		}
-		document, err = models.SourceDocuments.Query(sm.Where(psql.And(
-			models.SourceDocuments.Columns.ID.EQ(psql.Arg(candidate.SourceDocumentID)),
-			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(candidate.HouseholdID)),
-		))).One(claimCtx, executor)
-		if err != nil {
-			return job{}, false, fmt.Errorf("load extraction document: %w", err)
-		}
-		if w.GeminiEnabled || document.MimeType == mimeTypeCSV && (document.SourceKind == statementSourceCard || document.SourceKind == statementSourceBank) {
-			break
-		}
-		skipped = append(skipped, psql.Arg(candidate.ID))
+		conditions = append(conditions, models.ExtractionJobs.Columns.ID.EQ(psql.Arg(id)))
+	}
+	if !w.GeminiEnabled {
+		eligibleDocuments := psql.Select(
+			sm.Columns(models.SourceDocuments.Columns.ID),
+			sm.From(models.SourceDocuments.NameExpr()),
+			sm.Where(psql.And(
+				models.SourceDocuments.Columns.MimeType.EQ(psql.Arg(mimeTypeCSV)),
+				models.SourceDocuments.Columns.SourceKind.In(psql.Arg(statementSourceCard), psql.Arg(statementSourceBank)),
+			)),
+		)
+		conditions = append(conditions, models.ExtractionJobs.Columns.SourceDocumentID.In(eligibleDocuments))
+	}
+	candidate, err = models.ExtractionJobs.Query(
+		sm.Where(psql.And(conditions...)),
+		sm.OrderBy(models.ExtractionJobs.Columns.AvailableAt),
+		sm.OrderBy(models.ExtractionJobs.Columns.ID),
+		sm.ForUpdate().SkipLocked(), sm.Limit(1),
+	).One(claimCtx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return job{}, false, nil
+	}
+	if err != nil {
+		return job{}, false, fmt.Errorf("claim extraction job: %w", err)
+	}
+	document, err = models.SourceDocuments.Query(sm.Where(psql.And(
+		models.SourceDocuments.Columns.ID.EQ(psql.Arg(candidate.SourceDocumentID)),
+		models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(candidate.HouseholdID)),
+	))).One(claimCtx, executor)
+	if err != nil {
+		return job{}, false, fmt.Errorf("load extraction document: %w", err)
 	}
 	nextStatus := "running"
 	nextAttempt := candidate.Attempt + 1

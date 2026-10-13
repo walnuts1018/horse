@@ -278,6 +278,10 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 
 email/order_emailの無料Liteモデルが429を返した場合だけ、同一無料ProjectのFlashモデルを試します。無料Flashの429ではRetry-Afterを維持してPaidへ切り替えず、一時的な5xxでは既存のfallback方針に従い有料Flashを試します。レシートのFlashからLiteへのfallbackは行いません。Router統合テストで無料Flash成功、429後の再試行、有料Flash成功の各経路について、呼出し数、モデル、Project route、Reason、retry delay、費用記録を確認しました。残るモデル横断routingの制限を`docs/reviews/gemini.md`に記載しました。
 
+### 2026年10月14日のGemini無効時のjob claim
+
+Geminiを無効にしたWorkerは、対応するカード・銀行CSV文書に結び付いたjobだけをBob DSLのサブクエリでclaimします。Geminiが必要なjobを順に`FOR UPDATE SKIP LOCKED`し、除外IDを`NOT IN`へ積み上げる処理を削除しました。ingestionの`TestMain`はDB接続URLが未指定の場合にTestcontainersでPostgreSQL 18を起動してmigrationを適用します。CIと同じDB統合テストをローカルでも実行でき、Gemini無効時の候補選択とSpend Cap再queueを確認しました。通常の無料429では有料へ移行しないため、Spend Cap経路のfixtureは無料APIの一時的な503から有料APIへ進む設定に直しました。`go test ./internal/ingestion`とgolangci-lintは成功しました。実データ量での性能測定は行っていません。該当する検索方法の指摘を`docs/reviews/all2.md`から削除し、負荷が増えた場合はQueryの実行計画とWorkerの処理時間を測定して再評価します。
+
 ### Gemini失敗呼び出しの利用量記録
 
 MAX_TOKENSや不正生成JSONでGemini呼び出しに失敗した場合も、応答にUsageMetadataがあれば入力・出力token数と有料ルートの推定費用を記録します。runの失敗statusとerror codeは維持します。UsageMetadata付きMAX_TOKENSと不正JSONを返すテストでtoken数、推定費用、失敗状態を確認しました。

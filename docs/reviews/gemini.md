@@ -1,131 +1,55 @@
-## 結論：無料枠は優先されていますが、まだフル活用できていません
+## 結論：無料枠を優先する経路はありますが、共有quota管理とジョブ分類はありません
 
-最新の [`walnuts1018/horse`](https://github.com/walnuts1018/horse) の `main`（`b5085e2`）を確認しました。
+現行コードでは、通常の抽出は無料Projectから開始します。無料Projectの429では有料Projectへ切り替えず、APIの`Retry-After`をWorkerのjob再試行へ渡します。Geminiが一時的な5xxを返した場合は、有料Projectへfallbackします。成功した呼び出し後に無料枠の使用量を集計したり、モデルごとのRPM・TPM・RPDを共有状態で管理したりする機能はありません。
 
-現在の実装は「まず無料APIを試し、使えなければ有料APIへ切り替える」方式です。 これは良い出発点ですが、「有料APIを使う前に、利用可能な無料枠を最大限使い切る」方式にはなっていません。
+### 現在の実装
 
-このレビュー後、無料枠で`429`が返った場合は有料へ切り替えず、APIの`Retry-After`をWorkerのjob再試行へ渡すよう変更しました。現在も無料枠のモデル別使用量や日次制限を共有管理する機能はありません。
+| 項目 | 状態 |
+| --- | --- |
+| 無料Projectから抽出を開始 | 実装済み |
+| レシート系とメール系で初回モデルを使い分け | 実装済み |
+| メール系の無料Liteが429の場合に無料Flashを試す | 実装済み |
+| 429後に`Retry-After`を使ってjobを再試行 | 実装済み |
+| 無料Projectの一時的な5xx時に有料Projectへfallback | 実装済み |
+| 有料ProjectのFlex tier | `background` purposeの場合に利用可能。ただし現行APIのjobはすべて`interactive`を設定 |
+| Gemini Batch API | 未実装 |
+| モデル別quotaの共有管理、無料枠の回復待ち | 未実装 |
+| アプリ内の月間予算予約 | 未実装。Google Cloud Spend Capを使用 |
 
-### 現在の評価
+Geminiの有効化設定も確認が必要です。[README](../../README.md)と[デプロイ手順](../deployment.md)には`GEMINI_ENABLED=true`を設定するまで画像・メール解析jobを待機させると記載されています。デプロイ状態がこの設定に従う間、Gemini APIは通常の取り込みから呼び出されません。
 
-| 項目 | 評価 |
-| ----------------------- | ------------- |
-| Free Projectを優先する | &#x20;実装済み |
-| レシートとメールでモデルを使い分ける | &#x20;実装済み |
-| 無料枠の429時に待機して無料APIを再試行 | 実装済み。Retry-AfterをWorker再試行へ引き継ぐ |
-| 無料枠の一時的な5xx時に有料へフォールバック | 実装済み |
-| バックグラウンド処理で有料Flexを使う | &#x20;経路は実装済み |
-| モデル別の無料RPM・TPM・RPDを把握する | &#x20;未実装 |
-| 無料枠の回復を待って処理する | &#x20;未実装 |
-| 別の無料モデルの余力を利用する | &#x20;未実装 |
-| 再解析・Pro昇格の費用を最適化する | &#x20;改善余地あり |
-| 有料APIの月間予算を制御する | Google Cloud Spend Capで月500円を設定。アプリ内の予算予約は追加しない |
+## Routerのモデルとfallback
 
-Google公式によると、無料枠のレート制限はプロジェクト単位で、主にRPM（分間リクエスト）、TPM（分間入力トークン）、RPD（日間リクエスト）で管理されます。実際の上限はプロジェクト・モデル・利用状況によって異なります。
+現行の初期モデルは[Router](../../internal/ingestion/router.go)に定数で定義され、`.env.example`から環境変数で上書きできます。
 
-[image](https://www.google.com/s2/favicons?domain=https://ai.google.dev\&sz=32)
+| 対象 | 初期モデル |
+| --- | --- |
+| レシート、画像、PDFなど | `gemini-3.8-flash` |
+| `email`、`order_email`またはメールMIME | `gemini-3.5-flash-lite` |
+| 税や合計の不整合等が残る場合のPro確認 | `gemini-3.1-pro-preview` |
 
-ai.google.dev
+Routerは初回モデルのquota fallbackを全source kindへ適用しません。メール系で初回の無料Liteが429を返した場合だけ、同じ無料ProjectのFlashを試します。無料Flashも429ならその応答の`Retry-After`をWorkerへ返し、無料Flashが一時的な5xxを返した場合は有料Flashへfallbackします。その他の無料429はWorkerのjob再試行へ進みます。レシート系のFlashからLiteへ切り替える処理や、quotaの残量を予測する処理はありません。
 
-### 重要：現在の公開環境では、Geminiが無効になっている記録があります
+有料APIへのfallback対象はquotaではなく一時的なprovider errorです。無料APIの429とSpend Capエラーは有料APIへ切り替わりません。Spend Capエラーは通常の失敗回数を増やさずjobを再queueし、次の請求月境界を基準に再試行します。
 
-[docs/completion-audit.md](https://github.com/walnuts1018/horse/blob/b5085e2de82390e783c6fe0c37da2a702c0cf54d/docs/completion-audit.md) には、Free/Paid両プロジェクトで合成画像を使った実API呼び出しが各1回成功した一方、検証後に通常Workerの `GEMINI_ENABLED` を `false` に戻した、と記録されています。
+モデル名を環境変数で変更する場合、Paidルート用の価格表にもモデルを登録する必要があります。例えば`GEMINI_LITE_MODEL=gemini-3.1-flash-lite`を設定しても、現行の`modelPrices()`には価格がないため、有料fallbackは`unknown_model_price`で拒否されます。価格表に未登録のモデルを無料ルートだけで使う場合は動作し得ますが、Paidルートへ進めません。
 
-したがって、この記録が現在のデプロイ状態と一致していれば、通常の画像・PDF取り込みでは無料APIも有料APIも使用されていません。CSVのローカル解析は引き続き可能です。
+## FlexとBatchの到達経路
 
-これは料金を節約するためのルーティングとは別の話です。コード上で無料枠優先が実装されていても、Workerを有効化していなければ利用実績は増えません。公開環境の現設定は別途確認が必要です。
+通常のアップロードと手動再解析はAPIがjob purposeとして`interactive`を保存します。Routerは空または`interactive`をStandard tierとして扱います。`background`が与えられれば、無料Projectでは引き続きStandardを使い、有料Projectに進んだ場合にFlex tierを指定します。Pro昇格も元jobのpurposeを引き継ぎます。
 
-## 料金面で直すべき具体的な箇所
+現行APIには`background`を保存する経路がなく、通常jobからFlexを利用できません。RouterにはFlexに対応する分岐とFlex費用の推定がありますが、Batch APIのクライアント、job状態管理、結果取得経路はありません。メール一括取込や過去履歴の処理にFlexを使う案は、purposeをbackgroundに設定するjob経路の追加が必要です。Batch利用は別途API実装が必要です。
 
-### 1. 現行APIからは有料Flexをほとんど活用できない
+## 費用制御
 
-[documents.go](https://github.com/walnuts1018/horse/blob/b5085e2de82390e783c6fe0c37da2a702c0cf54d/internal/api/documents.go) では、新規アップロードと手動再解析のジョブに `JobPurposeInteractive` を設定しています。
+Gemini応答にUsageMetadataが含まれる場合、成功・失敗を問わず入力・出力token数と推定費用を記録します。Routerに月間予算の予約や呼び出し前の上限判定はありません。Google CloudのSpend Capを月500円で設定する運用は[デプロイ手順](../deployment.md)に記録されています。Spend CapはGoogle側で適用される制限で、アプリ内でAPI呼び出し前に支出を止める仕組みではありません。Spend Cap到達を示す応答を受けたjobは請求月境界を基準に再試行します。
 
-`JobPurposeBackground` を渡した場合にFlexへ切り替える処理はありますが、現在のAPIから作るジョブにはその経路がありません。
+Google CloudのSpend Capとは別にアプリ内予算を追加する必要性は現時点では低く、請求データと記録済み推定費用の照合精度を改善する際に再評価します。
 
-Google公式のFlexは、通常の有料料金から 50%割引になる代わりに待機時間と可用性の制約があります。Batch APIも大量の非同期処理向けに50%割引で提供されています。
+## 改善候補
 
-[image](https://www.google.com/s2/favicons?domain=https://ai.google.dev\&sz=32)
+共有quota状態を持たないため、Worker間でモデル別RPM・TPM・RPDを調整できず、無料枠の回復時刻も予測しません。AI Studioで確認した実際の上限を用いる共有レート制御や、急がないjobの再試行時刻を設けると、quotaを超える呼び出しと不要な失敗を減らせます。
 
-ai.google.dev
+モデル切替は現在メール系のLiteが429を返した場合に限られます。別モデルの無料枠を使う対象を広げる場合は、source kindごとの品質評価と、モデル別料金表の更新が必要です。レシートをより安価なモデルへ一律変更する前に、税率混在、値引、ポイント、商品名の読取精度と、再解析や人手修正を含めた費用を比較してください。
 
-+1
-
-そのため、メールの一括取り込みや過去履歴のインポートには、別のジョブ優先度と処理期限を与える仕組みが必要です。ただし、無料で処理できるなら無料Standardを使う方が、半額の有料Flexよりさらに安いことは維持してください。
-
-### 2. 無料モデル間のquota fallbackが限定的
-
-現在のモデル選択は、基本的に次の構成です。
-
-| 処理 | 初回モデル |
-| ------------- | ---------------------------- |
-| レシート・画像・PDFなど | `gemini-3.8-flash` |
-| メール | `gemini-3.5-flash-lite` |
-| 高度な品質再検証 | `gemini-3.1-pro-preview`（有料） |
-
-メール・注文メールでは、無料Liteモデルの429時に無料Flashモデルを試す経路を追加しました。無料Flashも429ならRetry-AfterをWorkerへ返し、一時的な5xxなら既存方針どおり有料Flashへfallbackします。レシートのFlashからLiteへ品質を落としてfallbackする経路や、モデル別の無料枠の共有状態管理はありません。
-
-このfallbackは429を受けたメールに限定し、無料枠が残っているモデルへの切替を試します。使用量、モデル別RPM・TPM・RPDを追跡する処理や、全source kindを横断する汎用fallbackではありません。
-
-Google公式の料金表では、現在のモデルに加えて `gemini-3.1-flash-lite` も無料Standardに対応しています。
-
-[image](https://www.google.com/s2/favicons?domain=https://ai.google.dev\&sz=32)
-
-ai.google.dev
-
-+2
-
-ただし、レシートをすべて最安モデルにすることは推奨しません。税率混在・値引・ポイント・商品名の判読精度が落ちれば、再解析費用と人手修正が増えるからです。
-
-なお、`gemini-3.1-flash-lite` は有料でも比較的安価ですが、現在の [modelPrices()](https://github.com/walnuts1018/horse/blob/b5085e2de82390e783c6fe0c37da2a702c0cf54d/internal/ingestion/router.go#L330-L347) に登録されていません。そのまま `GEMINI_LITE_MODEL` に指定すると、無料呼び出し後の有料フォールバックが `unknown_model_price` で拒否されます。候補モデルを増やす際は料金表も変更する必要があります。
-
-### 3. 有料APIの月間利用額を呼び出し前に制御できない
-
-[gemini.go:81–117](https://github.com/walnuts1018/horse/blob/b5085e2de82390e783c6fe0c37da2a702c0cf54d/internal/ingestion/gemini.go#L81-L117)
-
-成功・失敗にかかわらず、Gemini API応答にUsageMetadataがあればモデル、入力・出力トークン数、為替レート、推定費用を記録します。月間の予算予約や呼び出し前の上限判定はRouterにありません。Google側のSpend Capを利用しているため、アプリ内に同じ月間上限を重ねず、Google請求データとの照合を改善する場合に再評価します。
-
-## 私なら、このようなルーティングへ変更します
-
-取り込みジョブを受信
-
-ファイル種類、品質要件、処理期限を判定
-
-対話的な取り込み
-
-待機時間を重視
-
-無料Flash / Lite
-
-短時間の無料リトライ → 別の無料モデル → 有料Standard
-
-バックグラウンド
-
-無料消費を優先
-
-無料Flash / Lite
-
-無料枠の回復待ち → 別の無料モデル → 期限に応じて有料Flex / Batch
-
-ローカルの金額検証・OCR照合
-
-問題が残る場合だけ部分再解析。重大で解決可能な問題はProへ昇格
-
-この構成にする場合は、無料プロジェクトについてモデルごとのRPM・TPM・RPD使用状況を共有状態で管理する必要があります。
-
-Horseは既にPostgreSQLとValkeyを利用する構成なので、Workerを複数起動しても同じ無料枠を過剰消費しないよう、共有のレートリミッターを設けるのが適切です。上限値はAI Studioの実際の値から設定し、`429` を受けたら利用可能時刻を更新します。
-
-## 優先順位
-
-| 優先度 | 改善項目 | 期待する効果 |
-| --- | ------------------------- | ---------------- |
-| P1 | 別の無料モデルへのフォールバック | 残った無料処理枠を活用 |
-| P1 | 有料Pro昇格条件とOCR再解析の費用対効果を評価 | 人手修正を減らす再解析に有料利用を限定 |
-| P2 | Batch・Flexの実用的なジョブ分類 | 無料で収まらない大量処理を半額化 |
-| P2 | モデル別の実レシート精度・費用ベンチマーク | 最も安く正確なモデルを選択 |
-
-なお、Horseには既に [`internal/evaluation`](https://github.com/walnuts1018/horse/tree/b5085e2de82390e783c6fe0c37da2a702c0cf54d/internal/evaluation) のオフライン評価器があります。新しい評価基盤を作り直すのではなく、ここへ日本語レシートとメールの正解データを増やし、1件の正しい購入登録にかかった総費用でモデル選択を比較するのがよいです。
-
-最も効果が大きいのは、モデルをただ安いものに置き換えることではありません。無料枠が一時的に使えないだけなのか、本当に使い切ったのかを判断し、急がない処理を無料枠の回復まで待たせることです。
-
-現在は「Free First」まではできていますが、目指すべき「Free Maximization」にはまだ改善の余地があります。
+大量の非対話処理へFlexを適用するには、jobのpurposeと処理期限を決める経路を用意します。Batchを選ぶ場合は、現在存在しない非同期Batch処理と結果回収も実装対象です。モデルの品質・費用比較には既存の[オフライン評価器](../../internal/evaluation)を利用できます。

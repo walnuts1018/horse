@@ -99,8 +99,8 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	}
 
 	free := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusTooManyRequests)
-		_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"rate limit"}}`)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, `{"error":{"status":"UNAVAILABLE","message":"temporarily unavailable"}}`)
 	}))
 	defer free.Close()
 	paid := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -185,7 +185,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	pausedJob := insertJob("receipt", mimeTypePDF, "paused-document", 0, 0)
 	store["paused-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("test source")}
 	disabledWorker := Worker{DB: db, Store: store}
-	processed, err := disabledWorker.RunOne(ctx, pausedJob)
+	processed, err := disabledWorker.RunOne(ctx, "")
 	if err != nil || processed {
 		t.Fatalf("disabled worker must leave Gemini documents unclaimed: processed=%v error=%v", processed, err)
 	}
@@ -200,7 +200,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 
 	csvJob := insertJob("card", "text/csv", "card-csv-document", 0, 0)
 	store["card-csv-document"] = Document{MIMEType: "text/csv", Data: []byte("利用日,利用店名,利用金額,取引番号\n2026/10/12,店,100,tx-1\n")}
-	processed, err = disabledWorker.RunOne(ctx, csvJob)
+	processed, err = disabledWorker.RunOne(ctx, "")
 	if err != nil || !processed {
 		t.Fatalf("disabled worker must process deterministic CSV imports: processed=%v error=%v", processed, err)
 	}
