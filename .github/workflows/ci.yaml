@@ -90,6 +90,9 @@ jobs:
           - name: Check frontend formatting
             run: mise run web:format:check
 
+          - name: Check GraphQL formatting
+            run: mise run web:format:graphql:check
+
           - name: Build frontend
             run: mise run web:build
 

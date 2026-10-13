@@ -62,12 +62,20 @@ run = "pnpm lint:steiger"
 [tasks."web:lint"]
 description = "フロントエンドの静的解析"
 dir = "web"
-run = ["pnpm lint:oxlint", "pnpm lint:style"]
+run = ["pnpm lint:oxlint", "pnpm lint:markup", "pnpm lint:style"]
 
 [tasks."web:format:check"]
 description = "フロントエンドのフォーマット検査"
 dir = "web"
 run = "pnpm format:check"
+
+[tasks."web:format:graphql"]
+description = "GraphQL SDLのフォーマット"
+run = "mise exec -- pnpm --dir web exec oxfmt --write 'graphql/**/*.graphql'"
+
+[tasks."web:format:graphql:check"]
+description = "GraphQL SDLのフォーマット検査"
+run = "mise exec -- pnpm --dir web exec oxfmt --check 'graphql/**/*.graphql'"
 
 [tasks.api]
 description = "APIの起動"

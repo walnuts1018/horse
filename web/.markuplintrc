@@ -1,0 +1,16 @@
+{
+  "parser": {
+    "\\.tsx$": "@markuplint/jsx-parser"
+  },
+  "specs": {
+    "\\.tsx$": "@markuplint/react-spec"
+  },
+  "rules": {
+    "no-skipped-heading-level": false,
+    "permitted-contents": false,
+    "require-attr": false,
+    "require-element": false,
+    "require-accessible-name": true,
+    "label-has-control": true
+  }
+}

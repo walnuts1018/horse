@@ -13,7 +13,7 @@
 - ZITADELのAuthorization Code+PKCEと、HttpOnly CookieのDBセッション。
 - infraリポジトリのArgoCDとEnvoy Gatewayによるkurumiへの配置。
 
-ライブラリ選定はpiccaを基準とする。
+ライブラリ選定はpiccaを基準とする。フロントエンドの対象ブラウザーは[ブラウザー対応方針](docs/browser-support.md)に定める。
 
 ## 開発環境
 
@@ -44,6 +44,7 @@ mise run web:check
 mise run web:lint
 mise run web:lint:fsd
 mise run web:format:check
+mise run web:format:graphql:check
 mise run web:build
 mise run ocr:lint
 ```
