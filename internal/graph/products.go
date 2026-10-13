@@ -366,34 +366,53 @@ func (r *queryResolver) productSuggestions(ctx context.Context, householdID, que
 	}
 	householdUUID, _ := gofrsuuid.FromString(householdID)
 	db := bobpgx.NewPool(r.DB)
-	searchPattern := "%" + escapeProductSearchPattern(searchKey) + "%"
+	escapedSearchKey := escapeProductSearchPattern(searchKey)
+	prefixPattern := escapedSearchKey + "%"
+	searchPattern := "%" + escapedSearchKey + "%"
 	const candidateLimit = 500
 	variantRows, err := models.ProductVariants.Query(
-		sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductVariants.Columns.Archived), models.ProductVariants.Columns.NormalizedName.Like(psql.Arg(searchPattern)))),
+		sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductVariants.Columns.Archived), models.ProductVariants.Columns.NormalizedName.Like(psql.Arg(prefixPattern)))),
+		sm.OrderBy(models.ProductVariants.Columns.NormalizedName), sm.OrderBy(models.ProductVariants.Columns.ID),
+	).All(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	partialVariantRows, err := models.ProductVariants.Query(
+		sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductVariants.Columns.Archived), models.ProductVariants.Columns.NormalizedName.Like(psql.Arg(searchPattern)), psql.Not(models.ProductVariants.Columns.NormalizedName.Like(psql.Arg(prefixPattern))))),
 		sm.OrderBy(models.ProductVariants.Columns.NormalizedName), sm.OrderBy(models.ProductVariants.Columns.ID), sm.Limit(candidateLimit),
 	).All(ctx, db)
 	if err != nil {
 		return nil, err
 	}
+	variantRows = append(variantRows, partialVariantRows...)
 	variantByID := make(map[gofrsuuid.UUID]*models.ProductVariant, len(variantRows))
 	for _, variantRow := range variantRows {
 		variantByID[variantRow.ID] = variantRow
 	}
 	conceptRows, err := models.ProductConcepts.Query(
-		sm.Where(psql.And(models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductConcepts.Columns.Archived), models.ProductConcepts.Columns.NormalizedName.Like(psql.Arg(searchPattern)))),
+		sm.Where(psql.And(models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductConcepts.Columns.Archived), models.ProductConcepts.Columns.NormalizedName.Like(psql.Arg(prefixPattern)))),
+		sm.OrderBy(models.ProductConcepts.Columns.NormalizedName), sm.OrderBy(models.ProductConcepts.Columns.ID),
+	).All(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	partialConceptRows, err := models.ProductConcepts.Query(
+		sm.Where(psql.And(models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductConcepts.Columns.Archived), models.ProductConcepts.Columns.NormalizedName.Like(psql.Arg(searchPattern)), psql.Not(models.ProductConcepts.Columns.NormalizedName.Like(psql.Arg(prefixPattern))))),
 		sm.OrderBy(models.ProductConcepts.Columns.NormalizedName), sm.OrderBy(models.ProductConcepts.Columns.ID), sm.Limit(candidateLimit),
 	).All(ctx, db)
 	if err != nil {
 		return nil, err
 	}
+	conceptRows = append(conceptRows, partialConceptRows...)
 	conceptIDs := make([]any, 0, len(conceptRows))
 	for _, conceptRow := range conceptRows {
 		conceptIDs = append(conceptIDs, conceptRow.ID)
 	}
-	if len(conceptIDs) > 0 {
+	for start := 0; start < len(conceptIDs); start += candidateLimit {
+		end := min(start+candidateLimit, len(conceptIDs))
 		conceptVariantRows, err := models.ProductVariants.Query(
-			sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductVariants.Columns.Archived), models.ProductVariants.Columns.ConceptID.In(psql.Arg(conceptIDs...)))),
-			sm.OrderBy(models.ProductVariants.Columns.NormalizedName), sm.OrderBy(models.ProductVariants.Columns.ID), sm.Limit(candidateLimit),
+			sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), psql.Not(models.ProductVariants.Columns.Archived), models.ProductVariants.Columns.ConceptID.In(psql.Arg(conceptIDs[start:end]...)))),
+			sm.OrderBy(models.ProductVariants.Columns.NormalizedName), sm.OrderBy(models.ProductVariants.Columns.ID),
 		).All(ctx, db)
 		if err != nil {
 			return nil, err
@@ -405,20 +424,33 @@ func (r *queryResolver) productSuggestions(ctx context.Context, householdID, que
 	matchedAliases := make(map[gofrsuuid.UUID]*models.ProductAlias)
 	if merchantKey != "" {
 		aliasRows, err := models.ProductAliases.Query(
-			sm.Where(psql.And(models.ProductAliases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductAliases.Columns.MerchantKey.EQ(psql.Arg(merchantKey)), models.ProductAliases.Columns.NormalizedAlias.Like(psql.Arg(searchPattern)))),
+			sm.Where(psql.And(models.ProductAliases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductAliases.Columns.MerchantKey.EQ(psql.Arg(merchantKey)), models.ProductAliases.Columns.NormalizedAlias.Like(psql.Arg(prefixPattern)))),
+			sm.OrderBy(models.ProductAliases.Columns.NormalizedAlias), sm.OrderBy(models.ProductAliases.Columns.ID),
+		).All(ctx, db)
+		if err != nil {
+			return nil, err
+		}
+		partialAliasRows, err := models.ProductAliases.Query(
+			sm.Where(psql.And(models.ProductAliases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductAliases.Columns.MerchantKey.EQ(psql.Arg(merchantKey)), models.ProductAliases.Columns.NormalizedAlias.Like(psql.Arg(searchPattern)), psql.Not(models.ProductAliases.Columns.NormalizedAlias.Like(psql.Arg(prefixPattern))))),
 			sm.OrderBy(models.ProductAliases.Columns.NormalizedAlias), sm.OrderBy(models.ProductAliases.Columns.ID), sm.Limit(candidateLimit),
 		).All(ctx, db)
 		if err != nil {
 			return nil, err
 		}
+		aliasRows = append(aliasRows, partialAliasRows...)
 		aliasVariantIDs := make([]any, 0, len(aliasRows))
+		aliasVariantIDSet := make(map[gofrsuuid.UUID]struct{}, len(aliasRows))
 		for _, aliasRow := range aliasRows {
-			aliasVariantIDs = append(aliasVariantIDs, aliasRow.VariantID)
+			if _, ok := aliasVariantIDSet[aliasRow.VariantID]; !ok {
+				aliasVariantIDSet[aliasRow.VariantID] = struct{}{}
+				aliasVariantIDs = append(aliasVariantIDs, aliasRow.VariantID)
+			}
 			matchedAliases[aliasRow.VariantID] = preferredProductAlias(matchedAliases[aliasRow.VariantID], aliasRow, searchKey)
 		}
-		if len(aliasVariantIDs) > 0 {
+		for start := 0; start < len(aliasVariantIDs); start += candidateLimit {
+			end := min(start+candidateLimit, len(aliasVariantIDs))
 			aliasVariantRows, err := models.ProductVariants.Query(
-				sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductVariants.Columns.ID.In(psql.Arg(aliasVariantIDs...)), psql.Not(models.ProductVariants.Columns.Archived))),
+				sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductVariants.Columns.ID.In(psql.Arg(aliasVariantIDs[start:end]...)), psql.Not(models.ProductVariants.Columns.Archived))),
 			).All(ctx, db)
 			if err != nil {
 				return nil, err
@@ -433,12 +465,17 @@ func (r *queryResolver) productSuggestions(ctx context.Context, householdID, que
 		conceptByID[conceptRow.ID] = conceptRow
 	}
 	conceptUUIDs := make([]any, 0, len(variantByID))
+	conceptUUIDSet := make(map[gofrsuuid.UUID]struct{}, len(variantByID))
 	for _, variantRow := range variantByID {
-		conceptUUIDs = append(conceptUUIDs, variantRow.ConceptID)
+		if _, ok := conceptUUIDSet[variantRow.ConceptID]; !ok {
+			conceptUUIDSet[variantRow.ConceptID] = struct{}{}
+			conceptUUIDs = append(conceptUUIDs, variantRow.ConceptID)
+		}
 	}
-	if len(conceptUUIDs) > 0 {
+	for start := 0; start < len(conceptUUIDs); start += candidateLimit {
+		end := min(start+candidateLimit, len(conceptUUIDs))
 		rows, err := models.ProductConcepts.Query(
-			sm.Where(psql.And(models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductConcepts.Columns.ID.In(psql.Arg(conceptUUIDs...)), psql.Not(models.ProductConcepts.Columns.Archived))),
+			sm.Where(psql.And(models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductConcepts.Columns.ID.In(psql.Arg(conceptUUIDs[start:end]...)), psql.Not(models.ProductConcepts.Columns.Archived))),
 		).All(ctx, db)
 		if err != nil {
 			return nil, err

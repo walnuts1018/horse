@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -17,7 +18,7 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func TestProductCatalogReturnsForwardPages(t *testing.T) {
+func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -84,5 +85,40 @@ func TestProductCatalogReturnsForwardPages(t *testing.T) {
 	}
 	if len(secondPage.Edges) != 1 || secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage || secondPage.Edges[0].Node.Name != "Tea" {
 		t.Fatalf("second page does not continue after the cursor: page=%#v info=%#v", secondPage.Edges, secondPage.PageInfo)
+	}
+
+	suggestionConcept, err := mutation.createProductConcept(ctx, model.CreateProductConceptInput{HouseholdID: household.ID, Name: "Household products"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	suggestionConceptUUID, err := gofrsuuid.FromString(suggestionConcept.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	suggestionConceptRow := &models.ProductConcept{ID: suggestionConceptUUID, HouseholdID: householdUUID}
+	variantSetters := make([]*models.ProductVariantSetter, 0, 501)
+	for i := range 500 {
+		id, err := gofrsuuid.FromString(uuid.NewV7().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		name := fmt.Sprintf("aa%03dmilk", i)
+		variantSetters = append(variantSetters, &models.ProductVariantSetter{ID: &id, Name: &name, NormalizedName: &name})
+	}
+	exactID, err := gofrsuuid.FromString(uuid.NewV7().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	exactName := "milk"
+	variantSetters = append(variantSetters, &models.ProductVariantSetter{ID: &exactID, Name: &exactName, NormalizedName: &exactName})
+	if err := suggestionConceptRow.InsertProductVariants(ctx, bobpgx.NewPool(db), variantSetters...); err != nil {
+		t.Fatal(err)
+	}
+	suggestions, err := resolver.productSuggestions(ctx, household.ID, "milk", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(suggestions) == 0 || suggestions[0].Variant.Name != "milk" || suggestions[0].Score != 95 {
+		t.Fatalf("exact product match was omitted behind partial matches: %#v", suggestions)
 	}
 }
