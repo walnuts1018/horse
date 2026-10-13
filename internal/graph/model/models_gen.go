@@ -445,7 +445,7 @@ func (this BulkUpdatePurchaseItemsUserError) GetMessage() string         { retur
 
 type BulkUpdatePurchasesInput struct {
 	Targets       []*PurchaseUpdateTargetInput `json:"targets"`
-	ChangedFields []PurchaseChangedField       `json:"changedFields"`
+	ChangedFields []BulkPurchaseChangedField   `json:"changedFields"`
 }
 
 type BulkUpdatePurchasesSuccess struct {
@@ -1987,6 +1987,63 @@ func (e *AllocationRuleScope) UnmarshalJSON(b []byte) error {
 }
 
 func (e AllocationRuleScope) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type BulkPurchaseChangedField string
+
+const (
+	BulkPurchaseChangedFieldOccurredAt         BulkPurchaseChangedField = "OCCURRED_AT"
+	BulkPurchaseChangedFieldMerchant           BulkPurchaseChangedField = "MERCHANT"
+	BulkPurchaseChangedFieldPaymentAllocations BulkPurchaseChangedField = "PAYMENT_ALLOCATIONS"
+)
+
+var AllBulkPurchaseChangedField = []BulkPurchaseChangedField{
+	BulkPurchaseChangedFieldOccurredAt,
+	BulkPurchaseChangedFieldMerchant,
+	BulkPurchaseChangedFieldPaymentAllocations,
+}
+
+func (e BulkPurchaseChangedField) IsValid() bool {
+	switch e {
+	case BulkPurchaseChangedFieldOccurredAt, BulkPurchaseChangedFieldMerchant, BulkPurchaseChangedFieldPaymentAllocations:
+		return true
+	}
+	return false
+}
+
+func (e BulkPurchaseChangedField) String() string {
+	return string(e)
+}
+
+func (e *BulkPurchaseChangedField) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = BulkPurchaseChangedField(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid BulkPurchaseChangedField", str)
+	}
+	return nil
+}
+
+func (e BulkPurchaseChangedField) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *BulkPurchaseChangedField) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e BulkPurchaseChangedField) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

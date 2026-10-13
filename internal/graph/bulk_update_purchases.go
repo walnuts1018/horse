@@ -32,7 +32,7 @@ type bulkPurchaseTarget struct {
 }
 
 func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.BulkUpdatePurchasesInput) ([]*model.Purchase, error) {
-	changedFields := purchaseChangedFieldKeys(input.ChangedFields)
+	changedFields := purchaseChangedFieldKeys(purchaseChangedFields(input.ChangedFields))
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
@@ -240,6 +240,14 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 		result = append(result, purchase)
 	}
 	return result, nil
+}
+
+func purchaseChangedFields(fields []model.BulkPurchaseChangedField) []model.PurchaseChangedField {
+	changedFields := make([]model.PurchaseChangedField, len(fields))
+	for i, field := range fields {
+		changedFields[i] = model.PurchaseChangedField(field)
+	}
+	return changedFields
 }
 
 func validatePurchasePatchFields(patch *model.BulkPurchasePatch, changedFields []string) error {

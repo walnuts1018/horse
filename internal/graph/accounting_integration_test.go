@@ -645,7 +645,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 				{PaymentAccountID: alternatePaymentAccount.ID, AmountYen: 300},
 			}},
 		}},
-		ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldPaymentAllocations},
+		ChangedFields: []model.BulkPurchaseChangedField{model.BulkPurchaseChangedFieldPaymentAllocations},
 	})
 	if err != nil || len(bulkUpdatedPurchases) != 1 {
 		t.Fatalf("posted purchase payment allocations should update in bulk: %v", err)
