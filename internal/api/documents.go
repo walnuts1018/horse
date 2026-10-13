@@ -2,10 +2,13 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	stdjson "encoding/json"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -38,6 +41,7 @@ const (
 type documentResponse struct {
 	ID            string                 `json:"id"`
 	HouseholdID   string                 `json:"householdId"`
+	Name          string                 `json:"name,omitempty"`
 	SHA256        string                 `json:"sha256"`
 	MIMEType      string                 `json:"mimeType"`
 	SourceKind    string                 `json:"sourceKind"`
@@ -109,6 +113,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mimeType := documentMIME(header.Filename, data)
+	filename := sql.Null[string]{V: header.Filename, Valid: header.Filename != ""}
 	if !validDocumentMIME(mimeType) {
 		http.Error(w, "unsupported document type", http.StatusUnsupportedMediaType)
 		return
@@ -133,7 +138,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	executor := bobpgx.NewTx(tx, nil)
 	document, err := models.SourceDocuments.Insert(
-		&models.SourceDocumentSetter{ID: &id, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &key, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberID},
+		&models.SourceDocumentSetter{ID: &id, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &key, MimeType: &mimeType, SourceKind: &sourceKind, SourceFilename: &filename, CreatedBy: &memberID},
 		im.OnConflict("household_id", "sha256").DoNothing(),
 	).One(r.Context(), executor)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -187,12 +192,13 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 			s.logger.WarnContext(r.Context(), "extraction job notification failed", "job_id", jobID.String(), "error", err)
 		}
 	}
-	writeJSON(w, http.StatusAccepted, documentResponse{ID: document.ID.String(), HouseholdID: householdID, SHA256: hash, MIMEType: mimeType, SourceKind: sourceKind, Status: documentStatusQueued, JobID: jobID.String(), CreatedAt: document.CreatedAt})
+	writeJSON(w, http.StatusAccepted, documentResponse{ID: document.ID.String(), HouseholdID: householdID, Name: document.SourceFilename.V, SHA256: hash, MIMEType: mimeType, SourceKind: sourceKind, Status: documentStatusQueued, JobID: jobID.String(), CreatedAt: document.CreatedAt})
 }
 
 func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, document *models.SourceDocument) (documentResponse, error) {
 	result := documentResponse{
 		ID: document.ID.String(), HouseholdID: document.HouseholdID.String(),
+		Name:   document.SourceFilename.V,
 		SHA256: document.Sha256, MIMEType: document.MimeType, SourceKind: document.SourceKind,
 		Status: documentStatusQueued, CreatedAt: document.CreatedAt,
 	}
@@ -343,30 +349,17 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "first must be between 1 and 100", http.StatusBadRequest)
 		return
 	}
-	after := r.URL.Query().Get("after")
-	if after != "" {
-		if _, err := uuid.Parse(after); err != nil {
-			http.Error(w, "invalid cursor", http.StatusBadRequest)
-			return
-		}
+	filters, err := parseDocumentFilters(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	var cursor *models.SourceDocument
-	if after != "" {
-		cursorID, err := gofrsuuid.FromString(after)
+	filters.householdID = householdUUID.String()
+	var cursor *documentCursor
+	if after := r.URL.Query().Get("after"); after != "" {
+		cursor, err = decodeDocumentCursor(after, filters)
 		if err != nil {
 			http.Error(w, "invalid cursor", http.StatusBadRequest)
-			return
-		}
-		cursor, err = models.SourceDocuments.Query(sm.Where(psql.And(
-			models.SourceDocuments.Columns.ID.EQ(psql.Arg(cursorID)),
-			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		))).One(r.Context(), bobpgx.NewPool(s.db))
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusOK, map[string]any{"documents": []documentResponse{}, "nextCursor": nil})
-			return
-		}
-		if err != nil {
-			http.Error(w, "document lookup failed", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -376,12 +369,31 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 		sm.OrderBy(models.SourceDocuments.Columns.ID).Desc(),
 		sm.Limit(limit + 1),
 	}
+	if filters.sourceKind != "" {
+		documentMods = append(documentMods, sm.Where(models.SourceDocuments.Columns.SourceKind.EQ(psql.Arg(filters.sourceKind))))
+	}
+	if filters.from != nil {
+		documentMods = append(documentMods, sm.Where(models.SourceDocuments.Columns.CreatedAt.GTE(psql.Arg(*filters.from))))
+	}
+	if filters.to != nil {
+		documentMods = append(documentMods, sm.Where(models.SourceDocuments.Columns.CreatedAt.LT(psql.Arg(*filters.to))))
+	}
+	if filters.confirmed != nil {
+		confirmationFilter := documentConfirmationExists()
+		if !*filters.confirmed {
+			confirmationFilter = psql.Not(confirmationFilter)
+		}
+		documentMods = append(documentMods, sm.Where(confirmationFilter))
+	}
+	if filters.store != "" {
+		documentMods = append(documentMods, documentMerchantExists(householdUUID, filters.store))
+	}
 	if cursor != nil {
 		documentMods = append(documentMods, sm.Where(psql.Or(
-			models.SourceDocuments.Columns.CreatedAt.LT(psql.Arg(cursor.CreatedAt)),
+			models.SourceDocuments.Columns.CreatedAt.LT(psql.Arg(cursor.createdAt)),
 			psql.And(
-				models.SourceDocuments.Columns.CreatedAt.EQ(psql.Arg(cursor.CreatedAt)),
-				models.SourceDocuments.Columns.ID.LT(psql.Arg(cursor.ID)),
+				models.SourceDocuments.Columns.CreatedAt.EQ(psql.Arg(cursor.createdAt)),
+				models.SourceDocuments.Columns.ID.LT(psql.Arg(cursor.id)),
 			),
 		)))
 	}
@@ -411,10 +423,135 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 	}
 	var nextCursor *string
 	if hasMore && len(result) > 0 {
-		cursor := result[len(result)-1].ID
-		nextCursor = &cursor
+		last := storedDocuments[limit-1]
+		encoded := encodeDocumentCursor(documentCursor{id: last.ID, createdAt: last.CreatedAt}, filters)
+		nextCursor = &encoded
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"documents": result, "nextCursor": nextCursor})
+}
+
+func documentConfirmationExists() psql.Expression {
+	query := psql.Select(
+		sm.Columns(psql.Arg(1)),
+		sm.From(models.DocumentConfirmations.NameExpr()),
+		sm.Where(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(models.SourceDocuments.Columns.ID)),
+	)
+	return psql.Exists(query)
+}
+
+func documentMerchantExists(householdID gofrsuuid.UUID, store string) bob.Mod[*psqldialect.SelectQuery] {
+	pattern := psql.Arg("%" + escapeLike(store) + "%")
+	receiptMerchant := psql.F("jsonb_extract_path_text", models.ExtractionJobs.Columns.Result, psql.Arg("receipt"), psql.Arg("merchant"))()
+	statements := psql.Cast(psql.F("jsonb_extract_path", models.ExtractionJobs.Columns.Result, psql.Arg("statements"))(), "text")
+	merchantFilter := psql.Or(
+		psql.Expression{}.New(receiptMerchant).ILike(pattern),
+		statements.ILike(pattern),
+	)
+	query := psql.Select(
+		sm.Columns(psql.Arg(1)),
+		sm.From(models.ExtractionJobs.NameExpr()),
+		sm.Where(psql.And(
+			models.ExtractionJobs.Columns.SourceDocumentID.EQ(models.SourceDocuments.Columns.ID),
+			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			merchantFilter,
+		)),
+	)
+	return sm.Where(psql.Exists(query))
+}
+
+type documentFilters struct {
+	householdID string
+	store       string
+	sourceKind  string
+	from        *time.Time
+	to          *time.Time
+	confirmed   *bool
+}
+
+type documentCursor struct {
+	id        gofrsuuid.UUID
+	createdAt time.Time
+}
+
+func parseDocumentFilters(r *http.Request) (documentFilters, error) {
+	query := r.URL.Query()
+	filters := documentFilters{
+		store:      strings.TrimSpace(query.Get("store")),
+		sourceKind: query.Get("sourceKind"),
+	}
+	if filters.sourceKind != "" && !validSourceKind(filters.sourceKind) {
+		return documentFilters{}, errors.New("invalid source kind")
+	}
+	for key, target := range map[string]**time.Time{"from": &filters.from, "to": &filters.to} {
+		value := query.Get(key)
+		if value == "" {
+			continue
+		}
+		day, err := time.ParseInLocation("2006-01-02", value, time.FixedZone("JST", 9*60*60))
+		if err != nil {
+			return documentFilters{}, fmt.Errorf("invalid %s date", key)
+		}
+		if key == "to" {
+			day = day.AddDate(0, 0, 1)
+		}
+		*target = &day
+	}
+	if filters.from != nil && filters.to != nil && !filters.from.Before(*filters.to) {
+		return documentFilters{}, errors.New("invalid date range")
+	}
+	if value := query.Get("confirmed"); value != "" {
+		confirmed := value == "true"
+		if value != "true" && value != "false" {
+			return documentFilters{}, errors.New("invalid confirmation filter")
+		}
+		filters.confirmed = &confirmed
+	}
+	return filters, nil
+}
+
+func encodeDocumentCursor(cursor documentCursor, filters documentFilters) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%s|%s|%x", cursor.id, cursor.createdAt.Format(time.RFC3339Nano), documentFilterHash(filters))))
+}
+
+func decodeDocumentCursor(value string, filters documentFilters) (*documentCursor, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return nil, err
+	}
+	parts := strings.Split(string(decoded), "|")
+	if len(parts) != 3 {
+		return nil, errors.New("invalid cursor")
+	}
+	id, err := gofrsuuid.FromString(parts[0])
+	if err != nil {
+		return nil, err
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, parts[1])
+	if err != nil {
+		return nil, err
+	}
+	if parts[2] != fmt.Sprintf("%x", documentFilterHash(filters)) {
+		return nil, errors.New("cursor filter mismatch")
+	}
+	return &documentCursor{id: id, createdAt: createdAt}, nil
+}
+
+func documentFilterHash(filters documentFilters) [32]byte {
+	from, to, confirmed := "", "", ""
+	if filters.from != nil {
+		from = filters.from.Format(time.RFC3339Nano)
+	}
+	if filters.to != nil {
+		to = filters.to.Format(time.RFC3339Nano)
+	}
+	if filters.confirmed != nil {
+		confirmed = fmt.Sprint(*filters.confirmed)
+	}
+	return sha256.Sum256([]byte(strings.Join([]string{filters.householdID, filters.store, filters.sourceKind, from, to, confirmed}, "\x00")))
+}
+
+func escapeLike(value string) string {
+	return strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(value)
 }
 
 func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {

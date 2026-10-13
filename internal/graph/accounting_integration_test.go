@@ -434,8 +434,15 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || replayed.ID != confirmed.ID {
 		t.Fatalf("source confirmation should be idempotent: purchase=%#v error=%v", replayed, err)
 	}
-	rowReference := "transaction:card-2"
-	rowInput := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &documentID, SourceReference: &rowReference, OccurredAt: "2026-04-20T12:01:00Z", Merchant: "statement row", Items: []*model.PurchaseItemInput{{Name: "statement row", AmountYen: 1}}}
+	const statementTransactionID = "card-2"
+	const statementRowDescription = "statement row"
+	const statementOccurredAt = "2026-04-20T12:01:00Z"
+	statementObservations := ingestion.SourceObservations(documentID, hash, "card", ingestion.Verification{Statements: []ingestion.StatementEntry{
+		{Row: 2, TransactionID: statementTransactionID, Merchant: statementRowDescription, Amount: 1, OccurredAt: statementOccurredAt},
+		{Row: 3, TransactionID: statementTransactionID, Merchant: statementRowDescription, Amount: 1, OccurredAt: statementOccurredAt},
+	}})
+	rowReference, secondRowReference := statementObservations[0].SourceReference, statementObservations[1].SourceReference
+	rowInput := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &documentID, SourceReference: &rowReference, OccurredAt: statementOccurredAt, Merchant: statementRowDescription, Items: []*model.PurchaseItemInput{{Name: statementRowDescription, AmountYen: 1}}}
 	rowPurchase, err := resolver.createPurchase(ctx, rowInput)
 	if err != nil || rowPurchase.ID == confirmed.ID {
 		t.Fatalf("a distinct statement row should confirm independently: purchase=%#v error=%v", rowPurchase, err)
@@ -445,18 +452,34 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || rowReplay.ID != rowPurchase.ID {
 		t.Fatalf("statement row confirmation should be idempotent: purchase=%#v error=%v", rowReplay, err)
 	}
+	secondRowInput := rowInput
+	secondRowInput.IdempotencyKey = uuid.NewV7().String()
+	secondRowInput.SourceReference = &secondRowReference
+	secondRowPurchase, err := resolver.createPurchase(ctx, secondRowInput)
+	if err != nil || secondRowPurchase.ID == rowPurchase.ID {
+		t.Fatalf("a second row with the same transaction id should confirm independently: purchase=%#v error=%v", secondRowPurchase, err)
+	}
+	secondRowInput.IdempotencyKey = uuid.NewV7().String()
+	secondRowReplay, err := resolver.createPurchase(ctx, secondRowInput)
+	if err != nil || secondRowReplay.ID != secondRowPurchase.ID {
+		t.Fatalf("second statement row confirmation should be idempotent: purchase=%#v error=%v", secondRowReplay, err)
+	}
 	if _, err := resolver.postPurchase(ctx, confirmed.ID, confirmed.Revision, uuid.NewV7().String()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := models.DocumentConfirmations.Delete(dm.Where(psql.And(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)), models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(rowReference))))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
-		t.Fatal(err)
+	for _, reference := range []string{rowReference, secondRowReference} {
+		if _, err := models.DocumentConfirmations.Delete(dm.Where(psql.And(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)), models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(reference))))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	rowPurchaseUUID, _ := gofrsuuid.FromString(rowPurchase.ID)
-	if _, err := psql.Delete(dm.From(models.EvidenceLinks.NameExpr()), dm.Where(models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(rowPurchaseUUID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := models.Purchases.Delete(dm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(rowPurchaseUUID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
-		t.Fatal(err)
+	for _, purchaseID := range []string{rowPurchase.ID, secondRowPurchase.ID} {
+		purchaseUUID, _ := gofrsuuid.FromString(purchaseID)
+		if _, err := psql.Delete(dm.From(models.EvidenceLinks.NameExpr()), dm.Where(models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := models.Purchases.Delete(dm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	confirmedRows, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, bobpgx.NewPool(db))
 	confirmedPurchases := len(confirmedRows)
@@ -1219,6 +1242,15 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	}
 	if _, err := resolver.correctPurchase(ctx, correctionInput); err != nil {
 		t.Fatalf("retrying a full refund with the same request should succeed: %v", err)
+	}
+	if _, err := resolver.correctPurchase(ctx, model.CorrectPurchaseInput{
+		HouseholdID:    household.ID,
+		Target:         &model.CorrectPurchaseTargetInput{Item: &model.PurchaseCorrectionItemTargetInput{PurchaseID: purchase.ID, ItemID: correctedPurchase.Items[0].ID}},
+		AmountDeltaYen: -1,
+		Reason:         "Refund after full return",
+		IdempotencyKey: uuid.NewV7().String(),
+	}); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("item refund after a full purchase refund should exceed the remaining purchase amount: %v", err)
 	}
 	correctionOccurredAt, err := time.Parse(time.RFC3339Nano, string(correctedPurchase.CorrectionsConnection.Edges[0].Node.GetOccurredAt()))
 	if err != nil {

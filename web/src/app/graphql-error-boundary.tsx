@@ -1,25 +1,30 @@
-import { Component, type ReactNode } from "react";
+import { Component, Fragment, type ReactNode } from "react";
 
-type State = { error: Error | null };
+type State = { error: Error | null; retryKey: number };
 
 export class GraphQLErrorBoundary extends Component<{ children: ReactNode }, State> {
-  state: State = { error: null };
+  state: State = { error: null, retryKey: 0 };
 
   static getDerivedStateFromError(error: Error): State {
-    return { error };
+    return { error, retryKey: 0 };
   }
 
   render() {
     if (this.state.error) {
       return (
         <section className="panel" role="alert">
-          <p>購入履歴を取得できませんでした</p>
-          <button className="button button-soft" onClick={() => window.location.reload()}>
-            再読み込み
+          <p>データを取得できませんでした</p>
+          <button
+            className="button button-soft"
+            onClick={() =>
+              this.setState((state) => ({ error: null, retryKey: state.retryKey + 1 }))
+            }
+          >
+            再試行
           </button>
         </section>
       );
     }
-    return this.props.children;
+    return <Fragment key={this.state.retryKey}>{this.props.children}</Fragment>;
   }
 }

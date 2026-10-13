@@ -18,6 +18,8 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+const idempotencyTestDescription = "Idempotency test"
+
 func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
@@ -81,7 +83,7 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 		IdempotencyKey:     key,
 		HouseholdID:        household.ID,
 		OccurredAt:         testPurchaseTime,
-		Merchant:           "Idempotency test",
+		Merchant:           idempotencyTestDescription,
 		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 100}},
 		Items:              []*model.PurchaseItemInput{{Name: testPurchaseItemName, AmountYen: 100}},
 	})
@@ -92,7 +94,7 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 		IdempotencyKey: key,
 		HouseholdID:    household.ID,
 		OccurredAt:     testPurchaseTime,
-		Merchant:       "Idempotency test",
+		Merchant:       idempotencyTestDescription,
 		Items:          []*model.PurchaseItemInput{{Name: testPurchaseItemName, AmountYen: 101}},
 	})
 	if !errors.Is(err, ErrConflict) {
@@ -146,7 +148,7 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 	transferInput := model.RecordTransferInput{
 		HouseholdID: household.ID, FromMemberID: memberID, ToMemberID: otherMemberID,
 		Kind: model.TransferInputKindGift, AmountYen: 125, OccurredAt: testPurchaseTime,
-		Description: "Idempotency test", IdempotencyKey: uuid.NewV7().String(),
+		Description: idempotencyTestDescription, IdempotencyKey: uuid.NewV7().String(),
 	}
 	transfer, err := resolver.recordTransfer(ctx, transferInput)
 	if err != nil {

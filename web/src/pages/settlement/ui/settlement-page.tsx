@@ -92,6 +92,8 @@ export function SettlementPage({
   const [pending, setPending] = useState(false);
   const [pendingFunding, setPendingFunding] = useState<Record<string, FundingIntent>>({});
   const [pendingTransfer, setPendingTransfer] = useState<TransferIntent | null>(null);
+  const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
+  const [closeConfirmationAccepted, setCloseConfirmationAccepted] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferFrom, setTransferFrom] = useState(household.members[0]?.id ?? "");
   const [transferTo, setTransferTo] = useState(household.members[1]?.id ?? "");
@@ -257,7 +259,13 @@ export function SettlementPage({
     }
   };
   const close = async () => {
-    if (!settlement || !settlementSnapshot || settlementSnapshot.period !== period) return;
+    if (
+      !closeConfirmationAccepted ||
+      !settlement ||
+      !settlementSnapshot ||
+      settlementSnapshot.period !== period
+    )
+      return;
     const targetHouseholdId = settlementSnapshot.householdId;
     const targetPeriod = settlementSnapshot.period;
     const expectedRevision = settlement.revision;
@@ -267,6 +275,8 @@ export function SettlementPage({
       await readGraphql(closePeriodMutation, {
         input: { householdId: targetHouseholdId, period: targetPeriod, expectedRevision },
       });
+      setCloseConfirmationOpen(false);
+      setCloseConfirmationAccepted(false);
       await load();
     } catch (reason) {
       setError((reason as Error).message);
@@ -397,7 +407,15 @@ export function SettlementPage({
         </div>
         <label className="period-picker">
           <ChevronLeft size={15} />
-          <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+          <input
+            type="month"
+            value={period}
+            onChange={(event) => {
+              setPeriod(event.target.value);
+              setCloseConfirmationOpen(false);
+              setCloseConfirmationAccepted(false);
+            }}
+          />
           <ChevronRight size={15} />
         </label>
       </div>
@@ -571,8 +589,11 @@ export function SettlementPage({
         <div className="settlement-actions">
           <button
             className="button button-soft"
-            disabled={pending || settlement?.__typename === "ClosedSettlement"}
-            onClick={() => void close()}
+            disabled={!settlement || pending || settlement.__typename === "ClosedSettlement"}
+            onClick={() => {
+              setCloseConfirmationAccepted(false);
+              setCloseConfirmationOpen(true);
+            }}
           >
             <Check size={16} />
             期間を締める
@@ -589,6 +610,47 @@ export function SettlementPage({
             送金を記録
           </button>
         </div>
+        {closeConfirmationOpen && settlement?.__typename === "OpenSettlement" && (
+          <section className="panel settlement-close-confirmation" aria-labelledby="close-heading">
+            <div className="panel-heading">
+              <h2 id="close-heading">{period.replace("-", "年")}月分の確定</h2>
+              <b>{yen(totalDue)}</b>
+            </div>
+            {settlement.lines.map((line) => (
+              <div className="settlement-close-line" key={line.memberId}>
+                <span>{line.memberName}</span>
+                <b>{yen(line.amountDueYen)}</b>
+              </div>
+            ))}
+            <label className="settlement-close-accept">
+              <input
+                type="checkbox"
+                checked={closeConfirmationAccepted}
+                onChange={(event) => setCloseConfirmationAccepted(event.target.checked)}
+              />
+              {period.replace("-", "年")}月分を{yen(totalDue)}で確定する
+            </label>
+            <div className="settlement-actions">
+              <button
+                className="button button-soft"
+                type="button"
+                disabled={pending}
+                onClick={() => setCloseConfirmationOpen(false)}
+              >
+                戻る
+              </button>
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={pending || !closeConfirmationAccepted}
+                onClick={() => void close()}
+              >
+                <Check size={16} />
+                確定する
+              </button>
+            </div>
+          </section>
+        )}
         {transferOpen && (
           <form className="transfer-form" onSubmit={saveTransfer}>
             <label>

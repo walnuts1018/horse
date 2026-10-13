@@ -2209,6 +2209,29 @@ a {
   font-size: 10px;
 }
 
+.settlement-close-confirmation {
+  margin-top: 14px;
+  padding: 16px 18px;
+}
+
+.settlement-close-line {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #eff2ef;
+  color: #4f6056;
+  font-size: 11px;
+}
+
+.settlement-close-accept {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: #42544a;
+  font-size: 11px;
+}
+
 .ledger-panel {
   padding: 7px 17px;
 }

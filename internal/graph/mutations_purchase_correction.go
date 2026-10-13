@@ -11,6 +11,7 @@ import (
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
@@ -88,6 +89,44 @@ func sameAllocationWeights(inputs []*model.AllocationInput, saved []domain.Weigh
 		}
 	}
 	return true
+}
+
+func refundablePurchaseAmounts(ctx context.Context, executor bob.Executor, purchaseUUID gofrsuuid.UUID) (int64, map[gofrsuuid.UUID]int64, error) {
+	items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+	if err != nil {
+		return 0, nil, err
+	}
+	total := int64(0)
+	byItem := make(map[gofrsuuid.UUID]int64, len(items))
+	for _, item := range items {
+		var ok bool
+		total, ok = checkedAdd(total, item.AmountYen)
+		if !ok {
+			return 0, nil, fmt.Errorf("%w: purchase total is too large", ErrBadInput)
+		}
+		byItem[item.ID], ok = checkedAdd(byItem[item.ID], item.AmountYen)
+		if !ok {
+			return 0, nil, fmt.Errorf("%w: item total is too large", ErrBadInput)
+		}
+	}
+	corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+	if err != nil {
+		return 0, nil, err
+	}
+	for _, correction := range corrections {
+		var ok bool
+		total, ok = checkedAdd(total, correction.AmountDeltaYen)
+		if !ok {
+			return 0, nil, fmt.Errorf("%w: refundable purchase total is too large", ErrBadInput)
+		}
+		if correction.ItemID.Valid {
+			byItem[correction.ItemID.V], ok = checkedAdd(byItem[correction.ItemID.V], correction.AmountDeltaYen)
+			if !ok {
+				return 0, nil, fmt.Errorf("%w: refundable item total is too large", ErrBadInput)
+			}
+		}
+	}
+	return total, byItem, nil
 }
 
 func (r *mutationResolver) correctPurchase(ctx context.Context, input model.CorrectPurchaseInput) (*model.Purchase, error) {
@@ -198,42 +237,19 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		return nil, fmt.Errorf("%w: corrections must use the saved purchase allocation", ErrBadInput)
 	}
 	if delta < 0 {
-		var refundable int64
+		refundablePurchaseTotal, refundableByItem, err := refundablePurchaseAmounts(ctx, executor, purchaseUUID)
+		if err != nil {
+			return nil, err
+		}
+		if refundablePurchaseTotal < 0 || -delta > refundablePurchaseTotal {
+			return nil, fmt.Errorf("%w: refund exceeds the remaining purchase amount", ErrBadInput)
+		}
 		if itemID != nil {
 			itemUUID := generatedUUID(*itemID)
-			item, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)))).One(ctx, executor)
-			if err != nil {
-				return nil, err
+			refundableItemTotal := refundableByItem[itemUUID]
+			if refundableItemTotal < 0 || -delta > refundableItemTotal {
+				return nil, fmt.Errorf("%w: refund exceeds the remaining item amount", ErrBadInput)
 			}
-			refundable = item.AmountYen
-			corrections, err := models.Corrections.Query(sm.Where(psql.And(
-				models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
-				models.Corrections.Columns.ItemID.EQ(psql.Arg(sql.Null[gofrsuuid.UUID]{V: itemUUID, Valid: true})),
-			))).All(ctx, executor)
-			if err != nil {
-				return nil, err
-			}
-			for _, correction := range corrections {
-				refundable += correction.AmountDeltaYen
-			}
-		} else {
-			items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
-			if err != nil {
-				return nil, err
-			}
-			for _, item := range items {
-				refundable += item.AmountYen
-			}
-			corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
-			if err != nil {
-				return nil, err
-			}
-			for _, correction := range corrections {
-				refundable += correction.AmountDeltaYen
-			}
-		}
-		if -delta > refundable {
-			return nil, fmt.Errorf("%w: refund exceeds the remaining purchase amount", ErrBadInput)
 		}
 	}
 	shares, err := domain.Allocate(abs(delta), weights)
@@ -374,57 +390,28 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 			return nil, err
 		}
 	}
-	if len(payments) > 0 {
-		correctionItems := []domain.FundingExpenseItem{{Amount: abs(delta)}}
-		for _, share := range shares {
-			correctionItems[0].Allocations = append(correctionItems[0].Allocations, domain.PoolAmount{PoolID: share.PoolID, Amount: share.Amount})
+	fundingExpenses, rules, err := correctionFundingExpense(ctx, executor, householdUUID, purchaseUUID, itemUUIDValue, shares)
+	if err != nil {
+		return nil, err
+	}
+	changes, err := domain.CalculateExpenseAdjustments(fundingExpenses, rules)
+	if err != nil {
+		return nil, err
+	}
+	for _, change := range changes {
+		amount := change.MonthlyAdjustmentYen - change.AdvanceCreditYen
+		if delta < 0 {
+			amount = -amount
 		}
-		fundingPayments := make([]domain.FundingPayment, 0, len(payments))
-		for _, payment := range payments {
-			accountUUID := generatedUUID(payment.PaymentAccountID)
-			account, err := models.Accounts.Query(sm.Where(psql.And(
-				models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-				models.Accounts.Columns.ID.EQ(psql.Arg(accountUUID)),
-			))).One(ctx, executor)
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, ErrNotFound
-			}
-			if err != nil {
-				return nil, err
-			}
-			if account.PoolID.Valid {
-				fundingPayments = append(fundingPayments, domain.FundingPayment{ID: payment.PaymentAccountID, PoolID: account.PoolID.V.String(), Amount: int64(payment.AmountYen)})
-			}
+		if amount == 0 {
+			continue
 		}
-		if len(fundingPayments) == len(payments) {
-			fundingExpenses, err := domain.SplitFundingExpense(correctionItems, fundingPayments)
-			if err != nil {
-				return nil, err
-			}
-			rules, err := poolFundingRules(ctx, bobpgx.NewTx(tx, nil), input.HouseholdID)
-			if err != nil {
-				return nil, err
-			}
-			changes, err := domain.CalculateExpenseAdjustments(fundingExpenses, rules)
-			if err != nil {
-				return nil, err
-			}
-			for _, change := range changes {
-				amount := change.MonthlyAdjustmentYen - change.AdvanceCreditYen
-				if delta < 0 {
-					amount = -amount
-				}
-				if amount == 0 {
-					continue
-				}
-				adjustmentID, memberUUID := generatedUUID(newID()), generatedUUID(change.MemberID)
-				if _, err := models.SettlementAdjustments.Insert(&models.SettlementAdjustmentSetter{
-					ID: &adjustmentID, HouseholdID: &householdUUID, Period: &effectivePeriod, MemberID: &memberUUID,
-					SourceKind: &sourceKind, SourceID: &correctionUUID, AmountYen: &amount,
-				}).Exec(ctx, executor); err != nil {
-					return nil, err
-				}
-			}
+		adjustmentID, memberUUID := generatedUUID(newID()), generatedUUID(change.MemberID)
+		if _, err := models.SettlementAdjustments.Insert(&models.SettlementAdjustmentSetter{
+			ID: &adjustmentID, HouseholdID: &householdUUID, Period: &effectivePeriod, MemberID: &memberUUID,
+			SourceKind: &sourceKind, SourceID: &correctionUUID, AmountYen: &amount,
+		}).Exec(ctx, executor); err != nil {
+			return nil, err
 		}
 	}
 	ledgerResource := sql.Null[gofrsuuid.UUID]{V: ledgerUUID, Valid: true}

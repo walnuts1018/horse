@@ -6,27 +6,6 @@
 
 部分一致検索の実データ量に対する応答時間とDB読取量は計測していません。実測で遅延が確認された場合に、PostgreSQLのtrigram索引とDB側ランキングを検討します。
 
-## 1. 【高】カード・銀行CSVで異なる明細が同一取引として扱われる
-
-該当: [`internal/ingestion/reconcile.go`](https://github.com/walnuts1018/horse/blob/6079b358539bc9819ec1d3dcfa0ce13e6265b448/internal/ingestion/reconcile.go#L89-L100)
-
-現在、CSV行の識別子 `SourceReference` は、取引番号が存在すると次のようになります。
-
-```
-reference := "row:" + strconv.Itoa(entry.Row)
-if entry.TransactionID != "" {
-    reference = "transaction:" + entry.TransactionID
-}
-```
-
-しかし、取引番号が同じだからといって、CSV上の異なる行が同じ明細とは限りません。同じ取引番号で売上・返金が分かれていたり、一つの取引が複数行になっていたりする可能性があります。
-
-しかも、[`document_confirmations`](https://github.com/walnuts1018/horse/blob/6079b358539bc9819ec1d3dcfa0ce13e6265b448/migrations/20261012040000_document_confirmation_rows.sql)[の主キー](https://github.com/walnuts1018/horse/blob/6079b358539bc9819ec1d3dcfa0ce13e6265b448/migrations/20261012040000_document_confirmation_rows.sql) は `(source_document_id, source_reference)` です。
-
-したがって、同じCSV内に同一取引番号の行が2件あると、2件を別々の購入へ確定できず、既存の購入に誤って関連づける可能性があります。
-
-修正方針: CSV行の恒久的な識別には `row:<行番号>` を使い、`TransactionID` は照合用の属性として分離してください。同一CSV内で取引番号が重複するケースを統合テストに追加するべきです。
-
 ## 2. 【高】購入訂正の精算計算が、購入時点ではなく現在の負担ルールを参照する
 
 該当: [`mutations_purchase_correction.go`](https://github.com/walnuts1018/horse/blob/6079b358539bc9819ec1d3dcfa0ce13e6265b448/internal/graph/mutations_purchase_correction.go#L379-L424)
@@ -49,30 +28,6 @@ changes, err := domain.CalculateExpenseAdjustments(
 一方、[`snapshotCorrectionMemberBurden`](https://github.com/walnuts1018/horse/blob/6079b358539bc9819ec1d3dcfa0ce13e6265b448/internal/graph/member_burden.go#L155-L226) は保存済みの購入時点の負担情報を参照しています。つまり、訂正の負担履歴と精算調整額で参照するルールが食い違う構造です。
 
 修正方針: 訂正時の決済元・負担先に関する計算も、元の購入のスナップショットを使用するよう統一してください。購入確定後に拠出比率・所有者・精算ポリシーを変更してから返品する統合テストが必要です。
-
-## 3. 【最優先】購入全体の返金と品目別返金を組み合わせると、購入額を超えて返金できる
-
-該当: [`mutations_purchase_correction.go`](https://github.com/walnuts1018/horse/blob/6079b358539bc9819ec1d3dcfa0ce13e6265b448/internal/graph/mutations_purchase_correction.go#L199-L240)
-
-返金可能額の計算が、訂正対象によって別々になっています。
-
-- 品目別訂正: その品目に紐づく訂正のみ差し引く
-- 購入全体の訂正: すべての品目とすべての訂正を合算する
-
-このため、例えば100円の商品が2点ある購入で、次の操作が可能です。
-
-| 操作 | システムの判定 |
-| ----------- | -------------------- |
-| 元の購入合計200円 | — |
-| 購入全体を150円返金 | 許可 |
-| 商品Aを100円返金 | 商品A単体では100円残っているため許可 |
-| 返金合計250円 | 元の購入額200円を超過 |
-
-品目別の返金処理でも、購入全体の残額を超えないことを同じトランザクションで検証する必要があります。
-
-さらに、購入全体の返金が各品目にどの程度対応するかは、現在のデータだけでは明確でありません。購入全体の返金を各品目に配分する設計にするか、少なくとも全体上限と品目別上限の両方を保証してください。
-
-これは未実装の問題ではなく、すでに実装された返金APIの会計不変条件の欠落なので、優先的に修正すべきです。
 
 ## 4. 【中】購入全体の訂正で、同じ負担比率を指定しても拒否される
 

@@ -96,6 +96,15 @@ var SourceDocuments = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		SourceFilename: column{
+			Name:      "source_filename",
+			DBType:    "text",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: sourceDocumentIndexes{
 		SourceDocumentsPkey: index{
@@ -206,20 +215,21 @@ var SourceDocuments = Table[
 }
 
 type sourceDocumentColumns struct {
-	ID          column
-	HouseholdID column
-	Sha256      column
-	ObjectKey   column
-	MimeType    column
-	SourceKind  column
-	Metadata    column
-	CreatedBy   column
-	CreatedAt   column
+	ID             column
+	HouseholdID    column
+	Sha256         column
+	ObjectKey      column
+	MimeType       column
+	SourceKind     column
+	Metadata       column
+	CreatedBy      column
+	CreatedAt      column
+	SourceFilename column
 }
 
 func (c sourceDocumentColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.Sha256, c.ObjectKey, c.MimeType, c.SourceKind, c.Metadata, c.CreatedBy, c.CreatedAt,
+		c.ID, c.HouseholdID, c.Sha256, c.ObjectKey, c.MimeType, c.SourceKind, c.Metadata, c.CreatedBy, c.CreatedAt, c.SourceFilename,
 	}
 }
 

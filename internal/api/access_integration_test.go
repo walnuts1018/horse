@@ -40,6 +40,7 @@ const (
 	documentIDJSONKey       = "documentId"
 	observationJobIDJSONKey = "observationJobId"
 	sourceItemIndexJSONKey  = "sourceItemIndex"
+	testReceiptSourceKind   = "receipt"
 )
 
 type previewTestStore struct {
@@ -106,7 +107,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 	documentHash := "access-test:" + documentID
 	objectKey := householdID + "/originals/" + documentID
-	mimeType, sourceKind := "image/jpeg", "receipt"
+	mimeType, sourceKind := "image/jpeg", testReceiptSourceKind
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &documentHash, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &ownerUUID}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +259,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if err := uploadForm.WriteField("householdId", householdNodeID); err != nil {
 		t.Fatal(err)
 	}
-	if err := uploadForm.WriteField("sourceKind", "receipt"); err != nil {
+	if err := uploadForm.WriteField("sourceKind", testReceiptSourceKind); err != nil {
 		t.Fatal(err)
 	}
 	filePart, err := uploadForm.CreateFormFile("file", "receipt.png")
@@ -277,7 +278,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	uploadRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	uploadResponse := httptest.NewRecorder()
 	server.ServeHTTP(uploadResponse, uploadRequest)
-	if uploadResponse.Code != http.StatusAccepted || !strings.Contains(uploadResponse.Body.String(), `"householdId":"`+householdID+`"`) {
+	if uploadResponse.Code != http.StatusAccepted || !strings.Contains(uploadResponse.Body.String(), `"householdId":"`+householdID+`"`) || !strings.Contains(uploadResponse.Body.String(), `"name":"receipt.png"`) {
 		t.Fatalf("household global ID document upload failed: status=%d body=%s", uploadResponse.Code, uploadResponse.Body.String())
 	}
 	if len(store.putHouseholdIDs) != 1 || store.putHouseholdIDs[0] != householdID {
@@ -295,7 +296,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	documentsRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	documentsResponse = httptest.NewRecorder()
 	server.ServeHTTP(documentsResponse, documentsRequest)
-	if documentsResponse.Code != http.StatusOK || !strings.Contains(documentsResponse.Body.String(), uploadedID) {
+	if documentsResponse.Code != http.StatusOK || !strings.Contains(documentsResponse.Body.String(), uploadedID) || !strings.Contains(documentsResponse.Body.String(), `"name":"receipt.png"`) {
 		t.Fatalf("raw household UUID compatibility failed: status=%d body=%s", documentsResponse.Code, documentsResponse.Body.String())
 	}
 	invalidPreviewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview?page=-1", nil)

@@ -107,6 +107,29 @@ type DocumentReview = {
     statements?: StatementEntry[];
   };
 };
+type PendingUpload = {
+  id: string;
+  file: File;
+  status: "queued" | "uploading" | "failed";
+  error?: string;
+};
+type DocumentFilters = {
+  store: string;
+  from: string;
+  to: string;
+  sourceKind: string;
+  confirmed: string;
+};
+const documentListURL = (householdId: string, filters: DocumentFilters, after?: string) => {
+  const query = new URLSearchParams({ householdId, first: "50" });
+  if (filters.store.trim()) query.set("store", filters.store.trim());
+  if (filters.from) query.set("from", filters.from);
+  if (filters.to) query.set("to", filters.to);
+  if (filters.sourceKind) query.set("sourceKind", filters.sourceKind);
+  if (filters.confirmed) query.set("confirmed", filters.confirmed);
+  if (after) query.set("after", after);
+  return `/documents?${query.toString()}`;
+};
 const identityTransform: PreviewTransform = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 const invertTransform = (matrix: PreviewTransform): PreviewTransform | null => {
   const [a, b, c, d, e, f, g, h, i] = matrix;
@@ -188,11 +211,21 @@ export function ImportsPage({
 }) {
   const createAndPostPurchase = useCreateAndPostPurchase();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<PendingUpload[]>([]);
   const editedReceiptDocuments = useRef(new Set<string>());
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [csvKinds, setCsvKinds] = useState<Record<string, "card" | "bank">>({});
   const [documents, setDocuments] = useState<DocumentReview[]>([]);
+  const [documentFilters, setDocumentFilters] = useState<DocumentFilters>({
+    store: "",
+    from: "",
+    to: "",
+    sourceKind: "",
+    confirmed: "",
+  });
+  const [documentFilterDraft, setDocumentFilterDraft] = useState(documentFilters);
+  const documentFilterScope = JSON.stringify(documentFilters);
+  const documentFilterScopeRef = useRef(documentFilterScope);
   const [nextDocumentCursor, setNextDocumentCursor] = useState<string | null>(null);
   const [loadingOlderDocuments, setLoadingOlderDocuments] = useState(false);
   const loadedOlderPages = useRef(false);
@@ -303,15 +336,16 @@ export function ImportsPage({
   const refreshDocuments = useCallback(
     async (silent = false) => {
       try {
-        const response = await fetch(
-          `/documents?householdId=${encodeURIComponent(household.id)}&first=50`,
-          { credentials: "include" },
-        );
+        const requestScope = documentFilterScope;
+        const response = await fetch(documentListURL(household.id, documentFilters), {
+          credentials: "include",
+        });
         if (!response.ok) throw new Error(`証拠一覧を取得できませんでした (${response.status})`);
         const payload = (await response.json()) as {
           documents: DocumentReview[];
           nextCursor: string | null;
         };
+        if (requestScope !== documentFilterScopeRef.current) return;
         setDocuments((current) => [
           ...payload.documents.map((document) => {
             const existing = current.find((entry) => entry.id === document.id);
@@ -322,6 +356,7 @@ export function ImportsPage({
                 : {}),
               name:
                 existing?.name ??
+                document.name ??
                 `${sourceKindLabel(document.sourceKind)} · ${
                   document.createdAt
                     ? new Date(document.createdAt).toLocaleString("ja-JP", {
@@ -344,9 +379,10 @@ export function ImportsPage({
         if (!silent) setMessage((reason as Error).message);
       }
     },
-    [household.id],
+    [documentFilterScope, documentFilters, household.id],
   );
   useEffect(() => {
+    documentFilterScopeRef.current = documentFilterScope;
     setDocuments([]);
     setNextDocumentCursor(null);
     loadedOlderPages.current = false;
@@ -355,13 +391,14 @@ export function ImportsPage({
     setConfirmedStatements(new Set());
     setSelectedCandidates({});
     void refreshDocuments();
-  }, [refreshDocuments]);
+  }, [documentFilterScope, refreshDocuments]);
   const loadOlderDocuments = useCallback(async () => {
     if (!nextDocumentCursor || loadingOlderDocuments) return;
     setLoadingOlderDocuments(true);
+    const requestScope = documentFilterScope;
     try {
       const response = await fetch(
-        `/documents?householdId=${encodeURIComponent(household.id)}&first=50&after=${encodeURIComponent(nextDocumentCursor)}`,
+        documentListURL(household.id, documentFilters, nextDocumentCursor),
         { credentials: "include" },
       );
       if (!response.ok) throw new Error(`証拠一覧を取得できませんでした (${response.status})`);
@@ -369,6 +406,7 @@ export function ImportsPage({
         documents: DocumentReview[];
         nextCursor: string | null;
       };
+      if (requestScope !== documentFilterScopeRef.current) return;
       setDocuments((current) => {
         const ids = new Set(current.map((document) => document.id));
         return [
@@ -399,7 +437,13 @@ export function ImportsPage({
     } finally {
       setLoadingOlderDocuments(false);
     }
-  }, [household.id, loadingOlderDocuments, nextDocumentCursor]);
+  }, [
+    documentFilterScope,
+    documentFilters,
+    household.id,
+    loadingOlderDocuments,
+    nextDocumentCursor,
+  ]);
   const hasProcessingDocuments = documents.some((document) => isProcessing(document.status));
   useEffect(() => {
     if (!hasProcessingDocuments) return;
@@ -448,7 +492,10 @@ export function ImportsPage({
     const supported = candidates.filter(isSupportedFile);
     const unsupported = candidates.filter((file) => !isSupportedFile(file));
     if (supported.length) markUnsaved();
-    setFiles((current) => [...current, ...supported]);
+    setFiles((current) => [
+      ...current,
+      ...supported.map((file) => ({ id: crypto.randomUUID(), file, status: "queued" as const })),
+    ]);
     setMessage(
       unsupported.length
         ? `対応していない形式: ${unsupported.map((file) => file.name).join("、")}`
@@ -459,10 +506,18 @@ export function ImportsPage({
     if (!files.length) return;
     setPending(true);
     setMessage("");
-    const uploaded: DocumentReview[] = [];
-    const uploadedFiles: File[] = [];
-    try {
-      for (const file of files) {
+    const queued = files;
+    const queuedIds = new Set(queued.map((entry) => entry.id));
+    let nextIndex = 0;
+    const failedUploads = new Set<string>();
+    const uploadOne = async (entry: PendingUpload) => {
+      setFiles((current) =>
+        current.map((upload) =>
+          upload.id === entry.id ? { ...upload, status: "uploading", error: undefined } : upload,
+        ),
+      );
+      const { file } = entry;
+      try {
         const body = new FormData();
         body.set("file", file);
         body.set("householdId", household.id);
@@ -475,46 +530,52 @@ export function ImportsPage({
         if (!response.ok) throw new Error(`証拠を送信できませんでした (${response.status})`);
         const accepted = (await response.json()) as {
           id: string;
+          name?: string;
           sha256: string;
           status: string;
           duplicateOf?: string;
           duplicate?: boolean;
           jobId?: string;
         };
-        let documentReview: DocumentReview = {
+        const documentReview: DocumentReview = {
           id: accepted.id,
-          name: file.name,
+          jobId: accepted.jobId,
+          name: accepted.name ?? file.name,
           status: accepted.status,
           sourceKind: sourceKind(file, csvKinds[file.name] ?? "card"),
           duplicateOf: accepted.duplicateOf,
           sha256: accepted.sha256,
         };
-        for (let attempt = 0; attempt < 24 && isProcessing(documentReview.status); attempt++) {
-          await new Promise((resolve) => window.setTimeout(resolve, 1000));
-          const resultResponse = await fetch(`/documents/${encodeURIComponent(accepted.id)}`, {
-            credentials: "include",
-          });
-          if (!resultResponse.ok)
-            throw new Error(`認識結果を取得できませんでした (${resultResponse.status})`);
-          documentReview = {
-            ...documentReview,
-            ...((await resultResponse.json()) as Partial<DocumentReview>),
-            name: file.name,
-          };
-        }
-        uploaded.push(documentReview);
-        uploadedFiles.push(file);
+        setDocuments((current) => [
+          documentReview,
+          ...current.filter((document) => document.id !== documentReview.id),
+        ]);
+        setSelected((current) => current ?? accepted.id);
+        setFiles((current) => current.filter((upload) => upload.id !== entry.id));
+      } catch (reason) {
+        failedUploads.add(entry.id);
+        setFiles((current) =>
+          current.map((upload) =>
+            upload.id === entry.id
+              ? { ...upload, status: "failed", error: (reason as Error).message }
+              : upload,
+          ),
+        );
+        setMessage((current) => (current ? current : `${file.name}: ${(reason as Error).message}`));
       }
-      setDocuments((current) => [...uploaded, ...current]);
-      setFiles([]);
-      setHasUnsavedChanges(false);
-      setSelected(uploaded.find((document) => document.result)?.id ?? uploaded[0]?.id ?? null);
+    };
+    const worker = async () => {
+      while (nextIndex < queued.length) {
+        const entry = queued[nextIndex++];
+        await uploadOne(entry);
+      }
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(3, queued.length) }, worker));
+      setHasUnsavedChanges(
+        failedUploads.size > 0 || files.some((upload) => !queuedIds.has(upload.id)),
+      );
       void refreshDocuments(true);
-    } catch (reason) {
-      if (uploadedFiles.length)
-        setFiles((current) => current.filter((file) => !uploadedFiles.includes(file)));
-      setMessage((reason as Error).message);
-      setDocuments((current) => [...uploaded, ...current]);
     } finally {
       setPending(false);
     }
@@ -866,24 +927,108 @@ export function ImportsPage({
             </div>
             <span className="count-badge">{documents.length + files.length}</span>
           </div>
-          {files.map((file, index) => (
-            <div className="file-review-row" key={`${file.name}-${index}`}>
+          <form
+            className="ledger-filters"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setDocumentFilters(documentFilterDraft);
+            }}
+          >
+            <label className="select-filter">
+              店舗
+              <input
+                type="search"
+                value={documentFilterDraft.store}
+                onChange={(event) =>
+                  setDocumentFilterDraft((current) => ({ ...current, store: event.target.value }))
+                }
+              />
+            </label>
+            <label className="select-filter">
+              取り込み開始日
+              <input
+                type="date"
+                value={documentFilterDraft.from}
+                onChange={(event) =>
+                  setDocumentFilterDraft((current) => ({ ...current, from: event.target.value }))
+                }
+              />
+            </label>
+            <label className="select-filter">
+              取り込み終了日
+              <input
+                type="date"
+                value={documentFilterDraft.to}
+                onChange={(event) =>
+                  setDocumentFilterDraft((current) => ({ ...current, to: event.target.value }))
+                }
+              />
+            </label>
+            <label className="select-filter">
+              原本種別
+              <select
+                value={documentFilterDraft.sourceKind}
+                onChange={(event) =>
+                  setDocumentFilterDraft((current) => ({
+                    ...current,
+                    sourceKind: event.target.value,
+                  }))
+                }
+              >
+                <option value="">すべて</option>
+                <option value="receipt">レシート</option>
+                <option value="order">注文履歴</option>
+                <option value="email">メール</option>
+                <option value="card">カード明細</option>
+                <option value="bank">銀行明細</option>
+              </select>
+            </label>
+            <label className="select-filter">
+              確定状態
+              <select
+                value={documentFilterDraft.confirmed}
+                onChange={(event) =>
+                  setDocumentFilterDraft((current) => ({
+                    ...current,
+                    confirmed: event.target.value,
+                  }))
+                }
+              >
+                <option value="">すべて</option>
+                <option value="true">確定済み</option>
+                <option value="false">未確定</option>
+              </select>
+            </label>
+            <button type="submit" className="button button-soft">
+              検索
+            </button>
+          </form>
+          {files.map((upload) => (
+            <div className="file-review-row" key={upload.id}>
               <span className="file-thumb">
                 <FileImage />
               </span>
               <div>
-                <b>{file.name}</b>
-                <small>{(file.size / 1024).toFixed(0)} KB · 送信待ち</small>
+                <b>{upload.file.name}</b>
+                <small>
+                  {(upload.file.size / 1024).toFixed(0)} KB ·{" "}
+                  {upload.status === "uploading"
+                    ? "送信中"
+                    : upload.status === "failed"
+                      ? `送信失敗 · ${upload.error}`
+                      : "送信待ち"}
+                </small>
               </div>
-              {isCsvFile(file) && (
+              {upload.status === "failed" && <AlertCircle size={16} aria-label="送信失敗" />}
+              {isCsvFile(upload.file) && (
                 <select
-                  aria-label={`${file.name}の明細種別`}
-                  value={csvKinds[file.name] ?? "card"}
+                  aria-label={`${upload.file.name}の明細種別`}
+                  value={csvKinds[upload.file.name] ?? "card"}
                   onChange={(event) => {
                     markUnsaved();
                     setCsvKinds((current) => ({
                       ...current,
-                      [file.name]: event.target.value as "card" | "bank",
+                      [upload.file.name]: event.target.value as "card" | "bank",
                     }));
                   }}
                 >
@@ -894,9 +1039,10 @@ export function ImportsPage({
               <button
                 className="icon-button"
                 aria-label="削除"
+                disabled={pending}
                 onClick={() => {
                   markUnsaved();
-                  setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+                  setFiles((current) => current.filter((entry) => entry.id !== upload.id));
                 }}
               >
                 <X size={16} />
@@ -954,7 +1100,7 @@ export function ImportsPage({
               onClick={() => void uploadFiles()}
             >
               <Upload size={15} />
-              {pending ? "認識しています" : "証拠を送信"}
+              {pending ? "送信しています" : "証拠を送信"}
             </button>
           )}
           {selectedDocument && (

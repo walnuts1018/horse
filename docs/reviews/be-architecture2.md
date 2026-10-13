@@ -215,20 +215,6 @@ Bob
 
 Bob生成モデルはCRUDに使い、複雑な読み取りだけSQLファイルとして明示する構成が、保守性と性能のバランスに優れています。
 
-### 3.3 複数行INSERTもBobに任せる
-
-[accounting/journal.go: InsertEntries](https://github.com/walnuts1018/horse/blob/be514744182bd6cc1ffe1847ea588b801c2db894/internal/application/accounting/journal.go#L125-L155)
-
-`InsertEntries`では仕訳明細を1件ずつINSERTしています。
-
-Bobのモデルには複数のSetterを渡してまとめてINSERTする機能があります。
-
-[image](https://www.google.com/s2/favicons?domain=https://bob.stephenafamo.com\&sz=32)
-
-Bob
-
-会計仕訳は数件程度なので、現在の実装が即座に性能問題になるわけではありません。しかし、複数品目の購入や履歴インポートまで考えると、複数行を扱う処理を積極的にバルクINSERTへ寄せることで、DB往復回数とコード量を減らせます。
-
 ## 4. 精算処理をApplication層へ移行する
 
 優先度：高 / 保守性への影響
