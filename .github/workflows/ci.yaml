@@ -124,6 +124,8 @@ jobs:
               file: Dockerfile
               platforms: linux/amd64,linux/arm64
               push: true
+              provenance: mode=max
+              sbom: true
               tags: |
                 ghcr.io/${{ github.repository }}:latest
                 ghcr.io/${{ github.repository }}:v0.0.0-${{ github.sha }}-${{ github.run_number }}
@@ -138,6 +140,8 @@ jobs:
               file: services/ocr/Dockerfile
               platforms: linux/amd64
               push: true
+              provenance: mode=max
+              sbom: true
               tags: |
                 ghcr.io/${{ github.repository }}-ocr:latest
                 ghcr.io/${{ github.repository }}-ocr:v0.0.0-${{ github.sha }}-${{ github.run_number }}
