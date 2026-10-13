@@ -37,27 +37,7 @@ ai.google.dev
 
 ## 料金面で直すべき具体的な箇所
 
-### 1. 有料で成功した後の品質再検証も、有料になってしまう
-
-[router.go:164–180](https://github.com/walnuts1018/horse/blob/b5085e2de82390e783c6fe0c37da2a702c0cf54d/internal/ingestion/router.go#L164-L180)
-
-`QualityOptions()` は前回の実行経路を引き継ぎます。
-
-```
-ProjectPreferred: previous.Route,
-```
-
-このため、無料枠の一時的な503で初回抽出が有料に切り替わった場合、品質再検証も有料プロジェクトに固定されます。
-
-さらに、[worker_extract.go:77–121](https://github.com/walnuts1018/horse/blob/b5085e2de82390e783c6fe0c37da2a702c0cf54d/internal/ingestion/worker_extract.go#L77-L121) では、初回結果が `Balanced=false` なら中程度の思考レベルで再抽出し、税額や合計に関する問題が残ればProへ昇格します。
-
-これは精度を高めるための合理的な処理ですが、再検証が必要な理由によっては費用対効果が悪くなります。
-
-例えば、独立OCRが特定の品名を読み取れなかっただけで、レシート全体をGeminiにもう一度渡す必要はありません。OCRの不確実性とAIの不確実性を区別し、問題のある行だけのクロップ再解析、ルールによる再計算、必要時だけPro の順にした方がよいです。
-
-重要なのは、有料Proの使用を禁止することではなく、Proによる再解析で実際に人手修正が減るケースに絞ることです。
-
-### 2. 現行APIからは有料Flexをほとんど活用できない
+### 1. 現行APIからは有料Flexをほとんど活用できない
 
 [documents.go](https://github.com/walnuts1018/horse/blob/b5085e2de82390e783c6fe0c37da2a702c0cf54d/internal/api/documents.go) では、新規アップロードと手動再解析のジョブに `JobPurposeInteractive` を設定しています。
 
@@ -73,7 +53,7 @@ ai.google.dev
 
 そのため、メールの一括取り込みや過去履歴のインポートには、別のジョブ優先度と処理期限を与える仕組みが必要です。ただし、無料で処理できるなら無料Standardを使う方が、半額の有料Flexよりさらに安いことは維持してください。
 
-### 3. 無料モデルを横断するルーティングがない
+### 2. 無料モデルを横断するルーティングがない
 
 現在のモデル選択は、基本的に次の構成です。
 
@@ -99,7 +79,7 @@ ai.google.dev
 
 なお、`gemini-3.1-flash-lite` は有料でも比較的安価ですが、現在の [modelPrices()](https://github.com/walnuts1018/horse/blob/b5085e2de82390e783c6fe0c37da2a702c0cf54d/internal/ingestion/router.go#L330-L347) に登録されていません。そのまま `GEMINI_LITE_MODEL` に指定すると、無料呼び出し後の有料フォールバックが `unknown_model_price` で拒否されます。候補モデルを増やす際は料金表も変更する必要があります。
 
-### 4. 有料APIの月間利用額を呼び出し前に制御できない
+### 3. 有料APIの月間利用額を呼び出し前に制御できない
 
 [gemini.go:81–117](https://github.com/walnuts1018/horse/blob/b5085e2de82390e783c6fe0c37da2a702c0cf54d/internal/ingestion/gemini.go#L81-L117)
 

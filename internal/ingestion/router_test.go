@@ -242,6 +242,37 @@ func TestGeminiQualityReviewAddsEvidenceAndChangesRequest(t *testing.T) {
 	}
 }
 
+func TestGeminiQualityReviewDoesNotRepeatPaidRouteAfterFreeQuota(t *testing.T) {
+	t.Parallel()
+	freeCalls := 0
+	free := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		freeCalls++
+		w.Header().Set("Retry-After", "5")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"rate limit"}}`)
+	}))
+	defer free.Close()
+	paidCalls := 0
+	paid := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		paidCalls++
+		writeGeminiSuccess(w, `{"merchant":"Shop","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
+	}))
+	defer paid.Close()
+	router := GeminiRouter{
+		Free: Gemini{APIKey: testFreeGeminiAPIKey, Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
+		Paid: Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
+	}
+	options := router.QualityOptions("receipt", ExtractionRun{Model: ModelReceipt, Route: ProjectPaid}, []string{"tax total mismatch"})
+	_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("synthetic image")}, nil, options)
+	apiErr, ok := errors.AsType[*GeminiAPIError](err)
+	if !ok || apiErr.Kind != GeminiFailureQuota || apiErr.RetryAfter != 5*time.Second {
+		t.Fatalf("quality review must preserve the free quota error: error=%v", err)
+	}
+	if !options.FreeOnly || options.ProjectPreferred != ProjectFree || freeCalls != 1 || paidCalls != 0 || len(runs) != 1 || runs[0].Route != ProjectFree {
+		t.Fatalf("paid initial extraction must not cause a duplicate paid quality call: options=%#v free=%d paid=%d runs=%#v", options, freeCalls, paidCalls, runs)
+	}
+}
+
 func TestGeminiRouterModelOverridesAndEmailQualityUpgrade(t *testing.T) {
 	t.Parallel()
 	router := GeminiRouter{FlashModel: testConfiguredFlash, LiteModel: testConfiguredLite}

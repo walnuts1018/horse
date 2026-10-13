@@ -274,6 +274,8 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 
 無料Projectで429が返った場合に有料Projectへ即時に切り替えず、Gemini APIの`Retry-After`をWorkerの既存job再試行へ渡します。429では有料Clientが呼ばれないこと、一時的な503では従来どおり有料へフォールバックすること、再試行遅延が保たれることを`go test ./internal/ingestion`で確認しました。関連する429の指摘を`docs/reviews/gemini.md`から削除しました。
 
+品質再検証は初回抽出の成功Projectを引き継がず、無料Projectだけを使います。初回抽出が有料へフォールバックした後に品質再検証の無料APIが429を返した場合、Workerは再検証結果を採用せず初回結果を維持し、有料APIを重ねて呼びません。税額や合計の重大な不整合に対する既存のPro昇格条件は維持します。Project routeが有料の前回結果から品質再検証を開始し、無料429後にPaid APIを呼ばないことをRouterテストで確認しました。解消した指摘を`docs/reviews/gemini.md`から削除しました。
+
 ### Gemini失敗呼び出しの利用量記録
 
 MAX_TOKENSや不正生成JSONでGemini呼び出しに失敗した場合も、応答にUsageMetadataがあれば入力・出力token数と有料ルートの推定費用を記録します。runの失敗statusとerror codeは維持します。UsageMetadata付きMAX_TOKENSと不正JSONを返すテストでtoken数、推定費用、失敗状態を確認しました。

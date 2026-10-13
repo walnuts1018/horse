@@ -72,6 +72,7 @@ type GeminiRouteOptions struct {
 	Reason           string
 	Guidance         []string
 	PaidOnly         bool
+	FreeOnly         bool
 }
 
 func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document Document, hints []HistoryHint, options GeminiRouteOptions) (Receipt, []ExtractionRun, error) {
@@ -104,6 +105,9 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	if preferred != ProjectFree && preferred != ProjectPaid {
 		return Receipt{}, nil, errors.New("invalid Gemini project route")
 	}
+	if options.PaidOnly && options.FreeOnly {
+		return Receipt{}, nil, errors.New("conflicting Gemini project route options")
+	}
 	free := r.Free
 	free.ProjectRoute = ProjectFree
 	free.Model = model
@@ -111,7 +115,9 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	paid.ProjectRoute = ProjectPaid
 	paid.Model = model
 	clients := []Gemini{free, paid}
-	if preferred == ProjectPaid {
+	if options.FreeOnly {
+		clients = []Gemini{free}
+	} else if preferred == ProjectPaid {
 		clients = []Gemini{paid}
 	}
 	if options.PaidOnly {
@@ -141,7 +147,7 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 			runs[len(runs)-1].Receipt = &receipt
 			return receipt, runs, nil
 		}
-		if index != 0 || client.ProjectRoute != ProjectFree || !shouldFallbackToPaid(err) {
+		if index != 0 || client.ProjectRoute != ProjectFree || options.FreeOnly || !shouldFallbackToPaid(err) {
 			return Receipt{}, runs, err
 		}
 		if err := ctx.Err(); err != nil {
@@ -173,9 +179,10 @@ func (r GeminiRouter) QualityOptions(sourceKind string, previous ExtractionRun, 
 		Model:            model,
 		ThinkingLevel:    "medium",
 		ServiceTier:      previous.ServiceTier,
-		ProjectPreferred: previous.Route,
+		ProjectPreferred: ProjectFree,
 		Reason:           "evidence_guided_quality_review",
 		Guidance:         guidance,
+		FreeOnly:         true,
 	}
 }
 
