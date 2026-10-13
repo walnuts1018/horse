@@ -24,8 +24,35 @@ type Case struct {
 }
 
 type Metrics struct {
-	DatasetVersion               string  `json:"datasetVersion"`
-	Documents                    int     `json:"documents"`
+	DatasetVersion               string         `json:"datasetVersion"`
+	Documents                    int            `json:"documents"`
+	ExpectedItems                int            `json:"expectedItems"`
+	PredictedItems               int            `json:"predictedItems"`
+	MatchedItems                 int            `json:"matchedItems"`
+	ItemDetectionPrecision       float64        `json:"itemDetectionPrecision"`
+	ItemDetectionRecall          float64        `json:"itemDetectionRecall"`
+	PrintedAmountExactRate       float64        `json:"printedAmountExactRate"`
+	TaxConsistentRate            float64        `json:"taxConsistentRate"`
+	ProductNormalizationAccuracy float64        `json:"productNormalizationAccuracy"`
+	EvidencePrecision            float64        `json:"evidencePrecision"`
+	DuplicatePrecision           float64        `json:"duplicatePrecision"`
+	PredictedDuplicateItems      int            `json:"predictedDuplicateItems"`
+	CorrectDuplicateItems        int            `json:"correctDuplicateItems"`
+	AutoConfirmableCases         int            `json:"autoConfirmableCases"`
+	AutoConfirmableRate          float64        `json:"autoConfirmableRate"`
+	HumanCorrectionCases         int            `json:"humanCorrectionCases"`
+	AverageHumanCorrectionOps    float64        `json:"averageHumanCorrectionOperations"`
+	PricedRuns                   int            `json:"pricedRuns"`
+	UnpricedRuns                 int            `json:"unpricedRuns"`
+	EstimatedCostJPY             float64        `json:"estimatedCostJPY"`
+	EstimatedCostJPYPerPricedRun float64        `json:"estimatedCostJPYPerPricedRun"`
+	Models                       []ModelMetrics `json:"models"`
+}
+
+type ModelMetrics struct {
+	Model                        string  `json:"model"`
+	Runs                         int     `json:"runs"`
+	ScoredRuns                   int     `json:"scoredRuns"`
 	ExpectedItems                int     `json:"expectedItems"`
 	PredictedItems               int     `json:"predictedItems"`
 	MatchedItems                 int     `json:"matchedItems"`
@@ -35,22 +62,30 @@ type Metrics struct {
 	TaxConsistentRate            float64 `json:"taxConsistentRate"`
 	ProductNormalizationAccuracy float64 `json:"productNormalizationAccuracy"`
 	EvidencePrecision            float64 `json:"evidencePrecision"`
-	DuplicatePrecision           float64 `json:"duplicatePrecision"`
-	PredictedDuplicateItems      int     `json:"predictedDuplicateItems"`
-	CorrectDuplicateItems        int     `json:"correctDuplicateItems"`
-	AutoConfirmableCases         int     `json:"autoConfirmableCases"`
-	AutoConfirmableRate          float64 `json:"autoConfirmableRate"`
-	HumanCorrectionCases         int     `json:"humanCorrectionCases"`
-	AverageHumanCorrectionOps    float64 `json:"averageHumanCorrectionOperations"`
 	PricedRuns                   int     `json:"pricedRuns"`
 	UnpricedRuns                 int     `json:"unpricedRuns"`
 	EstimatedCostJPY             float64 `json:"estimatedCostJPY"`
 	EstimatedCostJPYPerPricedRun float64 `json:"estimatedCostJPYPerPricedRun"`
+	LatencyRuns                  int     `json:"latencyRuns"`
+	AverageLatencyMillis         float64 `json:"averageLatencyMillis"`
+}
+
+type modelAccumulator struct {
+	metrics           ModelMetrics
+	correctAmounts    int
+	amountComparisons int
+	correctNames      int
+	nameComparisons   int
+	correctRegions    int
+	predictedRegions  int
+	taxConsistent     int
+	latencyMillis     int64
 }
 
 // Scoreは実行済みの抽出結果を固定された正解データと照合し、課金実績ではなく推定費用を集計する。
 func Score(dataset Dataset) Metrics {
 	metrics := Metrics{DatasetVersion: dataset.Version, Documents: len(dataset.Cases)}
+	models := make(map[string]*modelAccumulator)
 	var correctAmounts, correctNames, amountComparisons, nameComparisons, predictedRegions, correctRegions, taxConsistent int
 	var correctionOperations int
 	for _, testCase := range dataset.Cases {
@@ -102,11 +137,35 @@ func Score(dataset Dataset) Metrics {
 			}
 		}
 		for _, run := range testCase.Runs {
+			var model *modelAccumulator
+			if run.Model != "" {
+				model = models[run.Model]
+				if model == nil {
+					model = &modelAccumulator{metrics: ModelMetrics{Model: run.Model}}
+					models[run.Model] = model
+				}
+				model.metrics.Runs++
+				if run.LatencyMillis > 0 {
+					model.metrics.LatencyRuns++
+					model.latencyMillis += run.LatencyMillis
+				}
+			}
 			if run.PriceEstimateStatus == "estimated_paid" || run.PriceEstimateStatus == "free_tier" {
 				metrics.PricedRuns++
 				metrics.EstimatedCostJPY += run.EstimatedJPY
+				if model != nil {
+					model.metrics.PricedRuns++
+					model.metrics.EstimatedCostJPY += run.EstimatedJPY
+				}
 			} else if run.Model != "" {
 				metrics.UnpricedRuns++
+				if model != nil {
+					model.metrics.UnpricedRuns++
+				}
+			}
+			if model != nil && run.Receipt != nil {
+				model.metrics.ScoredRuns++
+				model.addReceipt(testCase.Expected, *run.Receipt)
 			}
 		}
 	}
@@ -123,6 +182,63 @@ func Score(dataset Dataset) Metrics {
 	}
 	if metrics.PricedRuns > 0 {
 		metrics.EstimatedCostJPYPerPricedRun = metrics.EstimatedCostJPY / float64(metrics.PricedRuns)
+	}
+	metrics.Models = make([]ModelMetrics, 0, len(models))
+	for _, model := range models {
+		metrics.Models = append(metrics.Models, model.finish())
+	}
+	slices.SortFunc(metrics.Models, func(a, b ModelMetrics) int { return cmp.Compare(a.Model, b.Model) })
+	return metrics
+}
+
+func (model *modelAccumulator) addReceipt(expected, actual ingestion.Receipt) {
+	model.metrics.ExpectedItems += len(expected.Items)
+	model.metrics.PredictedItems += len(actual.Items)
+	matches := matchItems(expected.Items, actual.Items, true, true)
+	model.metrics.MatchedItems += len(matches)
+	amountMatches := matchItems(expected.Items, actual.Items, true, false)
+	model.amountComparisons += len(amountMatches)
+	for actualIndex, expectedIndex := range amountMatches {
+		if actual.Items[actualIndex].PrintedAmount == expected.Items[expectedIndex].PrintedAmount {
+			model.correctAmounts++
+		}
+	}
+	nameMatches := matchItems(expected.Items, actual.Items, false, true)
+	model.nameComparisons += len(nameMatches)
+	for actualIndex, expectedIndex := range nameMatches {
+		if normalizeName(actual.Items[actualIndex].Name) == normalizeName(expected.Items[expectedIndex].Name) && normalizeName(expected.Items[expectedIndex].Name) != "" {
+			model.correctNames++
+		}
+	}
+	for actualIndex, expectedIndex := range matches {
+		actualRegion, expectedRegion := actual.Items[actualIndex].Region, expected.Items[expectedIndex].Region
+		if actualRegion != nil && expectedRegion != nil && actualRegion.Page == expectedRegion.Page && regionIoU(*actualRegion, *expectedRegion) >= 0.5 {
+			model.correctRegions++
+		}
+	}
+	for _, item := range actual.Items {
+		if item.Region != nil {
+			model.predictedRegions++
+		}
+	}
+	if verification, err := ingestion.Verify(actual); err == nil && verification.Balanced {
+		model.taxConsistent++
+	}
+}
+
+func (model *modelAccumulator) finish() ModelMetrics {
+	metrics := model.metrics
+	metrics.ItemDetectionPrecision = ratio(metrics.MatchedItems, metrics.PredictedItems)
+	metrics.ItemDetectionRecall = ratio(metrics.MatchedItems, metrics.ExpectedItems)
+	metrics.PrintedAmountExactRate = ratio(model.correctAmounts, model.amountComparisons)
+	metrics.TaxConsistentRate = ratio(model.taxConsistent, metrics.ScoredRuns)
+	metrics.ProductNormalizationAccuracy = ratio(model.correctNames, model.nameComparisons)
+	metrics.EvidencePrecision = ratio(model.correctRegions, model.predictedRegions)
+	if metrics.PricedRuns > 0 {
+		metrics.EstimatedCostJPYPerPricedRun = metrics.EstimatedCostJPY / float64(metrics.PricedRuns)
+	}
+	if metrics.LatencyRuns > 0 {
+		metrics.AverageLatencyMillis = float64(model.latencyMillis) / float64(metrics.LatencyRuns)
 	}
 	return metrics
 }

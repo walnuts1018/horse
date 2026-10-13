@@ -70,6 +70,44 @@ func TestScoreDoesNotTreatUnknownCostAsFree(t *testing.T) {
 	}
 }
 
+func TestScoreReportsAccuracyCostAndLatencyPerModel(t *testing.T) {
+	t.Parallel()
+	expected := ingestion.Receipt{
+		Currency: "JPY", Total: 300,
+		Items: []ingestion.Item{
+			{PrintedName: "りんご", Name: "りんご", PrintedAmount: 100},
+			{PrintedName: "牛乳", Name: "牛乳", PrintedAmount: 200},
+		},
+	}
+	complete := expected
+	partial := ingestion.Receipt{
+		Currency: "JPY", Total: 100,
+		Items: []ingestion.Item{{PrintedName: "りんご", Name: "りんご", PrintedAmount: 100}},
+	}
+	metrics := Score(Dataset{Version: "synthetic-v1", Cases: []Case{{
+		ID:       "model-comparison",
+		Expected: expected,
+		Runs: []ingestion.ExtractionRun{
+			{Model: "model-a", Receipt: &complete, PriceEstimateStatus: "estimated_paid", EstimatedJPY: 1.5, LatencyMillis: 1000},
+			{Model: "model-b", Receipt: &partial, PriceEstimateStatus: "free_tier", EstimatedJPY: 0, LatencyMillis: 3000},
+			{Model: "model-c", Receipt: &complete},
+		},
+	}}})
+	if len(metrics.Models) != 3 {
+		t.Fatalf("expected metrics for three models, got %+v", metrics.Models)
+	}
+	modelA, modelB, modelC := metrics.Models[0], metrics.Models[1], metrics.Models[2]
+	if modelA.Model != "model-a" || modelA.ItemDetectionRecall != 1 || modelA.EstimatedCostJPY != 1.5 || modelA.AverageLatencyMillis != 1000 || modelA.ScoredRuns != 1 {
+		t.Fatalf("unexpected model-a metrics: %+v", modelA)
+	}
+	if modelB.Model != "model-b" || modelB.ItemDetectionPrecision != 1 || modelB.ItemDetectionRecall != 0.5 || modelB.EstimatedCostJPY != 0 || modelB.AverageLatencyMillis != 3000 || modelB.ScoredRuns != 1 {
+		t.Fatalf("unexpected model-b metrics: %+v", modelB)
+	}
+	if modelC.Model != "model-c" || modelC.LatencyRuns != 0 || modelC.AverageLatencyMillis != 0 {
+		t.Fatalf("unset latency was included in model-c metrics: %+v", modelC)
+	}
+}
+
 func TestDuplicatePrecisionRequiresTheExpectedRepeatedLine(t *testing.T) {
 	t.Parallel()
 	expected := []ingestion.Item{{PrintedName: appleItemName, PrintedAmount: 100}, {PrintedName: appleItemName, PrintedAmount: 100}}

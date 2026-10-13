@@ -231,3 +231,7 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 文書アップロードでは`mimetype` v1.4.15の内容判定を使い、テキストと確認したデータに限ってCSV・EML・TXT拡張子をfallbackとして受け付けます。メール解析は`go-message` v0.18.2へ移し、`html-to-markdown/v2` v2.5.2のtable pluginでHTML注文メールの表を保ちます。最大文書サイズ、MIME深度、part数、添付警告、plain text優先を維持しました。`web`では`vitest` v5.0.3と`fast-check` v4.10.2を導入し、Ledger URL検索条件のparse/serialize往復不変条件を500回検査します。GraphQLのMIME・HTTP、メール解析、Worker/API injector、GraphQL DB統合、property testの対象テストは成功しました。
 
 `chi`はEchoと重複するため、Bob Query GenerationはSQL文字列を入力として生SQLを直接書かない方針と競合するため採用しません。DataLoaderや`retry-go`は既存のBob一括取得とDB永続job retryに対する追加効果を確認できません。`testify`の一括導入は標準`testing`の明示的な失敗理由を失う置換が多いため見送りました。
+
+### 2026年10月14日の冪等性と評価
+
+資金記録、送金、購入確定では家庭行をロックした後に冪等キーを再読込し、同時に届いた同一要求が先行transactionのリソースを返すようにしました。Testcontainersを使うGraphQL DB統合テストで、同じキーの並行要求が同じリソースIDを返し、仕訳と台帳行が各1件だけ作られることを確認しました。オフライン評価器には`ExtractionRun.Receipt`ごとのモデル別精度、推定費用、記録された遅延の比較を追加しました。合成fixtureのみで評価し、Gemini APIは呼び出していません。対象のGoテストと`mise run evaluation:run`が成功しました。
