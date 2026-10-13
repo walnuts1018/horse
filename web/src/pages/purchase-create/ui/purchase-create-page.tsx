@@ -132,6 +132,8 @@ export function PurchaseCreatePage({
     (entry) => entry.input.householdId === household.id,
   );
   const enabledCategories = household.categories.filter((category) => !category.archived);
+  const isEnabledCategory = (id: string | null | undefined): id is string =>
+    Boolean(id && enabledCategories.some((category) => category.id === id));
   const defaultAllocations = household.defaultAllocation?.length
     ? household.defaultAllocation
     : household.pools.map((pool) => ({ poolId: pool.id, weight: pool.defaultShareWeight || 1 }));
@@ -206,8 +208,14 @@ export function PurchaseCreatePage({
           }
           setItemName(loaded.itemName);
           setItemAmount(loaded.itemAmount);
-          updateCategory(loaded.categoryId ?? "", loaded.categoryId ? "restored" : "default");
-          setItems(loaded.items);
+          const restoredCategoryId = isEnabledCategory(loaded.categoryId) ? loaded.categoryId! : "";
+          updateCategory(restoredCategoryId, restoredCategoryId ? "restored" : "default");
+          setItems(
+            loaded.items.map((item) => ({
+              ...item,
+              categoryId: isEnabledCategory(item.categoryId) ? item.categoryId : "",
+            })),
+          );
           setSavedAt(new Date());
         }
         setDraftHouseholdId(household.id);
@@ -301,9 +309,10 @@ export function PurchaseCreatePage({
     const match = history
       .flatMap((purchase) => purchase.items)
       .find((item) => item.name.toLocaleLowerCase() === itemName.trim().toLocaleLowerCase());
-    if (match?.categoryId) {
+    const matchCategoryId = match?.categoryId;
+    if (isEnabledCategory(matchCategoryId)) {
       categorySource.current = "history";
-      setCategoryId(match.categoryId);
+      setCategoryId(matchCategoryId);
     } else if (categorySource.current === "history") {
       categorySource.current = "default";
       setCategoryId("");
@@ -479,19 +488,23 @@ export function PurchaseCreatePage({
     setUndoItems(items);
     setItems((current) => [
       ...current,
-      ...parsed.map(([name, amount]) => ({
-        key: crypto.randomUUID(),
-        name,
-        amount: amount.replace(/[¥,]/g, ""),
-        categoryId:
-          categorySource.current === "manual" || categorySource.current === "restored"
-            ? categoryId
-            : (history
-                .flatMap((purchase) => purchase.items)
-                .find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())
-                ?.categoryId ?? ""),
-        allocations: [],
-      })),
+      ...parsed.map(([name, amount]) => {
+        const historyCategoryId = history
+          .flatMap((purchase) => purchase.items)
+          .find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.categoryId;
+        return {
+          key: crypto.randomUUID(),
+          name,
+          amount: amount.replace(/[¥,]/g, ""),
+          categoryId:
+            categorySource.current === "manual" || categorySource.current === "restored"
+              ? categoryId
+              : isEnabledCategory(historyCategoryId)
+                ? historyCategoryId!
+                : "",
+          allocations: [],
+        };
+      }),
     ]);
   };
   const removeItem = (key: string) => {
@@ -519,7 +532,7 @@ export function PurchaseCreatePage({
         key: crypto.randomUUID(),
         name: item.name,
         amount: String(item.amountYen),
-        categoryId: item.categoryId ?? "",
+        categoryId: isEnabledCategory(item.categoryId) ? (item.categoryId ?? "") : "",
         productVariantId: item.productVariantId ?? undefined,
         allocations: item.allocations.map(({ poolId, weight }) => ({ poolId, weight })),
         ...(item.quantityNumerator && item.quantityDenominator
@@ -1001,7 +1014,7 @@ export function PurchaseCreatePage({
                       changeItemName(candidate.matchedName || itemName.trim());
                       setSelectedProductVariantId(candidate.variant.id);
                       if (
-                        candidate.concept.categoryId &&
+                        isEnabledCategory(candidate.concept.categoryId) &&
                         categorySource.current !== "manual" &&
                         categorySource.current !== "restored"
                       )
