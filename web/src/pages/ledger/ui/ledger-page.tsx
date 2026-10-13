@@ -15,17 +15,18 @@ import {
   type SourceKind,
   type UnmatchedObservationState,
 } from "../../../shared/api";
-import type { PurchaseChangedField } from "../../../shared/api/__generated__/UpdatePurchaseMutation.graphql";
-import type { PurchaseItemChangedField } from "../../../shared/api/__generated__/UpdatePurchaseItemMutation.graphql";
-import type { BulkPurchaseItemChangedField } from "../../../shared/api/__generated__/BulkUpdatePurchaseItemsMutation.graphql";
 import {
   bulkUpdatePurchaseItemsMutation,
   bulkUpdatePurchasesMutation,
   correctPurchaseMutation,
   postPurchaseMutation,
   purchasesQuery,
+  type BulkPurchaseItemChangedField,
+  type PurchaseChangedField,
+  type PurchaseItemChangedField,
   updatePurchaseItemMutation,
   updatePurchaseMutation,
+  useHouseholdPurchases,
 } from "../../../entities/purchase";
 import { ledgerQuery } from "../../../entities/ledger";
 import { unmatchedObservationsQuery } from "../api/observation/operations";
@@ -33,7 +34,6 @@ import { readProductCatalog } from "../../../entities/product";
 import { tagsQuery } from "../../../entities/tag";
 import { EmptyState, InlineError } from "../../../shared/ui";
 import { formatQuantity, parseQuantity } from "../../../shared/lib";
-import { useHouseholdPurchases } from "../../../entities/purchase";
 import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
 import { ObservationLinker } from "./observation-linker";
 
@@ -87,7 +87,9 @@ const toPurchaseItemChangedFields = (fields: readonly string[]): PurchaseItemCha
         throw new Error("不明な品目の変更項目です");
     }
   });
-const toBulkPurchaseItemChangedFields = (fields: readonly string[]): BulkPurchaseItemChangedField[] =>
+const toBulkPurchaseItemChangedFields = (
+  fields: readonly string[],
+): BulkPurchaseItemChangedField[] =>
   fields.map((field) => {
     switch (field) {
       case "categoryId":
