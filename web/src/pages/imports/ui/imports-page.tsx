@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { Camera, FileImage, ShieldCheck, Upload } from "lucide-react";
 import styles from "./imports-page.module.css";
@@ -8,21 +8,20 @@ import { InlineError } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import type { Region } from "../model/evidence-geometry";
 import { useEvidencePreview } from "../model/evidence-preview";
+import { useImportDocuments } from "../model/use-import-documents";
 import { CameraCapture, type CameraCaptureHandle } from "./camera-capture";
 import { ReceiptReview } from "./receipt-review";
 import { ImportDocumentList } from "./import-document-list";
 import { StatementReview } from "./statement-review";
 import { EvidenceMatching } from "./evidence-matching";
 import { EvidenceSourcePreview } from "./evidence-source-preview";
-import { documentListURL, importIdempotencyKey } from "../api/documents";
+import { importIdempotencyKey } from "../api/documents";
 import {
-  isProcessing,
   isSupportedFile,
   defaultDocumentFilters,
   parseDocumentFilters,
   serializeDocumentFilters,
   sourceKind,
-  sourceKindLabel,
   type DocumentFilters,
   type DocumentReview,
   type ExtractedItem,
@@ -46,10 +45,8 @@ export function ImportsPage({
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<CameraCaptureHandle>(null);
   const [files, setFiles] = useState<PendingUpload[]>([]);
-  const editedReceiptDocuments = useRef(new Set<string>());
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [csvKinds, setCsvKinds] = useState<Record<string, "card" | "bank">>({});
-  const [documents, setDocuments] = useState<DocumentReview[]>([]);
   const [documentFilters, setDocumentFilters] = useState<DocumentFilters>(() =>
     typeof window === "undefined"
       ? defaultDocumentFilters
@@ -57,14 +54,20 @@ export function ImportsPage({
   );
   const [documentFilterDraft, setDocumentFilterDraft] = useState(documentFilters);
   const documentFilterScope = JSON.stringify(documentFilters);
-  const documentFilterScopeRef = useRef(documentFilterScope);
-  const [nextDocumentCursor, setNextDocumentCursor] = useState<string | null>(null);
-  const [loadingOlderDocuments, setLoadingOlderDocuments] = useState(false);
-  const loadedOlderPages = useRef(false);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
+  const {
+    documents,
+    setDocuments,
+    selected,
+    setSelected,
+    nextDocumentCursor,
+    loadingOlderDocuments,
+    editedReceiptDocuments,
+    refreshDocuments,
+    loadOlderDocuments,
+  } = useImportDocuments(household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
   const [confirmedStatements, setConfirmedStatements] = useState<Set<string>>(() => new Set());
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
   const [reviewTargetIndex, setReviewTargetIndex] = useState(0);
@@ -234,123 +237,10 @@ export function ImportsPage({
   useEffect(() => {
     setCropRegion(null);
   }, [selectedDocument?.id]);
-  const refreshDocuments = useCallback(
-    async (silent = false) => {
-      try {
-        const requestScope = documentFilterScope;
-        const response = await fetch(documentListURL(household.id, documentFilters), {
-          credentials: "include",
-        });
-        if (!response.ok) throw new Error(`証拠一覧を取得できませんでした (${response.status})`);
-        const payload = (await response.json()) as {
-          documents: DocumentReview[];
-          nextCursor: string | null;
-        };
-        if (requestScope !== documentFilterScopeRef.current) return;
-        setDocuments((current) => [
-          ...payload.documents.map((document) => {
-            const existing = current.find((entry) => entry.id === document.id);
-            return {
-              ...document,
-              ...(existing && editedReceiptDocuments.current.has(document.id)
-                ? { result: existing.result }
-                : {}),
-              name:
-                document.name ??
-                existing?.name ??
-                `${sourceKindLabel(document.sourceKind)} · ${
-                  document.createdAt
-                    ? new Date(document.createdAt).toLocaleString("ja-JP", {
-                        month: "numeric",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : document.id.slice(0, 8)
-                }`,
-            };
-          }),
-          ...current.filter(
-            (entry) => !payload.documents.some((document) => document.id === entry.id),
-          ),
-        ]);
-        if (!loadedOlderPages.current) setNextDocumentCursor(payload.nextCursor);
-        setSelected((current) => current ?? payload.documents[0]?.id ?? null);
-      } catch (reason) {
-        if (!silent) setMessage((reason as Error).message);
-      }
-    },
-    [documentFilterScope, documentFilters, household.id],
-  );
   useEffect(() => {
-    documentFilterScopeRef.current = documentFilterScope;
-    setDocuments([]);
-    setNextDocumentCursor(null);
-    loadedOlderPages.current = false;
-    editedReceiptDocuments.current.clear();
-    setSelected(null);
     setConfirmedStatements(new Set());
     setSelectedCandidates({});
-    void refreshDocuments();
-  }, [documentFilterScope, refreshDocuments]);
-  const loadOlderDocuments = useCallback(async () => {
-    if (!nextDocumentCursor || loadingOlderDocuments) return;
-    setLoadingOlderDocuments(true);
-    const requestScope = documentFilterScope;
-    try {
-      const response = await fetch(
-        documentListURL(household.id, documentFilters, nextDocumentCursor),
-        { credentials: "include" },
-      );
-      if (!response.ok) throw new Error(`証拠一覧を取得できませんでした (${response.status})`);
-      const payload = (await response.json()) as {
-        documents: DocumentReview[];
-        nextCursor: string | null;
-      };
-      if (requestScope !== documentFilterScopeRef.current) return;
-      setDocuments((current) => {
-        const ids = new Set(current.map((document) => document.id));
-        return [
-          ...current,
-          ...payload.documents
-            .filter((document) => !ids.has(document.id))
-            .map((document) => ({
-              ...document,
-              name:
-                document.name ??
-                `${sourceKindLabel(document.sourceKind)} · ${
-                  document.createdAt
-                    ? new Date(document.createdAt).toLocaleString("ja-JP", {
-                        month: "numeric",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : document.id.slice(0, 8)
-                }`,
-            })),
-        ];
-      });
-      setNextDocumentCursor(payload.nextCursor);
-      loadedOlderPages.current = true;
-    } catch (reason) {
-      setMessage((reason as Error).message);
-    } finally {
-      setLoadingOlderDocuments(false);
-    }
-  }, [
-    documentFilterScope,
-    documentFilters,
-    household.id,
-    loadingOlderDocuments,
-    nextDocumentCursor,
-  ]);
-  const hasProcessingDocuments = documents.some((document) => isProcessing(document.status));
-  useEffect(() => {
-    if (!hasProcessingDocuments) return;
-    const interval = window.setInterval(() => void refreshDocuments(true), 1200);
-    return () => window.clearInterval(interval);
-  }, [hasProcessingDocuments, refreshDocuments]);
+  }, [documentFilterScope]);
   const addFiles = (selected: FileList | null) => {
     if (!selected) return;
     const candidates = Array.from(selected);
