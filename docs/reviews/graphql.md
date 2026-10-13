@@ -1,9 +1,7 @@
-~/ghq/github.com/walnuts1018/piccaのGraphQL Schemaを真似して改善を行って。
+## Relayのページ取得
 
-- Relay/gqlgenを前提としてもっと良いGraphQL Schemaにして。良いGraphQL Schemaとは以下のようなものです。
-  - Frontendでの複雑な条件分岐が少ない
-  - 適切に抽象化されており、nullableなフィールドが最低限に抑えられている
-  - ドメインモデリングが適切に行われており、Relay Server Schemaに沿った設計になっている
-- Mutationの戻り値はunionを用いたResult型にする
-- interfaceやunionを適切に活用する
-- Relayの機能をしっかり積極的に活用する
+帳簿・購入一覧以外に、Budget、Tag、RecurringExpense、ProductCatalogなどで全ページを順次読む処理がある。画面が全件を必要とする用途と追加読込ができる用途を区別し、後者はRelayの`usePaginationFragment`と`@connection`を使う。対象画面を決め、既存のページ遷移と並び順を保ったうえで、Relay Storeとページ境界を確認する。
+
+## nullableの必要性
+
+SDLのnullableなfieldとargumentを一覧にし、値が存在しない条件とFrontendでの扱いを確認する。ドメイン上の欠損を表すnullableは維持し、常に値があるfieldやargumentだけnon-nullへ変更する。gqlgenとRelay artifactを再生成し、GraphQL operationの型検査で影響を確認する。

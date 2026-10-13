@@ -38,7 +38,9 @@ Go API・Worker・Atlas MigrationとWebを別イメージに分け、依存取�
 
 ### GraphQL Schema
 
-mutationごとの入力ファイル分割、Relay契約、状態別型の修正を進めています。GitHub Actions run `38392241924`でgqlgen生成物、Go DB統合テスト、Frontend型検査、Relay artifact検査、FSD検査、lint、ビルドが成功しました。公開UIでページ遷移、URL、戻る・進むを確認しました。`docs/reviews/graphql.md`に残るunion Result、interface/unionの使い分け、nullable削減、Relay接続範囲などは現行SDLとpicca ADRを照合し、未解決項目として継続します。
+Mutation単位とドメイン型単位でSDLを分割し、gqlgenは`follow-schema`を使います。全37 Mutationが`Success | UserError`のResult unionを返し、共通`MutationError` interfaceを使います。Ledger、Settlement、Pool、Observation、PurchaseCorrection、AccountBalanceSourceも型の違いをinterface/unionで表しています。この構成はpiccaのADR 0002とSDL分割に沿うため、該当するレビュー指摘は解決済みとして`docs/reviews/graphql.md`から削除しました。根拠は`gqlgen.yml`、`graphql/*_mutation.graphql`、各domain SDLです。
+
+Relayの`@connection`と`usePaginationFragment`は帳簿と購入一覧で使っていますが、Budget、Tag、RecurringExpense、ProductCatalogの一覧には全ページを順に取得するread関数が残ります。画面が全件を必要とする用途と、追加読込できる用途を分け、後者はRelay pagination APIを使う必要があります。またnullable field/argumentの意味を網羅して監査した記録がありません。これらは`docs/reviews/graphql.md`に残します。run `38392241924`ではgqlgenとRelay生成物、Go DB統合テスト、Frontend型・FSD・lint・format・buildが成功しました。公開環境ではroute URL、直接表示、再読み込み、戻る・進むを確認しました。
 
 タグ一覧を`TagConnection`に変更し、`first`/`after`と`last`/`before`によるページングを追加しました。カーソルはタグ名とIDで安定順序を作り、カーソルの家庭スコープと`includeArchived`条件を検証します。Frontendの`readTags`は全ページを取得し、通常一覧ではアーカイブ済みを除外し、設定画面では従来どおり含めます。DB統合テストで前後ページ、アーカイブ条件、別家庭のカーソル拒否を確認し、run `38392241924`でGo DB統合テストとFrontend検査が成功しました。
 
