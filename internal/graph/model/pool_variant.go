@@ -28,47 +28,47 @@ type PersonalPool struct {
 }
 
 func (PersonalPool) IsPool()                                    {}
-func (pool PersonalPool) GetID() string                         { return pool.Pool.ID }
-func (pool PersonalPool) GetName() string                       { return pool.Pool.Name }
-func (pool PersonalPool) GetDefaultShareWeight() Long           { return pool.Pool.DefaultShareWeight }
-func (pool PersonalPool) GetFundingShares() []*PoolFundingShare { return pool.Pool.FundingShares }
-func (pool PersonalPool) GetFundingRuleVersion() int            { return pool.Pool.FundingRuleVersion }
+func (pool PersonalPool) GetID() string                         { return pool.ID }
+func (pool PersonalPool) GetName() string                       { return pool.Name }
+func (pool PersonalPool) GetDefaultShareWeight() Long           { return pool.DefaultShareWeight }
+func (pool PersonalPool) GetFundingShares() []*PoolFundingShare { return pool.FundingShares }
+func (pool PersonalPool) GetFundingRuleVersion() int            { return pool.FundingRuleVersion }
 
 type SharedPool struct {
 	*Pool
 }
 
 func (SharedPool) IsPool()                                    {}
-func (pool SharedPool) GetID() string                         { return pool.Pool.ID }
-func (pool SharedPool) GetName() string                       { return pool.Pool.Name }
-func (pool SharedPool) GetDefaultShareWeight() Long           { return pool.Pool.DefaultShareWeight }
-func (pool SharedPool) GetFundingShares() []*PoolFundingShare { return pool.Pool.FundingShares }
-func (pool SharedPool) GetFundingRuleVersion() int            { return pool.Pool.FundingRuleVersion }
+func (pool SharedPool) GetID() string                         { return pool.ID }
+func (pool SharedPool) GetName() string                       { return pool.Name }
+func (pool SharedPool) GetDefaultShareWeight() Long           { return pool.DefaultShareWeight }
+func (pool SharedPool) GetFundingShares() []*PoolFundingShare { return pool.FundingShares }
+func (pool SharedPool) GetFundingRuleVersion() int            { return pool.FundingRuleVersion }
 
 type UnconfiguredPersonalPool struct {
 	*Pool
 }
 
 func (UnconfiguredPersonalPool) IsPool()              {}
-func (pool UnconfiguredPersonalPool) GetID() string   { return pool.Pool.ID }
-func (pool UnconfiguredPersonalPool) GetName() string { return pool.Pool.Name }
+func (pool UnconfiguredPersonalPool) GetID() string   { return pool.ID }
+func (pool UnconfiguredPersonalPool) GetName() string { return pool.Name }
 func (pool UnconfiguredPersonalPool) GetDefaultShareWeight() Long {
-	return pool.Pool.DefaultShareWeight
+	return pool.DefaultShareWeight
 }
 func (pool UnconfiguredPersonalPool) GetFundingShares() []*PoolFundingShare {
-	return pool.Pool.FundingShares
+	return pool.FundingShares
 }
-func (pool UnconfiguredPersonalPool) GetFundingRuleVersion() int { return pool.Pool.FundingRuleVersion }
+func (pool UnconfiguredPersonalPool) GetFundingRuleVersion() int { return pool.FundingRuleVersion }
 
 type UnconfiguredSharedPool struct {
 	*Pool
 }
 
 func (UnconfiguredSharedPool) IsPool()                          {}
-func (pool UnconfiguredSharedPool) GetID() string               { return pool.Pool.ID }
-func (pool UnconfiguredSharedPool) GetName() string             { return pool.Pool.Name }
-func (pool UnconfiguredSharedPool) GetDefaultShareWeight() Long { return pool.Pool.DefaultShareWeight }
+func (pool UnconfiguredSharedPool) GetID() string               { return pool.ID }
+func (pool UnconfiguredSharedPool) GetName() string             { return pool.Name }
+func (pool UnconfiguredSharedPool) GetDefaultShareWeight() Long { return pool.DefaultShareWeight }
 func (pool UnconfiguredSharedPool) GetFundingShares() []*PoolFundingShare {
-	return pool.Pool.FundingShares
+	return pool.FundingShares
 }
-func (pool UnconfiguredSharedPool) GetFundingRuleVersion() int { return pool.Pool.FundingRuleVersion }
+func (pool UnconfiguredSharedPool) GetFundingRuleVersion() int { return pool.FundingRuleVersion }
