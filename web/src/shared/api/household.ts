@@ -357,7 +357,7 @@ export function getRelayEnvironment() {
       Observable.create<GraphQLResponse>((sink) => {
         const controller = new AbortController();
         let stopped = false;
-        let after = typeof variables.after === "string" ? variables.after : variables.after;
+        let after = typeof variables.after === "string" ? variables.after : undefined;
 
         const run = async () => {
           let retryDelay = 1000;
@@ -370,7 +370,10 @@ export function getRelayEnvironment() {
                   accept: "text/event-stream",
                   "content-type": "application/json",
                 },
-                body: JSON.stringify({ query: operation.text, variables: { ...variables, after } }),
+                body: JSON.stringify({
+                  query: operation.text,
+                  variables: after === undefined ? variables : { ...variables, after },
+                }),
                 signal: controller.signal,
               });
               if (!response.ok)
@@ -406,12 +409,12 @@ export function getRelayEnvironment() {
                   if (eventName !== "next" || data.length === 0) continue;
                   const result = JSON.parse(data.join("\n")) as GraphQLResponse & {
                     errors?: Array<{ message: string; extensions?: { code?: string } }>;
-                    data?: { purchaseChanges?: { cursor?: string } };
+                    data?: Record<string, { cursor?: unknown }>;
                   };
                   if (result.errors?.length)
                     throw new ApiError(result.errors[0].message, result.errors[0].extensions?.code);
-                  if (result.data?.purchaseChanges?.cursor)
-                    after = result.data.purchaseChanges.cursor;
+                  const cursor = Object.values(result.data ?? {})[0]?.cursor;
+                  if (typeof cursor === "string") after = cursor;
                   sink.next(result);
                   retryDelay = 1000;
                 }
