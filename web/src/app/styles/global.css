@@ -1358,101 +1358,6 @@ form.ledger-filters .select-filter input[type="number"] {
   padding: 7px 17px;
 }
 
-.funding-entry {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  min-height: 57px;
-  border-bottom: 1px solid #eff2ef;
-}
-
-.loan-panel {
-  margin-top: 15px;
-  padding: 18px 20px 12px;
-}
-
-.loan-panel .panel-heading {
-  align-items: center;
-}
-
-.loan-balance-row {
-  min-height: 57px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 13px;
-  border-top: 1px solid #eff2ef;
-}
-
-.loan-balance-row > div {
-  min-width: 0;
-}
-
-.loan-balance-row b,
-.loan-balance-row small {
-  display: block;
-}
-
-.loan-balance-row b {
-  color: #53675a;
-  font-size: 10px;
-}
-
-.loan-balance-row small {
-  margin-top: 4px;
-  color: #5f6d65;
-  font-size: 9px;
-}
-
-.loan-balance-row strong {
-  color: #42544a;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.funding-entry:last-child {
-  border: 0;
-}
-
-.funding-icon {
-  width: 29px;
-  height: 29px;
-  border-radius: 9px;
-  background: #eff5ef;
-  display: grid;
-  place-items: center;
-  color: #719474;
-}
-
-.funding-icon svg {
-  width: 15px;
-}
-
-.funding-entry > div {
-  flex: 1;
-}
-
-.funding-entry b,
-.funding-entry small {
-  display: block;
-}
-
-.funding-entry b {
-  font-size: 10px;
-  color: #536259;
-}
-
-.funding-entry small {
-  font-size: 9px;
-  color: #5f6d65;
-  margin-top: 4px;
-}
-
-.funding-entry strong {
-  font-size: 10px;
-  color: #506157;
-}
-
 .invitation-prompt {
   display: flex;
   align-items: center;
@@ -2016,25 +1921,6 @@ form.ledger-filters .select-filter input[type="number"] {
     font-size: 9px;
   }
 
-  .loan-panel {
-    padding: 14px 13px 10px;
-  }
-
-  .loan-balance-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-    padding: 8px 0;
-  }
-
-  .loan-balance-row .text-button {
-    grid-column: 1 / -1;
-    justify-self: end;
-  }
-
-  .funding-entry {
-    min-height: 52px;
-  }
-
   .analysis-controls {
     justify-content: flex-start;
     width: 100%;
@@ -2528,7 +2414,6 @@ form.ledger-filters .select-filter input[type="number"] {
   .purchase-description span,
   .field-group label,
   .suggestions button span,
-  .funding-entry small,
   .number-field small,
   .create-household label,
   .inline-create .button,
