@@ -75,6 +75,16 @@ func (s *Service) post(ctx context.Context, tx pgx.Tx, input PostCommand, finger
 			return PostResult{}, err
 		}
 	}
+	existing, err = models.IdempotencyKeys.Query(sm.Where(psql.And(models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(input.IdempotencyKey)), models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation))))).One(ctx, executor)
+	if err == nil {
+		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
+			return PostResult{}, err
+		}
+		return PostResult{PurchaseID: existing.ResourceID.V.String()}, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return PostResult{}, err
+	}
 	if err := ensureAccountingPeriod(ctx, executor, householdID, period); err != nil {
 		return PostResult{}, err
 	}

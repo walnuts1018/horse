@@ -127,6 +127,32 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 	if !errors.Is(err, sql.ErrNoRows) {
 		return Result{}, err
 	}
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Result{}, ErrNotFound
+		}
+		return Result{}, err
+	}
+	existing, err = models.IdempotencyKeys.Query(sm.Where(psql.And(
+		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(command.IdempotencyKey)),
+		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
+	))).One(ctx, executor)
+	if err == nil {
+		if !existing.RequestFingerprint.Valid || !slices.Equal(existing.RequestFingerprint.V, command.RequestFingerprint[:]) {
+			return Result{}, fmt.Errorf("%w: idempotency key was used with a different request", ErrConflict)
+		}
+		if !existing.ResourceID.Valid {
+			return Result{}, fmt.Errorf("%w: idempotency record has no resource", ErrConflict)
+		}
+		if err := tx.Rollback(ctx); err != nil {
+			return Result{}, err
+		}
+		return Result{LedgerEntryID: existing.ResourceID.V.String()}, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Result{}, err
+	}
 
 	period := accounting.PeriodFor(command.OccurredAt)
 	if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
