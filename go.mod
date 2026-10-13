@@ -11,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.1
 	github.com/aws/smithy-go v1.28.1
 	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/exaring/otelpgx v0.12.0
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/rabbitmq/amqp091-go v1.15.0

@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/observability"
+	"github.com/walnuts1018/horse/internal/postgres"
 )
 
 func main() {
@@ -75,7 +75,7 @@ func run() error {
 			return errors.New("USDJPY_RATE_AS_OF must use YYYY-MM-DD")
 		}
 	}
-	db, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	db, err := postgres.NewPool(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		return errors.New("initialize worker database failed")
 	}

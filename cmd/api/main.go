@@ -10,11 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/walnuts1018/horse/internal/api"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/observability"
+	"github.com/walnuts1018/horse/internal/postgres"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -44,7 +44,7 @@ func run(logger *slog.Logger) error {
 			logger.Warn("Shutting down telemetry failed", "error", err)
 		}
 	}()
-	pool, err := pgxpool.New(ctx, databaseURL)
+	pool, err := postgres.NewPool(ctx, databaseURL)
 	if err != nil {
 		return err
 	}
