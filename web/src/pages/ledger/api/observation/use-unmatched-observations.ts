@@ -215,6 +215,7 @@ function mapSourceKind(sourceKind: ObservationRecord["sourceKind"]): SourceKind 
     case "ORDER":
     case "RECEIPT":
       return sourceKind;
+    case "%future added value":
     default:
       throw new Error(`未対応の照合元です: ${sourceKind}`);
   }

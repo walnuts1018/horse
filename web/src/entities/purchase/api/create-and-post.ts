@@ -16,6 +16,7 @@ function readCreateAndPostResult(response: CreateAndPostPurchaseMutation["respon
       return result.result;
     case "CreateAndPostPurchaseUserError":
       throw new MutationUserError(result.message, result.code);
+    case "%other":
     default:
       throw new Error("購入を登録できませんでした");
   }

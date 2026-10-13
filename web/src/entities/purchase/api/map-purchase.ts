@@ -53,6 +53,7 @@ function mapPurchaseOrigin(origin: PurchaseOrigin | "%future added value"): Purc
     case "MANUAL":
     case "UNKNOWN":
       return origin;
+    case "%future added value":
     default:
       return "UNKNOWN";
   }

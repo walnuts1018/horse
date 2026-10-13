@@ -60,6 +60,7 @@ function mapCadence(cadence: RecurringExpenseRecord["cadence"]): RecurringExpens
     case "MONTHLY":
     case "YEARLY":
       return cadence;
+    case "%future added value":
     default:
       throw new Error(`未対応の定期支出周期です: ${cadence}`);
   }

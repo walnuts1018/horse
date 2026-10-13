@@ -23,8 +23,6 @@ export default {
         },
       },
     ],
-    "color-function-notation": null,
-    "alpha-value-notation": null,
     "selector-class-pattern": null,
     "declaration-empty-line-before": null,
     "no-descending-specificity": null,

@@ -33,6 +33,13 @@ export default defineConfig({
       files: ["**/*.test.*"],
       rules: {
         "typescript/no-unsafe-type-assertion": "error",
+        // テストのセットアップ用importは副作用だけが目的なので割り当てなしimportを許可する
+        "import/no-unassigned-import": [
+          "error",
+          {
+            allow: ["fake-indexeddb/auto"],
+          },
+        ],
       },
     },
   ],

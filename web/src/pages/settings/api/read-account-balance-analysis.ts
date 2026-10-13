@@ -82,6 +82,7 @@ function mapBalanceChangeSource(
     case "AccountMovement":
     case "AccountIncome":
       return { __typename: source.__typename, id: source.id };
+    case "%other":
     default:
       throw new Error(`未対応の残高変動元です: ${source.__typename}`);
   }
