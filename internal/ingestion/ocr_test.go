@@ -63,24 +63,62 @@ func TestStatementOCRCorroborationRequiresMerchantAmountAndAllRows(t *testing.T)
 	first := Region{Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
 	second := Region{Top: 0.25, Left: 0.1, Bottom: 0.35, Right: 0.9}
 	entries := []StatementEntry{
-		{Merchant: "Market", Amount: -1234, Region: &first},
-		{Merchant: "Cafe", Amount: 500, Region: &second},
+		{OccurredAt: "2026-10-14T12:00:00+09:00", Merchant: "Market", Amount: -1234, Region: &first},
+		{OccurredAt: "2026-10-14T12:00:00+09:00", Merchant: "Cafe", Amount: 500, Region: &second},
 	}
 	lines := []OCRLine{
-		{Text: "Market -1,234", Confidence: 0.95, Region: first},
-		{Text: "Cafe 500", Confidence: 0.95, Region: second},
+		{Text: "Market 2026/10/14 -1,234", Confidence: 0.95, Region: first},
+		{Text: "Cafe 2026/10/14 500", Confidence: 0.95, Region: second},
 	}
 	if issues := CompareStatementOCR(entries, lines); len(issues) != 0 {
 		t.Fatalf("matching statement rows were not corroborated: %v", issues)
 	}
-	lines[1].Text = "Cafe 501"
+	lines[1].Text = "Cafe 2026/10/14 501"
 	if issues := CompareStatementOCR(entries, lines); len(issues) != 1 {
 		t.Fatalf("amount disagreement was not flagged: %v", issues)
 	}
-	lines[1].Text = "Cafe 500"
+	lines[1].Text = "Cafe 2026/10/14 500"
 	lines = append(lines, OCRLine{Text: "Bakery 300", Confidence: 0.95, Region: Region{Top: 0.4, Left: 0.1, Bottom: 0.5, Right: 0.9}})
 	if issues := CompareStatementOCR(entries, lines); len(issues) != 1 || issues[0] != "OCRにのみ読み取られた取引候補を確認してください。" {
 		t.Fatalf("unmatched transaction row was not reported: %v", issues)
+	}
+}
+
+func TestStatementOCRRequiresMatchingSignAndFullDate(t *testing.T) {
+	t.Parallel()
+	region := Region{Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
+	date := "2026-10-14T12:00:00+09:00"
+	tests := []struct {
+		name   string
+		amount int64
+		text   string
+		want   []string
+	}{
+		{name: "japanese negative marker and date", amount: -1234, text: "Market 2026年10月14日 △1,234"},
+		{name: "fullwidth minus and date", amount: -1234, text: "Market 2026/10/14 －1,234"},
+		{name: "parenthesized negative", amount: -1234, text: "Market (1,234) 2026/10/14"},
+		{name: "unsigned OCR cannot verify negative", amount: -1234, text: "Market 2026-10-14 1,234", want: []string{"取引1の印字金額とOCR読取を確認してください。"}},
+		{name: "wrong sign", amount: 1234, text: "Market 2026-10-14 -1,234", want: []string{"取引1の印字金額とOCR読取を確認してください。"}},
+		{name: "wrong day", amount: 1234, text: "Market 2026/10/15 1,234", want: []string{"取引1の日付とOCR読取を確認してください。"}},
+		{name: "yearless date", amount: 1234, text: "Market 10/14 1,234", want: []string{"取引1の日付とOCR読取を確認してください。"}},
+		{name: "ambiguous year-last date", amount: 1234, text: "Market 10/11/2026 1,234", want: []string{"取引1の日付とOCR読取を確認してください。"}},
+		{name: "unambiguous month-day-year", amount: 1234, text: "Market 10/14/2026 1,234"},
+		{name: "date component is not transaction amount", amount: 14, text: "Market 2026-10-14", want: []string{"取引1の印字金額とOCR読取を確認してください。"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			entry := StatementEntry{OccurredAt: date, Merchant: "Market", Amount: tt.amount, Region: &region}
+			got := CompareStatementOCR([]StatementEntry{entry}, []OCRLine{{Text: tt.text, Confidence: 0.95, Region: region}})
+			if len(got) != len(tt.want) {
+				t.Fatalf("got issues %v, want %v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Fatalf("got issues %v, want %v", got, tt.want)
+				}
+			}
+		})
 	}
 }
 

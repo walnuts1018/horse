@@ -14,10 +14,12 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 type OCRLine struct {
@@ -34,6 +36,9 @@ type OCR struct {
 var printedNumber = regexp.MustCompile(`-?[0-9][0-9,.]*`)
 var printedDate = regexp.MustCompile(`[0-9]{1,4}[./-][0-9]{1,2}([./-][0-9]{1,4})?`)
 var printedJapaneseDate = regexp.MustCompile(`([0-9]{2,4}年)?[0-9]{1,2}月[0-9]{1,2}日`)
+var statementPrintedAmount = regexp.MustCompile(`(?:\([0-9][0-9,]*\)|[+\-−－△▲]?[0-9][0-9,]*)`)
+var statementJapaneseDate = regexp.MustCompile(`[0-9]{4}\s*年\s*[0-9]{1,2}\s*月\s*[0-9]{1,2}\s*日`)
+var statementNumericDate = regexp.MustCompile(`(?:[0-9]{4}\s*[./-]\s*[0-9]{1,2}\s*[./-]\s*[0-9]{1,2}|[0-9]{1,2}\s*[./-]\s*[0-9]{1,2}\s*[./-]\s*[0-9]{4})`)
 
 var ErrInvalidCropPage = errors.New("invalid crop page")
 
@@ -256,15 +261,21 @@ func CompareStatementOCR(entries []StatementEntry, lines []OCRLine) []string {
 			issues = append(issues, fmt.Sprintf("取引%dの利用先とOCR読取を確認してください。", i+1))
 		}
 		amountFound := false
-		for _, number := range printedNumber.FindAllString(joined, -1) {
-			amount, err := strconv.ParseInt(strings.ReplaceAll(number, ",", ""), 10, 64)
-			if err == nil && abs(amount) == abs(entry.Amount) {
-				amountFound = true
-				break
+		amountConflict := false
+		for _, amount := range statementOCRAmounts(joined) {
+			if abs(amount) == abs(entry.Amount) {
+				if amount == entry.Amount {
+					amountFound = true
+				} else {
+					amountConflict = true
+				}
 			}
 		}
-		if !amountFound {
+		if !amountFound || amountConflict {
 			issues = append(issues, fmt.Sprintf("取引%dの印字金額とOCR読取を確認してください。", i+1))
+		}
+		if !statementOCRDateMatches(entry.OccurredAt, joined) {
+			issues = append(issues, fmt.Sprintf("取引%dの日付とOCR読取を確認してください。", i+1))
 		}
 	}
 	for _, line := range lines {
@@ -284,6 +295,198 @@ func CompareStatementOCR(entries []StatementEntry, lines []OCRLine) []string {
 		}
 	}
 	return issues
+}
+
+func statementOCRAmounts(text string) []int64 {
+	text = normalizeStatementOCRText(text)
+	dateRanges := statementOCRDateRanges(text)
+	var amounts []int64
+	for _, location := range statementPrintedAmount.FindAllStringIndex(text, -1) {
+		start, end := location[0], location[1]
+		inDate := false
+		for _, dateRange := range dateRanges {
+			if start < dateRange[1] && end > dateRange[0] {
+				inDate = true
+				break
+			}
+		}
+		if inDate {
+			continue
+		}
+		if !statementAmountBoundary(text, start, end) {
+			continue
+		}
+		token := text[start:end]
+		negative := false
+		if strings.HasPrefix(token, "(") {
+			negative = true
+			token = strings.Trim(token, "()")
+		} else {
+			switch {
+			case strings.HasPrefix(token, "-"):
+				negative = true
+				token = strings.TrimPrefix(token, "-")
+			case strings.HasPrefix(token, "△"), strings.HasPrefix(token, "▲"):
+				negative = true
+				token = strings.TrimPrefix(strings.TrimPrefix(token, "△"), "▲")
+			case strings.HasPrefix(token, "+"):
+				token = strings.TrimPrefix(token, "+")
+			}
+		}
+		if strings.Count(token, ",") > 0 {
+			groups := strings.Split(token, ",")
+			if len(groups[0]) < 1 || len(groups[0]) > 3 {
+				continue
+			}
+			valid := true
+			for _, group := range groups[1:] {
+				if len(group) != 3 {
+					valid = false
+					break
+				}
+			}
+			if !valid {
+				continue
+			}
+		}
+		amount, err := strconv.ParseInt(strings.ReplaceAll(token, ",", ""), 10, 64)
+		if err != nil || negative && amount == 0 {
+			continue
+		}
+		if negative {
+			amount = -amount
+		}
+		amounts = append(amounts, amount)
+	}
+	return amounts
+}
+
+func statementOCRDateRanges(text string) [][]int {
+	var ranges [][]int
+	for _, pattern := range []*regexp.Regexp{printedJapaneseDate, statementJapaneseDate, printedDate, statementNumericDate} {
+		ranges = append(ranges, pattern.FindAllStringIndex(text, -1)...)
+	}
+	return ranges
+}
+
+func statementAmountBoundary(text string, start, end int) bool {
+	if start > 0 {
+		previous, _ := utf8.DecodeLastRuneInString(text[:start])
+		if unicode.IsDigit(previous) || strings.ContainsRune(",./-年月日", previous) {
+			return false
+		}
+	}
+	if end < len(text) {
+		next, _ := utf8.DecodeRuneInString(text[end:])
+		if unicode.IsDigit(next) || strings.ContainsRune(",./-年月日", next) {
+			return false
+		}
+	}
+	return true
+}
+
+func statementOCRDateMatches(occurredAt, text string) bool {
+	parsed, err := time.Parse(time.RFC3339, occurredAt)
+	if err != nil {
+		return false
+	}
+	text = normalizeStatementOCRText(text)
+	dateText := parsed.Format("2006-01-02")
+	var dates []string
+	for _, pattern := range []*regexp.Regexp{printedJapaneseDate, statementJapaneseDate} {
+		for _, value := range pattern.FindAllString(text, -1) {
+			date, ok := parseStatementJapaneseDate(value)
+			if ok && !slices.Contains(dates, date) {
+				dates = append(dates, date)
+			}
+		}
+	}
+	for _, pattern := range []*regexp.Regexp{printedDate, statementNumericDate} {
+		for _, value := range pattern.FindAllString(text, -1) {
+			date, ok := parseStatementNumericDate(value)
+			if ok && !slices.Contains(dates, date) {
+				dates = append(dates, date)
+			}
+		}
+	}
+	if len(dates) != 1 {
+		return false
+	}
+	return dates[0] == dateText
+}
+
+func parseStatementJapaneseDate(value string) (string, bool) {
+	value = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, value)
+	var year, month, day int
+	if _, err := fmt.Sscanf(value, "%d年%d月%d日", &year, &month, &day); err != nil {
+		return "", false
+	}
+	return validatedStatementDate(year, month, day)
+}
+
+func parseStatementNumericDate(value string) (string, bool) {
+	value = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, value)
+	separator := ""
+	for _, candidate := range []string{"/", ".", "-"} {
+		if strings.Contains(value, candidate) {
+			separator = candidate
+			break
+		}
+	}
+	if separator == "" {
+		return "", false
+	}
+	parts := strings.Split(value, separator)
+	if len(parts) != 3 {
+		return "", false
+	}
+	first, err1 := strconv.Atoi(parts[0])
+	second, err2 := strconv.Atoi(parts[1])
+	third, err3 := strconv.Atoi(parts[2])
+	if err1 != nil || err2 != nil || err3 != nil {
+		return "", false
+	}
+	var year, month, day int
+	switch {
+	case len(parts[0]) == 4:
+		year, month, day = first, second, third
+	case len(parts[2]) == 4 && first > 12 && second <= 12:
+		year, month, day = third, second, first
+	case len(parts[2]) == 4 && second > 12 && first <= 12:
+		year, month, day = third, first, second
+	default:
+		return "", false
+	}
+	return validatedStatementDate(year, month, day)
+}
+
+func validatedStatementDate(year, month, day int) (string, bool) {
+	if year < 1000 || year > 9999 {
+		return "", false
+	}
+	date := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	if int(date.Month()) != month || date.Day() != day {
+		return "", false
+	}
+	return date.Format("2006-01-02"), true
+}
+
+func normalizeStatementOCRText(text string) string {
+	return strings.NewReplacer(
+		"０", "0", "１", "1", "２", "2", "３", "3", "４", "4",
+		"５", "5", "６", "6", "７", "7", "８", "8", "９", "9",
+		"／", "/", "－", "-", "−", "-", "（", "(", "）", ")",
+	).Replace(text)
 }
 
 func hasUnmatchedReceiptLine(lines []OCRLine, regions []Region) bool {
