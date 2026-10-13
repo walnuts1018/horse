@@ -465,7 +465,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		{Row: 3, TransactionID: statementTransactionID, Merchant: statementRowDescription, Amount: 1, OccurredAt: statementOccurredAt},
 	}})
 	rowReference, secondRowReference := statementObservations[0].SourceReference, statementObservations[1].SourceReference
-	rowInput := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &statementDocumentID, SourceReference: &rowReference, OccurredAt: statementOccurredAt, Merchant: statementRowDescription, PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: paymentAccount.ID, AmountYen: 1}}, Items: []*model.PurchaseItemInput{{Name: statementRowDescription, AmountYen: 1}}}
+	rowInput := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &statementDocumentID, SourceReference: &rowReference, OccurredAt: statementOccurredAt, Merchant: statementRowDescription, PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: paymentAccount.ID, AmountYen: 1}}, Items: []*model.PurchaseItemInput{{Name: statementRowDescription, AmountYen: 1, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}}}}}
 	rowPurchase, err := resolver.createAndPostPurchase(ctx, rowInput)
 	if err != nil || rowPurchase.ID == confirmed.ID || rowPurchase.Status != model.PurchaseStatusPosted || rowPurchase.Revision != 2 {
 		t.Fatalf("a card statement row should create and post independently: purchase=%#v error=%v", rowPurchase, err)

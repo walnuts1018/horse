@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"testing"
 
 	"uuid"
@@ -138,7 +139,7 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = mutation.createPurchase(ctx, model.CreatePurchaseInput{
+	belowMinimum, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID,
 		OccurredAt: model.DateTime("2026-05-14T12:00:00Z"), Merchant: "Below minimum",
 		Items: []*model.PurchaseItemInput{{Name: "Small item", AmountYen: 100}},
@@ -184,6 +185,13 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	}
 
 	query := &queryResolver{Resolver: resolver}
+	purchaseIDs := func(connection *model.PurchaseConnection) []string {
+		ids := make([]string, len(connection.Edges))
+		for index, edge := range connection.Edges {
+			ids[index] = edge.Node.ID
+		}
+		return ids
+	}
 	first, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, new("appl"), nil, nil, nil, nil, nil, nil, nil, new(1), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -200,15 +208,15 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	}
 
 	categoryResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, &category.ID, nil, nil, nil, nil, nil, nil, new(10), nil)
-	if err != nil || categoryResult.TotalCount != 2 || len(categoryResult.Edges) != 2 {
+	if err != nil || categoryResult.TotalCount != 5 || !slices.Equal(purchaseIDs(categoryResult), []string{disjointSearchPurchase.ID, amountPurchase.ID, alignedPurchase.ID, matchedLater.ID, matched.ID}) {
 		t.Fatalf("category filter returned %#v, error %v", categoryResult, err)
 	}
 	uncategorizedResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, new(true), nil, nil, nil, nil, nil, new(10), nil)
-	if err != nil || uncategorizedResult.TotalCount != 1 || uncategorizedResult.Edges[0].Node.ID != unmatched.ID {
+	if err != nil || uncategorizedResult.TotalCount != 4 || !slices.Equal(purchaseIDs(uncategorizedResult), []string{belowMinimum.ID, disjointSearchPurchase.ID, amountPurchase.ID, unmatched.ID}) {
 		t.Fatalf("uncategorized filter returned %#v, error %v", uncategorizedResult, err)
 	}
 	tagResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, &tag.ID, nil, nil, nil, nil, new(10), nil)
-	if err != nil || tagResult.TotalCount != 1 || tagResult.Edges[0].Node.ID != matched.ID {
+	if err != nil || tagResult.TotalCount != 4 || !slices.Equal(purchaseIDs(tagResult), []string{disjointSearchPurchase.ID, amountPurchase.ID, alignedPurchase.ID, matched.ID}) {
 		t.Fatalf("tag filter returned %#v, error %v", tagResult, err)
 	}
 	accountResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, &account.ID, nil, nil, nil, new(10), nil)
@@ -220,7 +228,7 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 		t.Fatalf("date filter returned %#v, error %v", dateResult, err)
 	}
 	poolResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, nil, &pool.ID, nil, nil, new(10), nil)
-	if err != nil || poolResult.TotalCount != 1 || len(poolResult.Edges) != 1 || poolResult.Edges[0].Node.ID != matched.ID {
+	if err != nil || poolResult.TotalCount != 5 || !slices.Equal(purchaseIDs(poolResult), []string{belowMinimum.ID, disjointSearchPurchase.ID, amountPurchase.ID, alignedPurchase.ID, matched.ID}) {
 		t.Fatalf("pool filter returned %#v, error %v", poolResult, err)
 	}
 	minimumAmount := model.Long(150)

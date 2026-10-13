@@ -8,3 +8,15 @@ export type {
 export type { CreateHouseholdInvitationMutation$data } from "./__generated__/CreateHouseholdInvitationMutation.graphql";
 export type { HouseholdInvitationsQuery$data } from "./__generated__/HouseholdInvitationsQuery.graphql";
 export type { RevokeHouseholdInvitationMutation$data } from "./__generated__/RevokeHouseholdInvitationMutation.graphql";
+export type {
+  AccountMovementsQuery,
+  AccountMovementsQuery$data,
+} from "./__generated__/AccountMovementsQuery.graphql";
+export type {
+  AccountIncomesQuery,
+  AccountIncomesQuery$data,
+} from "./__generated__/AccountIncomesQuery.graphql";
+export type {
+  AllocationRulesQuery,
+  AllocationRulesQuery$data,
+} from "./__generated__/AllocationRulesQuery.graphql";

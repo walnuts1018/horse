@@ -6,8 +6,7 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
 } from "react";
-import { ChevronDown, Plus, ReceiptJapaneseYen, Search, X } from "lucide-react";
-import { Popover } from "@base-ui/react/popover";
+import { Plus, ReceiptJapaneseYen, Search, X } from "lucide-react";
 import { z } from "zod";
 import {
   readGraphql,
@@ -18,6 +17,7 @@ import {
 import { productSuggestionsQuery } from "../../../entities/product";
 import type { PurchaseDraftItem } from "../../../shared/lib";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
+import { EditPurchaseItemAllocations } from "./edit-purchase-item-allocations";
 
 const purchaseItemSchema = z.object({
   name: z.string().trim().min(1),
@@ -207,21 +207,6 @@ export function EditPurchaseItems({
       .slice(0, 4);
   }, [history, draft.itemName]);
 
-  const allocationName = (item: PurchaseDraftItem) => {
-    if (
-      item.allocations.length === 0 ||
-      JSON.stringify(item.allocations) === JSON.stringify(defaultAllocations)
-    )
-      return "標準";
-    if (item.allocations.length === 1)
-      return `${household.pools.find((pool) => pool.id === item.allocations[0].poolId)?.name ?? "口座"} 100%`;
-    return item.allocations
-      .map(
-        (allocation) =>
-          household.pools.find((pool) => pool.id === allocation.poolId)?.name ?? "口座",
-      )
-      .join(" / ");
-  };
   const addItem = () => {
     const parsed = purchaseItemSchema.safeParse({ name: draft.itemName, amount: draft.itemAmount });
     if (!parsed.success) return;
@@ -421,60 +406,12 @@ export function EditPurchaseItems({
                   </option>
                 ))}
               </select>
-              <Popover.Root>
-                <Popover.Trigger className="allocation-chip">
-                  {allocationName(item)}
-                  <ChevronDown size={12} />
-                </Popover.Trigger>
-                <Popover.Portal>
-                  <Popover.Positioner sideOffset={6}>
-                    <Popover.Popup className="allocation-popup">
-                      <Popover.Title>負担割合</Popover.Title>
-                      {household.pools.map((pool) => {
-                        const weight =
-                          (item.allocations.length ? item.allocations : defaultAllocations).find(
-                            (allocation) => allocation.poolId === pool.id,
-                          )?.weight ?? 0;
-                        return (
-                          <label className="allocation-option" key={pool.id}>
-                            <span>{pool.name}</span>
-                            <span className="number-field">
-                              <input
-                                aria-label={`${pool.name}の負担比率`}
-                                inputMode="numeric"
-                                value={weight || ""}
-                                onChange={(event) => {
-                                  const nextWeight = Math.max(
-                                    0,
-                                    Number(event.target.value.replace(/\D/g, "")) || 0,
-                                  );
-                                  const base = item.allocations.length
-                                    ? item.allocations
-                                    : defaultAllocations;
-                                  const allocations = base.filter(
-                                    (allocation) => allocation.poolId !== pool.id,
-                                  );
-                                  if (nextWeight > 0)
-                                    allocations.push({ poolId: pool.id, weight: nextWeight });
-                                  patchItem(item.key, { allocations });
-                                }}
-                              />
-                              <small>比</small>
-                            </span>
-                          </label>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => patchItem(item.key, { allocations: [] })}
-                      >
-                        標準に戻す
-                      </button>
-                    </Popover.Popup>
-                  </Popover.Positioner>
-                </Popover.Portal>
-              </Popover.Root>
+              <EditPurchaseItemAllocations
+                allocations={item.allocations}
+                defaultAllocations={defaultAllocations}
+                pools={household.pools}
+                onChange={(allocations) => patchItem(item.key, { allocations })}
+              />
               <button
                 type="button"
                 className="row-remove"

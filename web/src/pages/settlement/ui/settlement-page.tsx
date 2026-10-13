@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import {
-  ArrowDownLeft,
-  ArrowLeftRight,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Wallet,
-} from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, Check, Plus } from "lucide-react";
 import {
   makeIdempotencyKey,
   readGraphql,
@@ -22,6 +14,8 @@ import {
 } from "../../../entities/ledger";
 import { InlineError } from "../../../shared/ui";
 import { japanMonth } from "../../../shared/lib";
+import "./settlement-page.css";
+import { formatSettlementYen as yen, settlementTotalDue } from "../model/settlement-view";
 import {
   clearFundingIntent,
   clearTransferIntent,
@@ -33,14 +27,9 @@ import {
   type TransferIntent,
 } from "../model/pending-ledger-mutations";
 import { SettlementLoans } from "./settlement-loans";
-
-const yen = (amount = 0) =>
-  new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0,
-  }).format(amount);
-const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
+import { SettlementCloseConfirmation } from "./settlement-close-confirmation";
+import { SettlementPeriodPicker } from "./settlement-period-picker";
+import { SettlementPreview } from "./settlement-preview";
 const ledgerKindLabels: Record<string, string> = {
   FUNDING: "入金",
   ADVANCE: "立て替え",
@@ -88,7 +77,6 @@ export function SettlementPage({
   const [pendingFunding, setPendingFunding] = useState<Record<string, FundingIntent>>({});
   const [pendingTransfer, setPendingTransfer] = useState<TransferIntent | null>(null);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
-  const [closeConfirmationAccepted, setCloseConfirmationAccepted] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferFrom, setTransferFrom] = useState(household.members[0]?.id ?? "");
   const [transferTo, setTransferTo] = useState(household.members[1]?.id ?? "");
@@ -224,13 +212,7 @@ export function SettlementPage({
     }
   };
   const close = async () => {
-    if (
-      !closeConfirmationAccepted ||
-      !settlement ||
-      !settlementSnapshot ||
-      settlementSnapshot.period !== period
-    )
-      return;
+    if (!settlement || !settlementSnapshot || settlementSnapshot.period !== period) return;
     const targetHouseholdId = settlementSnapshot.householdId;
     const targetPeriod = settlementSnapshot.period;
     const expectedRevision = settlement.revision;
@@ -241,7 +223,6 @@ export function SettlementPage({
         input: { householdId: targetHouseholdId, period: targetPeriod, expectedRevision },
       });
       setCloseConfirmationOpen(false);
-      setCloseConfirmationAccepted(false);
       await load();
     } catch (reason) {
       setError((reason as Error).message);
@@ -315,7 +296,7 @@ export function SettlementPage({
       setPending(false);
     }
   };
-  const totalDue = sum(settlement?.lines.map((line) => line.amountDueYen) ?? []);
+  const totalDue = settlementTotalDue(settlement);
   const parsedTransferAmount = Number(transferAmount);
   const hasPendingTransfer = Boolean(pendingTransfer) || hasPendingLoanRepayment;
   const invalidTransferAmount =
@@ -331,19 +312,13 @@ export function SettlementPage({
           <h1>精算</h1>
           <p>次回の入金額と未精算の記録</p>
         </div>
-        <label className="period-picker">
-          <ChevronLeft size={15} />
-          <input
-            type="month"
-            value={period}
-            onChange={(event) => {
-              setPeriod(event.target.value);
-              setCloseConfirmationOpen(false);
-              setCloseConfirmationAccepted(false);
-            }}
-          />
-          <ChevronRight size={15} />
-        </label>
+        <SettlementPeriodPicker
+          period={period}
+          onChange={(nextPeriod) => {
+            setPeriod(nextPeriod);
+            setCloseConfirmationOpen(false);
+          }}
+        />
       </div>
       {error && <InlineError message={error} />}
       {success && (
@@ -359,165 +334,36 @@ export function SettlementPage({
           </button>
         </div>
       )}
-      <section className="settlement-hero">
-        <div>
-          <span>次回の入金</span>
-          <h2>{yen(totalDue)}</h2>
-          <small>
-            {settlement?.__typename === "ClosedSettlement"
-              ? "この期間は締め済み"
-              : `${period.replace("-", "年")}月分`}
-          </small>
-        </div>
-        <div className="settlement-mark">
-          <ArrowLeftRight size={32} />
-        </div>
-      </section>
+      <SettlementPreview
+        household={household}
+        settlement={settlement}
+        period={period}
+        totalDue={totalDue}
+        pending={pending}
+        pendingFunding={pendingFunding}
+        fundingSourceAccounts={fundingSourceAccounts}
+        fundingDestinationAccountId={fundingDestinationAccountId}
+        savedFundingSourceAccounts={savedFundingSourceAccounts}
+        savedFundingDestinationAccountId={savedFundingDestinationAccountId}
+        onFundingSourceChange={(memberId, accountId) =>
+          setFundingSourceAccounts((current) => ({ ...current, [memberId]: accountId }))
+        }
+        onFundingDestinationChange={setFundingDestinationAccountId}
+        onRecordFunding={(memberId) => void recordFunding(memberId)}
+        onRestoreFunding={(memberId) => {
+          setFundingSourceAccounts((current) => ({
+            ...current,
+            [memberId]: savedFundingSourceAccounts[memberId] ?? "",
+          }));
+          setFundingDestinationAccountId(savedFundingDestinationAccountId);
+        }}
+      />
       <section className="panel settlement-panel">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">メンバー別</span>
-            <h2>入金予定</h2>
-          </div>
-          <span className="period-chip">
-            {settlement?.__typename === "ClosedSettlement" ? "締め済み" : "未締め"}
-          </span>
-        </div>
-        {!settlement ? (
-          <div className="skeleton-list">
-            <i />
-            <i />
-          </div>
-        ) : settlement.lines.length === 0 ? (
-          <div className="empty-state compact">
-            <Wallet />
-            <span>精算する入金はありません</span>
-          </div>
-        ) : (
-          settlement.lines.map((line) => (
-            <div className="settlement-line" key={line.memberId}>
-              <div className="profile-avatar">{line.memberName.slice(0, 1)}</div>
-              <div className="settlement-person">
-                <b>{line.memberName}</b>
-                <dl className="settlement-breakdown">
-                  <div>
-                    <dt>今月予定</dt>
-                    <dd>{yen(line.scheduledYen)}</dd>
-                  </div>
-                  <div>
-                    <dt>前月残高</dt>
-                    <dd>{yen(line.priorBalanceYen)}</dd>
-                  </div>
-                  <div>
-                    <dt>月次調整</dt>
-                    <dd>{yen(line.monthlyAdjustmentYen)}</dd>
-                  </div>
-                  <div>
-                    <dt>入金済み</dt>
-                    <dd>{yen(line.paidYen)}</dd>
-                  </div>
-                  <div>
-                    <dt>立替充当</dt>
-                    <dd>{yen(line.advanceCreditYen)}</dd>
-                  </div>
-                </dl>
-              </div>
-              <div className="settlement-amount">
-                <b className={line.amountDueYen < 0 ? "settlement-credit" : undefined}>
-                  {yen(line.amountDueYen)}
-                </b>
-                <small>次回精算残高</small>
-                <label className="settlement-account-select">
-                  <span>拠出元</span>
-                  <select
-                    value={fundingSourceAccounts[line.memberId] ?? ""}
-                    disabled={pending || Boolean(pendingFunding[line.memberId])}
-                    onChange={(event) =>
-                      setFundingSourceAccounts((current) => ({
-                        ...current,
-                        [line.memberId]: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">口座外</option>
-                    {household.accounts
-                      .filter((account) => {
-                        const pool = household.pools.find(
-                          (candidate) => candidate.id === account.poolId,
-                        );
-                        return (
-                          pool?.__typename === "PersonalPool" &&
-                          pool.ownerMemberId === line.memberId
-                        );
-                      })
-                      .map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                <label className="settlement-account-select">
-                  <span>入金先</span>
-                  <select
-                    value={fundingDestinationAccountId}
-                    disabled={pending || Boolean(pendingFunding[line.memberId])}
-                    onChange={(event) => setFundingDestinationAccountId(event.target.value)}
-                  >
-                    <option value="">未指定</option>
-                    {household.accounts
-                      .filter((account) => {
-                        const sharedPool = household.pools.find(
-                          (pool) =>
-                            pool.__typename === "SharedPool" ||
-                            pool.__typename === "UnconfiguredSharedPool",
-                        );
-                        return sharedPool?.id === account.poolId && account.kind !== "CARD";
-                      })
-                      .map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                <button
-                  className="text-button"
-                  disabled={pending || (line.amountDueYen <= 0 && !pendingFunding[line.memberId])}
-                  onClick={() => void recordFunding(line.memberId)}
-                >
-                  {pendingFunding[line.memberId]
-                    ? `入金を再試行 (${yen(pendingFunding[line.memberId].input.amountYen)})`
-                    : "入金を記録"}
-                </button>
-                {((fundingSourceAccounts[line.memberId] ?? "") !==
-                  (savedFundingSourceAccounts[line.memberId] ?? "") ||
-                  fundingDestinationAccountId !== savedFundingDestinationAccountId) && (
-                  <button
-                    className="text-button"
-                    type="button"
-                    disabled={pending}
-                    onClick={() => {
-                      setFundingSourceAccounts((current) => ({
-                        ...current,
-                        [line.memberId]: savedFundingSourceAccounts[line.memberId] ?? "",
-                      }));
-                      setFundingDestinationAccountId(savedFundingDestinationAccountId);
-                    }}
-                  >
-                    選択を戻す
-                  </button>
-                )}
-              </div>
-            </div>
-          ))
-        )}
         <div className="settlement-actions">
           <button
             className="button button-soft"
             disabled={!settlement || pending || settlement.__typename === "ClosedSettlement"}
             onClick={() => {
-              setCloseConfirmationAccepted(false);
               setCloseConfirmationOpen(true);
             }}
           >
@@ -538,45 +384,14 @@ export function SettlementPage({
           </button>
         </div>
         {closeConfirmationOpen && settlement?.__typename === "OpenSettlement" && (
-          <section className="panel settlement-close-confirmation" aria-labelledby="close-heading">
-            <div className="panel-heading">
-              <h2 id="close-heading">{period.replace("-", "年")}月分の確定</h2>
-              <b>{yen(totalDue)}</b>
-            </div>
-            {settlement.lines.map((line) => (
-              <div className="settlement-close-line" key={line.memberId}>
-                <span>{line.memberName}</span>
-                <b>{yen(line.amountDueYen)}</b>
-              </div>
-            ))}
-            <label className="settlement-close-accept">
-              <input
-                type="checkbox"
-                checked={closeConfirmationAccepted}
-                onChange={(event) => setCloseConfirmationAccepted(event.target.checked)}
-              />
-              {period.replace("-", "年")}月分を{yen(totalDue)}で確定する
-            </label>
-            <div className="settlement-actions">
-              <button
-                className="button button-soft"
-                type="button"
-                disabled={pending}
-                onClick={() => setCloseConfirmationOpen(false)}
-              >
-                戻る
-              </button>
-              <button
-                className="button button-primary"
-                type="button"
-                disabled={pending || !closeConfirmationAccepted}
-                onClick={() => void close()}
-              >
-                <Check size={16} />
-                確定する
-              </button>
-            </div>
-          </section>
+          <SettlementCloseConfirmation
+            settlement={settlement}
+            period={period}
+            totalDue={totalDue}
+            pending={pending}
+            onClose={() => setCloseConfirmationOpen(false)}
+            onConfirm={() => void close()}
+          />
         )}
         {transferOpen && (
           <form className="transfer-form" onSubmit={saveTransfer}>

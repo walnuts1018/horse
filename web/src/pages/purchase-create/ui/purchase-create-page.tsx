@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Check, ChevronLeft, Plus, Undo2, X } from "lucide-react";
+import { Check, ChevronLeft, Undo2 } from "lucide-react";
 import {
   makeIdempotencyKey,
   type CreatePurchaseInput,
@@ -17,10 +17,12 @@ import {
 } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
-import { EditPurchaseItems } from "./edit-purchase-items";
+import { usePurchasePayments } from "../model/purchase-payments";
+import { EditPurchaseDetails } from "./edit-purchase-details";
+import { EditPurchasePayments } from "./edit-purchase-payments";
+import { PurchaseItemsComposer } from "./purchase-items-composer";
 import styles from "./purchase-create-page.module.css";
 
-type PaymentDraft = { key: string; paymentAccountId: string; amountYen: string };
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
     style: "currency",
@@ -47,14 +49,6 @@ export function PurchaseCreatePage({
 }) {
   const [merchant, setMerchant] = useState("");
   const [occurredAt, setOccurredAt] = useState(localDateTime);
-  const [paymentRows, setPaymentRows] = useState<PaymentDraft[]>(() => [
-    {
-      key: crypto.randomUUID(),
-      paymentAccountId: household.accounts[0]?.id ?? "",
-      amountYen: "",
-    },
-  ]);
-  const [paymentAutoTotal, setPaymentAutoTotal] = useState(true);
   const [itemsValue, setItemsValue] = useState<PurchaseItemsValue>(emptyPurchaseItemsValue);
   const [itemsResetToken, setItemsResetToken] = useState(0);
   const [undoToken, setUndoToken] = useState(0);
@@ -89,6 +83,8 @@ export function PurchaseCreatePage({
     Boolean(id && enabledCategories.some((category) => category.id === id));
   const { itemName, itemAmount, items } = itemsValue;
   const itemTotal = sum(items.map((item) => Number(item.amount) || 0));
+  const payments = usePurchasePayments(household, itemTotal, markUnsaved);
+  const { rows: paymentRows, autoTotal: paymentAutoTotal } = payments;
   const draft = {
     merchant,
     occurredAt,
@@ -139,23 +135,23 @@ export function PurchaseCreatePage({
           setMerchant(loaded.merchant);
           setOccurredAt(loaded.occurredAt || localDateTime());
           if (loaded.paymentAllocations?.length) {
-            setPaymentRows(
+            payments.setRows(
               loaded.paymentAllocations.map((payment) => ({
                 key: crypto.randomUUID(),
                 paymentAccountId: payment.paymentAccountId,
                 amountYen: payment.amountYen,
               })),
             );
-            setPaymentAutoTotal(loaded.paymentAutoTotal ?? false);
+            payments.setAutoTotal(loaded.paymentAutoTotal ?? false);
           } else {
-            setPaymentRows([
+            payments.setRows([
               {
                 key: crypto.randomUUID(),
                 paymentAccountId: loaded.paymentAccountId || household.accounts[0]?.id || "",
                 amountYen: "",
               },
             ]);
-            setPaymentAutoTotal(true);
+            payments.setAutoTotal(true);
           }
           const restoredCategoryId = isEnabledCategory(loaded.categoryId) ? loaded.categoryId! : "";
           setItemsValue({
@@ -233,39 +229,14 @@ export function PurchaseCreatePage({
       .slice(0, 5);
   }, [recentPurchases]);
   const [copiedPurchase, setCopiedPurchase] = useState<Purchase | null>(null);
-  const paymentAmount = (payment: PaymentDraft) =>
-    Number(paymentAutoTotal && paymentRows.length === 1 ? itemTotal : payment.amountYen) || 0;
-  const paymentTotal = sum(paymentRows.map(paymentAmount));
-  const paymentDifference = itemTotal - paymentTotal;
+  const paymentAmount = payments.amount;
+  const paymentDifference = payments.difference;
   const hasDraftContent = Boolean(merchant.trim() || itemName.trim() || itemAmount || items.length);
   const draftStatus = hasUnsavedChanges
     ? "未保存"
     : hasDraftContent && savedAt
       ? "下書き保存済み"
       : "入力待ち";
-
-  const addPaymentRow = () => {
-    markUnsaved();
-    setPaymentRows((current) => [
-      ...current.map((payment) => ({
-        ...payment,
-        amountYen: paymentAutoTotal && current.length === 1 ? String(itemTotal) : payment.amountYen,
-      })),
-      { key: crypto.randomUUID(), paymentAccountId: "", amountYen: "" },
-    ]);
-    setPaymentAutoTotal(false);
-  };
-  const patchPayment = (key: string, patch: Partial<PaymentDraft>) => {
-    markUnsaved();
-    if (patch.amountYen !== undefined) setPaymentAutoTotal(false);
-    setPaymentRows((current) =>
-      current.map((payment) => (payment.key === key ? { ...payment, ...patch } : payment)),
-    );
-  };
-  const removePaymentRow = (key: string) => {
-    markUnsaved();
-    setPaymentRows((current) => current.filter((payment) => payment.key !== key));
-  };
 
   const copyPurchaseItems = (purchase: Purchase) => {
     markUnsaved();
@@ -331,14 +302,7 @@ export function PurchaseCreatePage({
       skipDraftSave.current = true;
       setMerchant("");
       setOccurredAt(localDateTime());
-      setPaymentRows([
-        {
-          key: crypto.randomUUID(),
-          paymentAccountId: household.accounts[0]?.id ?? "",
-          amountYen: "",
-        },
-      ]);
-      setPaymentAutoTotal(true);
+      payments.reset();
       setItemsValue(emptyPurchaseItemsValue());
       setItemsResetToken((token) => token + 1);
       setUndoAvailable(false);
@@ -374,173 +338,84 @@ export function PurchaseCreatePage({
           {draftStatus}
         </span>
       </div>
-      <section className={`panel purchase-meta-form ${styles.details}`}>
-        <div className="field-group">
-          <label htmlFor="merchant">店名</label>
-          <input
-            id="merchant"
-            placeholder="例 スーパーいちば"
-            value={merchant}
-            onChange={(e) => {
-              markUnsaved();
-              setMerchant(e.target.value);
-            }}
-            list="merchant-suggestions"
-            autoComplete="off"
-          />
-          <datalist id="merchant-suggestions">
-            {Array.from(new Set(history.map((item) => item.merchant).filter(Boolean)))
-              .slice(0, 8)
-              .map((name) => (
-                <option key={name} value={name} />
-              ))}
-          </datalist>
-        </div>
-        <div className="field-group">
-          <label htmlFor="occurred">日時</label>
-          <input
-            id="occurred"
-            type="datetime-local"
-            value={occurredAt}
-            onChange={(e) => {
-              markUnsaved();
-              setOccurredAt(e.target.value);
-            }}
-          />
-        </div>
-        <div className="field-group payment-allocation-field">
-          <label>決済内訳</label>
-          <div className="payment-allocation-list">
-            {paymentRows.map((payment, index) => (
-              <div className="payment-allocation-row" key={payment.key}>
-                <select
-                  aria-label={`決済元 ${index + 1}`}
-                  value={payment.paymentAccountId}
-                  onChange={(event) =>
-                    patchPayment(payment.key, { paymentAccountId: event.target.value })
-                  }
-                >
-                  <option value="">決済元を選択</option>
-                  {household.accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="yen-input">
-                  <span>¥</span>
-                  <input
-                    aria-label={`決済額 ${index + 1}`}
-                    inputMode="numeric"
-                    value={
-                      paymentAutoTotal && paymentRows.length === 1
-                        ? String(itemTotal || "")
-                        : payment.amountYen
-                    }
-                    onChange={(event) =>
-                      patchPayment(payment.key, {
-                        amountYen: event.target.value.replace(/\D/g, ""),
-                      })
-                    }
-                  />
-                </div>
-                <button
-                  className="row-remove"
-                  type="button"
-                  aria-label={`決済元 ${index + 1} を削除`}
-                  disabled={paymentRows.length <= 1}
-                  onClick={() => removePaymentRow(payment.key)}
-                >
-                  <X size={15} />
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="payment-allocation-footer">
-            <button className="text-button" type="button" onClick={addPaymentRow}>
-              <Plus size={14} />
-              決済元を追加
-            </button>
-            <span className={paymentDifference === 0 ? "payment-balanced" : "payment-unbalanced"}>
-              {paymentDifference === 0
-                ? "一致"
-                : `${paymentDifference > 0 ? "不足" : "超過"} ${yen(Math.abs(paymentDifference))}`}
-            </span>
-          </div>
-        </div>
-      </section>
-      {(recentMerchants.length > 0 || recentPurchases.length > 0) && (
-        <section className={`panel ${styles.history}`} aria-label="購入履歴から入力">
-          {recentMerchants.length > 0 && (
-            <div className="field-group">
-              <span>同じ店でもう一度入力</span>
-              <div className="purchase-history-actions">
-                {recentMerchants.map((name) => (
-                  <button
-                    className="text-button"
-                    type="button"
-                    key={name}
-                    onClick={() => {
-                      markUnsaved();
-                      setMerchant(name);
-                      setCopiedPurchase(null);
-                    }}
-                  >
-                    {name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {recentPurchases.length > 0 && (
-            <div className="field-group">
-              <span>前回の購入をコピー</span>
-              <div className="purchase-history-actions">
-                {recentPurchases.slice(0, 5).map((purchase) => (
-                  <button
-                    className="text-button"
-                    type="button"
-                    key={purchase.id}
-                    onClick={() => copyPurchaseItems(purchase)}
-                  >
-                    {purchase.merchant || "店名未入力"} ·{" "}
-                    {new Date(purchase.occurredAt).toLocaleDateString("ja-JP")} ·{" "}
-                    {yen(purchase.totalYen)}
-                  </button>
-                ))}
-              </div>
-              {copiedPurchase && (
-                <small role="status">
-                  {copiedPurchase.merchant || "店名未入力"}
-                  の品目と前回価格をコピーしました。価格、日時、決済元を確認してください。
-                </small>
-              )}
-            </div>
-          )}
-        </section>
-      )}
-      <section className={`panel item-entry-panel ${styles.items}`}>
-        <EditPurchaseItems
-          householdId={household.id}
-          merchant={merchant}
+      <EditPurchaseDetails
+        merchant={merchant}
+        occurredAt={occurredAt}
+        history={history}
+        recentMerchants={recentMerchants}
+        recentPurchases={recentPurchases}
+        copiedPurchase={copiedPurchase}
+        classNames={{ details: styles.details, history: styles.history }}
+        onMerchantChange={(value) => {
+          markUnsaved();
+          setMerchant(value);
+        }}
+        onOccurredAtChange={(value) => {
+          markUnsaved();
+          setOccurredAt(value);
+        }}
+        onSelectMerchant={(value) => {
+          markUnsaved();
+          setMerchant(value);
+          setCopiedPurchase(null);
+        }}
+        onCopyPurchase={copyPurchaseItems}
+      >
+        <EditPurchasePayments
           household={household}
-          history={history}
-          value={itemsValue}
-          resetToken={itemsResetToken}
-          copiedPurchase={copiedPurchase}
-          undoToken={undoToken}
-          classNames={{
-            itemHeading: styles.itemHeading,
-            itemTable: styles.itemTable,
-            itemList: styles.itemList,
-            entryForm: styles.entryForm,
-            entryHint: styles.entryHint,
-          }}
-          onChange={setItemsValue}
-          onDirty={markUnsaved}
-          onUndoAvailabilityChange={setUndoAvailable}
+          rows={paymentRows}
+          autoTotal={paymentAutoTotal}
+          itemTotal={itemTotal}
+          difference={paymentDifference}
+          onAdd={payments.add}
+          onPatch={payments.patch}
+          onRemove={payments.remove}
         />
-      </section>
+      </EditPurchaseDetails>
+      <PurchaseItemsComposer
+        householdId={household.id}
+        merchant={merchant}
+        household={household}
+        history={history}
+        value={itemsValue}
+        resetToken={itemsResetToken}
+        copiedPurchase={copiedPurchase}
+        undoToken={undoToken}
+        itemTotal={itemTotal}
+        hasDraftContent={hasDraftContent}
+        hasUnsavedChanges={hasUnsavedChanges}
+        savedAt={savedAt}
+        classNames={{
+          items: styles.items,
+          itemHeading: styles.itemHeading,
+          itemTable: styles.itemTable,
+          itemList: styles.itemList,
+          entryForm: styles.entryForm,
+          entryHint: styles.entryHint,
+          bottom: styles.bottom,
+        }}
+        onChange={setItemsValue}
+        onDirty={markUnsaved}
+        onUndoAvailabilityChange={setUndoAvailable}
+      >
+        {undoAvailable && (
+          <button
+            type="button"
+            className="button button-soft"
+            onClick={() => setUndoToken((token) => token + 1)}
+          >
+            <Undo2 size={16} />
+            元に戻す
+          </button>
+        )}
+        <button
+          className="button button-primary"
+          disabled={pending || !outbox.ready || Boolean(outbox.storageError) || items.length === 0}
+        >
+          {pending ? "保存中" : "保存して送信"}
+          <Check size={16} />
+        </button>
+      </PurchaseItemsComposer>
       {householdOutbox.length > 0 && (
         <section className={`panel purchase-outbox ${styles.outbox}`}>
           <div className="panel-heading">
@@ -603,48 +478,6 @@ export function PurchaseCreatePage({
           })}
         </section>
       )}
-      <div className={`composer-bottom ${styles.bottom}`}>
-        <div>
-          <div className="total-label">
-            合計 <strong>{yen(itemTotal)}</strong>
-          </div>
-          <span>
-            {items.length}品目
-            {hasDraftContent && (
-              <>
-                {" · "}
-                {hasUnsavedChanges
-                  ? "未保存"
-                  : savedAt
-                    ? "下書き保存 " +
-                      savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
-                    : "未保存"}
-              </>
-            )}
-          </span>
-        </div>
-        <div className="composer-actions">
-          {undoAvailable && (
-            <button
-              type="button"
-              className="button button-soft"
-              onClick={() => setUndoToken((token) => token + 1)}
-            >
-              <Undo2 size={16} />
-              元に戻す
-            </button>
-          )}
-          <button
-            className="button button-primary"
-            disabled={
-              pending || !outbox.ready || Boolean(outbox.storageError) || items.length === 0
-            }
-          >
-            {pending ? "保存中" : "保存して送信"}
-            <Check size={16} />
-          </button>
-        </div>
-      </div>
       {(outbox.storageError || message || draftSaveError) && (
         <div className={styles.errors}>
           {outbox.storageError && <InlineError message={outbox.storageError} />}

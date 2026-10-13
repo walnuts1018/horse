@@ -1,284 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AlertCircle,
-  Camera,
-  Check,
-  ChevronRight,
-  FileImage,
-  Link2,
-  ShieldCheck,
-  Upload,
-  X,
-} from "lucide-react";
-import { readGraphql, type Household, type ProductSuggestion } from "../../../shared/api";
+import { Camera, Check, FileImage, ShieldCheck, Upload, X } from "lucide-react";
+import { type Household } from "../../../shared/api";
 import { useCreateAndPostPurchase } from "../../../entities/purchase";
 import { InlineError } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../entities/purchase";
-import { productSuggestionsQuery } from "../../../entities/product";
-import {
-  identityTransform,
-  invertTransform,
-  regionPolygon,
-  type PreviewTransform,
-  type Region,
-} from "../model/evidence-geometry";
+import type { Region } from "../model/evidence-geometry";
+import { useEvidencePreview } from "../model/evidence-preview";
 import { CameraCapture, type CameraCaptureHandle } from "./camera-capture";
-
-const yen = (amount = 0) =>
-  new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0,
-  }).format(amount);
-const isCsvFile = (file: File) => /\.csv$/i.test(file.name) || file.type === "text/csv";
-const sourceKind = (file: File, csvKind: "card" | "bank") =>
-  isCsvFile(file) ? csvKind : /\.eml$/i.test(file.name) ? "email" : "receipt";
-const isSupportedFile = (file: File) =>
-  /\.(jpe?g|png|webp|pdf|csv|eml)$/i.test(file.name) ||
-  [
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "application/pdf",
-    "text/csv",
-    "message/rfc822",
-  ].includes(file.type);
-const importIdempotencyKey = async (documentId: string, sourceReference: string) => {
-  const input = new TextEncoder().encode(`${documentId}\u0000${sourceReference}`);
-  const digest = await crypto.subtle.digest("SHA-256", input);
-  const hash = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-  return `import:${hash}`;
-};
-
-type ExtractedItem = {
-  name: string;
-  printedAmount: number;
-  grossAmount: number;
-  categoryId?: string | null;
-  quantityNumerator?: string | null;
-  quantityDenominator?: string | null;
-  quantityUnit?: string | null;
-  printedUnitPriceYen?: number | null;
-  printedUnitPriceQuantityNumerator?: string | null;
-  printedUnitPriceQuantityDenominator?: string | null;
-  printedUnitPriceUnit?: string | null;
-  productVariantId?: string | null;
-  confidence: number;
-  verification: string;
-  categoryHint?: string;
-  region?: Region;
-};
-type MatchCandidate = {
-  documentId: string;
-  sourceReference: string;
-  state: string;
-  reasons: string[];
-};
-type ObservationCandidates = { sourceReference: string; matches: MatchCandidate[] };
-type StatementEntry = {
-  row: number;
-  kind: string;
-  occurredAt: string;
-  merchant: string;
-  amount: number;
-  transactionId?: string;
-  orderId?: string;
-  cardLast4?: string;
-};
-type ReceiptPayment = { method: string; cardLast4?: string; amount: number };
-type VerificationCandidate = {
-  id: string;
-  amounts: number[];
-  computedTotal: number;
-  consistent: boolean;
-  issues: string[];
-};
-type DocumentReview = {
-  id: string;
-  jobId?: string;
-  name?: string;
-  status: string;
-  sourceKind?: string;
-  mimeType?: string;
-  createdAt?: string;
-  sha256?: string;
-  duplicateOf?: string;
-  confirmations?: Array<{ sourceReference: string; purchaseId: string }>;
-  result?: {
-    receipt?: {
-      merchant?: string;
-      purchasedAt?: string;
-      items?: ExtractedItem[];
-      payments?: ReceiptPayment[];
-    };
-    computedTotal?: number;
-    balanced?: boolean;
-    candidates?: VerificationCandidate[];
-    issues?: string[];
-    transform?: number[];
-    transformPage?: number;
-    ocrLines?: Array<{ text: string; confidence: number; region?: Region }>;
-    statements?: StatementEntry[];
-  };
-};
-type PendingUpload = {
-  id: string;
-  file: File;
-  status: "queued" | "uploading" | "failed";
-  error?: string;
-};
-type DocumentFilters = {
-  store: string;
-  from: string;
-  to: string;
-  sourceKind: string;
-  confirmed: string;
-};
-type ReceiptPaymentDraft = {
-  key: string;
-  method?: string;
-  cardLast4?: string;
-  paymentAccountId: string;
-  amountYen: number;
-};
-type ReviewTarget = { key: string; label: string; elementId: string };
-const documentListURL = (householdId: string, filters: DocumentFilters, after?: string) => {
-  const query = new URLSearchParams({ householdId, first: "50" });
-  if (filters.store.trim()) query.set("store", filters.store.trim());
-  if (filters.from) query.set("from", filters.from);
-  if (filters.to) query.set("to", filters.to);
-  if (filters.sourceKind) query.set("sourceKind", filters.sourceKind);
-  if (filters.confirmed) query.set("confirmed", filters.confirmed);
-  if (after) query.set("after", after);
-  return `/documents?${query.toString()}`;
-};
-const terminalStatuses = new Set([
-  "READY",
-  "REVIEW",
-  "COMPLETED",
-  "SUCCEEDED",
-  "FAILED",
-  "DUPLICATE",
-  "DONE",
-]);
-const statusLabel = (status: string) =>
-  ({
-    QUEUED: "待機中",
-    RUNNING: "抽出中",
-    READY: "確認待ち",
-    REVIEW: "確認待ち",
-    COMPLETED: "抽出済み",
-    SUCCEEDED: "抽出済み",
-    FAILED: "失敗",
-    DUPLICATE: "重複",
-    DONE: "抽出済み",
-  })[status.toUpperCase()] ?? "状態を確認中";
-const sourceKindLabel = (sourceKind?: string) =>
-  ({
-    receipt: "レシート",
-    order: "注文履歴",
-    email: "メール",
-    card: "カード明細",
-    bank: "銀行明細",
-  })[sourceKind ?? ""] ?? "証拠";
-const isProcessing = (status: string) => !terminalStatuses.has(status.toUpperCase());
-
-function ProductVariantSelect({
-  householdId,
-  itemName,
-  merchant,
-  value,
-  onChange,
-}: {
-  householdId: string;
-  itemName: string;
-  merchant: string;
-  value: string;
-  onChange: (variantId: string) => void;
-}) {
-  const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
-  const [suggestionsQuery, setSuggestionsQuery] = useState("");
-  const [selectedSuggestion, setSelectedSuggestion] = useState<{
-    itemName: string;
-    suggestion: ProductSuggestion;
-  } | null>(null);
-  const [searchEnabled, setSearchEnabled] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const query = itemName.trim();
-    if (!searchEnabled || query.length < 2) {
-      setSuggestions([]);
-      setLoading(false);
-      return;
-    }
-    let active = true;
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      void readGraphql<{ productSuggestions: ProductSuggestion[] }>(productSuggestionsQuery, {
-        householdId,
-        query,
-        merchant: merchant.trim() || null,
-        first: 8,
-      })
-        .then((result) => {
-          if (!active) return;
-          setSuggestions(result.productSuggestions);
-          setSuggestionsQuery(query);
-        })
-        .catch(() => active && setSuggestions([]))
-        .finally(() => active && setLoading(false));
-    }, 220);
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [householdId, itemName, merchant, searchEnabled]);
-
-  const currentSuggestions = suggestionsQuery === itemName.trim() ? suggestions : [];
-  const currentSelectedSuggestion =
-    selectedSuggestion?.itemName === itemName ? selectedSuggestion.suggestion : null;
-  const options = currentSuggestions.some((suggestion) => suggestion.variant.id === value)
-    ? currentSuggestions
-    : currentSelectedSuggestion?.variant.id === value
-      ? [currentSelectedSuggestion, ...currentSuggestions]
-      : currentSuggestions;
-
-  return (
-    <label>
-      商品
-      <select
-        aria-label={`${itemName || "品目"}の商品variant`}
-        value={value}
-        onFocus={() => setSearchEnabled(true)}
-        onChange={(event) => {
-          const variantId = event.target.value;
-          const suggestion =
-            currentSuggestions.find((entry) => entry.variant.id === variantId) ?? null;
-          setSelectedSuggestion(suggestion ? { itemName, suggestion } : null);
-          onChange(variantId);
-        }}
-      >
-        <option value="">商品を選択</option>
-        {options.map((suggestion) => (
-          <option value={suggestion.variant.id} key={suggestion.variant.id}>
-            {[suggestion.concept.name, suggestion.variant.name, suggestion.variant.brand]
-              .filter(Boolean)
-              .join(" · ")}
-            {suggestion.variant.packageSize ? ` (${suggestion.variant.packageSize})` : ""}
-          </option>
-        ))}
-      </select>
-      {loading && <small>商品候補を検索中</small>}
-      {searchEnabled &&
-        !loading &&
-        itemName.trim().length >= 2 &&
-        currentSuggestions.length === 0 && <small>商品候補がありません</small>}
-    </label>
-  );
-}
+import { ProductVariantSelect } from "./product-variant-select";
+import { ImportDocumentList } from "./import-document-list";
+import { StatementReview } from "./statement-review";
+import { EvidenceMatching } from "./evidence-matching";
+import { EvidenceSourcePreview } from "./evidence-source-preview";
+import { documentListURL, importIdempotencyKey } from "../api/documents";
+import {
+  isProcessing,
+  isSupportedFile,
+  sourceKind,
+  sourceKindLabel,
+  yen,
+  type DocumentFilters,
+  type DocumentReview,
+  type ExtractedItem,
+  type PendingUpload,
+  type ReceiptPaymentDraft,
+  type ReviewTarget,
+  type StatementEntry,
+} from "../model/imports";
 
 export function ImportsPage({
   household,
@@ -325,29 +73,12 @@ export function ImportsPage({
   const [receiptPayments, setReceiptPayments] = useState<Record<string, ReceiptPaymentDraft[]>>({});
   const [cropRegion, setCropRegion] = useState<Region | null>(null);
   const [cropPending, setCropPending] = useState(false);
-  const [previewPage, setPreviewPage] = useState(0);
-  const [previewPageDraft, setPreviewPageDraft] = useState("1");
-  const [preview, setPreview] = useState<{
-    documentId: string;
-    page: number;
-    src: string;
-    transform: PreviewTransform;
-  } | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState("");
-  const [observations, setObservations] = useState<ObservationCandidates[]>([]);
-  const [matchesTruncated, setMatchesTruncated] = useState(false);
-  const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
-  const [targetPurchaseId, setTargetPurchaseId] = useState("");
-  const [targetItemId, setTargetItemId] = useState("");
-  const [activeObservationRef, setActiveObservationRef] = useState("");
-  const [receiptEvidenceIndex, setReceiptEvidenceIndex] = useState("0");
   const { purchases: recentPurchases, refresh: refreshPurchases } = useHouseholdPurchases(
     household.id,
     100,
   );
   const selectedDocument = documents.find((document) => document.id === selected);
-  const targetPurchase = recentPurchases.find((purchase) => purchase.id === targetPurchaseId);
+  const evidencePreview = useEvidencePreview(selectedDocument);
   const normalizeName = (name: string) =>
     name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ja-JP");
   const suggestedCategoryId = (item: ExtractedItem) => {
@@ -478,68 +209,8 @@ export function ImportsPage({
     return () => onUnsavedChanges(false);
   }, [hasUnsavedChanges, onUnsavedChanges]);
   useEffect(() => {
-    setPreviewPage(0);
-    setPreviewPageDraft("1");
     setCropRegion(null);
   }, [selectedDocument?.id]);
-  useEffect(() => {
-    if (
-      !selectedDocument ||
-      !selectedDocument.mimeType ||
-      (!selectedDocument.mimeType.startsWith("image/") &&
-        selectedDocument.mimeType !== "application/pdf")
-    ) {
-      setPreview(null);
-      setPreviewError("");
-      setPreviewLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    let active = true;
-    let objectUrl = "";
-    setPreview(null);
-    setPreviewLoading(true);
-    setPreviewError("");
-    void fetch(
-      `/documents/${encodeURIComponent(selectedDocument.id)}/preview?page=${previewPage}`,
-      { credentials: "include", signal: controller.signal },
-    )
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`原本ページを表示できませんでした (${response.status})`);
-        const sourcePage = Number(response.headers.get("X-Source-Page"));
-        if (sourcePage !== previewPage) throw new Error("原本ページが一致しません");
-        const encodedTransform = response.headers.get("X-Coordinate-Transform");
-        let transform = identityTransform;
-        if (encodedTransform) {
-          const parsed = JSON.parse(encodedTransform) as number[];
-          if (parsed.length === 9 && parsed.every(Number.isFinite)) {
-            transform = parsed as PreviewTransform;
-          }
-        }
-        if (!invertTransform(transform)) throw new Error("原本の座標を読み取れません");
-        const blob = await response.blob();
-        if (blob.type !== "image/png") throw new Error("原本ページを表示できませんでした");
-        if (!active) return;
-        objectUrl = URL.createObjectURL(blob);
-        setPreview({
-          documentId: selectedDocument.id,
-          page: previewPage,
-          src: objectUrl,
-          transform,
-        });
-      })
-      .catch((reason) => {
-        if (active && (reason as Error).name !== "AbortError") {
-          setPreviewError((reason as Error).message);
-        }
-      })
-      .finally(() => active && setPreviewLoading(false));
-    return () => {
-      active = false;
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [selectedDocument?.id, selectedDocument?.mimeType, previewPage]);
   const refreshDocuments = useCallback(
     async (silent = false) => {
       try {
@@ -657,42 +328,6 @@ export function ImportsPage({
     const interval = window.setInterval(() => void refreshDocuments(true), 1200);
     return () => window.clearInterval(interval);
   }, [hasProcessingDocuments, refreshDocuments]);
-  useEffect(() => {
-    if (!selectedDocument || !selectedDocument.result) {
-      setObservations([]);
-      setMatchesTruncated(false);
-      setSelectedMatches(new Set());
-      return;
-    }
-    let active = true;
-    setObservations([]);
-    setMatchesTruncated(false);
-    setSelectedMatches(new Set());
-    void fetch(`/documents/${encodeURIComponent(selectedDocument.id)}/matches`, {
-      credentials: "include",
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`照合候補を取得できませんでした (${response.status})`);
-        return (await response.json()) as {
-          observations: ObservationCandidates[];
-          truncated: boolean;
-        };
-      })
-      .then((payload) => {
-        if (!active) return;
-        setObservations(payload.observations);
-        setMatchesTruncated(payload.truncated);
-        if (!selectedDocument.result?.receipt?.items?.length) {
-          setActiveObservationRef(payload.observations[0]?.sourceReference ?? "");
-        } else {
-          setActiveObservationRef("");
-        }
-      })
-      .catch((reason) => active && setMessage((reason as Error).message));
-    return () => {
-      active = false;
-    };
-  }, [selectedDocument?.id, selectedDocument?.jobId, selectedDocument?.status]);
   const addFiles = (selected: FileList | null) => {
     if (!selected) return;
     const candidates = Array.from(selected);
@@ -838,70 +473,7 @@ export function ImportsPage({
   const selectCropRegion = (region: Region) => {
     markUnsaved();
     setCropRegion(region);
-    setPreviewPage(region.page);
-    setPreviewPageDraft(String(region.page + 1));
-  };
-  const showPreviewPage = () => {
-    const page = Number(previewPageDraft);
-    if (!Number.isInteger(page) || page < 1) {
-      setPreviewError("ページ番号を入力してください");
-      return;
-    }
-    setPreviewPage(page - 1);
-  };
-  const confirmEvidenceGroup = async () => {
-    if (
-      !selectedDocument ||
-      !targetPurchaseId ||
-      (!activeObservationRef && !selectedDocument.result?.receipt?.items?.length)
-    )
-      return;
-    const selectedCandidates = observations.flatMap((observation) =>
-      observation.matches
-        .filter((candidate) =>
-          selectedMatches.has(
-            `${observation.sourceReference}\u0000${candidate.documentId}\u0000${candidate.sourceReference}`,
-          ),
-        )
-        .map((candidate) => ({
-          documentId: candidate.documentId,
-          sourceReference: candidate.sourceReference,
-          ...(targetItemId ? { itemId: targetItemId } : {}),
-        })),
-    );
-    const isReceiptObservation =
-      Boolean(selectedDocument.result?.receipt?.items?.length) && !activeObservationRef;
-    const receiptIndex = Number(receiptEvidenceIndex);
-    const sources = [
-      {
-        documentId: selectedDocument.id,
-        sourceReference: activeObservationRef,
-        ...(targetItemId ? { itemId: targetItemId } : {}),
-        ...(isReceiptObservation && selectedDocument.jobId && targetItemId
-          ? { observationJobId: selectedDocument.jobId, sourceItemIndex: receiptIndex }
-          : {}),
-      },
-      ...selectedCandidates,
-    ];
-    setPending(true);
-    setMessage("");
-    try {
-      const response = await fetch(`/purchases/${encodeURIComponent(targetPurchaseId)}/evidence`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sources }),
-      });
-      if (!response.ok) throw new Error(`証拠を購入に紐付けできませんでした (${response.status})`);
-      setSelectedMatches(new Set());
-      setHasUnsavedChanges(false);
-      await refreshDocuments(true);
-      onAdded(true);
-    } catch (reason) {
-      setMessage((reason as Error).message);
-    } finally {
-      setPending(false);
-    }
+    evidencePreview.selectPage(region.page);
   };
   const editItem = (documentId: string, index: number, patch: Partial<ExtractedItem>) => {
     editedReceiptDocuments.current.add(documentId);
@@ -1149,364 +721,43 @@ export function ImportsPage({
             </div>
             <span className="count-badge">{documents.length + files.length}</span>
           </div>
-          <form
-            className="ledger-filters"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setDocumentFilters(documentFilterDraft);
+          <ImportDocumentList
+            files={files}
+            documents={documents}
+            csvKinds={csvKinds}
+            selected={selected}
+            filters={documentFilterDraft}
+            onFiltersChange={setDocumentFilterDraft}
+            onSearch={() => setDocumentFilters(documentFilterDraft)}
+            onCsvKindChange={(filename, kind) => {
+              markUnsaved();
+              setCsvKinds((current) => ({ ...current, [filename]: kind }));
             }}
-          >
-            <label className="select-filter">
-              店舗
-              <input
-                type="search"
-                value={documentFilterDraft.store}
-                onChange={(event) =>
-                  setDocumentFilterDraft((current) => ({ ...current, store: event.target.value }))
-                }
-              />
-            </label>
-            <label className="select-filter">
-              取り込み開始日
-              <input
-                type="date"
-                value={documentFilterDraft.from}
-                onChange={(event) =>
-                  setDocumentFilterDraft((current) => ({ ...current, from: event.target.value }))
-                }
-              />
-            </label>
-            <label className="select-filter">
-              取り込み終了日
-              <input
-                type="date"
-                value={documentFilterDraft.to}
-                onChange={(event) =>
-                  setDocumentFilterDraft((current) => ({ ...current, to: event.target.value }))
-                }
-              />
-            </label>
-            <label className="select-filter">
-              原本種別
-              <select
-                value={documentFilterDraft.sourceKind}
-                onChange={(event) =>
-                  setDocumentFilterDraft((current) => ({
-                    ...current,
-                    sourceKind: event.target.value,
-                  }))
-                }
-              >
-                <option value="">すべて</option>
-                <option value="receipt">レシート</option>
-                <option value="order">注文履歴</option>
-                <option value="email">メール</option>
-                <option value="card">カード明細</option>
-                <option value="bank">銀行明細</option>
-              </select>
-            </label>
-            <label className="select-filter">
-              確定状態
-              <select
-                value={documentFilterDraft.confirmed}
-                onChange={(event) =>
-                  setDocumentFilterDraft((current) => ({
-                    ...current,
-                    confirmed: event.target.value,
-                  }))
-                }
-              >
-                <option value="">すべて</option>
-                <option value="true">確定済み</option>
-                <option value="false">未確定</option>
-              </select>
-            </label>
-            <button type="submit" className="button button-soft">
-              検索
-            </button>
-          </form>
-          {files.map((upload) => (
-            <div className="file-review-row" key={upload.id}>
-              <span className="file-thumb">
-                <FileImage />
-              </span>
-              <div>
-                <b>{upload.file.name}</b>
-                <small>
-                  {(upload.file.size / 1024).toFixed(0)} KB ·{" "}
-                  {upload.status === "uploading"
-                    ? "送信中"
-                    : upload.status === "failed"
-                      ? `送信失敗 · ${upload.error}`
-                      : "送信待ち"}
-                </small>
-              </div>
-              {upload.status === "failed" && <AlertCircle size={16} aria-label="送信失敗" />}
-              {isCsvFile(upload.file) && (
-                <select
-                  aria-label={`${upload.file.name}の明細種別`}
-                  value={csvKinds[upload.file.name] ?? "card"}
-                  onChange={(event) => {
-                    markUnsaved();
-                    setCsvKinds((current) => ({
-                      ...current,
-                      [upload.file.name]: event.target.value as "card" | "bank",
-                    }));
-                  }}
-                >
-                  <option value="card">カード明細</option>
-                  <option value="bank">銀行明細</option>
-                </select>
-              )}
-              <button
-                className="icon-button"
-                aria-label="削除"
-                disabled={pending}
-                onClick={() => {
-                  markUnsaved();
-                  setFiles((current) => current.filter((entry) => entry.id !== upload.id));
-                }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-          ))}
-          {documents.map((document) => (
-            <div className="persisted-document-row" key={document.id}>
-              <button
-                type="button"
-                className={`file-review-row review-select ${selected === document.id ? "review-selected" : ""}`}
-                onClick={() => setSelected(document.id)}
-              >
-                <span className="file-thumb">
-                  <FileImage />
-                </span>
-                <div>
-                  <b>
-                    {document.name ??
-                      `${sourceKindLabel(document.sourceKind)} · ${document.id.slice(0, 8)}`}
-                  </b>
-                  <small>
-                    {statusLabel(document.status)}
-                    {document.duplicateOf ? " · 重複候補" : ""}
-                  </small>
-                </div>
-                <ChevronRight size={15} />
-              </button>
-              {document.status.toUpperCase() === "FAILED" && (
-                <button
-                  type="button"
-                  className="text-button"
-                  disabled={pending}
-                  onClick={() => void retryDocument(document)}
-                >
-                  再抽出
-                </button>
-              )}
-            </div>
-          ))}
-          {nextDocumentCursor && (
-            <button
-              className="button button-soft button-wide"
-              type="button"
-              disabled={loadingOlderDocuments}
-              onClick={() => void loadOlderDocuments()}
-            >
-              {loadingOlderDocuments ? "読み込み中" : "古い履歴を読み込む"}
-            </button>
-          )}
-          {files.length > 0 && (
-            <button
-              className="button button-primary button-wide"
-              disabled={pending}
-              onClick={() => void uploadFiles()}
-            >
-              <Upload size={15} />
-              {pending ? "送信しています" : "証拠を送信"}
-            </button>
-          )}
+            onRemoveFile={(id) => {
+              markUnsaved();
+              setFiles((current) => current.filter((entry) => entry.id !== id));
+            }}
+            onSelectDocument={setSelected}
+            onRetryDocument={(document) => void retryDocument(document)}
+            nextCursor={nextDocumentCursor}
+            loadingOlder={loadingOlderDocuments}
+            onLoadOlder={() => void loadOlderDocuments()}
+            pending={pending}
+            onUpload={() => void uploadFiles()}
+          />
           {selectedDocument && (
             <div className="evidence-review-layout">
-              <details className="evidence-source-column" open>
-                <summary>原本</summary>
-                <div className="evidence-preview">
-                  <a
-                    className="review-image"
-                    href={`/documents/${encodeURIComponent(selectedDocument.id)}/content`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <FileImage size={23} />
-                    <span>原本ファイルを開く</span>
-                  </a>
-                  {selectedDocument.mimeType?.startsWith("image/") ||
-                  selectedDocument.mimeType === "application/pdf" ? (
-                    <>
-                      {selectedDocument.mimeType === "application/pdf" && (
-                        <div className="evidence-preview-page-controls">
-                          <label>
-                            PDFページ
-                            <input
-                              aria-label="PDFページ"
-                              type="number"
-                              min="1"
-                              step="1"
-                              value={previewPageDraft}
-                              onChange={(event) => setPreviewPageDraft(event.target.value)}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") showPreviewPage();
-                              }}
-                            />
-                          </label>
-                          <button className="text-button" type="button" onClick={showPreviewPage}>
-                            ページを表示
-                          </button>
-                        </div>
-                      )}
-                      {previewLoading && <p>ページを読み込んでいます</p>}
-                      {previewError && <InlineError message={previewError} />}
-                      {preview?.documentId === selectedDocument.id &&
-                        preview.page === previewPage && (
-                          <div className="evidence-image-stage">
-                            <img src={preview.src} alt={`${previewPage + 1}ページ目の原本`} />
-                            {selectedDocument.result?.receipt?.items?.map((item, index) =>
-                              item.region?.page === previewPage ? (
-                                <button
-                                  key={`item-${index}`}
-                                  type="button"
-                                  className={`evidence-region ${Number(receiptEvidenceIndex) === index ? "evidence-region-selected" : ""}`}
-                                  style={{
-                                    clipPath: `polygon(${regionPolygon(item.region, preview.transform)})`,
-                                  }}
-                                  aria-label={`${item.name}の原本位置`}
-                                  onClick={() => {
-                                    setReceiptEvidenceIndex(String(index));
-                                    selectCropRegion(item.region!);
-                                  }}
-                                />
-                              ) : null,
-                            )}
-                            {selectedDocument.result?.ocrLines?.map((line, index) =>
-                              line.region?.page === previewPage ? (
-                                <button
-                                  key={`line-${index}`}
-                                  type="button"
-                                  className="evidence-region evidence-region-ocr"
-                                  style={{
-                                    clipPath: `polygon(${regionPolygon(line.region, preview.transform)})`,
-                                  }}
-                                  aria-label={`${line.text}の原本位置`}
-                                  onClick={() => selectCropRegion(line.region!)}
-                                />
-                              ) : null,
-                            )}
-                          </div>
-                        )}
-                    </>
-                  ) : null}
-                </div>
-                {(selectedDocument.result?.receipt?.items?.length ||
-                  selectedDocument.result?.ocrLines?.some((line) => line.region)) && (
-                  <section className="panel evidence-crop-panel">
-                    <div className="panel-heading">
-                      <div>
-                        <span className="eyebrow">原本座標</span>
-                        <h3>範囲の再抽出</h3>
-                      </div>
-                      <span>{cropRegion ? `ページ ${cropRegion.page + 1}` : "範囲未選択"}</span>
-                    </div>
-                    <div className="evidence-source-items">
-                      {selectedDocument?.result?.receipt?.items?.map((item, index) => (
-                        <button
-                          type="button"
-                          key={index}
-                          className={`text-button ${Number(receiptEvidenceIndex) === index ? "evidence-item-selected" : ""}`}
-                          aria-pressed={Number(receiptEvidenceIndex) === index}
-                          disabled={!item.region}
-                          onClick={() => {
-                            setReceiptEvidenceIndex(String(index));
-                            if (item.region) selectCropRegion(item.region);
-                          }}
-                        >
-                          {item.name} · {yen(item.grossAmount ?? item.printedAmount)}
-                        </button>
-                      ))}
-                    </div>
-                    {!!selectedDocument?.result?.ocrLines?.length && (
-                      <div className="evidence-ocr-lines">
-                        {selectedDocument.result.ocrLines
-                          .filter((line) => line.region)
-                          .slice(0, 80)
-                          .map((line, index) => (
-                            <button
-                              type="button"
-                              className="text-button"
-                              key={`${line.text}-${index}`}
-                              onClick={() => selectCropRegion(line.region!)}
-                            >
-                              {line.text} · ページ {line.region!.page + 1}
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                    {cropRegion && (
-                      <div className="crop-coordinate-fields">
-                        {(["top", "left", "bottom", "right"] as const).map((key) => (
-                          <label key={key}>
-                            {{ top: "上", left: "左", bottom: "下", right: "右" }[key]}
-                            <input
-                              type="number"
-                              min="0"
-                              max="1"
-                              step="0.01"
-                              value={cropRegion[key]}
-                              onChange={(event) => {
-                                markUnsaved();
-                                setCropRegion((current) =>
-                                  current
-                                    ? { ...current, [key]: Number(event.target.value) }
-                                    : current,
-                                );
-                              }}
-                            />
-                          </label>
-                        ))}
-                        <label>
-                          ページ
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={cropRegion.page + 1}
-                            onChange={(event) => {
-                              markUnsaved();
-                              const page = Math.max(0, Math.trunc(Number(event.target.value) - 1));
-                              setCropRegion((current) =>
-                                current ? { ...current, page } : current,
-                              );
-                              setPreviewPage(page);
-                              setPreviewPageDraft(String(page + 1));
-                            }}
-                          />
-                        </label>
-                        <button
-                          className="button button-soft"
-                          type="button"
-                          disabled={
-                            pending ||
-                            cropPending ||
-                            cropRegion.bottom <= cropRegion.top ||
-                            cropRegion.right <= cropRegion.left
-                          }
-                          onClick={() => void retryDocumentCrop(selectedDocument!)}
-                        >
-                          {cropPending ? "抽出中" : "この範囲で再抽出"}
-                        </button>
-                      </div>
-                    )}
-                  </section>
-                )}
-              </details>
+              <EvidenceSourcePreview
+                document={selectedDocument}
+                previewState={evidencePreview}
+                cropRegion={cropRegion}
+                cropPending={cropPending}
+                pending={pending}
+                onCropRegionChange={setCropRegion}
+                onSelectCropRegion={selectCropRegion}
+                onDirty={markUnsaved}
+                onRetryCrop={() => void retryDocumentCrop(selectedDocument)}
+              />
               <div className="evidence-edit-column">
                 {!!selectedDocument.result?.receipt?.items?.length && (
                   <div className="receipt-review">
@@ -1932,200 +1183,32 @@ export function ImportsPage({
               </div>
             </div>
           )}
-          {selectedDocument?.result?.statements && (
-            <div className="statement-review">
-              <div className="panel-heading">
-                <div>
-                  <span className="eyebrow">明細行</span>
-                  <h3>{selectedDocument.result.statements.length}件</h3>
-                </div>
-              </div>
-              {selectedDocument.result.statements.map((entry) => (
-                <div
-                  className="statement-row"
-                  key={`${entry.row}-${entry.transactionId ?? entry.occurredAt}`}
-                >
-                  <div>
-                    <b>{entry.merchant || "利用先未入力"}</b>
-                    <small>
-                      {entry.occurredAt.slice(0, 10)} ·{" "}
-                      {entry.kind === "BANK_MOVEMENT" ? "入出金" : "カード利用"}
-                      {entry.cardLast4 ? ` · •••• ${entry.cardLast4}` : ""}
-                    </small>
-                  </div>
-                  <div className="statement-row-action">
-                    <strong>{yen(entry.amount)}</strong>
-                    {entry.kind === "CARD_PURCHASE" && (
-                      <button
-                        className="text-button"
-                        disabled={
-                          pending ||
-                          confirmedStatements.has(
-                            `${selectedDocument.id}:${entry.transactionId ? `transaction:${entry.transactionId}` : `row:${entry.row}`}`,
-                          )
-                        }
-                        onClick={() => void confirmStatement(selectedDocument, entry)}
-                      >
-                        {confirmedStatements.has(
-                          `${selectedDocument.id}:${entry.transactionId ? `transaction:${entry.transactionId}` : `row:${entry.row}`}`,
-                        )
-                          ? "追加済み"
-                          : "購入に追加"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+          {selectedDocument && (
+            <StatementReview
+              document={selectedDocument}
+              confirmedStatements={confirmedStatements}
+              pending={pending}
+              onConfirm={(entry) => void confirmStatement(selectedDocument, entry)}
+            />
           )}
-          {selectedDocument?.result && observations.length > 0 && (
-            <section className="panel evidence-group-panel">
-              <div className="panel-heading">
-                <div>
-                  <span className="eyebrow">照合候補</span>
-                  <h3>購入へまとめる証拠</h3>
-                </div>
-                <Link2 size={18} />
-              </div>
-              {matchesTruncated && (
-                <small role="status">
-                  <AlertCircle aria-hidden size={14} /> 候補を直近100件に絞っています
-                </small>
-              )}
-              <label className="select-filter">
-                <span>照合元</span>
-                <select
-                  value={activeObservationRef}
-                  onChange={(event) => {
-                    markUnsaved();
-                    setActiveObservationRef(event.target.value);
-                  }}
-                >
-                  {selectedDocument.result.receipt?.items?.length ? (
-                    <option value="">レシート全体</option>
-                  ) : null}
-                  {observations.map((observation) => {
-                    const statement = selectedDocument.result?.statements?.find(
-                      (entry) =>
-                        (entry.transactionId
-                          ? `transaction:${entry.transactionId}`
-                          : `row:${entry.row}`) === observation.sourceReference,
-                    );
-                    return (
-                      <option key={observation.sourceReference} value={observation.sourceReference}>
-                        {statement?.merchant || observation.sourceReference || "レシート"}
-                      </option>
-                    );
-                  })}
-                </select>
-              </label>
-              <div className="evidence-match-list">
-                {observations.map((observation) => (
-                  <div className="evidence-match-group" key={observation.sourceReference}>
-                    <small>{observation.sourceReference || "レシート全体"}</small>
-                    {observation.matches.map((candidate) => {
-                      const key = `${observation.sourceReference}\u0000${candidate.documentId}\u0000${candidate.sourceReference}`;
-                      const sourceDocument = documents.find(
-                        (document) => document.id === candidate.documentId,
-                      );
-                      return (
-                        <label className="evidence-match-row" key={key}>
-                          <input
-                            type="checkbox"
-                            checked={selectedMatches.has(key)}
-                            onChange={(event) => {
-                              markUnsaved();
-                              setSelectedMatches((current) => {
-                                const next = new Set(current);
-                                if (event.target.checked) next.add(key);
-                                else next.delete(key);
-                                return next;
-                              });
-                            }}
-                          />
-                          <span>
-                            <b>
-                              {sourceKindLabel(sourceDocument?.sourceKind)} ·{" "}
-                              {candidate.sourceReference ||
-                                sourceDocument?.result?.receipt?.merchant ||
-                                "レシート"}
-                            </b>
-                            <small>
-                              {candidate.state} · {candidate.reasons.join("、")}
-                            </small>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-              <label className="select-filter">
-                <span>購入先</span>
-                <select
-                  value={targetPurchaseId}
-                  onChange={(event) => {
-                    markUnsaved();
-                    setTargetPurchaseId(event.target.value);
-                    setTargetItemId("");
-                  }}
-                >
-                  <option value="">購入を選択</option>
-                  {recentPurchases.map((purchase) => (
-                    <option key={purchase.id} value={purchase.id}>
-                      {purchase.occurredAt.slice(0, 10)} · {purchase.merchant} ·{" "}
-                      {yen(purchase.totalYen)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {targetPurchase && (
-                <label className="select-filter">
-                  <span>紐付ける品目</span>
-                  <select
-                    value={targetItemId}
-                    onChange={(event) => {
-                      markUnsaved();
-                      setTargetItemId(event.target.value);
-                    }}
-                  >
-                    <option value="">購入全体</option>
-                    {targetPurchase.items.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} · {yen(item.amountYen)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {selectedDocument.result.receipt?.items?.length ? (
-                <label className="select-filter">
-                  <span>照合するレシート品目</span>
-                  <select
-                    value={receiptEvidenceIndex}
-                    onChange={(event) => {
-                      markUnsaved();
-                      setReceiptEvidenceIndex(event.target.value);
-                    }}
-                  >
-                    {selectedDocument.result.receipt.items.map((item, index) => (
-                      <option key={index} value={index}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <button
-                className="button button-primary button-wide"
-                type="button"
-                disabled={pending || !targetPurchaseId}
-                onClick={() => void confirmEvidenceGroup()}
-              >
-                <Link2 size={15} />
-                選択した証拠を紐付け
-              </button>
-            </section>
+          {selectedDocument?.result && (
+            <EvidenceMatching
+              document={selectedDocument}
+              documents={documents}
+              purchases={recentPurchases}
+              receiptEvidenceIndex={evidencePreview.receiptEvidenceIndex}
+              onReceiptEvidenceIndexChange={evidencePreview.setReceiptEvidenceIndex}
+              pending={pending}
+              onPendingChange={setPending}
+              onDirty={markUnsaved}
+              onError={setMessage}
+              onLinked={async () => {
+                setHasUnsavedChanges(false);
+                setMessage("");
+                await refreshDocuments(true);
+                onAdded(true);
+              }}
+            />
           )}
           {message && <InlineError message={message} />}
         </section>

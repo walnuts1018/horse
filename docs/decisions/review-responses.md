@@ -171,3 +171,9 @@ GitHub Actions run `38451243233`ではPostgreSQL統合テストが実行され�
 Purchaseの履歴QueryをRelay生成operationへ移し、Purchase Entityのmapperで数量・印字単価・実効単価と訂正unionを変換します。購入入力と観測照合はEntityの公開read APIを利用するため、`normalizeGraphQLValue()`のPurchaseItem変換を削除しました。LedgerEntry変換とmutation unionのunwrapは利用箇所が残るため維持します。生成型を`shared/api`から公開し、Entityのdeep importを解消しました。Web型検査、Steiger、Relay検証、lint、formatの統合検査が成功しました。
 
 会計期間のJST変換と符号付き整数の加算overflow検知を`internal/application/accounting`へ集約しました。購入・資金拠出・送金・入金・精算は共通関数を呼び出します。JSTの月境界と加算overflowを確認するテストを追加し、対象Applicationのテストとgolangci-lintが成功しました。
+
+### 保守性・シンプルさレビューの画面分割とRelay読み込み
+
+設定、取込、帳簿、購入作成、精算の画面から機能別UIと状態を同じ`pages`slice内へ分けました。画面固有の機能で再利用先がないため、独立した`features`sliceは追加しません。設定の口座活動・配賦ルールと購入履歴はRelay生成operationを使い、各所有sliceのmapperで画面・Entityの型へ明示的に変換します。口座活動mapperはQueryが返す口座の`id`と`name`だけを扱い、未取得のフィールドを補いません。購入履歴の`PurchaseItem`汎用変換は削除し、LedgerEntry変換とMutation結果の共通処理は既存利用が残るため維持します。
+
+レビューの画面行数と`useState`呼び出し数を現在の実装に合わせて更新しました。Web型検査、Steiger、Relay検証、対象lint・formatが成功しました。残る共通GraphQL変換と手書き通信型は`docs/reviews/simple.md`に維持しています。

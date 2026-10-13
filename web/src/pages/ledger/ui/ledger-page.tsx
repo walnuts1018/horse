@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, ChevronDown, ChevronRight, Plus, Search, X } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, Plus, Search } from "lucide-react";
 import {
   ApiError,
   makeIdempotencyKey,
@@ -17,8 +17,6 @@ import {
 } from "../../../shared/api";
 import {
   bulkUpdatePurchaseItemsMutation,
-  bulkUpdatePurchasesMutation,
-  correctPurchaseMutation,
   postPurchaseMutation,
   purchasesQuery,
   mapUpdatePurchaseItemInput,
@@ -30,8 +28,13 @@ import { readProductCatalog } from "../../../entities/product";
 import { readTags } from "../../../entities/tag";
 import { EmptyState, InlineError } from "../../../shared/ui";
 import { formatQuantity, parseQuantity } from "../../../shared/lib";
-import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
-import { ObservationLinker } from "./observation-linker";
+import { createPurchaseDraft, type PurchaseDraft } from "../model/purchase-draft";
+import { getRemainingRefundAmount } from "../model/purchase-correction";
+import { usePurchaseBulkEdit } from "../model/purchase-bulk-edit";
+import { ObservationLedger } from "./observation-ledger";
+import { PurchaseBulkActions } from "./purchase-bulk-actions";
+import { PurchaseCorrection } from "./purchase-correction";
+import { PurchaseEditForm } from "./purchase-edit-form";
 import { toPurchaseAmountVariables, type LedgerSearch } from "../model/ledger-search";
 import styles from "./ledger-search.module.css";
 
@@ -76,13 +79,13 @@ export function LedgerPage({
   onAdd: () => void;
   onUnsavedChanges: (unsaved: boolean) => void;
 }) {
+  useEffect(() => {
+    onUnsavedChanges(false);
+    return () => onUnsavedChanges(false);
+  }, [onUnsavedChanges]);
   const { mutate: mutatePostPurchase } = useGraphqlMutation(postPurchaseMutation);
-  const { mutate: mutateCorrectPurchase } = useGraphqlMutation(correctPurchaseMutation);
   const mutateUpdatePurchaseItem = useUpdatePurchaseItem();
   const { mutate: mutateUpdatePurchase } = useGraphqlMutation(updatePurchaseMutation);
-  const { mutate: mutateBulkUpdatePurchases } = useGraphqlMutation<{
-    bulkUpdatePurchases: { purchases: Array<{ id: string; revision: number }> };
-  }>(bulkUpdatePurchasesMutation);
   const { mutate: mutateBulkUpdatePurchaseItems } = useGraphqlMutation<{
     bulkUpdatePurchaseItems: Array<{ id: string; revision: number }>;
   }>(bulkUpdatePurchaseItemsMutation);
@@ -138,43 +141,39 @@ export function LedgerPage({
         ? toPurchaseAmountVariables({ minimumAmount, maximumAmount }, viewMode)
         : {}),
     });
-  const unmatched = useUnmatchedObservations(household.id, {
-    enabled: recordMode === "observations",
-    from: fromMonth || undefined,
-    to: toMonth || undefined,
-    sourceKind: observationSourceFilter || undefined,
-    state: observationStateFilter || undefined,
+  const purchaseBulkEdit = usePurchaseBulkEdit({
+    householdId: household.id,
+    purchases,
+    refresh,
+    selectionKey: JSON.stringify([
+      household.id,
+      recordMode,
+      viewMode,
+      search,
+      fromMonth,
+      toMonth,
+      categoryFilter,
+      poolFilter,
+      accountFilter,
+      tagFilter,
+      originFilter,
+      evidenceFilter,
+      observationSourceFilter,
+      observationStateFilter,
+      minimumAmount,
+      maximumAmount,
+    ]),
   });
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(() => new Set());
-  const [selectedPurchases, setSelectedPurchases] = useState<Set<string>>(() => new Set());
-  const [dirtyObservations, setDirtyObservations] = useState<Set<string>>(() => new Set());
-  useEffect(() => {
-    onUnsavedChanges(dirtyObservations.size > 0);
-  }, [dirtyObservations, onUnsavedChanges]);
-  useEffect(() => () => onUnsavedChanges(false), [onUnsavedChanges]);
-  const reportObservationDirty = useCallback((id: string, dirty: boolean) => {
-    setDirtyObservations((current) => {
-      if (current.has(id) === dirty) return current;
-      const next = new Set(current);
-      if (dirty) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+  const [observationCount, setObservationCount] = useState({ count: 0, totalCount: 0 });
+  const updateObservationCount = useCallback((count: number, totalCount: number) => {
+    setObservationCount((current) =>
+      current.count === count && current.totalCount === totalCount
+        ? current
+        : { count, totalCount },
+    );
   }, []);
-  const selectionAnchors = useRef<{
-    item: { context: string; id: string } | null;
-    purchase: { context: string; id: string } | null;
-  }>({ item: null, purchase: null });
-  const [bulkMerchantActive, setBulkMerchantActive] = useState(false);
-  const [bulkMerchant, setBulkMerchant] = useState("");
-  const [bulkOccurredAtActive, setBulkOccurredAtActive] = useState(false);
-  const [bulkOccurredAt, setBulkOccurredAt] = useState("");
-  const [bulkPaymentAccountId, setBulkPaymentAccountId] = useState("");
-  const [purchaseBulkUndo, setPurchaseBulkUndo] = useState<Array<{
-    purchaseId: string;
-    baseRevision: number;
-    patch: Record<string, unknown>;
-  }> | null>(null);
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(() => new Set());
+  const selectionAnchor = useRef<{ context: string; id: string } | null>(null);
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkAllocationsActive, setBulkAllocationsActive] = useState(false);
   const [bulkAllocations, setBulkAllocations] = useState<Record<string, string>>({});
@@ -192,11 +191,7 @@ export function LedgerPage({
   }> | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [purchaseDraft, setPurchaseDraft] = useState<{
-    merchant: string;
-    occurredAt: string;
-    paymentAllocations: Array<{ paymentAccountId: string; amountYen: string }>;
-  } | null>(null);
+  const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
   const [itemDrafts, setItemDrafts] = useState<
     Record<
       string,
@@ -310,13 +305,6 @@ export function LedgerPage({
     purchaseId: string;
     itemId: string;
   } | null>(null);
-  const [refundAmount, setRefundAmount] = useState("");
-  const [refundReason, setRefundReason] = useState("");
-  const [refundPayments, setRefundPayments] = useState<
-    Array<{ key: string; paymentAccountId: string; amountYen: string }>
-  >([]);
-  const [refundAutoTotal, setRefundAutoTotal] = useState(true);
-  const [correctionPending, setCorrectionPending] = useState(false);
   const [conflict, setConflict] = useState<{
     label: string;
     localValue: string;
@@ -326,16 +314,13 @@ export function LedgerPage({
   } | null>(null);
   useEffect(() => {
     setSelectedItems(new Set());
-    setSelectedPurchases(new Set());
-    selectionAnchors.current = { item: null, purchase: null };
+    selectionAnchor.current = null;
     setBulkUndo(null);
-    setPurchaseBulkUndo(null);
     setBulkError("");
   }, [household.id]);
   useEffect(() => {
     setSelectedItems(new Set());
-    setSelectedPurchases(new Set());
-    selectionAnchors.current = { item: null, purchase: null };
+    selectionAnchor.current = null;
   }, [
     recordMode,
     viewMode,
@@ -378,17 +363,8 @@ export function LedgerPage({
     };
   }, [household.id]);
   const startEditing = (purchase: Purchase) => {
-    const occurredAt = new Date(purchase.occurredAt);
-    occurredAt.setMinutes(occurredAt.getMinutes() - occurredAt.getTimezoneOffset());
     setEditing(purchase.id);
-    setPurchaseDraft({
-      merchant: purchase.merchant,
-      occurredAt: occurredAt.toISOString().slice(0, 16),
-      paymentAllocations: purchase.paymentAllocations.map((payment) => ({
-        paymentAccountId: payment.paymentAccountId,
-        amountYen: String(payment.amountYen),
-      })),
-    });
+    setPurchaseDraft(createPurchaseDraft(purchase));
     setItemDrafts(
       Object.fromEntries(
         purchase.items.map((item) => [
@@ -418,95 +394,6 @@ export function LedgerPage({
   };
   const startCorrection = (purchase: Purchase, item: PurchaseItem) => {
     setCorrectionTarget({ purchaseId: purchase.id, itemId: item.id });
-    setRefundAmount("");
-    setRefundReason("");
-    setRefundPayments([]);
-    setRefundAutoTotal(true);
-    setEditError("");
-  };
-  const addRefundPayment = () => {
-    setRefundPayments((current) => [
-      ...current.map((payment) => ({
-        ...payment,
-        amountYen: refundAutoTotal && current.length === 1 ? refundAmount : payment.amountYen,
-      })),
-      {
-        key: crypto.randomUUID(),
-        paymentAccountId: "",
-        amountYen: current.length === 0 ? refundAmount : "",
-      },
-    ]);
-    setRefundAutoTotal(false);
-  };
-  const submitCorrection = async (purchase: Purchase, item: PurchaseItem) => {
-    const amountYen = Number(refundAmount);
-    const previousCorrections = (purchase.corrections ?? [])
-      .filter(
-        (correction) =>
-          correction.__typename === "PurchaseItemCorrection" && correction.itemId === item.id,
-      )
-      .reduce((sum, correction) => sum + correction.amountDeltaYen, 0);
-    const remaining = item.amountYen + previousCorrections;
-    const refundTotal = refundPayments.reduce(
-      (sum, payment) =>
-        sum +
-        Number(refundAutoTotal && refundPayments.length === 1 ? refundAmount : payment.amountYen),
-      0,
-    );
-    const paymentAllocations: PurchasePaymentInput[] = refundPayments.map((payment) => ({
-      paymentAccountId: payment.paymentAccountId,
-      amountYen: Number(
-        refundAutoTotal && refundPayments.length === 1 ? refundAmount : payment.amountYen,
-      ),
-    }));
-    if (!Number.isSafeInteger(amountYen) || amountYen < 1 || amountYen > remaining) {
-      setEditError("返金額を確認してください");
-      return;
-    }
-    if (
-      refundPayments.some(
-        (payment, index) =>
-          !payment.paymentAccountId ||
-          !Number.isSafeInteger(paymentAllocations[index].amountYen) ||
-          paymentAllocations[index].amountYen < 1,
-      ) ||
-      (paymentAllocations.length > 0 && refundTotal !== amountYen)
-    ) {
-      setEditError("返金先と返金額を確認してください");
-      return;
-    }
-    if (!refundReason.trim()) {
-      setEditError("理由を入力してください");
-      return;
-    }
-    const allocations = item.allocations
-      .filter((allocation) => allocation.weight > 0)
-      .map(({ poolId, weight }) => ({ poolId, weight }));
-    if (!allocations.length) {
-      setEditError("元品目の負担先がありません");
-      return;
-    }
-    setCorrectionPending(true);
-    setEditError("");
-    try {
-      await mutateCorrectPurchase({
-        input: {
-          householdId: household.id,
-          target: { item: { purchaseId: purchase.id, itemId: item.id } },
-          amountDeltaYen: -amountYen,
-          reason: refundReason.trim(),
-          allocations,
-          paymentAllocations,
-          idempotencyKey: makeIdempotencyKey(),
-        },
-      });
-      setCorrectionTarget(null);
-      await refresh();
-    } catch (reason) {
-      setEditError((reason as Error).message);
-    } finally {
-      setCorrectionPending(false);
-    }
   };
   const saveItem = async (purchase: Purchase, item: PurchaseItem) => {
     const draft = itemDrafts[item.id];
@@ -721,21 +608,20 @@ export function LedgerPage({
   );
   const itemCoverageComplete = !loadingMore && !hasNextPage && !moreError;
   const selectedCount = selectedItems.size;
-  const selectedPurchaseCount = selectedPurchases.size;
   const bulkAllocationEntries = Object.entries(bulkAllocations)
     .filter(([, weight]) => Number(weight) > 0)
     .map(([poolId, weight]) => ({ poolId, weight: Number(weight) }));
   const toggleSelection = (
-    kind: "item" | "purchase",
     context: string,
     visibleIds: string[],
     id: string,
     shiftKey: boolean,
   ) => {
-    const current = kind === "item" ? selectedItems : selectedPurchases;
-    const anchor = selectionAnchors.current[kind];
+    const current = selectedItems;
     const anchorIndex =
-      shiftKey && anchor?.context === context ? visibleIds.indexOf(anchor.id) : -1;
+      shiftKey && selectionAnchor.current?.context === context
+        ? visibleIds.indexOf(selectionAnchor.current.id)
+        : -1;
     const targetIndex = visibleIds.indexOf(id);
     const range =
       anchorIndex >= 0 && targetIndex >= 0
@@ -746,17 +632,16 @@ export function LedgerPage({
         : null;
     const additions = range?.filter((targetId) => !current.has(targetId)) ?? [];
     if (current.size + additions.length > 100) {
-      setBulkError(kind === "item" ? "一括変更は100品目までです" : "一括変更は100件までです");
+      setBulkError("一括変更は100品目までです");
       return;
     }
     const next = new Set(current);
     if (range) range.forEach((targetId) => next.add(targetId));
     else if (next.has(id)) next.delete(id);
     else next.add(id);
-    if (!shiftKey) selectionAnchors.current[kind] = { context, id };
+    if (!shiftKey) selectionAnchor.current = { context, id };
     setBulkError("");
-    if (kind === "item") setSelectedItems(next);
-    else setSelectedPurchases(next);
+    setSelectedItems(next);
   };
   const applyBulkEdit = async () => {
     if (!bulkCategory && !bulkAllocationsActive && !bulkVariantId && !bulkTagsActive) return;
@@ -813,7 +698,7 @@ export function LedgerPage({
       });
       setBulkUndo(undoEntries.length ? undoEntries : null);
       setSelectedItems(new Set());
-      selectionAnchors.current.item = null;
+      selectionAnchor.current = null;
       setBulkCategory("");
       setBulkAllocationsActive(false);
       setBulkAllocations({});
@@ -859,106 +744,6 @@ export function LedgerPage({
       setBulkPending(false);
     }
   };
-  const applyBulkPurchaseEdit = async () => {
-    const targets = purchases.filter((purchase) => selectedPurchases.has(purchase.id));
-    const changedFields = [
-      ...(bulkMerchantActive ? ["merchant"] : []),
-      ...(bulkOccurredAtActive ? ["occurredAt"] : []),
-      ...(bulkPaymentAccountId ? ["paymentAllocations"] : []),
-    ];
-    if (!targets.length || !changedFields.length) return;
-    const occurredAt = bulkOccurredAtActive ? new Date(bulkOccurredAt).toISOString() : undefined;
-    setBulkPending(true);
-    setBulkError("");
-    setPurchaseBulkUndo(null);
-    const undoEntries: NonNullable<typeof purchaseBulkUndo> = [];
-    try {
-      const result = await mutateBulkUpdatePurchases({
-        input: {
-          targets: targets.map((purchase) => ({
-            purchaseId: purchase.id,
-            baseRevision: purchase.revision,
-            patch: {
-              ...(bulkMerchantActive ? { merchant: bulkMerchant.trim() } : {}),
-              ...(occurredAt ? { occurredAt } : {}),
-              ...(bulkPaymentAccountId
-                ? {
-                    paymentAllocations: [
-                      { paymentAccountId: bulkPaymentAccountId, amountYen: purchase.totalYen },
-                    ],
-                  }
-                : {}),
-            },
-          })),
-        },
-      });
-      for (const purchase of targets) {
-        const patch: Record<string, unknown> = {};
-        if (bulkMerchantActive) patch.merchant = purchase.merchant;
-        if (bulkOccurredAtActive) patch.occurredAt = purchase.occurredAt;
-        if (bulkPaymentAccountId)
-          patch.paymentAllocations = purchase.paymentAllocations.map(
-            ({ paymentAccountId, amountYen }) => ({
-              paymentAccountId,
-              amountYen,
-            }),
-          );
-        undoEntries.push({
-          purchaseId: purchase.id,
-          baseRevision:
-            result.bulkUpdatePurchases.purchases.find((updated) => updated.id === purchase.id)
-              ?.revision ?? purchase.revision + 1,
-          patch,
-        });
-      }
-      setPurchaseBulkUndo(undoEntries.length ? undoEntries : null);
-      setSelectedPurchases(new Set());
-      selectionAnchors.current.purchase = null;
-      setBulkMerchantActive(false);
-      setBulkMerchant("");
-      setBulkOccurredAtActive(false);
-      setBulkOccurredAt("");
-      setBulkPaymentAccountId("");
-      await refresh();
-    } catch (reason) {
-      setBulkError((reason as Error).message);
-      setPurchaseBulkUndo(undoEntries.length ? undoEntries : null);
-      setSelectedPurchases(new Set());
-      selectionAnchors.current.purchase = null;
-      await refresh();
-    } finally {
-      setBulkPending(false);
-    }
-  };
-  const undoBulkPurchaseEdit = async () => {
-    if (!purchaseBulkUndo?.length) return;
-    setBulkPending(true);
-    setBulkError("");
-    try {
-      await mutateBulkUpdatePurchases({
-        input: {
-          targets: purchaseBulkUndo.map((entry) => ({
-            purchaseId: entry.purchaseId,
-            baseRevision: entry.baseRevision,
-            patch: entry.patch,
-          })),
-        },
-      });
-      setPurchaseBulkUndo(null);
-      await refresh();
-    } catch (reason) {
-      setBulkError((reason as Error).message);
-      await refresh();
-    } finally {
-      setBulkPending(false);
-    }
-  };
-  const refundPaymentTotal = refundPayments.reduce(
-    (sum, payment) =>
-      sum +
-      Number(refundAutoTotal && refundPayments.length === 1 ? refundAmount : payment.amountYen),
-    0,
-  );
   return (
     <>
       <div className="page-heading">
@@ -1003,7 +788,7 @@ export function LedgerPage({
         </label>
         <div className="record-count">
           {recordMode === "observations"
-            ? `${unmatched.observations.length}/${unmatched.totalCount}件表示`
+            ? `${observationCount.count}/${observationCount.totalCount}件表示`
             : viewMode === "items"
               ? `${filteredItems.length}品目表示 · ${purchases.length}/${totalCount}件購入取得`
               : `${filtered.length}件表示 · ${purchases.length}/${totalCount}件読込`}
@@ -1019,7 +804,7 @@ export function LedgerPage({
               updateFilters({ recordMode: mode });
               if (mode === "observations") {
                 setSelectedItems(new Set());
-                selectionAnchors.current.item = null;
+                selectionAnchor.current = null;
               }
             }}
           >
@@ -1035,7 +820,7 @@ export function LedgerPage({
               onChange={(event) => {
                 updateFilters({ viewMode: event.target.value as "purchases" | "items" });
                 setSelectedItems(new Set());
-                selectionAnchors.current.item = null;
+                selectionAnchor.current = null;
               }}
             >
               <option value="purchases">購入</option>
@@ -1188,95 +973,11 @@ export function LedgerPage({
           </>
         )}
       </div>
-      {recordMode === "purchases" && viewMode === "purchases" && selectedPurchaseCount > 0 && (
-        <section
-          className={`panel ledger-bulk-actions ${styles.bulkActions}`}
-          aria-label="選択した購入の一括編集"
-        >
-          <span>{selectedPurchaseCount}件の購入を選択中</span>
-          <label>
-            <input
-              type="checkbox"
-              checked={bulkMerchantActive}
-              disabled={bulkPending}
-              onChange={(event) => setBulkMerchantActive(event.target.checked)}
-            />
-            店舗
-            <input
-              type="text"
-              value={bulkMerchant}
-              disabled={!bulkMerchantActive || bulkPending}
-              onChange={(event) => setBulkMerchant(event.target.value)}
-            />
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={bulkOccurredAtActive}
-              disabled={bulkPending}
-              onChange={(event) => setBulkOccurredAtActive(event.target.checked)}
-            />
-            日付
-            <input
-              type="datetime-local"
-              value={bulkOccurredAt}
-              disabled={!bulkOccurredAtActive || bulkPending}
-              onChange={(event) => setBulkOccurredAt(event.target.value)}
-            />
-          </label>
-          <label className="select-filter">
-            <span>決済元</span>
-            <select
-              value={bulkPaymentAccountId}
-              disabled={bulkPending}
-              onChange={(event) => setBulkPaymentAccountId(event.target.value)}
-            >
-              <option value="">変更なし</option>
-              {household.accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="button button-primary"
-            type="button"
-            disabled={
-              bulkPending ||
-              (!bulkMerchantActive && !bulkOccurredAtActive && !bulkPaymentAccountId) ||
-              (bulkOccurredAtActive && !bulkOccurredAt)
-            }
-            onClick={() => void applyBulkPurchaseEdit()}
-          >
-            {bulkPending ? "更新中" : "一括変更"}
-          </button>
-          <button
-            className="text-button"
-            type="button"
-            disabled={bulkPending}
-            onClick={() => {
-              setSelectedPurchases(new Set());
-              selectionAnchors.current.purchase = null;
-            }}
-          >
-            選択解除
-          </button>
-        </section>
-      )}
-      {purchaseBulkUndo && (
-        <section className={`panel ledger-bulk-actions ${styles.bulkActions}`} aria-live="polite">
-          <span>{purchaseBulkUndo.length}件の購入変更</span>
-          <button
-            className="text-button"
-            type="button"
-            disabled={bulkPending}
-            onClick={() => void undoBulkPurchaseEdit()}
-          >
-            一括変更を元に戻す
-          </button>
-        </section>
-      )}
+      <PurchaseBulkActions
+        accounts={household.accounts}
+        bulkEdit={purchaseBulkEdit}
+        showSelectionControls={recordMode === "purchases" && viewMode === "purchases"}
+      />
       {selectedCount > 0 && (
         <section
           className={`panel ledger-bulk-actions ${styles.bulkActions}`}
@@ -1422,7 +1123,7 @@ export function LedgerPage({
             disabled={bulkPending}
             onClick={() => {
               setSelectedItems(new Set());
-              selectionAnchors.current.item = null;
+              selectionAnchor.current = null;
             }}
           >
             選択解除
@@ -1467,78 +1168,12 @@ export function LedgerPage({
         </section>
       )}
       {recordMode === "observations" && (
-        <section className="panel ledger-list">
-          {unmatched.loading ? (
-            <div className="skeleton-list">
-              <i />
-              <i />
-              <i />
-            </div>
-          ) : unmatched.error ? (
-            <InlineError message={unmatched.error} />
-          ) : unmatched.observations.length === 0 ? (
-            <div className="empty-state compact">
-              <BookOpen />
-              <span>照合候補がありません</span>
-            </div>
-          ) : (
-            unmatched.observations.map((observation) => (
-              <div
-                className="ledger-entry"
-                key={`${observation.documentId}-${observation.sourceReference}`}
-              >
-                <div className="merchant-icon">{observation.sourceKind.slice(0, 1)}</div>
-                <div className="purchase-description">
-                  <b>{observation.merchant || "店舗未入力"}</b>
-                  <span>
-                    {observation.sourceKind} · {observation.sourceReference}
-                    {observation.orderId ? ` · 注文 ${observation.orderId}` : ""}
-                    {observation.transactionId ? ` · 取引 ${observation.transactionId}` : ""}
-                  </span>
-                </div>
-                <div className="purchase-meta">
-                  <b>{yen(observation.amountYen)}</b>
-                  <span>
-                    {observation.__typename === "ConfirmedObservation" ? "照合済み" : "未照合"}
-                  </span>
-                  {observation.__typename === "ConfirmedObservation" && (
-                    <small>
-                      {observation.purchase.merchant} ·{" "}
-                      {new Date(observation.purchase.occurredAt).toLocaleDateString("ja-JP")}
-                    </small>
-                  )}
-                </div>
-                <a
-                  href={`/documents/${encodeURIComponent(observation.documentId)}/content`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  原本を開く
-                </a>
-                {observation.__typename === "UnmatchedObservation" && (
-                  <ObservationLinker
-                    household={household}
-                    observation={observation}
-                    onConfirmed={() => void unmatched.refresh()}
-                    onDirtyChange={reportObservationDirty}
-                  />
-                )}
-              </div>
-            ))
-          )}
-          {unmatched.moreError && <InlineError message={unmatched.moreError} />}
-          {unmatched.hasNextPage && (
-            <div className={styles.more}>
-              <button
-                className="button button-soft"
-                disabled={unmatched.loadingMore}
-                onClick={() => void unmatched.loadMore()}
-              >
-                {unmatched.loadingMore ? "読み込み中" : "さらに読み込む"}
-              </button>
-            </div>
-          )}
-        </section>
+        <ObservationLedger
+          household={household}
+          filters={{ fromMonth, toMonth, observationSourceFilter, observationStateFilter }}
+          onUnsavedChanges={onUnsavedChanges}
+          onCountChange={updateObservationCount}
+        />
       )}
       {recordMode === "purchases" && viewMode === "items" && (
         <section className="panel ledger-list">
@@ -1566,7 +1201,6 @@ export function LedgerPage({
                     checked={selectedItems.has(item.id)}
                     onChange={(event) =>
                       toggleSelection(
-                        "item",
                         "items",
                         filteredItems.map(({ item: visibleItem }) => visibleItem.id),
                         item.id,
@@ -1644,12 +1278,10 @@ export function LedgerPage({
                   <input
                     type="checkbox"
                     aria-label={`${purchase.merchant || "店舗未入力"}の購入を選択`}
-                    checked={selectedPurchases.has(purchase.id)}
-                    disabled={bulkPending || purchase.status === "CLOSED"}
+                    checked={purchaseBulkEdit.selectedPurchases.has(purchase.id)}
+                    disabled={purchaseBulkEdit.pending || purchase.status === "CLOSED"}
                     onChange={(event) =>
-                      toggleSelection(
-                        "purchase",
-                        "purchases",
+                      purchaseBulkEdit.selectPurchase(
                         filtered.map((visiblePurchase) => visiblePurchase.id),
                         purchase.id,
                         event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey,
@@ -1793,128 +1425,14 @@ export function LedgerPage({
                       </section>
                     )}
                     {editing === purchase.id && purchaseDraft ? (
-                      <form
-                        className="purchase-edit-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void savePurchase(purchase);
-                        }}
-                      >
-                        <input
-                          aria-label="店名"
-                          value={purchaseDraft.merchant}
-                          onChange={(event) =>
-                            setPurchaseDraft({ ...purchaseDraft, merchant: event.target.value })
-                          }
-                        />
-                        <input
-                          aria-label="購入日時"
-                          type="datetime-local"
-                          value={purchaseDraft.occurredAt}
-                          onChange={(event) =>
-                            setPurchaseDraft({ ...purchaseDraft, occurredAt: event.target.value })
-                          }
-                        />
-                        <div className="purchase-edit-payments">
-                          <b>決済内訳</b>
-                          {purchaseDraft.paymentAllocations.map((payment, index) => (
-                            <div className="purchase-edit-payment-row" key={index}>
-                              <select
-                                aria-label={`決済元 ${index + 1}`}
-                                value={payment.paymentAccountId}
-                                onChange={(event) =>
-                                  setPurchaseDraft({
-                                    ...purchaseDraft,
-                                    paymentAllocations: purchaseDraft.paymentAllocations.map(
-                                      (row, rowIndex) =>
-                                        rowIndex === index
-                                          ? { ...row, paymentAccountId: event.target.value }
-                                          : row,
-                                    ),
-                                  })
-                                }
-                              >
-                                <option value="">決済元を選択</option>
-                                {household.accounts.map((account) => (
-                                  <option key={account.id} value={account.id}>
-                                    {account.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <input
-                                aria-label={`決済額 ${index + 1}`}
-                                inputMode="numeric"
-                                value={payment.amountYen}
-                                onChange={(event) =>
-                                  setPurchaseDraft({
-                                    ...purchaseDraft,
-                                    paymentAllocations: purchaseDraft.paymentAllocations.map(
-                                      (row, rowIndex) =>
-                                        rowIndex === index
-                                          ? {
-                                              ...row,
-                                              amountYen: event.target.value.replace(/\D/g, ""),
-                                            }
-                                          : row,
-                                    ),
-                                  })
-                                }
-                              />
-                              <button
-                                className="row-remove"
-                                type="button"
-                                aria-label={`決済元 ${index + 1} を削除`}
-                                onClick={() =>
-                                  setPurchaseDraft({
-                                    ...purchaseDraft,
-                                    paymentAllocations: purchaseDraft.paymentAllocations.filter(
-                                      (_, rowIndex) => rowIndex !== index,
-                                    ),
-                                  })
-                                }
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                          ))}
-                          <button
-                            className="text-button"
-                            type="button"
-                            onClick={() =>
-                              setPurchaseDraft({
-                                ...purchaseDraft,
-                                paymentAllocations: [
-                                  ...purchaseDraft.paymentAllocations,
-                                  { paymentAccountId: "", amountYen: "" },
-                                ],
-                              })
-                            }
-                          >
-                            <Plus size={14} />
-                            決済元を追加
-                          </button>
-                          <small>
-                            差額{" "}
-                            {yen(
-                              purchase.totalYen -
-                                purchaseDraft.paymentAllocations.reduce(
-                                  (total, payment) => total + Number(payment.amountYen || 0),
-                                  0,
-                                ),
-                            )}
-                          </small>
-                        </div>
-                        <div className="edit-actions">
-                          <button
-                            type="button"
-                            className="button button-soft"
-                            onClick={() => setEditing(null)}
-                          >
-                            キャンセル
-                          </button>
-                          <button className="button button-primary">買い物を保存</button>
-                        </div>
-                      </form>
+                      <PurchaseEditForm
+                        purchase={purchase}
+                        draft={purchaseDraft}
+                        accounts={household.accounts}
+                        onChange={setPurchaseDraft}
+                        onCancel={() => setEditing(null)}
+                        onSave={(target) => void savePurchase(target)}
+                      />
                     ) : (
                       <button className="text-button" onClick={() => startEditing(purchase)}>
                         買い物を編集
@@ -1949,7 +1467,6 @@ export function LedgerPage({
                           checked={selectedItems.has(item.id)}
                           onChange={(event) =>
                             toggleSelection(
-                              "item",
                               `purchase:${purchase.id}`,
                               purchase.items.map((visibleItem) => visibleItem.id),
                               item.id,
@@ -2194,157 +1711,29 @@ export function LedgerPage({
                           </>
                         )}
                         {editing !== purchase.id &&
-                          (() => {
-                            const priorRefunds = (purchase.corrections ?? [])
-                              .filter(
-                                (correction) =>
-                                  correction.__typename === "PurchaseItemCorrection" &&
-                                  correction.itemId === item.id,
-                              )
-                              .reduce((total, correction) => total + correction.amountDeltaYen, 0);
-                            const remaining = item.amountYen + priorRefunds;
-                            const isTarget =
-                              correctionTarget?.purchaseId === purchase.id &&
-                              correctionTarget.itemId === item.id;
-                            return isTarget ? (
-                              <form
-                                className="purchase-correction-form"
-                                onSubmit={(event) => {
-                                  event.preventDefault();
-                                  void submitCorrection(purchase, item);
-                                }}
-                              >
-                                <b>{item.name}の返品</b>
-                                <span>残額 {yen(Math.max(0, remaining))}</span>
-                                <label>
-                                  返金額
-                                  <input
-                                    aria-label="返金額"
-                                    inputMode="numeric"
-                                    value={refundAmount}
-                                    max={remaining}
-                                    onChange={(event) =>
-                                      setRefundAmount(event.target.value.replace(/\D/g, ""))
-                                    }
-                                    required
-                                  />
-                                </label>
-                                <label>
-                                  理由
-                                  <input
-                                    aria-label="返品理由"
-                                    value={refundReason}
-                                    onChange={(event) => setRefundReason(event.target.value)}
-                                    required
-                                  />
-                                </label>
-                                {refundPayments.length === 0 ? (
-                                  <span>返金先なし</span>
-                                ) : (
-                                  <div className="refund-payment-list">
-                                    {refundPayments.map((payment, index) => (
-                                      <div className="refund-payment-row" key={payment.key}>
-                                        <select
-                                          aria-label={`返金先 ${index + 1}`}
-                                          value={payment.paymentAccountId}
-                                          onChange={(event) =>
-                                            setRefundPayments((current) =>
-                                              current.map((row) =>
-                                                row.key === payment.key
-                                                  ? { ...row, paymentAccountId: event.target.value }
-                                                  : row,
-                                              ),
-                                            )
-                                          }
-                                        >
-                                          <option value="">口座を選択</option>
-                                          {household.accounts.map((account) => (
-                                            <option key={account.id} value={account.id}>
-                                              {account.name}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        <input
-                                          aria-label={`返金額 ${index + 1}`}
-                                          inputMode="numeric"
-                                          value={
-                                            refundAutoTotal && refundPayments.length === 1
-                                              ? refundAmount
-                                              : payment.amountYen
-                                          }
-                                          onChange={(event) => {
-                                            setRefundAutoTotal(false);
-                                            setRefundPayments((current) =>
-                                              current.map((row) =>
-                                                row.key === payment.key
-                                                  ? {
-                                                      ...row,
-                                                      amountYen: event.target.value.replace(
-                                                        /\D/g,
-                                                        "",
-                                                      ),
-                                                    }
-                                                  : row,
-                                              ),
-                                            );
-                                          }}
-                                        />
-                                        <button
-                                          className="row-remove"
-                                          type="button"
-                                          aria-label={`返金先 ${index + 1} を削除`}
-                                          onClick={() =>
-                                            setRefundPayments((current) =>
-                                              current.filter((row) => row.key !== payment.key),
-                                            )
-                                          }
-                                        >
-                                          <X size={14} />
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                                <button
-                                  className="text-button"
-                                  type="button"
-                                  onClick={addRefundPayment}
-                                >
-                                  <Plus size={14} />
-                                  返金先を追加
-                                </button>
-                                {refundPayments.length > 0 && (
-                                  <span className="payment-difference">
-                                    返金差額 {yen(Number(refundAmount) - refundPaymentTotal)}
-                                  </span>
-                                )}
-                                <div className="edit-actions">
-                                  <button
-                                    className="button button-soft"
-                                    type="button"
-                                    onClick={() => setCorrectionTarget(null)}
-                                  >
-                                    キャンセル
-                                  </button>
-                                  <button
-                                    className="button button-primary"
-                                    disabled={correctionPending || remaining <= 0}
-                                  >
-                                    返品を記録
-                                  </button>
-                                </div>
-                              </form>
-                            ) : (
-                              <button
-                                className="text-button correction-trigger"
-                                type="button"
-                                disabled={remaining <= 0}
-                                onClick={() => startCorrection(purchase, item)}
-                              >
-                                返品を記録
-                              </button>
-                            );
-                          })()}
+                          (correctionTarget?.purchaseId === purchase.id &&
+                          correctionTarget.itemId === item.id ? (
+                            <PurchaseCorrection
+                              householdId={household.id}
+                              accounts={household.accounts}
+                              purchase={purchase}
+                              item={item}
+                              onCancel={() => setCorrectionTarget(null)}
+                              onSaved={async () => {
+                                setCorrectionTarget(null);
+                                await refresh();
+                              }}
+                            />
+                          ) : (
+                            <button
+                              className="text-button correction-trigger"
+                              type="button"
+                              disabled={getRemainingRefundAmount(purchase, item) <= 0}
+                              onClick={() => startCorrection(purchase, item)}
+                            >
+                              返品を記録
+                            </button>
+                          ))}
                       </div>
                     ))}
                   </div>

@@ -1,0 +1,263 @@
+.settlement-hero {
+  border-radius: 16px;
+  min-height: 166px;
+  background: linear-gradient(112deg, #1e6955, #2d8169);
+  padding: 26px 29px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 17px;
+}
+
+.settlement-hero::after {
+  content: "";
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  border: 1px solid #ffffff20;
+  border-radius: 50%;
+  right: 90px;
+  top: -120px;
+  box-shadow:
+    0 0 0 32px #ffffff08,
+    0 0 0 70px #ffffff06;
+}
+
+.settlement-hero > div:first-child {
+  position: relative;
+  z-index: 1;
+}
+
+.settlement-hero span,
+.settlement-hero small {
+  color: #d4e8df;
+  font-size: 10px;
+}
+
+.settlement-hero h2 {
+  font:
+    700 34px "Noto Sans JP Variable",
+    sans-serif;
+  letter-spacing: -0.04em;
+  margin: 7px 0;
+}
+
+.settlement-hero small {
+  display: block;
+}
+
+.settlement-mark {
+  position: relative;
+  z-index: 1;
+  width: 64px;
+  height: 64px;
+  border: 1px solid #ffffff45;
+  border-radius: 21px;
+  display: grid;
+  place-items: center;
+  color: #d4e9de;
+  background: #ffffff0d;
+  transform: rotate(-8deg);
+}
+
+.settlement-panel {
+  padding: 19px 20px 14px;
+}
+
+.settlement-line {
+  min-height: 70px;
+  border-bottom: 1px solid #eff2ef;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.settlement-person {
+  flex: 1;
+  min-width: 0;
+}
+
+.settlement-person b,
+.settlement-person span {
+  display: block;
+}
+
+.settlement-person b {
+  font-size: 11px;
+  color: #4f6056;
+}
+
+.settlement-person span {
+  font-size: 9px;
+  color: #5f6d65;
+  margin-top: 5px;
+}
+
+.settlement-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 12px;
+  margin: 7px 0 8px;
+  color: #5f6d65;
+  font-size: 9px;
+}
+
+.settlement-breakdown > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.settlement-breakdown dt,
+.settlement-breakdown dd {
+  margin: 0;
+}
+
+.settlement-breakdown dd {
+  color: #526258;
+  font-variant-numeric: tabular-nums;
+}
+
+.settlement-amount {
+  text-align: right;
+}
+
+.settlement-amount > b {
+  display: block;
+  font:
+    700 14px "Noto Sans JP Variable",
+    sans-serif;
+  color: #42544a;
+}
+
+.settlement-amount > b.settlement-credit {
+  color: #41735b;
+}
+
+.settlement-amount > small {
+  display: block;
+  color: #5f6d65;
+  font-size: 8px;
+  margin-top: 2px;
+}
+
+.settlement-amount .text-button {
+  padding-right: 0;
+  font-size: 9px;
+}
+
+.settlement-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 14px;
+}
+
+.settlement-actions .button {
+  height: 35px;
+  font-size: 10px;
+}
+
+.settlement-close-confirmation {
+  margin-top: 14px;
+  padding: 16px 18px;
+}
+
+.settlement-close-line {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #eff2ef;
+  color: #4f6056;
+  font-size: 11px;
+}
+
+.settlement-close-accept {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: #42544a;
+  font-size: 11px;
+}
+
+.settlement-load-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settlement-load-error .inline-error {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (width <= 760px) {
+  .settlement-hero {
+    min-height: 135px;
+    padding: 21px;
+    border-radius: 14px;
+  }
+
+  .settlement-hero h2 {
+    font-size: 29px;
+  }
+
+  .settlement-mark {
+    width: 53px;
+    height: 53px;
+  }
+
+  .settlement-panel {
+    padding: 15px 13px 12px;
+  }
+
+  .settlement-line {
+    gap: 8px;
+    min-height: 0;
+    padding: 10px 0;
+    align-items: flex-start;
+  }
+
+  .settlement-breakdown {
+    grid-template-columns: 1fr;
+    gap: 3px;
+    font-size: 8px;
+    line-height: 1.45;
+  }
+
+  .settlement-amount > b {
+    font-size: 12px;
+  }
+
+  .settlement-amount > small {
+    max-width: 74px;
+    font-size: 7px;
+  }
+
+  .settlement-actions .button {
+    height: 34px;
+    font-size: 9px;
+    padding: 0 10px;
+  }
+}
+
+@media (width <= 760px) {
+  .settlement-actions .button,
+  .settlement-amount > small {
+    font-size: max(var(--mobile-font-supporting), 1em);
+  }
+
+  .settlement-breakdown {
+    font-size: max(var(--mobile-font-dense), 1em);
+  }
+
+  .settlement-person span,
+  .settlement-amount > small,
+  .settlement-amount .text-button {
+    font-size: 10px;
+  }
+}
