@@ -1,7 +1,7 @@
 import { fetchQuery } from "react-relay";
 
-import { readProductCatalog } from "../../../entities/product";
 import {
+  readProductCatalog,
   createProductConceptMutation,
   createProductVariantMutation,
   setProductAliasMutation,

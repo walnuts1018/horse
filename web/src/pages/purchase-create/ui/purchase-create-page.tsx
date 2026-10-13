@@ -103,7 +103,7 @@ export function PurchaseCreatePage({
         ]);
         payments.setAutoTotal(true);
       }
-      const restoredCategoryId = isEnabledCategory(loaded.categoryId) ? loaded.categoryId! : "";
+      const restoredCategoryId = isEnabledCategory(loaded.categoryId) ? loaded.categoryId : "";
       setItemsValue({
         itemName: loaded.itemName,
         itemAmount: loaded.itemAmount,

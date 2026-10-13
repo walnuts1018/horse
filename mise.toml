@@ -64,6 +64,11 @@ description = "フロントエンドの静的解析"
 dir = "web"
 run = ["pnpm lint:oxlint", "pnpm lint:markup", "pnpm lint:style"]
 
+[tasks."web:format"]
+description = "フロントエンドのコードをフォーマット"
+dir = "web"
+run = "pnpm format"
+
 [tasks."web:format:check"]
 description = "フロントエンドのフォーマット検査"
 dir = "web"

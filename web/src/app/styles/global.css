@@ -1,4 +1,4 @@
-@import url("@fontsource-variable/noto-sans-jp");
+@import "@fontsource-variable/noto-sans-jp";
 
 :root {
   font-family: "Noto Sans JP Variable", "Noto Sans JP", sans-serif;
@@ -32,7 +32,7 @@ body {
   font-size: 15px;
   line-height: 1.55;
   overscroll-behavior-x: none;
-  -webkit-tap-highlight-color: rgb(40 109 88 / 12%);
+  -webkit-tap-highlight-color: rgb(40 109 88 / 0.12);
 }
 
 button,
@@ -49,7 +49,7 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible {
-  outline: 3px solid rgb(35, 115, 95, 0.22);
+  outline: 3px solid rgb(35 115 95 / 0.22);
   outline-offset: 2px;
 }
 
@@ -1219,7 +1219,7 @@ form.ledger-filters .select-filter input[type="number"] {
 
 .number-field:focus-within {
   border-color: var(--green);
-  outline: 3px solid rgb(40 109 88 / 24%);
+  outline: 3px solid rgb(40 109 88 / 0.24);
   outline-offset: 2px;
 }
 
@@ -1748,7 +1748,7 @@ textarea:focus-visible,
 
 .app-shell .topbar {
   min-height: 64px;
-  background: rgb(250 251 249 / 96%);
+  background: rgb(250 251 249 / 0.96);
   border-bottom-color: var(--line);
   padding-inline: clamp(20px, 3vw, 42px);
 }
@@ -1978,7 +1978,7 @@ textarea:focus-visible,
   border-radius: 13px;
   background: var(--paper);
   padding: 7px;
-  box-shadow: 0 12px 32px rgb(30 48 40 / 16%);
+  box-shadow: 0 12px 32px rgb(30 48 40 / 0.16);
 }
 
 .household-menu button {

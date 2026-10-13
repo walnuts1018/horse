@@ -385,7 +385,7 @@ export function LedgerPage({
               <button
                 className="button button-soft"
                 disabled={loadingMore}
-                onClick={() => void loadMore()}
+                onClick={() => loadMore()}
               >
                 {loadingMore ? "読み込み中" : "取得を再試行"}
               </button>
@@ -633,11 +633,7 @@ export function LedgerPage({
       {recordMode === "purchases" && moreError && <InlineError message={moreError} />}
       {recordMode === "purchases" && hasNextPage && !moreError && (
         <div className={styles.more}>
-          <button
-            className="button button-soft"
-            disabled={loadingMore}
-            onClick={() => void loadMore()}
-          >
+          <button className="button button-soft" disabled={loadingMore} onClick={() => loadMore()}>
             {loadingMore
               ? "読み込み中"
               : filtersActive
@@ -648,11 +644,7 @@ export function LedgerPage({
       )}
       {recordMode === "purchases" && viewMode === "purchases" && moreError && hasNextPage && (
         <div className={styles.more}>
-          <button
-            className="button button-soft"
-            disabled={loadingMore}
-            onClick={() => void loadMore()}
-          >
+          <button className="button button-soft" disabled={loadingMore} onClick={() => loadMore()}>
             {loadingMore ? "読み込み中" : "取得を再試行"}
           </button>
         </div>

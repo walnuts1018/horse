@@ -1,5 +1,4 @@
-import type { PurchaseItem } from "../../../shared/api";
-import type { PurchaseListFragment$data } from "../../../shared/api";
+import type { PurchaseItem, PurchaseListFragment$data } from "../../../shared/api";
 
 type PurchaseListItem =
   PurchaseListFragment$data["purchases"]["edges"][number]["node"]["items"][number];

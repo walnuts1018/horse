@@ -481,7 +481,7 @@ export function App() {
                 key={item.id}
                 type="button"
                 onClick={() => {
-                  void selectHousehold(item.id);
+                  selectHousehold(item.id);
                   setHouseholdMenu(false);
                 }}
               >
@@ -633,7 +633,7 @@ export function App() {
           </div>
         )}
         {pendingInvitation && (
-          <section className="invitation-prompt" role="region" aria-label="家計簿への招待">
+          <section className="invitation-prompt" aria-label="家計簿への招待">
             <span>家計簿への招待があります</span>
             <button
               className="button button-primary"

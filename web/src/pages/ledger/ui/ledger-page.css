@@ -23,7 +23,7 @@
 
 .input-with-icon:focus-within {
   border-color: #286d58;
-  outline: 3px solid rgb(40 109 88 / 24%);
+  outline: 3px solid rgb(40 109 88 / 0.24);
   outline-offset: 2px;
 }
 

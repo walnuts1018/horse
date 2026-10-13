@@ -95,13 +95,13 @@
   height: 100%;
   border: 0;
   border-radius: 0;
-  background: rgb(76 155 108 / 20%);
+  background: rgb(76 155 108 / 0.2);
   cursor: pointer;
 }
 
 .evidenceRegionOcr {
   z-index: 1;
-  background: rgb(61 128 188 / 13%);
+  background: rgb(61 128 188 / 0.13);
 }
 
 .evidenceRegion:not(.evidenceRegionOcr) {
@@ -110,7 +110,7 @@
 
 .evidenceRegionSelected {
   z-index: 3;
-  background: rgb(229 138 54 / 30%);
+  background: rgb(229 138 54 / 0.3);
 }
 
 .evidenceCropPanel,

@@ -248,7 +248,7 @@
 }
 
 .entry-input-wrap:focus-within {
-  outline: 3px solid rgb(40 109 88 / 24%);
+  outline: 3px solid rgb(40 109 88 / 0.24);
   outline-offset: 2px;
   border-radius: 5px;
 }
@@ -386,7 +386,7 @@
   border-radius: 14px;
   background: var(--paper);
   padding: 14px;
-  box-shadow: 0 12px 32px rgb(30 48 40 / 16%);
+  box-shadow: 0 12px 32px rgb(30 48 40 / 0.16);
 }
 
 .allocation-popup [data-slot="title"] {
