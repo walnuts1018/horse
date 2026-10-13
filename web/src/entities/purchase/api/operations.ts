@@ -217,6 +217,28 @@ export const createPurchaseMutation = graphql`
   }
 `;
 
+export const createAndPostPurchaseMutation = graphql`
+  mutation CreateAndPostPurchaseMutation($input: CreatePurchaseInput!) {
+    createAndPostPurchase(input: $input) {
+      __typename
+      ... on CreateAndPostPurchaseSuccess {
+        result {
+          id
+          revision
+          status
+          items {
+            ...PurchaseItemFields @relay(mask: false)
+          }
+        }
+      }
+      ... on CreateAndPostPurchaseUserError {
+        code
+        message
+      }
+    }
+  }
+`;
+
 export const postPurchaseMutation = graphql`
   mutation PostPurchaseMutation($input: PostPurchaseInput!) {
     postPurchase(input: $input) {

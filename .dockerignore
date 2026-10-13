@@ -9,11 +9,15 @@ scratch
 .env.*
 !.env.example
 .gitignore
+mise.toml
 AGENTS.md
 LICENSE
 README.md
 plan.md
 docs
+**/*_test.go
+cmd/evaluate
+internal/evaluation
 coverage
 tmp
 *.log

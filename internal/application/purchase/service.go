@@ -39,6 +39,7 @@ var (
 const maxMoney int64 = 1_000_000_000_000
 const maxQuantityNumerator int64 = 1_000_000_000_000
 const maxQuantityDenominator int64 = 1_000_000
+const manualOrigin = "MANUAL"
 
 type Service struct {
 	db *pgxpool.Pool
@@ -48,15 +49,143 @@ func NewService(db *pgxpool.Pool) *Service {
 	return &Service{db: db}
 }
 
+func postRequestFingerprint(purchaseID string, expectedRevision int64) ([sha256.Size]byte, error) {
+	request := struct {
+		PurchaseID       string
+		ExpectedRevision int64
+	}{PurchaseID: purchaseID, ExpectedRevision: expectedRevision}
+	encoded, err := stdjson.Marshal(request)
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	return sha256.Sum256(encoded), nil
+}
+
 func (s *Service) Create(ctx context.Context, command CreateCommand, fingerprint [sha256.Size]byte) (CreateResult, error) {
-	return s.create(ctx, command, fingerprint)
+	if err := validateCreateCommand(command); err != nil {
+		return CreateResult{}, err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return CreateResult{}, err
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	result, err := s.create(ctx, tx, command, fingerprint)
+	if err != nil {
+		return CreateResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return CreateResult{}, err
+	}
+	return result, nil
 }
 
 func (s *Service) Post(ctx context.Context, command PostCommand, fingerprint [sha256.Size]byte) (PostResult, error) {
-	return s.post(ctx, command, fingerprint)
+	if command.IdempotencyKey == "" || len(command.IdempotencyKey) > 200 {
+		return PostResult{}, fmt.Errorf("%w: idempotency key is required", ErrBadInput)
+	}
+	if _, err := parseUUID(command.PurchaseID, "purchase"); err != nil {
+		return PostResult{}, err
+	}
+	if _, err := parseUUID(command.ActorID, "actor"); err != nil {
+		return PostResult{}, err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return PostResult{}, err
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	result, err := s.post(ctx, tx, command, fingerprint, true)
+	if err != nil {
+		return PostResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return PostResult{}, err
+	}
+	return result, nil
 }
 
-func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [sha256.Size]byte) (CreateResult, error) {
+func (s *Service) CreateAndPost(ctx context.Context, command CreateCommand, fingerprint [sha256.Size]byte) (CreateResult, error) {
+	if err := validateCreateCommand(command); err != nil {
+		return CreateResult{}, err
+	}
+	householdID, err := parseUUID(command.HouseholdID, "household")
+	if err != nil {
+		return CreateResult{}, err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return CreateResult{}, err
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	executor := bobpgx.NewTx(tx, nil)
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return CreateResult{}, ErrNotFound
+		}
+		return CreateResult{}, err
+	}
+	created, err := s.create(ctx, tx, command, fingerprint)
+	if err != nil {
+		return CreateResult{}, err
+	}
+	purchaseID, err := parseUUID(created.PurchaseID, "purchase")
+	if err != nil {
+		return CreateResult{}, err
+	}
+	purchaseRow, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, executor)
+	if err != nil {
+		return CreateResult{}, err
+	}
+	if purchaseRow.Status == draftStatus {
+		postCommand := PostCommand{
+			ActorID: command.ActorID, PurchaseID: created.PurchaseID, ExpectedRevision: purchaseRow.Revision,
+			IdempotencyKey: command.IdempotencyKey,
+		}
+		postFingerprint, err := postRequestFingerprint(postCommand.PurchaseID, postCommand.ExpectedRevision)
+		if err != nil {
+			return CreateResult{}, err
+		}
+		if _, err := s.post(ctx, tx, postCommand, postFingerprint, false); err != nil {
+			return CreateResult{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return CreateResult{}, err
+	}
+	return created, nil
+}
+
+func validateCreateCommand(input CreateCommand) error {
+	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 || len(input.Items) == 0 || len(input.Items) > 200 {
+		return fmt.Errorf("%w: invalid purchase", ErrBadInput)
+	}
+	if input.SourceReference != nil && (input.SourceDocumentID == nil || len(*input.SourceReference) > 256 || strings.ContainsAny(*input.SourceReference, "\r\n")) {
+		return fmt.Errorf("%w: source reference requires a document and must be valid", ErrBadInput)
+	}
+	origin := input.Origin
+	if origin == "" {
+		origin = manualOrigin
+		if input.SourceDocumentID != nil {
+			origin = "AI"
+		}
+	}
+	if origin != "AI" && origin != manualOrigin && origin != "UNKNOWN" {
+		return fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
+	}
+	if len(strings.TrimSpace(input.Merchant)) > 240 {
+		return fmt.Errorf("%w: merchant name is too long", ErrBadInput)
+	}
+	if _, err := parseUUID(input.HouseholdID, "household"); err != nil {
+		return err
+	}
+	if _, err := parseUUID(input.ActorID, "actor"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fingerprint [sha256.Size]byte) (CreateResult, error) {
 	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 || len(input.Items) == 0 || len(input.Items) > 200 {
 		return CreateResult{}, fmt.Errorf("%w: invalid purchase", ErrBadInput)
 	}
@@ -65,24 +194,24 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 	}
 	origin := input.Origin
 	if origin == "" {
-		origin = "MANUAL"
+		origin = manualOrigin
 		if input.SourceDocumentID != nil {
 			origin = "AI"
 		}
 	}
-	if origin != "AI" && origin != "MANUAL" && origin != "UNKNOWN" {
+	if origin != "AI" && origin != manualOrigin && origin != "UNKNOWN" {
 		return CreateResult{}, fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
 	}
 	merchant := strings.TrimSpace(input.Merchant)
 	if len(merchant) > 240 {
 		return CreateResult{}, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
 	}
-	tx, err := s.db.Begin(ctx)
+	householdUUID, err := parseUUID(input.HouseholdID, "household")
 	if err != nil {
 		return CreateResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	householdUUID, err := parseUUID(input.HouseholdID, "household")
+	executor := bobpgx.NewTx(tx, nil)
+	householdRow, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForShare()).One(ctx, executor)
 	if err != nil {
 		return CreateResult{}, err
 	}
@@ -90,7 +219,6 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 	if err != nil {
 		return CreateResult{}, err
 	}
-	executor := bobpgx.NewTx(tx, nil)
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorUUID)),
@@ -109,9 +237,6 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 	))).One(ctx, executor)
 	if err == nil {
 		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
-			return CreateResult{}, err
-		}
-		if err := tx.Rollback(ctx); err != nil {
 			return CreateResult{}, err
 		}
 		return CreateResult{PurchaseID: existing.ResourceID.V.String()}, nil
@@ -162,18 +287,11 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 			models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(sourceReference)),
 		))).One(ctx, executor)
 		if err == nil {
-			if err := tx.Rollback(ctx); err != nil {
-				return CreateResult{}, err
-			}
 			return CreateResult{PurchaseID: confirmation.PurchaseID.String()}, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return CreateResult{}, err
 		}
-	}
-	householdRow, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForShare()).One(ctx, executor)
-	if err != nil {
-		return CreateResult{}, err
 	}
 	ruleVersion := householdRow.DefaultAllocationVersion
 	defaults, err := loadWeights(ctx, tx, householdUUID, ruleVersion)
@@ -326,9 +444,6 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 		}
 	}
 	if err := writeEvent(ctx, tx, householdUUID, purchaseUUID, "purchase.created", 1, []string{}, createdBy); err != nil {
-		return CreateResult{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return CreateResult{}, err
 	}
 	return CreateResult{PurchaseID: purchaseID}, nil
@@ -552,11 +667,8 @@ func linkSourceDocument(ctx context.Context, executor bob.Executor, householdID,
 	if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{SourceDocumentID: &documentID, SourceReference: &sourceReference, HouseholdID: &householdID, PurchaseID: &purchaseID, CreatedBy: &actorID}).Exec(ctx, executor); err != nil {
 		return err
 	}
-	if _, err := psql.Insert(im.Into(models.EvidenceLinks.NameExpr(), "household_id", "source_document_id", "purchase_id"), im.Values(psql.Arg(householdID, documentID, purchaseID)), im.OnConflict().DoNothing()).Exec(ctx, executor); err != nil {
-		return err
-	}
 	if sourceReference != "" {
-		return nil
+		return insertGenericEvidenceLink(ctx, executor, householdID, documentID, purchaseID)
 	}
 	amounts := make([]int64, len(input.Items))
 	for i, item := range input.Items {
@@ -569,33 +681,45 @@ func linkSourceDocument(ctx context.Context, executor bob.Executor, householdID,
 	if input.ManualAmountOverrideReason != nil {
 		overrideReason = *input.ManualAmountOverrideReason
 	}
-	return linkImportedReceiptItems(ctx, executor, householdID, documentID, purchaseID, itemIDs, amounts, candidateID, overrideReason)
-}
-
-func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, householdID, documentID, purchaseID gofrsuuid.UUID, itemIDs []gofrsuuid.UUID, amounts []int64, candidateID, overrideReason string) error {
-	job, err := models.ExtractionJobs.Query(sm.Where(psql.And(models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(documentID)), models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")))), sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(), sm.Limit(1)).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
+	linkedItems, err := linkImportedReceiptItems(ctx, executor, householdID, documentID, purchaseID, itemIDs, amounts, candidateID, overrideReason)
 	if err != nil {
 		return err
 	}
-	if !job.Result.Valid {
+	if linkedItems {
 		return nil
+	}
+	return insertGenericEvidenceLink(ctx, executor, householdID, documentID, purchaseID)
+}
+
+func insertGenericEvidenceLink(ctx context.Context, executor bob.Executor, householdID, documentID, purchaseID gofrsuuid.UUID) error {
+	_, err := psql.Insert(im.Into(models.EvidenceLinks.NameExpr(), "household_id", "source_document_id", "purchase_id"), im.Values(psql.Arg(householdID, documentID, purchaseID)), im.OnConflict().DoNothing()).Exec(ctx, executor)
+	return err
+}
+
+func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, householdID, documentID, purchaseID gofrsuuid.UUID, itemIDs []gofrsuuid.UUID, amounts []int64, candidateID, overrideReason string) (bool, error) {
+	job, err := models.ExtractionJobs.Query(sm.Where(psql.And(models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(documentID)), models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")))), sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(), sm.Limit(1)).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !job.Result.Valid {
+		return false, nil
 	}
 	var verified ingestion.Verification
 	if err := stdjson.Unmarshal(job.Result.V.Val, &verified); err != nil {
-		return err
+		return false, err
 	}
 	if len(verified.Receipt.Items) == 0 {
 		if candidateID != "" || strings.TrimSpace(overrideReason) != "" {
-			return fmt.Errorf("%w: receipt verification is unavailable", ErrBadInput)
+			return false, fmt.Errorf("%w: receipt verification is unavailable", ErrBadInput)
 		}
-		return nil
+		return false, nil
 	}
 	overridden, err := ingestion.ValidateReceiptConfirmation(verified, amounts, candidateID, overrideReason)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrBadInput, err)
+		return false, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
 	for index, item := range verified.Receipt.Items {
 		values := map[string]any{"jobId": job.ID.String(), "itemIndex": index, "item": item, "transform": verified.Transform, "transformPage": verified.TransformPage}
@@ -607,21 +731,21 @@ func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, househ
 		}
 		observation, err := stdjson.Marshal(values)
 		if err != nil {
-			return err
+			return false, err
 		}
 		observationJSON := types.JSON[stdjson.RawMessage]{Val: observation}
 		var region sql.Null[types.JSON[stdjson.RawMessage]]
 		if item.Region != nil {
 			encoded, err := stdjson.Marshal(item.Region)
 			if err != nil {
-				return err
+				return false, err
 			}
 			region = sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: encoded}, Valid: true}
 		}
 		itemID := sql.Null[gofrsuuid.UUID]{V: itemIDs[index], Valid: true}
 		if _, err := psql.Insert(im.Into(models.EvidenceLinks.NameExpr(), "household_id", "source_document_id", "purchase_id", "item_id", "evidence_region", "observation"), im.Values(psql.Arg(householdID, documentID, purchaseID, itemID, region, observationJSON)), im.OnConflict().DoNothing()).Exec(ctx, executor); err != nil {
-			return err
+			return false, err
 		}
 	}
-	return nil
+	return true, nil
 }

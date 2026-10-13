@@ -22,3 +22,15 @@ func (r *mutationResolver) CreatePurchase(ctx context.Context, input model.Creat
 	}
 	return &model.CreatePurchaseSuccess{Result: result}, nil
 }
+
+// CreateAndPostPurchase is the resolver for the createAndPostPurchase field.
+func (r *mutationResolver) CreateAndPostPurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreateAndPostPurchaseResult, error) {
+	result, err := r.createAndPostPurchase(ctx, input)
+	if err != nil {
+		if result, ok := mutationErrorResult(err); ok {
+			return &model.CreateAndPostPurchaseUserError{Code: result.Code, Message: result.Message}, nil
+		}
+		return nil, err
+	}
+	return &model.CreateAndPostPurchaseSuccess{Result: result}, nil
+}

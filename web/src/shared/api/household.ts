@@ -11,6 +11,12 @@ import {
 } from "relay-runtime";
 import { useCallback, useRef, useState } from "react";
 
+export type {
+  CreateAndPostPurchaseMutation$data,
+  CreateAndPostPurchaseMutation$variables,
+} from "./__generated__/CreateAndPostPurchaseMutation.graphql";
+export type { UpdatePurchaseItemMutation$variables } from "./__generated__/UpdatePurchaseItemMutation.graphql";
+
 export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL";
 export type PoolFundingShare = { memberId: string; memberName: string; weight: number };
 export type PersonalPool = {
@@ -524,8 +530,7 @@ export async function executeGraphql<T, V extends OperationType["variables"]>(
   variables: V,
 ): Promise<T> {
   const request = operation as { params?: { operationKind?: string } };
-  const operationName = (operation as { params?: { name?: string } }).params?.name;
-  const requestVariables = normalizePurchaseVariables(operationName, variables);
+  const requestVariables = variables;
   if (request.params?.operationKind === "mutation") {
     return new Promise<T>((resolve, reject) =>
       commitMutation(getRelayEnvironment(), {
@@ -558,7 +563,6 @@ export async function executeGraphql<T, V extends OperationType["variables"]>(
 }
 
 export function useGraphqlMutation<T = unknown>(operation: GraphQLTaggedNode) {
-  const name = (operation as { params?: { name?: string } }).params?.name;
   const inFlightRef = useRef(0);
   const [inFlightCount, setInFlightCount] = useState(0);
   const mutate = useCallback(
@@ -576,7 +580,7 @@ export function useGraphqlMutation<T = unknown>(operation: GraphQLTaggedNode) {
         try {
           commitMutation(getRelayEnvironment(), {
             mutation: operation,
-            variables: normalizePurchaseVariables(name, variables) as never,
+            variables,
             onCompleted: (response, errors) => {
               finish();
               if (errors?.length) {
@@ -604,75 +608,9 @@ export function useGraphqlMutation<T = unknown>(operation: GraphQLTaggedNode) {
           reject(reason);
         }
       }),
-    [name, operation],
+    [operation],
   );
   return { mutate, isInFlight: inFlightCount > 0 };
-}
-
-function normalizePurchaseVariables(
-  name: string | undefined,
-  variables: OperationType["variables"],
-) {
-  if (!variables || typeof variables !== "object") return variables;
-  const value = variables as Record<string, unknown>;
-  if (!("input" in value) || !value.input || typeof value.input !== "object") return variables;
-  const input = value.input as Record<string, unknown>;
-  if (name === "CreatePurchaseMutation" && Array.isArray(input.items)) {
-    return {
-      ...value,
-      input: {
-        ...input,
-        items: input.items.map(normalizePurchaseItemInput),
-      },
-    };
-  }
-  if (name === "UpdatePurchaseItemMutation") {
-    return { ...value, input: normalizePurchaseItemInput(input) };
-  }
-  return variables;
-}
-
-function normalizePurchaseItemInput(input: Record<string, unknown>) {
-  const {
-    quantityNumerator,
-    quantityDenominator,
-    quantityUnit,
-    printedUnitPriceYen,
-    printedUnitPriceQuantityNumerator,
-    printedUnitPriceQuantityDenominator,
-    printedUnitPriceUnit,
-    ...rest
-  } = input;
-  const hasQuantityInput =
-    "quantityNumerator" in input || "quantityDenominator" in input || "quantityUnit" in input;
-  const quantity =
-    quantityNumerator && quantityDenominator && quantityUnit
-      ? { numerator: quantityNumerator, denominator: quantityDenominator, unit: quantityUnit }
-      : null;
-  const hasPrintedUnitPriceInput =
-    "printedUnitPriceYen" in input ||
-    "printedUnitPriceQuantityNumerator" in input ||
-    "printedUnitPriceQuantityDenominator" in input ||
-    "printedUnitPriceUnit" in input;
-  const printedUnitPrice =
-    printedUnitPriceYen != null &&
-    printedUnitPriceQuantityNumerator &&
-    printedUnitPriceQuantityDenominator &&
-    printedUnitPriceUnit
-      ? {
-          amountYen: printedUnitPriceYen,
-          basis: {
-            numerator: printedUnitPriceQuantityNumerator,
-            denominator: printedUnitPriceQuantityDenominator,
-            unit: printedUnitPriceUnit,
-          },
-        }
-      : null;
-  return {
-    ...rest,
-    ...(hasQuantityInput ? { quantity } : {}),
-    ...(hasPrintedUnitPriceInput ? { printedUnitPrice } : {}),
-  };
 }
 
 function normalizeGraphQLValue(value: unknown): unknown {

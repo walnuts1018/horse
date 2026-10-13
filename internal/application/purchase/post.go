@@ -12,6 +12,7 @@ import (
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
@@ -27,7 +28,7 @@ const (
 	postedStatus = "POSTED"
 )
 
-func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha256.Size]byte) (PostResult, error) {
+func (s *Service) post(ctx context.Context, tx pgx.Tx, input PostCommand, fingerprint [sha256.Size]byte, lockHousehold bool) (PostResult, error) {
 	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 {
 		return PostResult{}, fmt.Errorf("%w: idempotency key is required", ErrBadInput)
 	}
@@ -39,11 +40,6 @@ func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha2
 	if err != nil {
 		return PostResult{}, err
 	}
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return PostResult{}, err
-	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	executor := bobpgx.NewTx(tx, nil)
 	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -66,20 +62,19 @@ func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha2
 		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
 			return PostResult{}, err
 		}
-		if err := tx.Rollback(ctx); err != nil {
-			return PostResult{}, err
-		}
 		return PostResult{PurchaseID: existing.ResourceID.V.String()}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return PostResult{}, err
 	}
 	period := accountingPeriod(purchase.OccurredAt)
-	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return PostResult{}, ErrNotFound
+	if lockHousehold {
+		if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return PostResult{}, ErrNotFound
+			}
+			return PostResult{}, err
 		}
-		return PostResult{}, err
 	}
 	if err := ensureAccountingPeriod(ctx, executor, householdID, period); err != nil {
 		return PostResult{}, err
@@ -165,9 +160,6 @@ func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha2
 		return PostResult{}, err
 	}
 	if err := writeEvent(ctx, tx, householdID, purchaseID, "purchase.posted", revision, []string{"status"}, actorID); err != nil {
-		return PostResult{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return PostResult{}, err
 	}
 	return PostResult{PurchaseID: purchaseID.String()}, nil

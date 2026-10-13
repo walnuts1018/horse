@@ -117,7 +117,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	}
 	sourceDocumentID := generatedUUID(uuid.NewV7().String())
 	memberAID := generatedUUID(memberA)
-	hash, objectKey, mimeType, sourceKind := uuid.NewV7().String(), "household/"+household.ID+"/test", "image/jpeg", "receipt"
+	hash, objectKey, mimeType, sourceKind := uuid.NewV7().String(), "household/"+household.ID+"/test", "image/jpeg", testReceiptSourceKind
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &sourceDocumentID, HouseholdID: &householdID, Sha256: &hash, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberAID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}

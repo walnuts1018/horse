@@ -21,6 +21,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -167,18 +168,18 @@ func (s *Service) RecordMovement(ctx context.Context, command MovementCommand) (
 	}).Exec(ctx, executor); err != nil {
 		return MovementResult{}, err
 	}
-	amount, zero := command.AmountYen, int64(0)
-	noPool, noMember := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
-	destination := sql.Null[gofrsuuid.UUID]{V: toID, Valid: true}
-	source := sql.Null[gofrsuuid.UUID]{V: fromID, Valid: true}
 	debitMemo, creditMemo := "Account movement destination", "Account movement source"
-	lineOne, lineTwo := int32(1), int32(2)
-	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{JournalID: &journalID, LineNo: &lineOne, AccountID: &destination, PoolID: &noPool, MemberID: &noMember, DebitYen: &amount, CreditYen: &zero, Memo: &debitMemo}).Exec(ctx, executor); err != nil {
+	entries, err := accounting.BuildEntries([]accounting.Posting{
+		{Side: accounting.Debit, AccountID: &toID, AmountYen: command.AmountYen, Memo: debitMemo},
+		{Side: accounting.Credit, AccountID: &fromID, AmountYen: command.AmountYen, Memo: creditMemo},
+	})
+	if err != nil {
 		return MovementResult{}, err
 	}
-	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{JournalID: &journalID, LineNo: &lineTwo, AccountID: &source, PoolID: &noPool, MemberID: &noMember, DebitYen: &zero, CreditYen: &amount, Memo: &creditMemo}).Exec(ctx, executor); err != nil {
+	if err := accounting.InsertEntries(ctx, executor, journalID, entries); err != nil {
 		return MovementResult{}, err
 	}
+	amount := command.AmountYen
 	row, err := models.AccountMovements.Insert(&models.AccountMovementSetter{
 		ID: &movementID, HouseholdID: &householdID, JournalID: &journalID, Kind: &kind, OccurredAt: &occurredAt,
 		FromAccountID: &fromID, ToAccountID: &toID, AmountYen: &amount, Description: &command.Description,
@@ -262,17 +263,18 @@ func (s *Service) RecordIncome(ctx context.Context, command IncomeCommand) (Inco
 	}).Exec(ctx, executor); err != nil {
 		return IncomeResult{}, err
 	}
-	amount, zero := command.AmountYen, int64(0)
-	accountReference := sql.Null[gofrsuuid.UUID]{V: accountID, Valid: true}
-	noAccount, noPool, noMember := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
-	lineOne, lineTwo := int32(1), int32(2)
 	debitMemo, creditMemo := "External income", "External income offset"
-	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{JournalID: &journalID, LineNo: &lineOne, AccountID: &accountReference, PoolID: &noPool, MemberID: &noMember, DebitYen: &amount, CreditYen: &zero, Memo: &debitMemo}).Exec(ctx, executor); err != nil {
+	entries, err := accounting.BuildEntries([]accounting.Posting{
+		{Side: accounting.Debit, AccountID: &accountID, AmountYen: command.AmountYen, Memo: debitMemo},
+		{Side: accounting.Credit, AmountYen: command.AmountYen, Memo: creditMemo},
+	})
+	if err != nil {
 		return IncomeResult{}, err
 	}
-	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{JournalID: &journalID, LineNo: &lineTwo, AccountID: &noAccount, PoolID: &noPool, MemberID: &noMember, DebitYen: &zero, CreditYen: &amount, Memo: &creditMemo}).Exec(ctx, executor); err != nil {
+	if err := accounting.InsertEntries(ctx, executor, journalID, entries); err != nil {
 		return IncomeResult{}, err
 	}
+	amount := command.AmountYen
 	row, err := models.AccountIncomes.Insert(&models.AccountIncomeSetter{
 		ID: &incomeID, HouseholdID: &householdID, JournalID: &journalID, AccountID: &accountID,
 		OccurredAt: &occurredAt, AmountYen: &amount, Description: &command.Description,

@@ -9,7 +9,6 @@ import {
   type Connection,
   type SharedPoolSettlementPolicy,
   type AllocationRule,
-  type HouseholdInvitation,
   type ProductConcept,
   type Household,
   type AccountMovement,
@@ -54,11 +53,7 @@ import {
   readProductCatalog,
   setProductAliasMutation,
 } from "../../../entities/product";
-import {
-  createHouseholdInvitationMutation,
-  householdInvitationsQuery,
-  revokeHouseholdInvitationMutation,
-} from "../api/household/operations";
+import { ManageHouseholdInvitations } from "../../../features/manage-household-invitations";
 import {
   accountMovementsQuery,
   accountBalancesQuery,
@@ -194,15 +189,9 @@ export function SettingsPage({
     >
   >({});
   const [pending, setPending] = useState(false);
+  const [invitationPending, setInvitationPending] = useState(false);
   const [dirtyForms, setDirtyForms] = useState<Set<string>>(() => new Set());
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
-  const [invitations, setInvitations] = useState<HouseholdInvitation[]>([]);
-  const [invitationsCursor, setInvitationsCursor] = useState<string | null>(null);
-  const [invitationsHasNextPage, setInvitationsHasNextPage] = useState(false);
-  const [invitationsPageLoading, setInvitationsPageLoading] = useState(false);
-  const [invitationLink, setInvitationLink] = useState("");
-  const [issuedInvitationId, setIssuedInvitationId] = useState("");
-  const [expiresInDays, setExpiresInDays] = useState("7");
   const [conceptName, setConceptName] = useState("");
   const [conceptCategoryId, setConceptCategoryId] = useState("");
   const [variantConceptId, setVariantConceptId] = useState("");
@@ -277,8 +266,8 @@ export function SettingsPage({
     null,
   );
   useEffect(() => {
-    onUnsavedChanges(pending || dirtyForms.size > 0);
-  }, [dirtyForms, onUnsavedChanges, pending]);
+    onUnsavedChanges(pending || invitationPending || dirtyForms.size > 0);
+  }, [dirtyForms, invitationPending, onUnsavedChanges, pending]);
   useEffect(() => () => onUnsavedChanges(false), [onUnsavedChanges]);
   useEffect(() => {
     const selectSettingsTabFromHash = () => {
@@ -360,36 +349,6 @@ export function SettingsPage({
   };
   const refreshProducts = async () => {
     setCatalog(await readProductCatalog(household.id));
-  };
-  const refreshInvitations = async () => {
-    if (!isOwner) return;
-    const result = await readGraphql<{ householdInvitations: Connection<HouseholdInvitation> }>(
-      householdInvitationsQuery,
-      { householdId: household.id, first: 50 },
-    );
-    setInvitations(result.householdInvitations.edges.map((edge) => edge.node));
-    setInvitationsCursor(result.householdInvitations.pageInfo.endCursor ?? null);
-    setInvitationsHasNextPage(result.householdInvitations.pageInfo.hasNextPage);
-  };
-  const loadMoreInvitations = async () => {
-    if (!invitationsCursor || invitationsPageLoading) return;
-    setInvitationsPageLoading(true);
-    try {
-      const result = await readGraphql<{ householdInvitations: Connection<HouseholdInvitation> }>(
-        householdInvitationsQuery,
-        { householdId: household.id, after: invitationsCursor, first: 50 },
-      );
-      setInvitations((current) => [
-        ...current,
-        ...result.householdInvitations.edges.map((edge) => edge.node),
-      ]);
-      setInvitationsCursor(result.householdInvitations.pageInfo.endCursor ?? null);
-      setInvitationsHasNextPage(result.householdInvitations.pageInfo.hasNextPage);
-    } catch (reason) {
-      onNotice((reason as Error).message, "error");
-    } finally {
-      setInvitationsPageLoading(false);
-    }
   };
   const refreshPlanning = async () => {
     const [tagResult, budgetResult, recurringResult, movementResult, incomeResult, balanceResult] =
@@ -611,14 +570,9 @@ export function SettingsPage({
     }
   };
   useEffect(() => {
-    setInvitationLink("");
-    setIssuedInvitationId("");
-    void Promise.all([
-      refreshRules(),
-      refreshProducts(),
-      refreshInvitations(),
-      refreshPlanning(),
-    ]).catch((reason) => onNotice((reason as Error).message, "error"));
+    void Promise.all([refreshRules(), refreshProducts(), refreshPlanning()]).catch((reason) =>
+      onNotice((reason as Error).message, "error"),
+    );
   }, [household.id, isOwner]);
   useEffect(() => {
     let active = true;
@@ -1132,48 +1086,6 @@ export function SettingsPage({
       await refreshRules();
       onNotice("負担ルールを保存しました", "success");
       setRuleMerchant("");
-    } catch (reason) {
-      onNotice((reason as Error).message, "error");
-    } finally {
-      setPending(false);
-    }
-  };
-  const issueInvitation = async (event: FormEvent) => {
-    event.preventDefault();
-    setPending(true);
-    try {
-      const expiresAt = new Date(Date.now() + Number(expiresInDays) * 86_400_000).toISOString();
-      const result = await readGraphql<{
-        createHouseholdInvitation: { token: string; invitation: HouseholdInvitation };
-      }>(createHouseholdInvitationMutation, { input: { householdId: household.id, expiresAt } });
-      markFormClean("create-invitation");
-      setInvitationLink(
-        `${window.location.origin}/#invite=${encodeURIComponent(result.createHouseholdInvitation.token)}`,
-      );
-      setIssuedInvitationId(result.createHouseholdInvitation.invitation.id);
-      await refreshInvitations();
-      onNotice("招待を発行しました", "success");
-    } catch (reason) {
-      onNotice((reason as Error).message, "error");
-    } finally {
-      setPending(false);
-    }
-  };
-  const revokeInvitation = async (invitationId: string) => {
-    setPending(true);
-    try {
-      await readGraphql(revokeHouseholdInvitationMutation, {
-        input: {
-          householdId: household.id,
-          invitationId,
-        },
-      });
-      if (invitationId === issuedInvitationId) {
-        setInvitationLink("");
-        setIssuedInvitationId("");
-      }
-      await refreshInvitations();
-      onNotice("招待を失効しました", "success");
     } catch (reason) {
       onNotice((reason as Error).message, "error");
     } finally {
@@ -1980,99 +1892,14 @@ export function SettingsPage({
           </form>
         </section>
         {isOwner && (
-          <section className="panel settings-section" hidden={activeSettingsTab !== "members"}>
-            <div className="panel-heading">
-              <div>
-                <span className="eyebrow">共同編集</span>
-                <h2>招待</h2>
-              </div>
-              <span className="count-badge">
-                {
-                  invitations.filter(
-                    (invitation) => invitation.__typename === "PendingHouseholdInvitation",
-                  ).length
-                }
-              </span>
-            </div>
-            <form
-              className="inline-create"
-              data-unsaved-id="create-invitation"
-              onSubmit={issueInvitation}
-            >
-              <label>
-                有効期間
-                <select
-                  value={expiresInDays}
-                  onChange={(event) => setExpiresInDays(event.target.value)}
-                >
-                  <option value="1">1日</option>
-                  <option value="7">7日</option>
-                  <option value="30">30日</option>
-                </select>
-              </label>
-              <button className="button button-primary" disabled={pending}>
-                <Plus size={15} />
-                招待リンクを発行
-              </button>
-            </form>
-            {invitationLink && (
-              <div className="invitation-issued">
-                <input aria-label="招待リンク" readOnly value={invitationLink} />
-                <button
-                  type="button"
-                  className="button button-soft"
-                  onClick={() =>
-                    void navigator.clipboard
-                      .writeText(invitationLink)
-                      .then(() => onNotice("招待リンクをコピーしました", "success"))
-                      .catch(() => onNotice("招待リンクをコピーできませんでした", "error"))
-                  }
-                >
-                  リンクをコピー
-                </button>
-              </div>
-            )}
-            <div className="settings-rows">
-              {invitations.map((invitation) => (
-                <div className="setting-row" key={invitation.id}>
-                  <div className="pool-avatar">招</div>
-                  <div>
-                    <b>{new Date(invitation.expiresAt).toLocaleDateString("ja-JP")}まで</b>
-                    <small>
-                      {invitation.__typename === "AcceptedHouseholdInvitation"
-                        ? "参加済み"
-                        : invitation.__typename === "RevokedHouseholdInvitation"
-                          ? "失効"
-                          : invitation.__typename === "ExpiredHouseholdInvitation"
-                            ? "期限切れ"
-                            : invitation.__typename === "PendingHouseholdInvitation"
-                              ? "未使用"
-                              : "状態不明"}
-                    </small>
-                  </div>
-                  {invitation.__typename === "PendingHouseholdInvitation" && (
-                    <button
-                      className="text-button"
-                      disabled={pending}
-                      onClick={() => void revokeInvitation(invitation.id)}
-                    >
-                      失効
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-            {invitationsHasNextPage && (
-              <button
-                className="text-button"
-                type="button"
-                disabled={invitationsPageLoading}
-                onClick={() => void loadMoreInvitations()}
-              >
-                {invitationsPageLoading ? "読み込み中" : "さらに表示"}
-              </button>
-            )}
-          </section>
+          <ManageHouseholdInvitations
+            householdId={household.id}
+            hidden={activeSettingsTab !== "members"}
+            disabled={pending || invitationPending}
+            onNotice={onNotice}
+            onPendingChange={setInvitationPending}
+            onInvitationFormSaved={() => markFormClean("create-invitation")}
+          />
         )}
         <section className="panel settings-section" hidden={activeSettingsTab !== "catalog"}>
           <div className="panel-heading">

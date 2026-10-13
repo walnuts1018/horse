@@ -56,6 +56,10 @@ type CreateAccountResult interface {
 	IsCreateAccountResult()
 }
 
+type CreateAndPostPurchaseResult interface {
+	IsCreateAndPostPurchaseResult()
+}
+
 type CreateBudgetResult interface {
 	IsCreateBudgetResult()
 }
@@ -672,6 +676,23 @@ func (CreateAccountUserError) IsCreateAccountResult() {}
 func (CreateAccountUserError) IsMutationError()                {}
 func (this CreateAccountUserError) GetCode() MutationErrorCode { return this.Code }
 func (this CreateAccountUserError) GetMessage() string         { return this.Message }
+
+type CreateAndPostPurchaseSuccess struct {
+	Result *Purchase `json:"result"`
+}
+
+func (CreateAndPostPurchaseSuccess) IsCreateAndPostPurchaseResult() {}
+
+type CreateAndPostPurchaseUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreateAndPostPurchaseUserError) IsCreateAndPostPurchaseResult() {}
+
+func (CreateAndPostPurchaseUserError) IsMutationError()                {}
+func (this CreateAndPostPurchaseUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreateAndPostPurchaseUserError) GetMessage() string         { return this.Message }
 
 type CreateBudgetInput struct {
 	HouseholdID string  `json:"householdId"`

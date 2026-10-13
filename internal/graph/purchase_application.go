@@ -27,6 +27,26 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	return loadPurchase(ctx, r.DB, result.PurchaseID)
 }
 
+func (r *mutationResolver) createAndPostPurchase(ctx context.Context, input model.CreatePurchaseInput) (*model.Purchase, error) {
+	user, err := requireMember(ctx, r.DB, input.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	fingerprint, err := mutationRequestFingerprint(input)
+	if err != nil {
+		return nil, err
+	}
+	command, err := createPurchaseCommand(input, user.MemberID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := purchase.NewService(r.DB).CreateAndPost(ctx, command, fingerprint)
+	if err != nil {
+		return nil, err
+	}
+	return loadPurchase(ctx, r.DB, result.PurchaseID)
+}
+
 func createPurchaseCommand(input model.CreatePurchaseInput, actorID string) (purchase.CreateCommand, error) {
 	occurredAt, err := parseTime(input.OccurredAt)
 	if err != nil {

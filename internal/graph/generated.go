@@ -372,6 +372,15 @@ type ComplexityRoot struct {
 		Message func(childComplexity int) int
 	}
 
+	CreateAndPostPurchaseSuccess struct {
+		Result func(childComplexity int) int
+	}
+
+	CreateAndPostPurchaseUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	CreateBudgetSuccess struct {
 		Result func(childComplexity int) int
 	}
@@ -642,6 +651,7 @@ type ComplexityRoot struct {
 		ClosePeriod               func(childComplexity int, input model.ClosePeriodInput) int
 		CorrectPurchase           func(childComplexity int, input model.CorrectPurchaseInput) int
 		CreateAccount             func(childComplexity int, input model.CreateAccountInput) int
+		CreateAndPostPurchase     func(childComplexity int, input model.CreatePurchaseInput) int
 		CreateBudget              func(childComplexity int, input model.CreateBudgetInput) int
 		CreateCategory            func(childComplexity int, input model.CreateCategoryInput) int
 		CreateHousehold           func(childComplexity int, input model.CreateHouseholdInput) int
@@ -1338,6 +1348,7 @@ type MutationResolver interface {
 	CreateProductConcept(ctx context.Context, input model.CreateProductConceptInput) (model.CreateProductConceptResult, error)
 	CreateProductVariant(ctx context.Context, input model.CreateProductVariantInput) (model.CreateProductVariantResult, error)
 	CreatePurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreatePurchaseResult, error)
+	CreateAndPostPurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreateAndPostPurchaseResult, error)
 	CreateRecurringExpense(ctx context.Context, input model.CreateRecurringExpenseInput) (model.CreateRecurringExpenseResult, error)
 	CreateTag(ctx context.Context, input model.CreateTagInput) (model.CreateTagResult, error)
 	PostPurchase(ctx context.Context, input model.PostPurchaseInput) (model.PostPurchaseResult, error)
@@ -2466,6 +2477,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.CreateAccountUserError.Message(childComplexity), true
 
+	case "CreateAndPostPurchaseSuccess.result":
+		if e.ComplexityRoot.CreateAndPostPurchaseSuccess.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateAndPostPurchaseSuccess.Result(childComplexity), true
+
+	case "CreateAndPostPurchaseUserError.code":
+		if e.ComplexityRoot.CreateAndPostPurchaseUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateAndPostPurchaseUserError.Code(childComplexity), true
+	case "CreateAndPostPurchaseUserError.message":
+		if e.ComplexityRoot.CreateAndPostPurchaseUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CreateAndPostPurchaseUserError.Message(childComplexity), true
+
 	case "CreateBudgetSuccess.result":
 		if e.ComplexityRoot.CreateBudgetSuccess.Result == nil {
 			break
@@ -3377,6 +3408,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.CreateAccount(childComplexity, args["input"].(model.CreateAccountInput)), true
+	case "Mutation.createAndPostPurchase":
+		if e.ComplexityRoot.Mutation.CreateAndPostPurchase == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createAndPostPurchase_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.CreateAndPostPurchase(childComplexity, args["input"].(model.CreatePurchaseInput)), true
 	case "Mutation.createBudget":
 		if e.ComplexityRoot.Mutation.CreateBudget == nil {
 			break
@@ -6488,6 +6530,13 @@ type CreateProductVariantUserError implements MutationError {
 `, BuiltIn: false},
 	{Name: "../../graphql/create_purchase_mutation.graphql", Input: `extend type Mutation {
   createPurchase(input: CreatePurchaseInput!): CreatePurchaseResult!
+  createAndPostPurchase(input: CreatePurchaseInput!): CreateAndPostPurchaseResult!
+}
+
+union CreateAndPostPurchaseResult = CreateAndPostPurchaseSuccess | CreateAndPostPurchaseUserError
+
+type CreateAndPostPurchaseSuccess {
+  result: Purchase!
 }
 
 union CreatePurchaseResult = CreatePurchaseSuccess | CreatePurchaseUserError
@@ -6542,6 +6591,11 @@ input CreatePurchaseAllocationInput {
 }
 
 type CreatePurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
+type CreateAndPostPurchaseUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
@@ -9157,6 +9211,20 @@ func (ec *executionContext) field_Mutation_createAccount_args(ctx context.Contex
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.CreateAccountInput, error) {
 			return ec.unmarshalNCreateAccountInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateAccountInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_createAndPostPurchase_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.CreatePurchaseInput, error) {
+			return ec.unmarshalNCreatePurchaseInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatePurchaseInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -15718,6 +15786,84 @@ func (ec *executionContext) fieldContext_CreateAccountUserError_message(_ contex
 	return graphql.NewScalarFieldContext("CreateAccountUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _CreateAndPostPurchaseSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CreateAndPostPurchaseSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateAndPostPurchaseSuccess_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Purchase) graphql.Marshaler {
+			return ec.marshalNPurchase2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchase(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateAndPostPurchaseSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CreateAndPostPurchaseSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Purchase(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CreateAndPostPurchaseUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.CreateAndPostPurchaseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateAndPostPurchaseUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateAndPostPurchaseUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateAndPostPurchaseUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _CreateAndPostPurchaseUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.CreateAndPostPurchaseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CreateAndPostPurchaseUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CreateAndPostPurchaseUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CreateAndPostPurchaseUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _CreateBudgetSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.CreateBudgetSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -19737,6 +19883,50 @@ func (ec *executionContext) fieldContext_Mutation_createPurchase(ctx context.Con
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_createPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createAndPostPurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createAndPostPurchase(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateAndPostPurchase(ctx, fc.Args["input"].(model.CreatePurchaseInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CreateAndPostPurchaseResult) graphql.Marshaler {
+			return ec.marshalNCreateAndPostPurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateAndPostPurchaseResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createAndPostPurchase(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CreateAndPostPurchaseResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createAndPostPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -35415,6 +35605,33 @@ func (ec *executionContext) _CreateAccountResult(ctx context.Context, sel ast.Se
 	}
 }
 
+func (ec *executionContext) _CreateAndPostPurchaseResult(ctx context.Context, sel ast.SelectionSet, obj model.CreateAndPostPurchaseResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.CreateAndPostPurchaseUserError:
+		return ec._CreateAndPostPurchaseUserError(ctx, sel, &obj)
+	case *model.CreateAndPostPurchaseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreateAndPostPurchaseUserError(ctx, sel, obj)
+	case model.CreateAndPostPurchaseSuccess:
+		return ec._CreateAndPostPurchaseSuccess(ctx, sel, &obj)
+	case *model.CreateAndPostPurchaseSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreateAndPostPurchaseSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of CreateAndPostPurchaseResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _CreateBudgetResult(ctx context.Context, sel ast.SelectionSet, obj model.CreateBudgetResult) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -35993,6 +36210,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._CreateBudgetUserError(ctx, sel, obj)
+	case model.CreateAndPostPurchaseUserError:
+		return ec._CreateAndPostPurchaseUserError(ctx, sel, &obj)
+	case *model.CreateAndPostPurchaseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._CreateAndPostPurchaseUserError(ctx, sel, obj)
 	case model.CreateAccountUserError:
 		return ec._CreateAccountUserError(ctx, sel, &obj)
 	case *model.CreateAccountUserError:
@@ -40237,6 +40461,87 @@ func (ec *executionContext) _CreateAccountUserError(ctx context.Context, sel ast
 	return out
 }
 
+var createAndPostPurchaseSuccessImplementors = []string{"CreateAndPostPurchaseSuccess", "CreateAndPostPurchaseResult"}
+
+func (ec *executionContext) _CreateAndPostPurchaseSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.CreateAndPostPurchaseSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createAndPostPurchaseSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateAndPostPurchaseSuccess")
+		case "result":
+			out.Values[i] = ec._CreateAndPostPurchaseSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var createAndPostPurchaseUserErrorImplementors = []string{"CreateAndPostPurchaseUserError", "CreateAndPostPurchaseResult", "MutationError"}
+
+func (ec *executionContext) _CreateAndPostPurchaseUserError(ctx context.Context, sel ast.SelectionSet, obj *model.CreateAndPostPurchaseUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createAndPostPurchaseUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateAndPostPurchaseUserError")
+		case "code":
+			out.Values[i] = ec._CreateAndPostPurchaseUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._CreateAndPostPurchaseUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var createBudgetSuccessImplementors = []string{"CreateBudgetSuccess", "CreateBudgetResult"}
 
 func (ec *executionContext) _CreateBudgetSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.CreateBudgetSuccess) graphql.Marshaler {
@@ -43058,6 +43363,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "createPurchase":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createPurchase(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createAndPostPurchase":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createAndPostPurchase(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -50231,6 +50543,16 @@ func (ec *executionContext) marshalNCreateAccountResult2githubᚗcomᚋwalnuts10
 		return graphql.Null
 	}
 	return ec._CreateAccountResult(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNCreateAndPostPurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateAndPostPurchaseResult(ctx context.Context, sel ast.SelectionSet, v model.CreateAndPostPurchaseResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._CreateAndPostPurchaseResult(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNCreateBudgetInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateBudgetInput(ctx context.Context, v any) (model.CreateBudgetInput, error) {

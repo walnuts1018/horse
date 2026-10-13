@@ -21,8 +21,9 @@ import {
   correctPurchaseMutation,
   postPurchaseMutation,
   purchasesQuery,
-  updatePurchaseItemMutation,
+  mapUpdatePurchaseItemInput,
   updatePurchaseMutation,
+  useUpdatePurchaseItem,
   useHouseholdPurchases,
 } from "../../../entities/purchase";
 import { readProductCatalog } from "../../../entities/product";
@@ -76,7 +77,7 @@ export function LedgerPage({
 }) {
   const { mutate: mutatePostPurchase } = useGraphqlMutation(postPurchaseMutation);
   const { mutate: mutateCorrectPurchase } = useGraphqlMutation(correctPurchaseMutation);
-  const { mutate: mutateUpdatePurchaseItem } = useGraphqlMutation(updatePurchaseItemMutation);
+  const mutateUpdatePurchaseItem = useUpdatePurchaseItem();
   const { mutate: mutateUpdatePurchase } = useGraphqlMutation(updatePurchaseMutation);
   const { mutate: mutateBulkUpdatePurchases } = useGraphqlMutation<{
     bulkUpdatePurchases: { purchases: Array<{ id: string; revision: number }> };
@@ -559,46 +560,37 @@ export function LedgerPage({
     const changedPatch = Object.fromEntries(
       baseChangedFields.map((field) => [field, patch[field]]),
     );
-    const inputForRevision = (baseRevision: number) => ({
-      itemId: item.id,
-      baseRevision,
-      ...changedPatch,
-      ...(quantityChanged
-        ? {
-            quantity: quantity
-              ? {
-                  numerator: quantity.numerator,
-                  denominator: quantity.denominator,
-                  unit: quantity.unit,
-                }
-              : null,
-          }
-        : {}),
-      ...(printedPriceChanged
-        ? {
-            printedUnitPrice: hasPrintedPrice
-              ? {
-                  amountYen: printedPrice as number,
-                  basis: {
-                    numerator: printedBasis?.numerator as string,
-                    denominator: printedBasis?.denominator as string,
-                    unit: printedBasis?.unit as string,
-                  },
-                }
-              : null,
-          }
-        : {}),
-      ...(baseChangedFields.includes("productVariantId") && patch.productVariantId
-        ? {
-            productLearning:
-              draft.productLearning === "VARIANT_NAME"
-                ? { variantName: draft.variantName.trim() }
-                : draft.productLearning === "MERCHANT_ALIAS"
-                  ? { merchantAlias: true }
-                  : { itemOnly: true },
-          }
-        : {}),
-    });
+    const inputForRevision = (baseRevision: number) =>
+      mapUpdatePurchaseItemInput({
+        itemId: item.id,
+        baseRevision,
+        ...changedPatch,
+        ...(quantityChanged
+          ? {
+              quantityNumerator: quantity?.numerator ?? null,
+              quantityDenominator: quantity?.denominator ?? null,
+              quantityUnit: quantity?.unit ?? null,
+            }
+          : {}),
+        ...(printedPriceChanged
+          ? {
+              printedUnitPriceYen: hasPrintedPrice ? printedPrice : null,
+              printedUnitPriceQuantityNumerator: printedBasis?.numerator ?? null,
+              printedUnitPriceQuantityDenominator: printedBasis?.denominator ?? null,
+              printedUnitPriceUnit: printedBasis?.unit ?? null,
+            }
+          : {}),
+        ...(baseChangedFields.includes("productVariantId") && patch.productVariantId
+          ? {
+              productLearning:
+                draft.productLearning === "VARIANT_NAME"
+                  ? { variantName: draft.variantName.trim() }
+                  : draft.productLearning === "MERCHANT_ALIAS"
+                    ? { merchantAlias: true }
+                    : { itemOnly: true },
+            }
+          : {}),
+      });
     try {
       await mutateUpdatePurchaseItem({
         input: inputForRevision(item.revision),

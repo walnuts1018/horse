@@ -5,7 +5,7 @@ import {
   useLazyLoadQuery,
   usePaginationFragment,
 } from "react-relay";
-import type { Purchase, PurchaseItem, PurchaseOrigin } from "../../../shared/api";
+import type { Purchase, PurchaseOrigin } from "../../../shared/api";
 import type {
   PurchaseChangesSubscription,
   PurchaseCorrectionsPaginationQuery,
@@ -19,6 +19,7 @@ import {
   purchaseListFragment,
   purchasesQuery,
 } from "./operations";
+import { mapPurchaseItem } from "./map-purchase-item";
 
 type Options = {
   from?: string;
@@ -95,18 +96,7 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
       origin: node.origin as PurchaseOrigin,
       status: node.status,
       corrections,
-      items: node.items.map((item) => ({
-        ...item,
-        quantityNumerator: item.quantity?.numerator ?? null,
-        quantityDenominator: item.quantity?.denominator ?? null,
-        quantityUnit: item.quantity?.unit ?? null,
-        printedUnitPriceYen: item.printedUnitPrice?.amountYen ?? null,
-        printedUnitPriceQuantityNumerator: item.printedUnitPrice?.basis.numerator ?? null,
-        printedUnitPriceQuantityDenominator: item.printedUnitPrice?.basis.denominator ?? null,
-        printedUnitPriceUnit: item.printedUnitPrice?.basis.unit ?? null,
-        effectiveUnitPriceNumeratorYen: item.effectiveUnitPrice?.numeratorYen ?? null,
-        effectiveUnitPriceDenominator: item.effectiveUnitPrice?.denominator ?? null,
-      })) as unknown as PurchaseItem[],
+      items: node.items.map(mapPurchaseItem),
     } as Purchase;
   });
   useEffect(() => {

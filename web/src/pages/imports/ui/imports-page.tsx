@@ -15,6 +15,13 @@ import { useCreateAndPostPurchase } from "../../../entities/purchase";
 import { InlineError } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { productSuggestionsQuery } from "../../../entities/product";
+import {
+  identityTransform,
+  invertTransform,
+  regionPolygon,
+  type PreviewTransform,
+  type Region,
+} from "../model/evidence-geometry";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -62,8 +69,6 @@ type ExtractedItem = {
   categoryHint?: string;
   region?: Region;
 };
-type Region = { page: number; top: number; left: number; bottom: number; right: number };
-type PreviewTransform = [number, number, number, number, number, number, number, number, number];
 type MatchCandidate = {
   documentId: string;
   sourceReference: string;
@@ -150,7 +155,6 @@ const documentListURL = (householdId: string, filters: DocumentFilters, after?: 
   if (after) query.set("after", after);
   return `/documents?${query.toString()}`;
 };
-const identityTransform: PreviewTransform = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 const loadImage = (src: string) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -166,44 +170,6 @@ const canvasBlob = (canvas: HTMLCanvasElement, type: string) =>
       0.92,
     );
   });
-const invertTransform = (matrix: PreviewTransform): PreviewTransform | null => {
-  const [a, b, c, d, e, f, g, h, i] = matrix;
-  const A = e * i - f * h;
-  const B = f * g - d * i;
-  const C = d * h - e * g;
-  const determinant = a * A + b * B + c * C;
-  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) return null;
-  return [
-    A / determinant,
-    (c * h - b * i) / determinant,
-    (b * f - c * e) / determinant,
-    B / determinant,
-    (a * i - c * g) / determinant,
-    (c * d - a * f) / determinant,
-    C / determinant,
-    (b * g - a * h) / determinant,
-    (a * e - b * d) / determinant,
-  ];
-};
-const transformPoint = (matrix: PreviewTransform, x: number, y: number) => {
-  const divisor = matrix[6] * x + matrix[7] * y + matrix[8];
-  if (!Number.isFinite(divisor) || Math.abs(divisor) < 1e-12) return [x, y] as const;
-  return [
-    (matrix[0] * x + matrix[1] * y + matrix[2]) / divisor,
-    (matrix[3] * x + matrix[4] * y + matrix[5]) / divisor,
-  ] as const;
-};
-const regionPolygon = (region: Region, previewToOriginal: PreviewTransform) => {
-  const originalToPreview = invertTransform(previewToOriginal) ?? identityTransform;
-  return [
-    transformPoint(originalToPreview, region.left, region.top),
-    transformPoint(originalToPreview, region.right, region.top),
-    transformPoint(originalToPreview, region.right, region.bottom),
-    transformPoint(originalToPreview, region.left, region.bottom),
-  ]
-    .map(([x, y]) => `${Math.max(0, Math.min(1, x)) * 100}% ${Math.max(0, Math.min(1, y)) * 100}%`)
-    .join(", ");
-};
 const terminalStatuses = new Set([
   "READY",
   "REVIEW",
@@ -1174,7 +1140,7 @@ export function ImportsPage({
         productVariantId: item.productVariantId || null,
         allocations: null,
       }));
-      const created = await createAndPostPurchase({
+      await createAndPostPurchase({
         idempotencyKey: await importIdempotencyKey(document.id, "receipt"),
         householdId: household.id,
         origin: "AI",
@@ -1193,35 +1159,9 @@ export function ImportsPage({
         manualAmountOverrideReason: overrideReason || null,
         items: purchaseItems,
       });
-      await refreshPurchases();
-      const evidenceResponse = await fetch(
-        `/purchases/${encodeURIComponent(created.createPurchase.id)}/evidence`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            sources: items.map((_, index) => ({
-              documentId: document.id,
-              sourceReference: "",
-              ...(created.createPurchase.items[index]?.id
-                ? { itemId: created.createPurchase.items[index].id }
-                : {}),
-              ...(document.jobId
-                ? { observationJobId: document.jobId, sourceItemIndex: index }
-                : {}),
-            })),
-          }),
-        },
-      );
-      if (!evidenceResponse.ok) {
-        setTargetPurchaseId(created.createPurchase.id);
-        onAdded(true);
-        setMessage("購入は登録済みです。証拠の紐付けを再試行してください");
-        return;
-      }
       editedReceiptDocuments.current.delete(document.id);
       setHasUnsavedChanges(false);
+      await refreshPurchases();
       onAdded();
     } catch (reason) {
       setMessage((reason as Error).message);
@@ -1239,7 +1179,7 @@ export function ImportsPage({
     setPending(true);
     setMessage("");
     try {
-      const created = await createAndPostPurchase({
+      await createAndPostPurchase({
         idempotencyKey: await importIdempotencyKey(document.id, reference),
         householdId: household.id,
         origin: "AI",
@@ -1259,25 +1199,8 @@ export function ImportsPage({
         ],
       });
       await refreshPurchases();
-      const evidenceResponse = await fetch(
-        `/purchases/${encodeURIComponent(created.createPurchase.id)}/evidence`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            sources: [{ documentId: document.id, sourceReference: reference }],
-          }),
-        },
-      );
       setConfirmedStatements((current) => new Set(current).add(key));
       setHasUnsavedChanges(false);
-      if (!evidenceResponse.ok) {
-        setTargetPurchaseId(created.createPurchase.id);
-        setMessage("購入は登録済みです。証拠の紐付けを再試行してください");
-        onAdded(true);
-        return;
-      }
       onAdded(true);
     } catch (reason) {
       setMessage((reason as Error).message);

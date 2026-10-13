@@ -365,7 +365,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	documentID := uuid.NewV7().String()
 	documentUUID, _ := gofrsuuid.FromString(documentID)
 	memberAUUID, _ := gofrsuuid.FromString(memberA)
-	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, householdID+"/originals/"+documentID, "image/jpeg", "receipt"
+	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, householdID+"/originals/"+documentID, "image/jpeg", testReceiptSourceKind
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberAUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
