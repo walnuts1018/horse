@@ -977,8 +977,8 @@ export function PurchaseCreatePage({
                     key={candidate.variant.id}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
-                      setSelectedProductVariantId(candidate.variant.id);
                       changeItemName(candidate.matchedName || itemName.trim());
+                      setSelectedProductVariantId(candidate.variant.id);
                       if (
                         candidate.concept.categoryId &&
                         categorySource.current !== "manual" &&

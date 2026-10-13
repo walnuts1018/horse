@@ -189,6 +189,7 @@ export function ImportsPage({
   const createAndPostPurchase = useCreateAndPostPurchase();
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
+  const editedReceiptDocuments = useRef(new Set<string>());
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [csvKinds, setCsvKinds] = useState<Record<string, "card" | "bank">>({});
   const [documents, setDocuments] = useState<DocumentReview[]>([]);
@@ -306,21 +307,27 @@ export function ImportsPage({
         if (!response.ok) throw new Error(`証拠一覧を取得できませんでした (${response.status})`);
         const payload = (await response.json()) as { documents: DocumentReview[] };
         setDocuments((current) =>
-          payload.documents.map((document) => ({
-            ...document,
-            name:
-              current.find((existing) => existing.id === document.id)?.name ??
-              `${sourceKindLabel(document.sourceKind)} · ${
-                document.createdAt
-                  ? new Date(document.createdAt).toLocaleString("ja-JP", {
-                      month: "numeric",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : document.id.slice(0, 8)
-              }`,
-          })),
+          payload.documents.map((document) => {
+            const existing = current.find((entry) => entry.id === document.id);
+            return {
+              ...document,
+              ...(existing && editedReceiptDocuments.current.has(document.id)
+                ? { result: existing.result }
+                : {}),
+              name:
+                existing?.name ??
+                `${sourceKindLabel(document.sourceKind)} · ${
+                  document.createdAt
+                    ? new Date(document.createdAt).toLocaleString("ja-JP", {
+                        month: "numeric",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : document.id.slice(0, 8)
+                }`,
+            };
+          }),
         );
         setSelected((current) => current ?? payload.documents[0]?.id ?? null);
       } catch (reason) {
@@ -331,6 +338,7 @@ export function ImportsPage({
   );
   useEffect(() => {
     setDocuments([]);
+    editedReceiptDocuments.current.clear();
     setSelected(null);
     setConfirmedStatements(new Set());
     setSelectedCandidates({});
@@ -466,6 +474,7 @@ export function ImportsPage({
         body: JSON.stringify({}),
       });
       if (!response.ok) throw new Error(`再抽出を開始できませんでした (${response.status})`);
+      editedReceiptDocuments.current.delete(document.id);
       await refreshDocuments(true);
     } catch (reason) {
       setMessage((reason as Error).message);
@@ -485,6 +494,7 @@ export function ImportsPage({
         body: JSON.stringify({ crop: cropRegion }),
       });
       if (!response.ok) throw new Error(`範囲を再抽出できませんでした (${response.status})`);
+      editedReceiptDocuments.current.delete(document.id);
       const accepted = (await response.json()) as { jobId: string; status: string };
       setDocuments((current) =>
         current.map((entry) =>
@@ -570,6 +580,7 @@ export function ImportsPage({
     }
   };
   const editItem = (documentId: string, index: number, patch: Partial<ExtractedItem>) => {
+    editedReceiptDocuments.current.add(documentId);
     markUnsaved();
     setDocuments((current) =>
       current.map((document) =>
@@ -676,6 +687,7 @@ export function ImportsPage({
         setMessage("購入は登録済みです。証拠の紐付けを再試行してください");
         return;
       }
+      editedReceiptDocuments.current.delete(document.id);
       setHasUnsavedChanges(false);
       onAdded();
     } catch (reason) {
@@ -1062,6 +1074,7 @@ export function ImportsPage({
                     <input
                       value={selectedDocument.result.receipt.merchant ?? ""}
                       onChange={(event) => {
+                        editedReceiptDocuments.current.add(selectedDocument.id);
                         markUnsaved();
                         setDocuments((current) =>
                           current.map((document) =>

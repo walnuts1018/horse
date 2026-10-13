@@ -6,65 +6,9 @@
 
 まだ実ブラウザでの操作テストは行っていないため、以下はソースコードを根拠にしたレビューです。見た目やタッチ操作の最終評価には実機検証が必要ですが、コードだけでも修正すべき問題がかなり見つかっています。
 
-## P0：先に直すべき操作上の不具合
-
-### 1. 商品サジェストを選択しても、商品との紐付けが解除される
-
-[purchase-create-page.tsx: changeItemName](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/purchase-create/ui/purchase-create-page.tsx#L118-L128)、[商品サジェスト選択処理](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/purchase-create/ui/purchase-create-page.tsx#L950-L984)
-
-これは明確なバグです。
-
-商品候補をクリックしたとき、次の処理が実行されます。
-
-```
-setSelectedProductVariantId(candidate.variant.id);
-changeItemName(candidate.matchedName || itemName.trim());
-```
-
-ところが`changeItemName`は内部で次の処理を行っています。
-
-```
-setSelectedProductVariantId("");
-```
-
-そのため、選択したProductVariantが直後に解除されます。
-
-結果として、商品を選択したつもりでも、購入品目を追加する時点では`productVariantId`が空になります。商品マスタを利用した履歴学習や正規化に影響します。
-
-修正では、ユーザーが自由入力で品名を変更したときだけ商品選択を解除し、サジェストを確定するときにはIDを維持する必要があります。
-
-### 2. レシートの確認内容が画面上で消える可能性がある
-
-[imports-page.tsx: refreshDocuments](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/imports/ui/imports-page.tsx#L289-L327)、[editItem](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/imports/ui/imports-page.tsx#L556-L575)
-
-AIの認識結果は`documents`というReact Stateに保持されており、商品名や金額を修正すると、そのStateを直接更新しています。
-
-一方、別の原本が処理中の場合、文書一覧を1.2秒ごとに再取得し、次の処理で置き換えています。
-
-```
-setDocuments((current) =>
-  payload.documents.map((document) => ({
-    ...document,
-    name: current.find(
-      (existing) => existing.id === document.id,
-    )?.name ?? "...",
-  })),
-);
-```
-
-ここで以前の編集済み`receipt.items`はマージされていません。
-
-したがって、Aのレシートを手動訂正している最中にBの解析が進んでいると、Aの訂正内容がサーバーから再取得した元データで上書きされる可能性があります。
-
-複数レシートを連続処理するユースケースでは、深刻な操作上の問題です。
-
-修正は、サーバーの解析結果とユーザーの編集ドラフトを別Stateで管理することです。サーバー結果の更新では、編集ドラフトを破棄しないようにします。
-
-これらの問題は、後述するデザイン改善より先に修正してください。
-
 ## P1：日常利用で大きな不満につながる問題
 
-### 3. ホームの「直近7日の支出」が正しい7日間のデータではない
+### 1. ホームの「直近7日の支出」が正しい7日間のデータではない
 
 [home-page.tsx: データ取得](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/home/ui/home-page.tsx#L23-L45)、[MiniBars](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/home/ui/home-page.tsx#L181-L211)
 
@@ -86,7 +30,7 @@ useHouseholdPurchases(household.id, 8)
 
 `occurredAt.slice(0, 10)`や`toISOString().slice(0, 10)`によるUTC日付の切り出しも、日本時間での集計には使わず、JSTに統一する必要があります。
 
-### 4. 家計簿を切り替えても、再読み込みで元の家庭に戻る
+### 2. 家計簿を切り替えても、再読み込みで元の家庭に戻る
 
 [初期家庭の選択](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/app/horse-app.tsx#L140-L167)、[selectHousehold](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/app/horse-app.tsx#L299-L317)
 
@@ -104,7 +48,7 @@ useHouseholdPurchases(household.id, 8)
 
 現状の`?page=ledger`方式は、以前の「URLが変わらない」という問題を改善していますが、ページ名だけではまだ不十分です。
 
-### 5. 画面内でエラーが発生すると、他のページに移動しても復帰できない可能性がある
+### 3. 画面内でエラーが発生すると、他のページに移動しても復帰できない可能性がある
 
 [GraphQLErrorBoundary](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/app/graphql-error-boundary.tsx)、[ErrorBoundaryの配置](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/app/horse-app.tsx#L525-L610)
 
@@ -118,26 +62,7 @@ useHouseholdPurchases(household.id, 8)
 
 修正案： ルート単位でErrorBoundaryを設け、TanStack Routerのエラーリセット機構と連携させます。復帰にはページ全体の再読み込みではなく、失敗したクエリの再試行を優先します。
 
-### 6. 精算画面は、期間を高速に変更すると別の月の結果を表示しうる
-
-[settlement-page.tsx: load](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/settlement/ui/settlement-page.tsx#L88-L132)
-
-`period`が変更されるたびに`load()`を呼んでいますが、古いリクエストの結果を無視する処理がありません。
-
-例えば次の順番で通信が行われると問題です。
-
-1. 9月の精算を取得開始
-2. すぐ10月へ切り替える
-3. 10月のレスポンスが返る
-4. 遅れて9月のレスポンスが返る
-
-この場合、画面上の選択月が10月のまま、表示される精算額だけ9月の値になる可能性があります。
-
-これは単なる表示上の問題で終わらず、`close()`が画面上の`period`と古い`settlement.revision`を組み合わせて送信する点にも注意が必要です。
-
-修正案： `queryKey`またはリクエスト世代番号で結果と期間の対応を保証し、読み込み中は締め操作を禁止してください。可能ならTanStack RouterのローダーまたはRelayのクエリ管理へ統合します。
-
-### 7. 期間を締める操作に確認ステップがない
+### 4. 期間を締める操作に確認ステップがない
 
 [close](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/settlement/ui/settlement-page.tsx#L167-L180)、[期間を締めるボタン](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/settlement/ui/settlement-page.tsx#L397-L413)
 
@@ -151,7 +76,7 @@ useHouseholdPurchases(household.id, 8)
 
 未確定の購入や解析途中の証拠が残っている場合は、締め前に確認を促してください。
 
-### 8. 通信失敗後の入金・送金の再試行で二重記録が起きうる
+### 5. 通信失敗後の入金・送金の再試行で二重記録が起きうる
 
 [入金・送金処理](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/settlement/ui/settlement-page.tsx#L134-L235)
 
@@ -167,7 +92,7 @@ useHouseholdPurchases(household.id, 8)
 
 また、成功後は「入金を記録しました」と表示するだけでなく、取引額・相手・対象月が確認できるようにすると安心です。
 
-### 9. 取り込み履歴が50件を超えると、古い原本を画面から探せない
+### 6. 取り込み履歴が50件を超えると、古い原本を画面から探せない
 
 [imports-page.tsx: 文書一覧取得](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/imports/ui/imports-page.tsx#L289-L327)
 
@@ -181,7 +106,7 @@ useHouseholdPurchases(household.id, 8)
 
 改善案： 文書一覧にカーソルページネーションを設け、店舗・日付・原本種別・確定状態で検索できるようにします。元ファイル名も保存し、確定済みの原本と要確認の原本を明確に区別してください。
 
-### 10. 複数ファイルの取り込みが直列で、操作を占有する
+### 7. 複数ファイルの取り込みが直列で、操作を占有する
 
 [imports-page.tsx: uploadFiles](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/imports/ui/imports-page.tsx#L378-L440)
 
@@ -213,7 +138,7 @@ AI解析中
 
 1つ失敗しても残りのアップロードは続けられることが重要です。
 
-### 11. AI取り込みの確定画面では、複数決済とカテゴリ確認が弱い
+### 8. AI取り込みの確定画面では、複数決済とカテゴリ確認が弱い
 
 [imports-page.tsx: confirm](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/imports/ui/imports-page.tsx#L577-L669)
 
@@ -227,7 +152,7 @@ AIの解析結果には複数の決済手段を持たせられますが、確認
 
 毎回すべてを手入力するのではなく、商品マスタ・過去の購入・ルールによって自動入力したうえで、不確実な項目だけを強調してください。
 
-### 12. 分析画面が履歴取得途中の集計結果を表示する
+### 9. 分析画面が履歴取得途中の集計結果を表示する
 
 [analysis-page.tsx: 購入データ取得](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/analysis/ui/analysis-page.tsx#L179-L195)、[分析値の集計](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/analysis/ui/analysis-page.tsx#L293-L367)
 
@@ -241,7 +166,7 @@ AIの解析結果には複数の決済手段を持たせられますが、確認
 
 分析の数字は家計の意思決定に使うので、部分データを正確な数字のように表示しないことが重要です。
 
-### 13. カテゴリ不明の商品が最初のカテゴリへ自動分類される
+### 10. カテゴリ不明の商品が最初のカテゴリへ自動分類される
 
 [purchase-create-page.tsx: defaultCategoryId](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/purchase-create/ui/purchase-create-page.tsx#L74-L93)
 
@@ -262,7 +187,7 @@ const defaultCategoryId =
 
 ## P2：スマートフォンでの使いやすさ
 
-### 14. モバイルUIの文字が小さすぎる
+### 11. モバイルUIの文字が小さすぎる
 
 [global.css: モバイルスタイル](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/app/styles/global.css#L3148-L3927)
 
@@ -287,7 +212,7 @@ iOS Safariでは小さい入力文字サイズが自動ズームの原因にな�
 
 一方、グラフ内の小さい数字をすべて大きくすると収まらなくなります。そこは金額を常時すべて表示する設計を見直し、選択した日だけ詳細を表示する形にするのがよいです。
 
-### 15. タップ対象が小さい
+### 12. タップ対象が小さい
 
 同じCSSでは、操作ボタンや入力欄の高さが30〜35px程度になっている箇所が多数あります。
 
@@ -306,7 +231,7 @@ iOS Safariでは小さい入力文字サイズが自動ズームの原因にな�
 
 また、画面幅380px以下では「元に戻す」の文字を消してアイコンだけにしています。ここは意味が分かるARIAラベルも必要です。
 
-### 16. 毎日の品目入力までにスクロールが必要
+### 13. 毎日の品目入力までにスクロールが必要
 
 現在の購入追加画面は、おおむね次の順序です。
 
@@ -334,7 +259,7 @@ iOS Safariでは小さい入力文字サイズが自動ズームの原因にな�
 
 撮影が多い家庭なら、ボトムナビの中央ボタンから直接カメラを開ける導線にも価値があります。
 
-### 17. 下書きの保存状態表示が実際の状態と一致しない
+### 14. 下書きの保存状態表示が実際の状態と一致しない
 
 [下書きの自動保存](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/purchase-create/ui/purchase-create-page.tsx#L178-L220)、[保存状態の表示](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/purchase-create/ui/purchase-create-page.tsx#L620-L634)
 
@@ -348,7 +273,7 @@ iOS Safariでは小さい入力文字サイズが自動ズームの原因にな�
 
 保存エラー時は、ただテキストを表示するだけでなく、再試行ボタンと編集中のデータが残っていることを明確に伝えると安心です。
 
-### 18. 取り込み画面のカメラ導線を分けたい
+### 15. 取り込み画面のカメラ導線を分けたい
 
 [imports-page.tsx: file input](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/imports/ui/imports-page.tsx#L727-L752)
 
@@ -365,7 +290,7 @@ iOS Safariでは小さい入力文字サイズが自動ズームの原因にな�
 
 ## P2：情報設計と画面の分かりやすさ
 
-### 19. 設定画面に日常的な業務が集まりすぎている
+### 16. 設定画面に日常的な業務が集まりすぎている
 
 [settings-page.tsx](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/settings/ui/settings-page.tsx#L1087-L2398)
 
@@ -388,7 +313,7 @@ iOS Safariでは小さい入力文字サイズが自動ズームの原因にな�
 
 これはすべてを別のトップレベルページに分けるという意味ではありません。設定内もタブやサブルートに分け、必要な情報だけを表示するのがよいです。
 
-### 20. 帳簿の検索条件がURLに保存されない
+### 17. 帳簿の検索条件がURLに保存されない
 
 [帳簿の検索State](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/pages/ledger/ui/ledger-page.tsx#L83-L125)、[TanStack RouterのSearch Schema](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/app/routes/index.tsx)
 
@@ -402,7 +327,7 @@ iOS Safariでは小さい入力文字サイズが自動ズームの原因にな�
 
 また、検索処理は取得済みの購入履歴をブラウザで絞る方式になっています。データが増えると全ページ読み込みが発生するので、検索条件のうち主要なものはサーバー側へ移すべきです。
 
-### 21. エラーメッセージと成功メッセージの表現が混在している
+### 18. エラーメッセージと成功メッセージの表現が混在している
 
 [horse-app.tsx: Toast](https://github.com/walnuts1018/horse/blob/e247076a8bc26b0380641f549a7ad016baf07874/web/src/app/horse-app.tsx#L617-L627)
 
@@ -414,7 +339,7 @@ iOS Safariでは小さい入力文字サイズが自動ズームの原因にな�
 
 また、エラーには可能な限り「再試行」「入力内容を修正」「詳細を見る」といった次の操作を用意してください。
 
-### 22. AIレビューは原本と修正欄を並べて確認したい
+### 19. AIレビューは原本と修正欄を並べて確認したい
 
 現状の取り込み画面では、原本プレビュー、認識された品目、税計算候補、照合情報が長いページ内に配置されています。
 
@@ -428,7 +353,7 @@ iOS Safariでは小さい入力文字サイズが自動ズームの原因にな�
 
 ## P3：アクセシビリティと一貫性
 
-### 23. キーボード・スクリーンリーダー向けの情報が不足している
+### 20. キーボード・スクリーンリーダー向けの情報が不足している
 
 CSSに`:focus-visible`があり、フォームにもARIAラベルがかなり追加されている点はよいです。
 
@@ -440,7 +365,7 @@ CSSに`:focus-visible`があり、フォームにもARIAラベルがかなり追
 
 また、薄いグレーの補足文字と7〜9pxの文字は、コントラストや可読性の観点からも検証が必要です。
 
-### 24. 初回セットアップの導線が弱い
+### 21. 初回セットアップの導線が弱い
 
 現在、家庭を新規作成したあと、購入を記録するには決済元や負担ルールなどの設定が必要です。
 
@@ -472,9 +397,6 @@ CSSに`:focus-visible`があり、フォームにもARIAラベルがかなり追
 
 | 優先 | 修正 | 期待する効果 |
 | -- | ----------------------- | -------------- |
-| P0 | 商品サジェスト選択時のID消失 | 商品学習・分類の正常化 |
-| P0 | AIレビューの編集状態をサーバー取得結果と分離 | 手動訂正の消失防止 |
-| P1 | 精算画面の古い通信結果を無効化 | 別月の金額表示防止 |
 | P1 | 資金移動の再試行・冪等性を強化 | 二重記録の防止 |
 | P1 | 日別グラフを正しい集計へ変更 | 家計情報の信頼性向上 |
 | P1 | 未分類品目を先頭カテゴリに入れない | 誤分類の防止 |
@@ -513,9 +435,9 @@ Horseは、機能の種類としては非常に充実してきています。購
 
 特に改善効果が大きいのは、次の3つです。
 
-第一に、入力・確認した内容が絶対に失われないこと。 商品のID消失やAIの手動訂正の上書きは、見た目を改善する前に修正すべきです。
+第一に、入力・確認した内容が失われないことです。取込画面では編集内容を解析結果の更新から保護しましたが、他のフォームやタブ終了時の状態保持は引き続き確認が必要です。
 
-第二に、数字が常に正しい範囲のデータを示すこと。 ホームのグラフ、分析途中の部分集計、精算画面の古いレスポンスは、家計簿への信頼性に直結します。
+第二に、数字が常に正しい範囲のデータを示すことです。ホームのグラフと分析途中の部分集計は、家計簿への信頼性に直結します。
 
 第三に、スマホで日々の操作を少ないタップ・スクロールで完了できること。 現状の7〜10pxの文字と小さなボタン、品目入力までの長い導線は、かなり改善余地があります。
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowDownLeft,
   ArrowLeftRight,
@@ -50,7 +50,20 @@ export function SettlementPage({
   onUnsavedChanges: (unsaved: boolean) => void;
 }) {
   const [period, setPeriod] = useState(() => japanMonth(new Date()));
-  const [settlement, setSettlement] = useState<Settlement | null>(null);
+  const [settlementSnapshot, setSettlementSnapshot] = useState<{
+    householdId: string;
+    period: string;
+    value: Settlement;
+  } | null>(null);
+  const settlement =
+    settlementSnapshot?.householdId === household.id && settlementSnapshot.period === period
+      ? settlementSnapshot.value
+      : null;
+  const activePeriod = useRef(period);
+  activePeriod.current = period;
+  const activeHouseholdId = useRef(household.id);
+  activeHouseholdId.current = household.id;
+  const loadRequest = useRef(0);
   const {
     entries,
     hasNextPage: ledgerHasNextPage,
@@ -95,25 +108,33 @@ export function SettlementPage({
   }, [hasUnsavedFunding, hasUnsavedTransfer, onUnsavedChanges]);
   const markTransferUnsaved = () => setHasUnsavedTransfer(true);
   const load = async () => {
+    const request = ++loadRequest.current;
+    const requestedPeriod = activePeriod.current;
+    const requestedHouseholdId = activeHouseholdId.current;
+    setLoadError("");
     try {
       refreshLedger();
       const [settlementData, loanData] = await Promise.all([
         readGraphql<{ settlement: Settlement }>(settlementQuery, {
-          householdId: household.id,
-          period,
+          householdId: requestedHouseholdId,
+          period: requestedPeriod,
         }),
         readGraphql<{ loanBalances: Connection<LoanBalance> }>(loanBalancesQuery, {
-          householdId: household.id,
+          householdId: requestedHouseholdId,
           first: 50,
         }),
       ]);
-      setSettlement(settlementData.settlement);
+      if (request !== loadRequest.current) return;
+      setSettlementSnapshot({
+        householdId: requestedHouseholdId,
+        period: requestedPeriod,
+        value: settlementData.settlement,
+      });
       setLoans(loanData.loanBalances.edges.map((edge) => edge.node));
       setLoanCursor(loanData.loanBalances.pageInfo.endCursor ?? null);
       setLoanHasNextPage(loanData.loanBalances.pageInfo.hasNextPage);
-      setLoadError("");
     } catch (reason) {
-      setLoadError((reason as Error).message);
+      if (request === loadRequest.current) setLoadError((reason as Error).message);
     }
   };
   const loadMoreLoans = async () => {
@@ -174,11 +195,14 @@ export function SettlementPage({
     }
   };
   const close = async () => {
-    if (!settlement) return;
+    if (!settlement || !settlementSnapshot || settlementSnapshot.period !== period) return;
+    const targetHouseholdId = settlementSnapshot.householdId;
+    const targetPeriod = settlementSnapshot.period;
+    const expectedRevision = settlement.revision;
     setPending(true);
     try {
       await readGraphql(closePeriodMutation, {
-        input: { householdId: household.id, period, expectedRevision: settlement.revision },
+        input: { householdId: targetHouseholdId, period: targetPeriod, expectedRevision },
       });
       await load();
     } catch (reason) {
