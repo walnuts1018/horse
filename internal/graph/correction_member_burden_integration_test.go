@@ -63,6 +63,14 @@ func TestCorrectionRollsBackWhenPostedPurchaseMemberBurdenSnapshotIsMissing(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{
+		HouseholdID:     household.ID,
+		PoolID:          pool.ID,
+		Configuration:   personalPoolFundingConfiguration(memberID),
+		ExpectedVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	cardAccountName := "Correction snapshot card"
 	account, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: cardAccountName, Kind: model.AccountKindCard, PoolID: &pool.ID})
 	if err != nil {

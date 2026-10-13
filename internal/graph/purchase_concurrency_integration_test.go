@@ -57,6 +57,9 @@ func TestPurchaseConcurrentUpdatesMergeDisjointFieldsAndConflictOnSameField(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "purchase concurrency pool", Kind: model.PoolKindPersonal}); err != nil {
+		t.Fatal(err)
+	}
 	householdUUID, err := gofrsuuid.FromString(household.ID)
 	if err != nil {
 		t.Fatal(err)
