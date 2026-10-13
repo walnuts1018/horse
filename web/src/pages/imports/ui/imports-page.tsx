@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronRight, FileImage, Link2, ShieldCheck, Upload, X } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  ChevronRight,
+  FileImage,
+  Link2,
+  ShieldCheck,
+  Upload,
+  X,
+} from "lucide-react";
 import { type Household } from "../../../shared/api";
 import { useCreateAndPostPurchase } from "../../../entities/purchase";
 import { InlineError } from "../../../shared/ui";
@@ -207,6 +216,7 @@ export function ImportsPage({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [observations, setObservations] = useState<ObservationCandidates[]>([]);
+  const [matchesTruncated, setMatchesTruncated] = useState(false);
   const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
   const [targetPurchaseId, setTargetPurchaseId] = useState("");
   const [targetItemId, setTargetItemId] = useState("");
@@ -335,22 +345,28 @@ export function ImportsPage({
   useEffect(() => {
     if (!selectedDocument || !selectedDocument.result) {
       setObservations([]);
+      setMatchesTruncated(false);
       setSelectedMatches(new Set());
       return;
     }
     let active = true;
     setObservations([]);
+    setMatchesTruncated(false);
     setSelectedMatches(new Set());
     void fetch(`/documents/${encodeURIComponent(selectedDocument.id)}/matches`, {
       credentials: "include",
     })
       .then(async (response) => {
         if (!response.ok) throw new Error(`照合候補を取得できませんでした (${response.status})`);
-        return (await response.json()) as { observations: ObservationCandidates[] };
+        return (await response.json()) as {
+          observations: ObservationCandidates[];
+          truncated: boolean;
+        };
       })
       .then((payload) => {
         if (!active) return;
         setObservations(payload.observations);
+        setMatchesTruncated(payload.truncated);
         if (!selectedDocument.result?.receipt?.items?.length) {
           setActiveObservationRef(payload.observations[0]?.sourceReference ?? "");
         } else {
@@ -1335,6 +1351,11 @@ export function ImportsPage({
                 </div>
                 <Link2 size={18} />
               </div>
+              {matchesTruncated && (
+                <small role="status">
+                  <AlertCircle aria-hidden size={14} /> 候補を直近100件に絞っています
+                </small>
+              )}
               <label className="select-filter">
                 <span>照合元</span>
                 <select

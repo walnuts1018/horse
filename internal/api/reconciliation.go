@@ -107,11 +107,15 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 			)),
 			sm.OrderBy(models.SourceDocuments.Columns.CreatedAt).Desc(),
 			sm.OrderBy(models.SourceDocuments.Columns.ID).Desc(),
-			sm.Limit(100),
+			sm.Limit(101),
 		).All(r.Context(), executor)
 		if err != nil {
 			http.Error(w, "observation lookup failed", http.StatusInternalServerError)
 			return
+		}
+		if len(documents) > 100 {
+			documents = documents[:100]
+			truncated = true
 		}
 	}
 	if len(documents) == 0 {

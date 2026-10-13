@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link2 } from "lucide-react";
+import { AlertCircle, Link2 } from "lucide-react";
 import { purchasesQuery } from "../../../entities/purchase";
 import {
   readGraphql,
@@ -36,6 +36,7 @@ export function ObservationLinker({
   const [error, setError] = useState("");
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [matches, setMatches] = useState<MatchCandidate[]>([]);
+  const [matchesTruncated, setMatchesTruncated] = useState(false);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState("");
   const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
 
@@ -60,6 +61,7 @@ export function ObservationLinker({
     if (purchases.length || loading) return;
     setLoading(true);
     setError("");
+    setMatchesTruncated(false);
     try {
       const [matchResponse, purchaseResult] = await Promise.all([
         fetch(`/documents/${encodeURIComponent(observation.documentId)}/matches`, {
@@ -72,11 +74,15 @@ export function ObservationLinker({
       ]);
       if (!matchResponse.ok)
         throw new Error(`照合候補を取得できませんでした (${matchResponse.status})`);
-      const payload = (await matchResponse.json()) as { observations: ObservationMatches[] };
+      const payload = (await matchResponse.json()) as {
+        observations: ObservationMatches[];
+        truncated: boolean;
+      };
       const sourceMatches = payload.observations.find(
         (entry) => entry.sourceReference === observation.sourceReference,
       );
       setMatches(sourceMatches?.matches ?? []);
+      setMatchesTruncated(payload.truncated);
       setPurchases(purchaseResult.purchases.edges.map((edge) => edge.node));
     } catch (reason) {
       setError((reason as Error).message);
@@ -137,6 +143,11 @@ export function ObservationLinker({
             <span>読み込み中</span>
           ) : (
             <>
+              {matchesTruncated && (
+                <small role="status">
+                  <AlertCircle aria-hidden size={14} /> 候補を直近100件に絞っています
+                </small>
+              )}
               {matches.length > 0 && (
                 <fieldset>
                   <legend>照合候補</legend>

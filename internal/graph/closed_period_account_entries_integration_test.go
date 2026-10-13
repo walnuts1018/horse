@@ -74,6 +74,13 @@ func TestClosedPeriodRejectsAccountMovementsAndOpeningBalances(t *testing.T) {
 	}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("closed-period opening balance should fail with conflict: %v", err)
 	}
+	incomeKey := uuid.NewV7().String()
+	if _, err := mutation.recordExternalIncome(ctx, model.RecordExternalIncomeInput{
+		HouseholdID: household.ID, AccountID: to.ID, AmountYen: 800, OccurredAt: "2026-04-15T12:00:00Z",
+		Description: "Closed-period income", IdempotencyKey: incomeKey,
+	}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("closed-period external income should fail with conflict: %v", err)
+	}
 	accounts, err := models.Accounts.Query(sm.Where(models.Accounts.Columns.HouseholdID.EQ(psql.Arg(generatedUUID(household.ID))))).All(ctx, bobpgx.NewPool(db))
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +89,34 @@ func TestClosedPeriodRejectsAccountMovementsAndOpeningBalances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(accounts) != 2 || len(movements) != 0 {
-		t.Fatalf("rejected entries must leave no account or movement behind: accounts=%d movements=%d", len(accounts), len(movements))
+	householdUUID := generatedUUID(household.ID)
+	incomes, err := models.AccountIncomes.Query(sm.Where(models.AccountIncomes.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	journals, err := models.Journals.Query(sm.Where(psql.And(
+		models.Journals.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.Journals.Columns.SourceKind.EQ(psql.Arg(sourceKindAccountIncome)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	idempotencyKeys, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
+		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(incomeKey)),
+		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg("recordExternalIncome")),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := models.HouseholdEvents.Query(sm.Where(psql.And(
+		models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.HouseholdEvents.Columns.Type.EQ(psql.Arg("account.income.recorded")),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accounts) != 2 || len(movements) != 0 || len(incomes) != 0 || len(journals) != 0 || len(idempotencyKeys) != 0 || len(events) != 0 {
+		t.Fatalf("rejected entries must leave no account, movement, income, journal, idempotency key, or event behind: accounts=%d movements=%d incomes=%d journals=%d idempotency_keys=%d events=%d", len(accounts), len(movements), len(incomes), len(journals), len(idempotencyKeys), len(events))
 	}
 }
