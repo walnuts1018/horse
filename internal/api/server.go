@@ -23,6 +23,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/vektah/gqlparser/v2/gqlerror"
+	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/graph"
 	"github.com/walnuts1018/horse/internal/ingestion"
@@ -113,16 +114,17 @@ func (s *Server) newGraphQLHandler() *handler.Server {
 	executor.Use(extension.Introspection{})
 	executor.SetErrorPresenter(func(ctx context.Context, err error) *gqlerror.Error {
 		presented := graphql.DefaultErrorPresenter(ctx, err)
-		if errors.Is(err, graph.ErrConflict) {
+		kind, isApplicationError := graph.ApplicationErrorKind(err)
+		if isApplicationError && kind == apperror.KindConflict {
 			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "CONFLICT"}
 			presented.Message = "the resource changed since it was loaded"
-		} else if errors.Is(err, graph.ErrNotFound) {
+		} else if isApplicationError && kind == apperror.KindNotFound {
 			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "NOT_FOUND"}
 			presented.Message = "resource not found"
 		} else if errors.Is(err, auth.ErrUnauthenticated) {
 			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "UNAUTHENTICATED"}
 			presented.Message = "authentication required"
-		} else if errors.Is(err, graph.ErrBadInput) {
+		} else if isApplicationError && kind == apperror.KindBadInput {
 			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "BAD_USER_INPUT"}
 			presented.Message = "invalid input"
 		} else {

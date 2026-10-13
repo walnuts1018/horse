@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json/v2"
 	"errors"
@@ -80,46 +81,13 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 		truncated = true
 	}
 	// 候補検索は確定した購入へ自動統合せず、同じ家庭の直近原本との照合結果を返す。
-	successfulJobs, err := models.ExtractionJobs.Query(sm.Where(psql.And(
-		models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
-		models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
-	))).All(r.Context(), executor)
+	documents, documentsTruncated, err := recentReconciliationDocuments(r.Context(), executor, document.HouseholdID, document.ID)
 	if err != nil {
 		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
 		return
 	}
-	eligibleDocuments := make(map[gofrsuuid.UUID]struct{}, len(successfulJobs))
-	for _, successfulJob := range successfulJobs {
-		eligibleDocuments[successfulJob.SourceDocumentID] = struct{}{}
-	}
-	documentIDs := make([]bob.Expression, 0, len(eligibleDocuments))
-	for id := range eligibleDocuments {
-		if id != document.ID {
-			documentIDs = append(documentIDs, psql.Arg(id))
-		}
-	}
-	var documents models.SourceDocumentSlice
-	if len(documentIDs) > 0 {
-		documents, err = models.SourceDocuments.Query(
-			sm.Where(psql.And(
-				models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
-				models.SourceDocuments.Columns.ID.In(documentIDs...),
-			)),
-			sm.OrderBy(models.SourceDocuments.Columns.CreatedAt).Desc(),
-			sm.OrderBy(models.SourceDocuments.Columns.ID).Desc(),
-			sm.Limit(101),
-		).All(r.Context(), executor)
-		if err != nil {
-			http.Error(w, "observation lookup failed", http.StatusInternalServerError)
-			return
-		}
-		if len(documents) > 100 {
-			documents = documents[:100]
-			truncated = true
-		}
-	}
-	if len(documents) == 0 {
-		documents = models.SourceDocumentSlice{}
+	if documentsTruncated {
+		truncated = true
 	}
 	documentIDArgs := make([]bob.Expression, 0, len(documents))
 	for _, document := range documents {
@@ -129,6 +97,7 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 	if len(documents) > 0 {
 		jobs, err = models.ExtractionJobs.Query(
 			sm.Where(psql.And(
+				models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
 				models.ExtractionJobs.Columns.SourceDocumentID.In(documentIDArgs...),
 				models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
 			)),
@@ -185,4 +154,33 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 		result = append(result, candidate{SourceReference: observation.SourceReference, Matches: matches})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"observations": result, "truncated": truncated})
+}
+
+func recentReconciliationDocuments(ctx context.Context, executor bob.Executor, householdID, currentDocumentID gofrsuuid.UUID) (models.SourceDocumentSlice, bool, error) {
+	successfulExtraction := psql.Exists(psql.Select(
+		sm.Columns(psql.Arg(1)),
+		sm.From(models.ExtractionJobs.NameExpr()),
+		sm.Where(psql.And(
+			models.ExtractionJobs.Columns.SourceDocumentID.EQ(models.SourceDocuments.Columns.ID),
+			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
+		)),
+	))
+	documents, err := models.SourceDocuments.Query(
+		sm.Where(psql.And(
+			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			psql.Not(models.SourceDocuments.Columns.ID.EQ(psql.Arg(currentDocumentID))),
+			successfulExtraction,
+		)),
+		sm.OrderBy(models.SourceDocuments.Columns.CreatedAt).Desc(),
+		sm.OrderBy(models.SourceDocuments.Columns.ID).Desc(),
+		sm.Limit(101),
+	).All(ctx, executor)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(documents) <= 100 {
+		return documents, false, nil
+	}
+	return documents[:100], true, nil
 }

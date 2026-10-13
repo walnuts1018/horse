@@ -31,15 +31,19 @@ func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha2
 	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 {
 		return PostResult{}, fmt.Errorf("%w: idempotency key is required", ErrBadInput)
 	}
+	purchaseID, err := parseUUID(input.PurchaseID, "purchase")
+	if err != nil {
+		return PostResult{}, err
+	}
+	actorID, err := parseUUID(input.ActorID, "actor")
+	if err != nil {
+		return PostResult{}, err
+	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return PostResult{}, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	purchaseID, err := gofrsuuid.FromString(input.PurchaseID)
-	if err != nil {
-		return PostResult{}, fmt.Errorf("%w: invalid purchase id", ErrBadInput)
-	}
 	executor := bobpgx.NewTx(tx, nil)
 	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -49,10 +53,6 @@ func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha2
 		return PostResult{}, err
 	}
 	householdID := purchase.HouseholdID
-	actorID, err := gofrsuuid.FromString(input.ActorID)
-	if err != nil {
-		return PostResult{}, err
-	}
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID))))).Exists(ctx, executor)
 	if err != nil {
 		return PostResult{}, err

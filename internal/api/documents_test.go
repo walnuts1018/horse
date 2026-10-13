@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -11,6 +12,8 @@ import (
 const testDocumentStore = "Market"
 
 func TestDocumentCursorIsBoundToFilters(t *testing.T) {
+	t.Parallel()
+
 	id := gofrsuuid.Must(gofrsuuid.NewV7())
 	createdAt := time.Date(2026, time.January, 2, 3, 4, 5, 6, time.UTC)
 	confirmed := false
@@ -35,7 +38,9 @@ func TestDocumentCursorIsBoundToFilters(t *testing.T) {
 }
 
 func TestParseDocumentFilters(t *testing.T) {
-	request := httptest.NewRequest("GET", "/documents?store=Market&from=2026-10-01&to=2026-10-03&sourceKind=receipt&confirmed=false", nil)
+	t.Parallel()
+
+	request := httptest.NewRequest(http.MethodGet, "/documents?store=Market&from=2026-10-01&to=2026-10-03&sourceKind=receipt&confirmed=false", nil)
 	filters, err := parseDocumentFilters(request)
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +59,7 @@ func TestParseDocumentFilters(t *testing.T) {
 		"?from=2026-10-03&to=2026-10-01",
 		"?confirmed=yes",
 	} {
-		if _, err := parseDocumentFilters(httptest.NewRequest("GET", "/documents"+query, nil)); err == nil {
+		if _, err := parseDocumentFilters(httptest.NewRequest(http.MethodGet, "/documents"+query, nil)); err == nil {
 			t.Errorf("accepted invalid filters %s", query)
 		}
 	}

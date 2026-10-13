@@ -23,15 +23,16 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 var (
-	ErrBadInput                    = errors.New("invalid input")
-	ErrConflict                    = errors.New("resource conflict")
-	ErrNotFound                    = errors.New("resource not found")
+	ErrBadInput                    = apperror.ErrBadInput
+	ErrConflict                    = apperror.ErrConflict
+	ErrNotFound                    = apperror.ErrNotFound
 	ErrUnattributedPurchasePayment = errors.New("posted purchase payment has no funding pool")
 )
 
@@ -81,13 +82,13 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 		return CreateResult{}, err
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	householdUUID, err := gofrsuuid.FromString(input.HouseholdID)
+	householdUUID, err := parseUUID(input.HouseholdID, "household")
 	if err != nil {
-		return CreateResult{}, fmt.Errorf("%w: invalid household id", ErrBadInput)
+		return CreateResult{}, err
 	}
-	actorUUID, err := gofrsuuid.FromString(input.ActorID)
+	actorUUID, err := parseUUID(input.ActorID, "actor")
 	if err != nil {
-		return CreateResult{}, fmt.Errorf("%w: invalid actor id", ErrBadInput)
+		return CreateResult{}, err
 	}
 	executor := bobpgx.NewTx(tx, nil)
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
@@ -141,9 +142,9 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 		if len(sourceReference) > 256 {
 			return CreateResult{}, fmt.Errorf("%w: source reference is too long", ErrBadInput)
 		}
-		documentUUID, parseErr := gofrsuuid.FromString(*input.SourceDocumentID)
+		documentUUID, parseErr := parseUUID(*input.SourceDocumentID, "source document")
 		if parseErr != nil {
-			return CreateResult{}, fmt.Errorf("%w: invalid source document id", ErrBadInput)
+			return CreateResult{}, parseErr
 		}
 		sourceDocumentUUID = &documentUUID
 		document, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(documentUUID))), sm.ForUpdate()).One(ctx, executor)
@@ -204,16 +205,16 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 		}
 		var categoryUUID, variantUUID *gofrsuuid.UUID
 		if item.CategoryID != nil {
-			id, parseErr := gofrsuuid.FromString(*item.CategoryID)
+			id, parseErr := parseUUID(*item.CategoryID, "category")
 			if parseErr != nil {
-				return CreateResult{}, fmt.Errorf("%w: invalid category id", ErrBadInput)
+				return CreateResult{}, parseErr
 			}
 			categoryUUID = &id
 		}
 		if item.ProductVariantID != nil {
-			id, parseErr := gofrsuuid.FromString(*item.ProductVariantID)
+			id, parseErr := parseUUID(*item.ProductVariantID, "product variant")
 			if parseErr != nil {
-				return CreateResult{}, fmt.Errorf("%w: invalid product variant id", ErrBadInput)
+				return CreateResult{}, parseErr
 			}
 			variantUUID = &id
 			variant, err := models.ProductVariants.Query(sm.Where(psql.And(
@@ -287,9 +288,9 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 		}
 		purchaseItemUUIDs = append(purchaseItemUUIDs, itemUUID)
 		for _, allocation := range allocated {
-			poolUUID, err := gofrsuuid.FromString(allocation.PoolID)
+			poolUUID, err := parseUUID(allocation.PoolID, "allocation pool")
 			if err != nil {
-				return CreateResult{}, fmt.Errorf("%w: invalid allocation pool id", ErrBadInput)
+				return CreateResult{}, err
 			}
 			var ruleUUID sql.Null[gofrsuuid.UUID]
 			if appliedRuleID != nil {
@@ -471,9 +472,9 @@ func validatePayments(ctx context.Context, tx pgx.Tx, householdID gofrsuuid.UUID
 			return nil, fmt.Errorf("%w: payment account may appear only once", ErrBadInput)
 		}
 		seen[payment.AccountID] = struct{}{}
-		accountID, err := gofrsuuid.FromString(payment.AccountID)
+		accountID, err := parseUUID(payment.AccountID, "payment account")
 		if err != nil {
-			return nil, fmt.Errorf("%w: invalid payment account id", ErrBadInput)
+			return nil, err
 		}
 		_, err = models.Accounts.Query(sm.Where(psql.And(models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.Accounts.Columns.ID.EQ(psql.Arg(accountID))))).One(ctx, executor)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -492,9 +493,9 @@ func replacePayments(ctx context.Context, executor bob.Executor, householdID, pu
 		return err
 	}
 	for i, payment := range payments {
-		accountID, err := gofrsuuid.FromString(payment.AccountID)
+		accountID, err := parseUUID(payment.AccountID, "payment account")
 		if err != nil {
-			return fmt.Errorf("%w: invalid payment account id", ErrBadInput)
+			return err
 		}
 		lineNo, amount := int32(i+1), payment.AmountYen
 		if _, err := models.PurchasePayments.Insert(&models.PurchasePaymentSetter{HouseholdID: &householdID, PurchaseID: &purchaseID, LineNo: &lineNo, AccountID: &accountID, AmountYen: &amount}).Exec(ctx, executor); err != nil {
@@ -527,6 +528,14 @@ func accountingPeriod(value time.Time) string {
 func normalizeMerchant(value string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
 }
+func parseUUID(value, field string) (gofrsuuid.UUID, error) {
+	id, err := gofrsuuid.FromString(value)
+	if err != nil {
+		return gofrsuuid.Nil, fmt.Errorf("%w: invalid %s id", ErrBadInput, field)
+	}
+	return id, nil
+}
+
 func newUUID() gofrsuuid.UUID { return gofrsuuid.Must(gofrsuuid.NewV7()) }
 func validateIdempotencyFingerprint(existing *models.IdempotencyKey, fingerprint [sha256.Size]byte) error {
 	if !existing.RequestFingerprint.Valid || !slices.Equal(existing.RequestFingerprint.V, fingerprint[:]) {

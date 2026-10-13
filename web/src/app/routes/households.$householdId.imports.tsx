@@ -17,7 +17,7 @@ function HouseholdImports() {
       onAdded={async (keepOpen) => {
         await refreshHousehold(household.id);
         if (!keepOpen) navigateToPage("ledger");
-        showNotice("買い物を帳簿に追加しました");
+        showNotice("買い物を帳簿に追加しました", "success");
       }}
     />
   );

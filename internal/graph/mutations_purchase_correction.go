@@ -74,6 +74,8 @@ func sameAllocationWeights(inputs []*model.AllocationInput, saved []domain.Weigh
 		return false
 	}
 	requested := make(map[string]int64, len(inputs))
+	requestedGCD := int64(0)
+	savedGCD := int64(0)
 	for _, input := range inputs {
 		if input == nil || input.PoolID == "" || input.Weight <= 0 {
 			return false
@@ -81,14 +83,37 @@ func sameAllocationWeights(inputs []*model.AllocationInput, saved []domain.Weigh
 		if _, exists := requested[input.PoolID]; exists {
 			return false
 		}
-		requested[input.PoolID] = int64(input.Weight)
+		value := int64(input.Weight)
+		requested[input.PoolID] = value
+		requestedGCD = positiveGCD(requestedGCD, value)
 	}
+	savedByPool := make(map[string]int64, len(saved))
 	for _, weight := range saved {
-		if requested[weight.PoolID] != weight.Value {
+		if weight.PoolID == "" || weight.Value <= 0 {
+			return false
+		}
+		if _, exists := savedByPool[weight.PoolID]; exists {
+			return false
+		}
+		savedByPool[weight.PoolID] = weight.Value
+		savedGCD = positiveGCD(savedGCD, weight.Value)
+	}
+	if requestedGCD == 0 || savedGCD == 0 {
+		return false
+	}
+	for poolID, value := range requested {
+		if savedByPool[poolID]/savedGCD != value/requestedGCD {
 			return false
 		}
 	}
 	return true
+}
+
+func positiveGCD(a, b int64) int64 {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
 }
 
 func refundablePurchaseAmounts(ctx context.Context, executor bob.Executor, purchaseUUID gofrsuuid.UUID) (int64, map[gofrsuuid.UUID]int64, error) {

@@ -1,0 +1,73 @@
+.heading {
+  grid-area: heading;
+}
+
+.details {
+  grid-area: details;
+}
+
+.history {
+  grid-area: history;
+}
+
+.items {
+  grid-area: items;
+}
+
+.itemHeading {
+  grid-area: item-heading;
+}
+
+.itemTable {
+  grid-area: item-table;
+}
+
+.itemList {
+  grid-area: item-list;
+}
+
+.entryForm {
+  grid-area: entry-form;
+}
+
+.entryHint {
+  grid-area: entry-hint;
+}
+
+.outbox {
+  grid-area: outbox;
+}
+
+.bottom {
+  grid-area: bottom;
+}
+
+.errors {
+  grid-area: errors;
+}
+
+@media (width <= 760px) {
+  .composer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "heading"
+      "items"
+      "details"
+      "history"
+      "outbox"
+      "bottom"
+      "errors";
+  }
+
+  .items {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "item-heading"
+      "entry-form"
+      "item-list"
+      "entry-hint"
+      "item-table";
+  }
+}

@@ -12,12 +12,14 @@ import (
 	"time"
 )
 
+const testFreeGeminiAPIKey = "free-test-key"
+
 func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 	t.Parallel()
 	freeCalls := 0
 	freeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		freeCalls++
-		if r.Header.Get("x-goog-api-key") != "free-test-key" {
+		if r.Header.Get("x-goog-api-key") != testFreeGeminiAPIKey {
 			t.Errorf("free route used unexpected API key")
 		}
 		w.Header().Set("Retry-After", "3")
@@ -39,7 +41,7 @@ func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 	}))
 	defer paidServer.Close()
 	router := GeminiRouter{
-		Free:       Gemini{APIKey: "free-test-key", Project: "free-id", Endpoint: freeServer.URL + "/v1beta/", HTTPClient: freeServer.Client()},
+		Free:       Gemini{APIKey: testFreeGeminiAPIKey, Project: "free-id", Endpoint: freeServer.URL + "/v1beta/", HTTPClient: freeServer.Client()},
 		Paid:       Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: paidServer.URL + "/v1beta/", HTTPClient: paidServer.Client()},
 		USDJPYRate: 158.535,
 	}
@@ -108,7 +110,7 @@ func TestGeminiRouterSelectsEmailLiteAndOnlyRetriesTemporaryErrors(t *testing.T)
 	}))
 	defer paid.Close()
 	router := GeminiRouter{
-		Free: Gemini{APIKey: "free", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()},
+		Free: Gemini{APIKey: testFreeGeminiAPIKey, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()},
 		Paid: Gemini{APIKey: "paid", Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
 	}
 	_, runs, err := router.Generate(t.Context(), "email", Document{MIMEType: mimeTypeEmail, Data: []byte("example")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive})
@@ -285,22 +287,68 @@ func TestEstimatedGeminiCostUsesProjectTierAndPriceChange(t *testing.T) {
 	}
 }
 
-func TestGeminiRunDoesNotLabelUnknownModelPriceAsFree(t *testing.T) {
+func TestGeminiRouterRejectsUnknownPriceBeforePaidRequest(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name          string
+		preferred     string
+		paidOnly      bool
+		freeStatus    int
+		wantFreeCalls int
+		wantRuns      int
+	}{
+		{name: "paid only", paidOnly: true},
+		{name: "paid fallback", preferred: ProjectFree, freeStatus: http.StatusTooManyRequests, wantFreeCalls: 1, wantRuns: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			freeCalls := 0
+			freeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				freeCalls++
+				if test.freeStatus == http.StatusTooManyRequests {
+					w.WriteHeader(test.freeStatus)
+					_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED"}}`)
+					return
+				}
+				writeGeminiSuccess(w, `{"merchant":"Market","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
+			}))
+			defer freeServer.Close()
+			paidCalls := 0
+			paidServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				paidCalls++
+				writeGeminiSuccess(w, `{"merchant":"Market","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
+			}))
+			defer paidServer.Close()
+			router := GeminiRouter{
+				Free:       Gemini{APIKey: testFreeGeminiAPIKey, Endpoint: freeServer.URL + "/v1beta/", HTTPClient: freeServer.Client()},
+				Paid:       Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: paidServer.URL + "/v1beta/", HTTPClient: paidServer.Client()},
+				USDJPYRate: 150,
+			}
+			_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("test input")}, nil, GeminiRouteOptions{Model: "future-model", ProjectPreferred: test.preferred, PaidOnly: test.paidOnly})
+			apiErr, ok := errors.AsType[*GeminiAPIError](err)
+			if !ok || apiErr.Kind != GeminiFailureRejected || apiErr.Code != geminiFailureUnknownModelPrice {
+				t.Fatalf("unknown model price should reject paid routing: %v", err)
+			}
+			if freeCalls != test.wantFreeCalls || paidCalls != 0 || len(runs) != test.wantRuns {
+				t.Fatalf("unexpected calls or runs: free=%d paid=%d runs=%#v", freeCalls, paidCalls, runs)
+			}
+		})
+	}
+}
+
+func TestGeminiExtractRunDoesNotLabelUnknownModelPriceAsFree(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeGeminiSuccess(w, `{"merchant":"Market","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
 	}))
 	defer server.Close()
-	router := GeminiRouter{
-		Paid:       Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()},
-		USDJPYRate: 150,
-	}
-	_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("test input")}, nil, GeminiRouteOptions{Model: "future-model", PaidOnly: true})
+	gemini := Gemini{APIKey: testPaidGeminiAPIKey, Model: "future-model", ProjectRoute: ProjectPaid, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client(), USDJPYRate: 150}
+	_, run, err := gemini.ExtractRun(t.Context(), Document{MIMEType: mimeTypeJPEG, Data: []byte("test input")}, nil, GeminiRequestOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(runs) != 1 || runs[0].PriceEstimateStatus != "unknown_model_price" || runs[0].EstimatedJPY != 0 || runs[0].PricedAt.IsZero() {
-		t.Fatalf("unknown model was reported as a zero-cost run: %#v", runs)
+	if run.PriceEstimateStatus != geminiFailureUnknownModelPrice || run.EstimatedJPY != 0 || run.PricedAt.IsZero() {
+		t.Fatalf("unknown model was reported as a free run: %#v", run)
 	}
 }
 

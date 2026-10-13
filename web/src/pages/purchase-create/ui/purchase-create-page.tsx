@@ -40,6 +40,7 @@ import {
   type PurchaseDraftItem,
 } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
+import styles from "./purchase-create-page.module.css";
 
 type DraftItem = PurchaseDraftItem;
 type PaymentDraft = { key: string; paymentAccountId: string; amountYen: string };
@@ -328,6 +329,11 @@ export function PurchaseCreatePage({
   const paymentTotal = sum(paymentRows.map(paymentAmount));
   const paymentDifference = itemTotal - paymentTotal;
   const hasDraftContent = Boolean(merchant.trim() || itemName.trim() || itemAmount || items.length);
+  const draftStatus = hasUnsavedChanges
+    ? "未保存"
+    : hasDraftContent && savedAt
+      ? "下書き保存済み"
+      : "入力待ち";
 
   const addPaymentRow = () => {
     markUnsaved();
@@ -622,8 +628,8 @@ export function PurchaseCreatePage({
   };
 
   return (
-    <form className="composer" onSubmit={save}>
-      <div className="composer-heading">
+    <form className={`composer ${styles.composer}`} onSubmit={save}>
+      <div className={`composer-heading ${styles.heading}`}>
         <div>
           <button type="button" className="back-link" onClick={onBack}>
             <ChevronLeft size={16} />
@@ -633,10 +639,10 @@ export function PurchaseCreatePage({
         </div>
         <span className="save-status">
           <span className="status-dot" />
-          {savedAt ? "下書き保存済み" : "下書き保存中"}
+          {draftStatus}
         </span>
       </div>
-      <section className="panel purchase-meta-form">
+      <section className={`panel purchase-meta-form ${styles.details}`}>
         <div className="field-group">
           <label htmlFor="merchant">店名</label>
           <input
@@ -732,7 +738,7 @@ export function PurchaseCreatePage({
         </div>
       </section>
       {(recentMerchants.length > 0 || recentPurchases.length > 0) && (
-        <section className="panel" aria-label="購入履歴から入力">
+        <section className={`panel ${styles.history}`} aria-label="購入履歴から入力">
           {recentMerchants.length > 0 && (
             <div className="field-group">
               <span>同じ店でもう一度入力</span>
@@ -743,6 +749,7 @@ export function PurchaseCreatePage({
                     type="button"
                     key={name}
                     onClick={() => {
+                      markUnsaved();
                       setMerchant(name);
                       setCopiedPurchase(null);
                     }}
@@ -780,8 +787,8 @@ export function PurchaseCreatePage({
           )}
         </section>
       )}
-      <section className="panel item-entry-panel">
-        <div className="panel-heading entry-heading">
+      <section className={`panel item-entry-panel ${styles.items}`}>
+        <div className={`panel-heading entry-heading ${styles.itemHeading}`}>
           <div>
             <span className="eyebrow">品目</span>
             <h2>買ったもの</h2>
@@ -790,14 +797,14 @@ export function PurchaseCreatePage({
             負担 <b>{household.pools.map((pool) => pool.name.slice(0, 1)).join(" / ") || "標準"}</b>
           </span>
         </div>
-        <div className="item-table-head">
+        <div className={`item-table-head ${styles.itemTable}`}>
           <span>品名</span>
           <span>金額</span>
           <span>カテゴリ</span>
           <span>負担</span>
           <span />
         </div>
-        <div className="item-list" ref={itemGridRef}>
+        <div className={`item-list ${styles.itemList}`} ref={itemGridRef}>
           {items.map((item, index) => (
             <div className="item-entry" key={item.key}>
               <div className="item-edit-row">
@@ -930,7 +937,7 @@ export function PurchaseCreatePage({
             </div>
           )}
         </div>
-        <div className={`entry-form ${focused ? "entry-focused" : ""}`}>
+        <div className={`entry-form ${focused ? "entry-focused" : ""} ${styles.entryForm}`}>
           <div className="entry-input-wrap name-wrap">
             <input
               ref={nameRef}
@@ -1057,7 +1064,7 @@ export function PurchaseCreatePage({
             <span>品目を追加</span>
           </button>
         </div>
-        <div className="entry-hint">
+        <div className={`entry-hint ${styles.entryHint}`}>
           <span>
             <kbd>Enter</kbd>で品名から金額へ、もう一度で追加
           </span>
@@ -1065,7 +1072,7 @@ export function PurchaseCreatePage({
         </div>
       </section>
       {householdOutbox.length > 0 && (
-        <section className="panel purchase-outbox">
+        <section className={`panel purchase-outbox ${styles.outbox}`}>
           <div className="panel-heading">
             <div>
               <span className="eyebrow">送信待ち</span>
@@ -1126,7 +1133,7 @@ export function PurchaseCreatePage({
           })}
         </section>
       )}
-      <div className="composer-bottom">
+      <div className={`composer-bottom ${styles.bottom}`}>
         <div>
           <div className="total-label">
             合計 <strong>{yen(itemTotal)}</strong>
@@ -1136,10 +1143,12 @@ export function PurchaseCreatePage({
             {hasDraftContent && (
               <>
                 {" · "}
-                {savedAt
-                  ? "下書き保存 " +
-                    savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
-                  : "下書き保存中"}
+                {hasUnsavedChanges
+                  ? "未保存"
+                  : savedAt
+                    ? "下書き保存 " +
+                      savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
+                    : "未保存"}
               </>
             )}
           </span>
@@ -1162,8 +1171,12 @@ export function PurchaseCreatePage({
           </button>
         </div>
       </div>
-      {outbox.storageError && <InlineError message={outbox.storageError} />}
-      {message && <InlineError message={message} />}
+      {(outbox.storageError || message) && (
+        <div className={styles.errors}>
+          {outbox.storageError && <InlineError message={outbox.storageError} />}
+          {message && <InlineError message={message} />}
+        </div>
+      )}
     </form>
   );
 }

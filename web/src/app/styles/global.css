@@ -2895,6 +2895,21 @@ a {
   font-size: 10px;
 }
 
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.page-heading .page-import-actions {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.dropzone-import-actions {
+  justify-content: center;
+}
+
 .drop-caption {
   color: #a2aca5;
   font-size: 8px;
@@ -3171,7 +3186,7 @@ a {
 @media (width <= 760px) {
   html.mobile-drawer-open {
     overflow: hidden;
-    overscroll-behavior-y: none;
+    overscroll-behavior: none;
   }
 
   html.mobile-drawer-open body {
@@ -3192,7 +3207,8 @@ a {
     width: 265px;
     box-shadow: 12px 0 34px #1c312617;
     overflow-y: auto;
-    overscroll-behavior-y: contain;
+    overscroll-behavior-y: none;
+    touch-action: pan-y;
   }
 
   .sidebar-open {
@@ -3206,6 +3222,7 @@ a {
     background: #19251d61;
     border: 0;
     z-index: 19;
+    touch-action: none;
   }
 
   .close-menu,
@@ -3396,6 +3413,10 @@ a {
     padding: 0 10px;
     font-size: 9px;
     gap: 5px;
+  }
+
+  .page-heading .page-import-actions {
+    display: none;
   }
 
   .ledger-controls {
@@ -4122,6 +4143,34 @@ a {
   font-size: 12px;
 }
 
+.evidence-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: start;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.evidence-source-column {
+  position: sticky;
+  top: 79px;
+  min-width: 0;
+}
+
+.evidence-source-column > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.evidence-edit-column {
+  min-width: 0;
+}
+
+.evidence-edit-column > .receipt-review {
+  margin-top: 0;
+}
+
 .evidence-preview,
 .evidence-crop-panel,
 .evidence-group-panel {
@@ -4198,6 +4247,31 @@ a {
   margin-top: 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
+}
+
+@media (width >= 900px) {
+  .evidence-source-column > summary {
+    display: none;
+  }
+
+  .evidence-source-column:not([open]) > :not(summary) {
+    display: block;
+  }
+}
+
+@media (width < 900px) {
+  .evidence-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .evidence-source-column {
+    position: static;
+  }
+
+  .evidence-source-column > summary {
+    padding: 10px 0;
+  }
 }
 
 .evidence-crop-panel,
@@ -4673,5 +4747,78 @@ a {
   .refund-payment-row {
     grid-template-columns: minmax(0, 1fr) 85px 25px;
     gap: 5px;
+  }
+}
+
+@media (width <= 760px) and (pointer: coarse) {
+  .button,
+  .icon-button,
+  .text-button,
+  .row-remove,
+  .button-add {
+    min-height: 44px;
+  }
+
+  .icon-button,
+  .row-remove {
+    min-width: 44px;
+  }
+}
+
+@media (width <= 760px) {
+  :root {
+    --mobile-font-input: 16px;
+    --mobile-font-supporting: 12px;
+    --mobile-font-dense: 10px;
+  }
+
+  .app-shell
+    input:not(
+      [type="checkbox"],
+      [type="radio"],
+      [type="file"],
+      [type="range"],
+      [type="color"],
+      [type="hidden"],
+      [type="button"],
+      [type="submit"],
+      [type="reset"],
+      [type="image"]
+    ),
+  .app-shell textarea,
+  .app-shell select {
+    font-size: var(--mobile-font-input);
+  }
+
+  :is(
+    .database-upgrade-notice,
+    .sync-status-pill,
+    .crumb,
+    .welcome-row p,
+    .welcome-row > .button,
+    .quick-card b,
+    .quick-card small,
+    .purchase-description b,
+    .page-heading p,
+    .page-heading > .button,
+    .purchase-meta span,
+    .allocation-chip,
+    .composer-heading p,
+    .save-status,
+    .entry-default,
+    .entry-hint,
+    .composer-bottom > div:first-child > span,
+    .composer-actions .button:not(.button-soft),
+    .settlement-actions .button,
+    .settlement-amount > small,
+    .summary-card .eyebrow,
+    .summary-card small,
+    .mobile-dock button span
+  ) {
+    font-size: max(var(--mobile-font-supporting), 1em);
+  }
+
+  :is(.settlement-breakdown, .month-column > b) {
+    font-size: max(var(--mobile-font-dense), 1em);
   }
 }

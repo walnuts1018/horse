@@ -117,7 +117,7 @@ export function SettingsPage({
 }: {
   household: Household;
   onRefresh: () => Promise<void>;
-  onNotice: (message: string) => void;
+  onNotice: (message: string, kind?: "success" | "error" | "warning" | "info") => void;
   onUnsavedChanges: (unsaved: boolean) => void;
   isOwner: boolean;
 }) {
@@ -295,7 +295,7 @@ export function SettingsPage({
       setAllocationRulesCursor(result.allocationRules.pageInfo.endCursor ?? null);
       setAllocationRulesHasNextPage(result.allocationRules.pageInfo.hasNextPage);
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setAllocationRulesPageLoading(false);
     }
@@ -328,7 +328,7 @@ export function SettingsPage({
       setInvitationsCursor(result.householdInvitations.pageInfo.endCursor ?? null);
       setInvitationsHasNextPage(result.householdInvitations.pageInfo.hasNextPage);
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setInvitationsPageLoading(false);
     }
@@ -560,13 +560,13 @@ export function SettingsPage({
       refreshProducts(),
       refreshInvitations(),
       refreshPlanning(),
-    ]).catch((reason) => onNotice((reason as Error).message));
+    ]).catch((reason) => onNotice((reason as Error).message, "error"));
   }, [household.id, isOwner]);
   useEffect(() => {
     let active = true;
     void readBudgets(household.id, budgetPeriod)
       .then((result) => active && setBudgets(result))
-      .catch((reason) => active && onNotice((reason as Error).message));
+      .catch((reason) => active && onNotice((reason as Error).message, "error"));
     return () => {
       active = false;
     };
@@ -595,10 +595,10 @@ export function SettingsPage({
       await readGraphql<Record<string, unknown>>(mutation, { input });
       await onRefresh();
       markFormClean(formID);
-      onNotice("設定を保存しました");
+      onNotice("設定を保存しました", "success");
       return true;
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
       return false;
     } finally {
       setPending(false);
@@ -614,9 +614,9 @@ export function SettingsPage({
       markFormClean("create-tag");
       setTagName("");
       await refreshPlanning();
-      onNotice("タグを追加しました");
+      onNotice("タグを追加しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -632,9 +632,9 @@ export function SettingsPage({
       markFormClean(`tag:${tag.id}`);
       setTagDrafts((current) => ({ ...current, [tag.id]: name }));
       await refreshPlanning();
-      onNotice("タグ名を保存しました");
+      onNotice("タグ名を保存しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -650,9 +650,9 @@ export function SettingsPage({
         },
       });
       await refreshPlanning();
-      onNotice(tag.archived ? "タグを再表示しました" : "タグを非表示にしました");
+      onNotice(tag.archived ? "タグを再表示しました" : "タグを非表示にしました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -688,9 +688,9 @@ export function SettingsPage({
       setBudgetName("");
       setBudgetAmount("");
       await refreshPlanning();
-      onNotice("予算を保存しました");
+      onNotice("予算を保存しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -713,9 +713,9 @@ export function SettingsPage({
         },
       });
       await refreshPlanning();
-      onNotice(budget.archived ? "予算を再表示しました" : "予算を非表示にしました");
+      onNotice(budget.archived ? "予算を再表示しました" : "予算を非表示にしました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -756,9 +756,9 @@ export function SettingsPage({
       setRecurringAmount("");
       setRecurringEndsOn("");
       await refreshPlanning();
-      onNotice("定期支出を保存しました");
+      onNotice("定期支出を保存しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -787,9 +787,9 @@ export function SettingsPage({
         },
       });
       await refreshPlanning();
-      onNotice(expense.archived ? "定期支出を再表示しました" : "定期支出を終了しました");
+      onNotice(expense.archived ? "定期支出を再表示しました" : "定期支出を終了しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -820,9 +820,10 @@ export function SettingsPage({
       setBalanceHistoryRevision((revision) => revision + 1);
       onNotice(
         movementKind === "TRANSFER" ? "口座移動を記録しました" : "カード請求の支払いを記録しました",
+        "success",
       );
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -848,9 +849,9 @@ export function SettingsPage({
       setIncomeDate(localDateTime());
       await refreshPlanning();
       setBalanceHistoryRevision((revision) => revision + 1);
-      onNotice("入金を記録しました");
+      onNotice("入金を記録しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -898,9 +899,9 @@ export function SettingsPage({
         setOpeningBalanceYen("");
         await onRefresh();
         await refreshPlanning();
-        onNotice("口座を追加しました");
+        onNotice("口座を追加しました", "success");
       })
-      .catch((reason) => onNotice((reason as Error).message))
+      .catch((reason) => onNotice((reason as Error).message, "error"))
       .finally(() => setPending(false));
   };
   const addCategory = (event: FormEvent) => {
@@ -942,11 +943,11 @@ export function SettingsPage({
       }))
       .filter((share) => share.weight > 0);
     if (isPersonalPool(pool) && !draft.ownerMemberId) {
-      onNotice("所有者を選択してください");
+      onNotice("所有者を選択してください", "warning");
       return;
     }
     if (isSharedPool(pool) && fundingShares.length === 0) {
-      onNotice("拠出比率を入力してください");
+      onNotice("拠出比率を入力してください", "warning");
       return;
     }
     setPending(true);
@@ -963,9 +964,9 @@ export function SettingsPage({
       });
       markFormClean(`pool-funding:${poolId}`);
       await onRefresh();
-      onNotice("精算設定を保存しました");
+      onNotice("精算設定を保存しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -975,9 +976,9 @@ export function SettingsPage({
     try {
       await readGraphql(setCategoryArchivedMutation, { input: { categoryId, archived } });
       await onRefresh();
-      onNotice(archived ? "カテゴリを非表示にしました" : "カテゴリを再表示しました");
+      onNotice(archived ? "カテゴリを非表示にしました" : "カテゴリを再表示しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -1014,10 +1015,10 @@ export function SettingsPage({
       });
       markFormClean("allocation-rule");
       await refreshRules();
-      onNotice("負担ルールを保存しました");
+      onNotice("負担ルールを保存しました", "success");
       setRuleMerchant("");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -1036,9 +1037,9 @@ export function SettingsPage({
       );
       setIssuedInvitationId(result.createHouseholdInvitation.invitation.id);
       await refreshInvitations();
-      onNotice("招待を発行しました");
+      onNotice("招待を発行しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -1057,9 +1058,9 @@ export function SettingsPage({
         setIssuedInvitationId("");
       }
       await refreshInvitations();
-      onNotice("招待を失効しました");
+      onNotice("招待を失効しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -1078,9 +1079,9 @@ export function SettingsPage({
       markFormClean("create-concept");
       setConceptName("");
       await refreshProducts();
-      onNotice("商品を追加しました");
+      onNotice("商品を追加しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -1104,9 +1105,9 @@ export function SettingsPage({
       setVariantBrand("");
       setVariantPackageSize("");
       await refreshProducts();
-      onNotice("バリエーションを追加しました");
+      onNotice("バリエーションを追加しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -1127,9 +1128,9 @@ export function SettingsPage({
       markFormClean("create-alias");
       setAliasName("");
       await refreshProducts();
-      onNotice("店名の別表記を登録しました");
+      onNotice("店名の別表記を登録しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message);
+      onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
     }
@@ -1871,8 +1872,8 @@ export function SettingsPage({
                   onClick={() =>
                     void navigator.clipboard
                       .writeText(invitationLink)
-                      .then(() => onNotice("招待リンクをコピーしました"))
-                      .catch(() => onNotice("招待リンクをコピーできませんでした"))
+                      .then(() => onNotice("招待リンクをコピーしました", "success"))
+                      .catch(() => onNotice("招待リンクをコピーできませんでした", "error"))
                   }
                 >
                   リンクをコピー

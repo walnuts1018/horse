@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
+  Camera,
   Check,
   ChevronRight,
   FileImage,
@@ -46,6 +47,7 @@ type ExtractedItem = {
   name: string;
   printedAmount: number;
   grossAmount: number;
+  categoryId?: string | null;
   quantityNumerator?: string | null;
   quantityDenominator?: string | null;
   quantityUnit?: string | null;
@@ -77,6 +79,7 @@ type StatementEntry = {
   orderId?: string;
   cardLast4?: string;
 };
+type ReceiptPayment = { method: string; cardLast4?: string; amount: number };
 type VerificationCandidate = {
   id: string;
   amounts: number[];
@@ -96,7 +99,12 @@ type DocumentReview = {
   duplicateOf?: string;
   confirmations?: Array<{ sourceReference: string; purchaseId: string }>;
   result?: {
-    receipt?: { merchant?: string; purchasedAt?: string; items?: ExtractedItem[] };
+    receipt?: {
+      merchant?: string;
+      purchasedAt?: string;
+      items?: ExtractedItem[];
+      payments?: ReceiptPayment[];
+    };
     computedTotal?: number;
     balanced?: boolean;
     candidates?: VerificationCandidate[];
@@ -119,6 +127,13 @@ type DocumentFilters = {
   to: string;
   sourceKind: string;
   confirmed: string;
+};
+type ReceiptPaymentDraft = {
+  key: string;
+  method?: string;
+  cardLast4?: string;
+  paymentAccountId: string;
+  amountYen: number;
 };
 const documentListURL = (householdId: string, filters: DocumentFilters, after?: string) => {
   const query = new URLSearchParams({ householdId, first: "50" });
@@ -211,6 +226,7 @@ export function ImportsPage({
 }) {
   const createAndPostPurchase = useCreateAndPostPurchase();
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<PendingUpload[]>([]);
   const editedReceiptDocuments = useRef(new Set<string>());
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -239,7 +255,8 @@ export function ImportsPage({
   const [manualAmountOverrideReasons, setManualAmountOverrideReasons] = useState<
     Record<string, string>
   >({});
-  const [paymentAccountId, setPaymentAccountId] = useState(household.accounts[0]?.id ?? "");
+  const paymentAccountId = household.accounts[0]?.id ?? "";
+  const [receiptPayments, setReceiptPayments] = useState<Record<string, ReceiptPaymentDraft[]>>({});
   const [cropRegion, setCropRegion] = useState<Region | null>(null);
   const [cropPending, setCropPending] = useState(false);
   const [previewPage, setPreviewPage] = useState(0);
@@ -265,6 +282,63 @@ export function ImportsPage({
   );
   const selectedDocument = documents.find((document) => document.id === selected);
   const targetPurchase = recentPurchases.find((purchase) => purchase.id === targetPurchaseId);
+  const normalizeName = (name: string) =>
+    name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ja-JP");
+  const suggestedCategoryId = (item: ExtractedItem) => {
+    const categories = household.categories.filter((category) => !category.archived);
+    const hinted = categories.filter(
+      (category) => normalizeName(category.name) === normalizeName(item.categoryHint ?? ""),
+    );
+    if (hinted.length === 1) return hinted[0].id;
+    const matchingCategoryIds = new Set(
+      recentPurchases
+        .filter((purchase) => purchase.status !== "DRAFT")
+        .flatMap((purchase) => purchase.items)
+        .filter((purchaseItem) => normalizeName(purchaseItem.name) === normalizeName(item.name))
+        .map((purchaseItem) => purchaseItem.categoryId)
+        .filter((categoryId): categoryId is string => Boolean(categoryId)),
+    );
+    return matchingCategoryIds.size === 1 ? [...matchingCategoryIds][0] : "";
+  };
+  const receiptItemAmount = (document: DocumentReview, item: ExtractedItem, index: number) => {
+    const candidateID = selectedCandidates[document.id] ?? "";
+    const candidate = document.result?.candidates?.find((entry) => entry.id === candidateID);
+    return manualAmountOverrides[document.id]
+      ? (item.grossAmount ?? item.printedAmount)
+      : (candidate?.amounts[index] ?? item.grossAmount ?? item.printedAmount);
+  };
+  const receiptTotal = (document: DocumentReview) =>
+    (document.result?.receipt?.items ?? []).reduce(
+      (total, item, index) => total + receiptItemAmount(document, item, index),
+      0,
+    );
+  const paymentDraftFor = (document: DocumentReview): ReceiptPaymentDraft[] => {
+    if (receiptPayments[document.id]) return receiptPayments[document.id];
+    const recognizedPayments = document.result?.receipt?.payments ?? [];
+    if (recognizedPayments.length) {
+      return recognizedPayments.map((payment, index) => {
+        const method = normalizeName(payment.method);
+        const matchingAccounts = household.accounts.filter(
+          (account) =>
+            normalizeName(account.name) === method || normalizeName(account.kind) === method,
+        );
+        return {
+          key: `recognized:${index}`,
+          method: payment.method,
+          cardLast4: payment.cardLast4,
+          paymentAccountId: matchingAccounts.length === 1 ? matchingAccounts[0].id : "",
+          amountYen: payment.amount,
+        };
+      });
+    }
+    return [
+      {
+        key: "default",
+        paymentAccountId: household.accounts[0]?.id ?? "",
+        amountYen: receiptTotal(document),
+      },
+    ];
+  };
   const markUnsaved = () => setHasUnsavedChanges(true);
   useEffect(() => {
     onUnsavedChanges(hasUnsavedChanges);
@@ -727,6 +801,11 @@ export function ImportsPage({
     const requiresOverrideReason =
       manualAmountOverrides[document.id] ||
       (candidate ? !candidate.consistent : !document.result?.balanced);
+    const paymentDraft = paymentDraftFor(document);
+    const totalYen = items.reduce(
+      (total, item, index) => total + receiptItemAmount(document, item, index),
+      0,
+    );
     if (!items.length) {
       setMessage("確定できる品目がありません");
       return;
@@ -739,14 +818,25 @@ export function ImportsPage({
       setMessage("金額の訂正理由を入力してください");
       return;
     }
+    if (
+      household.accounts.length > 0 &&
+      (paymentDraft.some(
+        (payment) =>
+          !payment.paymentAccountId ||
+          !Number.isSafeInteger(payment.amountYen) ||
+          payment.amountYen < 0,
+      ) ||
+        paymentDraft.reduce((total, payment) => total + payment.amountYen, 0) !== totalYen)
+    ) {
+      setMessage("決済内訳と購入額を一致させてください");
+      return;
+    }
     setPending(true);
     setMessage("");
     try {
       const purchaseItems = items.map((item, index) => ({
         name: item.name,
-        amountYen: manualAmountOverrides[document.id]
-          ? (item.grossAmount ?? item.printedAmount)
-          : (candidate?.amounts[index] ?? item.grossAmount ?? item.printedAmount),
+        amountYen: receiptItemAmount(document, item, index),
         quantityNumerator: item.quantityNumerator,
         quantityDenominator: item.quantityDenominator,
         quantityUnit: item.quantityUnit,
@@ -754,6 +844,8 @@ export function ImportsPage({
         printedUnitPriceQuantityNumerator: item.printedUnitPriceQuantityNumerator,
         printedUnitPriceQuantityDenominator: item.printedUnitPriceQuantityDenominator,
         printedUnitPriceUnit: item.printedUnitPriceUnit,
+        categoryId:
+          item.categoryId != null ? item.categoryId || null : suggestedCategoryId(item) || null,
         allocations: null,
       }));
       const created = await createAndPostPurchase({
@@ -765,14 +857,12 @@ export function ImportsPage({
           ? new Date(receipt.purchasedAt).toISOString()
           : new Date().toISOString(),
         merchant: receipt?.merchant ?? "",
-        paymentAllocations: paymentAccountId
-          ? [
-              {
-                paymentAccountId,
-                amountYen: purchaseItems.reduce((total, item) => total + item.amountYen, 0),
-              },
-            ]
-          : [],
+        paymentAllocations: paymentDraft
+          .filter((payment) => payment.paymentAccountId && payment.amountYen > 0)
+          .map((payment) => ({
+            paymentAccountId: payment.paymentAccountId,
+            amountYen: payment.amountYen,
+          })),
         receiptCandidateId: candidateID || null,
         manualAmountOverrideReason: overrideReason || null,
         items: purchaseItems,
@@ -877,17 +967,41 @@ export function ImportsPage({
           <h1>取り込み</h1>
           <p>レシート、注文履歴、明細を追加</p>
         </div>
-        <button className="button button-soft" onClick={() => inputRef.current?.click()}>
-          <Upload size={16} />
-          ファイルを選ぶ
-        </button>
+        <div className="import-actions page-import-actions">
+          <button
+            type="button"
+            className="button button-soft"
+            onClick={() => cameraInputRef.current?.click()}
+          >
+            <Camera size={16} />
+            撮影
+          </button>
+          <button
+            type="button"
+            className="button button-soft"
+            onClick={() => inputRef.current?.click()}
+          >
+            <Upload size={16} />
+            ファイルを選ぶ
+          </button>
+        </div>
       </div>
       <input
         ref={inputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf,.csv,.eml,text/csv,message/rfc822"
-        capture="environment"
         multiple
+        hidden
+        onChange={(event) => {
+          addFiles(event.currentTarget.files);
+          event.currentTarget.value = "";
+        }}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         hidden
         onChange={(event) => {
           addFiles(event.currentTarget.files);
@@ -913,11 +1027,24 @@ export function ImportsPage({
           </div>
           <h2>購入記録を追加</h2>
           <p>JPEG、PNG、WebP、PDF、CSV、EML</p>
-          <button className="button button-primary" onClick={() => inputRef.current?.click()}>
-            <Upload size={16} />
-            ファイルを選ぶ
-          </button>
-          <span className="drop-caption">スマートフォンではカメラを使えます</span>
+          <div className="import-actions dropzone-import-actions">
+            <button
+              type="button"
+              className="button button-primary"
+              onClick={() => cameraInputRef.current?.click()}
+            >
+              <Camera size={16} />
+              撮影
+            </button>
+            <button
+              type="button"
+              className="button button-soft"
+              onClick={() => inputRef.current?.click()}
+            >
+              <Upload size={16} />
+              ファイルを選ぶ
+            </button>
+          </div>
         </section>
         <section className="panel import-review">
           <div className="panel-heading">
@@ -1104,420 +1231,561 @@ export function ImportsPage({
             </button>
           )}
           {selectedDocument && (
-            <div className="evidence-preview">
-              <a
-                className="review-image"
-                href={`/documents/${encodeURIComponent(selectedDocument.id)}/content`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <FileImage size={23} />
-                <span>原本ファイルを開く</span>
-              </a>
-              {selectedDocument.mimeType?.startsWith("image/") ||
-              selectedDocument.mimeType === "application/pdf" ? (
-                <>
-                  {selectedDocument.mimeType === "application/pdf" && (
-                    <div className="evidence-preview-page-controls">
-                      <label>
-                        PDFページ
-                        <input
-                          aria-label="PDFページ"
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={previewPageDraft}
-                          onChange={(event) => setPreviewPageDraft(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") showPreviewPage();
-                          }}
-                        />
-                      </label>
-                      <button className="text-button" type="button" onClick={showPreviewPage}>
-                        ページを表示
-                      </button>
-                    </div>
-                  )}
-                  {previewLoading && <p>ページを読み込んでいます</p>}
-                  {previewError && <InlineError message={previewError} />}
-                  {preview?.documentId === selectedDocument.id && preview.page === previewPage && (
-                    <div className="evidence-image-stage">
-                      <img src={preview.src} alt={`${previewPage + 1}ページ目の原本`} />
-                      {selectedDocument.result?.receipt?.items?.map((item, index) =>
-                        item.region?.page === previewPage ? (
-                          <button
-                            key={`item-${index}`}
-                            type="button"
-                            className={`evidence-region ${Number(receiptEvidenceIndex) === index ? "evidence-region-selected" : ""}`}
-                            style={{
-                              clipPath: `polygon(${regionPolygon(item.region, preview.transform)})`,
-                            }}
-                            aria-label={`${item.name}の原本位置`}
-                            onClick={() => {
-                              setReceiptEvidenceIndex(String(index));
-                              selectCropRegion(item.region!);
-                            }}
-                          />
-                        ) : null,
-                      )}
-                      {selectedDocument.result?.ocrLines?.map((line, index) =>
-                        line.region?.page === previewPage ? (
-                          <button
-                            key={`line-${index}`}
-                            type="button"
-                            className="evidence-region evidence-region-ocr"
-                            style={{
-                              clipPath: `polygon(${regionPolygon(line.region, preview.transform)})`,
-                            }}
-                            aria-label={`${line.text}の原本位置`}
-                            onClick={() => selectCropRegion(line.region!)}
-                          />
-                        ) : null,
-                      )}
-                    </div>
-                  )}
-                </>
-              ) : null}
-            </div>
-          )}
-          {(selectedDocument?.result?.receipt?.items?.length ||
-            selectedDocument?.result?.ocrLines?.some((line) => line.region)) && (
-            <section className="panel evidence-crop-panel">
-              <div className="panel-heading">
-                <div>
-                  <span className="eyebrow">原本座標</span>
-                  <h3>範囲の再抽出</h3>
-                </div>
-                <span>{cropRegion ? `ページ ${cropRegion.page + 1}` : "範囲未選択"}</span>
-              </div>
-              <div className="evidence-source-items">
-                {selectedDocument?.result?.receipt?.items?.map((item, index) => (
-                  <button
-                    type="button"
-                    key={index}
-                    className={`text-button ${Number(receiptEvidenceIndex) === index ? "evidence-item-selected" : ""}`}
-                    aria-pressed={Number(receiptEvidenceIndex) === index}
-                    disabled={!item.region}
-                    onClick={() => {
-                      setReceiptEvidenceIndex(String(index));
-                      if (item.region) selectCropRegion(item.region);
-                    }}
+            <div className="evidence-review-layout">
+              <details className="evidence-source-column" open>
+                <summary>原本</summary>
+                <div className="evidence-preview">
+                  <a
+                    className="review-image"
+                    href={`/documents/${encodeURIComponent(selectedDocument.id)}/content`}
+                    target="_blank"
+                    rel="noreferrer"
                   >
-                    {item.name} · {yen(item.grossAmount ?? item.printedAmount)}
-                  </button>
-                ))}
-              </div>
-              {!!selectedDocument?.result?.ocrLines?.length && (
-                <div className="evidence-ocr-lines">
-                  {selectedDocument.result.ocrLines
-                    .filter((line) => line.region)
-                    .slice(0, 80)
-                    .map((line, index) => (
-                      <button
-                        type="button"
-                        className="text-button"
-                        key={`${line.text}-${index}`}
-                        onClick={() => selectCropRegion(line.region!)}
-                      >
-                        {line.text} · ページ {line.region!.page + 1}
-                      </button>
-                    ))}
+                    <FileImage size={23} />
+                    <span>原本ファイルを開く</span>
+                  </a>
+                  {selectedDocument.mimeType?.startsWith("image/") ||
+                  selectedDocument.mimeType === "application/pdf" ? (
+                    <>
+                      {selectedDocument.mimeType === "application/pdf" && (
+                        <div className="evidence-preview-page-controls">
+                          <label>
+                            PDFページ
+                            <input
+                              aria-label="PDFページ"
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={previewPageDraft}
+                              onChange={(event) => setPreviewPageDraft(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") showPreviewPage();
+                              }}
+                            />
+                          </label>
+                          <button className="text-button" type="button" onClick={showPreviewPage}>
+                            ページを表示
+                          </button>
+                        </div>
+                      )}
+                      {previewLoading && <p>ページを読み込んでいます</p>}
+                      {previewError && <InlineError message={previewError} />}
+                      {preview?.documentId === selectedDocument.id &&
+                        preview.page === previewPage && (
+                          <div className="evidence-image-stage">
+                            <img src={preview.src} alt={`${previewPage + 1}ページ目の原本`} />
+                            {selectedDocument.result?.receipt?.items?.map((item, index) =>
+                              item.region?.page === previewPage ? (
+                                <button
+                                  key={`item-${index}`}
+                                  type="button"
+                                  className={`evidence-region ${Number(receiptEvidenceIndex) === index ? "evidence-region-selected" : ""}`}
+                                  style={{
+                                    clipPath: `polygon(${regionPolygon(item.region, preview.transform)})`,
+                                  }}
+                                  aria-label={`${item.name}の原本位置`}
+                                  onClick={() => {
+                                    setReceiptEvidenceIndex(String(index));
+                                    selectCropRegion(item.region!);
+                                  }}
+                                />
+                              ) : null,
+                            )}
+                            {selectedDocument.result?.ocrLines?.map((line, index) =>
+                              line.region?.page === previewPage ? (
+                                <button
+                                  key={`line-${index}`}
+                                  type="button"
+                                  className="evidence-region evidence-region-ocr"
+                                  style={{
+                                    clipPath: `polygon(${regionPolygon(line.region, preview.transform)})`,
+                                  }}
+                                  aria-label={`${line.text}の原本位置`}
+                                  onClick={() => selectCropRegion(line.region!)}
+                                />
+                              ) : null,
+                            )}
+                          </div>
+                        )}
+                    </>
+                  ) : null}
                 </div>
-              )}
-              {cropRegion && (
-                <div className="crop-coordinate-fields">
-                  {(["top", "left", "bottom", "right"] as const).map((key) => (
-                    <label key={key}>
-                      {{ top: "上", left: "左", bottom: "下", right: "右" }[key]}
-                      <input
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={cropRegion[key]}
-                        onChange={(event) => {
-                          markUnsaved();
-                          setCropRegion((current) =>
-                            current ? { ...current, [key]: Number(event.target.value) } : current,
-                          );
-                        }}
-                      />
-                    </label>
-                  ))}
-                  <label>
-                    ページ
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={cropRegion.page + 1}
-                      onChange={(event) => {
-                        markUnsaved();
-                        const page = Math.max(0, Math.trunc(Number(event.target.value) - 1));
-                        setCropRegion((current) => (current ? { ...current, page } : current));
-                        setPreviewPage(page);
-                        setPreviewPageDraft(String(page + 1));
-                      }}
-                    />
-                  </label>
-                  <button
-                    className="button button-soft"
-                    type="button"
-                    disabled={
-                      pending ||
-                      cropPending ||
-                      cropRegion.bottom <= cropRegion.top ||
-                      cropRegion.right <= cropRegion.left
-                    }
-                    onClick={() => void retryDocumentCrop(selectedDocument!)}
-                  >
-                    {cropPending ? "抽出中" : "この範囲で再抽出"}
-                  </button>
-                </div>
-              )}
-            </section>
-          )}
-          {!!selectedDocument?.result?.receipt?.items?.length && (
-            <div className="receipt-review">
-              <div className="review-fields">
-                <div className="review-merchant">
-                  <label>
-                    店名
-                    <input
-                      value={selectedDocument.result.receipt.merchant ?? ""}
-                      onChange={(event) => {
-                        editedReceiptDocuments.current.add(selectedDocument.id);
-                        markUnsaved();
-                        setDocuments((current) =>
-                          current.map((document) =>
-                            document.id === selectedDocument.id && document.result
-                              ? {
-                                  ...document,
-                                  result: {
-                                    ...document.result,
-                                    receipt: {
-                                      ...document.result.receipt,
-                                      merchant: event.target.value,
-                                    },
-                                  },
-                                }
-                              : document,
-                          ),
-                        );
-                      }}
-                    />
-                  </label>
-                  <label>
-                    決済元
-                    <select
-                      value={paymentAccountId}
-                      onChange={(event) => {
-                        markUnsaved();
-                        setPaymentAccountId(event.target.value);
-                      }}
-                    >
-                      <option value="">未設定</option>
-                      {household.accounts.map((account) => (
-                        <option value={account.id} key={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                {selectedDocument.result.receipt.items.map((item, index) => (
-                  <div className="receipt-item-review" key={index}>
-                    <div>
-                      <input
-                        aria-label="品名"
-                        value={item.name}
-                        onChange={(event) =>
-                          editItem(selectedDocument.id, index, { name: event.target.value })
-                        }
-                      />
-                      <small>
-                        {item.verification} · {Math.round(item.confidence * 100)}%
-                      </small>
-                    </div>
-                    <label>
-                      ¥
-                      <input
-                        inputMode="numeric"
-                        value={String(item.grossAmount ?? item.printedAmount)}
-                        onChange={(event) => {
-                          markUnsaved();
-                          setManualAmountOverrides((current) => ({
-                            ...current,
-                            [selectedDocument.id]: true,
-                          }));
-                          editItem(selectedDocument.id, index, {
-                            grossAmount: Number(event.target.value.replace(/\D/g, "")),
-                          });
-                        }}
-                      />
-                    </label>
-                    <details className="receipt-measure-details">
-                      <summary>数量・印字単価</summary>
-                      <label>
-                        数量の分子
-                        <input
-                          inputMode="numeric"
-                          value={item.quantityNumerator ?? ""}
-                          onChange={(event) =>
-                            editItem(selectedDocument.id, index, {
-                              quantityNumerator: event.target.value || null,
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        数量の分母
-                        <input
-                          inputMode="numeric"
-                          value={item.quantityDenominator ?? ""}
-                          onChange={(event) =>
-                            editItem(selectedDocument.id, index, {
-                              quantityDenominator: event.target.value || null,
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        数量単位
-                        <input
-                          value={item.quantityUnit ?? ""}
-                          onChange={(event) =>
-                            editItem(selectedDocument.id, index, {
-                              quantityUnit: event.target.value || null,
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        印字単価
-                        <input
-                          inputMode="numeric"
-                          value={item.printedUnitPriceYen ?? ""}
-                          onChange={(event) =>
-                            editItem(selectedDocument.id, index, {
-                              printedUnitPriceYen: event.target.value
-                                ? Number(event.target.value.replace(/\D/g, ""))
-                                : null,
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        基準量の分子
-                        <input
-                          inputMode="numeric"
-                          value={item.printedUnitPriceQuantityNumerator ?? ""}
-                          onChange={(event) =>
-                            editItem(selectedDocument.id, index, {
-                              printedUnitPriceQuantityNumerator: event.target.value || null,
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        基準量の分母
-                        <input
-                          inputMode="numeric"
-                          value={item.printedUnitPriceQuantityDenominator ?? ""}
-                          onChange={(event) =>
-                            editItem(selectedDocument.id, index, {
-                              printedUnitPriceQuantityDenominator: event.target.value || null,
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        印字単位
-                        <input
-                          value={item.printedUnitPriceUnit ?? ""}
-                          onChange={(event) =>
-                            editItem(selectedDocument.id, index, {
-                              printedUnitPriceUnit: event.target.value || null,
-                            })
-                          }
-                        />
-                      </label>
-                    </details>
-                  </div>
-                ))}
-                {!!selectedDocument.result.candidates?.length && (
-                  <div className="candidate-review">
+                {(selectedDocument.result?.receipt?.items?.length ||
+                  selectedDocument.result?.ocrLines?.some((line) => line.region)) && (
+                  <section className="panel evidence-crop-panel">
                     <div className="panel-heading">
                       <div>
-                        <span className="eyebrow">金額の解釈</span>
-                        <h3>計算候補</h3>
+                        <span className="eyebrow">原本座標</span>
+                        <h3>範囲の再抽出</h3>
                       </div>
+                      <span>{cropRegion ? `ページ ${cropRegion.page + 1}` : "範囲未選択"}</span>
                     </div>
-                    {selectedDocument.result.candidates.map((candidate) => (
+                    <div className="evidence-source-items">
+                      {selectedDocument?.result?.receipt?.items?.map((item, index) => (
+                        <button
+                          type="button"
+                          key={index}
+                          className={`text-button ${Number(receiptEvidenceIndex) === index ? "evidence-item-selected" : ""}`}
+                          aria-pressed={Number(receiptEvidenceIndex) === index}
+                          disabled={!item.region}
+                          onClick={() => {
+                            setReceiptEvidenceIndex(String(index));
+                            if (item.region) selectCropRegion(item.region);
+                          }}
+                        >
+                          {item.name} · {yen(item.grossAmount ?? item.printedAmount)}
+                        </button>
+                      ))}
+                    </div>
+                    {!!selectedDocument?.result?.ocrLines?.length && (
+                      <div className="evidence-ocr-lines">
+                        {selectedDocument.result.ocrLines
+                          .filter((line) => line.region)
+                          .slice(0, 80)
+                          .map((line, index) => (
+                            <button
+                              type="button"
+                              className="text-button"
+                              key={`${line.text}-${index}`}
+                              onClick={() => selectCropRegion(line.region!)}
+                            >
+                              {line.text} · ページ {line.region!.page + 1}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                    {cropRegion && (
+                      <div className="crop-coordinate-fields">
+                        {(["top", "left", "bottom", "right"] as const).map((key) => (
+                          <label key={key}>
+                            {{ top: "上", left: "左", bottom: "下", right: "右" }[key]}
+                            <input
+                              type="number"
+                              min="0"
+                              max="1"
+                              step="0.01"
+                              value={cropRegion[key]}
+                              onChange={(event) => {
+                                markUnsaved();
+                                setCropRegion((current) =>
+                                  current
+                                    ? { ...current, [key]: Number(event.target.value) }
+                                    : current,
+                                );
+                              }}
+                            />
+                          </label>
+                        ))}
+                        <label>
+                          ページ
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={cropRegion.page + 1}
+                            onChange={(event) => {
+                              markUnsaved();
+                              const page = Math.max(0, Math.trunc(Number(event.target.value) - 1));
+                              setCropRegion((current) =>
+                                current ? { ...current, page } : current,
+                              );
+                              setPreviewPage(page);
+                              setPreviewPageDraft(String(page + 1));
+                            }}
+                          />
+                        </label>
+                        <button
+                          className="button button-soft"
+                          type="button"
+                          disabled={
+                            pending ||
+                            cropPending ||
+                            cropRegion.bottom <= cropRegion.top ||
+                            cropRegion.right <= cropRegion.left
+                          }
+                          onClick={() => void retryDocumentCrop(selectedDocument!)}
+                        >
+                          {cropPending ? "抽出中" : "この範囲で再抽出"}
+                        </button>
+                      </div>
+                    )}
+                  </section>
+                )}
+              </details>
+              <div className="evidence-edit-column">
+                {!!selectedDocument.result?.receipt?.items?.length && (
+                  <div className="receipt-review">
+                    <div className="review-fields">
+                      <div className="review-merchant">
+                        <label>
+                          店名
+                          <input
+                            value={selectedDocument.result.receipt.merchant ?? ""}
+                            onChange={(event) => {
+                              editedReceiptDocuments.current.add(selectedDocument.id);
+                              markUnsaved();
+                              setDocuments((current) =>
+                                current.map((document) =>
+                                  document.id === selectedDocument.id && document.result
+                                    ? {
+                                        ...document,
+                                        result: {
+                                          ...document.result,
+                                          receipt: {
+                                            ...document.result.receipt,
+                                            merchant: event.target.value,
+                                          },
+                                        },
+                                      }
+                                    : document,
+                                ),
+                              );
+                            }}
+                          />
+                        </label>
+                      </div>
+                      <div className="field-group">
+                        <label>決済内訳</label>
+                        {paymentDraftFor(selectedDocument).map((payment, index) => (
+                          <div className="review-merchant" key={payment.key}>
+                            {(payment.method || payment.cardLast4) && (
+                              <small>
+                                {payment.method}
+                                {payment.cardLast4 ? ` · •••• ${payment.cardLast4}` : ""}
+                              </small>
+                            )}
+                            <select
+                              aria-label={`決済${index + 1}の口座`}
+                              value={payment.paymentAccountId}
+                              onChange={(event) => {
+                                markUnsaved();
+                                setReceiptPayments((current) => ({
+                                  ...current,
+                                  [selectedDocument.id]: paymentDraftFor(selectedDocument).map(
+                                    (entry) =>
+                                      entry.key === payment.key
+                                        ? { ...entry, paymentAccountId: event.target.value }
+                                        : entry,
+                                  ),
+                                }));
+                              }}
+                            >
+                              <option value="">口座を選択</option>
+                              {household.accounts.map((account) => (
+                                <option value={account.id} key={account.id}>
+                                  {account.name}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              aria-label={`決済${index + 1}の金額`}
+                              inputMode="numeric"
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={payment.amountYen}
+                              onChange={(event) => {
+                                markUnsaved();
+                                setReceiptPayments((current) => ({
+                                  ...current,
+                                  [selectedDocument.id]: paymentDraftFor(selectedDocument).map(
+                                    (entry) =>
+                                      entry.key === payment.key
+                                        ? { ...entry, amountYen: Number(event.target.value) || 0 }
+                                        : entry,
+                                  ),
+                                }));
+                              }}
+                            />
+                            <button
+                              className="text-button"
+                              type="button"
+                              aria-label={`決済${index + 1}を削除`}
+                              disabled={paymentDraftFor(selectedDocument).length === 1}
+                              onClick={() => {
+                                markUnsaved();
+                                setReceiptPayments((current) => ({
+                                  ...current,
+                                  [selectedDocument.id]: paymentDraftFor(selectedDocument).filter(
+                                    (entry) => entry.key !== payment.key,
+                                  ),
+                                }));
+                              }}
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          className="text-button"
+                          type="button"
+                          disabled={household.accounts.length < 2}
+                          onClick={() => {
+                            markUnsaved();
+                            const current = paymentDraftFor(selectedDocument);
+                            const total = receiptTotal(selectedDocument);
+                            const rows =
+                              current.length === 1 && current[0].amountYen === total
+                                ? [
+                                    { ...current[0], amountYen: Math.floor(total / 2) },
+                                    {
+                                      key: crypto.randomUUID(),
+                                      paymentAccountId: "",
+                                      amountYen: total - Math.floor(total / 2),
+                                    },
+                                  ]
+                                : [
+                                    ...current,
+                                    {
+                                      key: crypto.randomUUID(),
+                                      paymentAccountId: "",
+                                      amountYen: 0,
+                                    },
+                                  ];
+                            setReceiptPayments((previous) => ({
+                              ...previous,
+                              [selectedDocument.id]: rows,
+                            }));
+                          }}
+                        >
+                          <Check size={14} />
+                          {paymentDraftFor(selectedDocument).length === 1
+                            ? "決済を分割"
+                            : "決済を追加"}
+                        </button>
+                        <small>
+                          決済合計{" "}
+                          {yen(
+                            paymentDraftFor(selectedDocument).reduce(
+                              (total, payment) => total + payment.amountYen,
+                              0,
+                            ),
+                          )}{" "}
+                          購入額 {yen(receiptTotal(selectedDocument))}
+                        </small>
+                      </div>
+                      {selectedDocument.result.receipt.items.map((item, index) => (
+                        <div className="receipt-item-review" key={index}>
+                          <div>
+                            <input
+                              aria-label="品名"
+                              value={item.name}
+                              onChange={(event) =>
+                                editItem(selectedDocument.id, index, { name: event.target.value })
+                              }
+                            />
+                            <small>
+                              {item.verification} · {Math.round(item.confidence * 100)}%
+                            </small>
+                            <select
+                              aria-label={`${item.name}のカテゴリ`}
+                              value={
+                                item.categoryId != null
+                                  ? item.categoryId
+                                  : suggestedCategoryId(item)
+                              }
+                              onChange={(event) =>
+                                editItem(selectedDocument.id, index, {
+                                  categoryId: event.target.value,
+                                })
+                              }
+                            >
+                              <option value="">カテゴリを確認</option>
+                              {household.categories
+                                .filter((category) => !category.archived)
+                                .map((category) => (
+                                  <option value={category.id} key={category.id}>
+                                    {category.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                          <label>
+                            ¥
+                            <input
+                              inputMode="numeric"
+                              value={String(item.grossAmount ?? item.printedAmount)}
+                              onChange={(event) => {
+                                markUnsaved();
+                                setManualAmountOverrides((current) => ({
+                                  ...current,
+                                  [selectedDocument.id]: true,
+                                }));
+                                editItem(selectedDocument.id, index, {
+                                  grossAmount: Number(event.target.value.replace(/\D/g, "")),
+                                });
+                              }}
+                            />
+                          </label>
+                          <details className="receipt-measure-details">
+                            <summary>数量・印字単価</summary>
+                            <label>
+                              数量の分子
+                              <input
+                                inputMode="numeric"
+                                value={item.quantityNumerator ?? ""}
+                                onChange={(event) =>
+                                  editItem(selectedDocument.id, index, {
+                                    quantityNumerator: event.target.value || null,
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              数量の分母
+                              <input
+                                inputMode="numeric"
+                                value={item.quantityDenominator ?? ""}
+                                onChange={(event) =>
+                                  editItem(selectedDocument.id, index, {
+                                    quantityDenominator: event.target.value || null,
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              数量単位
+                              <input
+                                value={item.quantityUnit ?? ""}
+                                onChange={(event) =>
+                                  editItem(selectedDocument.id, index, {
+                                    quantityUnit: event.target.value || null,
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              印字単価
+                              <input
+                                inputMode="numeric"
+                                value={item.printedUnitPriceYen ?? ""}
+                                onChange={(event) =>
+                                  editItem(selectedDocument.id, index, {
+                                    printedUnitPriceYen: event.target.value
+                                      ? Number(event.target.value.replace(/\D/g, ""))
+                                      : null,
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              基準量の分子
+                              <input
+                                inputMode="numeric"
+                                value={item.printedUnitPriceQuantityNumerator ?? ""}
+                                onChange={(event) =>
+                                  editItem(selectedDocument.id, index, {
+                                    printedUnitPriceQuantityNumerator: event.target.value || null,
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              基準量の分母
+                              <input
+                                inputMode="numeric"
+                                value={item.printedUnitPriceQuantityDenominator ?? ""}
+                                onChange={(event) =>
+                                  editItem(selectedDocument.id, index, {
+                                    printedUnitPriceQuantityDenominator: event.target.value || null,
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              印字単位
+                              <input
+                                value={item.printedUnitPriceUnit ?? ""}
+                                onChange={(event) =>
+                                  editItem(selectedDocument.id, index, {
+                                    printedUnitPriceUnit: event.target.value || null,
+                                  })
+                                }
+                              />
+                            </label>
+                          </details>
+                        </div>
+                      ))}
+                      {!!selectedDocument.result.candidates?.length && (
+                        <div className="candidate-review">
+                          <div className="panel-heading">
+                            <div>
+                              <span className="eyebrow">金額の解釈</span>
+                              <h3>計算候補</h3>
+                            </div>
+                          </div>
+                          {selectedDocument.result.candidates.map((candidate) => (
+                            <button
+                              type="button"
+                              className={`candidate-option ${selectedCandidates[selectedDocument.id] === candidate.id ? "candidate-selected" : ""}`}
+                              key={candidate.id}
+                              onClick={() => {
+                                markUnsaved();
+                                setSelectedCandidates((current) => ({
+                                  ...current,
+                                  [selectedDocument.id]: candidate.id,
+                                }));
+                              }}
+                            >
+                              <span>
+                                <b>{candidate.id || "候補"}</b>
+                                <small>
+                                  {candidate.consistent ? "合計一致" : "合計差異"}
+                                  {candidate.issues.length
+                                    ? ` · ${candidate.issues.join("、")}`
+                                    : ""}
+                                </small>
+                              </span>
+                              <strong>{yen(candidate.computedTotal)}</strong>
+                            </button>
+                          ))}
+                          <small>品目の印字額は保持されます。選んだ計算額を帳簿に使います。</small>
+                        </div>
+                      )}
+                      {(manualAmountOverrides[selectedDocument.id] ||
+                        (selectedCandidates[selectedDocument.id]
+                          ? !selectedDocument.result.candidates?.find(
+                              (candidate) =>
+                                candidate.id === selectedCandidates[selectedDocument.id],
+                            )?.consistent
+                          : !selectedDocument.result.balanced)) && (
+                        <label className="field-group">
+                          金額の訂正理由
+                          <input
+                            maxLength={500}
+                            value={manualAmountOverrideReasons[selectedDocument.id] ?? ""}
+                            onChange={(event) => {
+                              markUnsaved();
+                              setManualAmountOverrideReasons((current) => ({
+                                ...current,
+                                [selectedDocument.id]: event.target.value,
+                              }));
+                            }}
+                          />
+                        </label>
+                      )}
+                      <div className="review-total">
+                        <span>認識した合計</span>
+                        <b>
+                          {yen(
+                            selectedDocument.result.candidates?.find(
+                              (candidate) =>
+                                candidate.id === selectedCandidates[selectedDocument.id],
+                            )?.computedTotal ?? selectedDocument.result.computedTotal,
+                          )}
+                        </b>
+                      </div>
                       <button
-                        type="button"
-                        className={`candidate-option ${selectedCandidates[selectedDocument.id] === candidate.id ? "candidate-selected" : ""}`}
-                        key={candidate.id}
-                        onClick={() => {
-                          markUnsaved();
-                          setSelectedCandidates((current) => ({
-                            ...current,
-                            [selectedDocument.id]: candidate.id,
-                          }));
-                        }}
+                        className="button button-primary button-wide"
+                        disabled={pending}
+                        onClick={() => void confirm(selectedDocument)}
                       >
-                        <span>
-                          <b>{candidate.id || "候補"}</b>
-                          <small>
-                            {candidate.consistent ? "合計一致" : "合計差異"}
-                            {candidate.issues.length ? ` · ${candidate.issues.join("、")}` : ""}
-                          </small>
-                        </span>
-                        <strong>{yen(candidate.computedTotal)}</strong>
+                        <Check size={16} />
+                        帳簿に追加
                       </button>
-                    ))}
-                    <small>品目の印字額は保持されます。選んだ計算額を帳簿に使います。</small>
+                    </div>
                   </div>
                 )}
-                {(manualAmountOverrides[selectedDocument.id] ||
-                  (selectedCandidates[selectedDocument.id]
-                    ? !selectedDocument.result.candidates?.find(
-                        (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
-                      )?.consistent
-                    : !selectedDocument.result.balanced)) && (
-                  <label className="field-group">
-                    金額の訂正理由
-                    <input
-                      maxLength={500}
-                      value={manualAmountOverrideReasons[selectedDocument.id] ?? ""}
-                      onChange={(event) => {
-                        markUnsaved();
-                        setManualAmountOverrideReasons((current) => ({
-                          ...current,
-                          [selectedDocument.id]: event.target.value,
-                        }));
-                      }}
-                    />
-                  </label>
-                )}
-                <div className="review-total">
-                  <span>認識した合計</span>
-                  <b>
-                    {yen(
-                      selectedDocument.result.candidates?.find(
-                        (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
-                      )?.computedTotal ?? selectedDocument.result.computedTotal,
-                    )}
-                  </b>
-                </div>
-                <button
-                  className="button button-primary button-wide"
-                  disabled={pending}
-                  onClick={() => void confirm(selectedDocument)}
-                >
-                  <Check size={16} />
-                  帳簿に追加
-                </button>
               </div>
             </div>
           )}

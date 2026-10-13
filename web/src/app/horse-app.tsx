@@ -13,7 +13,6 @@ import {
   AlertCircle,
   BarChart3,
   BookOpen,
-  Check,
   CloudUpload,
   ChevronDown,
   ChevronRight,
@@ -45,6 +44,7 @@ import {
 } from "../shared/lib";
 import { isAppPage, type AppPage } from "./app-page";
 import { householdRouteContext } from "./household-route-context";
+import { Notice, type NoticeKind } from "../shared/ui";
 
 async function read<T>(
   operation: Parameters<typeof executeGraphql>[0],
@@ -74,7 +74,8 @@ export function App() {
   const [error, setError] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [householdMenu, setHouseholdMenu] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<{ message: string; kind: NoticeKind } | null>(null);
+  const noticeTimeout = useRef<number | undefined>(undefined);
   const [loggingOut, setLoggingOut] = useState(false);
   const [pendingInvitation, setPendingInvitation] = useState("");
   const [acceptingInvitation, setAcceptingInvitation] = useState(false);
@@ -202,7 +203,7 @@ export function App() {
       })
       .catch((reason: unknown) => {
         if (!active) return;
-        showNoticeRef.current((reason as Error).message || "家計簿を読み込めませんでした");
+        showNoticeRef.current((reason as Error).message || "家計簿を読み込めませんでした", "error");
         const currentId = currentHouseholdId.current;
         if (currentId && currentId !== target.id)
           navigateToHouseholdPage(currentId, currentPage.current, true);
@@ -215,13 +216,14 @@ export function App() {
     };
   }, [households, householdId, navigate, householdRetryVersion]);
 
-  const showNotice = (message: string) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 3200);
+  const showNotice = (message: string, kind: NoticeKind = "info") => {
+    if (noticeTimeout.current !== undefined) window.clearTimeout(noticeTimeout.current);
+    setNotice({ message, kind });
+    noticeTimeout.current = window.setTimeout(() => setNotice(null), 3200);
   };
   const onPurchaseQueued = (idempotencyKey: string) => {
     autoNavigateKey.current = idempotencyKey;
-    showNotice("送信待ちに保存しました");
+    showNotice("送信待ちに保存しました", "info");
   };
   const onBackFromPurchase = () => navigateToPage(purchaseCreatePreviousPage.current);
   const showNoticeRef = useRef(showNotice);
@@ -256,7 +258,7 @@ export function App() {
           await completePurchaseOutbox(key, owner);
           if (currentHouseholdId.current === request.input.householdId) {
             await refreshHouseholdRef.current(request.input.householdId);
-            showNoticeRef.current("買い物を帳簿に追加しました");
+            showNoticeRef.current("買い物を帳簿に追加しました", "success");
           }
           if (autoNavigateKey.current === key && currentPage.current === "new") {
             autoNavigateKey.current = null;
@@ -318,7 +320,7 @@ export function App() {
       window.location.reload();
     } catch (reason) {
       if (hadUnsavedChanges) hasUnsavedChangesRef.current = true;
-      showNotice((reason as Error).message);
+      showNotice((reason as Error).message, "error");
       setLoggingOut(false);
     }
   };
@@ -341,10 +343,10 @@ export function App() {
         ...current.filter((item) => item.id !== result.acceptHouseholdInvitation.id),
       ]);
       navigateToHouseholdPage(result.acceptHouseholdInvitation.id, page);
-      showNotice("家計簿に参加しました");
+      showNotice("家計簿に参加しました", "success");
     } catch (reason) {
       if (hadUnsavedChanges) hasUnsavedChangesRef.current = true;
-      showNotice((reason as Error).message);
+      showNotice((reason as Error).message, "error");
     } finally {
       setAcceptingInvitation(false);
     }
@@ -622,12 +624,7 @@ export function App() {
           </householdRouteContext.Provider>
         </div>
       </main>
-      {notice && (
-        <div className="toast">
-          <Check size={17} />
-          {notice}
-        </div>
-      )}
+      {notice && <Notice message={notice.message} kind={notice.kind} />}
       <nav className="mobile-dock" aria-label="モバイルメニュー">
         <button
           className={page === "home" ? "dock-active" : ""}

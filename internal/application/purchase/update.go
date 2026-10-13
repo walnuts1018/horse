@@ -52,13 +52,13 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand, operations 
 		return UpdateResult{}, fmt.Errorf("%w: payment allocations are required", ErrBadInput)
 	}
 
-	purchaseUUID, err := gofrsuuid.FromString(command.PurchaseID)
+	purchaseUUID, err := parseUUID(command.PurchaseID, "purchase")
 	if err != nil {
-		return UpdateResult{}, ErrNotFound
+		return UpdateResult{}, err
 	}
-	actorUUID, err := gofrsuuid.FromString(command.ActorID)
+	actorUUID, err := parseUUID(command.ActorID, "actor")
 	if err != nil {
-		return UpdateResult{}, ErrNotFound
+		return UpdateResult{}, err
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {

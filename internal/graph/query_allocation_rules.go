@@ -90,18 +90,147 @@ func (r *queryResolver) allocationRules(ctx context.Context, householdID string,
 		slices.Reverse(rules)
 	}
 	connection := &model.AllocationRuleConnection{Edges: make([]*model.AllocationRuleEdge, 0, len(rules)), TotalCount: int(count), PageInfo: &model.PageInfo{HasNextPage: backward && before != nil && *before != "" || !backward && hasNextPage, HasPreviousPage: backward && hasNextPage || !backward && after != nil && *after != ""}}
-	for _, rule := range rules {
-		loaded, err := loadAllocationRule(ctx, r.DB, rule.ID.String())
-		if err != nil {
-			return nil, err
-		}
-		connection.Edges = append(connection.Edges, &model.AllocationRuleEdge{Cursor: encodeCursor(nodeTypeAllocationRule, rule.ID.String()), Node: loaded})
+	loadedRules, err := loadAllocationRules(ctx, executor, parsedID, rules)
+	if err != nil {
+		return nil, err
+	}
+	for index, rule := range rules {
+		connection.Edges = append(connection.Edges, &model.AllocationRuleEdge{Cursor: encodeCursor(nodeTypeAllocationRule, rule.ID.String()), Node: loadedRules[index]})
 	}
 	if len(rules) > 0 {
 		start, end := encodeCursor(nodeTypeAllocationRule, rules[0].ID.String()), encodeCursor(nodeTypeAllocationRule, rules[len(rules)-1].ID.String())
 		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &start, &end
 	}
 	return connection, nil
+}
+
+func loadAllocationRules(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, rules []*models.AllocationRule) ([]*model.AllocationRule, error) {
+	if len(rules) == 0 {
+		return nil, nil
+	}
+	ruleIDs := make([]bob.Expression, 0, len(rules))
+	categoryIDs := make([]bob.Expression, 0, len(rules))
+	conceptIDs := make([]bob.Expression, 0, len(rules))
+	variantIDs := make([]bob.Expression, 0, len(rules))
+	for _, rule := range rules {
+		ruleIDs = append(ruleIDs, psql.Arg(rule.ID))
+		if rule.CategoryID.Valid {
+			categoryIDs = append(categoryIDs, psql.Arg(rule.CategoryID.V))
+		}
+		if rule.ProductConceptID.Valid {
+			conceptIDs = append(conceptIDs, psql.Arg(rule.ProductConceptID.V))
+		}
+		if rule.ProductVariantID.Valid {
+			variantIDs = append(variantIDs, psql.Arg(rule.ProductVariantID.V))
+		}
+	}
+	categories := make(map[gofrsuuid.UUID]*models.Category, len(categoryIDs))
+	if len(categoryIDs) > 0 {
+		rows, err := models.Categories.Query(sm.Where(psql.And(
+			models.Categories.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.Categories.Columns.ID.In(categoryIDs...),
+		))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			categories[row.ID] = row
+		}
+	}
+	concepts := make(map[gofrsuuid.UUID]*models.ProductConcept, len(conceptIDs))
+	if len(conceptIDs) > 0 {
+		rows, err := models.ProductConcepts.Query(sm.Where(psql.And(
+			models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.ProductConcepts.Columns.ID.In(conceptIDs...),
+		))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			concepts[row.ID] = row
+		}
+	}
+	variants := make(map[gofrsuuid.UUID]*models.ProductVariant, len(variantIDs))
+	if len(variantIDs) > 0 {
+		rows, err := models.ProductVariants.Query(sm.Where(psql.And(
+			models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.ProductVariants.Columns.ID.In(variantIDs...),
+		))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			variants[row.ID] = row
+		}
+	}
+	weights, err := models.AllocationRuleWeights.Query(
+		sm.Where(models.AllocationRuleWeights.Columns.RuleID.In(ruleIDs...)),
+		sm.OrderBy(models.AllocationRuleWeights.Columns.PoolID),
+	).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if err := weights.LoadPool(ctx, executor); err != nil {
+		return nil, err
+	}
+	weightsByRule := make(map[gofrsuuid.UUID][]*models.AllocationRuleWeight, len(rules))
+	for _, weight := range weights {
+		weightsByRule[weight.RuleID] = append(weightsByRule[weight.RuleID], weight)
+	}
+	loaded := make([]*model.AllocationRule, 0, len(rules))
+	for _, rule := range rules {
+		value := &model.AllocationRule{ID: rule.ID.String(), HouseholdID: rule.HouseholdID.String(), Revision: int(rule.Revision), Allocations: make([]*model.Allocation, 0)}
+		switch {
+		case rule.CategoryID.Valid:
+			category := categories[rule.CategoryID.V]
+			if category == nil {
+				return nil, fmt.Errorf("allocation rule %s category is missing", rule.ID)
+			}
+			var parentID *string
+			if category.ParentID.Valid {
+				parentID = new(category.ParentID.V.String())
+			}
+			value.Target = &model.Category{ID: category.ID.String(), Name: category.Name, ParentID: parentID, Archived: category.Archived}
+		case rule.ProductConceptID.Valid:
+			concept := concepts[rule.ProductConceptID.V]
+			if concept == nil {
+				return nil, fmt.Errorf("allocation rule %s product concept is missing", rule.ID)
+			}
+			var categoryID *string
+			if concept.CategoryID.Valid {
+				categoryID = new(concept.CategoryID.V.String())
+			}
+			value.Target = &model.ProductConcept{
+				ID: concept.ID.String(), HouseholdID: concept.HouseholdID.String(), Name: concept.Name,
+				NormalizedName: concept.NormalizedName, CategoryID: categoryID, Archived: concept.Archived,
+				Revision: int(concept.Revision),
+			}
+		case rule.ProductVariantID.Valid:
+			variant := variants[rule.ProductVariantID.V]
+			if variant == nil {
+				return nil, fmt.Errorf("allocation rule %s product variant is missing", rule.ID)
+			}
+			var barcode *string
+			if variant.Barcode.Valid {
+				barcode = new(variant.Barcode.V)
+			}
+			value.Target = &model.ProductVariant{
+				ID: variant.ID.String(), HouseholdID: variant.HouseholdID.String(), ConceptID: variant.ConceptID.String(),
+				Name: variant.Name, NormalizedName: variant.NormalizedName, Brand: new(variant.Brand),
+				PackageSize: new(variant.PackageSize), Barcode: barcode, Archived: variant.Archived,
+				Revision: int(variant.Revision),
+			}
+		case rule.MerchantKey.Valid:
+			value.Target = model.MerchantAllocationRuleTarget{Name: rule.MerchantKey.V}
+		default:
+			return nil, fmt.Errorf("allocation rule %s has no target", rule.ID)
+		}
+		for _, weight := range weightsByRule[rule.ID] {
+			if weight.R.Pool == nil {
+				return nil, fmt.Errorf("allocation rule weight %s has no pool", weight.PoolID)
+			}
+			value.Allocations = append(value.Allocations, &model.Allocation{PoolID: weight.PoolID.String(), PoolName: weight.R.Pool.Name, Weight: graphLong(weight.Weight)})
+		}
+		loaded = append(loaded, value)
+	}
+	return loaded, nil
 }
 
 func allocationRuleCursorFilter(cursor *models.AllocationRule, isBefore bool) bob.Expression {

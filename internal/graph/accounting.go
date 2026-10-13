@@ -203,10 +203,6 @@ func (r *mutationResolver) setPoolFundingRule(ctx context.Context, input model.S
 	return nil, ErrNotFound
 }
 
-func poolFundingRules(ctx context.Context, db accountingDB, householdID string) (map[string]domain.PoolFundingRule, error) {
-	return settlementapp.PoolFundingRules(ctx, db, householdID)
-}
-
 func calculatePeriodAccounting(ctx context.Context, db accountingDB, householdID, period string) ([]domain.SettlementAmount, error) {
 	return settlementapp.CalculatePeriod(ctx, db, householdID, period)
 }

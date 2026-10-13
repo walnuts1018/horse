@@ -12,6 +12,8 @@ const (
 	ProjectFree = "free"
 	ProjectPaid = "paid"
 
+	geminiFailureUnknownModelPrice = "unknown_model_price"
+
 	JobPurposeInteractive = "interactive"
 	JobPurposeBackground  = "background"
 
@@ -119,6 +121,12 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	for index, client := range clients {
 		if client.APIKey == "" {
 			continue
+		}
+		if client.ProjectRoute == ProjectPaid {
+			inputPrice, outputPrice := modelPrices(client.Model, 0, time.Now())
+			if inputPrice == 0 && outputPrice == 0 {
+				return Receipt{}, runs, &GeminiAPIError{Kind: GeminiFailureRejected, Code: geminiFailureUnknownModelPrice}
+			}
 		}
 		client.USDJPYRate = r.USDJPYRate
 		client.USDJPYRateSource = r.USDJPYRateSource

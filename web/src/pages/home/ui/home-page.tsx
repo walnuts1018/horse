@@ -197,8 +197,19 @@ export function HomePage({
 function MiniBars({ dailySpending }: { dailySpending: HomeSummary["dailySpending"] }) {
   const totals = dailySpending.map((day) => day.amountYen);
   const peak = Math.max(...totals, 1);
+  const spendingSummary = dailySpending
+    .map((day) => {
+      const date = new Intl.DateTimeFormat("ja-JP", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        timeZone: "UTC",
+      }).format(new Date(`${day.date}T00:00:00Z`));
+      return `${date} ${day.amountYen.toLocaleString("ja-JP")}円`;
+    })
+    .join("、");
   return (
-    <div className="mini-chart" aria-label="直近7日の支出">
+    <div className="mini-chart" role="img" aria-label={`直近7日の支出。${spendingSummary}`}>
       <div className="mini-bars">
         {dailySpending.map((day, index) => (
           <div key={day.date} className="bar-track" title={`${day.date}: ${yen(day.amountYen)}`}>
