@@ -3,6 +3,8 @@ import { LedgerPage, parseLedgerSearch, serializeLedgerSearch } from "../../page
 import { useHouseholdRouteContext } from "../household-route-context";
 
 export const Route = createFileRoute("/households/$householdId/ledger")({
+  validateSearch: (search: Record<string, unknown>) =>
+    serializeLedgerSearch(parseLedgerSearch(search)),
   component: HouseholdLedger,
 });
 
