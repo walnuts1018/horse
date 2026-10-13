@@ -322,6 +322,15 @@ export function AnalysisPage({ household }: { household: Household }) {
           .values(),
       ).sort((a, b) => b.amount - a.amount)
     : [];
+  const categorySeries = categories.slice(0, 5).map((category, index) => ({
+    id: category.id,
+    name: category.name,
+    colorIndex: index,
+  }));
+  const remainingCategories = categories.slice(5);
+  if (remainingCategories.length > 0) {
+    categorySeries.push({ id: "__other", name: "その他", colorIndex: 5 });
+  }
   const members = aggregateReady
     ? Array.from(
         memberSpending
@@ -568,19 +577,72 @@ export function AnalysisPage({ household }: { household: Household }) {
                   </small>
                 )}
               </div>
-              <span className="chart-legend">
-                <i />
-                合計
-              </span>
+              {dimension === "category" ? (
+                <div className="chart-legend category-chart-legend">
+                  {categorySeries.map((category) => (
+                    <span key={category.id}>
+                      <i className={`swatch-${category.colorIndex}`} />
+                      {category.name}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="chart-legend">
+                  <i />
+                  合計
+                </span>
+              )}
             </div>
             <div className="monthly-chart">
-              {monthly.map((row) => (
-                <div className="month-column" key={row.month}>
-                  <b>{yen(row.amount)}</b>
-                  <i style={{ height: `${Math.max(3, (row.amount / max) * 100)}%` }} />
-                  <span>{Number(row.month.slice(5))}月</span>
-                </div>
-              ))}
+              {monthly.map((row) => {
+                if (dimension !== "category") {
+                  return (
+                    <div className="month-column" key={row.month}>
+                      <b>{yen(row.amount)}</b>
+                      <i style={{ height: `${Math.max(3, (row.amount / max) * 100)}%` }} />
+                      <span>{Number(row.month.slice(5))}月</span>
+                    </div>
+                  );
+                }
+                const categoryAmounts = new Map<string, number>();
+                for (const entry of spending) {
+                  if (entry.period !== row.month) continue;
+                  const id = entry.categoryId ?? "uncategorized";
+                  categoryAmounts.set(id, (categoryAmounts.get(id) ?? 0) + entry.amountYen);
+                }
+                const otherAmount = remainingCategories.reduce(
+                  (amount, category) => amount + (categoryAmounts.get(category.id) ?? 0),
+                  0,
+                );
+                const segments = categorySeries.map((category) => ({
+                  ...category,
+                  amount:
+                    category.id === "__other"
+                      ? otherAmount
+                      : (categoryAmounts.get(category.id) ?? 0),
+                }));
+                return (
+                  <div className="month-column category-month-column" key={row.month}>
+                    <b>{yen(row.amount)}</b>
+                    <div
+                      className="category-stack"
+                      style={{ height: `${Math.max(3, (row.amount / max) * 72)}%` }}
+                    >
+                      {segments
+                        .filter((segment) => segment.amount > 0)
+                        .map((segment) => (
+                          <i
+                            className={`swatch-${segment.colorIndex}`}
+                            key={segment.id}
+                            style={{ flexGrow: segment.amount }}
+                            title={`${segment.name} ${yen(segment.amount)}`}
+                          />
+                        ))}
+                    </div>
+                    <span>{Number(row.month.slice(5))}月</span>
+                  </div>
+                );
+              })}
             </div>
           </section>
           <section className="panel category-panel">

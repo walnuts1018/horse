@@ -2394,6 +2394,44 @@ a {
   background: #60a884;
 }
 
+.category-chart-legend {
+  max-width: 62%;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+}
+
+.category-chart-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.category-chart-legend .swatch-0 {
+  background: #67a98b;
+}
+
+.category-chart-legend .swatch-1 {
+  background: #dca96b;
+}
+
+.category-chart-legend .swatch-2 {
+  background: #869bce;
+}
+
+.category-chart-legend .swatch-3 {
+  background: #d9857a;
+}
+
+.category-chart-legend .swatch-4 {
+  background: #85b9bd;
+}
+
+.category-chart-legend .swatch-5 {
+  background: #ad95c5;
+}
+
 .monthly-chart {
   height: 215px;
   margin-top: 16px;
@@ -2438,6 +2476,49 @@ a {
   font-size: 9px;
   color: #5f6d65;
   padding: 0 0 9px;
+}
+
+.category-month-column {
+  height: 100%;
+}
+
+.category-month-column > .category-stack {
+  display: flex;
+  flex-direction: column-reverse;
+  flex-shrink: 0;
+  width: min(30px, 68%);
+  min-height: 3px;
+}
+
+.category-stack > i {
+  display: block;
+  flex: 0 1 auto;
+  min-height: 1px;
+  width: 100%;
+}
+
+.category-stack .swatch-0 {
+  background: #67a98b;
+}
+
+.category-stack .swatch-1 {
+  background: #dca96b;
+}
+
+.category-stack .swatch-2 {
+  background: #869bce;
+}
+
+.category-stack .swatch-3 {
+  background: #d9857a;
+}
+
+.category-stack .swatch-4 {
+  background: #85b9bd;
+}
+
+.category-stack .swatch-5 {
+  background: #ad95c5;
 }
 
 .category-row {
