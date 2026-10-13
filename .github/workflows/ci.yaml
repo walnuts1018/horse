@@ -64,15 +64,14 @@ jobs:
           - name: Lint OCR service
             run: mise run ocr:lint
 
-      - parallel:
-          - name: Test Go
-            run: mise run test
-
           - name: Install frontend dependencies
             working-directory: web
             run: pnpm install --frozen-lockfile
 
       - parallel:
+          - name: Test Go
+            run: mise run test
+
           - name: Validate Relay artifacts
             run: mise run web:relay:validate
 

@@ -243,33 +243,12 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		filters = append(filters, models.Purchases.Columns.Origin.EQ(psql.Arg(string(*origin))))
 	}
 	if hasEvidence != nil {
-		links, err := models.EvidenceLinks.Query(sm.Where(models.EvidenceLinks.Columns.HouseholdID.EQ(psql.Arg(hhID)))).All(ctx, queryExecutor(r.DB))
-		if err != nil {
-			return nil, err
-		}
-		confirmations, err := models.DocumentConfirmations.Query(sm.Where(models.DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(hhID)))).All(ctx, queryExecutor(r.DB))
-		if err != nil {
-			return nil, err
-		}
-		purchaseIDSet := make(map[gofrsuuid.UUID]struct{}, len(links)+len(confirmations))
-		for _, link := range links {
-			purchaseIDSet[link.PurchaseID] = struct{}{}
-		}
-		for _, confirmation := range confirmations {
-			purchaseIDSet[confirmation.PurchaseID] = struct{}{}
-		}
-		purchaseIDs := make([]bob.Expression, 0, len(purchaseIDSet))
-		for purchaseID := range purchaseIDSet {
-			purchaseIDs = append(purchaseIDs, psql.Arg(purchaseID))
-		}
-		if len(purchaseIDs) == 0 {
-			if *hasEvidence {
-				return &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0), PageInfo: &model.PageInfo{}, TotalCount: 0}, nil
-			}
-		} else if *hasEvidence {
-			filters = append(filters, models.Purchases.Columns.ID.In(purchaseIDs...))
+		evidenceLinkExists := models.SelectWhere.Purchases.R.HasEvidenceLinks().E
+		confirmationExists := models.SelectWhere.Purchases.R.HasDocumentConfirmations().E
+		if *hasEvidence {
+			filters = append(filters, psql.Or(evidenceLinkExists, confirmationExists))
 		} else {
-			filters = append(filters, psql.Not(models.Purchases.Columns.ID.In(purchaseIDs...)))
+			filters = append(filters, psql.Not(psql.Or(evidenceLinkExists, confirmationExists)))
 		}
 	}
 	if from != nil {

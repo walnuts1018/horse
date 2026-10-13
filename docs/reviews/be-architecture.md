@@ -293,11 +293,6 @@ DBロックを保持したまま外部APIを待つ構成にはしないでくだ
 | 処理 | 現状の問題 | 推奨 |
 | ------------------------- | ---------------------- | ------------ |
 | `productSuggestions` | 全商品の取得・Go側検索 | DB側絞り込み |
-| `hasEvidence`フィルタ | 証拠リンクを全取得し巨大な`IN`条件を構築 | Bob DSLの存在条件 |
-
-特に`hasEvidence`は、[queries.go](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/graph/queries.go#L178-L206)で、家庭内のEvidenceLinkとDocumentConfirmationを全部取得し、購入IDの集合をGoで構築しています。
-
-これはBob DSLの相関存在条件で表現したほうが自然です。
 
 これらの処理には、CQRSのような大掛かりなフレームワークは不要です。
 

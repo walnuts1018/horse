@@ -151,7 +151,7 @@ func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.No
 				return value, nil
 			}
 		}
-		if kind == "Purchase" || kind == "PurchaseItem" || kind == "PurchaseCorrection" {
+		if kind == "Purchase" {
 			purchase, err := loadPurchase(ctx, r.DB, id)
 			if errors.Is(err, ErrNotFound) {
 				continue
@@ -162,17 +162,55 @@ func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.No
 			if purchase.HouseholdID != household.ID {
 				continue
 			}
-			switch kind {
-			case "Purchase":
-				return purchase, nil
-			case "PurchaseItem":
+			return purchase, nil
+		}
+		if kind == "PurchaseItem" || kind == "PurchaseCorrection" {
+			parsedID, err := uuid.FromString(id)
+			if err != nil {
+				continue
+			}
+			var purchaseID uuid.UUID
+			if kind == "PurchaseItem" {
+				row, err := models.PurchaseItems.Query(sm.Where(psql.And(
+					models.PurchaseItems.Columns.ID.EQ(psql.Arg(parsedID)),
+					models.PurchaseItems.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
+				))).One(ctx, queryExecutor(r.DB))
+				if errors.Is(err, sql.ErrNoRows) {
+					continue
+				}
+				if err != nil {
+					return nil, err
+				}
+				purchaseID = row.PurchaseID
+			} else {
+				row, err := models.Corrections.Query(sm.Where(psql.And(
+					models.Corrections.Columns.ID.EQ(psql.Arg(parsedID)),
+					models.Corrections.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
+				))).One(ctx, queryExecutor(r.DB))
+				if errors.Is(err, sql.ErrNoRows) {
+					continue
+				}
+				if err != nil {
+					return nil, err
+				}
+				purchaseID = row.PurchaseID
+			}
+			purchase, err := loadPurchase(ctx, r.DB, purchaseID.String())
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			if purchase.HouseholdID != household.ID {
+				continue
+			}
+			if kind == "PurchaseItem" {
 				if value := findValue(purchase.Items, func(value *model.PurchaseItem) bool { return value.ID == id }); value != nil {
 					return value, nil
 				}
-			case "PurchaseCorrection":
-				if value := findValue(purchase.Corrections, func(value *model.PurchaseCorrection) bool { return value.ID == id }); value != nil {
-					return value, nil
-				}
+			} else if value := findValue(purchase.Corrections, func(value *model.PurchaseCorrection) bool { return value.ID == id }); value != nil {
+				return value, nil
 			}
 		}
 		if kind == "AllocationRule" {

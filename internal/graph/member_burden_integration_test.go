@@ -108,6 +108,12 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if _, err := resolver.postPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String()); err != nil {
 		t.Fatal(err)
 	}
+	query := (&Resolver{DB: db}).Query()
+	evidenceAbsent := false
+	withoutEvidence, err := query.Purchases(ctx, household.ID, nil, nil, nil, &evidenceAbsent, nil, nil, nil, nil)
+	if err != nil || withoutEvidence.TotalCount != 1 || len(withoutEvidence.Edges) != 1 || withoutEvidence.Edges[0].Node.ID != purchase.ID {
+		t.Fatalf("purchase without evidence was excluded: connection=%#v error=%v", withoutEvidence, err)
+	}
 	sourceDocumentID := generatedUUID(uuid.NewV7().String())
 	memberAID := generatedUUID(memberA)
 	hash, objectKey, mimeType, sourceKind := uuid.NewV7().String(), "household/"+household.ID+"/test", "image/jpeg", "receipt"
@@ -127,7 +133,6 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if withEvidence.Origin != model.PurchaseOriginManual || !withEvidence.HasEvidence || len(withEvidence.SourceKinds) != 1 || withEvidence.SourceKinds[0] != model.SourceKindReceipt {
 		t.Fatalf("manual origin must remain distinct from later evidence attachment: %#v", withEvidence)
 	}
-	query := (&Resolver{DB: db}).Query()
 	manualOrigin, evidencePresent := model.PurchaseOriginManual, true
 	filtered, err := query.Purchases(ctx, household.ID, nil, nil, &manualOrigin, &evidencePresent, nil, nil, nil, nil)
 	if err != nil || filtered.TotalCount != 1 || len(filtered.Edges) != 1 || filtered.Edges[0].Node.Origin != model.PurchaseOriginManual {
