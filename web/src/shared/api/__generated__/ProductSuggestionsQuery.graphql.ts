@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1d8b6ea448e8b3d1bc722bd9f6e889fe>>
+ * @generated SignedSource<<29706b019f0d9f5312ec1e9e3206c9f3>>
  * @lightSyntaxTransform
  */
 
@@ -9,7 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type ProductSuggestionsQuery$variables = {
-  first?: number | null | undefined;
+  first: number;
   householdId: string;
   merchant?: string | null | undefined;
   query: string;
@@ -194,16 +194,16 @@ return {
     "selections": (v6/*:: as any*/)
   },
   "params": {
-    "cacheID": "ac14ab316b1292d0b4f6485159f4025e",
+    "cacheID": "e3f5247eb0335e7e550f2d90a3ef74da",
     "id": null,
     "metadata": {},
     "name": "ProductSuggestionsQuery",
     "operationKind": "query",
-    "text": "query ProductSuggestionsQuery(\n  $householdId: ID!\n  $query: String!\n  $merchant: String\n  $first: Int\n) {\n  productSuggestions(householdId: $householdId, query: $query, merchant: $merchant, first: $first) {\n    concept {\n      id\n      name\n      categoryId\n    }\n    variant {\n      id\n      name\n      brand\n      packageSize\n    }\n    matchedName\n    score\n  }\n}\n"
+    "text": "query ProductSuggestionsQuery(\n  $householdId: ID!\n  $query: String!\n  $merchant: String\n  $first: Int!\n) {\n  productSuggestions(householdId: $householdId, query: $query, merchant: $merchant, first: $first) {\n    concept {\n      id\n      name\n      categoryId\n    }\n    variant {\n      id\n      name\n      brand\n      packageSize\n    }\n    matchedName\n    score\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "386839d0380fd0ab34170bfa39d5fe5a";
+(node as any).hash = "6bcd9a69ce858dfec3c59111a77563f6";
 
 export default node;

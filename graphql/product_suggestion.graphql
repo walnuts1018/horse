@@ -6,5 +6,5 @@ type ProductSuggestion {
 }
 
 extend type Query {
-  productSuggestions(householdId: ID! @nodeID(of: "Household"), query: String!, merchant: String, first: Int = 8): [ProductSuggestion!]!
+  productSuggestions(householdId: ID! @nodeID(of: "Household"), query: String!, merchant: String, first: Int! = 8): [ProductSuggestion!]!
 }

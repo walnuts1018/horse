@@ -203,7 +203,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("linking a product should apply its higher-priority rule: allocations=%#v", learnedItem.Allocations)
 	}
 	market := " MARKET "
-	suggestions, err := apiResolver.Query().ProductSuggestions(ctx, householdID, "YOG-PB", &market, nil)
+	suggestions, err := apiResolver.Query().ProductSuggestions(ctx, householdID, "YOG-PB", &market, 8)
 	if err != nil || len(suggestions) == 0 || suggestions[0].Variant.ID != productVariant.ID || suggestions[0].MatchedName != testYogurtProductName {
 		t.Fatalf("learned store alias was not suggested first: suggestions=%#v error=%v", suggestions, err)
 	}
@@ -212,7 +212,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalized product name correction failed: %v", err)
 	}
-	suggestions, err = apiResolver.Query().ProductSuggestions(ctx, householdID, "unsweetened", nil, nil)
+	suggestions, err = apiResolver.Query().ProductSuggestions(ctx, householdID, "unsweetened", nil, 8)
 	if err != nil || len(suggestions) == 0 || suggestions[0].Variant.Name != canonicalName {
 		t.Fatalf("corrected canonical variant name was not searchable: suggestions=%#v error=%v", suggestions, err)
 	}

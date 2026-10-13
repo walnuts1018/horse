@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<117b75c6a002a42c96c384b6299797c7>>
+ * @generated SignedSource<<e97c6b80cd497db709173dfde690172c>>
  * @lightSyntaxTransform
  */
 
@@ -12,7 +12,7 @@ export type TagsQuery$variables = {
   after?: string | null | undefined;
   first: number;
   householdId: string;
-  includeArchived?: boolean | null | undefined;
+  includeArchived: boolean;
 };
 export type TagsQuery$data = {
   readonly tags: {
@@ -209,16 +209,16 @@ return {
     "selections": (v4/*:: as any*/)
   },
   "params": {
-    "cacheID": "b38293609d685528dc8626a1a9a17dd6",
+    "cacheID": "50a98269f5cbe4470847606cd7b60af3",
     "id": null,
     "metadata": {},
     "name": "TagsQuery",
     "operationKind": "query",
-    "text": "query TagsQuery(\n  $householdId: ID!\n  $includeArchived: Boolean\n  $first: Int!\n  $after: String\n) {\n  tags(householdId: $householdId, includeArchived: $includeArchived, first: $first, after: $after) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        name\n        archived\n        revision\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
+    "text": "query TagsQuery(\n  $householdId: ID!\n  $includeArchived: Boolean!\n  $first: Int!\n  $after: String\n) {\n  tags(householdId: $householdId, includeArchived: $includeArchived, first: $first, after: $after) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        name\n        archived\n        revision\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3b7ab4ab5f52a0da10854b1c7f78f273";
+(node as any).hash = "658abe8cc3dce0bba59d3437733d6f51";
 
 export default node;

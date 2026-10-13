@@ -12,8 +12,8 @@ import (
 )
 
 // Tags is the resolver for the tags field.
-func (r *queryResolver) Tags(ctx context.Context, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) (*model.TagConnection, error) {
-	return r.tagConnection(ctx, householdID, includeArchived != nil && *includeArchived, after, before, first, last)
+func (r *queryResolver) Tags(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.TagConnection, error) {
+	return r.tagConnection(ctx, householdID, includeArchived, after, before, first, last)
 }
 
 // ID is the resolver for the id field.

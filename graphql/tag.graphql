@@ -18,5 +18,5 @@ type TagConnection {
 }
 
 extend type Query {
-  tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false, after: String, before: String, first: Int, last: Int): TagConnection!
+  tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean! = false, after: String, before: String, first: Int, last: Int): TagConnection!
 }

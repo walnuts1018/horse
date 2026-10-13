@@ -207,21 +207,21 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := 1
-	expenses, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil, nil, nil, &first, nil)
+	expenses, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, false, nil, nil, &first, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(expenses.Edges) != 1 || expenses.Edges[0].Node.ID != recurring.ID || expenses.Edges[0].Node.NextDueOn != "2026-05-01" || expenses.TotalCount != 2 || !expenses.PageInfo.HasNextPage || expenses.PageInfo.EndCursor == nil {
 		t.Fatalf("recurring expense metadata did not round-trip: %#v", expenses)
 	}
-	secondPage, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil, expenses.PageInfo.EndCursor, nil, &first, nil)
+	secondPage, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, false, expenses.PageInfo.EndCursor, nil, &first, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(secondPage.Edges) != 1 || secondPage.Edges[0].Node.ID != nextRecurring.ID || secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage {
 		t.Fatalf("recurring expense pagination did not advance by cursor: %#v", secondPage)
 	}
-	previousPage, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil, nil, secondPage.PageInfo.StartCursor, nil, &first)
+	previousPage, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, false, nil, secondPage.PageInfo.StartCursor, nil, &first)
 	if err != nil || len(previousPage.Edges) != 1 || previousPage.Edges[0].Node.ID != recurring.ID || !previousPage.PageInfo.HasNextPage || previousPage.PageInfo.HasPreviousPage {
 		t.Fatalf("recurring expense backward pagination failed: connection=%#v error=%v", previousPage, err)
 	}

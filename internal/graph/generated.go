@@ -898,12 +898,12 @@ type ComplexityRoot struct {
 		Node                    func(childComplexity int, id string) int
 		Nodes                   func(childComplexity int, ids []string) int
 		ProductCatalog          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		ProductSuggestions      func(childComplexity int, householdID string, query string, merchant *string, first *int) int
+		ProductSuggestions      func(childComplexity int, householdID string, query string, merchant *string, first int) int
 		PurchaseCorrections     func(childComplexity int, purchaseID string, first *int, after *string) int
 		Purchases               func(childComplexity int, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) int
-		RecurringExpenses       func(childComplexity int, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) int
+		RecurringExpenses       func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
 		Settlement              func(childComplexity int, householdID string, period model.YearMonth) int
-		Tags                    func(childComplexity int, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) int
+		Tags                    func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
 		UnmatchedObservations   func(childComplexity int, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) int
 		Viewer                  func(childComplexity int) int
 	}
@@ -1430,12 +1430,12 @@ type QueryResolver interface {
 	MonthlyMemberSpending(ctx context.Context, householdID string, from model.YearMonth, to model.YearMonth) (*model.MonthlyMemberSpendingReport, error)
 	UnmatchedObservations(ctx context.Context, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) (*model.UnmatchedObservationConnection, error)
 	ProductCatalog(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.ProductConceptConnection, error)
-	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first *int) ([]*model.ProductSuggestion, error)
+	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first int) ([]*model.ProductSuggestion, error)
 	Purchases(ctx context.Context, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
 	PurchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error)
-	RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
+	RecurringExpenses(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
 	Settlement(ctx context.Context, householdID string, period model.YearMonth) (model.SettlementVariant, error)
-	Tags(ctx context.Context, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) (*model.TagConnection, error)
+	Tags(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.TagConnection, error)
 	Viewer(ctx context.Context) (*model.Viewer, error)
 }
 type RecurringExpenseResolver interface {
@@ -4695,7 +4695,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.ProductSuggestions(childComplexity, args["householdId"].(string), args["query"].(string), args["merchant"].(*string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.ProductSuggestions(childComplexity, args["householdId"].(string), args["query"].(string), args["merchant"].(*string), args["first"].(int)), true
 	case "Query.purchaseCorrections":
 		if e.ComplexityRoot.Query.PurchaseCorrections == nil {
 			break
@@ -4728,7 +4728,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.RecurringExpenses(childComplexity, args["householdId"].(string), args["includeArchived"].(*bool), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
+		return e.ComplexityRoot.Query.RecurringExpenses(childComplexity, args["householdId"].(string), args["includeArchived"].(bool), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.settlement":
 		if e.ComplexityRoot.Query.Settlement == nil {
 			break
@@ -4750,7 +4750,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Tags(childComplexity, args["householdId"].(string), args["includeArchived"].(*bool), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
+		return e.ComplexityRoot.Query.Tags(childComplexity, args["householdId"].(string), args["includeArchived"].(bool), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.unmatchedObservations":
 		if e.ComplexityRoot.Query.UnmatchedObservations == nil {
 			break
@@ -6991,7 +6991,7 @@ extend type Query {
 }
 
 extend type Query {
-  productSuggestions(householdId: ID! @nodeID(of: "Household"), query: String!, merchant: String, first: Int = 8): [ProductSuggestion!]!
+  productSuggestions(householdId: ID! @nodeID(of: "Household"), query: String!, merchant: String, first: Int! = 8): [ProductSuggestion!]!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/product_variant.graphql", Input: `type ProductVariant implements Node & AllocationRuleTarget {
@@ -7355,7 +7355,7 @@ enum RecurringExpenseCadence {
 }
 
 extend type Query {
-  recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false, after: String, before: String, first: Int, last: Int): RecurringExpenseConnection!
+  recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean! = false, after: String, before: String, first: Int, last: Int): RecurringExpenseConnection!
 }
 
 type RecurringExpenseEdge {
@@ -7656,7 +7656,7 @@ type TagConnection {
 }
 
 extend type Query {
-  tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false, after: String, before: String, first: Int, last: Int): TagConnection!
+  tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean! = false, after: String, before: String, first: Int, last: Int): TagConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/update_budget_mutation.graphql", Input: `extend type Mutation {
@@ -10781,8 +10781,8 @@ func (ec *executionContext) field_Query_productSuggestions_args(ctx context.Cont
 	}
 	args["merchant"] = arg2
 	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "first",
-		func(ctx context.Context, v any) (*int, error) {
-			return ec.unmarshalOInt2ᚖint(ctx, v)
+		func(ctx context.Context, v any) (int, error) {
+			return ec.unmarshalNInt2int(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -11040,8 +11040,8 @@ func (ec *executionContext) field_Query_recurringExpenses_args(ctx context.Conte
 	}
 	args["householdId"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "includeArchived",
-		func(ctx context.Context, v any) (*bool, error) {
-			return ec.unmarshalOBoolean2ᚖbool(ctx, v)
+		func(ctx context.Context, v any) (bool, error) {
+			return ec.unmarshalNBoolean2bool(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -11202,8 +11202,8 @@ func (ec *executionContext) field_Query_tags_args(ctx context.Context, rawArgs m
 	}
 	args["householdId"] = arg0
 	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "includeArchived",
-		func(ctx context.Context, v any) (*bool, error) {
-			return ec.unmarshalOBoolean2ᚖbool(ctx, v)
+		func(ctx context.Context, v any) (bool, error) {
+			return ec.unmarshalNBoolean2bool(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -24364,7 +24364,7 @@ func (ec *executionContext) _Query_productSuggestions(ctx context.Context, field
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().ProductSuggestions(ctx, fc.Args["householdId"].(string), fc.Args["query"].(string), fc.Args["merchant"].(*string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().ProductSuggestions(ctx, fc.Args["householdId"].(string), fc.Args["query"].(string), fc.Args["merchant"].(*string), fc.Args["first"].(int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []*model.ProductSuggestion) graphql.Marshaler {
@@ -24496,7 +24496,7 @@ func (ec *executionContext) _Query_recurringExpenses(ctx context.Context, field 
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().RecurringExpenses(ctx, fc.Args["householdId"].(string), fc.Args["includeArchived"].(*bool), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
+			return ec.Resolvers.Query().RecurringExpenses(ctx, fc.Args["householdId"].(string), fc.Args["includeArchived"].(bool), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.RecurringExpenseConnection) graphql.Marshaler {
@@ -24584,7 +24584,7 @@ func (ec *executionContext) _Query_tags(ctx context.Context, field graphql.Colle
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Tags(ctx, fc.Args["householdId"].(string), fc.Args["includeArchived"].(*bool), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
+			return ec.Resolvers.Query().Tags(ctx, fc.Args["householdId"].(string), fc.Args["includeArchived"].(bool), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.TagConnection) graphql.Marshaler {

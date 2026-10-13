@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<79ccf4db7d7a8a20aac38c9933a50ec7>>
+ * @generated SignedSource<<ec0ece68256f49174bb9716f4e4d04dd>>
  * @lightSyntaxTransform
  */
 
@@ -13,7 +13,7 @@ export type RecurringExpensesQuery$variables = {
   after?: string | null | undefined;
   first?: number | null | undefined;
   householdId: string;
-  includeArchived?: boolean | null | undefined;
+  includeArchived: boolean;
 };
 export type RecurringExpensesQuery$data = {
   readonly recurringExpenses: {
@@ -282,16 +282,16 @@ return {
     "selections": (v4/*:: as any*/)
   },
   "params": {
-    "cacheID": "acb16e5d42af26dcefd675728922b258",
+    "cacheID": "f2346cf6aac3a70673ab6f8687385f51",
     "id": null,
     "metadata": {},
     "name": "RecurringExpensesQuery",
     "operationKind": "query",
-    "text": "query RecurringExpensesQuery(\n  $householdId: ID!\n  $includeArchived: Boolean\n  $after: String\n  $first: Int\n) {\n  recurringExpenses(householdId: $householdId, includeArchived: $includeArchived, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        name\n        merchant\n        amountYen\n        currency\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
+    "text": "query RecurringExpensesQuery(\n  $householdId: ID!\n  $includeArchived: Boolean!\n  $after: String\n  $first: Int\n) {\n  recurringExpenses(householdId: $householdId, includeArchived: $includeArchived, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        name\n        merchant\n        amountYen\n        currency\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "7b361bc5e037404ef92e8f15aec18cb4";
+(node as any).hash = "f29b33d132213132cc4b3d4032b390e8";
 
 export default node;

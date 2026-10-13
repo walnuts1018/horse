@@ -12,6 +12,6 @@ import (
 )
 
 // ProductSuggestions is the resolver for the productSuggestions field.
-func (r *queryResolver) ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first *int) ([]*model.ProductSuggestion, error) {
-	return r.productSuggestions(ctx, householdID, query, merchant, first)
+func (r *queryResolver) ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first int) ([]*model.ProductSuggestion, error) {
+	return r.productSuggestions(ctx, householdID, query, merchant, &first)
 }

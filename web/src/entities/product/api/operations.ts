@@ -46,7 +46,7 @@ export const productSuggestionsQuery = graphql`
     $householdId: ID!
     $query: String!
     $merchant: String
-    $first: Int
+    $first: Int!
   ) {
     productSuggestions(
       householdId: $householdId

@@ -1,7 +1,7 @@
 import { graphql } from "react-relay";
 
 export const tagsQuery = graphql`
-  query TagsQuery($householdId: ID!, $includeArchived: Boolean, $first: Int!, $after: String) {
+  query TagsQuery($householdId: ID!, $includeArchived: Boolean!, $first: Int!, $after: String) {
     tags(
       householdId: $householdId
       includeArchived: $includeArchived

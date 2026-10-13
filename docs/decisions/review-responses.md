@@ -16,6 +16,12 @@
 
 Resolver内に残る購入訂正などのトランザクションと業務処理、Gemini SchemaとGo型の同期、Query層の配置、DBトレーシング、SSEのポーリングは未完了の指摘として`docs/reviews/be-architecture.md`に残しています。
 
+商品候補検索では、Bob DSLによる候補取得、採点、並び替え、関連variant/aliasの取得を`internal/postgres/query`へ移しました。GraphQL層は所属確認、入力検証、GraphQLモデルへの変換を担います。これにより検索条件とDBアクセスをGraphQLから分離しつつ、検索結果と並び順を維持します。専用Query層へGoの生SQL文字列は追加していません。
+
+タグ・定期支出一覧の`includeArchived`と商品候補検索の`first`は、SDL defaultを維持したままnon-null引数にしました。Relay operation variablesと生成物、resolver引数、直接resolverを呼ぶ統合テストを更新しました。既知の呼び出し元は値を渡し、引数省略時にはSDLのdefaultが使われます。外部GraphQLクライアントが明示的なnullを送っていないかは確認できていませんが、nullは契約違反として拒否する判断です。
+
+pgxの`BeginFunc`は採用せず、明示的な`Begin`/`Commit`/`Rollback`を維持します。pgxのcallback関数はRollbackに開始時のcontextを使い、現状の`context.WithoutCancel(ctx)`と同じキャンセル時の挙動を保証できないためです。変更時はトランザクション終了処理の簡潔さより、リクエストキャンセル後にもRollbackを試みる現在の動作を優先します。
+
 ### AI購入登録と証拠の原子性
 
 レシート由来の購入登録では、購入・品目・DocumentConfirmation・文書と品目のEvidenceLinkを同じトランザクションで保存します。抽出済み品目数や金額と入力が一致しない場合は購入作成を拒否します。購入を下書きから確定する`postPurchase`は別操作ですが、証拠は購入作成時に記録するため、確定失敗で品目別証拠が欠落しません。

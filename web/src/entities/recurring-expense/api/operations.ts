@@ -3,7 +3,7 @@ import { graphql } from "react-relay";
 export const recurringExpensesQuery = graphql`
   query RecurringExpensesQuery(
     $householdId: ID!
-    $includeArchived: Boolean
+    $includeArchived: Boolean!
     $after: String
     $first: Int
   ) {

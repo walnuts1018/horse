@@ -173,13 +173,14 @@ DBロックを保持したまま外部APIを待つ構成にはしないでくだ
 
 優先度：中〜高 / 設計・性能
 
-現在も読み取り処理はGraphQLパッケージに配置されています。例えば`monthly_spending.go`と`account_balances.go`はBob DSLを使いますが、`internal/postgres`のQuery層には分離されていません。
+読み取り処理の一部はGraphQLパッケージに残っています。例えば`monthly_spending.go`と`account_balances.go`はBob DSLを使いますが、専用Query層には分離されていません。商品候補検索は`internal/postgres/query`へ移しました。
 
 具体的には以下です。
 
 | 処理 | 現状の問題 | 推奨 |
 | ------------------------- | ---------------------- | ------------ |
-| `productSuggestions` | Bob DSLで候補検索するが、上位候補の採点・並び替えはGraphQLパッケージ内のGoコード | 専用Query層に検索条件・順位付けをまとめる |
+| `monthlySpending` | DB集計と表示用集計がGraphQLパッケージにある | Bobの集計Queryと結果変換を専用Query層へまとめる |
+| `accountBalanceAnalysis` | 仕訳取得と残高分析がGraphQLパッケージにある | 読取条件と残高計算を専用Query層へまとめる |
 
 これらの処理には、CQRSのような大掛かりなフレームワークは不要です。
 
@@ -207,8 +208,6 @@ postgres/
 
 `otelpgx.NewTracer()`をpgxに設定すれば、SQLの実行時間やコネクション取得をTraceへ追加できます。DBプールの統計も収集可能です。
 
-Go Packages
-
 これを導入しておくと、今回指摘したN+1や遅いSQLを実際のトレースから特定できます。
 
 SQL全文やパラメータを不用意に収集しないよう、計測属性の設定には注意してください。
@@ -232,7 +231,7 @@ Factoryであらゆる値を暗黙に補完するより、家庭・メンバー�
 
 すべてをライブラリで解決する必要はありません。
 
-現在の`internal/api/server.go`の`events`ハンドラは、接続ごとに1秒間隔で`household_events`を問い合わせています。カーソルを使った再取得は実装されていますが、待機中の接続数に応じて定期的なDB問い合わせが増えます。
+現在の`internal/api/server.go`の`events`ハンドラは、接続ごとに1秒間隔で`household_events`を問い合わせています。GraphQLの購入Subscriptionも1秒間隔で変更を確認します。カーソルを使った再取得は実装されていますが、待機中の接続数に応じて定期的なDB問い合わせが増えます。
 
 複数ユーザーでの同時編集を前提にすると、将来的に無駄なDBアクセスが増える構造です。
 
