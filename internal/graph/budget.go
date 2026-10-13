@@ -175,11 +175,12 @@ func (r *queryResolver) budgets(ctx context.Context, householdID, period string,
 			HasPreviousPage: backward && hasMore || !backward && after != nil && *after != "",
 		},
 	}
-	for _, row := range rows {
-		budget, err := budgetModel(ctx, r.DB, row, &month)
-		if err != nil {
-			return nil, err
-		}
+	budgets, err := budgetModels(ctx, r.DB, rows, &month)
+	if err != nil {
+		return nil, err
+	}
+	for i, row := range rows {
+		budget := budgets[i]
 		result.Edges = append(result.Edges, &model.BudgetEdge{Cursor: encodeCursor(nodeTypeBudget, row.ID.String()), Node: budget})
 	}
 	if len(rows) > 0 {
@@ -219,63 +220,118 @@ func budgetCursorFilter(cursor *models.Budget, isBefore bool) bob.Expression {
 }
 
 func budgetModel(ctx context.Context, db *pgxpool.Pool, row *models.Budget, month *time.Time) (*model.Budget, error) {
-	result := &model.Budget{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Name: row.Name, AmountYen: graphLong(row.AmountYen), StartsOn: model.Date(row.StartsOn.Format(time.DateOnly)), Archived: row.Archived, Revision: int(row.Revision)}
-	if row.CategoryID.Valid {
-		id := row.CategoryID.V.String()
-		result.CategoryID = &id
-	}
-	if row.EndsOn.Valid {
-		end := row.EndsOn.V.Format(time.DateOnly)
-		result.EndsOn = datePointer(&end)
-	}
-	if month == nil {
-		return result, nil
-	}
-	start, end := month.UTC(), month.AddDate(0, 1, 0).UTC()
-	purchases, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.HouseholdID.EQ(psql.Arg(row.HouseholdID)), models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)), models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)), psql.Or(models.Purchases.Columns.Status.EQ(psql.Arg(statusPosted)), models.Purchases.Columns.Status.EQ(psql.Arg(statusClosed)))))).All(ctx, queryExecutor(db))
+	results, err := budgetModels(ctx, db, []*models.Budget{row}, month)
 	if err != nil {
 		return nil, err
 	}
-	var actual int64
+	return results[0], nil
+}
+
+func budgetModels(ctx context.Context, db *pgxpool.Pool, rows []*models.Budget, month *time.Time) ([]*model.Budget, error) {
+	results := make([]*model.Budget, len(rows))
+	for i, row := range rows {
+		result := &model.Budget{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Name: row.Name, AmountYen: graphLong(row.AmountYen), StartsOn: model.Date(row.StartsOn.Format(time.DateOnly)), Archived: row.Archived, Revision: int(row.Revision)}
+		if row.CategoryID.Valid {
+			result.CategoryID = new(row.CategoryID.V.String())
+		}
+		if row.EndsOn.Valid {
+			end := row.EndsOn.V.Format(time.DateOnly)
+			result.EndsOn = datePointer(&end)
+		}
+		results[i] = result
+	}
+	if month == nil || len(rows) == 0 {
+		return results, nil
+	}
+
+	householdIDs := make([]bob.Expression, 0, len(rows))
+	seenHouseholds := make(map[gofrsuuid.UUID]struct{}, len(rows))
+	for _, row := range rows {
+		if _, exists := seenHouseholds[row.HouseholdID]; exists {
+			continue
+		}
+		seenHouseholds[row.HouseholdID] = struct{}{}
+		householdIDs = append(householdIDs, psql.Arg(row.HouseholdID))
+	}
+	start, end := month.UTC(), month.AddDate(0, 1, 0).UTC()
+	purchases, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.HouseholdID.In(householdIDs...), models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)), models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)),
+		psql.Or(models.Purchases.Columns.Status.EQ(psql.Arg(statusPosted)), models.Purchases.Columns.Status.EQ(psql.Arg(statusClosed))),
+	))).All(ctx, queryExecutor(db))
+	if err != nil {
+		return nil, err
+	}
+	purchaseIDs := make([]bob.Expression, 0, len(purchases))
+	purchaseHouseholdByID := make(map[gofrsuuid.UUID]gofrsuuid.UUID, len(purchases))
 	for _, purchase := range purchases {
-		items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)))).All(ctx, queryExecutor(db))
-		if err != nil {
+		purchaseIDs = append(purchaseIDs, psql.Arg(purchase.ID))
+		purchaseHouseholdByID[purchase.ID] = purchase.HouseholdID
+	}
+	if len(purchaseIDs) == 0 {
+		for i, row := range rows {
+			results[i].RemainingYen = graphLong(row.AmountYen)
+		}
+		return results, nil
+	}
+	items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.In(purchaseIDs...))).All(ctx, queryExecutor(db))
+	if err != nil {
+		return nil, err
+	}
+	type actualScope struct {
+		householdID gofrsuuid.UUID
+		categoryID  gofrsuuid.UUID
+		categorized bool
+	}
+	actualByScope := make(map[actualScope]int64)
+	itemCategoryByID := make(map[gofrsuuid.UUID]sql.Null[gofrsuuid.UUID], len(items))
+	addActual := func(scope actualScope, amount int64) error {
+		total, ok := checkedAdd(actualByScope[scope], amount)
+		if !ok {
+			return fmt.Errorf("%w: budget actual exceeds int64", ErrBadInput)
+		}
+		actualByScope[scope] = total
+		return nil
+	}
+	for _, item := range items {
+		itemCategoryByID[item.ID] = item.CategoryID
+		householdID := purchaseHouseholdByID[item.PurchaseID]
+		if err := addActual(actualScope{householdID: householdID}, item.AmountYen); err != nil {
 			return nil, err
 		}
-		itemsByID := make(map[gofrsuuid.UUID]*models.PurchaseItem, len(items))
-		for _, item := range items {
-			itemsByID[item.ID] = item
-			if row.CategoryID.Valid && (!item.CategoryID.Valid || row.CategoryID.V != item.CategoryID.V) {
-				continue
-			}
-			var ok bool
-			actual, ok = checkedAdd(actual, item.AmountYen)
-			if !ok {
-				return nil, fmt.Errorf("%w: budget actual exceeds int64", ErrBadInput)
-			}
-		}
-		corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)))).All(ctx, queryExecutor(db))
-		if err != nil {
-			return nil, err
-		}
-		for _, correction := range corrections {
-			var categoryID sql.Null[gofrsuuid.UUID]
-			if correction.ItemID.Valid {
-				if item, ok := itemsByID[correction.ItemID.V]; ok {
-					categoryID = item.CategoryID
-				}
-			}
-			if row.CategoryID.Valid && (!categoryID.Valid || row.CategoryID.V != categoryID.V) {
-				continue
-			}
-			var ok bool
-			actual, ok = checkedAdd(actual, correction.AmountDeltaYen)
-			if !ok {
-				return nil, fmt.Errorf("%w: budget actual exceeds int64", ErrBadInput)
+		if item.CategoryID.Valid {
+			if err := addActual(actualScope{householdID: householdID, categoryID: item.CategoryID.V, categorized: true}, item.AmountYen); err != nil {
+				return nil, err
 			}
 		}
 	}
-	result.ActualYen = graphLong(actual)
-	result.RemainingYen = graphLong(row.AmountYen - actual)
-	return result, nil
+	corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.PurchaseID.In(purchaseIDs...))).All(ctx, queryExecutor(db))
+	if err != nil {
+		return nil, err
+	}
+	for _, correction := range corrections {
+		householdID := purchaseHouseholdByID[correction.PurchaseID]
+		if err := addActual(actualScope{householdID: householdID}, correction.AmountDeltaYen); err != nil {
+			return nil, err
+		}
+		var categoryID sql.Null[gofrsuuid.UUID]
+		if correction.ItemID.Valid {
+			categoryID = itemCategoryByID[correction.ItemID.V]
+		}
+		if categoryID.Valid {
+			if err := addActual(actualScope{householdID: householdID, categoryID: categoryID.V, categorized: true}, correction.AmountDeltaYen); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for i, row := range rows {
+		scope := actualScope{householdID: row.HouseholdID}
+		if row.CategoryID.Valid {
+			scope.categoryID = row.CategoryID.V
+			scope.categorized = true
+		}
+		actual := actualByScope[scope]
+		results[i].ActualYen = graphLong(actual)
+		results[i].RemainingYen = graphLong(row.AmountYen - actual)
+	}
+	return results, nil
 }

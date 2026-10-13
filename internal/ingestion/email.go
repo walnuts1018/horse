@@ -28,6 +28,7 @@ const (
 	maxEmailAttachments          = 10
 	maxEmailAttachmentBytes      = 10 << 20
 	emailAttachmentReviewWarning = "メールに添付ファイルがあります。添付内容と抽出結果を照合してください。"
+	mimeTypeWebP                 = "image/webp"
 )
 
 type emailContent struct {
@@ -123,11 +124,7 @@ func ParseEmailAttachments(data []byte) ([]EmailAttachment, error) {
 	}
 	attachments := make([]EmailAttachment, 0, len(parsed.Attachments))
 	for _, attachment := range parsed.Attachments {
-		attachments = append(attachments, EmailAttachment{
-			Filename: attachment.Filename,
-			MIMEType: attachment.MIMEType,
-			Data:     attachment.Data,
-		})
+		attachments = append(attachments, EmailAttachment(attachment))
 	}
 	return attachments, nil
 }
@@ -275,7 +272,7 @@ func readEmailAttachment(body io.Reader, state *emailMIMEState, declaredMIME, fi
 
 func supportedEmailAttachmentMIME(value string) bool {
 	switch value {
-	case mimeTypePDF, mimeTypeJPEG, mimeTypePNG, "image/webp":
+	case mimeTypePDF, mimeTypeJPEG, mimeTypePNG, mimeTypeWebP:
 		return true
 	default:
 		return false
@@ -290,7 +287,7 @@ func emailAttachmentExtension(mimeType string) string {
 		return ".jpg"
 	case mimeTypePNG:
 		return ".png"
-	case "image/webp":
+	case mimeTypeWebP:
 		return ".webp"
 	default:
 		return ""

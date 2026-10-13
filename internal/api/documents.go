@@ -31,12 +31,14 @@ import (
 )
 
 const (
-	documentStatusQueued = "queued"
-	documentMIMEPDF      = "application/pdf"
-	documentMIMEJPEG     = "image/jpeg"
-	documentMIMEPNG      = "image/png"
-	documentMIMEWebP     = "image/webp"
-	jobIDJSONKey         = "jobId"
+	documentStatusQueued      = "queued"
+	documentMIMEPDF           = "application/pdf"
+	documentMIMEJPEG          = "image/jpeg"
+	documentMIMEPNG           = "image/png"
+	documentMIMEWebP          = "image/webp"
+	documentMIMEEmail         = "message/rfc822"
+	documentSourceKindReceipt = "receipt"
+	jobIDJSONKey              = "jobId"
 )
 
 type documentResponse struct {
@@ -138,7 +140,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var emailAttachments []ingestion.EmailAttachment
-	if mimeType == "message/rfc822" {
+	if mimeType == documentMIMEEmail {
 		emailAttachments, err = ingestion.ParseEmailAttachments(data)
 		if err != nil {
 			http.Error(w, "invalid email message", http.StatusBadRequest)
@@ -320,7 +322,7 @@ func insertAttachmentDocument(ctx context.Context, exec bob.Executor, householdI
 	if err != nil {
 		return gofrsuuid.Nil, nil, err
 	}
-	sourceKind := "receipt"
+	sourceKind := documentSourceKindReceipt
 	filename := sql.Null[string]{V: attachment.Filename, Valid: true}
 	document, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
 		ID: &id, HouseholdID: &householdID, Sha256: &hash, ObjectKey: &key, MimeType: &attachment.MIMEType,
@@ -806,9 +808,10 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Crop *ingestion.Region `json:"crop,omitempty"`
+		Crop       *ingestion.Region `json:"crop,omitempty"`
+		SourceKind *string           `json:"sourceKind,omitempty"`
 	}
-	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 64<<10), &input); err != nil || input.Crop != nil && !ingestion.ValidRegion(*input.Crop) {
+	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 64<<10), &input); err != nil || input.Crop != nil && !ingestion.ValidRegion(*input.Crop) || input.SourceKind != nil && !validReprocessableSourceKind(*input.SourceKind) {
 		http.Error(w, "invalid extraction retry input", http.StatusBadRequest)
 		return
 	}
@@ -846,6 +849,40 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "image page is out of range", http.StatusBadRequest)
 		return
 	}
+	if input.SourceKind != nil {
+		if document.MimeType == documentMIMEEmail {
+			http.Error(w, "email documents cannot be reclassified", http.StatusBadRequest)
+			return
+		}
+		attachment, err := models.SourceDocumentAttachments.Query(sm.Where(psql.And(
+			models.SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+			models.SourceDocumentAttachments.Columns.ChildDocumentID.EQ(psql.Arg(document.ID)),
+		))).Exists(r.Context(), executor)
+		if err != nil {
+			http.Error(w, "document attachment lookup failed", http.StatusInternalServerError)
+			return
+		}
+		if !attachment {
+			http.Error(w, "only email attachments can be reclassified", http.StatusBadRequest)
+			return
+		}
+		if *input.SourceKind != document.SourceKind {
+			confirmed, err := models.DocumentConfirmations.Query(sm.Where(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)))).Exists(r.Context(), executor)
+			if err != nil {
+				http.Error(w, "document confirmation lookup failed", http.StatusInternalServerError)
+				return
+			}
+			evidenced, err := models.EvidenceLinks.Query(sm.Where(models.EvidenceLinks.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)))).Exists(r.Context(), executor)
+			if err != nil {
+				http.Error(w, "document evidence lookup failed", http.StatusInternalServerError)
+				return
+			}
+			if confirmed || evidenced {
+				http.Error(w, "document with confirmed evidence cannot be reclassified", http.StatusConflict)
+				return
+			}
+		}
+	}
 	latestJob, err := models.ExtractionJobs.Query(
 		sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID))),
 		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
@@ -855,8 +892,32 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "extraction status lookup failed", http.StatusInternalServerError)
 		return
 	}
-	if latestJob != nil && (latestJob.Status == documentStatusQueued || latestJob.Status == "running") {
+	if latestJob != nil && latestJob.Status == "running" {
 		http.Error(w, "extraction is already running", http.StatusConflict)
+		return
+	}
+	if latestJob != nil && latestJob.Status == documentStatusQueued && (input.SourceKind == nil || input.Crop != nil) {
+		http.Error(w, "extraction is already queued", http.StatusConflict)
+		return
+	}
+	if input.SourceKind != nil && *input.SourceKind != document.SourceKind {
+		if err := document.Update(r.Context(), executor, &models.SourceDocumentSetter{SourceKind: input.SourceKind}); err != nil {
+			http.Error(w, "document update failed", http.StatusInternalServerError)
+			return
+		}
+		document.SourceKind = *input.SourceKind
+	}
+	if latestJob != nil && latestJob.Status == documentStatusQueued {
+		if err := tx.Commit(r.Context()); err != nil {
+			http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+			return
+		}
+		if s.cfg.Queue != nil {
+			if err := s.cfg.Queue.Publish(r.Context(), latestJob.ID.String()); err != nil {
+				s.logger.WarnContext(r.Context(), "extraction job notification failed", "job_id", latestJob.ID.String(), "error", err)
+			}
+		}
+		writeJSON(w, http.StatusAccepted, map[string]string{jobIDJSONKey: latestJob.ID.String(), "status": documentStatusQueued})
 		return
 	}
 	request, err := json.Marshal(map[string]any{"crop": input.Crop, "purpose": ingestion.JobPurposeInteractive})
@@ -1120,7 +1181,16 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 
 func validSourceKind(value string) bool {
 	switch value {
-	case "receipt", "order", "email", "card", "bank":
+	case documentSourceKindReceipt, "order", "email", "card", "bank":
+		return true
+	default:
+		return false
+	}
+}
+
+func validReprocessableSourceKind(value string) bool {
+	switch value {
+	case documentSourceKindReceipt, "order", "card", "bank":
 		return true
 	default:
 		return false
@@ -1129,7 +1199,7 @@ func validSourceKind(value string) bool {
 
 func validDocumentMIME(value string) bool {
 	switch value {
-	case "image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain", "text/csv", "message/rfc822":
+	case "image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain", "text/csv", documentMIMEEmail:
 		return true
 	default:
 		return false
@@ -1152,7 +1222,7 @@ func documentMIME(filename string, data []byte) string {
 	case "csv":
 		return "text/csv"
 	case "eml":
-		return "message/rfc822"
+		return documentMIMEEmail
 	case "txt":
 		return "text/plain"
 	default:

@@ -241,7 +241,7 @@ func validateRouteOptions(model, thinking, tier string) error {
 
 func shouldFallbackToPaid(err error) bool {
 	apiErr, ok := errors.AsType[*GeminiAPIError](err)
-	return ok && (apiErr.Kind == GeminiFailureQuota || apiErr.Kind == GeminiFailureTemporary)
+	return ok && apiErr.Kind == GeminiFailureTemporary
 }
 
 func retryWorkerError(err error) bool {

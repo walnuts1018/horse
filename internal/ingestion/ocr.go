@@ -47,6 +47,10 @@ const (
 	maxOCRResponseBytes    = 8 << 20
 	ocrImageRequestTimeout = 45 * time.Second
 	ocrPDFRequestTimeout   = 130 * time.Second
+	ocrCropPageField       = "page"
+	ocrCropTopField        = "top"
+	ocrCropLeftField       = "left"
+	ocrCropRightField      = "right"
 )
 
 func (o OCR) Extract(ctx context.Context, document Document) ([]OCRLine, error) {
@@ -141,9 +145,9 @@ func (o OCR) Crop(ctx context.Context, document Document, region Region) (Docume
 		return Document{}, transform, fmt.Errorf("write crop document part: %w", err)
 	}
 	for key, value := range map[string]string{
-		"page": strconv.Itoa(region.Page), "top": strconv.FormatFloat(region.Top, 'f', -1, 64),
-		"left": strconv.FormatFloat(region.Left, 'f', -1, 64), "bottom": strconv.FormatFloat(region.Bottom, 'f', -1, 64),
-		"right": strconv.FormatFloat(region.Right, 'f', -1, 64),
+		ocrCropPageField: strconv.Itoa(region.Page), ocrCropTopField: strconv.FormatFloat(region.Top, 'f', -1, 64),
+		ocrCropLeftField: strconv.FormatFloat(region.Left, 'f', -1, 64), schemaRegionBottomKey: strconv.FormatFloat(region.Bottom, 'f', -1, 64),
+		ocrCropRightField: strconv.FormatFloat(region.Right, 'f', -1, 64),
 	} {
 		if err := writer.WriteField(key, value); err != nil {
 			return Document{}, transform, fmt.Errorf("write crop region: %w", err)
@@ -362,8 +366,9 @@ func statementOCRAmounts(text string) []int64 {
 }
 
 func statementOCRDateRanges(text string) [][]int {
-	var ranges [][]int
-	for _, pattern := range []*regexp.Regexp{printedJapaneseDate, statementJapaneseDate, printedDate, statementNumericDate} {
+	patterns := []*regexp.Regexp{printedJapaneseDate, statementJapaneseDate, printedDate, statementNumericDate}
+	ranges := make([][]int, 0, len(patterns))
+	for _, pattern := range patterns {
 		ranges = append(ranges, pattern.FindAllStringIndex(text, -1)...)
 	}
 	return ranges

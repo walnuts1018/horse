@@ -11,6 +11,17 @@ import (
 	"time"
 )
 
+const (
+	statementKindRefund          = "REFUND"
+	statementKindUnclassified    = "UNCLASSIFIED"
+	statementKindAccountTransfer = "ACCOUNT_TRANSFER"
+	statementKindCardBillPayment = "CARD_BILL_PAYMENT"
+	statementFieldKind           = "kind"
+	statementFieldTransactionID  = "transactionId"
+	statementFieldOrderID        = "orderId"
+	statementFieldCardLast4      = "cardLast4"
+)
+
 type StatementEntry struct {
 	Row             int     `json:"row"`
 	SourceReference string  `json:"sourceReference,omitempty"`
@@ -48,12 +59,12 @@ func VerifyStatements(sourceKind string, entries []StatementEntry, warnings []st
 			}
 		}
 		if sourceKind == statementSourceCard {
-			if entry.Kind != statementKindCardPurchase && entry.Kind != "REFUND" {
+			if entry.Kind != statementKindCardPurchase && entry.Kind != statementKindRefund {
 				return Verification{}, fmt.Errorf("invalid card transaction kind at index %d", i)
 			}
 		} else if !validBankStatementKind(entry.Kind) {
 			return Verification{}, fmt.Errorf("invalid bank transaction kind at index %d", i)
-		} else if entry.Kind == "UNCLASSIFIED" {
+		} else if entry.Kind == statementKindUnclassified {
 			warnings = append(warnings, fmt.Sprintf("取引%dの種別が未確定です。", i+1))
 		}
 		entry.OccurredAt = occurredAt.Format(time.RFC3339)
@@ -66,7 +77,7 @@ func VerifyStatements(sourceKind string, entries []StatementEntry, warnings []st
 
 func validBankStatementKind(kind string) bool {
 	switch kind {
-	case statementKindPayment, "CARD_BILL_PAYMENT", "ACCOUNT_TRANSFER", "REFUND", "UNCLASSIFIED":
+	case statementKindPayment, statementKindCardBillPayment, statementKindAccountTransfer, statementKindRefund, statementKindUnclassified:
 		return true
 	default:
 		return false
@@ -141,7 +152,7 @@ func ParseStatementCSV(data []byte, sourceKind string) ([]StatementEntry, error)
 		if sourceKind == statementSourceBank {
 			kind = bankTransactionKind(value(row, "transactionKind"))
 		}
-		result = append(result, StatementEntry{Row: rowNumber, SourceReference: statementSourceReference(rowNumber), Kind: kind, OccurredAt: date.Format(time.RFC3339), Merchant: merchant, Amount: amount, TransactionID: value(row, "transactionId"), OrderID: value(row, "orderId"), CardLast4: value(row, "cardLast4")})
+		result = append(result, StatementEntry{Row: rowNumber, SourceReference: statementSourceReference(rowNumber), Kind: kind, OccurredAt: date.Format(time.RFC3339), Merchant: merchant, Amount: amount, TransactionID: value(row, statementFieldTransactionID), OrderID: value(row, statementFieldOrderID), CardLast4: value(row, statementFieldCardLast4)})
 	}
 	if len(result) == 0 {
 		return nil, errors.New("statement has no transactions")
@@ -162,12 +173,12 @@ func headerKey(value string) string {
 	case schemaAmountKey, "金額", "利用金額", "ご利用金額", "取引金額":
 		return schemaAmountKey
 	case "transactionid", "transaction_id", "取引id", "取引番号":
-		return "transactionId"
+		return statementFieldTransactionID
 	case "orderid", "order_id", "注文番号":
-		return "orderId"
+		return statementFieldOrderID
 	case "cardlast4", "card_last4", "カード末尾":
-		return "cardLast4"
-	case "kind", schemaTypeKey, "transactionkind", "transaction_kind", "取引種別", "取引区分", "種別":
+		return statementFieldCardLast4
+	case statementFieldKind, schemaTypeKey, "transactionkind", "transaction_kind", "取引種別", "取引区分", "種別":
 		return "transactionKind"
 	default:
 		return ""
@@ -178,14 +189,14 @@ func bankTransactionKind(value string) string {
 	switch strings.ToUpper(strings.TrimSpace(value)) {
 	case statementKindPayment, "商品購入", "デビット購入":
 		return statementKindPayment
-	case "CARD_BILL_PAYMENT", "CARD_PAYMENT", "クレジットカード引落", "カード利用代金":
-		return "CARD_BILL_PAYMENT"
-	case "ACCOUNT_TRANSFER", "TRANSFER", "振込", "振替":
-		return "ACCOUNT_TRANSFER"
-	case "REFUND", "返金", "払い戻し":
-		return "REFUND"
+	case statementKindCardBillPayment, "CARD_PAYMENT", "クレジットカード引落", "カード利用代金":
+		return statementKindCardBillPayment
+	case statementKindAccountTransfer, "TRANSFER", "振込", "振替":
+		return statementKindAccountTransfer
+	case statementKindRefund, "返金", "払い戻し":
+		return statementKindRefund
 	default:
-		return "UNCLASSIFIED"
+		return statementKindUnclassified
 	}
 }
 

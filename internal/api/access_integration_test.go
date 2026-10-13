@@ -392,6 +392,45 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if conflictJobID != jobIDs[childID] {
 		t.Fatalf("conflicting job insert returned %s, want persisted job %s", conflictJobID, jobIDs[childID])
 	}
+	reclassifyAttachment := func(sourceKind string) *httptest.ResponseRecorder {
+		t.Helper()
+		body, err := json.Marshal(map[string]string{"sourceKind": sourceKind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/documents/"+childID.String()+"/retry", strings.NewReader(string(body)))
+		request.Header.Set("Origin", "http://horse.test")
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, request)
+		return response
+	}
+	queuedReclassification := reclassifyAttachment("card")
+	var queuedRetry map[string]string
+	if queuedReclassification.Code != http.StatusAccepted || json.Unmarshal(queuedReclassification.Body.Bytes(), &queuedRetry) != nil || queuedRetry[jobIDJSONKey] != jobIDs[childID].String() {
+		t.Fatalf("queued attachment was not reclassified with its existing job: status=%d body=%s", queuedReclassification.Code, queuedReclassification.Body.String())
+	}
+	childDocument, err = models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(childID)))).One(ctx, executor)
+	if err != nil || childDocument.SourceKind != "card" {
+		t.Fatalf("queued attachment source kind was not updated: document=%#v error=%v", childDocument, err)
+	}
+	failedStatus := "failed"
+	if _, err := models.ExtractionJobs.Update((models.ExtractionJobSetter{Status: &failedStatus}).UpdateMod(), um.Where(models.ExtractionJobs.Columns.ID.EQ(psql.Arg(jobIDs[childID])))).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	completedReclassification := reclassifyAttachment("bank")
+	var completedRetry map[string]string
+	if completedReclassification.Code != http.StatusAccepted || json.Unmarshal(completedReclassification.Body.Bytes(), &completedRetry) != nil || completedRetry[jobIDJSONKey] == "" || completedRetry[jobIDJSONKey] == jobIDs[childID].String() {
+		t.Fatalf("completed attachment was not reprocessed with a new job: status=%d body=%s", completedReclassification.Code, completedReclassification.Body.String())
+	}
+	childDocument, err = models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(childID)))).One(ctx, executor)
+	if err != nil || childDocument.SourceKind != "bank" {
+		t.Fatalf("attachment source kind was not updated with its retry: document=%#v error=%v", childDocument, err)
+	}
+	attachmentJobs, err := models.ExtractionJobs.Query(sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(childID))), sm.OrderBy(models.ExtractionJobs.Columns.Version)).All(ctx, executor)
+	if err != nil || len(attachmentJobs) != 2 || attachmentJobs[0].Version != 1 || attachmentJobs[1].Version != 2 || attachmentJobs[1].ID.String() != completedRetry[jobIDJSONKey] {
+		t.Fatalf("reclassification retry history is incorrect: jobs=%#v error=%v", attachmentJobs, err)
+	}
 	invalidPreviewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview?page=-1", nil)
 	invalidPreviewRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	invalidPreviewResponse := httptest.NewRecorder()

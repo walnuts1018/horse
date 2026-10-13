@@ -140,8 +140,8 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, schedule := range []model.SetFundingScheduleInput{
-		{HouseholdID: householdID, MemberID: memberA, PoolID: poolA.ID, AmountYen: 6000, Cadence: testMonthlyCadence, StartsOn: "2026-01-01"},
-		{HouseholdID: householdID, MemberID: memberB, PoolID: poolB.ID, AmountYen: 4000, Cadence: testMonthlyCadence, StartsOn: "2026-01-01"},
+		{HouseholdID: householdID, MemberID: memberA, PoolID: poolA.ID, AmountYen: 6000, Cadence: testMonthlyCadence, StartsOn: testJanuaryFirst2026},
+		{HouseholdID: householdID, MemberID: memberB, PoolID: poolB.ID, AmountYen: 4000, Cadence: testMonthlyCadence, StartsOn: testJanuaryFirst2026},
 	} {
 		if _, err := resolver.setFundingSchedule(ctx, schedule); err != nil {
 			t.Fatal(err)

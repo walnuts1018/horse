@@ -14,14 +14,14 @@ func TestStatementObservationsKeepIndependentReferences(t *testing.T) {
 		{Row: 3, TransactionID: statementTransactionID, Merchant: "店舗", Amount: 100, OccurredAt: "2026-10-12T00:00:00+09:00"},
 	}}
 	observations := SourceObservations("document", "hash", "card", result)
-	if len(observations) != 2 || observations[0].SourceReference != "row:2" || observations[1].SourceReference != "row:3" {
+	if len(observations) != 2 || observations[0].SourceReference != testStatementRow2Reference || observations[1].SourceReference != testStatementRow3Reference {
 		t.Fatalf("statement references lost: %#v", observations)
 	}
 	if observations[0].TransactionID != statementTransactionID || observations[1].TransactionID != statementTransactionID {
 		t.Fatalf("transaction identifiers were not retained for matching: %#v", observations)
 	}
 	matched := Reconcile(Observation{DocumentID: "new", TransactionID: statementTransactionID, Merchant: "店舗", Amount: 100, OccurredAt: observations[0].OccurredAt}, observations)
-	if len(matched) != 2 || matched[0].SourceReference != "row:2" || matched[1].SourceReference != "row:3" || matched[0].State != "IDENTICAL" || matched[1].State != "IDENTICAL" {
+	if len(matched) != 2 || matched[0].SourceReference != testStatementRow2Reference || matched[1].SourceReference != testStatementRow3Reference || matched[0].State != "IDENTICAL" || matched[1].State != "IDENTICAL" {
 		t.Fatalf("same-transaction rows were not preserved as separate match candidates: %#v", matched)
 	}
 	if !observations[0].OccurredAt.Equal(time.Date(2026, 10, 11, 15, 0, 0, 0, time.UTC)) {
@@ -63,7 +63,7 @@ func TestReconcileBankTransactionsOnlyAgainstReceipts(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
 	receipt := Observation{DocumentID: "receipt", SourceKind: "receipt", TransactionKind: statementKindReceipt, Merchant: "スーパー", Amount: 1000, OccurredAt: now}
-	for _, kind := range []string{statementKindPayment, "CARD_BILL_PAYMENT", "ACCOUNT_TRANSFER", "REFUND", "UNCLASSIFIED"} {
+	for _, kind := range []string{statementKindPayment, statementKindCardBillPayment, statementKindAccountTransfer, statementKindRefund, statementKindUnclassified} {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
 			bank := Observation{DocumentID: "statement", SourceKind: statementSourceBank, TransactionKind: kind, Merchant: "スーパー", Amount: 1000, OccurredAt: now}

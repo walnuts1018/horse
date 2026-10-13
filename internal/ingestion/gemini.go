@@ -18,6 +18,19 @@ const MaxDocumentBytes = 20 << 20
 const MaxOutputTokens = 16_384
 const receiptDiscountKey = "discount"
 
+const (
+	schemaTypeObject      = "object"
+	schemaTypeArray       = "array"
+	schemaPropertiesKey   = "properties"
+	schemaRegionBottomKey = "bottom"
+	schemaRegionKey       = "region"
+	schemaCardLast4Key    = "cardLast4"
+	schemaOrderIDKey      = "orderId"
+	schemaKindKey         = "kind"
+	schemaRequiredKey     = "required"
+	schemaWarningsKey     = "warnings"
+)
+
 type Gemini struct {
 	APIKey           string
 	Model            string
@@ -124,7 +137,7 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "invalid_document_size"})
 	}
 	switch document.MIMEType {
-	case mimeTypeJPEG, mimeTypePNG, "image/webp", mimeTypePDF, mimeTypePlainText, mimeTypeCSV, mimeTypeEmail:
+	case mimeTypeJPEG, mimeTypePNG, mimeTypeWebP, mimeTypePDF, mimeTypePlainText, mimeTypeCSV, mimeTypeEmail:
 	default:
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "unsupported_document_type"})
 	}
@@ -356,17 +369,19 @@ func receiptSchema() map[string]any {
 	quantityDenominator := map[string]any{schemaTypeKey: schemaTypeInteger, schemaMinimumKey: int64(1), schemaMaximumKey: maxQuantityDenominator}
 	printedUnitPrice := map[string]any{schemaTypeKey: schemaTypeInteger, "minimum": int64(0), schemaMaximumKey: MaxAmount}
 	object := func(properties map[string]any, required ...string) map[string]any {
-		return map[string]any{schemaTypeKey: "object", "properties": properties, "required": required}
+		return map[string]any{schemaTypeKey: schemaTypeObject, schemaPropertiesKey: properties, schemaRequiredKey: required}
 	}
-	array := func(items any) map[string]any { return map[string]any{schemaTypeKey: "array", schemaItemsKey: items} }
-	region := object(map[string]any{"page": integer, "top": map[string]any{schemaTypeKey: schemaTypeNumber}, "left": map[string]any{schemaTypeKey: schemaTypeNumber}, "bottom": map[string]any{schemaTypeKey: schemaTypeNumber}, "right": map[string]any{schemaTypeKey: schemaTypeNumber}}, "page", "top", "left", "bottom", "right")
-	item := object(map[string]any{"printedName": str, "name": str, "printedAmount": integer, receiptDiscountKey: integer, "priceBasis": str, "taxGroup": str, "quantityNumerator": quantityNumerator, "quantityDenominator": quantityDenominator, "quantityUnit": str, "printedUnitPriceYen": printedUnitPrice, "printedUnitPriceQuantityNumerator": quantityNumerator, "printedUnitPriceQuantityDenominator": quantityDenominator, "printedUnitPriceUnit": str, "categoryHint": str, "confidence": map[string]any{schemaTypeKey: schemaTypeNumber}, "region": region}, "printedName", "name", "printedAmount", receiptDiscountKey, "priceBasis", "taxGroup", "confidence")
+	array := func(items any) map[string]any {
+		return map[string]any{schemaTypeKey: schemaTypeArray, schemaItemsKey: items}
+	}
+	region := object(map[string]any{ocrCropPageField: integer, ocrCropTopField: map[string]any{schemaTypeKey: schemaTypeNumber}, ocrCropLeftField: map[string]any{schemaTypeKey: schemaTypeNumber}, schemaRegionBottomKey: map[string]any{schemaTypeKey: schemaTypeNumber}, ocrCropRightField: map[string]any{schemaTypeKey: schemaTypeNumber}}, ocrCropPageField, ocrCropTopField, ocrCropLeftField, schemaRegionBottomKey, ocrCropRightField)
+	item := object(map[string]any{"printedName": str, "name": str, "printedAmount": integer, receiptDiscountKey: integer, "priceBasis": str, "taxGroup": str, "quantityNumerator": quantityNumerator, "quantityDenominator": quantityDenominator, "quantityUnit": str, "printedUnitPriceYen": printedUnitPrice, "printedUnitPriceQuantityNumerator": quantityNumerator, "printedUnitPriceQuantityDenominator": quantityDenominator, "printedUnitPriceUnit": str, "categoryHint": str, "confidence": map[string]any{schemaTypeKey: schemaTypeNumber}, schemaRegionKey: region}, "printedName", "name", "printedAmount", receiptDiscountKey, "priceBasis", "taxGroup", "confidence")
 	group := object(map[string]any{"id": str, "numerator": integer, "denominator": integer, "basis": str, "rounding": str, "printedTax": integer, "printedSubtotal": integer}, "id", "numerator", "denominator", "basis", "rounding")
 	itemInterpretation := object(map[string]any{"index": integer, "priceBasis": str, "taxGroup": str}, "index", "priceBasis", "taxGroup")
 	groupInterpretation := object(map[string]any{"id": str, "basis": str, "rounding": str}, "id", "basis", "rounding")
 	interpretation := object(map[string]any{"id": str, schemaItemsKey: array(itemInterpretation), "groups": array(groupInterpretation)}, "id", schemaItemsKey, "groups")
-	payment := object(map[string]any{"method": str, "cardLast4": str, schemaAmountKey: integer}, "method", "cardLast4", schemaAmountKey)
-	return object(map[string]any{schemaMerchantKey: str, "purchasedAt": str, "orderId": str, "transactionId": str, "currency": str, schemaItemsKey: array(item), "taxGroups": array(group), receiptDiscountKey: integer, "total": integer, "payments": array(payment), "warnings": array(str), "interpretations": array(interpretation)}, schemaMerchantKey, "purchasedAt", "currency", schemaItemsKey, "taxGroups", receiptDiscountKey, "total", "payments", "warnings")
+	payment := object(map[string]any{"method": str, schemaCardLast4Key: str, schemaAmountKey: integer}, "method", schemaCardLast4Key, schemaAmountKey)
+	return object(map[string]any{schemaMerchantKey: str, "purchasedAt": str, schemaOrderIDKey: str, statementFieldTransactionID: str, "currency": str, schemaItemsKey: array(item), "taxGroups": array(group), receiptDiscountKey: integer, "total": integer, "payments": array(payment), schemaWarningsKey: array(str), "interpretations": array(interpretation)}, schemaMerchantKey, "purchasedAt", "currency", schemaItemsKey, "taxGroups", receiptDiscountKey, "total", "payments", schemaWarningsKey)
 }
 
 type statementExtraction struct {
@@ -386,30 +401,30 @@ func statementSchema() map[string]any {
 	str := map[string]any{schemaTypeKey: "string"}
 	integer := map[string]any{schemaTypeKey: schemaTypeInteger}
 	region := map[string]any{
-		schemaTypeKey: "object",
-		"properties": map[string]any{
-			"page":   integer,
-			"top":    map[string]any{schemaTypeKey: schemaTypeNumber, schemaMinimumKey: float64(0), schemaMaximumKey: float64(1)},
-			"left":   map[string]any{schemaTypeKey: schemaTypeNumber, schemaMinimumKey: float64(0), schemaMaximumKey: float64(1)},
-			"bottom": map[string]any{schemaTypeKey: schemaTypeNumber, schemaMinimumKey: float64(0), schemaMaximumKey: float64(1)},
-			"right":  map[string]any{schemaTypeKey: schemaTypeNumber, schemaMinimumKey: float64(0), schemaMaximumKey: float64(1)},
+		schemaTypeKey: schemaTypeObject,
+		schemaPropertiesKey: map[string]any{
+			"page":                integer,
+			ocrCropTopField:       map[string]any{schemaTypeKey: schemaTypeNumber, schemaMinimumKey: float64(0), schemaMaximumKey: float64(1)},
+			ocrCropLeftField:      map[string]any{schemaTypeKey: schemaTypeNumber, schemaMinimumKey: float64(0), schemaMaximumKey: float64(1)},
+			schemaRegionBottomKey: map[string]any{schemaTypeKey: schemaTypeNumber, schemaMinimumKey: float64(0), schemaMaximumKey: float64(1)},
+			ocrCropRightField:     map[string]any{schemaTypeKey: schemaTypeNumber, schemaMinimumKey: float64(0), schemaMaximumKey: float64(1)},
 		},
-		"required": []string{"page", "top", "left", "bottom", "right"},
+		schemaRequiredKey: []string{ocrCropPageField, ocrCropTopField, ocrCropLeftField, schemaRegionBottomKey, ocrCropRightField},
 	}
 	transaction := map[string]any{
-		schemaTypeKey: "object",
-		"properties": map[string]any{
-			"kind": str, "occurredAt": str, schemaMerchantKey: str, schemaAmountKey: integer,
-			"transactionId": str, "orderId": str, "cardLast4": str, "region": region,
+		schemaTypeKey: schemaTypeObject,
+		schemaPropertiesKey: map[string]any{
+			schemaKindKey: str, "occurredAt": str, schemaMerchantKey: str, schemaAmountKey: integer,
+			"transactionId": str, schemaOrderIDKey: str, schemaCardLast4Key: str, schemaRegionKey: region,
 		},
-		"required": []string{"kind", "occurredAt", schemaMerchantKey, schemaAmountKey, "transactionId", "orderId", "cardLast4", "region"},
+		schemaRequiredKey: []string{schemaKindKey, "occurredAt", schemaMerchantKey, schemaAmountKey, "transactionId", schemaOrderIDKey, schemaCardLast4Key, schemaRegionKey},
 	}
 	return map[string]any{
-		schemaTypeKey: "object",
-		"properties": map[string]any{
-			"transactions": map[string]any{schemaTypeKey: "array", schemaItemsKey: transaction},
-			"warnings":     map[string]any{schemaTypeKey: "array", schemaItemsKey: str},
+		schemaTypeKey: schemaTypeObject,
+		schemaPropertiesKey: map[string]any{
+			"transactions": map[string]any{schemaTypeKey: schemaTypeArray, schemaItemsKey: transaction},
+			"warnings":     map[string]any{schemaTypeKey: schemaTypeArray, schemaItemsKey: str},
 		},
-		"required": []string{"transactions", "warnings"},
+		schemaRequiredKey: []string{"transactions", schemaWarningsKey},
 	}
 }

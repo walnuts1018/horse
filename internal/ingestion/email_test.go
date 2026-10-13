@@ -36,7 +36,7 @@ func TestGeminiExtractParsesEmailBodyAndWarnsAboutUnparsedAttachments(t *testing
 	}))
 	t.Cleanup(server.Close)
 
-	gemini := Gemini{APIKey: testGeminiAPIKey, Model: "test-model", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
+	gemini := Gemini{APIKey: testGeminiAPIKey, Model: testGeminiModel, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
 	receipt, _, err := gemini.ExtractRun(t.Context(), Document{MIMEType: mimeTypeEmail, Data: message}, nil, GeminiRequestOptions{})
 	if err != nil {
 		t.Fatal(err)

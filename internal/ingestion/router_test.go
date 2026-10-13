@@ -14,7 +14,7 @@ import (
 
 const testFreeGeminiAPIKey = "free-test-key"
 
-func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
+func TestGeminiRouterRetriesQuotaOnFreeRouteBeforeUsingPaid(t *testing.T) {
 	t.Parallel()
 	freeCalls := 0
 	freeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -28,14 +28,10 @@ func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 	}))
 	defer freeServer.Close()
 	var paidCalls int
-	var paidBody map[string]any
 	paidServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paidCalls++
 		if r.Header.Get("x-goog-api-key") != testPaidGeminiAPIKey {
 			t.Errorf("paid route used unexpected API key")
-		}
-		if err := json.Unmarshal(mustReadBody(t, r), &paidBody); err != nil {
-			t.Errorf("decode paid request: %v", err)
 		}
 		writeGeminiSuccess(w, `{"merchant":"Market","purchasedAt":"","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
 	}))
@@ -45,32 +41,22 @@ func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 		Paid:       Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: paidServer.URL + "/v1beta/", HTTPClient: paidServer.Client()},
 		USDJPYRate: 158.535,
 	}
-	receipt, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("not a real image; test transport only")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive, Reason: geminiReasonInitialExtraction})
-	if err != nil {
-		t.Fatal(err)
+	_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("not a real image; test transport only")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive, Reason: geminiReasonInitialExtraction})
+	apiErr, ok := errors.AsType[*GeminiAPIError](err)
+	if !ok || apiErr.Kind != GeminiFailureQuota || apiErr.RetryAfter != 3*time.Second {
+		t.Fatalf("quota response must preserve its retry delay: error=%v", err)
 	}
-	if receipt.Model != ModelReceipt || freeCalls != 1 || paidCalls != 1 || len(runs) != 2 {
-		t.Fatalf("unexpected route result: model=%q free=%d paid=%d runs=%#v", receipt.Model, freeCalls, paidCalls, runs)
+	if freeCalls != 1 || paidCalls != 0 || len(runs) != 1 {
+		t.Fatalf("quota response must not immediately use paid route: free=%d paid=%d runs=%#v", freeCalls, paidCalls, runs)
 	}
-	if runs[0].Route != ProjectFree || runs[0].ErrorCode != "rate_limited" || runs[1].Route != ProjectPaid || runs[1].Status != extractionStatusSucceeded {
+	if runs[0].Route != ProjectFree || runs[0].ErrorCode != "rate_limited" || runs[0].Status != extractionStatusFailed {
 		t.Fatalf("run routing metadata is incomplete: %#v", runs)
 	}
-	if runs[1].InputTokens != 1000 || runs[1].OutputTokens != 275 || runs[1].EstimatedJPY <= 0 || runs[1].LatencyMillis < 0 {
-		t.Fatalf("run usage metadata is incomplete: %#v", runs[1])
+	if runs[0].PromptVersion != PromptVersion || runs[0].PriceTableVersion != GeminiPriceTableVersion || runs[0].PriceEstimateStatus != "unavailable_failed_run" {
+		t.Fatalf("failed free run audit metadata is incomplete: %#v", runs[0])
 	}
-	if runs[0].PromptVersion != PromptVersion || runs[0].PriceTableVersion != GeminiPriceTableVersion || runs[0].PriceEstimateStatus != "unavailable_failed_run" || runs[1].PromptVersion != PromptVersion || runs[1].PriceTableVersion != GeminiPriceTableVersion || runs[1].PriceEstimateStatus != "estimated_paid" || runs[1].USDJPYRate != 158.535 || runs[1].USDJPYRateSource != "unspecified" || runs[1].PricedAt.IsZero() {
-		t.Fatalf("run audit metadata is incomplete: %#v", runs)
-	}
-	if paidBody["serviceTier"] != geminiServiceTierStandard {
-		t.Fatalf("interactive paid fallback must use Standard: request=%#v", paidBody)
-	}
-	generationConfig, ok := paidBody["generationConfig"].(map[string]any)
-	if !ok || generationConfig["serviceTier"] != nil || generationConfig["maxOutputTokens"] != float64(MaxOutputTokens) {
-		t.Fatalf("REST service tier or output token configuration is invalid: %#v", paidBody)
-	}
-	thinkingConfig, ok := generationConfig["thinkingConfig"].(map[string]any)
-	if !ok || thinkingConfig["thinkingLevel"] != geminiThinkingLevelLOW {
-		t.Fatalf("initial image request must use low thinking: %#v", generationConfig)
+	if got := retryDelay(err, 1); got != 3*time.Second {
+		t.Fatalf("worker retry delay = %s, want Retry-After 3s", got)
 	}
 }
 
@@ -298,16 +284,16 @@ func TestGeminiRouterRejectsUnknownPriceBeforePaidRequest(t *testing.T) {
 		wantRuns      int
 	}{
 		{name: "paid only", paidOnly: true},
-		{name: "paid fallback", preferred: ProjectFree, freeStatus: http.StatusTooManyRequests, wantFreeCalls: 1, wantRuns: 1},
+		{name: "paid fallback", preferred: ProjectFree, freeStatus: http.StatusServiceUnavailable, wantFreeCalls: 1, wantRuns: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			freeCalls := 0
 			freeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				freeCalls++
-				if test.freeStatus == http.StatusTooManyRequests {
+				if test.freeStatus != 0 {
 					w.WriteHeader(test.freeStatus)
-					_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED"}}`)
+					_, _ = io.WriteString(w, `{"error":{"status":"UNAVAILABLE"}}`)
 					return
 				}
 				writeGeminiSuccess(w, `{"merchant":"Market","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)

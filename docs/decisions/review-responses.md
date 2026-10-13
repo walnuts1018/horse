@@ -265,3 +265,15 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 ### 返品、購入日、PDF原本照合
 
 カード明細の負額は現在の購入モデルで表現できないため、`Math.abs`で正額へ変換せず購入登録を拒否します。将来返品を扱う場合は、元購入との関連、口座残高、負担配賦、締め後訂正を含む会計モデルを別途定義します。購入日の抽出値がないレシートは、利用者が日付を入力するまで確定できません。PDFは最大20ページ、ページあたり400万画素、合計4000万画素までレンダリングして独立OCRとGeminiの候補を照合し、上限超過やOCR失敗時は`Balanced=false`にします。Go側の130秒request timeoutでworkerは失敗として戻りますが、PaddleOCRの同期推論はPythonプロセス内から強制停止できないため、timeout後にOCR serviceの処理が続く可能性は残ります。関連Importsテスト9件、OCR/Workerテスト、OCR serviceのunittest 6件、ruff、FSD検査とFrontend型検査が成功したため、解決した3項目を`docs/reviews/all2.md`から削除しました。
+
+### 2026年10月14日の複数明細抽出とメール添付
+
+カード・銀行明細のPDF・画像をsourceKind別のGemini schemaで`transactions[]`として抽出します。Go側で符号付き金額、RFC3339日時、取引種別、各行の原本領域を検証し、独立OCRと利用先・金額・未抽出行候補が一致しない場合は未確定にします。メール添付のPDF・JPEG・PNG・WebPは親メールとは別のsource documentとjobにし、家庭境界付きの親子relationを親jobと同じDB transactionへ保存します。DB登録後にqueueへ通知し、同一jobの競合登録では保存済みjob IDを返します。添付のみのメール本文は親jobでGeminiを呼ばず、添付ごとの解析を継続します。TestcontainersのPostgreSQL 18によるAPI統合テスト、`go test ./internal/ingestion`、`git diff --check`が成功しました。sourceKind選択を含むFrontend操作と公開環境での確認は未完了のため、`docs/reviews/all2.md`から指摘はまだ削除しません。
+
+### 2026年10月14日のGemini無料枠再試行
+
+無料Projectで429が返った場合に有料Projectへ即時に切り替えず、Gemini APIの`Retry-After`をWorkerの既存job再試行へ渡します。429では有料Clientが呼ばれないこと、一時的な503では従来どおり有料へフォールバックすること、再試行遅延が保たれることを`go test ./internal/ingestion`で確認しました。関連する429の指摘を`docs/reviews/gemini.md`から削除しました。
+
+### メール添付の明細種別と予算一覧
+
+`POST /documents/{id}/retry`は同一householdの未確定メール添付に限り、sourceKindをカード・銀行明細へ変更して再解析できます。sourceKind変更とjob登録は同一transactionで処理し、queued jobでは既存IDを再通知します。running、親メール、非添付、確認・証拠登録済み文書の再分類は拒否します。予算一覧は対象月の購入、品目、訂正をBob DSLで一括取得し、全体額・カテゴリ別額を集計することで予算・購入ごとのN+1を解消しました。統合テストで処理結果とメンバー認可を確認しました。添付のsourceKind選択UIは未完了のためレビュー項目を残します。

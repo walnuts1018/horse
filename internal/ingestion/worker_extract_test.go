@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+const testEmailSource = "email"
+
 type attachmentOnlyStore struct {
 	document Document
 }
@@ -20,7 +22,7 @@ func TestWorkerExtractionSkipsGeminiForAttachmentOnlyEmail(t *testing.T) {
 	message := []byte("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=mail\r\n\r\n" +
 		"--mail\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=receipt.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\n" + pdf + "\r\n--mail--\r\n")
 	worker := Worker{Store: attachmentOnlyStore{document: Document{MIMEType: mimeTypeEmail, Data: message}}}
-	result, err := worker.extract(t.Context(), job{ObjectKey: "email", MIMEType: mimeTypeEmail, SourceKind: "email", Request: []byte("{}")})
+	result, err := worker.extract(t.Context(), job{ObjectKey: testEmailSource, MIMEType: mimeTypeEmail, SourceKind: testEmailSource, Request: []byte("{}")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +35,7 @@ func TestWorkerExtractionKeepsAttachmentlessEmptyEmailFailure(t *testing.T) {
 	t.Parallel()
 	message := []byte("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n")
 	worker := Worker{Store: attachmentOnlyStore{document: Document{MIMEType: mimeTypeEmail, Data: message}}}
-	_, err := worker.extract(t.Context(), job{ObjectKey: "email", MIMEType: mimeTypeEmail, SourceKind: "email", Request: []byte("{}")})
+	_, err := worker.extract(t.Context(), job{ObjectKey: testEmailSource, MIMEType: mimeTypeEmail, SourceKind: testEmailSource, Request: []byte("{}")})
 	if err == nil {
 		t.Fatal("attachmentless empty email unexpectedly succeeded")
 	}

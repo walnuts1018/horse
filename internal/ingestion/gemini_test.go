@@ -11,6 +11,8 @@ import (
 	"testing"
 )
 
+const testGeminiModel = "test-model"
+
 func TestReceiptSchemaMatchesJSONTypesAndRequiredFields(t *testing.T) {
 	t.Parallel()
 	ignoredFields := map[reflect.Type]map[string]bool{
@@ -31,7 +33,7 @@ func TestGeminiExtractsSourceKindSpecificStatementRows(t *testing.T) {
 		writeGeminiSuccess(w, `{"transactions":[{"kind":"CARD_PURCHASE","occurredAt":"2026-10-12T12:00:00+09:00","merchant":"Market","amount":-1234,"transactionId":"tx-1","orderId":"","cardLast4":"1234","region":`+region+`}],"warnings":[]}`)
 	}))
 	defer server.Close()
-	gemini := Gemini{APIKey: testGeminiAPIKey, Model: "test-model", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
+	gemini := Gemini{APIKey: testGeminiAPIKey, Model: testGeminiModel, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
 	receipt, _, err := gemini.ExtractRun(t.Context(), Document{MIMEType: mimeTypePDF, Data: []byte("synthetic pdf bytes")}, nil, GeminiRequestOptions{SourceKind: statementSourceCard})
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +144,7 @@ func assertSchemaFieldType(t *testing.T, typ reflect.Type, schemaValue any, igno
 func TestGeminiExtractPreservesExactQuantityAndPrintedUnitPrice(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1beta/models/test-model:generateContent" {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1beta/models/"+testGeminiModel+":generateContent" {
 			t.Errorf("unexpected SDK request target: %s %s", r.Method, r.URL.Path)
 		}
 		if r.Header.Get("x-goog-api-key") != testGeminiAPIKey {
@@ -188,7 +190,7 @@ func TestGeminiExtractPreservesExactQuantityAndPrintedUnitPrice(t *testing.T) {
 	}))
 	defer server.Close()
 
-	gemini := Gemini{APIKey: testGeminiAPIKey, Model: "test-model", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
+	gemini := Gemini{APIKey: testGeminiAPIKey, Model: testGeminiModel, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
 	receipt, _, err := gemini.ExtractRun(t.Context(), Document{MIMEType: mimeTypeJPEG, Data: []byte("synthetic image bytes")}, nil, GeminiRequestOptions{})
 	if err != nil {
 		t.Fatal(err)

@@ -2,6 +2,12 @@ package ingestion
 
 import "testing"
 
+const (
+	testStatementRow2Reference = "row:2"
+	testStatementRow3Reference = "row:3"
+	testStatementMerchant      = "Market"
+)
+
 func TestStatementCSV(t *testing.T) {
 	t.Parallel()
 	data := []byte("\ufeff利用日,利用店名,利用金額,取引番号,取引種別\n2026/10/12,お店,\"1,234円\",tx1,商品購入\n2026/10/13,返金,-100,tx2,返金\n")
@@ -15,7 +21,7 @@ func TestStatementCSV(t *testing.T) {
 		}
 		want := []string{statementKindCardPurchase, statementKindCardPurchase}
 		if kind == statementSourceBank {
-			want = []string{statementKindPayment, "REFUND"}
+			want = []string{statementKindPayment, statementKindRefund}
 		}
 		for i, entry := range entries {
 			if entry.Kind != want[i] {
@@ -24,7 +30,7 @@ func TestStatementCSV(t *testing.T) {
 		}
 	}
 	unknown, err := ParseStatementCSV([]byte("date,merchant,amount,type\n2026-10-12,店,100,不明な取引\n"), statementSourceBank)
-	if err != nil || len(unknown) != 1 || unknown[0].Kind != "UNCLASSIFIED" {
+	if err != nil || len(unknown) != 1 || unknown[0].Kind != statementKindUnclassified {
 		t.Fatalf("unclassified bank transaction was not preserved: entries=%+v err=%v", unknown, err)
 	}
 	for _, data := range []string{"date,merchant,amount\n2026-10-12,店,1.5\n", "date,merchant,amount\n不明,店,100\n", "date,merchant\n2026-10-12,店\n"} {
@@ -45,7 +51,7 @@ func TestStatementSourceReferencesAreStableAndUnique(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first) != 2 || first[0].SourceReference != "row:2" || first[1].SourceReference != "row:3" {
+	if len(first) != 2 || first[0].SourceReference != testStatementRow2Reference || first[1].SourceReference != testStatementRow3Reference {
 		t.Fatalf("duplicate transaction IDs did not receive unique row references: %+v", first)
 	}
 	if first[0].SourceReference != second[0].SourceReference || first[1].SourceReference != second[1].SourceReference {
@@ -60,7 +66,7 @@ func TestStatementSourceReferencesAreStableAndUnique(t *testing.T) {
 func TestVerifyStatementsPreservesSignedTransactionsAndFailsClosed(t *testing.T) {
 	t.Parallel()
 	region := Region{Page: 1, Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
-	entry := StatementEntry{Kind: statementKindCardPurchase, OccurredAt: "2026-10-12T12:00:00+09:00", Merchant: "Market", Amount: -1234, Region: &region}
+	entry := StatementEntry{Kind: statementKindCardPurchase, OccurredAt: "2026-10-12T12:00:00+09:00", Merchant: testStatementMerchant, Amount: -1234, Region: &region}
 	verified, err := VerifyStatements(statementSourceCard, []StatementEntry{entry}, nil)
 	if err != nil {
 		t.Fatal(err)
