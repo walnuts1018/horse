@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/base"
@@ -16,13 +18,16 @@ import (
 	"github.com/emersion/go-message"
 	_ "github.com/emersion/go-message/charset"
 	messageMail "github.com/emersion/go-message/mail"
+	"github.com/gabriel-vasile/mimetype"
 	"golang.org/x/net/html"
 )
 
 const (
 	maxEmailMIMEDepth            = 16
 	maxEmailMIMEParts            = 256
-	emailAttachmentReviewWarning = "メールに未解析の添付ファイルがあります。添付内容と抽出結果を照合してください。"
+	maxEmailAttachments          = 10
+	maxEmailAttachmentBytes      = 10 << 20
+	emailAttachmentReviewWarning = "メールに添付ファイルがあります。添付内容と抽出結果を照合してください。"
 )
 
 type emailContent struct {
@@ -31,17 +36,26 @@ type emailContent struct {
 	Date                   string
 	Body                   string
 	HasUnparsedAttachments bool
+	Attachments            []emailAttachment
+}
+
+type emailAttachment struct {
+	Filename string
+	MIMEType string
+	Data     []byte
 }
 
 type emailMIMEContent struct {
 	Plain         []string
 	HTML          []string
 	HasAttachment bool
+	Attachments   []emailAttachment
 }
 
 type emailMIMEState struct {
-	parts int
-	size  int
+	parts       int
+	size        int
+	attachments int
 }
 
 func parseEmail(data []byte) (emailContent, error) {
@@ -88,10 +102,11 @@ func parseEmail(data []byte) (emailContent, error) {
 		}
 		content.Body = strings.TrimSpace(strings.Join(bodies, "\n\n"))
 	}
-	if content.Body == "" {
+	if content.Body == "" && !parsed.HasAttachment {
 		return emailContent{}, errors.New("email has no readable text body")
 	}
 	content.HasUnparsedAttachments = parsed.HasAttachment
+	content.Attachments = parsed.Attachments
 	return content, nil
 }
 
@@ -122,12 +137,32 @@ func parseEmailMIME(entity *message.Entity, depth int, state *emailMIMEState) (e
 	if err != nil {
 		return emailMIMEContent{}, err
 	}
-	disposition, dispositionParams, _ := mime.ParseMediaType(entity.Header.Get("Content-Disposition"))
-	if strings.EqualFold(disposition, "attachment") || dispositionParams["filename"] != "" || params["name"] != "" {
-		if err := consumeEmailBody(entity.Body, state); err != nil {
-			return emailMIMEContent{}, err
+	dispositionHeader := entity.Header.Get("Content-Disposition")
+	disposition, dispositionParams := "", map[string]string{}
+	if strings.TrimSpace(dispositionHeader) != "" {
+		disposition, dispositionParams, err = mime.ParseMediaType(dispositionHeader)
+		if err != nil {
+			return emailMIMEContent{}, errors.New("invalid email MIME disposition")
 		}
-		return emailMIMEContent{HasAttachment: true}, nil
+	}
+	filename := dispositionParams["filename"]
+	if filename == "" {
+		filename = params["name"]
+	}
+	if strings.EqualFold(disposition, "attachment") || filename != "" {
+		state.attachments++
+		if state.attachments > maxEmailAttachments {
+			return emailMIMEContent{}, errors.New("email has too many attachments")
+		}
+		attachment, attachmentErr := readEmailAttachment(entity.Body, state, mediaType, filename)
+		if attachmentErr != nil {
+			return emailMIMEContent{}, attachmentErr
+		}
+		result := emailMIMEContent{HasAttachment: true}
+		if attachment != nil {
+			result.Attachments = []emailAttachment{*attachment}
+		}
+		return result, nil
 	}
 	if strings.HasPrefix(mediaType, "multipart/") {
 		if params["boundary"] == "" {
@@ -163,6 +198,7 @@ func parseEmailMIME(entity *message.Entity, depth int, state *emailMIMEState) (e
 		for _, child := range children {
 			combined.Plain = append(combined.Plain, child.Plain...)
 			combined.HTML = append(combined.HTML, child.HTML...)
+			combined.Attachments = append(combined.Attachments, child.Attachments...)
 			combined.HasAttachment = combined.HasAttachment || child.HasAttachment
 		}
 		return combined, nil
@@ -185,6 +221,81 @@ func parseEmailMIME(entity *message.Entity, depth int, state *emailMIMEState) (e
 		return emailMIMEContent{HTML: []string{text}}, nil
 	}
 	return emailMIMEContent{Plain: []string{text}}, nil
+}
+
+func readEmailAttachment(body io.Reader, state *emailMIMEState, declaredMIME, filename string) (*emailAttachment, error) {
+	remaining := min(MaxDocumentBytes-state.size, maxEmailAttachmentBytes)
+	if remaining < 0 {
+		return nil, errors.New("email attachment exceeds size limit")
+	}
+	data, err := io.ReadAll(io.LimitReader(body, int64(remaining)+1))
+	if err != nil || len(data) > remaining {
+		return nil, errors.New("email attachment exceeds size limit")
+	}
+	state.size += len(data)
+	if len(data) == 0 {
+		return nil, errors.New("email attachment is empty")
+	}
+	detectedMIME := mimetype.Detect(data).String()
+	if !supportedEmailAttachmentMIME(detectedMIME) {
+		if supportedEmailAttachmentMIME(declaredMIME) {
+			return nil, errors.New("email attachment MIME type does not match its contents")
+		}
+		return nil, nil
+	}
+	if declaredMIME != "" && declaredMIME != "text/plain" && declaredMIME != "application/octet-stream" && declaredMIME != "binary/octet-stream" && declaredMIME != detectedMIME {
+		return nil, errors.New("email attachment MIME type does not match its contents")
+	}
+	extension := emailAttachmentExtension(detectedMIME)
+	filename = safeEmailAttachmentFilename(filename, extension, state.attachments)
+	return &emailAttachment{Filename: filename, MIMEType: detectedMIME, Data: data}, nil
+}
+
+func supportedEmailAttachmentMIME(value string) bool {
+	switch value {
+	case mimeTypePDF, mimeTypeJPEG, mimeTypePNG, "image/webp":
+		return true
+	default:
+		return false
+	}
+}
+
+func emailAttachmentExtension(mimeType string) string {
+	switch mimeType {
+	case mimeTypePDF:
+		return ".pdf"
+	case mimeTypeJPEG:
+		return ".jpg"
+	case mimeTypePNG:
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	default:
+		return ""
+	}
+}
+
+func safeEmailAttachmentFilename(filename, extension string, ordinal int) string {
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	filename = filepath.Base(filename)
+	filename = strings.Map(func(character rune) rune {
+		if unicode.IsControl(character) {
+			return -1
+		}
+		return character
+	}, filename)
+	filename = strings.TrimSpace(filename)
+	if filename == "" || filename == "." {
+		filename = fmt.Sprintf("attachment-%02d%s", ordinal, extension)
+	}
+	if len(filename) > 255 {
+		runes := []rune(filename)
+		for len(string(runes)) > 255 {
+			runes = runes[:len(runes)-1]
+		}
+		filename = string(runes)
+	}
+	return filename
 }
 
 func parseEmailContentType(value string) (string, map[string]string, error) {
@@ -230,6 +341,7 @@ func chooseEmailAlternative(children []emailMIMEContent) emailMIMEContent {
 	var htmlFallback emailMIMEContent
 	for _, child := range children {
 		chosen.HasAttachment = chosen.HasAttachment || child.HasAttachment
+		chosen.Attachments = append(chosen.Attachments, child.Attachments...)
 		if len(child.Plain) > 0 {
 			chosen.Plain = child.Plain
 			chosen.HTML = nil

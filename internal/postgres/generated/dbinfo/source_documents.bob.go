@@ -124,6 +124,28 @@ var SourceDocuments = Table[
 			Where:         "",
 			Include:       []string{},
 		},
+		SourceDocumentsHouseholdIDIDKey: index{
+			Type: "btree",
+			Name: "source_documents_household_id_id_key",
+			Columns: []indexColumn{
+				{
+					Name:         "household_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        true,
+			Comment:       "",
+			NullsFirst:    []bool{false, false},
+			NullsDistinct: false,
+			Where:         "",
+			Include:       []string{},
+		},
 		SourceDocumentsHouseholdIDSha256Key: index{
 			Type: "btree",
 			Name: "source_documents_household_id_sha256_key",
@@ -190,6 +212,11 @@ var SourceDocuments = Table[
 		},
 	},
 	Uniques: sourceDocumentUniques{
+		SourceDocumentsHouseholdIDIDKey: constraint{
+			Name:    "source_documents_household_id_id_key",
+			Columns: []string{"household_id", "id"},
+			Comment: "",
+		},
 		SourceDocumentsHouseholdIDSha256Key: constraint{
 			Name:    "source_documents_household_id_sha256_key",
 			Columns: []string{"household_id", "sha256"},
@@ -235,13 +262,14 @@ func (c sourceDocumentColumns) AsSlice() []column {
 
 type sourceDocumentIndexes struct {
 	SourceDocumentsPkey                 index
+	SourceDocumentsHouseholdIDIDKey     index
 	SourceDocumentsHouseholdIDSha256Key index
 	SourceDocumentsObjectKeyKey         index
 }
 
 func (i sourceDocumentIndexes) AsSlice() []index {
 	return []index{
-		i.SourceDocumentsPkey, i.SourceDocumentsHouseholdIDSha256Key, i.SourceDocumentsObjectKeyKey,
+		i.SourceDocumentsPkey, i.SourceDocumentsHouseholdIDIDKey, i.SourceDocumentsHouseholdIDSha256Key, i.SourceDocumentsObjectKeyKey,
 	}
 }
 
@@ -257,13 +285,14 @@ func (f sourceDocumentForeignKeys) AsSlice() []foreignKey {
 }
 
 type sourceDocumentUniques struct {
+	SourceDocumentsHouseholdIDIDKey     constraint
 	SourceDocumentsHouseholdIDSha256Key constraint
 	SourceDocumentsObjectKeyKey         constraint
 }
 
 func (u sourceDocumentUniques) AsSlice() []constraint {
 	return []constraint{
-		u.SourceDocumentsHouseholdIDSha256Key, u.SourceDocumentsObjectKeyKey,
+		u.SourceDocumentsHouseholdIDIDKey, u.SourceDocumentsHouseholdIDSha256Key, u.SourceDocumentsObjectKeyKey,
 	}
 }
 

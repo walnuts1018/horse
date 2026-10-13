@@ -11,6 +11,13 @@ var SourceDocumentErrors = &sourceDocumentErrors{
 		s:       "source_documents_pkey",
 	},
 
+	ErrUniqueSourceDocumentsHouseholdIdIdKey: &UniqueConstraintError{
+		schema:  "",
+		table:   "source_documents",
+		columns: []string{"household_id", "id"},
+		s:       "source_documents_household_id_id_key",
+	},
+
 	ErrUniqueSourceDocumentsHouseholdIdSha256Key: &UniqueConstraintError{
 		schema:  "",
 		table:   "source_documents",
@@ -35,6 +42,8 @@ var SourceDocumentErrors = &sourceDocumentErrors{
 
 type sourceDocumentErrors struct {
 	ErrUniqueSourceDocumentsPkey *UniqueConstraintError
+
+	ErrUniqueSourceDocumentsHouseholdIdIdKey *UniqueConstraintError
 
 	ErrUniqueSourceDocumentsHouseholdIdSha256Key *UniqueConstraintError
 

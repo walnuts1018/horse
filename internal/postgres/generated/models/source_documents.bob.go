@@ -57,11 +57,13 @@ type SourceDocumentsQuery = *psql.ViewQuery[*SourceDocument, SourceDocumentSlice
 
 // sourceDocumentR is where relationships are stored.
 type sourceDocumentR struct {
-	DocumentConfirmations DocumentConfirmationSlice // document_confirmations.document_confirmations_source_document_id_fkey
-	EvidenceLinks         EvidenceLinkSlice         // evidence_links.evidence_links_source_document_id_fkey
-	ExtractionJobs        ExtractionJobSlice        // extraction_jobs.extraction_jobs_source_document_id_fkey
-	CreatedByMember       *Member                   // source_documents.source_documents_created_by_fkey
-	Household             *Household                // source_documents.source_documents_household_id_fkey
+	DocumentConfirmations DocumentConfirmationSlice     // document_confirmations.document_confirmations_source_document_id_fkey
+	EvidenceLinks         EvidenceLinkSlice             // evidence_links.evidence_links_source_document_id_fkey
+	ExtractionJobs        ExtractionJobSlice            // extraction_jobs.extraction_jobs_source_document_id_fkey
+	AttachmentsAsChild    SourceDocumentAttachmentSlice // source_document_attachments.source_document_attachments_child_household_fkey
+	AttachmentsAsParent   SourceDocumentAttachmentSlice // source_document_attachments.source_document_attachments_parent_household_fkey
+	CreatedByMember       *Member                       // source_documents.source_documents_created_by_fkey
+	Household             *Household                    // source_documents.source_documents_household_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -73,6 +75,8 @@ type sourceDocumentRLoaded struct {
 	DocumentConfirmations bool // document_confirmations.document_confirmations_source_document_id_fkey
 	EvidenceLinks         bool // evidence_links.evidence_links_source_document_id_fkey
 	ExtractionJobs        bool // extraction_jobs.extraction_jobs_source_document_id_fkey
+	AttachmentsAsChild    bool // source_document_attachments.source_document_attachments_child_household_fkey
+	AttachmentsAsParent   bool // source_document_attachments.source_document_attachments_parent_household_fkey
 	CreatedByMember       bool // source_documents.source_documents_created_by_fkey
 	Household             bool // source_documents.source_documents_household_id_fkey
 }
@@ -855,6 +859,64 @@ func (os SourceDocumentSlice) ExtractionJobs(mods ...bob.Mod[*dialect.SelectQuer
 	)...)
 }
 
+// AttachmentsAsChild starts a query for related objects on source_document_attachments
+func (o *SourceDocument) AttachmentsAsChild(mods ...bob.Mod[*dialect.SelectQuery]) SourceDocumentAttachmentsQuery {
+	return SourceDocumentAttachments.Query(append(mods,
+		sm.Where(SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(SourceDocumentAttachments.Columns.ChildDocumentID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os SourceDocumentSlice) AttachmentsAsChild(mods ...bob.Mod[*dialect.SelectQuery]) SourceDocumentAttachmentsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return SourceDocumentAttachments.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ChildDocumentID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ChildDocumentID"),
+		)).As("bob_rel_keys").On(SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), SourceDocumentAttachments.Columns.ChildDocumentID.EQ(psql.Quote("bob_rel_keys", "ChildDocumentID"))),
+	)...)
+}
+
+// AttachmentsAsParent starts a query for related objects on source_document_attachments
+func (o *SourceDocument) AttachmentsAsParent(mods ...bob.Mod[*dialect.SelectQuery]) SourceDocumentAttachmentsQuery {
+	return SourceDocumentAttachments.Query(append(mods,
+		sm.Where(SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(SourceDocumentAttachments.Columns.ParentDocumentID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os SourceDocumentSlice) AttachmentsAsParent(mods ...bob.Mod[*dialect.SelectQuery]) SourceDocumentAttachmentsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return SourceDocumentAttachments.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ParentDocumentID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ParentDocumentID"),
+		)).As("bob_rel_keys").On(SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), SourceDocumentAttachments.Columns.ParentDocumentID.EQ(psql.Quote("bob_rel_keys", "ParentDocumentID"))),
+	)...)
+}
+
 // CreatedByMember starts a query for related objects on members
 func (o *SourceDocument) CreatedByMember(mods ...bob.Mod[*dialect.SelectQuery]) MembersQuery {
 	return Members.Query(append(mods,
@@ -1055,6 +1117,150 @@ func (sourceDocument0 *SourceDocument) AttachExtractionJobs(ctx context.Context,
 	return nil
 }
 
+func insertSourceDocumentAttachmentsAsChild0(ctx context.Context, exec bob.Executor, sourceDocumentAttachments1 []*SourceDocumentAttachmentSetter, sourceDocument0 *SourceDocument) (SourceDocumentAttachmentSlice, error) {
+	for i := range sourceDocumentAttachments1 {
+		sourceDocumentAttachments1[i].HouseholdID = func() *uuid.UUID { return &sourceDocument0.HouseholdID }()
+		sourceDocumentAttachments1[i].ChildDocumentID = func() *uuid.UUID { return &sourceDocument0.ID }()
+	}
+
+	ret, err := SourceDocumentAttachments.Insert(bob.ToMods(sourceDocumentAttachments1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertSourceDocumentAttachmentsAsChild0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachSourceDocumentAttachmentsAsChild0(ctx context.Context, exec bob.Executor, count int, sourceDocumentAttachments1 SourceDocumentAttachmentSlice, sourceDocument0 *SourceDocument) (SourceDocumentAttachmentSlice, error) {
+	setter := &SourceDocumentAttachmentSetter{
+		HouseholdID:     func() *uuid.UUID { return &sourceDocument0.HouseholdID }(),
+		ChildDocumentID: func() *uuid.UUID { return &sourceDocument0.ID }(),
+	}
+
+	err := sourceDocumentAttachments1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachSourceDocumentAttachmentsAsChild0: %w", err)
+	}
+
+	return sourceDocumentAttachments1, nil
+}
+
+func (sourceDocument0 *SourceDocument) InsertAttachmentsAsChild(ctx context.Context, exec bob.Executor, related ...*SourceDocumentAttachmentSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	sourceDocumentAttachments1, err := insertSourceDocumentAttachmentsAsChild0(ctx, exec, related, sourceDocument0)
+	if err != nil {
+		return err
+	}
+
+	sourceDocument0.R.AttachmentsAsChild = append(sourceDocument0.R.AttachmentsAsChild, sourceDocumentAttachments1...)
+
+	for _, rel := range sourceDocumentAttachments1 {
+		rel.R.ChildAttachments = sourceDocument0
+		rel.R.Loaded.ChildAttachments = true
+	}
+	return nil
+}
+
+func (sourceDocument0 *SourceDocument) AttachAttachmentsAsChild(ctx context.Context, exec bob.Executor, related ...*SourceDocumentAttachment) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	sourceDocumentAttachments1 := SourceDocumentAttachmentSlice(related)
+
+	_, err = attachSourceDocumentAttachmentsAsChild0(ctx, exec, len(related), sourceDocumentAttachments1, sourceDocument0)
+	if err != nil {
+		return err
+	}
+
+	sourceDocument0.R.AttachmentsAsChild = append(sourceDocument0.R.AttachmentsAsChild, sourceDocumentAttachments1...)
+
+	for _, rel := range related {
+		rel.R.ChildAttachments = sourceDocument0
+		rel.R.Loaded.ChildAttachments = true
+	}
+
+	return nil
+}
+
+func insertSourceDocumentAttachmentsAsParent0(ctx context.Context, exec bob.Executor, sourceDocumentAttachments1 []*SourceDocumentAttachmentSetter, sourceDocument0 *SourceDocument) (SourceDocumentAttachmentSlice, error) {
+	for i := range sourceDocumentAttachments1 {
+		sourceDocumentAttachments1[i].HouseholdID = func() *uuid.UUID { return &sourceDocument0.HouseholdID }()
+		sourceDocumentAttachments1[i].ParentDocumentID = func() *uuid.UUID { return &sourceDocument0.ID }()
+	}
+
+	ret, err := SourceDocumentAttachments.Insert(bob.ToMods(sourceDocumentAttachments1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertSourceDocumentAttachmentsAsParent0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachSourceDocumentAttachmentsAsParent0(ctx context.Context, exec bob.Executor, count int, sourceDocumentAttachments1 SourceDocumentAttachmentSlice, sourceDocument0 *SourceDocument) (SourceDocumentAttachmentSlice, error) {
+	setter := &SourceDocumentAttachmentSetter{
+		HouseholdID:      func() *uuid.UUID { return &sourceDocument0.HouseholdID }(),
+		ParentDocumentID: func() *uuid.UUID { return &sourceDocument0.ID }(),
+	}
+
+	err := sourceDocumentAttachments1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachSourceDocumentAttachmentsAsParent0: %w", err)
+	}
+
+	return sourceDocumentAttachments1, nil
+}
+
+func (sourceDocument0 *SourceDocument) InsertAttachmentsAsParent(ctx context.Context, exec bob.Executor, related ...*SourceDocumentAttachmentSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	sourceDocumentAttachments1, err := insertSourceDocumentAttachmentsAsParent0(ctx, exec, related, sourceDocument0)
+	if err != nil {
+		return err
+	}
+
+	sourceDocument0.R.AttachmentsAsParent = append(sourceDocument0.R.AttachmentsAsParent, sourceDocumentAttachments1...)
+
+	for _, rel := range sourceDocumentAttachments1 {
+		rel.R.ParentAttachments = sourceDocument0
+		rel.R.Loaded.ParentAttachments = true
+	}
+	return nil
+}
+
+func (sourceDocument0 *SourceDocument) AttachAttachmentsAsParent(ctx context.Context, exec bob.Executor, related ...*SourceDocumentAttachment) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	sourceDocumentAttachments1 := SourceDocumentAttachmentSlice(related)
+
+	_, err = attachSourceDocumentAttachmentsAsParent0(ctx, exec, len(related), sourceDocumentAttachments1, sourceDocument0)
+	if err != nil {
+		return err
+	}
+
+	sourceDocument0.R.AttachmentsAsParent = append(sourceDocument0.R.AttachmentsAsParent, sourceDocumentAttachments1...)
+
+	for _, rel := range related {
+		rel.R.ParentAttachments = sourceDocument0
+		rel.R.Loaded.ParentAttachments = true
+	}
+
+	return nil
+}
+
 func attachSourceDocumentCreatedByMember0(ctx context.Context, exec bob.Executor, count int, sourceDocument0 *SourceDocument, member1 *Member) (*SourceDocument, error) {
 	setter := &SourceDocumentSetter{
 		CreatedBy: func() *uuid.UUID { return &member1.ID }(),
@@ -1235,6 +1441,36 @@ func (w sourceDocumentWhereR[Q]) HasExtractionJobs(filters ...bob.Mod[*dialect.S
 		sm.Columns(psql.Raw("1")),
 		sm.From(ExtractionJobs.NameExpr()),
 		sm.Where(ExtractionJobs.Columns.SourceDocumentID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasAttachmentsAsChild filters parents that have a matching AttachmentsAsChild using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to SourceDocumentAttachments).
+func (w sourceDocumentWhereR[Q]) HasAttachmentsAsChild(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(SourceDocumentAttachments.NameExpr()),
+		sm.Where(SourceDocumentAttachments.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(SourceDocumentAttachments.Columns.ChildDocumentID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasAttachmentsAsParent filters parents that have a matching AttachmentsAsParent using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to SourceDocumentAttachments).
+func (w sourceDocumentWhereR[Q]) HasAttachmentsAsParent(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(SourceDocumentAttachments.NameExpr()),
+		sm.Where(SourceDocumentAttachments.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(SourceDocumentAttachments.Columns.ParentDocumentID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -1446,6 +1682,38 @@ func (o *SourceDocument) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "AttachmentsAsChild":
+		rels, ok := retrieved.(SourceDocumentAttachmentSlice)
+		if !ok {
+			return fmt.Errorf("sourceDocument cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.AttachmentsAsChild = rels
+		o.R.Loaded.AttachmentsAsChild = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.ChildAttachments = o
+				rel.R.Loaded.ChildAttachments = true
+			}
+		}
+		return nil
+	case "AttachmentsAsParent":
+		rels, ok := retrieved.(SourceDocumentAttachmentSlice)
+		if !ok {
+			return fmt.Errorf("sourceDocument cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.AttachmentsAsParent = rels
+		o.R.Loaded.AttachmentsAsParent = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.ParentAttachments = o
+				rel.R.Loaded.ParentAttachments = true
+			}
+		}
+		return nil
 	case "CreatedByMember":
 		rel, ok := retrieved.(*Member)
 		if !ok {
@@ -1517,6 +1785,8 @@ type sourceDocumentThenLoader[Q orm.Loadable] struct {
 	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ExtractionJobs        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AttachmentsAsChild    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AttachmentsAsParent   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByMember       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Household             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
@@ -1530,6 +1800,12 @@ func buildSourceDocumentThenLoader[Q orm.Loadable]() sourceDocumentThenLoader[Q]
 	}
 	type ExtractionJobsLoadInterface interface {
 		LoadExtractionJobs(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type AttachmentsAsChildLoadInterface interface {
+		LoadAttachmentsAsChild(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type AttachmentsAsParentLoadInterface interface {
+		LoadAttachmentsAsParent(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type CreatedByMemberLoadInterface interface {
 		LoadCreatedByMember(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -1555,6 +1831,18 @@ func buildSourceDocumentThenLoader[Q orm.Loadable]() sourceDocumentThenLoader[Q]
 			"ExtractionJobs",
 			func(ctx context.Context, exec bob.Executor, retrieved ExtractionJobsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadExtractionJobs(ctx, exec, mods...)
+			},
+		),
+		AttachmentsAsChild: thenLoadBuilder[Q](
+			"AttachmentsAsChild",
+			func(ctx context.Context, exec bob.Executor, retrieved AttachmentsAsChildLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadAttachmentsAsChild(ctx, exec, mods...)
+			},
+		),
+		AttachmentsAsParent: thenLoadBuilder[Q](
+			"AttachmentsAsParent",
+			func(ctx context.Context, exec bob.Executor, retrieved AttachmentsAsParentLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadAttachmentsAsParent(ctx, exec, mods...)
 			},
 		),
 		CreatedByMember: thenLoadBuilder[Q](
@@ -1794,6 +2082,144 @@ func (os SourceDocumentSlice) LoadExtractionJobs(ctx context.Context, exec bob.E
 	return nil
 }
 
+// LoadAttachmentsAsChild loads the sourceDocument's AttachmentsAsChild into the .R struct
+func (o *SourceDocument) LoadAttachmentsAsChild(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.AttachmentsAsChild = nil
+	o.R.Loaded.AttachmentsAsChild = false
+
+	related, err := o.AttachmentsAsChild(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.ChildAttachments = o
+		rel.R.Loaded.ChildAttachments = true
+	}
+
+	o.R.AttachmentsAsChild = related
+	o.R.Loaded.AttachmentsAsChild = true
+	return nil
+}
+
+// LoadAttachmentsAsChild loads the sourceDocument's AttachmentsAsChild into the .R struct
+func (os SourceDocumentSlice) LoadAttachmentsAsChild(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	sourceDocumentAttachments, err := os.AttachmentsAsChild(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.AttachmentsAsChild = nil
+		o.R.Loaded.AttachmentsAsChild = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range sourceDocumentAttachments {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.ID == rel.ChildDocumentID) {
+				continue
+			}
+
+			rel.R.ChildAttachments = o
+			rel.R.Loaded.ChildAttachments = true
+
+			o.R.AttachmentsAsChild = append(o.R.AttachmentsAsChild, rel)
+		}
+	}
+
+	return nil
+}
+
+// LoadAttachmentsAsParent loads the sourceDocument's AttachmentsAsParent into the .R struct
+func (o *SourceDocument) LoadAttachmentsAsParent(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.AttachmentsAsParent = nil
+	o.R.Loaded.AttachmentsAsParent = false
+
+	related, err := o.AttachmentsAsParent(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.ParentAttachments = o
+		rel.R.Loaded.ParentAttachments = true
+	}
+
+	o.R.AttachmentsAsParent = related
+	o.R.Loaded.AttachmentsAsParent = true
+	return nil
+}
+
+// LoadAttachmentsAsParent loads the sourceDocument's AttachmentsAsParent into the .R struct
+func (os SourceDocumentSlice) LoadAttachmentsAsParent(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	sourceDocumentAttachments, err := os.AttachmentsAsParent(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.AttachmentsAsParent = nil
+		o.R.Loaded.AttachmentsAsParent = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range sourceDocumentAttachments {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.ID == rel.ParentDocumentID) {
+				continue
+			}
+
+			rel.R.ParentAttachments = o
+			rel.R.Loaded.ParentAttachments = true
+
+			o.R.AttachmentsAsParent = append(o.R.AttachmentsAsParent, rel)
+		}
+	}
+
+	return nil
+}
+
 // LoadCreatedByMember loads the sourceDocument's CreatedByMember into the .R struct
 func (o *SourceDocument) LoadCreatedByMember(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -1949,6 +2375,8 @@ type sourceDocumentC struct {
 	DocumentConfirmations *int64
 	EvidenceLinks         *int64
 	ExtractionJobs        *int64
+	AttachmentsAsChild    *int64
+	AttachmentsAsParent   *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -1964,6 +2392,10 @@ func (o *SourceDocument) PreloadCount(name string, count int64) error {
 		o.C.EvidenceLinks = &count
 	case "ExtractionJobs":
 		o.C.ExtractionJobs = &count
+	case "AttachmentsAsChild":
+		o.C.AttachmentsAsChild = &count
+	case "AttachmentsAsParent":
+		o.C.AttachmentsAsParent = &count
 	}
 	return nil
 }
@@ -1972,6 +2404,8 @@ type sourceDocumentCountPreloader struct {
 	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	ExtractionJobs        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AttachmentsAsChild    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AttachmentsAsParent   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildSourceDocumentCountPreloader() sourceDocumentCountPreloader {
@@ -2027,6 +2461,42 @@ func buildSourceDocumentCountPreloader() sourceDocumentCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		AttachmentsAsChild: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*SourceDocument]("AttachmentsAsChild", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = SourceDocuments.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(SourceDocumentAttachments.NameAsExpr()),
+					sm.Where(psql.Quote(SourceDocumentAttachments.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(SourceDocumentAttachments.Alias(), "child_document_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+		AttachmentsAsParent: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*SourceDocument]("AttachmentsAsParent", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = SourceDocuments.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(SourceDocumentAttachments.NameAsExpr()),
+					sm.Where(psql.Quote(SourceDocumentAttachments.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(SourceDocumentAttachments.Alias(), "parent_document_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 	}
 }
 
@@ -2034,6 +2504,8 @@ type sourceDocumentCountThenLoader[Q orm.Loadable] struct {
 	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	ExtractionJobs        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AttachmentsAsChild    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AttachmentsAsParent   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildSourceDocumentCountThenLoader[Q orm.Loadable]() sourceDocumentCountThenLoader[Q] {
@@ -2045,6 +2517,12 @@ func buildSourceDocumentCountThenLoader[Q orm.Loadable]() sourceDocumentCountThe
 	}
 	type ExtractionJobsCountInterface interface {
 		LoadCountExtractionJobs(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type AttachmentsAsChildCountInterface interface {
+		LoadCountAttachmentsAsChild(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type AttachmentsAsParentCountInterface interface {
+		LoadCountAttachmentsAsParent(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return sourceDocumentCountThenLoader[Q]{
@@ -2064,6 +2542,18 @@ func buildSourceDocumentCountThenLoader[Q orm.Loadable]() sourceDocumentCountThe
 			"ExtractionJobs",
 			func(ctx context.Context, exec bob.Executor, retrieved ExtractionJobsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountExtractionJobs(ctx, exec, mods...)
+			},
+		),
+		AttachmentsAsChild: countThenLoadBuilder[Q](
+			"AttachmentsAsChild",
+			func(ctx context.Context, exec bob.Executor, retrieved AttachmentsAsChildCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountAttachmentsAsChild(ctx, exec, mods...)
+			},
+		),
+		AttachmentsAsParent: countThenLoadBuilder[Q](
+			"AttachmentsAsParent",
+			func(ctx context.Context, exec bob.Executor, retrieved AttachmentsAsParentCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountAttachmentsAsParent(ctx, exec, mods...)
 			},
 		),
 	}
@@ -2306,11 +2796,233 @@ func (os SourceDocumentSlice) LoadCountExtractionJobs(ctx context.Context, exec 
 	return nil
 }
 
+// LoadCountAttachmentsAsChild loads the count of AttachmentsAsChild into the C struct
+func (o *SourceDocument) LoadCountAttachmentsAsChild(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.AttachmentsAsChild(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.AttachmentsAsChild = &count
+	return nil
+}
+
+// LoadCountAttachmentsAsChild loads the count of AttachmentsAsChild for a slice in a single batch query
+func (os SourceDocumentSlice) LoadCountAttachmentsAsChild(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			SourceDocumentAttachments.Columns.HouseholdID.As("household_id"),
+			SourceDocumentAttachments.Columns.ChildDocumentID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(SourceDocumentAttachments.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "ChildDocumentID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "ChildDocumentID"),
+		)).As("bob_rel_keys").On(
+			SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			SourceDocumentAttachments.Columns.ChildDocumentID.EQ(psql.Quote("bob_rel_keys", "ChildDocumentID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(SourceDocumentAttachments.Columns.HouseholdID),
+		sm.GroupBy(SourceDocumentAttachments.Columns.ChildDocumentID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.AttachmentsAsChild = &count
+	}
+
+	return nil
+}
+
+// LoadCountAttachmentsAsParent loads the count of AttachmentsAsParent into the C struct
+func (o *SourceDocument) LoadCountAttachmentsAsParent(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.AttachmentsAsParent(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.AttachmentsAsParent = &count
+	return nil
+}
+
+// LoadCountAttachmentsAsParent loads the count of AttachmentsAsParent for a slice in a single batch query
+func (os SourceDocumentSlice) LoadCountAttachmentsAsParent(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			SourceDocumentAttachments.Columns.HouseholdID.As("household_id"),
+			SourceDocumentAttachments.Columns.ParentDocumentID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(SourceDocumentAttachments.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "ParentDocumentID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "ParentDocumentID"),
+		)).As("bob_rel_keys").On(
+			SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			SourceDocumentAttachments.Columns.ParentDocumentID.EQ(psql.Quote("bob_rel_keys", "ParentDocumentID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(SourceDocumentAttachments.Columns.HouseholdID),
+		sm.GroupBy(SourceDocumentAttachments.Columns.ParentDocumentID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.AttachmentsAsParent = &count
+	}
+
+	return nil
+}
+
 type sourceDocumentJoins[Q dialect.Joinable] struct {
 	typ                   string
 	DocumentConfirmations modAs[Q, documentConfirmationColumns]
 	EvidenceLinks         modAs[Q, evidenceLinkColumns]
 	ExtractionJobs        modAs[Q, extractionJobColumns]
+	AttachmentsAsChild    modAs[Q, sourceDocumentAttachmentColumns]
+	AttachmentsAsParent   modAs[Q, sourceDocumentAttachmentColumns]
 	CreatedByMember       modAs[Q, memberColumns]
 	Household             modAs[Q, householdColumns]
 }
@@ -2358,6 +3070,34 @@ func buildSourceDocumentJoins[Q dialect.Joinable](cols sourceDocumentColumns, ty
 				{
 					mods = append(mods, dialect.Join[Q](typ, ExtractionJobs.NameExpr().As(to.Alias())).On(
 						to.SourceDocumentID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		AttachmentsAsChild: modAs[Q, sourceDocumentAttachmentColumns]{
+			c: SourceDocumentAttachments.Columns,
+			f: func(to sourceDocumentAttachmentColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, SourceDocumentAttachments.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.ChildDocumentID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		AttachmentsAsParent: modAs[Q, sourceDocumentAttachmentColumns]{
+			c: SourceDocumentAttachments.Columns,
+			f: func(to sourceDocumentAttachmentColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, SourceDocumentAttachments.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.ParentDocumentID.EQ(cols.ID),
 					))
 				}
 

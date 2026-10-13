@@ -62,6 +62,7 @@ type preloaders struct {
 	SettlementAdjustment           settlementAdjustmentPreloader
 	SettlementLine                 settlementLinePreloader
 	SettlementRun                  settlementRunPreloader
+	SourceDocumentAttachment       sourceDocumentAttachmentPreloader
 	SourceDocument                 sourceDocumentPreloader
 	Tag                            tagPreloader
 	Transfer                       transferPreloader
@@ -114,6 +115,7 @@ func getPreloaders() preloaders {
 		SettlementAdjustment:           buildSettlementAdjustmentPreloader(),
 		SettlementLine:                 buildSettlementLinePreloader(),
 		SettlementRun:                  buildSettlementRunPreloader(),
+		SourceDocumentAttachment:       buildSourceDocumentAttachmentPreloader(),
 		SourceDocument:                 buildSourceDocumentPreloader(),
 		Tag:                            buildTagPreloader(),
 		Transfer:                       buildTransferPreloader(),
@@ -172,6 +174,7 @@ type thenLoaders[Q orm.Loadable] struct {
 	SettlementAdjustment           settlementAdjustmentThenLoader[Q]
 	SettlementLine                 settlementLineThenLoader[Q]
 	SettlementRun                  settlementRunThenLoader[Q]
+	SourceDocumentAttachment       sourceDocumentAttachmentThenLoader[Q]
 	SourceDocument                 sourceDocumentThenLoader[Q]
 	Tag                            tagThenLoader[Q]
 	Transfer                       transferThenLoader[Q]
@@ -224,6 +227,7 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		SettlementAdjustment:           buildSettlementAdjustmentThenLoader[Q](),
 		SettlementLine:                 buildSettlementLineThenLoader[Q](),
 		SettlementRun:                  buildSettlementRunThenLoader[Q](),
+		SourceDocumentAttachment:       buildSourceDocumentAttachmentThenLoader[Q](),
 		SourceDocument:                 buildSourceDocumentThenLoader[Q](),
 		Tag:                            buildTagThenLoader[Q](),
 		Transfer:                       buildTransferThenLoader[Q](),

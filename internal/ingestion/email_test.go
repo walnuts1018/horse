@@ -56,6 +56,53 @@ func TestGeminiExtractParsesEmailBodyAndWarnsAboutUnparsedAttachments(t *testing
 	}
 }
 
+func TestParseEmailExtractsValidatedAttachments(t *testing.T) {
+	t.Parallel()
+	parsed, err := parseEmail(syntheticEmail(t, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Attachments) != 1 {
+		t.Fatalf("attachment count = %d, want 1", len(parsed.Attachments))
+	}
+	attachment := parsed.Attachments[0]
+	if attachment.Filename != "invoice.pdf" || attachment.MIMEType != mimeTypePDF || !bytes.HasPrefix(attachment.Data, []byte("%PDF-")) {
+		t.Fatalf("unexpected extracted attachment: %#v", attachment)
+	}
+}
+
+func TestParseEmailAllowsAttachmentOnlyMessagesAndRejectsMIMEMismatch(t *testing.T) {
+	t.Parallel()
+	pdf := base64.StdEncoding.EncodeToString([]byte("%PDF-1.4 synthetic receipt"))
+	attachmentOnly := []byte("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=mail\r\n\r\n" +
+		"--mail\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=receipt.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\n" + pdf + "\r\n--mail--\r\n")
+	parsed, err := parseEmail(attachmentOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Body != "" || len(parsed.Attachments) != 1 {
+		t.Fatalf("attachment-only message was not retained: %#v", parsed)
+	}
+
+	mismatch := []byte("MIME-Version: 1.0\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=receipt.pdf\r\n\r\nnot a PDF")
+	if _, err := parseEmail(mismatch); err == nil {
+		t.Fatal("parseEmail() accepted a PDF MIME type with non-PDF contents")
+	}
+}
+
+func TestParseEmailRejectsExcessiveAttachmentCount(t *testing.T) {
+	t.Parallel()
+	var message strings.Builder
+	message.WriteString("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=mail\r\n\r\n")
+	for range maxEmailAttachments + 1 {
+		message.WriteString("--mail\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=receipt.pdf\r\n\r\n%PDF-1.4\r\n")
+	}
+	message.WriteString("--mail--\r\n")
+	if _, err := parseEmail([]byte(message.String())); err == nil {
+		t.Fatal("parseEmail() accepted too many attachments")
+	}
+}
+
 func TestParseEmailUsesHTMLWhenPlainTextIsUnavailable(t *testing.T) {
 	t.Parallel()
 	body := base64.StdEncoding.EncodeToString([]byte(`<html><head><title>ignored title</title></head><body><p>注文内容</p><script>ignored script</script><p>合計&nbsp;1,234円</p></body></html>`))
