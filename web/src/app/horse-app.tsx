@@ -66,6 +66,7 @@ export function App() {
     null,
   );
   const [households, setHouseholds] = useState<Array<{ id: string; name: string }>>([]);
+  const [householdRetryVersion, setHouseholdRetryVersion] = useState(0);
   const [household, setHousehold] = useState<Household | null>(null);
   const hasUnsavedChangesRef = useRef(false);
   const [loading, setLoading] = useState(true);
@@ -214,7 +215,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [households, householdId, navigate, pathname]);
+  }, [households, householdId, navigate, pathname, householdRetryVersion]);
 
   const showNotice = (message: string) => {
     setNotice(message);
@@ -353,8 +354,17 @@ export function App() {
     setPendingInvitation("");
   };
   const selectHousehold = (id: string) => {
-    if (id === household?.id) return;
     if (!households.some((item) => item.id === id)) return;
+    if (!household) {
+      if (id !== householdId) {
+        navigateToHouseholdPage(id, page, true);
+        return;
+      }
+      resolvingHouseholdId.current = null;
+      setHouseholdRetryVersion((version) => version + 1);
+      return;
+    }
+    if (id === household.id) return;
     navigateToHouseholdPage(id, page);
   };
 

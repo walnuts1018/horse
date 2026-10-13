@@ -52,7 +52,7 @@ Renovateが更新できるよう、Go・Web・OCRの公開タグはGitHub Action
 
 ### ファイルベースルーティングとURL状態
 
-ページ名を`?page=`へ保存する方式を廃止し、TanStack Startのファイルベースルートで`/households/$householdId/{page}`を構成します。帳簿の検索条件は共有と再読み込みに必要なためsearch paramsへ保存します。画面別ルートは`pages/`のpublic APIを呼び出し、App shellをroot routeに一度だけ配置して未保存変更のblockerと画面状態を維持します。型検査、Steiger、oxlint、oxfmt、Vite buildを確認しました。新しいimageの稼働確認と直接URL・戻る/進むの公開環境確認はCIとデプロイ後に記録します。
+ページ名を`?page=`へ保存する方式を廃止し、TanStack Startのファイルベースルートで`/households/$householdId/{page}`を構成します。帳簿の検索条件は共有と再読み込みに必要なためsearch paramsへ保存します。画面別ルートは`pages/`のpublic APIを呼び出し、App shellをroot routeに一度だけ配置して未保存変更のblockerと画面状態を維持します。家計取得に失敗して画面が空の場合は、表示中の家計を選び直す操作で取得を再試行します。型検査、Steiger、oxlint、oxfmt、Vite buildを確認しました。新しいimageの稼働確認と直接URL・戻る/進むの公開環境確認はCIとデプロイ後に記録します。
 
 ### GraphQL Schema
 
