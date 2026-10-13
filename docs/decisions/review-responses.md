@@ -261,3 +261,7 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 ### オフライン購入データの利用者分離
 
 購入下書きとOutboxの保存キーに`memberId`と`householdId`を含め、enqueue、claim、再送、完了、失敗、破棄で同じscopeを検証します。送信時は現在の利用者が対象家庭に所属することを確認し、ログイン利用者が変わった直後に前利用者のOutboxを表示しません。所有者が記録されていない旧v2データは削除も引継ぎもせず、旧storeに保持して送信対象から除外します。IndexedDBテスト3件とFrontend型検査が成功したため、該当指摘を`docs/reviews/all2.md`から削除しました。
+
+### 返品、購入日、PDF原本照合
+
+カード明細の負額は現在の購入モデルで表現できないため、`Math.abs`で正額へ変換せず購入登録を拒否します。将来返品を扱う場合は、元購入との関連、口座残高、負担配賦、締め後訂正を含む会計モデルを別途定義します。購入日の抽出値がないレシートは、利用者が日付を入力するまで確定できません。PDFは最大20ページ、ページあたり400万画素、合計4000万画素までレンダリングして独立OCRとGeminiの候補を照合し、上限超過やOCR失敗時は`Balanced=false`にします。Go側の130秒request timeoutでworkerは失敗として戻りますが、PaddleOCRの同期推論はPythonプロセス内から強制停止できないため、timeout後にOCR serviceの処理が続く可能性は残ります。関連Importsテスト9件、OCR/Workerテスト、OCR serviceのunittest 6件、ruff、FSD検査とFrontend型検査が成功したため、解決した3項目を`docs/reviews/all2.md`から削除しました。
