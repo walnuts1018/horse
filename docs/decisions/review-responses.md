@@ -169,3 +169,5 @@ GitHub Actions run `38451243233`ではPostgreSQL統合テストが実行され�
 購入Queryの検索条件を`PurchaseFilter`入力に集約しました。金額・日付・検索語・分類・タグ・口座・負担先をページング前にBob DSLで適用し、品目表示では条件を同一品目へ適用して該当品目だけを返します。LedgerPageの購入・品目結果に対する重複filterを削除しました。GraphQL/Relay生成、GraphQL通常テスト、Web型検査、Relay検証、format検査が成功しました。PostgreSQL統合テストの実行結果はGitHub Actions確認後に記録します。
 
 Purchaseの履歴QueryをRelay生成operationへ移し、Purchase Entityのmapperで数量・印字単価・実効単価と訂正unionを変換します。購入入力と観測照合はEntityの公開read APIを利用するため、`normalizeGraphQLValue()`のPurchaseItem変換を削除しました。LedgerEntry変換とmutation unionのunwrapは利用箇所が残るため維持します。生成型を`shared/api`から公開し、Entityのdeep importを解消しました。Web型検査、Steiger、Relay検証、lint、formatの統合検査が成功しました。
+
+会計期間のJST変換と符号付き整数の加算overflow検知を`internal/application/accounting`へ集約しました。購入・資金拠出・送金・入金・精算は共通関数を呼び出します。JSTの月境界と加算overflowを確認するテストを追加し、対象Applicationのテストとgolangci-lintが成功しました。

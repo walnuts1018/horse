@@ -341,7 +341,7 @@ func loadAccount(ctx context.Context, executor bob.Executor, householdID, accoun
 }
 
 func lockPeriod(ctx context.Context, tx pgx.Tx, householdID gofrsuuid.UUID, occurredAt time.Time) error {
-	period := occurredAt.In(time.FixedZone("JST", 9*60*60)).Format("2006-01")
+	period := accounting.PeriodFor(occurredAt)
 	status, revision := "OPEN", int64(0)
 	executor := bobpgx.NewTx(tx, nil)
 	if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{

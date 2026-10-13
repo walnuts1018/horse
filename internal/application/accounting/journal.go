@@ -70,10 +70,10 @@ func BuildEntries(postings []Posting) ([]Entry, error) {
 		switch posting.Side {
 		case Debit:
 			entry.DebitYen = posting.AmountYen
-			debitTotal, ok = checkedAdd(debitTotal, posting.AmountYen)
+			debitTotal, ok = Add(debitTotal, posting.AmountYen)
 		case Credit:
 			entry.CreditYen = posting.AmountYen
-			creditTotal, ok = checkedAdd(creditTotal, posting.AmountYen)
+			creditTotal, ok = Add(creditTotal, posting.AmountYen)
 		default:
 			return nil, fmt.Errorf("invalid journal side")
 		}
@@ -96,7 +96,7 @@ func BuildPurchaseEntries(allocations []PurchaseAllocation, payments []PurchaseP
 		var paidTotal int64
 		for _, payment := range payments {
 			var ok bool
-			paidTotal, ok = checkedAdd(paidTotal, payment.AmountYen)
+			paidTotal, ok = Add(paidTotal, payment.AmountYen)
 			if !ok {
 				return nil, fmt.Errorf("purchase payment total exceeds int64")
 			}
@@ -107,7 +107,7 @@ func BuildPurchaseEntries(allocations []PurchaseAllocation, payments []PurchaseP
 	}
 	sharesByPool := make(map[gofrsuuid.UUID]int64, len(allocations))
 	for _, allocation := range allocations {
-		amount, ok := checkedAdd(sharesByPool[allocation.PoolID], allocation.AmountYen)
+		amount, ok := Add(sharesByPool[allocation.PoolID], allocation.AmountYen)
 		if !ok {
 			return nil, fmt.Errorf("purchase allocation total exceeds int64")
 		}
@@ -161,7 +161,7 @@ func nullableUUID(value *gofrsuuid.UUID) sql.Null[gofrsuuid.UUID] {
 	return sql.Null[gofrsuuid.UUID]{V: *value, Valid: true}
 }
 
-func checkedAdd(left, right int64) (int64, bool) {
+func Add(left, right int64) (int64, bool) {
 	if right > 0 && left > math.MaxInt64-right {
 		return 0, false
 	}

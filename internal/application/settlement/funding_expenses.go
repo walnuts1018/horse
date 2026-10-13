@@ -12,6 +12,7 @@ import (
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -349,7 +350,7 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 		if err != nil {
 			return nil, nil, fmt.Errorf("purchase %s: %w", purchase.ID, err)
 		}
-		period := accountingPeriod(purchase.OccurredAt)
+		period := accounting.PeriodFor(purchase.OccurredAt)
 		expensesByPeriod[period] = append(expensesByPeriod[period], split...)
 	}
 	return expensesByPeriod, rules, nil

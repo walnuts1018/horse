@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"slices"
 	"strings"
 	"time"
@@ -67,7 +66,7 @@ func (s *Service) post(ctx context.Context, tx pgx.Tx, input PostCommand, finger
 	if !errors.Is(err, sql.ErrNoRows) {
 		return PostResult{}, err
 	}
-	period := accountingPeriod(purchase.OccurredAt)
+	period := accounting.PeriodFor(purchase.OccurredAt)
 	if lockHousehold {
 		if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -93,7 +92,7 @@ func (s *Service) post(ctx context.Context, tx pgx.Tx, input PostCommand, finger
 	if err != nil {
 		return PostResult{}, err
 	}
-	if accountingPeriod(purchase.OccurredAt) != period || purchase.Revision != input.ExpectedRevision || purchase.Status != draftStatus {
+	if accounting.PeriodFor(purchase.OccurredAt) != period || purchase.Revision != input.ExpectedRevision || purchase.Status != draftStatus {
 		return PostResult{}, ErrConflict
 	}
 	items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseID)))).All(ctx, executor)
@@ -386,8 +385,5 @@ func snapshotPaymentFunding(ctx context.Context, executor bob.Executor, househol
 }
 
 func checkedAdd(left, right int64) (int64, bool) {
-	if right > 0 && left > math.MaxInt64-right || right < 0 && left < math.MinInt64-right {
-		return 0, false
-	}
-	return left + right, true
+	return accounting.Add(left, right)
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -81,7 +82,7 @@ func calculateSettlementPreviewWithRules(ctx context.Context, db bob.Executor, h
 			return nil, err
 		}
 		for _, schedule := range schedules {
-			earliest = earlierPeriod(earliest, accountingPeriod(schedule.StartsOn))
+			earliest = earlierPeriod(earliest, accounting.PeriodFor(schedule.StartsOn))
 		}
 		purchases, err := models.Purchases.Query(sm.Where(psql.And(
 			models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
@@ -91,7 +92,7 @@ func calculateSettlementPreviewWithRules(ctx context.Context, db bob.Executor, h
 			return nil, err
 		}
 		for _, purchase := range purchases {
-			earliest = earlierPeriod(earliest, accountingPeriod(purchase.OccurredAt))
+			earliest = earlierPeriod(earliest, accounting.PeriodFor(purchase.OccurredAt))
 		}
 		if earliest != "" {
 			firstOpen, err = parseAccountingPeriod(earliest)
@@ -134,10 +135,6 @@ func earlierPeriod(current, candidate string) string {
 		return candidate
 	}
 	return current
-}
-
-func accountingPeriod(value time.Time) string {
-	return value.In(time.FixedZone("JST", 9*60*60)).Format("2006-01")
 }
 
 func parseAccountingPeriod(value string) (time.Time, error) {

@@ -21,6 +21,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -130,7 +131,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		return Result{}, err
 	}
 
-	period := accountingPeriod(command.OccurredAt)
+	period := accounting.PeriodFor(command.OccurredAt)
 	if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
 		HouseholdID: &householdID, Period: &period, Status: new("OPEN"), Revision: new(int64(0)),
 	}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, executor); err != nil {
@@ -459,18 +460,8 @@ func requireHouseholdMember(ctx context.Context, executor bob.Executor, househol
 	return nil
 }
 
-func accountingPeriod(value time.Time) string {
-	return value.In(time.FixedZone("JST", 9*60*60)).Format("2006-01")
-}
-
 func checkedAdd(left, right int64) (int64, bool) {
-	if right > 0 && left > int64(^uint64(0)>>1)-right {
-		return 0, false
-	}
-	if right < 0 && left < -int64(^uint64(0)>>1)-1-right {
-		return 0, false
-	}
-	return left + right, true
+	return accounting.Add(left, right)
 }
 
 func writeEvent(ctx context.Context, tx pgx.Tx, householdID, entityID gofrsuuid.UUID, eventType string, revision int64, fields []string, actorID gofrsuuid.UUID) error {

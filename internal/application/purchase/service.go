@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
@@ -23,6 +22,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/ingestion"
@@ -244,7 +244,7 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 	if !errors.Is(err, sql.ErrNoRows) {
 		return CreateResult{}, err
 	}
-	period := accountingPeriod(input.OccurredAt)
+	period := accounting.PeriodFor(input.OccurredAt)
 	if err := ensureAccountingPeriod(ctx, executor, householdUUID, period); err != nil {
 		return CreateResult{}, err
 	}
@@ -637,9 +637,6 @@ func writeEvent(ctx context.Context, tx pgx.Tx, householdID, entityID gofrsuuid.
 	return err
 }
 
-func accountingPeriod(value time.Time) string {
-	return value.In(time.FixedZone("JST", 9*60*60)).Format("2006-01")
-}
 func normalizeMerchant(value string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
 }

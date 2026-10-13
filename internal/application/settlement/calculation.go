@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"math"
 	"slices"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -282,8 +282,5 @@ func addFundingAmountsFromRows(start, end time.Time, obligations models.FundingO
 }
 
 func checkedAdd(left, right int64) (int64, bool) {
-	if right > 0 && left > math.MaxInt64-right || right < 0 && left < math.MinInt64-right {
-		return 0, false
-	}
-	return left + right, true
+	return accounting.Add(left, right)
 }

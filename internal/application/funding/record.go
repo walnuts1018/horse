@@ -20,6 +20,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -122,7 +123,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		return Result{}, err
 	}
 
-	period := accountingPeriod(command.OccurredAt)
+	period := accounting.PeriodFor(command.OccurredAt)
 	if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
 		HouseholdID: &householdID, Period: &period, Status: new("OPEN"), Revision: new(int64(0)),
 	}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, executor); err != nil {
@@ -332,8 +333,4 @@ func writeEvent(ctx context.Context, tx pgx.Tx, householdID, entityID gofrsuuid.
 		ChangedFields: &changedFields, ActorID: &actor,
 	}).Exec(ctx, bobpgx.NewTx(tx, nil))
 	return err
-}
-
-func accountingPeriod(value time.Time) string {
-	return value.In(time.FixedZone("JST", 9*60*60)).Format("2006-01")
 }

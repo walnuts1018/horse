@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob"
@@ -17,6 +16,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -25,8 +25,6 @@ const (
 	updateFieldMerchant           = "merchant"
 	updateFieldPaymentAllocations = "paymentAllocations"
 )
-
-var purchaseUpdateLocation = time.FixedZone("JST", 9*60*60)
 
 func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResult, error) {
 	if len(command.ChangedFields) == 0 {
@@ -83,7 +81,7 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResu
 		targetOccurredAt = *command.OccurredAt
 	}
 	if err := lockPurchaseAccountingPeriods(ctx, executor, observed.HouseholdID,
-		purchaseAccountingPeriod(observed.OccurredAt), purchaseAccountingPeriod(targetOccurredAt)); err != nil {
+		accounting.PeriodFor(observed.OccurredAt), accounting.PeriodFor(targetOccurredAt)); err != nil {
 		return UpdateResult{}, err
 	}
 
@@ -96,7 +94,7 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResu
 	}
 	householdID := purchase.HouseholdID.String()
 	status := purchase.Status
-	if householdID != observedHouseholdID || purchaseAccountingPeriod(purchase.OccurredAt) != purchaseAccountingPeriod(observed.OccurredAt) {
+	if householdID != observedHouseholdID || accounting.PeriodFor(purchase.OccurredAt) != accounting.PeriodFor(observed.OccurredAt) {
 		return UpdateResult{}, ErrConflict
 	}
 	if err := requirePurchaseMember(ctx, executor, purchase.HouseholdID, actorUUID); err != nil {
@@ -211,10 +209,6 @@ func requirePurchaseMember(ctx context.Context, executor bob.Executor, household
 		return ErrNotFound
 	}
 	return nil
-}
-
-func purchaseAccountingPeriod(value time.Time) string {
-	return value.In(purchaseUpdateLocation).Format("2006-01")
 }
 
 func purchaseUpdateValuesConflict(fieldRevisions []byte, base int64, fields []string) (bool, error) {

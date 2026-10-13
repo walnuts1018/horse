@@ -19,6 +19,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -86,7 +87,7 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (Up
 	if err := requirePurchaseMember(ctx, executor, householdID, actorUUID); err != nil {
 		return UpdateResult{}, err
 	}
-	observedPeriod := accountingPeriod(observedPurchase.OccurredAt)
+	observedPeriod := accounting.PeriodFor(observedPurchase.OccurredAt)
 	if err := lockPurchaseAccountingPeriods(ctx, executor, householdID, observedPeriod); err != nil {
 		return UpdateResult{}, err
 	}

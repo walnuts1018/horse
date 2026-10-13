@@ -229,7 +229,7 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 	if purchaseRow.Status == draftStatus {
 		return CorrectionResult{}, fmt.Errorf("%w: corrections require a posted purchase", ErrBadInput)
 	}
-	originalPeriod := accountingPeriod(purchaseRow.OccurredAt)
+	originalPeriod := accounting.PeriodFor(purchaseRow.OccurredAt)
 	if err := ensureAccountingPeriod(ctx, executor, householdUUID, originalPeriod); err != nil {
 		return CorrectionResult{}, err
 	}
@@ -243,7 +243,7 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 	effectivePeriod := originalPeriod
 	correctionAt := time.Now()
 	if originalPeriodRow.Status == correctionStatusClosed {
-		effectivePeriod = accountingPeriod(correctionAt)
+		effectivePeriod = accounting.PeriodFor(correctionAt)
 		if err := lockCorrectionAccountingPeriods(ctx, executor, householdUUID, effectivePeriod); err != nil {
 			return CorrectionResult{}, err
 		}
