@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	categoryapp "github.com/walnuts1018/horse/internal/application/category"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -21,39 +21,13 @@ func (r *mutationResolver) createCategory(ctx context.Context, input model.Creat
 	if err != nil {
 		return nil, err
 	}
-	name := strings.TrimSpace(input.Name)
-	if name == "" || len(name) > 120 {
-		return nil, fmt.Errorf("%w: invalid category", ErrBadInput)
-	}
-	id := newID()
-	tx, err := r.DB.Begin(ctx)
+	created, err := categoryapp.NewService(r.DB).Create(ctx, categoryapp.CreateCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, Name: input.Name, ParentID: input.ParentID,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	idUUID := generatedUUID(id)
-	householdUUID, parseErr := gofrsuuid.FromString(input.HouseholdID)
-	if parseErr != nil {
-		return nil, fmt.Errorf("%w: invalid household id", ErrBadInput)
-	}
-	var parentValue sql.Null[gofrsuuid.UUID]
-	if input.ParentID != nil {
-		parentUUID, parseErr := gofrsuuid.FromString(*input.ParentID)
-		if parseErr != nil {
-			return nil, fmt.Errorf("%w: invalid parent category id", ErrBadInput)
-		}
-		parentValue = sql.Null[gofrsuuid.UUID]{V: parentUUID, Valid: true}
-	}
-	if _, err := models.Categories.Insert(&models.CategorySetter{ID: &idUUID, HouseholdID: &householdUUID, ParentID: &parentValue, Name: &name}).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
-		return nil, err
-	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "category.created", id, 1, []string{fieldName, fieldParentID}, user.MemberID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return &model.Category{ID: id, Name: name, ParentID: input.ParentID}, nil
+	return &model.Category{ID: created.ID, Name: created.Name, ParentID: created.ParentID}, nil
 }
 
 func (r *mutationResolver) setCategoryArchived(ctx context.Context, categoryID string, archived bool) (*model.Category, error) {
