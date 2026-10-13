@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"slices"
+	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob"
@@ -25,6 +27,16 @@ type Posting struct {
 	MemberID  *gofrsuuid.UUID
 	AmountYen int64
 	Memo      string
+}
+
+type PurchaseAllocation struct {
+	PoolID    gofrsuuid.UUID
+	AmountYen int64
+}
+
+type PurchasePayment struct {
+	AccountID gofrsuuid.UUID
+	AmountYen int64
 }
 
 type Entry struct {
@@ -74,6 +86,57 @@ func BuildEntries(postings []Posting) ([]Entry, error) {
 		return nil, fmt.Errorf("journal debits and credits do not balance")
 	}
 	return entries, nil
+}
+
+func BuildPurchaseEntries(allocations []PurchaseAllocation, payments []PurchasePayment, totalYen int64) ([]Entry, error) {
+	if totalYen <= 0 {
+		return nil, fmt.Errorf("purchase total must be positive")
+	}
+	if len(payments) > 0 {
+		var paidTotal int64
+		for _, payment := range payments {
+			var ok bool
+			paidTotal, ok = checkedAdd(paidTotal, payment.AmountYen)
+			if !ok {
+				return nil, fmt.Errorf("purchase payment total exceeds int64")
+			}
+		}
+		if paidTotal != totalYen {
+			return nil, fmt.Errorf("purchase payments do not equal purchase total")
+		}
+	}
+	sharesByPool := make(map[gofrsuuid.UUID]int64, len(allocations))
+	for _, allocation := range allocations {
+		amount, ok := checkedAdd(sharesByPool[allocation.PoolID], allocation.AmountYen)
+		if !ok {
+			return nil, fmt.Errorf("purchase allocation total exceeds int64")
+		}
+		sharesByPool[allocation.PoolID] = amount
+	}
+	pools := make([]gofrsuuid.UUID, 0, len(sharesByPool))
+	for poolID := range sharesByPool {
+		pools = append(pools, poolID)
+	}
+	slices.SortFunc(pools, func(left, right gofrsuuid.UUID) int {
+		return strings.Compare(left.String(), right.String())
+	})
+
+	postings := make([]Posting, 0, len(pools)+len(payments)+1)
+	for _, poolID := range pools {
+		amount := sharesByPool[poolID]
+		if amount == 0 {
+			continue
+		}
+		postings = append(postings, Posting{Side: Debit, PoolID: &poolID, AmountYen: amount, Memo: "Purchase allocation"})
+	}
+	if len(payments) == 0 {
+		postings = append(postings, Posting{Side: Credit, AmountYen: totalYen, Memo: "Payment"})
+	} else {
+		for _, payment := range payments {
+			postings = append(postings, Posting{Side: Credit, AccountID: &payment.AccountID, AmountYen: payment.AmountYen, Memo: "Payment"})
+		}
+	}
+	return BuildEntries(postings)
 }
 
 func InsertEntries(ctx context.Context, executor bob.Executor, journalID gofrsuuid.UUID, entries []Entry) error {

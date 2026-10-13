@@ -126,39 +126,19 @@ func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha2
 	if err := snapshotPaymentFunding(ctx, executor, householdID, purchase, total); err != nil {
 		return PostResult{}, err
 	}
-	shares := make(map[gofrsuuid.UUID]int64)
+	purchaseAllocations := make([]accounting.PurchaseAllocation, 0, len(allocations))
 	for _, allocation := range allocations {
-		var ok bool
-		shares[allocation.PoolID], ok = checkedAdd(shares[allocation.PoolID], allocation.AmountYen)
-		if !ok {
-			return PostResult{}, fmt.Errorf("%w: purchase allocation total is too large", ErrBadInput)
-		}
-	}
-	pools := make([]gofrsuuid.UUID, 0, len(shares))
-	for poolID := range shares {
-		pools = append(pools, poolID)
-	}
-	slices.SortFunc(pools, func(left, right gofrsuuid.UUID) int { return strings.Compare(left.String(), right.String()) })
-	postings := make([]accounting.Posting, 0, len(shares)+len(allocations))
-	for _, poolID := range pools {
-		amount := shares[poolID]
-		if amount == 0 {
-			continue
-		}
-		postings = append(postings, accounting.Posting{Side: accounting.Debit, PoolID: &poolID, AmountYen: amount, Memo: "Purchase allocation"})
+		purchaseAllocations = append(purchaseAllocations, accounting.PurchaseAllocation{PoolID: allocation.PoolID, AmountYen: allocation.AmountYen})
 	}
 	payments, err := purchasePayments(ctx, executor, householdID, purchaseID, total)
 	if err != nil {
 		return PostResult{}, err
 	}
-	if len(payments) == 0 {
-		postings = append(postings, accounting.Posting{Side: accounting.Credit, AmountYen: total, Memo: "Payment"})
-	} else {
-		for _, payment := range payments {
-			postings = append(postings, accounting.Posting{Side: accounting.Credit, AccountID: &payment.AccountID, AmountYen: payment.AmountYen, Memo: "Payment"})
-		}
+	purchasePayments := make([]accounting.PurchasePayment, 0, len(payments))
+	for _, payment := range payments {
+		purchasePayments = append(purchasePayments, accounting.PurchasePayment{AccountID: payment.AccountID, AmountYen: payment.AmountYen})
 	}
-	entries, err := accounting.BuildEntries(postings)
+	entries, err := accounting.BuildPurchaseEntries(purchaseAllocations, purchasePayments, total)
 	if err != nil {
 		return PostResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}

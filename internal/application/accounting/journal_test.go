@@ -1,6 +1,7 @@
 package accounting
 
 import (
+	"math"
 	"testing"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
@@ -47,4 +48,77 @@ func TestBuildEntriesPreservesSidesAndRejectsUnbalancedPostings(t *testing.T) {
 			t.Fatalf("invalid journal postings should fail: %#v", postings)
 		}
 	}
+}
+
+func TestBuildPurchaseEntries(t *testing.T) {
+	poolA, err := gofrsuuid.FromString("00000000-0000-7000-8000-000000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	poolB, err := gofrsuuid.FromString("00000000-0000-7000-8000-000000000002")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountA, err := gofrsuuid.FromString("00000000-0000-7000-8000-000000000003")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountB, err := gofrsuuid.FromString("00000000-0000-7000-8000-000000000004")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("pool allocations are grouped and payments stay in input order", func(t *testing.T) {
+		entries, err := BuildPurchaseEntries(
+			[]PurchaseAllocation{
+				{PoolID: poolB, AmountYen: 30},
+				{PoolID: poolA, AmountYen: 50},
+				{PoolID: poolB, AmountYen: 20},
+			},
+			[]PurchasePayment{{AccountID: accountA, AmountYen: 60}, {AccountID: accountB, AmountYen: 40}},
+			100,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 4 {
+			t.Fatalf("BuildPurchaseEntries returned %d entries, want 4", len(entries))
+		}
+		if entries[0].PoolID.V != poolA || entries[0].DebitYen != 50 || entries[1].PoolID.V != poolB || entries[1].DebitYen != 50 {
+			t.Fatalf("pool postings are not grouped in stable order: %#v", entries[:2])
+		}
+		if entries[2].AccountID.V != accountA || entries[2].CreditYen != 60 || entries[3].AccountID.V != accountB || entries[3].CreditYen != 40 {
+			t.Fatalf("payment postings lost their order or amounts: %#v", entries[2:])
+		}
+	})
+
+	t.Run("purchase without payment accounts uses an unattributed credit", func(t *testing.T) {
+		entries, err := BuildPurchaseEntries([]PurchaseAllocation{{PoolID: poolA, AmountYen: 100}}, nil, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 2 || entries[0].DebitYen != 100 || entries[1].CreditYen != 100 || entries[1].AccountID.Valid {
+			t.Fatalf("unattributed payment was not preserved: %#v", entries)
+		}
+	})
+
+	t.Run("invalid totals are rejected", func(t *testing.T) {
+		for _, input := range []struct {
+			name        string
+			allocations []PurchaseAllocation
+			payments    []PurchasePayment
+			totalYen    int64
+		}{
+			{name: "nonpositive total", allocations: []PurchaseAllocation{{PoolID: poolA, AmountYen: 1}}, totalYen: 0},
+			{name: "unbalanced", allocations: []PurchaseAllocation{{PoolID: poolA, AmountYen: 90}}, totalYen: 100},
+			{name: "payment total mismatch", allocations: []PurchaseAllocation{{PoolID: poolA, AmountYen: 90}}, payments: []PurchasePayment{{AccountID: accountA, AmountYen: 90}}, totalYen: 100},
+			{name: "allocation overflow", allocations: []PurchaseAllocation{{PoolID: poolA, AmountYen: math.MaxInt64}, {PoolID: poolA, AmountYen: 1}}, totalYen: 100},
+		} {
+			t.Run(input.name, func(t *testing.T) {
+				if _, err := BuildPurchaseEntries(input.allocations, input.payments, input.totalYen); err == nil {
+					t.Fatal("BuildPurchaseEntries accepted invalid purchase entries")
+				}
+			})
+		}
+	})
 }

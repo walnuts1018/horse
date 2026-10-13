@@ -949,43 +949,23 @@ func syncPostedPurchaseAccounting(ctx context.Context, tx pgx.Tx, purchaseID str
 	if err := refreshPurchaseMemberBurden(ctx, executor, householdID, purchaseUUID, allocations); err != nil {
 		return err
 	}
-	sharesByPool := make(map[gofrsuuid.UUID]int64)
+	purchaseAllocations := make([]accounting.PurchaseAllocation, 0, len(allocations))
 	for _, allocation := range allocations {
-		var ok bool
-		sharesByPool[allocation.PoolID], ok = checkedAdd(sharesByPool[allocation.PoolID], allocation.AmountYen)
-		if !ok {
-			return fmt.Errorf("%w: purchase allocation total is too large", ErrBadInput)
-		}
-	}
-	pools := make([]gofrsuuid.UUID, 0, len(sharesByPool))
-	for poolID := range sharesByPool {
-		pools = append(pools, poolID)
-	}
-	slices.SortFunc(pools, func(a, b gofrsuuid.UUID) int { return strings.Compare(a.String(), b.String()) })
-	postings := make([]accounting.Posting, 0, len(pools)+len(items))
-	for _, poolID := range pools {
-		amount := sharesByPool[poolID]
-		if amount == 0 {
-			continue
-		}
-		postings = append(postings, accounting.Posting{Side: accounting.Debit, PoolID: &poolID, AmountYen: amount, Memo: "Purchase allocation"})
+		purchaseAllocations = append(purchaseAllocations, accounting.PurchaseAllocation{PoolID: allocation.PoolID, AmountYen: allocation.AmountYen})
 	}
 	payments, err := purchasePayments(ctx, tx, householdID, purchaseID, paymentAccountID, total)
 	if err != nil {
 		return err
 	}
-	if len(payments) == 0 {
-		postings = append(postings, accounting.Posting{Side: accounting.Credit, AmountYen: total, Memo: "Payment"})
-	} else {
-		for _, payment := range payments {
-			accountUUID, parseErr := gofrsuuid.FromString(payment.PaymentAccountID)
-			if parseErr != nil {
-				return parseErr
-			}
-			postings = append(postings, accounting.Posting{Side: accounting.Credit, AccountID: &accountUUID, AmountYen: int64(payment.AmountYen), Memo: "Payment"})
+	purchasePayments := make([]accounting.PurchasePayment, 0, len(payments))
+	for _, payment := range payments {
+		accountUUID, parseErr := gofrsuuid.FromString(payment.PaymentAccountID)
+		if parseErr != nil {
+			return parseErr
 		}
+		purchasePayments = append(purchasePayments, accounting.PurchasePayment{AccountID: accountUUID, AmountYen: int64(payment.AmountYen)})
 	}
-	entries, err := accounting.BuildEntries(postings)
+	entries, err := accounting.BuildPurchaseEntries(purchaseAllocations, purchasePayments, total)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
