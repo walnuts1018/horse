@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b65acab87c0c012650530cf75d5df2c2>>
+ * @generated SignedSource<<2a3fdb9c14f68ddbc2853b6b62c39bfc>>
  * @lightSyntaxTransform
  */
 
@@ -100,6 +100,7 @@ export type PurchaseListFragment$data = {
       readonly hasPreviousPage: boolean;
       readonly startCursor: string | null | undefined;
     };
+    readonly syncCursor: string;
     readonly totalCount: number;
   };
   readonly " $fragmentType": "PurchaseListFragment";
@@ -636,6 +637,13 @@ return {
           "kind": "ScalarField",
           "name": "totalCount",
           "storageKey": null
+        },
+        {
+          "alias": null,
+          "args": null,
+          "kind": "ScalarField",
+          "name": "syncCursor",
+          "storageKey": null
         }
       ],
       "storageKey": null
@@ -646,6 +654,6 @@ return {
 };
 })();
 
-(node as any).hash = "2a1dc26587677605bc024c1d3367b469";
+(node as any).hash = "3c43e4a2fa0e54cf3509cfad49fb9fec";
 
 export default node;

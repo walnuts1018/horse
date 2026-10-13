@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f601ef3d0e578c2997b7f42519622e99>>
+ * @generated SignedSource<<963ca8b18dd4b4cbc3fb809c2c389d53>>
  * @lightSyntaxTransform
  */
 
@@ -556,6 +556,13 @@ return {
             "kind": "ScalarField",
             "name": "totalCount",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "syncCursor",
+            "storageKey": null
           }
         ],
         "storageKey": null
@@ -578,16 +585,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "5cc964fb044670f3c9fb81f8acbeb524",
+    "cacheID": "5596bd49e8c68525d7d6db22d4afbc5c",
     "id": null,
     "metadata": {},
     "name": "PurchasePaginationQuery",
     "operationKind": "query",
-    "text": "query PurchasePaginationQuery(\n  $after: String\n  $first: Int = 100\n  $from: String\n  $hasEvidence: Boolean\n  $householdId: ID!\n  $origin: PurchaseOrigin\n  $to: String\n) {\n  ...PurchaseListFragment_2WxCCW\n}\n\nfragment PurchaseListFragment_2WxCCW on Query {\n  purchases(householdId: $householdId, from: $from, to: $to, origin: $origin, hasEvidence: $hasEvidence, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections {\n          id\n          itemId\n          amountDeltaYen\n          reason\n          occurredAt\n          settlementMonth\n          paymentAllocations {\n            paymentAccountId\n            amountYen\n            account {\n              id\n              name\n            }\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n        __typename\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query PurchasePaginationQuery(\n  $after: String\n  $first: Int = 100\n  $from: String\n  $hasEvidence: Boolean\n  $householdId: ID!\n  $origin: PurchaseOrigin\n  $to: String\n) {\n  ...PurchaseListFragment_2WxCCW\n}\n\nfragment PurchaseListFragment_2WxCCW on Query {\n  purchases(householdId: $householdId, from: $from, to: $to, origin: $origin, hasEvidence: $hasEvidence, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections {\n          id\n          itemId\n          amountDeltaYen\n          reason\n          occurredAt\n          settlementMonth\n          paymentAllocations {\n            paymentAccountId\n            amountYen\n            account {\n              id\n              name\n            }\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n        __typename\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "2a1dc26587677605bc024c1d3367b469";
+(node as any).hash = "3c43e4a2fa0e54cf3509cfad49fb9fec";
 
 export default node;

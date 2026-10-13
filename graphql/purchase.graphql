@@ -49,6 +49,7 @@ type PurchaseConnection {
   edges: [PurchaseEdge!]!
   pageInfo: PageInfo!
   totalCount: Int!
+  syncCursor: String!
 }
 
 extend type Query {

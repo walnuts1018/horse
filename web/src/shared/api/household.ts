@@ -2,6 +2,7 @@ import { commitMutation, fetchQuery, useMutation } from "react-relay";
 import {
   Environment,
   Network,
+  Observable,
   RecordSource,
   Store,
   type GraphQLTaggedNode,
@@ -334,23 +335,113 @@ let environment: Environment | undefined;
 
 export function getRelayEnvironment() {
   if (environment) return environment;
-  const network = Network.create(async (operation, variables) => {
-    const response = await fetch("/graphql", {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query: operation.text, variables }),
-    });
-    if (!response.ok)
-      throw new ApiError(`GraphQL API returned ${response.status}`, undefined, response.status);
-    const result = (await response.json()) as {
-      data?: unknown;
-      errors?: Array<{ message: string; extensions?: { code?: string } }>;
-    };
-    if (result.errors?.length)
-      throw new ApiError(result.errors[0].message, result.errors[0].extensions?.code);
-    return result as GraphQLResponse;
-  });
+  const network = Network.create(
+    async (operation, variables) => {
+      const response = await fetch("/graphql", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: operation.text, variables }),
+      });
+      if (!response.ok)
+        throw new ApiError(`GraphQL API returned ${response.status}`, undefined, response.status);
+      const result = (await response.json()) as {
+        data?: unknown;
+        errors?: Array<{ message: string; extensions?: { code?: string } }>;
+      };
+      if (result.errors?.length)
+        throw new ApiError(result.errors[0].message, result.errors[0].extensions?.code);
+      return result as GraphQLResponse;
+    },
+    (operation, variables) =>
+      Observable.create<GraphQLResponse>((sink) => {
+        const controller = new AbortController();
+        let stopped = false;
+        let after = typeof variables.after === "string" ? variables.after : variables.after;
+
+        const run = async () => {
+          let retryDelay = 1000;
+          while (!stopped) {
+            try {
+              const response = await fetch("/graphql", {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                  accept: "text/event-stream",
+                  "content-type": "application/json",
+                },
+                body: JSON.stringify({ query: operation.text, variables: { ...variables, after } }),
+                signal: controller.signal,
+              });
+              if (!response.ok)
+                throw new ApiError(
+                  `GraphQL API returned ${response.status}`,
+                  undefined,
+                  response.status,
+                );
+              if (!response.body) throw new ApiError("GraphQL subscription stream is unavailable");
+
+              const reader = response.body.getReader();
+              let buffer = "";
+              let completed = false;
+              while (!stopped) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += new TextDecoder().decode(value, { stream: true });
+                while (true) {
+                  const boundary = /\r?\n\r?\n/.exec(buffer);
+                  if (!boundary || boundary.index === undefined) break;
+                  const frame = buffer.slice(0, boundary.index).replace(/\r\n/g, "\n");
+                  buffer = buffer.slice(boundary.index + boundary[0].length);
+                  let eventName = "message";
+                  const data: string[] = [];
+                  for (const line of frame.split("\n")) {
+                    if (line.startsWith("event:")) eventName = line.slice(6).trim();
+                    if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+                  }
+                  if (eventName === "complete") {
+                    completed = true;
+                    break;
+                  }
+                  if (eventName !== "next" || data.length === 0) continue;
+                  const result = JSON.parse(data.join("\n")) as GraphQLResponse & {
+                    errors?: Array<{ message: string; extensions?: { code?: string } }>;
+                    data?: { purchaseChanges?: { cursor?: string } };
+                  };
+                  if (result.errors?.length)
+                    throw new ApiError(
+                      result.errors[0].message,
+                      result.errors[0].extensions?.code,
+                    );
+                  if (result.data?.purchaseChanges?.cursor)
+                    after = result.data.purchaseChanges.cursor;
+                  sink.next(result);
+                  retryDelay = 1000;
+                }
+                if (completed) break;
+              }
+              await reader.cancel().catch(() => undefined);
+              if (stopped) return;
+            } catch (error) {
+              if (stopped || controller.signal.aborted) return;
+              if (error instanceof ApiError) {
+                sink.error(error);
+                return;
+              }
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, retryDelay));
+            retryDelay = Math.min(retryDelay * 2, 10_000);
+          }
+        };
+
+        void run();
+        return () => {
+          stopped = true;
+          controller.abort();
+        };
+      }),
+  );
   const relayEnvironment = new Environment({ network, store: new Store(new RecordSource()) });
   environment = relayEnvironment;
   return relayEnvironment;

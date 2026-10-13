@@ -1,0 +1,26 @@
+type PurchaseChange {
+  cursor: String!
+  kind: PurchaseChangeKind!
+  entityKind: PurchaseChangeEntity!
+  entityId: ID! @goField(forceResolver: true)
+  revision: Int!
+  changedFields: [String!]!
+  occurredAt: String!
+}
+
+enum PurchaseChangeKind {
+  CREATED
+  POSTED
+  UPDATED
+  ITEM_UPDATED
+  CORRECTED
+}
+
+enum PurchaseChangeEntity {
+  PURCHASE
+  PURCHASE_ITEM
+}
+
+extend type Subscription {
+  purchaseChanges(householdId: ID! @nodeID(of: "Household"), after: String): PurchaseChange!
+}

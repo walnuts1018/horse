@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<77af44d1a27a0dc7a34780cf5beb93e6>>
+ * @generated SignedSource<<81c1470b343a9c69cd4aaf6794f9f513>>
  * @lightSyntaxTransform
  */
 
@@ -8,10 +8,11 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type FundingScheduleCadence = "CUSTOM" | "MONTHLY" | "WEEKLY" | "%future added value";
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type SetFundingScheduleInput = {
   amountYen: any;
-  cadence: string;
+  cadence: FundingScheduleCadence;
   endsOn?: string | null | undefined;
   householdId: string;
   memberId: string;
@@ -26,7 +27,18 @@ export type SetFundingScheduleMutation$data = {
     readonly __typename: string;
     readonly code?: MutationErrorCode;
     readonly message?: string;
-    readonly success?: boolean;
+    readonly result?: {
+      readonly active: boolean;
+      readonly amountYen: any;
+      readonly cadence: FundingScheduleCadence;
+      readonly createdAt: string;
+      readonly endsOn: string | null | undefined;
+      readonly householdId: string;
+      readonly id: string;
+      readonly memberId: string;
+      readonly poolId: string;
+      readonly startsOn: string;
+    };
   };
 };
 export type SetFundingScheduleMutation = {
@@ -70,8 +82,82 @@ v1 = [
           {
             "alias": null,
             "args": null,
-            "kind": "ScalarField",
-            "name": "success",
+            "concreteType": "FundingSchedule",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "householdId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "memberId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "poolId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "amountYen",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "cadence",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "startsOn",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "endsOn",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "active",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "createdAt",
+                "storageKey": null
+              }
+            ],
             "storageKey": null
           }
         ],
@@ -121,16 +207,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "78a4e52639d34fd65e56683d12dea22a",
+    "cacheID": "d107001c50712f32e7195b363032f980",
     "id": null,
     "metadata": {},
     "name": "SetFundingScheduleMutation",
     "operationKind": "mutation",
-    "text": "mutation SetFundingScheduleMutation(\n  $input: SetFundingScheduleInput!\n) {\n  setFundingSchedule(input: $input) {\n    __typename\n    ... on SetFundingScheduleSuccess {\n      success\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetFundingScheduleMutation(\n  $input: SetFundingScheduleInput!\n) {\n  setFundingSchedule(input: $input) {\n    __typename\n    ... on SetFundingScheduleSuccess {\n      result {\n        id\n        householdId\n        memberId\n        poolId\n        amountYen\n        cadence\n        startsOn\n        endsOn\n        active\n        createdAt\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "81a90ae9e0f28be3ab908fc5ebedb8e8";
+(node as any).hash = "6125a0cf4ddc7cd93d561be50dd04de3";
 
 export default node;

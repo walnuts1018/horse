@@ -13,12 +13,12 @@ import (
 
 // SetFundingSchedule is the resolver for the setFundingSchedule field.
 func (r *mutationResolver) SetFundingSchedule(ctx context.Context, input model.SetFundingScheduleInput) (model.SetFundingScheduleResult, error) {
-	success, err := r.setFundingSchedule(ctx, input)
+	result, err := r.setFundingSchedule(ctx, input)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
 			return &model.SetFundingScheduleUserError{Code: result.Code, Message: result.Message}, nil
 		}
 		return nil, err
 	}
-	return &model.SetFundingScheduleSuccess{Success: success}, nil
+	return &model.SetFundingScheduleSuccess{Result: result}, nil
 }

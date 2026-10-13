@@ -1,0 +1,33 @@
+enum FundingScheduleCadence {
+  MONTHLY
+  WEEKLY
+  CUSTOM
+}
+
+type FundingSchedule implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  memberId: ID! @goField(forceResolver: true)
+  poolId: ID! @goField(forceResolver: true)
+  amountYen: Long!
+  cadence: FundingScheduleCadence!
+  startsOn: String!
+  endsOn: String
+  active: Boolean!
+  createdAt: String!
+}
+
+type FundingScheduleEdge {
+  cursor: String!
+  node: FundingSchedule!
+}
+
+type FundingScheduleConnection {
+  edges: [FundingScheduleEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  fundingSchedules(householdId: ID! @nodeID(of: "Household"), active: Boolean, after: String, before: String, first: Int, last: Int): FundingScheduleConnection!
+}

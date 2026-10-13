@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLazyLoadQuery, usePaginationFragment } from "react-relay";
+import { requestSubscription, useLazyLoadQuery, usePaginationFragment } from "react-relay";
 import type { Purchase, PurchaseItem, PurchaseOrigin } from "../../../shared/api";
-import type { PurchaseListFragment$key, PurchasesQuery } from "..";
-import { purchaseListFragment, purchasesQuery } from "./operations";
+import type { PurchaseChangesSubscription, PurchaseListFragment$key, PurchasesQuery } from "..";
+import { getRelayEnvironment } from "../../../shared/api";
+import { purchaseChangesSubscription, purchaseListFragment, purchasesQuery } from "./operations";
 
 type Options = {
   from?: string;
@@ -67,10 +68,13 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   }, [first, hasNext, isLoadingNext, loadNext]);
 
   useEffect(() => {
-    const events = new EventSource(`/events?householdId=${encodeURIComponent(householdId)}`);
-    events.onmessage = refresh;
-    return () => events.close();
-  }, [householdId, refresh]);
+    const subscription = requestSubscription<PurchaseChangesSubscription>(getRelayEnvironment(), {
+      subscription: purchaseChangesSubscription,
+      variables: { householdId, after: data.purchases.syncCursor },
+      onNext: refresh,
+    });
+    return () => subscription.dispose();
+  }, [data.purchases.syncCursor, householdId, refresh]);
 
   useEffect(() => {
     if (options.loadAll && hasNext && !isLoadingNext && !moreError) loadMore();

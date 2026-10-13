@@ -1,6 +1,7 @@
 export { useCreateAndPostPurchase } from "./api/create-and-post";
 export { useHouseholdPurchases } from "./api/use-household-purchases";
 export type { PurchasesQuery } from "../../shared/api/__generated__/PurchasesQuery.graphql";
+export type { PurchaseChangesSubscription } from "../../shared/api/__generated__/PurchaseChangesSubscription.graphql";
 export type { PurchaseListFragment$key } from "../../shared/api/__generated__/PurchaseListFragment.graphql";
 export {
   bulkUpdatePurchaseItemsMutation,
@@ -9,6 +10,7 @@ export {
   createPurchaseMutation,
   postPurchaseMutation,
   purchaseListFragment,
+  purchaseChangesSubscription,
   purchasesQuery,
   updatePurchaseItemMutation,
   updatePurchaseMutation,

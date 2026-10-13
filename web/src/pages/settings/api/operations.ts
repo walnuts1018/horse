@@ -176,7 +176,18 @@ export const setFundingScheduleMutation = graphql`
     setFundingSchedule(input: $input) {
       __typename
       ... on SetFundingScheduleSuccess {
-        success
+        result {
+          id
+          householdId
+          memberId
+          poolId
+          amountYen
+          cadence
+          startsOn
+          endsOn
+          active
+          createdAt
+        }
       }
       ... on MutationError {
         code

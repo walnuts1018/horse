@@ -146,6 +146,20 @@ func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.No
 			}
 			return loadLoanBalance(ctx, queryExecutor(r.DB), loan)
 		}
+		if kind == "FundingSchedule" {
+			parsedID, _ := uuid.FromString(id)
+			row, err := models.FundingSchedules.Query(sm.Where(psql.And(
+				models.FundingSchedules.Columns.ID.EQ(psql.Arg(parsedID)),
+				models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
+			))).One(ctx, queryExecutor(r.DB))
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			return fundingScheduleModel(row), nil
+		}
 		if kind == "Category" {
 			if value := findValue(household.Categories, func(value *model.Category) bool { return value.ID == id }); value != nil {
 				return value, nil

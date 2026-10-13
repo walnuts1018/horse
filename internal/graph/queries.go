@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -315,6 +316,10 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		filters = append(filters, models.Purchases.Columns.OccurredAt.LT(psql.Arg(value)))
 	}
 	executor := queryExecutor(r.DB)
+	syncCursor, err := latestHouseholdEventCursor(ctx, r.DB, hhID)
+	if err != nil {
+		return nil, err
+	}
 	count, err := models.Purchases.Query(sm.Where(psql.And(filters...))).Count(ctx, executor)
 	if err != nil {
 		return nil, err
@@ -375,7 +380,7 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 	if backward && before != nil && *before != "" {
 		pageInfo.HasNextPage = true
 	}
-	connection := &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0, len(purchases)), TotalCount: int(count), PageInfo: pageInfo}
+	connection := &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0, len(purchases)), TotalCount: int(count), PageInfo: pageInfo, SyncCursor: strconv.FormatInt(syncCursor, 10)}
 	loadedPurchases, err := loadPurchases(ctx, r.DB, purchases)
 	if err != nil {
 		return nil, err

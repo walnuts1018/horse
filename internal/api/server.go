@@ -102,6 +102,7 @@ func (s *Server) newGraphQLHandler() *handler.Server {
 			NodeID: graph.NodeIDDirective,
 		},
 	}))
+	executor.AddTransport(transport.SSE{KeepAlivePingInterval: 15 * time.Second})
 	executor.AddTransport(transport.POST{})
 	executor.Use(extension.Introspection{})
 	executor.SetErrorPresenter(func(ctx context.Context, err error) *gqlerror.Error {

@@ -97,6 +97,15 @@ export const purchaseListFragment = graphql`
         hasPreviousPage
       }
       totalCount
+      syncCursor
+    }
+  }
+`;
+
+export const purchaseChangesSubscription = graphql`
+  subscription PurchaseChangesSubscription($householdId: ID!, $after: String) {
+    purchaseChanges(householdId: $householdId, after: $after) {
+      cursor
     }
   }
 `;

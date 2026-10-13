@@ -786,6 +786,32 @@ func (this FundingLedgerEntry) GetCreatedAt() string   { return this.CreatedAt }
 
 func (FundingLedgerEntry) IsNode() {}
 
+type FundingSchedule struct {
+	ID          string                 `json:"id"`
+	HouseholdID string                 `json:"householdId"`
+	MemberID    string                 `json:"memberId"`
+	PoolID      string                 `json:"poolId"`
+	AmountYen   Long                   `json:"amountYen"`
+	Cadence     FundingScheduleCadence `json:"cadence"`
+	StartsOn    string                 `json:"startsOn"`
+	EndsOn      *string                `json:"endsOn,omitempty"`
+	Active      bool                   `json:"active"`
+	CreatedAt   string                 `json:"createdAt"`
+}
+
+func (FundingSchedule) IsNode() {}
+
+type FundingScheduleConnection struct {
+	Edges      []*FundingScheduleEdge `json:"edges"`
+	PageInfo   *PageInfo              `json:"pageInfo"`
+	TotalCount int                    `json:"totalCount"`
+}
+
+type FundingScheduleEdge struct {
+	Cursor string           `json:"cursor"`
+	Node   *FundingSchedule `json:"node"`
+}
+
 type Household struct {
 	ID                string        `json:"id"`
 	Name              string        `json:"name"`
@@ -1032,10 +1058,21 @@ type Purchase struct {
 
 func (Purchase) IsNode() {}
 
+type PurchaseChange struct {
+	Cursor        string               `json:"cursor"`
+	Kind          PurchaseChangeKind   `json:"kind"`
+	EntityKind    PurchaseChangeEntity `json:"entityKind"`
+	EntityID      string               `json:"entityId"`
+	Revision      int                  `json:"revision"`
+	ChangedFields []string             `json:"changedFields"`
+	OccurredAt    string               `json:"occurredAt"`
+}
+
 type PurchaseConnection struct {
 	Edges      []*PurchaseEdge `json:"edges"`
 	PageInfo   *PageInfo       `json:"pageInfo"`
 	TotalCount int             `json:"totalCount"`
+	SyncCursor string          `json:"syncCursor"`
 }
 
 type PurchaseCorrection struct {
@@ -1438,17 +1475,17 @@ func (this SetDefaultAllocationUserError) GetCode() MutationErrorCode { return t
 func (this SetDefaultAllocationUserError) GetMessage() string         { return this.Message }
 
 type SetFundingScheduleInput struct {
-	HouseholdID string  `json:"householdId"`
-	MemberID    string  `json:"memberId"`
-	PoolID      string  `json:"poolId"`
-	AmountYen   Long    `json:"amountYen"`
-	Cadence     string  `json:"cadence"`
-	StartsOn    string  `json:"startsOn"`
-	EndsOn      *string `json:"endsOn,omitempty"`
+	HouseholdID string                 `json:"householdId"`
+	MemberID    string                 `json:"memberId"`
+	PoolID      string                 `json:"poolId"`
+	AmountYen   Long                   `json:"amountYen"`
+	Cadence     FundingScheduleCadence `json:"cadence"`
+	StartsOn    string                 `json:"startsOn"`
+	EndsOn      *string                `json:"endsOn,omitempty"`
 }
 
 type SetFundingScheduleSuccess struct {
-	Success bool `json:"success"`
+	Result *FundingSchedule `json:"result"`
 }
 
 func (SetFundingScheduleSuccess) IsSetFundingScheduleResult() {}
@@ -1568,6 +1605,9 @@ type SettlementLine struct {
 	MonthlyAdjustmentYen Long   `json:"monthlyAdjustmentYen"`
 	AdvanceCreditYen     Long   `json:"advanceCreditYen"`
 	AmountDueYen         Long   `json:"amountDueYen"`
+}
+
+type Subscription struct {
 }
 
 type Tag struct {
@@ -1889,6 +1929,63 @@ func (e AllocationRuleScope) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+type FundingScheduleCadence string
+
+const (
+	FundingScheduleCadenceMonthly FundingScheduleCadence = "MONTHLY"
+	FundingScheduleCadenceWeekly  FundingScheduleCadence = "WEEKLY"
+	FundingScheduleCadenceCustom  FundingScheduleCadence = "CUSTOM"
+)
+
+var AllFundingScheduleCadence = []FundingScheduleCadence{
+	FundingScheduleCadenceMonthly,
+	FundingScheduleCadenceWeekly,
+	FundingScheduleCadenceCustom,
+}
+
+func (e FundingScheduleCadence) IsValid() bool {
+	switch e {
+	case FundingScheduleCadenceMonthly, FundingScheduleCadenceWeekly, FundingScheduleCadenceCustom:
+		return true
+	}
+	return false
+}
+
+func (e FundingScheduleCadence) String() string {
+	return string(e)
+}
+
+func (e *FundingScheduleCadence) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = FundingScheduleCadence(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid FundingScheduleCadence", str)
+	}
+	return nil
+}
+
+func (e FundingScheduleCadence) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *FundingScheduleCadence) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e FundingScheduleCadence) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
 type HouseholdInvitationStatus string
 
 const (
@@ -2112,6 +2209,122 @@ func (e *ProductLearningScope) UnmarshalJSON(b []byte) error {
 }
 
 func (e ProductLearningScope) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type PurchaseChangeEntity string
+
+const (
+	PurchaseChangeEntityPurchase     PurchaseChangeEntity = "PURCHASE"
+	PurchaseChangeEntityPurchaseItem PurchaseChangeEntity = "PURCHASE_ITEM"
+)
+
+var AllPurchaseChangeEntity = []PurchaseChangeEntity{
+	PurchaseChangeEntityPurchase,
+	PurchaseChangeEntityPurchaseItem,
+}
+
+func (e PurchaseChangeEntity) IsValid() bool {
+	switch e {
+	case PurchaseChangeEntityPurchase, PurchaseChangeEntityPurchaseItem:
+		return true
+	}
+	return false
+}
+
+func (e PurchaseChangeEntity) String() string {
+	return string(e)
+}
+
+func (e *PurchaseChangeEntity) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = PurchaseChangeEntity(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid PurchaseChangeEntity", str)
+	}
+	return nil
+}
+
+func (e PurchaseChangeEntity) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *PurchaseChangeEntity) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e PurchaseChangeEntity) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type PurchaseChangeKind string
+
+const (
+	PurchaseChangeKindCreated     PurchaseChangeKind = "CREATED"
+	PurchaseChangeKindPosted      PurchaseChangeKind = "POSTED"
+	PurchaseChangeKindUpdated     PurchaseChangeKind = "UPDATED"
+	PurchaseChangeKindItemUpdated PurchaseChangeKind = "ITEM_UPDATED"
+	PurchaseChangeKindCorrected   PurchaseChangeKind = "CORRECTED"
+)
+
+var AllPurchaseChangeKind = []PurchaseChangeKind{
+	PurchaseChangeKindCreated,
+	PurchaseChangeKindPosted,
+	PurchaseChangeKindUpdated,
+	PurchaseChangeKindItemUpdated,
+	PurchaseChangeKindCorrected,
+}
+
+func (e PurchaseChangeKind) IsValid() bool {
+	switch e {
+	case PurchaseChangeKindCreated, PurchaseChangeKindPosted, PurchaseChangeKindUpdated, PurchaseChangeKindItemUpdated, PurchaseChangeKindCorrected:
+		return true
+	}
+	return false
+}
+
+func (e PurchaseChangeKind) String() string {
+	return string(e)
+}
+
+func (e *PurchaseChangeKind) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = PurchaseChangeKind(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid PurchaseChangeKind", str)
+	}
+	return nil
+}
+
+func (e PurchaseChangeKind) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *PurchaseChangeKind) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e PurchaseChangeKind) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

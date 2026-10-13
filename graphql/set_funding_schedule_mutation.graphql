@@ -5,7 +5,7 @@ extend type Mutation {
 union SetFundingScheduleResult = SetFundingScheduleSuccess | SetFundingScheduleUserError
 
 type SetFundingScheduleSuccess {
-  success: Boolean!
+  result: FundingSchedule!
 }
 
 input SetFundingScheduleInput {
@@ -13,7 +13,7 @@ input SetFundingScheduleInput {
   memberId: ID! @nodeID(of: "Member")
   poolId: ID! @nodeID(of: "Pool")
   amountYen: Long!
-  cadence: String!
+  cadence: FundingScheduleCadence!
   startsOn: String!
   endsOn: String
 }
