@@ -2,6 +2,8 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Activity, ArrowLeftRight, Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import {
   readGraphql,
+  isPersonalPool,
+  isSharedPool,
   type Connection,
   type SharedPoolSettlementPolicy,
   type AllocationRule,
@@ -16,7 +18,6 @@ import {
   type RecurringExpense,
   type Tag,
 } from "../../../shared/api";
-import { isPersonalPool, isSharedPool } from "../../../shared/api/household";
 import {
   allocationRulesQuery,
   createAccountMutation,

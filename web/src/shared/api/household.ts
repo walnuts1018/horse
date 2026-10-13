@@ -49,9 +49,7 @@ export type UnconfiguredSharedPool = {
 };
 export type Pool = PersonalPool | SharedPool | UnconfiguredPersonalPool | UnconfiguredSharedPool;
 
-export function isPersonalPool(
-  pool: Pool,
-): pool is PersonalPool | UnconfiguredPersonalPool {
+export function isPersonalPool(pool: Pool): pool is PersonalPool | UnconfiguredPersonalPool {
   return pool.__typename === "PersonalPool" || pool.__typename === "UnconfiguredPersonalPool";
 }
 
@@ -340,12 +338,13 @@ type HouseholdInvitationFields = {
   expiresAt: string;
   createdAt: string;
 };
-export type HouseholdInvitation = HouseholdInvitationFields & (
-  | { __typename: "PendingHouseholdInvitation" }
-  | { __typename: "AcceptedHouseholdInvitation" }
-  | { __typename: "RevokedHouseholdInvitation" }
-  | { __typename: "ExpiredHouseholdInvitation" }
-);
+export type HouseholdInvitation = HouseholdInvitationFields &
+  (
+    | { __typename: "PendingHouseholdInvitation" }
+    | { __typename: "AcceptedHouseholdInvitation" }
+    | { __typename: "RevokedHouseholdInvitation" }
+    | { __typename: "ExpiredHouseholdInvitation" }
+  );
 export type LedgerEntry = {
   id: string;
   kind: string;

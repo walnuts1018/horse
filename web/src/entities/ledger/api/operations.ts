@@ -221,9 +221,15 @@ export const accountBalanceAnalysisQuery = graphql`
           ... on AdvanceTransferLedgerEntry {
             id
           }
-          ... on LoanTransferLedgerEntry { id }
-          ... on RepaymentTransferLedgerEntry { id }
-          ... on GiftTransferLedgerEntry { id }
+          ... on LoanTransferLedgerEntry {
+            id
+          }
+          ... on RepaymentTransferLedgerEntry {
+            id
+          }
+          ... on GiftTransferLedgerEntry {
+            id
+          }
           ... on AccountMovement {
             id
           }

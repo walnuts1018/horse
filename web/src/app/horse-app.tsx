@@ -255,11 +255,7 @@ export function App() {
           : "";
   const logout = async () => {
     const hadUnsavedChanges = hasUnsavedChangesRef.current;
-    if (
-      hadUnsavedChanges &&
-      !window.confirm("未保存の変更を破棄してログアウトしますか？")
-    )
-      return;
+    if (hadUnsavedChanges && !window.confirm("未保存の変更を破棄してログアウトしますか？")) return;
     if (hadUnsavedChanges) hasUnsavedChangesRef.current = false;
     setLoggingOut(true);
     try {

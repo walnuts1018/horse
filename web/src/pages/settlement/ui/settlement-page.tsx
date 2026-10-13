@@ -87,8 +87,7 @@ export function SettlementPage({
   const hasUnsavedFunding =
     household.members.some(
       (member) =>
-        (fundingSourceAccounts[member.id] ?? "") !==
-        (savedFundingSourceAccounts[member.id] ?? ""),
+        (fundingSourceAccounts[member.id] ?? "") !== (savedFundingSourceAccounts[member.id] ?? ""),
     ) || fundingDestinationAccountId !== savedFundingDestinationAccountId;
   useEffect(() => {
     onUnsavedChanges(hasUnsavedTransfer || hasUnsavedFunding);
