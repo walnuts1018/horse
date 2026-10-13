@@ -30,8 +30,8 @@ import {
 } from "../api/operations";
 import {
   archiveBudgetMutation,
-  budgetsQuery,
   createBudgetMutation,
+  readBudgets,
   updateBudgetMutation,
 } from "../../../entities/budget";
 import {
@@ -337,10 +337,7 @@ export function SettingsPage({
     const [tagResult, budgetResult, recurringResult, movementResult, incomeResult, balanceResult] =
       await Promise.all([
         readTags(household.id, true),
-        readGraphql<{ budgets: Budget[] }>(budgetsQuery, {
-          householdId: household.id,
-          period: budgetPeriod,
-        }),
+        readBudgets(household.id, budgetPeriod),
         readRecurringExpenses(household.id, true),
         readGraphql<{
           accountMovements: {
@@ -365,7 +362,7 @@ export function SettingsPage({
         }),
       ]);
     setTags(tagResult);
-    setBudgets(budgetResult.budgets);
+    setBudgets(budgetResult);
     setRecurring(recurringResult);
     setMovements(movementResult.accountMovements.edges.map((edge) => edge.node));
     setMovementCursor(movementResult.accountMovements.pageInfo.endCursor);
@@ -567,11 +564,8 @@ export function SettingsPage({
   }, [household.id, isOwner]);
   useEffect(() => {
     let active = true;
-    void readGraphql<{ budgets: Budget[] }>(budgetsQuery, {
-      householdId: household.id,
-      period: budgetPeriod,
-    })
-      .then((result) => active && setBudgets(result.budgets))
+    void readBudgets(household.id, budgetPeriod)
+      .then((result) => active && setBudgets(result))
       .catch((reason) => active && onNotice((reason as Error).message));
     return () => {
       active = false;

@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
@@ -150,8 +152,12 @@ func (r *mutationResolver) archiveBudget(ctx context.Context, budgetID string, b
 	return budgetModel(ctx, r.DB, row, nil)
 }
 
-func (r *queryResolver) budgets(ctx context.Context, householdID, period string) ([]*model.Budget, error) {
+func (r *queryResolver) budgets(ctx context.Context, householdID, period string, after, before *string, first, last *int) (*model.BudgetConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
+		return nil, err
+	}
+	pageSize, backward, err := pageDirection(first, last)
+	if err != nil {
 		return nil, err
 	}
 	month, err := parseAccountingPeriod(period)
@@ -162,19 +168,114 @@ func (r *queryResolver) budgets(ctx context.Context, householdID, period string)
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	rows, err := models.Budgets.Query(sm.Where(psql.And(models.Budgets.Columns.HouseholdID.EQ(psql.Arg(hhID)), models.Budgets.Columns.Archived.EQ(psql.Arg(false)), models.Budgets.Columns.StartsOn.LT(psql.Arg(month.AddDate(0, 1, 0))), psql.Or(models.Budgets.Columns.EndsOn.IsNull(), models.Budgets.Columns.EndsOn.GTE(psql.Arg(month))))), sm.OrderBy(models.Budgets.Columns.Name)).All(ctx, queryExecutor(r.DB))
+	baseFilter := budgetPeriodFilter(hhID, month)
+	executor := queryExecutor(r.DB)
+	count, err := models.Budgets.Query(sm.Where(baseFilter)).Count(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*model.Budget, 0, len(rows))
+	filters := []bob.Expression{baseFilter}
+	for _, boundary := range []struct {
+		cursor   *string
+		isBefore bool
+	}{{cursor: after}, {cursor: before, isBefore: true}} {
+		id, err := cursorID(boundary.cursor, nodeTypeBudget)
+		if err != nil {
+			return nil, err
+		}
+		if id == nil {
+			continue
+		}
+		parsedID, err := gofrsuuid.FromString(*id)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid budget cursor", ErrBadInput)
+		}
+		cursor, err := models.Budgets.Query(sm.Where(psql.And(
+			models.Budgets.Columns.ID.EQ(psql.Arg(parsedID)),
+			baseFilter,
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, budgetCursorFilter(cursor, boundary.isBefore))
+	}
+	var rows []*models.Budget
+	if backward {
+		rows, err = models.Budgets.Query(
+			sm.Where(psql.And(filters...)),
+			sm.OrderBy(models.Budgets.Columns.Name).Desc(),
+			sm.OrderBy(models.Budgets.Columns.ID).Desc(),
+			sm.Limit(pageSize+1),
+		).All(ctx, executor)
+	} else {
+		rows, err = models.Budgets.Query(
+			sm.Where(psql.And(filters...)),
+			sm.OrderBy(models.Budgets.Columns.Name),
+			sm.OrderBy(models.Budgets.Columns.ID),
+			sm.Limit(pageSize+1),
+		).All(ctx, executor)
+	}
+	if err != nil {
+		return nil, err
+	}
+	hasMore := len(rows) > pageSize
+	if hasMore {
+		rows = rows[:pageSize]
+	}
+	if backward {
+		slices.Reverse(rows)
+	}
+	result := &model.BudgetConnection{
+		Edges: make([]*model.BudgetEdge, 0, len(rows)), TotalCount: int(count),
+		PageInfo: &model.PageInfo{
+			HasNextPage:     backward && before != nil && *before != "" || !backward && hasMore,
+			HasPreviousPage: backward && hasMore || !backward && after != nil && *after != "",
+		},
+	}
 	for _, row := range rows {
 		budget, err := budgetModel(ctx, r.DB, row, &month)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, budget)
+		result.Edges = append(result.Edges, &model.BudgetEdge{Cursor: encodeCursor(nodeTypeBudget, row.ID.String()), Node: budget})
+	}
+	if len(rows) > 0 {
+		start := encodeCursor(nodeTypeBudget, rows[0].ID.String())
+		end := encodeCursor(nodeTypeBudget, rows[len(rows)-1].ID.String())
+		result.PageInfo.StartCursor, result.PageInfo.EndCursor = &start, &end
 	}
 	return result, nil
+}
+
+func budgetPeriodFilter(householdID gofrsuuid.UUID, month time.Time) bob.Expression {
+	return psql.And(
+		models.Budgets.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.Budgets.Columns.Archived.EQ(psql.Arg(false)),
+		models.Budgets.Columns.StartsOn.LT(psql.Arg(month.AddDate(0, 1, 0))),
+		psql.Or(models.Budgets.Columns.EndsOn.IsNull(), models.Budgets.Columns.EndsOn.GTE(psql.Arg(month))),
+	)
+}
+
+func budgetCursorFilter(cursor *models.Budget, isBefore bool) bob.Expression {
+	if isBefore {
+		return psql.Or(
+			models.Budgets.Columns.Name.LT(psql.Arg(cursor.Name)),
+			psql.And(
+				models.Budgets.Columns.Name.EQ(psql.Arg(cursor.Name)),
+				models.Budgets.Columns.ID.LT(psql.Arg(cursor.ID)),
+			),
+		)
+	}
+	return psql.Or(
+		models.Budgets.Columns.Name.GT(psql.Arg(cursor.Name)),
+		psql.And(
+			models.Budgets.Columns.Name.EQ(psql.Arg(cursor.Name)),
+			models.Budgets.Columns.ID.GT(psql.Arg(cursor.ID)),
+		),
+	)
 }
 
 func budgetModel(ctx context.Context, db *pgxpool.Pool, row *models.Budget, month *time.Time) (*model.Budget, error) {

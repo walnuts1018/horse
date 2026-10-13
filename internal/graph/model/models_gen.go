@@ -492,6 +492,17 @@ type Budget struct {
 
 func (Budget) IsNode() {}
 
+type BudgetConnection struct {
+	Edges      []*BudgetEdge `json:"edges"`
+	PageInfo   *PageInfo     `json:"pageInfo"`
+	TotalCount int           `json:"totalCount"`
+}
+
+type BudgetEdge struct {
+	Cursor string  `json:"cursor"`
+	Node   *Budget `json:"node"`
+}
+
 type BulkPurchaseItemPatch struct {
 	CategoryID       graphql.Omittable[*string]            `json:"categoryId,omitempty"`
 	ProductVariantID graphql.Omittable[*string]            `json:"productVariantId,omitempty"`

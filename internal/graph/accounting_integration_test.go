@@ -1207,8 +1207,8 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil || len(spending) != 1 || spending[0].AmountYen != 1000 {
 		t.Fatalf("income, funding, and account transfers changed household spending: spending=%#v error=%v", spending, err)
 	}
-	budgets, err := (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, "2026-06")
-	if err != nil || len(budgets) != 1 || budgets[0].ID != budget.ID || budgets[0].ActualYen != 1000 {
+	budgets, err := (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, model.YearMonth("2026-06"), nil, nil, nil, nil)
+	if err != nil || len(budgets.Edges) != 1 || budgets.Edges[0].Node.ID != budget.ID || budgets.Edges[0].Node.ActualYen != 1000 {
 		t.Fatalf("account activity changed budget actuals: budgets=%#v error=%v", budgets, err)
 	}
 	correctionKey := uuid.NewV7().String()

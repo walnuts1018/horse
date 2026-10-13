@@ -177,22 +177,23 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	budgets, err := (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, testApril2026)
+	budgets, err := (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, model.YearMonth(testApril2026), nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(budgets) != 1 || budgets[0].ID != budget.ID || budgets[0].ActualYen != 800 || budgets[0].RemainingYen != 200 {
+	if len(budgets.Edges) != 1 || budgets.Edges[0].Node.ID != budget.ID || budgets.Edges[0].Node.ActualYen != 800 || budgets.Edges[0].Node.RemainingYen != 200 {
 		t.Fatalf("budget should compare posted category actuals to the cap: %#v", budgets)
 	}
 	allBudget, err := resolver.setBudget(ctx, budgetWriteInput{HouseholdID: household.ID, Name: "All spending", AmountYen: 2000, StartsOn: testAprilFirst2026})
 	if err != nil {
 		t.Fatal(err)
 	}
-	budgets, err = (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, testApril2026)
-	if err != nil || len(budgets) != 2 {
+	budgets, err = (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, model.YearMonth(testApril2026), nil, nil, nil, nil)
+	if err != nil || len(budgets.Edges) != 2 {
 		t.Fatalf("household and category budgets should both be listed: rows=%#v error=%v", budgets, err)
 	}
-	for _, entry := range budgets {
+	for _, edge := range budgets.Edges {
+		entry := edge.Node
 		if entry.ID == allBudget.ID && (entry.ActualYen != 800 || entry.RemainingYen != 1200) {
 			t.Fatalf("uncategorized budget should include all posted spending: %#v", entry)
 		}

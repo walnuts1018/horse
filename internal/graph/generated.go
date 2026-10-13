@@ -277,6 +277,17 @@ type ComplexityRoot struct {
 		StartsOn     func(childComplexity int) int
 	}
 
+	BudgetConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	BudgetEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
+
 	BulkUpdatePurchaseItemsSuccess struct {
 		Items func(childComplexity int) int
 	}
@@ -875,7 +886,7 @@ type ComplexityRoot struct {
 		AccountIncomes          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		AccountMovements        func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		AllocationRules         func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		Budgets                 func(childComplexity int, householdID string, period model.YearMonth) int
+		Budgets                 func(childComplexity int, householdID string, period model.YearMonth, after *string, before *string, first *int, last *int) int
 		FundingSchedules        func(childComplexity int, householdID string, active *bool, after *string, before *string, first *int, last *int) int
 		Household               func(childComplexity int, id string) int
 		HouseholdInvitations    func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
@@ -1408,7 +1419,7 @@ type QueryResolver interface {
 	AccountIncomes(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AccountIncomeConnection, error)
 	AccountMovements(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AccountMovementConnection, error)
 	AllocationRules(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AllocationRuleConnection, error)
-	Budgets(ctx context.Context, householdID string, period model.YearMonth) ([]*model.Budget, error)
+	Budgets(ctx context.Context, householdID string, period model.YearMonth, after *string, before *string, first *int, last *int) (*model.BudgetConnection, error)
 	FundingSchedules(ctx context.Context, householdID string, active *bool, after *string, before *string, first *int, last *int) (*model.FundingScheduleConnection, error)
 	Households(ctx context.Context) ([]*model.Household, error)
 	Household(ctx context.Context, id string) (*model.Household, error)
@@ -2144,6 +2155,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Budget.StartsOn(childComplexity), true
+
+	case "BudgetConnection.edges":
+		if e.ComplexityRoot.BudgetConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.BudgetConnection.Edges(childComplexity), true
+	case "BudgetConnection.pageInfo":
+		if e.ComplexityRoot.BudgetConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.BudgetConnection.PageInfo(childComplexity), true
+	case "BudgetConnection.totalCount":
+		if e.ComplexityRoot.BudgetConnection.TotalCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.BudgetConnection.TotalCount(childComplexity), true
+
+	case "BudgetEdge.cursor":
+		if e.ComplexityRoot.BudgetEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.BudgetEdge.Cursor(childComplexity), true
+	case "BudgetEdge.node":
+		if e.ComplexityRoot.BudgetEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.BudgetEdge.Node(childComplexity), true
 
 	case "BulkUpdatePurchaseItemsSuccess.items":
 		if e.ComplexityRoot.BulkUpdatePurchaseItemsSuccess.Items == nil {
@@ -4524,7 +4567,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Budgets(childComplexity, args["householdId"].(string), args["period"].(model.YearMonth)), true
+		return e.ComplexityRoot.Query.Budgets(childComplexity, args["householdId"].(string), args["period"].(model.YearMonth), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.fundingSchedules":
 		if e.ComplexityRoot.Query.FundingSchedules == nil {
 			break
@@ -6035,8 +6078,19 @@ type ArchiveTagUserError implements MutationError {
   revision: Int!
 }
 
+type BudgetEdge {
+  cursor: String!
+  node: Budget!
+}
+
+type BudgetConnection {
+  edges: [BudgetEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  budgets(householdId: ID! @nodeID(of: "Household"), period: YearMonth!): [Budget!]!
+  budgets(householdId: ID! @nodeID(of: "Household"), period: YearMonth!, after: String, before: String, first: Int, last: Int): BudgetConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/bulk_update_purchase_items_mutation.graphql", Input: `extend type Mutation {
@@ -8040,6 +8094,28 @@ func (ec *executionContext) childFields_Budget(ctx context.Context, field graphq
 	return nil, fmt.Errorf("no field named %q was found under type Budget", field.Name)
 }
 
+func (ec *executionContext) childFields_BudgetConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_BudgetConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_BudgetConnection_pageInfo(ctx, field)
+	case "totalCount":
+		return ec.fieldContext_BudgetConnection_totalCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type BudgetConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_BudgetEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_BudgetEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_BudgetEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type BudgetEdge", field.Name)
+}
+
 func (ec *executionContext) childFields_Category(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "id":
@@ -9915,6 +9991,38 @@ func (ec *executionContext) field_Query_budgets_args(ctx context.Context, rawArg
 		return nil, err
 	}
 	args["period"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg4
+	arg5, err := graphql.ProcessArgField(ctx, rawArgs, "last",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["last"] = arg5
 	return args, nil
 }
 
@@ -14056,6 +14164,148 @@ func (ec *executionContext) _Budget_revision(ctx context.Context, field graphql.
 }
 func (ec *executionContext) fieldContext_Budget_revision(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Budget", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _BudgetConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.BudgetConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_BudgetConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.BudgetEdge) graphql.Marshaler {
+			return ec.marshalNBudgetEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudgetEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_BudgetConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "BudgetConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_BudgetEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _BudgetConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.BudgetConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_BudgetConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_BudgetConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "BudgetConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _BudgetConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.BudgetConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_BudgetConnection_totalCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_BudgetConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("BudgetConnection", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _BudgetEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.BudgetEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_BudgetEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_BudgetEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("BudgetEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _BudgetEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.BudgetEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_BudgetEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Budget) graphql.Marshaler {
+			return ec.marshalNBudget2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudget(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_BudgetEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "BudgetEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Budget(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _BulkUpdatePurchaseItemsSuccess_items(ctx context.Context, field graphql.CollectedField, obj *model.BulkUpdatePurchaseItemsSuccess) (ret graphql.Marshaler) {
@@ -23642,11 +23892,11 @@ func (ec *executionContext) _Query_budgets(ctx context.Context, field graphql.Co
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Budgets(ctx, fc.Args["householdId"].(string), fc.Args["period"].(model.YearMonth))
+			return ec.Resolvers.Query().Budgets(ctx, fc.Args["householdId"].(string), fc.Args["period"].(model.YearMonth), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []*model.Budget) graphql.Marshaler {
-			return ec.marshalNBudget2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudgetᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.BudgetConnection) graphql.Marshaler {
+			return ec.marshalNBudgetConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudgetConnection(ctx, selections, v)
 		},
 		true,
 		true,
@@ -23659,7 +23909,7 @@ func (ec *executionContext) fieldContext_Query_budgets(ctx context.Context, fiel
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_Budget(ctx, field)
+			return ec.childFields_BudgetConnection(ctx, field)
 		},
 	}
 	defer func() {
@@ -38443,6 +38693,97 @@ func (ec *executionContext) _Budget(ctx context.Context, sel ast.SelectionSet, o
 	return out
 }
 
+var budgetConnectionImplementors = []string{"BudgetConnection"}
+
+func (ec *executionContext) _BudgetConnection(ctx context.Context, sel ast.SelectionSet, obj *model.BudgetConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, budgetConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("BudgetConnection")
+		case "edges":
+			out.Values[i] = ec._BudgetConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._BudgetConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._BudgetConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var budgetEdgeImplementors = []string{"BudgetEdge"}
+
+func (ec *executionContext) _BudgetEdge(ctx context.Context, sel ast.SelectionSet, obj *model.BudgetEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, budgetEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("BudgetEdge")
+		case "cursor":
+			out.Values[i] = ec._BudgetEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._BudgetEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var bulkUpdatePurchaseItemsSuccessImplementors = []string{"BulkUpdatePurchaseItemsSuccess", "BulkUpdatePurchaseItemsResult"}
 
 func (ec *executionContext) _BulkUpdatePurchaseItemsSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.BulkUpdatePurchaseItemsSuccess) graphql.Marshaler {
@@ -49085,11 +49426,31 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
-func (ec *executionContext) marshalNBudget2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudgetᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Budget) graphql.Marshaler {
+func (ec *executionContext) marshalNBudget2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudget(ctx context.Context, sel ast.SelectionSet, v *model.Budget) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Budget(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNBudgetConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudgetConnection(ctx context.Context, sel ast.SelectionSet, v *model.BudgetConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._BudgetConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNBudgetEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudgetEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.BudgetEdge) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNBudget2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudget(ctx, sel, v[i])
+		return ec.marshalNBudgetEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudgetEdge(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -49101,14 +49462,14 @@ func (ec *executionContext) marshalNBudget2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋho
 	return ret
 }
 
-func (ec *executionContext) marshalNBudget2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudget(ctx context.Context, sel ast.SelectionSet, v *model.Budget) graphql.Marshaler {
+func (ec *executionContext) marshalNBudgetEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBudgetEdge(ctx context.Context, sel ast.SelectionSet, v *model.BudgetEdge) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
-	return ec._Budget(ctx, sel, v)
+	return ec._BudgetEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNBulkPurchaseItemPatch2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchaseItemPatch(ctx context.Context, v any) (*model.BulkPurchaseItemPatch, error) {

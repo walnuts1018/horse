@@ -1,19 +1,29 @@
 import { graphql } from "react-relay";
 
 export const budgetsQuery = graphql`
-  query BudgetsQuery($householdId: ID!, $period: YearMonth!) {
-    budgets(householdId: $householdId, period: $period) {
-      id
-      householdId
-      categoryId
-      name
-      amountYen
-      actualYen
-      remainingYen
-      startsOn
-      endsOn
-      archived
-      revision
+  query BudgetsQuery($householdId: ID!, $period: YearMonth!, $first: Int!, $after: String) {
+    budgets(householdId: $householdId, period: $period, first: $first, after: $after) {
+      edges {
+        cursor
+        node {
+          id
+          householdId
+          categoryId
+          name
+          amountYen
+          actualYen
+          remainingYen
+          startsOn
+          endsOn
+          archived
+          revision
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      totalCount
     }
   }
 `;

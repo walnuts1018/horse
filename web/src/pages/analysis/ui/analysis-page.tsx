@@ -9,7 +9,7 @@ import {
   monthlyCategorySpendingQuery,
 } from "../../../shared/api";
 import { monthlyMemberSpendingQuery } from "../api/operations";
-import { budgetsQuery } from "../../../entities/budget";
+import { readBudgets } from "../../../entities/budget";
 import { readRecurringExpenses } from "../../../entities/recurring-expense";
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { InlineError } from "../../../shared/ui";
@@ -269,11 +269,8 @@ export function AnalysisPage({ household }: { household: Household }) {
   useEffect(() => {
     let active = true;
     setBudgetError("");
-    void readGraphql<{ budgets: Budget[] }>(budgetsQuery, {
-      householdId: household.id,
-      period: currentMonth,
-    })
-      .then((result) => active && setBudgets(result.budgets))
+    void readBudgets(household.id, currentMonth)
+      .then((result) => active && setBudgets(result))
       .catch((reason) => active && setBudgetError((reason as Error).message));
     return () => {
       active = false;
