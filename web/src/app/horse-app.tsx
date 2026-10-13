@@ -117,7 +117,11 @@ export function App() {
 
   useBlocker({
     shouldBlockFn: ({ current, next }) => {
-      if (current.pathname === next.pathname) return false;
+      if (
+        current.pathname === next.pathname &&
+        JSON.stringify(current.search) === JSON.stringify(next.search)
+      )
+        return false;
       return hasUnsavedChangesRef.current && !window.confirm("未保存の変更を破棄しますか？");
     },
     enableBeforeUnload: () => hasUnsavedChangesRef.current,
