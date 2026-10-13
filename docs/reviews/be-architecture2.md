@@ -2,7 +2,7 @@
 
 対象は [walnuts1018/horse](https://github.com/walnuts1018/horse) の `main`、commit [`be514744`](https://github.com/walnuts1018/horse/commit/be514744182bd6cc1ffe1847ea588b801c2db894) です。
 
-結論として、技術スタックの選択は適切ですが、バックエンドの責務分割はまだ改善の余地が大きいです。 特に、購入処理だけ新しいApplication層へ移り、精算・訂正・資金移動などはGraphQL Resolver側に実装が残っているため、同じ種類の処理でも実装方法が異なっています。
+結論として、技術スタックの選択は適切ですが、バックエンドの責務分割には引き続き改善の余地があります。購入処理と送金・返済処理はApplication層へ移行済みですが、精算・訂正などの処理はGraphQL Resolver側に残っています。
 
 一方、すでに改善されている箇所もあります。
 
@@ -64,14 +64,15 @@ if len(weights) == 0 {
 
 現在の`internal/graph/mutations.go`は約3,080行あります。
 
-購入作成と確定についてはApplication層へ移動済みですが、次の機能はGraphQL Resolver配下に会計・永続化ロジックが混在しています。
+購入作成・確定と送金・返済はApplication層へ移動済みです。次の機能はGraphQL Resolver配下に会計・永続化ロジックが混在しています。
 
 | 処理 | 現在の主な実装先 |
 | --------- | --------------------------------------------- |
 | 購入作成・確定 | `internal/application/purchase` |
 | 購入編集・品目編集 | `internal/graph/mutations.go` |
 | 月次精算・締め処理 | `internal/graph/accounting.go`、`mutations.go` |
-| 入金・送金・返済 | `internal/graph/mutations.go` |
+| 入金 | `internal/graph/mutations.go` |
+| 送金・返済 | `internal/application/transfer` |
 | 口座間移動・収入 | `internal/graph/account_movements.go` |
 | 予算・定期支出 | `internal/graph/planning.go` |
 
