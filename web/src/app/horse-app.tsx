@@ -68,6 +68,8 @@ export function App() {
   const [households, setHouseholds] = useState<Array<{ id: string; name: string }>>([]);
   const [householdRetryVersion, setHouseholdRetryVersion] = useState(0);
   const [household, setHousehold] = useState<Household | null>(null);
+  const [householdLoading, setHouseholdLoading] = useState(false);
+  const activeHousehold = household?.id === householdId ? household : null;
   const hasUnsavedChangesRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -84,7 +86,6 @@ export function App() {
   const purchaseCreatePreviousPage = useRef<AppPage>("home");
   const currentHouseholdId = useRef(household?.id);
   currentHouseholdId.current = household?.id;
-  const resolvingHouseholdId = useRef<string | null>(null);
   const autoNavigateKey = useRef<string | null>(null);
 
   useEffect(() => {
@@ -128,7 +129,7 @@ export function App() {
     if (nextPage === "new") {
       if (page !== "new") purchaseCreatePreviousPage.current = page;
     }
-    if (household?.id) navigateToHouseholdPage(household.id, nextPage);
+    if (householdId) navigateToHouseholdPage(householdId, nextPage);
   };
 
   const navigateToHouseholdPage = (id: string, nextPage: AppPage, replace = false) => {
@@ -193,12 +194,15 @@ export function App() {
   useEffect(() => {
     if (!households.length) return;
     const requestedHousehold = households.find((item) => item.id === householdId);
-    const target = requestedHousehold ?? households[0];
-    if (!target) return;
-    if (!requestedHousehold) navigateToHouseholdPage(target.id, "home", true);
-    if (resolvingHouseholdId.current === target.id) return;
-    resolvingHouseholdId.current = target.id;
+    if (!requestedHousehold) {
+      const target = households[0];
+      if (target) navigateToHouseholdPage(target.id, "home", true);
+      return;
+    }
+    const target = requestedHousehold;
+    if (currentHouseholdId.current === target.id) return;
     let active = true;
+    setHouseholdLoading(true);
     void read<{ household: Household }>(householdQuery, { id: target.id })
       .then((data) => {
         if (!active) return;
@@ -206,16 +210,18 @@ export function App() {
       })
       .catch((reason: unknown) => {
         if (!active) return;
-        resolvingHouseholdId.current = null;
         showNoticeRef.current((reason as Error).message || "家計簿を読み込めませんでした");
         const currentId = currentHouseholdId.current;
         if (currentId && currentId !== target.id)
-          navigateToHouseholdPage(currentId, page, true);
+          navigateToHouseholdPage(currentId, currentPage.current, true);
+      })
+      .finally(() => {
+        if (active) setHouseholdLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [households, householdId, navigate, pathname, householdRetryVersion]);
+  }, [households, householdId, navigate, householdRetryVersion]);
 
   const showNotice = (message: string) => {
     setNotice(message);
@@ -292,7 +298,9 @@ export function App() {
     outbox.refresh,
     createAndPostPurchase,
   ]);
-  const currentOutbox = outbox.entries.filter((entry) => entry.input.householdId === household?.id);
+  const currentOutbox = outbox.entries.filter(
+    (entry) => entry.input.householdId === activeHousehold?.id,
+  );
   const failedOutboxCount = currentOutbox.filter((entry) => entry.status === "FAILED").length;
   const pendingOutboxCount = currentOutbox.filter((entry) => entry.status === "PENDING").length;
   const syncLabel =
@@ -355,16 +363,11 @@ export function App() {
   };
   const selectHousehold = (id: string) => {
     if (!households.some((item) => item.id === id)) return;
-    if (!household) {
-      if (id !== householdId) {
-        navigateToHouseholdPage(id, page, true);
-        return;
-      }
-      resolvingHouseholdId.current = null;
+    if (id === activeHousehold?.id) return;
+    if (id === householdId) {
       setHouseholdRetryVersion((version) => version + 1);
       return;
     }
-    if (id === household.id) return;
     navigateToHouseholdPage(id, page);
   };
 
@@ -391,7 +394,7 @@ export function App() {
     );
 
   const routeContext = {
-    household,
+    household: activeHousehold,
     viewerId: viewer.id,
     navigateToPage,
     reportUnsavedChanges,
@@ -431,10 +434,10 @@ export function App() {
           type="button"
           onClick={() => setHouseholdMenu((open) => !open)}
         >
-          <span className="household-avatar">{household?.name?.slice(0, 1) ?? "家"}</span>
+          <span className="household-avatar">{activeHousehold?.name?.slice(0, 1) ?? "家"}</span>
           <div className="household-name">
-            <b>{household?.name ?? "家計簿"}</b>
-            <small>{household?.members?.length ?? 0}人で共有</small>
+            <b>{activeHousehold?.name ?? "家計簿"}</b>
+            <small>{activeHousehold?.members?.length ?? 0}人で共有</small>
           </div>
           <ChevronDown size={15} />
         </button>
@@ -502,7 +505,7 @@ export function App() {
           <div className="shared-status">
             <span>メンバー</span>
             <span className="shared-avatars">
-              {household?.members?.slice(0, 3).map((member) => (
+              {activeHousehold?.members?.slice(0, 3).map((member) => (
                 <i key={member.id}>{member.displayName.slice(0, 1)}</i>
               ))}
             </span>
@@ -550,7 +553,7 @@ export function App() {
             <Menu size={20} />
           </button>
           <div className="crumb">
-            <span>{household?.name ?? "家計簿"}</span>
+            <span>{activeHousehold?.name ?? "家計簿"}</span>
             <ChevronRight size={14} />
             <b>{pageTitle(page)}</b>
           </div>
@@ -602,12 +605,17 @@ export function App() {
             </button>
           </section>
         )}
-        <div className="page-content" key={household?.id ?? "no-household"}>
+        <div className="page-content" key={householdId ?? "no-household"}>
           <householdRouteContext.Provider value={routeContext}>
             <GraphQLErrorBoundary>
               <Suspense fallback={<div className="loading-screen">購入履歴を読み込んでいます</div>}>
-                <Outlet />
-                {!household && (
+                {householdLoading ? (
+                  <div className="loading-screen">
+                    <span className="loading-dot" /> 家計簿を開いています
+                  </div>
+                ) : activeHousehold ? (
+                  <Outlet />
+                ) : (
                   <EmptyHousehold
                     households={households}
                     onSelect={selectHousehold}
