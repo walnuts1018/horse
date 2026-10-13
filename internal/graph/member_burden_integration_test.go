@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	stdjson "encoding/json"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -260,5 +261,193 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	outsiderContext := auth.WithPrincipal(t.Context(), auth.Principal{MemberID: outsider, Subject: "burden-integration:" + outsider, DisplayName: "Outsider"})
 	if _, err := (&Resolver{DB: db}).Query().MonthlyMemberSpending(outsiderContext, household.ID, model.YearMonth(period), model.YearMonth(period)); err == nil {
 		t.Fatal("a member outside the household must not read its spending report")
+	}
+}
+
+func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshotsForNewAllocations(t *testing.T) {
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := t.Context()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+	memberA, memberB := uuid.NewV7().String(), uuid.NewV7().String()
+	for id, name := range map[string]string{memberA: "A", memberB: "B"} {
+		memberID, err := gofrsuuid.FromString(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		subject := "purchase-snapshot-integration:" + id
+		if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberID, OidcSubject: &subject, DisplayName: &name}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
+	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "purchase-snapshot-integration:" + memberA, DisplayName: "A"})
+	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
+	household, err := resolver.createHousehold(ctx, model.CreateHouseholdInput{Name: "purchase snapshot integration"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
+	householdID, memberBID := generatedUUID(household.ID), generatedUUID(memberB)
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdID, MemberID: &memberBID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	poolOne, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "one", Kind: model.PoolKindShared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	poolTwo, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "two", Kind: model.PoolKindShared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyOne := model.SharedPoolSettlementPolicyBalanceToStandard
+	policyTwo := model.SharedPoolSettlementPolicyBalanceToStandard
+	for _, input := range []model.SetPoolFundingRuleInput{
+		{HouseholdID: household.ID, PoolID: poolOne.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, SettlementPolicy: &policyOne, ExpectedVersion: 1},
+		{HouseholdID: household.ID, PoolID: poolTwo.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 25}, {MemberID: memberB, Weight: 75}}, SettlementPolicy: &policyTwo, ExpectedVersion: 1},
+	} {
+		if _, err := resolver.setPoolFundingRule(ctx, input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	accountOne, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "one card", Kind: model.AccountKindCard, PoolID: &poolOne.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountOneAlternate, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "one alternate card", Kind: model.AccountKindCard, PoolID: &poolOne.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountOneNew, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "one new card", Kind: model.AccountKindCard, PoolID: &poolOne.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountTwo, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "two card", Kind: model.AccountKindCard, PoolID: &poolTwo.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(time.Now().UTC().Format(time.RFC3339)), Merchant: "snapshot shop",
+		PaymentAllocations: []*model.PurchasePaymentInput{
+			{PaymentAccountID: accountOne.ID, AmountYen: 500}, {PaymentAccountID: accountOneAlternate.ID, AmountYen: 500},
+		},
+		Items: []*model.PurchaseItemInput{{Name: "item", AmountYen: 1000, Allocations: []*model.AllocationInput{{PoolID: poolOne.ID, Weight: 1}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	posted, err := resolver.postPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyOne = model.SharedPoolSettlementPolicyReimbursePersonal
+	policyTwo = model.SharedPoolSettlementPolicyReimbursePersonal
+	for _, input := range []model.SetPoolFundingRuleInput{
+		{HouseholdID: household.ID, PoolID: poolOne.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 10}, {MemberID: memberB, Weight: 90}}, SettlementPolicy: &policyOne, ExpectedVersion: 2},
+		{HouseholdID: household.ID, PoolID: poolTwo.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 80}, {MemberID: memberB, Weight: 20}}, SettlementPolicy: &policyTwo, ExpectedVersion: 2},
+	} {
+		if _, err := resolver.setPoolFundingRule(ctx, input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	updated, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{
+		PurchaseID: posted.ID, BaseRevision: posted.Revision,
+		Patch: &model.PurchasePatch{PaymentAllocations: []*model.PurchasePaymentInput{
+			{PaymentAccountID: accountOne.ID, AmountYen: 300}, {PaymentAccountID: accountOneNew.ID, AmountYen: 300}, {PaymentAccountID: accountTwo.ID, AmountYen: 400},
+		}},
+		ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldPaymentAllocations},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	posted = updated
+	item := posted.Items[0]
+	_, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
+		ItemID: item.ID, BaseRevision: item.Revision,
+		Allocations:   []*model.AllocationInput{{PoolID: poolOne.ID, Weight: 1}, {PoolID: poolTwo.ID, Weight: 1}},
+		ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldAllocations},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	purchaseUUID := generatedUUID(purchase.ID)
+	paymentSnapshots, err := models.PurchasePaymentFundingSnapshots.Query(sm.Where(psql.And(
+		models.PurchasePaymentFundingSnapshots.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.PurchasePaymentFundingSnapshots.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSnapshots := func(got models.PurchasePaymentFundingSnapshotSlice, lineNo int32, poolID string, version int32, weights map[string]int64, settlement string) {
+		members := make(map[string]int64)
+		for _, snapshot := range got {
+			if snapshot.PaymentLineNo != lineNo || snapshot.PoolID.String() != poolID {
+				continue
+			}
+			if snapshot.FundingRuleVersion != version || snapshot.SnapshotSource != "POSTED" || !snapshot.SettlementPolicy.Valid || snapshot.SettlementPolicy.V != settlement {
+				t.Fatalf("payment snapshot metadata changed: %#v", snapshot)
+			}
+			members[snapshot.MemberID.String()] = snapshot.FundingWeight
+		}
+		if len(members) != len(weights) {
+			t.Fatalf("payment snapshot members mismatch: got=%v want=%v", members, weights)
+		}
+		for memberID, weight := range weights {
+			if members[memberID] != weight {
+				t.Fatalf("payment snapshot weights mismatch: got=%v want=%v", members, weights)
+			}
+		}
+	}
+	assertSnapshots(paymentSnapshots, 1, poolOne.ID, 2, map[string]int64{memberA: 60, memberB: 40}, string(model.SharedPoolSettlementPolicyBalanceToStandard))
+	assertSnapshots(paymentSnapshots, 2, poolOne.ID, 2, map[string]int64{memberA: 60, memberB: 40}, string(model.SharedPoolSettlementPolicyBalanceToStandard))
+	assertSnapshots(paymentSnapshots, 3, poolTwo.ID, 3, map[string]int64{memberA: 80, memberB: 20}, string(policyTwo))
+
+	itemUUID := generatedUUID(item.ID)
+	burdens, err := models.PurchaseMemberBurdens.Query(sm.Where(psql.And(
+		models.PurchaseMemberBurdens.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.PurchaseMemberBurdens.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+		models.PurchaseMemberBurdens.Columns.ItemID.EQ(psql.Arg(itemUUID)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	weightsByPool := map[string]map[string]int64{}
+	versionsByPool := map[string]int32{}
+	for _, burden := range burdens {
+		if weightsByPool[burden.PoolID.String()] == nil {
+			weightsByPool[burden.PoolID.String()] = make(map[string]int64)
+		}
+		weightsByPool[burden.PoolID.String()][burden.MemberID.String()] = burden.FundingWeight
+		versionsByPool[burden.PoolID.String()] = burden.FundingRuleVersion
+		if burden.SnapshotSource != "POSTED" {
+			t.Fatalf("posted burden source changed: %#v", burden)
+		}
+	}
+	if versionsByPool[poolOne.ID] != 2 || weightsByPool[poolOne.ID][memberA] != 60 || weightsByPool[poolOne.ID][memberB] != 40 {
+		t.Fatalf("existing item/pool snapshot was replaced: versions=%v weights=%v", versionsByPool, weightsByPool)
+	}
+	if versionsByPool[poolTwo.ID] != 3 || weightsByPool[poolTwo.ID][memberA] != 80 || weightsByPool[poolTwo.ID][memberB] != 20 {
+		t.Fatalf("new item/pool snapshot did not use the current rule: versions=%v weights=%v", versionsByPool, weightsByPool)
+	}
+	if _, err := calculatePeriodAccounting(ctx, bobpgx.NewPool(db), household.ID, accountingPeriod(time.Now())); err != nil {
+		if errors.Is(err, ErrMissingPurchaseFundingSnapshot) {
+			t.Fatalf("period accounting rejected an updated purchase because its snapshot was missing: %v", err)
+		}
+		t.Fatalf("period accounting failed after preserving and creating snapshots: %v", err)
 	}
 }

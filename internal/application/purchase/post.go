@@ -211,15 +211,15 @@ func snapshotMemberBurden(ctx context.Context, executor bob.Executor, householdI
 	}
 	for _, allocation := range allocations {
 		rule, ok := rules[allocation.PoolID]
-		if !ok {
-			continue
+		if !ok || !rule.configured || rule.version < 1 {
+			return fmt.Errorf("%w: pool %s", domain.ErrIncompleteFundingRule, allocation.PoolID)
 		}
 		weights, err := memberWeights(rule)
 		if err != nil {
-			continue
+			return fmt.Errorf("pool %s: %w", allocation.PoolID, err)
 		}
-		if rule.version < 1 {
-			return fmt.Errorf("%w: invalid pool funding rule version", ErrBadInput)
+		if rule.kind == domain.FundingPoolShared && rule.settlement == "" {
+			return fmt.Errorf("%w: pool %s has no settlement policy", domain.ErrIncompleteFundingRule, allocation.PoolID)
 		}
 		parts, err := domain.Allocate(allocation.AmountYen, weights)
 		if err != nil {
@@ -243,6 +243,7 @@ func snapshotMemberBurden(ctx context.Context, executor bob.Executor, householdI
 type fundingRule struct {
 	kind       string
 	version    int32
+	configured bool
 	owner      string
 	settlement string
 	shares     []domain.MemberWeight
@@ -268,6 +269,7 @@ func fundingRules(ctx context.Context, executor bob.Executor, householdID gofrsu
 			continue
 		}
 		rule := rules[stored.PoolID]
+		rule.configured = true
 		if stored.OwnerMemberID.Valid {
 			rule.owner = stored.OwnerMemberID.V.String()
 		}
@@ -353,15 +355,18 @@ func snapshotPaymentFunding(ctx context.Context, executor bob.Executor, househol
 			return err
 		}
 		if !account.PoolID.Valid {
-			continue
+			return fmt.Errorf("%w: purchase %s payment account %s has no pool", ErrUnattributedPurchasePayment, purchase.ID, account.ID)
 		}
 		rule, ok := rules[account.PoolID.V]
-		if !ok || rule.version < 1 {
-			continue
+		if !ok || !rule.configured || rule.version < 1 {
+			return fmt.Errorf("%w: pool %s", domain.ErrIncompleteFundingRule, account.PoolID.V)
 		}
 		weights, err := memberWeights(rule)
 		if err != nil {
-			continue
+			return fmt.Errorf("pool %s: %w", account.PoolID.V, err)
+		}
+		if rule.kind == domain.FundingPoolShared && rule.settlement == "" {
+			return fmt.Errorf("%w: pool %s has no settlement policy", domain.ErrIncompleteFundingRule, account.PoolID.V)
 		}
 		var settlement sql.Null[string]
 		if rule.kind == domain.FundingPoolShared {

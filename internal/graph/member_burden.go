@@ -49,7 +49,13 @@ func refreshPurchaseMemberBurden(ctx context.Context, executor bob.Executor, hou
 		key := allocationKey{itemID: allocation.ItemID, poolID: allocation.PoolID}
 		weights := weightsByAllocation[key]
 		if len(weights) == 0 {
-			continue
+			rule, err := currentPurchaseFundingRule(ctx, executor, householdUUID, allocation.PoolID)
+			if err != nil {
+				return fmt.Errorf("pool %s: %w", allocation.PoolID, err)
+			}
+			weights = rule.weights
+			versionsByAllocation[key] = rule.version
+			sourcesByAllocation[key] = "POSTED"
 		}
 		parts, err := domain.Allocate(allocation.AmountYen, weights)
 		if err != nil {
@@ -72,6 +78,63 @@ func refreshPurchaseMemberBurden(ctx context.Context, executor bob.Executor, hou
 		}
 	}
 	return nil
+}
+
+type purchaseFundingRuleSnapshot struct {
+	version          int32
+	weights          []domain.Weight
+	settlementPolicy sql.Null[string]
+}
+
+func currentPurchaseFundingRule(ctx context.Context, executor bob.Executor, householdID, poolID gofrsuuid.UUID) (purchaseFundingRuleSnapshot, error) {
+	pool, err := models.Pools.Query(sm.Where(psql.And(
+		models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.Pools.Columns.ID.EQ(psql.Arg(poolID)),
+	))).One(ctx, executor)
+	if err != nil {
+		return purchaseFundingRuleSnapshot{}, err
+	}
+	if pool.FundingRuleVersion < 1 {
+		return purchaseFundingRuleSnapshot{}, fmt.Errorf("%w: invalid funding rule version", ErrMissingPurchaseFundingSnapshot)
+	}
+	rule, err := models.PoolFundingRules.Query(sm.Where(psql.And(
+		models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.PoolFundingRules.Columns.PoolID.EQ(psql.Arg(poolID)),
+		models.PoolFundingRules.Columns.Version.EQ(psql.Arg(pool.FundingRuleVersion)),
+	))).One(ctx, executor)
+	if err != nil {
+		return purchaseFundingRuleSnapshot{}, fmt.Errorf("%w: active funding rule is missing", ErrMissingPurchaseFundingSnapshot)
+	}
+	snapshot := purchaseFundingRuleSnapshot{version: pool.FundingRuleVersion, settlementPolicy: rule.SettlementPolicy}
+	if pool.Kind == "PERSONAL" {
+		if !rule.OwnerMemberID.Valid {
+			return purchaseFundingRuleSnapshot{}, fmt.Errorf("%w: personal pool owner is missing", ErrMissingPurchaseFundingSnapshot)
+		}
+		snapshot.weights = []domain.Weight{{PoolID: rule.OwnerMemberID.V.String(), Value: 1}}
+		return snapshot, nil
+	}
+	if pool.Kind != "SHARED" || !rule.SettlementPolicy.Valid || rule.SettlementPolicy.V == "" {
+		return purchaseFundingRuleSnapshot{}, fmt.Errorf("%w: shared pool rule is incomplete", ErrMissingPurchaseFundingSnapshot)
+	}
+	shares, err := models.PoolFundingShares.Query(sm.Where(psql.And(
+		models.PoolFundingShares.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.PoolFundingShares.Columns.PoolID.EQ(psql.Arg(poolID)),
+		models.PoolFundingShares.Columns.Version.EQ(psql.Arg(pool.FundingRuleVersion)),
+	)), sm.OrderBy(models.PoolFundingShares.Columns.MemberID)).All(ctx, executor)
+	if err != nil {
+		return purchaseFundingRuleSnapshot{}, err
+	}
+	if len(shares) == 0 {
+		return purchaseFundingRuleSnapshot{}, fmt.Errorf("%w: shared pool has no member weights", ErrMissingPurchaseFundingSnapshot)
+	}
+	snapshot.weights = make([]domain.Weight, 0, len(shares))
+	for _, share := range shares {
+		snapshot.weights = append(snapshot.weights, domain.Weight{PoolID: share.MemberID.String(), Value: share.Weight})
+	}
+	if _, err := domain.Allocate(1, snapshot.weights); err != nil {
+		return purchaseFundingRuleSnapshot{}, fmt.Errorf("%w: %w", ErrMissingPurchaseFundingSnapshot, err)
+	}
+	return snapshot, nil
 }
 
 func snapshotCorrectionMemberBurden(ctx context.Context, executor bob.Executor, householdID string, correctionID, purchaseID gofrsuuid.UUID, itemID sql.Null[gofrsuuid.UUID], shares []domain.AllocationAmount, delta int64) error {
