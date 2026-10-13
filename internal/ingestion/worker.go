@@ -79,7 +79,7 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 	executor := bobpgx.NewTx(tx, nil)
 	defer func() {
 		if err := tx.Rollback(claimCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			slog.Error("Rollback extraction claim failed")
+			slog.Error("Rollback extraction claim failed", "error", err)
 		}
 	}()
 	var candidate *models.ExtractionJob
@@ -240,7 +240,7 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 	}
 	defer func() {
 		if err := finishTx.Rollback(finishCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			slog.Error("Rollback extraction completion failed")
+			slog.Error("Rollback extraction completion failed", "error", err)
 		}
 	}()
 	jobUUID, err := gofrsuuid.FromString(j.ID)
@@ -564,7 +564,7 @@ func (w *Worker) RecoverExhausted(ctx context.Context) error {
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			slog.Error("Rollback stale extraction recovery failed")
+			slog.Error("Rollback stale extraction recovery failed", "error", err)
 		}
 	}()
 	executor := bobpgx.NewTx(tx, nil)

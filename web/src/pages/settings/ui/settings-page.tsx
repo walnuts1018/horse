@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "r
 import { Activity, ArrowLeftRight, Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import {
   makeIdempotencyKey,
+  MutationUserError,
   readGraphql,
   isPersonalPool,
   isSharedPool,
@@ -917,6 +918,10 @@ export function SettingsPage({
         "success",
       );
     } catch (reason) {
+      if (reason instanceof MutationUserError) {
+        clearAccountMovementIntent(household.id);
+        setPendingMovementIntent(null);
+      }
       onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);
@@ -956,6 +961,10 @@ export function SettingsPage({
       setBalanceHistoryRevision((revision) => revision + 1);
       onNotice("入金を記録しました", "success");
     } catch (reason) {
+      if (reason instanceof MutationUserError) {
+        clearAccountIncomeIntent(household.id);
+        setPendingIncomeIntent(null);
+      }
       onNotice((reason as Error).message, "error");
     } finally {
       setPending(false);

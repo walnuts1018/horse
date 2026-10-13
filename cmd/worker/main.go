@@ -123,7 +123,7 @@ func run() error {
 		if queue == nil && os.Getenv("RABBITMQ_URL") != "" {
 			queue, err = ingestion.NewQueue(os.Getenv("RABBITMQ_URL"))
 			if err != nil {
-				slog.Warn("Extraction queue unavailable; recovering jobs from database")
+				slog.Warn("Extraction queue unavailable; recovering jobs from database", "error", err)
 			}
 		}
 		if queue != nil {
@@ -141,12 +141,12 @@ func run() error {
 							break
 						}
 						if _, err := worker.RunOne(ctx, string(message.Body)); err != nil {
-							slog.Error("Run notified extraction failed")
+							slog.Error("Run notified extraction failed", "error", err)
 							if err := message.Nack(false, true); err != nil {
-								slog.Warn("Requeue extraction notification failed")
+								slog.Warn("Requeue extraction notification failed", "error", err)
 							}
 						} else if err := message.Ack(false); err != nil {
-							slog.Warn("Acknowledge extraction notification failed")
+							slog.Warn("Acknowledge extraction notification failed", "error", err)
 						}
 					case <-poll.C:
 						drain(ctx, &worker)
@@ -154,10 +154,10 @@ func run() error {
 				}
 				poll.Stop()
 			} else {
-				slog.Warn("Consume extraction queue failed")
+				slog.Warn("Consume extraction queue failed", "error", consumeErr)
 			}
 			if err := queue.Close(); err != nil {
-				slog.Warn("Close unavailable extraction queue failed")
+				slog.Warn("Close unavailable extraction queue failed", "error", err)
 			}
 			queue = nil
 			select {
@@ -177,12 +177,12 @@ func run() error {
 
 func drain(ctx context.Context, w *ingestion.Worker) {
 	if err := w.RecoverExhausted(ctx); err != nil {
-		slog.Warn("Recover exhausted extraction jobs failed")
+		slog.Warn("Recover exhausted extraction jobs failed", "error", err)
 	}
 	for ctx.Err() == nil {
 		processed, err := w.RunOne(ctx, "")
 		if err != nil {
-			slog.Error("Recover extraction job failed")
+			slog.Error("Recover extraction job failed", "error", err)
 			return
 		}
 		if !processed {

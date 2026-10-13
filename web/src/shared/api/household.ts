@@ -401,6 +401,8 @@ export class ApiError extends Error {
   }
 }
 
+export class MutationUserError extends ApiError {}
+
 let environment: Environment | undefined;
 
 export function getRelayEnvironment() {
@@ -758,7 +760,7 @@ function unwrapMutationResults(response: Record<string, unknown>) {
       if (!value || typeof value !== "object" || !("__typename" in value)) return [key, value];
       const result = value as Record<string, unknown>;
       if (typeof result.__typename === "string" && result.__typename.endsWith("UserError")) {
-        throw new ApiError(String(result.message), String(result.code));
+        throw new MutationUserError(String(result.message), String(result.code));
       }
       if (typeof result.__typename === "string" && result.__typename.endsWith("Success")) {
         if ("result" in result) return [key, result.result];

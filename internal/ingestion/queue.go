@@ -3,6 +3,8 @@ package ingestion
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -19,16 +21,24 @@ type Queue struct {
 func NewQueue(endpoint string) (*Queue, error) {
 	conn, err := amqp.DialConfig(endpoint, amqp.Config{Heartbeat: 10 * time.Second, Dial: amqp.DefaultDial(10 * time.Second)})
 	if err != nil {
-		return nil, errors.New("connect extraction queue failed")
+		return nil, fmt.Errorf("connect extraction queue failed: %w", safeQueueDialError(err))
 	}
 	channel, err := conn.Channel()
 	if err != nil {
-		return nil, errors.Join(errors.New("open extraction queue failed"), conn.Close())
+		return nil, errors.Join(fmt.Errorf("open extraction queue channel: %w", err), conn.Close())
 	}
 	if _, err := channel.QueueDeclare(ExtractionQueue, true, false, false, false, amqp.Table{"x-queue-type": "quorum"}); err != nil {
-		return nil, errors.Join(errors.New("declare extraction queue failed"), channel.Close(), conn.Close())
+		return nil, errors.Join(fmt.Errorf("declare extraction queue: %w", err), channel.Close(), conn.Close())
 	}
 	return &Queue{connection: conn, channel: channel}, nil
+}
+
+func safeQueueDialError(err error) error {
+	urlErr, ok := errors.AsType[*url.Error](err)
+	if !ok {
+		return err
+	}
+	return fmt.Errorf("parse AMQP endpoint: %w", urlErr.Err)
 }
 
 func (q *Queue) Publish(ctx context.Context, jobID string) error {
