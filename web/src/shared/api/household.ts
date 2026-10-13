@@ -7,14 +7,44 @@ import {
   Store,
   type GraphQLTaggedNode,
   type GraphQLResponse,
+  type MutationParameters,
 } from "relay-runtime";
 import { useCallback, useRef, useState } from "react";
 
 export type {
+  BulkUpdatePurchaseItemsMutation,
+  BulkUpdatePurchaseItemsMutation$data,
+} from "./__generated__/BulkUpdatePurchaseItemsMutation.graphql";
+export type {
+  BulkUpdatePurchasesMutation,
+  BulkUpdatePurchasesMutation$data,
+} from "./__generated__/BulkUpdatePurchasesMutation.graphql";
+export type {
+  CorrectPurchaseMutation,
+  CorrectPurchaseMutation$data,
+} from "./__generated__/CorrectPurchaseMutation.graphql";
+export type {
+  CreateAndPostPurchaseMutation,
   CreateAndPostPurchaseMutation$data,
   CreateAndPostPurchaseMutation$variables,
 } from "./__generated__/CreateAndPostPurchaseMutation.graphql";
-export type { UpdatePurchaseItemMutation$variables } from "./__generated__/UpdatePurchaseItemMutation.graphql";
+export type {
+  CreatePurchaseMutation,
+  CreatePurchaseMutation$data,
+} from "./__generated__/CreatePurchaseMutation.graphql";
+export type {
+  PostPurchaseMutation,
+  PostPurchaseMutation$data,
+} from "./__generated__/PostPurchaseMutation.graphql";
+export type {
+  UpdatePurchaseMutation,
+  UpdatePurchaseMutation$data,
+} from "./__generated__/UpdatePurchaseMutation.graphql";
+export type {
+  UpdatePurchaseItemMutation,
+  UpdatePurchaseItemMutation$data,
+  UpdatePurchaseItemMutation$variables,
+} from "./__generated__/UpdatePurchaseItemMutation.graphql";
 
 export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL";
 export type PoolFundingShare = { memberId: string; memberName: string; weight: number };
@@ -520,12 +550,15 @@ export function getRelayEnvironment() {
   return relayEnvironment;
 }
 
-export function useGraphqlMutation<T = unknown>(operation: GraphQLTaggedNode) {
+export function useTypedGraphqlMutation<TOperation extends MutationParameters, TResult>(
+  operation: GraphQLTaggedNode,
+  readResult: (response: TOperation["response"]) => TResult,
+) {
   const inFlightRef = useRef(0);
   const [inFlightCount, setInFlightCount] = useState(0);
   const mutate = useCallback(
-    (variables: Record<string, unknown>) =>
-      new Promise<T>((resolve, reject) => {
+    (variables: TOperation["variables"]) =>
+      new Promise<TResult>((resolve, reject) => {
         inFlightRef.current += 1;
         setInFlightCount(inFlightRef.current);
         let finished = false;
@@ -536,22 +569,17 @@ export function useGraphqlMutation<T = unknown>(operation: GraphQLTaggedNode) {
           setInFlightCount(inFlightRef.current);
         };
         try {
-          commitMutation(getRelayEnvironment(), {
+          commitMutation<TOperation>(getRelayEnvironment(), {
             mutation: operation,
             variables,
             onCompleted: (response, errors) => {
               finish();
               if (errors?.length) {
-                const error = errors[0] as Error & { extensions?: { code?: string } };
-                reject(new ApiError(error.message, error.extensions?.code));
+                reject(new ApiError(errors[0].message));
                 return;
               }
               try {
-                resolve(
-                  normalizeGraphQLValue(
-                    unwrapMutationResults(response as Record<string, unknown>),
-                  ) as T,
-                );
+                resolve(readResult(response));
               } catch (reason) {
                 reject(reason);
               }
@@ -566,76 +594,9 @@ export function useGraphqlMutation<T = unknown>(operation: GraphQLTaggedNode) {
           reject(reason);
         }
       }),
-    [operation],
+    [operation, readResult],
   );
   return { mutate, isInFlight: inFlightCount > 0 };
-}
-
-function normalizeGraphQLValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalizeGraphQLValue);
-  if (!value || typeof value !== "object") return value;
-  const item = value as Record<string, unknown>;
-  if (typeof item.__typename === "string" && item.__typename.endsWith("LedgerEntry")) {
-    const typename = item.__typename;
-    const base = Object.fromEntries(
-      Object.entries(item).map(([key, nested]) => [key, normalizeGraphQLValue(nested)]),
-    );
-    if (typename === "FundingLedgerEntry") {
-      const member = item.member as { id?: string } | undefined;
-      const pool = item.pool as { id?: string } | undefined;
-      return { ...base, kind: "FUNDING", fromMemberId: member?.id, poolId: pool?.id };
-    }
-    if (typename === "LoanTransferLedgerEntry" || typename === "RepaymentTransferLedgerEntry") {
-      const from = item.fromMember as { id?: string } | undefined;
-      const to = item.toMember as { id?: string } | undefined;
-      return {
-        ...base,
-        kind: typename === "LoanTransferLedgerEntry" ? "LOAN" : "REPAYMENT",
-        fromMemberId: from?.id,
-        toMemberId: to?.id,
-        loanId: (item.loan as { id: string }).id,
-      };
-    }
-    if (typename === "AdvanceTransferLedgerEntry" || typename === "GiftTransferLedgerEntry") {
-      const from = item.fromMember as { id?: string } | undefined;
-      const to = item.toMember as { id?: string } | undefined;
-      return {
-        ...base,
-        kind: typename === "AdvanceTransferLedgerEntry" ? "ADVANCE" : "GIFT",
-        fromMemberId: from?.id,
-        toMemberId: to?.id,
-      };
-    }
-    if (typename === "PurchaseLedgerEntry" || typename === "CorrectionLedgerEntry") {
-      const purchase = item.purchase as { id?: string } | undefined;
-      return {
-        ...base,
-        kind: typename === "PurchaseLedgerEntry" ? "PURCHASE" : "CORRECTION",
-        sourcePurchaseId: purchase?.id,
-      };
-    }
-  }
-  return Object.fromEntries(
-    Object.entries(item).map(([key, nested]) => [key, normalizeGraphQLValue(nested)]),
-  );
-}
-
-function unwrapMutationResults(response: Record<string, unknown>) {
-  return Object.fromEntries(
-    Object.entries(response).map(([key, value]) => {
-      if (!value || typeof value !== "object" || !("__typename" in value)) return [key, value];
-      const result = value as Record<string, unknown>;
-      if (typeof result.__typename === "string" && result.__typename.endsWith("UserError")) {
-        throw new MutationUserError(String(result.message), String(result.code));
-      }
-      if (typeof result.__typename === "string" && result.__typename.endsWith("Success")) {
-        if ("result" in result) return [key, result.result];
-        if ("items" in result) return [key, result.items];
-        if ("success" in result) return [key, result.success];
-      }
-      return [key, value];
-    }),
-  );
 }
 
 export async function getViewer(): Promise<{ id: string; displayName: string; email?: string }> {

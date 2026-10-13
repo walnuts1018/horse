@@ -1,16 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  bulkUpdatePurchasesMutation,
-  type BulkUpdatePurchasesMutation$data,
+  useBulkUpdatePurchasesMutation,
   type BulkUpdatePurchasesMutation$variables,
 } from "../../../entities/purchase";
-import { useGraphqlMutation, type Purchase } from "../../../shared/api";
+import type { Purchase } from "../../../shared/api";
 
-type PurchaseBulkEditResult = {
-  bulkUpdatePurchases: NonNullable<
-    BulkUpdatePurchasesMutation$data["bulkUpdatePurchases"]["purchases"]
-  >;
-};
 type PurchaseBulkPatch = BulkUpdatePurchasesMutation$variables["input"]["targets"][number]["patch"];
 
 type PurchaseBulkUndo = Array<{
@@ -30,11 +24,7 @@ export function usePurchaseBulkEdit({
   selectionKey: string;
   refresh: () => void | Promise<void>;
 }) {
-  const { mutate } = useGraphqlMutation<PurchaseBulkEditResult>(bulkUpdatePurchasesMutation);
-  const mutateBulkUpdatePurchases = useCallback(
-    (variables: BulkUpdatePurchasesMutation$variables) => mutate(variables),
-    [mutate],
-  );
+  const { mutate: mutateBulkUpdatePurchases } = useBulkUpdatePurchasesMutation();
   const [selectedPurchases, setSelectedPurchases] = useState<Set<string>>(() => new Set());
   const selectionAnchor = useRef<string | null>(null);
   const [merchantActive, setMerchantActive] = useState(false);

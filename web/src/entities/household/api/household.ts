@@ -8,9 +8,9 @@ import {
   type HouseholdQuery,
   type HouseholdQuery$data,
   type HouseholdsQuery,
-  type CreateHouseholdMutation$data,
+  type CreateHouseholdMutation,
   type CreateHouseholdMutation$variables,
-  type AcceptHouseholdInvitationMutation$data,
+  type AcceptHouseholdInvitationMutation,
   type AcceptHouseholdInvitationMutation$variables,
 } from "../../../shared/api";
 import {
@@ -49,16 +49,15 @@ export function createHousehold(
   input: CreateHouseholdMutation$variables["input"],
 ): Promise<{ id: string }> {
   return new Promise((resolve, reject) =>
-    commitMutation(getRelayEnvironment(), {
+    commitMutation<CreateHouseholdMutation>(getRelayEnvironment(), {
       mutation: createHouseholdMutation,
       variables: { input },
       onCompleted: (response, errors) => {
         if (errors?.length) {
-          const error = errors[0] as Error & { extensions?: { code?: string } };
-          reject(new ApiError(error.message, error.extensions?.code));
+          reject(new ApiError(errors[0].message));
           return;
         }
-        const result = (response as CreateHouseholdMutation$data).createHousehold;
+        const result = response.createHousehold;
         switch (result.__typename) {
           case "CreateHouseholdSuccess":
             if (!result.result) {
@@ -85,17 +84,15 @@ export function acceptHouseholdInvitation(
   input: AcceptHouseholdInvitationMutation$variables["input"],
 ): Promise<{ id: string; name: string }> {
   return new Promise((resolve, reject) =>
-    commitMutation(getRelayEnvironment(), {
+    commitMutation<AcceptHouseholdInvitationMutation>(getRelayEnvironment(), {
       mutation: acceptHouseholdInvitationMutation,
       variables: { input },
       onCompleted: (response, errors) => {
         if (errors?.length) {
-          const error = errors[0] as Error & { extensions?: { code?: string } };
-          reject(new ApiError(error.message, error.extensions?.code));
+          reject(new ApiError(errors[0].message));
           return;
         }
-        const result = (response as AcceptHouseholdInvitationMutation$data)
-          .acceptHouseholdInvitation;
+        const result = response.acceptHouseholdInvitation;
         switch (result.__typename) {
           case "AcceptHouseholdInvitationSuccess":
             if (!result.result) {

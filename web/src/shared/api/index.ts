@@ -6,10 +6,12 @@ export type {
   HouseholdsQuery$data,
 } from "./__generated__/HouseholdsQuery.graphql";
 export type {
+  CreateHouseholdMutation,
   CreateHouseholdMutation$data,
   CreateHouseholdMutation$variables,
 } from "./__generated__/CreateHouseholdMutation.graphql";
 export type {
+  AcceptHouseholdInvitationMutation,
   AcceptHouseholdInvitationMutation$data,
   AcceptHouseholdInvitationMutation$variables,
 } from "./__generated__/AcceptHouseholdInvitationMutation.graphql";

@@ -3,7 +3,6 @@ import { BookOpen, ChevronDown, ChevronRight, Plus, Search } from "lucide-react"
 import {
   ApiError,
   makeIdempotencyKey,
-  useGraphqlMutation,
   type Household,
   type Purchase,
   type PurchaseItem,
@@ -14,9 +13,9 @@ import {
   type UnmatchedObservationState,
 } from "../../../shared/api";
 import {
-  postPurchaseMutation,
   mapUpdatePurchaseItemInput,
-  updatePurchaseMutation,
+  usePostPurchaseMutation,
+  useUpdatePurchaseMutation,
   useUpdatePurchaseItem,
   useHouseholdPurchases,
 } from "../../../entities/purchase";
@@ -77,9 +76,9 @@ export function LedgerPage({
     onUnsavedChanges(false);
     return () => onUnsavedChanges(false);
   }, [onUnsavedChanges]);
-  const { mutate: mutatePostPurchase } = useGraphqlMutation(postPurchaseMutation);
+  const { mutate: mutatePostPurchase } = usePostPurchaseMutation();
   const mutateUpdatePurchaseItem = useUpdatePurchaseItem();
-  const { mutate: mutateUpdatePurchase } = useGraphqlMutation(updatePurchaseMutation);
+  const { mutate: mutateUpdatePurchase } = useUpdatePurchaseMutation();
   const {
     recordMode,
     viewMode,

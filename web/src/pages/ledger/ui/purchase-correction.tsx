@@ -2,13 +2,12 @@ import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import {
   makeIdempotencyKey,
-  useGraphqlMutation,
   type Household,
   type Purchase,
   type PurchaseItem,
   type PurchasePaymentInput,
 } from "../../../shared/api";
-import { correctPurchaseMutation } from "../../../entities/purchase";
+import { useCorrectPurchaseMutation } from "../../../entities/purchase";
 import { getRemainingRefundAmount } from "../model/purchase-correction";
 import { InlineError } from "../../../shared/ui";
 
@@ -33,7 +32,7 @@ export function PurchaseCorrection({
   onCancel: () => void;
   onSaved: () => Promise<void>;
 }) {
-  const { mutate } = useGraphqlMutation(correctPurchaseMutation);
+  const { mutate } = useCorrectPurchaseMutation();
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [refundPayments, setRefundPayments] = useState<RefundPayment[]>([]);

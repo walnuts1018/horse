@@ -1,16 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  bulkUpdatePurchaseItemsMutation,
-  type BulkUpdatePurchaseItemsMutation$data,
+  useBulkUpdatePurchaseItemsMutation,
   type BulkUpdatePurchaseItemsMutation$variables,
 } from "../../../entities/purchase";
-import { useGraphqlMutation, type Purchase } from "../../../shared/api";
+import type { Purchase } from "../../../shared/api";
 
-type LedgerItemBulkEditResult = {
-  bulkUpdatePurchaseItems: NonNullable<
-    BulkUpdatePurchaseItemsMutation$data["bulkUpdatePurchaseItems"]["items"]
-  >;
-};
 type LedgerItemBulkPatch = BulkUpdatePurchaseItemsMutation$variables["input"]["patch"];
 
 type LedgerItemBulkUndo = Array<{
@@ -30,11 +24,7 @@ export function useLedgerItemBulkEdit({
   selectionKey: string;
   refresh: () => void | Promise<void>;
 }) {
-  const { mutate } = useGraphqlMutation<LedgerItemBulkEditResult>(bulkUpdatePurchaseItemsMutation);
-  const mutateBulkUpdatePurchaseItems = useCallback(
-    (variables: BulkUpdatePurchaseItemsMutation$variables) => mutate(variables),
-    [mutate],
-  );
+  const { mutate: mutateBulkUpdatePurchaseItems } = useBulkUpdatePurchaseItemsMutation();
   const [selectedItems, setSelectedItems] = useState<Set<string>>(() => new Set());
   const selectionAnchor = useRef<{ context: string; id: string } | null>(null);
   const [category, setCategory] = useState("");
