@@ -259,8 +259,8 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	originalPeriod, correctionPeriod := accountingPeriod(purchaseAt), accountingPeriod(now)
 	purchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(purchaseAt.UTC().Format(time.RFC3339)), Merchant: testMerchant,
-		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 1000}},
-		Items:              []*model.PurchaseItemInput{{Name: "Shared item", AmountYen: 1000, Allocations: []*model.AllocationInput{{PoolID: sharedPool.ID, Weight: 1}}}},
+		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 5000}},
+		Items:              []*model.PurchaseItemInput{{Name: "Shared item", AmountYen: 5000, Allocations: []*model.AllocationInput{{PoolID: sharedPool.ID, Weight: 1}}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -274,10 +274,10 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 		t.Fatal(err)
 	}
 	closedLines := settlementByMember(t, settlementData(t, closed).Lines)
-	if closedLines[memberA].AdvanceCreditYen != 400 || closedLines[memberA].AmountDueYen != -400 || closedLines[memberB].MonthlyAdjustmentYen != 400 || closedLines[memberB].AmountDueYen != 400 {
+	if closedLines[memberA].AdvanceCreditYen != 2000 || closedLines[memberA].AmountDueYen != -2000 || closedLines[memberB].MonthlyAdjustmentYen != 2000 || closedLines[memberB].AmountDueYen != 2000 {
 		t.Fatalf("closed settlement did not capture the original purchase allocation: %#v", closedLines)
 	}
-	changedAmount := model.Long(900)
+	changedAmount := model.Long(4500)
 	if _, err := mutation.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
 		ItemID: posted.Items[0].ID, BaseRevision: posted.Items[0].Revision, AmountYen: omittable(&changedAmount),
 	}); !errors.Is(err, ErrConflict) {
@@ -286,7 +286,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 
 	if _, err := mutation.correctPurchase(ctx, model.CorrectPurchaseInput{
 		HouseholdID: household.ID, Target: &model.CorrectPurchaseTargetInput{Item: &model.PurchaseCorrectionItemTargetInput{PurchaseID: purchase.ID, ItemID: posted.Items[0].ID}},
-		AmountDeltaYen: -100, Reason: testCorrectionRefundReason, IdempotencyKey: uuid.NewV7().String(),
+		AmountDeltaYen: -2000, Reason: testCorrectionRefundReason, IdempotencyKey: uuid.NewV7().String(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 		correctionDebits += entry.DebitYen
 		correctionCredits += entry.CreditYen
 	}
-	if len(correctionEntries) != 2 || correctionDebits != 100 || correctionCredits != 100 {
+	if len(correctionEntries) != 2 || correctionDebits != 2000 || correctionCredits != 2000 {
 		t.Fatalf("correction journal must balance at the refund amount: entries=%#v debits=%d credits=%d", correctionEntries, correctionDebits, correctionCredits)
 	}
 	assertHouseholdJournalsBalance(t, ctx, db, generatedUUID(household.ID))
@@ -312,7 +312,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 		models.LedgerEntries.Columns.Kind.EQ(psql.Arg(sourceKindCorrection)),
 		models.LedgerEntries.Columns.SourcePurchaseID.EQ(psql.Arg(generatedUUID(purchase.ID))),
 	))).All(ctx, bobpgx.NewPool(db))
-	if err != nil || len(ledgerEntries) != 1 || ledgerEntries[0].JournalID != corrections[0].JournalID || ledgerEntries[0].AmountYen != 100 {
+	if err != nil || len(ledgerEntries) != 1 || ledgerEntries[0].JournalID != corrections[0].JournalID || ledgerEntries[0].AmountYen != 2000 {
 		t.Fatalf("correction ledger entry did not capture the refund: entries=%#v error=%v", ledgerEntries, err)
 	}
 
@@ -345,14 +345,14 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 		}
 		memberAmounts[item.MemberID] = int64(item.AmountYen)
 	}
-	if memberAmounts[memberA] != 540 || memberAmounts[memberB] != 360 {
+	if memberAmounts[memberA] != 1800 || memberAmounts[memberB] != 1200 {
 		t.Fatalf("purchase-month member analytics did not retain the corrected historical burden: %#v", memberSpending.Items)
 	}
 	categorySpending, err := query.MonthlyCategorySpending(ctx, household.ID, model.YearMonth(originalPeriod), model.YearMonth(originalPeriod))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(categorySpending) != 1 || string(categorySpending[0].Period) != originalPeriod || int64(categorySpending[0].AmountYen) != 900 {
+	if len(categorySpending) != 1 || string(categorySpending[0].Period) != originalPeriod || int64(categorySpending[0].AmountYen) != 3000 {
 		t.Fatalf("purchase-month category analytics did not retain the correction: %#v", categorySpending)
 	}
 
@@ -361,15 +361,15 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 		t.Fatal(err)
 	}
 	nextLines := settlementByMember(t, settlementData(t, nextSettlement).Lines)
-	if nextLines[memberA].MonthlyAdjustmentYen != 40 || nextLines[memberA].PriorBalanceYen != -400 || nextLines[memberA].AmountDueYen != -360 ||
-		nextLines[memberB].MonthlyAdjustmentYen != -40 || nextLines[memberB].PriorBalanceYen != 400 || nextLines[memberB].AmountDueYen != 360 {
+	if nextLines[memberA].MonthlyAdjustmentYen != 800 || nextLines[memberA].PriorBalanceYen != -2000 || nextLines[memberA].AmountDueYen != -1200 ||
+		nextLines[memberB].MonthlyAdjustmentYen != -800 || nextLines[memberB].PriorBalanceYen != 2000 || nextLines[memberB].AmountDueYen != 1200 {
 		t.Fatalf("next settlement did not apply the correction while carrying the closed balance: %#v", nextLines)
 	}
 	accountAnalysis, err := query.AccountBalanceAnalysis(ctx, household.ID, account.ID, model.YearMonth(correctionPeriod), model.YearMonth(correctionPeriod), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(accountAnalysis.Changes.Edges) != 1 || accountAnalysis.Changes.Edges[0].Node.ChangeYen != -100 || accountAnalysis.ClosingBalanceYen != accountAnalysis.OpeningBalanceYen-100 ||
+	if len(accountAnalysis.Changes.Edges) != 1 || accountAnalysis.Changes.Edges[0].Node.ChangeYen != -2000 || accountAnalysis.ClosingBalanceYen != accountAnalysis.OpeningBalanceYen-2000 ||
 		accountBalanceSourceType(accountAnalysis.Changes.Edges[0].Node.Source) != "PurchaseItemCorrection" {
 		t.Fatalf("correction period card balance analysis did not reflect the refund: %#v", accountAnalysis)
 	}
