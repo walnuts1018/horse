@@ -209,3 +209,7 @@ HouseholdEventのJSON化とBob insertを`accounting.RecordEvent`へ集約し、�
 レビューの画面行数と`useState`呼び出し数を現在の実装に合わせて更新しました。Web型検査、Steiger、Relay検証、対象lint・formatが成功しました。残る共通GraphQL変換と手書き通信型は`docs/reviews/simple.md`に維持しています。
 
 `SetFundingSchedule`のトランザクション、旧scheduleの終了と無効化、新schedule作成、イベント記録を`internal/application/funding_schedule`へ移しました。Resolverは認証、日付変換、Service呼び出し、GraphQL結果変換を行います。Application Service内のDB操作はBob DSLを使用します。
+
+`CreatePool`のトランザクション、プールと初期資金拠出ルールの作成、既定配賦versionの複製と更新、イベント記録を`internal/application/pool`へ移しました。Resolverは認証とGraphQL結果用のhousehold再読込を行います。プール追加時に既存配賦を複製して新しいプールへweight 1を加える動作を維持しました。
+
+`CreateAccount`の認可後処理、口座作成、開始残高の仕訳とイベント記録を`internal/application/account`へ移し、口座と仕訳を同じtransactionで保存します。`CreateCategory`の認可後処理、カテゴリ作成とイベント記録も`internal/application/category`へ移しました。DBアクセスはBob DSLを使用します。
