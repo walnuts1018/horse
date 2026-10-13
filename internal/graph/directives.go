@@ -8,10 +8,15 @@ import (
 )
 
 func NodeIDDirective(ctx context.Context, value any, next graphql.Resolver, of string) (any, error) {
-	if value == nil {
+	resolved, err := next(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if resolved == nil {
 		return nil, nil
 	}
-	switch globalID := value.(type) {
+
+	switch globalID := resolved.(type) {
 	case string:
 		return decodeNodeID(globalID, of)
 	case []string:

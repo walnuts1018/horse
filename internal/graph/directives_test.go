@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"slices"
 	"testing"
 
@@ -18,7 +19,9 @@ func TestNodeIDDirectiveDecodesList(t *testing.T) {
 		globalIDs[i] = id
 	}
 
-	value, err := NodeIDDirective(t.Context(), globalIDs, nil, "Tag")
+	value, err := NodeIDDirective(t.Context(), map[string]any{"ids": globalIDs}, func(context.Context) (any, error) {
+		return globalIDs, nil
+	}, "Tag")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +38,9 @@ func TestNodeIDDirectiveDecodesLoanBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	value, err := NodeIDDirective(t.Context(), globalID, nil, "LoanBalance")
+	value, err := NodeIDDirective(t.Context(), map[string]any{"id": globalID}, func(context.Context) (any, error) {
+		return globalID, nil
+	}, "LoanBalance")
 	if err != nil {
 		t.Fatal(err)
 	}
