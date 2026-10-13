@@ -1,0 +1,20 @@
+extend type Mutation {
+  archiveRecurringExpense(input: ArchiveRecurringExpenseInput!): ArchiveRecurringExpenseResult!
+}
+
+input ArchiveRecurringExpenseInput {
+  expenseId: ID! @nodeID(of: "RecurringExpense")
+  baseRevision: Int!
+  archived: Boolean!
+}
+
+union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | ArchiveRecurringExpenseUserError
+
+type ArchiveRecurringExpenseSuccess {
+  result: RecurringExpense!
+}
+
+type ArchiveRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

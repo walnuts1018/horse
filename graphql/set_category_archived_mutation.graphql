@@ -1,0 +1,19 @@
+extend type Mutation {
+  setCategoryArchived(input: SetCategoryArchivedInput!): SetCategoryArchivedResult!
+}
+
+input SetCategoryArchivedInput {
+  categoryId: ID! @nodeID(of: "Category")
+  archived: Boolean!
+}
+
+union SetCategoryArchivedResult = SetCategoryArchivedSuccess | SetCategoryArchivedUserError
+
+type SetCategoryArchivedSuccess {
+  result: Category!
+}
+
+type SetCategoryArchivedUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

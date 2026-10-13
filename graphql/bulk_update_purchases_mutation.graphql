@@ -1,0 +1,30 @@
+extend type Mutation {
+  bulkUpdatePurchases(input: BulkUpdatePurchasesInput!): BulkUpdatePurchasesResult!
+}
+
+union BulkUpdatePurchasesResult = BulkUpdatePurchasesSuccess | BulkUpdatePurchasesUserError
+
+type BulkUpdatePurchasesSuccess {
+  purchases: [Purchase!]!
+}
+
+input BulkUpdatePurchasesInput {
+  targets: [PurchaseUpdateTargetInput!]!
+}
+
+input BulkPurchasePatch {
+  occurredAt: DateTime @goField(omittable: true)
+  merchant: String @goField(omittable: true)
+  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
+}
+
+input PurchaseUpdateTargetInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+  baseRevision: Int!
+  patch: BulkPurchasePatch!
+}
+
+type BulkUpdatePurchasesUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

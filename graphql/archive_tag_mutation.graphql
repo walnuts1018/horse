@@ -1,0 +1,20 @@
+extend type Mutation {
+  archiveTag(input: ArchiveTagInput!): ArchiveTagResult!
+}
+
+input ArchiveTagInput {
+  tagId: ID! @nodeID(of: "Tag")
+  baseRevision: Int!
+  archived: Boolean!
+}
+
+union ArchiveTagResult = ArchiveTagSuccess | ArchiveTagUserError
+
+type ArchiveTagSuccess {
+  result: Tag!
+}
+
+type ArchiveTagUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

@@ -1111,43 +1111,43 @@ type MonthlyMemberSpendingResolver interface {
 	MemberID(ctx context.Context, obj *model.MonthlyMemberSpending) (string, error)
 }
 type MutationResolver interface {
-	CreateAccount(ctx context.Context, input model.CreateAccountInput) (model.CreateAccountResult, error)
-	SetDefaultAllocation(ctx context.Context, input model.SetDefaultAllocationInput) (model.SetDefaultAllocationResult, error)
-	SetAllocationRule(ctx context.Context, input model.SetAllocationRuleInput) (model.SetAllocationRuleResult, error)
-	CreateBudget(ctx context.Context, input model.CreateBudgetInput) (model.CreateBudgetResult, error)
-	UpdateBudget(ctx context.Context, input model.UpdateBudgetInput) (model.UpdateBudgetResult, error)
-	ArchiveBudget(ctx context.Context, input model.ArchiveBudgetInput) (model.ArchiveBudgetResult, error)
-	CreateCategory(ctx context.Context, input model.CreateCategoryInput) (model.CreateCategoryResult, error)
-	SetCategoryArchived(ctx context.Context, input model.SetCategoryArchivedInput) (model.SetCategoryArchivedResult, error)
-	SetFundingSchedule(ctx context.Context, input model.SetFundingScheduleInput) (model.SetFundingScheduleResult, error)
 	AcceptHouseholdInvitation(ctx context.Context, input model.AcceptHouseholdInvitationInput) (model.AcceptHouseholdInvitationResult, error)
-	CreateHouseholdInvitation(ctx context.Context, input model.CreateHouseholdInvitationInput) (model.CreateHouseholdInvitationResult, error)
-	RevokeHouseholdInvitation(ctx context.Context, input model.RevokeHouseholdInvitationInput) (model.RevokeHouseholdInvitationResult, error)
-	CreateHousehold(ctx context.Context, input model.CreateHouseholdInput) (model.CreateHouseholdResult, error)
+	ArchiveBudget(ctx context.Context, input model.ArchiveBudgetInput) (model.ArchiveBudgetResult, error)
+	ArchiveRecurringExpense(ctx context.Context, input model.ArchiveRecurringExpenseInput) (model.ArchiveRecurringExpenseResult, error)
+	ArchiveTag(ctx context.Context, input model.ArchiveTagInput) (model.ArchiveTagResult, error)
+	BulkUpdatePurchaseItems(ctx context.Context, input model.BulkUpdatePurchaseItemsInput) (model.BulkUpdatePurchaseItemsResult, error)
+	BulkUpdatePurchases(ctx context.Context, input model.BulkUpdatePurchasesInput) (model.BulkUpdatePurchasesResult, error)
 	ClosePeriod(ctx context.Context, input model.ClosePeriodInput) (model.ClosePeriodResult, error)
+	CorrectPurchase(ctx context.Context, input model.CorrectPurchaseInput) (model.CorrectPurchaseResult, error)
+	CreateAccount(ctx context.Context, input model.CreateAccountInput) (model.CreateAccountResult, error)
+	CreateBudget(ctx context.Context, input model.CreateBudgetInput) (model.CreateBudgetResult, error)
+	CreateCategory(ctx context.Context, input model.CreateCategoryInput) (model.CreateCategoryResult, error)
+	CreateHouseholdInvitation(ctx context.Context, input model.CreateHouseholdInvitationInput) (model.CreateHouseholdInvitationResult, error)
+	CreateHousehold(ctx context.Context, input model.CreateHouseholdInput) (model.CreateHouseholdResult, error)
+	CreatePool(ctx context.Context, input model.CreatePoolInput) (model.CreatePoolResult, error)
+	CreateProductConcept(ctx context.Context, input model.CreateProductConceptInput) (model.CreateProductConceptResult, error)
+	CreateProductVariant(ctx context.Context, input model.CreateProductVariantInput) (model.CreateProductVariantResult, error)
+	CreatePurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreatePurchaseResult, error)
+	CreateRecurringExpense(ctx context.Context, input model.CreateRecurringExpenseInput) (model.CreateRecurringExpenseResult, error)
+	CreateTag(ctx context.Context, input model.CreateTagInput) (model.CreateTagResult, error)
+	PostPurchase(ctx context.Context, input model.PostPurchaseInput) (model.PostPurchaseResult, error)
 	RecordAccountMovement(ctx context.Context, input model.RecordAccountMovementInput) (model.RecordAccountMovementResult, error)
 	RecordExternalIncome(ctx context.Context, input model.RecordExternalIncomeInput) (model.RecordExternalIncomeResult, error)
 	RecordFunding(ctx context.Context, input model.RecordFundingInput) (model.RecordFundingResult, error)
 	RecordRepayment(ctx context.Context, input model.RecordRepaymentInput) (model.RecordRepaymentResult, error)
 	RecordTransfer(ctx context.Context, input model.RecordTransferInput) (model.RecordTransferResult, error)
-	CreatePool(ctx context.Context, input model.CreatePoolInput) (model.CreatePoolResult, error)
+	RevokeHouseholdInvitation(ctx context.Context, input model.RevokeHouseholdInvitationInput) (model.RevokeHouseholdInvitationResult, error)
+	SetAllocationRule(ctx context.Context, input model.SetAllocationRuleInput) (model.SetAllocationRuleResult, error)
+	SetCategoryArchived(ctx context.Context, input model.SetCategoryArchivedInput) (model.SetCategoryArchivedResult, error)
+	SetDefaultAllocation(ctx context.Context, input model.SetDefaultAllocationInput) (model.SetDefaultAllocationResult, error)
+	SetFundingSchedule(ctx context.Context, input model.SetFundingScheduleInput) (model.SetFundingScheduleResult, error)
 	SetPoolFundingRule(ctx context.Context, input model.SetPoolFundingRuleInput) (model.SetPoolFundingRuleResult, error)
-	CreateProductConcept(ctx context.Context, input model.CreateProductConceptInput) (model.CreateProductConceptResult, error)
-	CreateProductVariant(ctx context.Context, input model.CreateProductVariantInput) (model.CreateProductVariantResult, error)
 	SetProductAlias(ctx context.Context, input model.SetProductAliasInput) (model.SetProductAliasResult, error)
+	UpdateBudget(ctx context.Context, input model.UpdateBudgetInput) (model.UpdateBudgetResult, error)
 	UpdatePurchaseItem(ctx context.Context, input model.UpdatePurchaseItemInput) (model.UpdatePurchaseItemResult, error)
-	BulkUpdatePurchaseItems(ctx context.Context, input model.BulkUpdatePurchaseItemsInput) (model.BulkUpdatePurchaseItemsResult, error)
-	CreatePurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreatePurchaseResult, error)
-	PostPurchase(ctx context.Context, input model.PostPurchaseInput) (model.PostPurchaseResult, error)
 	UpdatePurchase(ctx context.Context, input model.UpdatePurchaseInput) (model.UpdatePurchaseResult, error)
-	CorrectPurchase(ctx context.Context, input model.CorrectPurchaseInput) (model.CorrectPurchaseResult, error)
-	BulkUpdatePurchases(ctx context.Context, input model.BulkUpdatePurchasesInput) (model.BulkUpdatePurchasesResult, error)
-	CreateRecurringExpense(ctx context.Context, input model.CreateRecurringExpenseInput) (model.CreateRecurringExpenseResult, error)
 	UpdateRecurringExpense(ctx context.Context, input model.UpdateRecurringExpenseInput) (model.UpdateRecurringExpenseResult, error)
-	ArchiveRecurringExpense(ctx context.Context, input model.ArchiveRecurringExpenseInput) (model.ArchiveRecurringExpenseResult, error)
-	CreateTag(ctx context.Context, input model.CreateTagInput) (model.CreateTagResult, error)
 	UpdateTag(ctx context.Context, input model.UpdateTagInput) (model.UpdateTagResult, error)
-	ArchiveTag(ctx context.Context, input model.ArchiveTagInput) (model.ArchiveTagResult, error)
 }
 type PoolResolver interface {
 	ID(ctx context.Context, obj *model.Pool) (string, error)
@@ -5010,6 +5010,25 @@ func newExecutionContext(
 }
 
 var sources = []*ast.Source{
+	{Name: "../../graphql/accept_household_invitation_mutation.graphql", Input: `extend type Mutation {
+  acceptHouseholdInvitation(input: AcceptHouseholdInvitationInput!): AcceptHouseholdInvitationResult!
+}
+
+input AcceptHouseholdInvitationInput {
+  token: String!
+}
+
+union AcceptHouseholdInvitationResult = AcceptHouseholdInvitationSuccess | AcceptHouseholdInvitationUserError
+
+type AcceptHouseholdInvitationSuccess {
+  result: Household!
+}
+
+type AcceptHouseholdInvitationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/account.graphql", Input: `type Account implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
@@ -5124,34 +5143,6 @@ extend type Query {
   accountMovements(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AccountMovementConnection!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/account_mutations.graphql", Input: `extend type Mutation {
-  createAccount(input: CreateAccountInput!): CreateAccountResult!
-}
-
-union CreateAccountResult = CreateAccountSuccess | CreateAccountUserError
-
-type CreateAccountSuccess {
-  result: Account!
-}
-
-input CreateAccountInput {
-  householdId: ID! @nodeID(of: "Household")
-  name: String!
-  kind: AccountKind!
-  poolId: ID @nodeID(of: "Pool")
-  openingBalance: AccountOpeningBalanceInput
-}
-
-input AccountOpeningBalanceInput {
-  amountYen: Long!
-  at: DateTime!
-}
-
-type CreateAccountUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/allocation.graphql", Input: `type Allocation {
   poolId: ID! @goField(forceResolver: true)
   poolName: String!
@@ -5162,54 +5153,6 @@ type CreateAccountUserError implements MutationError {
 input AllocationInput {
   poolId: ID! @nodeID(of: "Pool")
   weight: Long!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/allocation_mutations.graphql", Input: `extend type Mutation {
-  setDefaultAllocation(input: SetDefaultAllocationInput!): SetDefaultAllocationResult!
-}
-
-union SetDefaultAllocationResult = SetDefaultAllocationSuccess | SetDefaultAllocationUserError
-
-type SetDefaultAllocationSuccess {
-  result: Household!
-}
-
-input SetDefaultAllocationInput {
-  householdId: ID! @nodeID(of: "Household")
-  allocations: [AllocationInput!]!
-}
-
-type SetDefaultAllocationUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  setAllocationRule(input: SetAllocationRuleInput!): SetAllocationRuleResult!
-}
-
-union SetAllocationRuleResult = SetAllocationRuleSuccess | SetAllocationRuleUserError
-
-type SetAllocationRuleSuccess {
-  result: AllocationRule!
-}
-
-input SetAllocationRuleInput {
-  householdId: ID! @nodeID(of: "Household")
-  target: AllocationRuleTargetInput!
-  allocations: [AllocationInput!]!
-}
-
-input AllocationRuleTargetInput @oneOf {
-  categoryId: ID @nodeID(of: "Category")
-  merchant: String
-  productConceptId: ID @nodeID(of: "ProductConcept")
-  productVariantId: ID @nodeID(of: "ProductVariant")
-}
-
-type SetAllocationRuleUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/allocation_rule.graphql", Input: `interface AllocationRuleTarget {
@@ -5243,6 +5186,69 @@ extend type Query {
   allocationRules(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AllocationRuleConnection!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/archive_budget_mutation.graphql", Input: `extend type Mutation {
+  archiveBudget(input: ArchiveBudgetInput!): ArchiveBudgetResult!
+}
+
+input ArchiveBudgetInput {
+  budgetId: ID! @nodeID(of: "Budget")
+  baseRevision: Int!
+  archived: Boolean!
+}
+
+union ArchiveBudgetResult = ArchiveBudgetSuccess | ArchiveBudgetUserError
+
+type ArchiveBudgetSuccess {
+  result: Budget!
+}
+
+type ArchiveBudgetUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/archive_recurring_expense_mutation.graphql", Input: `extend type Mutation {
+  archiveRecurringExpense(input: ArchiveRecurringExpenseInput!): ArchiveRecurringExpenseResult!
+}
+
+input ArchiveRecurringExpenseInput {
+  expenseId: ID! @nodeID(of: "RecurringExpense")
+  baseRevision: Int!
+  archived: Boolean!
+}
+
+union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | ArchiveRecurringExpenseUserError
+
+type ArchiveRecurringExpenseSuccess {
+  result: RecurringExpense!
+}
+
+type ArchiveRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/archive_tag_mutation.graphql", Input: `extend type Mutation {
+  archiveTag(input: ArchiveTagInput!): ArchiveTagResult!
+}
+
+input ArchiveTagInput {
+  tagId: ID! @nodeID(of: "Tag")
+  baseRevision: Int!
+  archived: Boolean!
+}
+
+union ArchiveTagResult = ArchiveTagSuccess | ArchiveTagUserError
+
+type ArchiveTagSuccess {
+  result: Tag!
+}
+
+type ArchiveTagUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/budget.graphql", Input: `type Budget implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
@@ -5261,7 +5267,152 @@ extend type Query {
   budgets(householdId: ID! @nodeID(of: "Household"), period: YearMonth!): [Budget!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/budget_mutations.graphql", Input: `extend type Mutation {
+	{Name: "../../graphql/bulk_update_purchase_items_mutation.graphql", Input: `extend type Mutation {
+  bulkUpdatePurchaseItems(input: BulkUpdatePurchaseItemsInput!): BulkUpdatePurchaseItemsResult!
+}
+
+union BulkUpdatePurchaseItemsResult = BulkUpdatePurchaseItemsSuccess | BulkUpdatePurchaseItemsUserError
+
+type BulkUpdatePurchaseItemsSuccess {
+  items: [PurchaseItem!]!
+}
+
+input BulkUpdatePurchaseItemsInput {
+  targets: [PurchaseItemTargetInput!]!
+  patch: BulkPurchaseItemPatch!
+}
+
+input BulkPurchaseItemPatch {
+  categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
+  productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
+  allocations: [AllocationInput!] @goField(omittable: true)
+  tagIds: [ID!] @nodeID(of: "Tag") @goField(omittable: true)
+}
+
+input PurchaseItemTargetInput {
+  itemId: ID! @nodeID(of: "PurchaseItem")
+  baseRevision: Int!
+}
+
+type BulkUpdatePurchaseItemsUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/bulk_update_purchases_mutation.graphql", Input: `extend type Mutation {
+  bulkUpdatePurchases(input: BulkUpdatePurchasesInput!): BulkUpdatePurchasesResult!
+}
+
+union BulkUpdatePurchasesResult = BulkUpdatePurchasesSuccess | BulkUpdatePurchasesUserError
+
+type BulkUpdatePurchasesSuccess {
+  purchases: [Purchase!]!
+}
+
+input BulkUpdatePurchasesInput {
+  targets: [PurchaseUpdateTargetInput!]!
+}
+
+input BulkPurchasePatch {
+  occurredAt: DateTime @goField(omittable: true)
+  merchant: String @goField(omittable: true)
+  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
+}
+
+input PurchaseUpdateTargetInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+  baseRevision: Int!
+  patch: BulkPurchasePatch!
+}
+
+type BulkUpdatePurchasesUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/category.graphql", Input: `type Category implements Node & AllocationRuleTarget {
+  id: ID! @goField(forceResolver: true)
+  name: String!
+  parentId: ID @goField(forceResolver: true)
+  archived: Boolean!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/close_period_mutation.graphql", Input: `extend type Mutation {
+  closePeriod(input: ClosePeriodInput!): ClosePeriodResult!
+}
+
+union ClosePeriodResult = ClosePeriodSuccess | ClosePeriodUserError
+
+type ClosePeriodSuccess {
+  result: Settlement!
+}
+
+input ClosePeriodInput {
+  householdId: ID! @nodeID(of: "Household")
+  period: YearMonth!
+  expectedRevision: Int!
+}
+
+type ClosePeriodUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/correct_purchase_mutation.graphql", Input: `extend type Mutation {
+  correctPurchase(input: CorrectPurchaseInput!): CorrectPurchaseResult!
+}
+
+union CorrectPurchaseResult = CorrectPurchaseSuccess | CorrectPurchaseUserError
+
+type CorrectPurchaseSuccess {
+  result: Purchase!
+}
+
+input CorrectPurchaseInput {
+  householdId: ID! @nodeID(of: "Household")
+  purchaseId: ID! @nodeID(of: "Purchase")
+  itemId: ID @nodeID(of: "PurchaseItem")
+  amountDeltaYen: Long!
+  reason: String!
+  allocations: [AllocationInput!]
+  paymentAllocations: [PurchasePaymentInput!]
+  idempotencyKey: String!
+}
+
+type CorrectPurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/create_account_mutation.graphql", Input: `extend type Mutation {
+  createAccount(input: CreateAccountInput!): CreateAccountResult!
+}
+
+union CreateAccountResult = CreateAccountSuccess | CreateAccountUserError
+
+type CreateAccountSuccess {
+  result: Account!
+}
+
+input CreateAccountInput {
+  householdId: ID! @nodeID(of: "Household")
+  name: String!
+  kind: AccountKind!
+  poolId: ID @nodeID(of: "Pool")
+  openingBalance: AccountOpeningBalanceInput
+}
+
+input AccountOpeningBalanceInput {
+  amountYen: Long!
+  at: DateTime!
+}
+
+type CreateAccountUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/create_budget_mutation.graphql", Input: `extend type Mutation {
   createBudget(input: CreateBudgetInput!): CreateBudgetResult!
 }
 
@@ -5284,62 +5435,8 @@ type CreateBudgetUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
-
-extend type Mutation {
-  updateBudget(input: UpdateBudgetInput!): UpdateBudgetResult!
-}
-
-union UpdateBudgetResult = UpdateBudgetSuccess | UpdateBudgetUserError
-
-type UpdateBudgetSuccess {
-  result: Budget!
-}
-
-input UpdateBudgetInput {
-  householdId: ID! @nodeID(of: "Household")
-  budgetId: ID! @nodeID(of: "Budget")
-  baseRevision: Int!
-  categoryId: ID @nodeID(of: "Category")
-  name: String!
-  amountYen: Long!
-  startsOn: Date!
-  endsOn: Date
-}
-
-type UpdateBudgetUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  archiveBudget(input: ArchiveBudgetInput!): ArchiveBudgetResult!
-}
-
-input ArchiveBudgetInput {
-  budgetId: ID! @nodeID(of: "Budget")
-  baseRevision: Int!
-  archived: Boolean!
-}
-
-union ArchiveBudgetResult = ArchiveBudgetSuccess | ArchiveBudgetUserError
-
-type ArchiveBudgetSuccess {
-  result: Budget!
-}
-
-type ArchiveBudgetUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
 `, BuiltIn: false},
-	{Name: "../../graphql/category.graphql", Input: `type Category implements Node & AllocationRuleTarget {
-  id: ID! @goField(forceResolver: true)
-  name: String!
-  parentId: ID @goField(forceResolver: true)
-  archived: Boolean!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/category_mutations.graphql", Input: `extend type Mutation {
+	{Name: "../../graphql/create_category_mutation.graphql", Input: `extend type Mutation {
   createCategory(input: CreateCategoryInput!): CreateCategoryResult!
 }
 
@@ -5359,23 +5456,201 @@ type CreateCategoryUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
+`, BuiltIn: false},
+	{Name: "../../graphql/create_household_invitation_mutation.graphql", Input: `type CreatedHouseholdInvitation {
+  invitation: HouseholdInvitation!
+  token: String!
+}
 
 extend type Mutation {
-  setCategoryArchived(input: SetCategoryArchivedInput!): SetCategoryArchivedResult!
+  createHouseholdInvitation(input: CreateHouseholdInvitationInput!): CreateHouseholdInvitationResult!
 }
 
-input SetCategoryArchivedInput {
-  categoryId: ID! @nodeID(of: "Category")
-  archived: Boolean!
+union CreateHouseholdInvitationResult = CreateHouseholdInvitationSuccess | CreateHouseholdInvitationUserError
+
+type CreateHouseholdInvitationSuccess {
+  result: CreatedHouseholdInvitation!
 }
 
-union SetCategoryArchivedResult = SetCategoryArchivedSuccess | SetCategoryArchivedUserError
-
-type SetCategoryArchivedSuccess {
-  result: Category!
+input CreateHouseholdInvitationInput {
+  householdId: ID! @nodeID(of: "Household")
+  expiresAt: DateTime!
 }
 
-type SetCategoryArchivedUserError implements MutationError {
+type CreateHouseholdInvitationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/create_household_mutation.graphql", Input: `extend type Mutation {
+  createHousehold(input: CreateHouseholdInput!): CreateHouseholdResult!
+}
+
+union CreateHouseholdResult = CreateHouseholdSuccess | CreateHouseholdUserError
+
+type CreateHouseholdSuccess {
+  result: Household!
+}
+
+input CreateHouseholdInput {
+  name: String!
+  memberNames: [String!]!
+}
+
+type CreateHouseholdUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/create_pool_mutation.graphql", Input: `extend type Mutation {
+  createPool(input: CreatePoolInput!): CreatePoolResult!
+}
+
+union CreatePoolResult = CreatePoolSuccess | CreatePoolUserError
+
+type CreatePoolSuccess {
+  result: Pool!
+}
+
+input CreatePoolInput {
+  householdId: ID! @nodeID(of: "Household")
+  name: String!
+  kind: PoolKind!
+}
+
+type CreatePoolUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/create_product_concept_mutation.graphql", Input: `extend type Mutation {
+  createProductConcept(input: CreateProductConceptInput!): CreateProductConceptResult!
+}
+
+union CreateProductConceptResult = CreateProductConceptSuccess | CreateProductConceptUserError
+
+type CreateProductConceptSuccess {
+  result: ProductConcept!
+}
+
+input CreateProductConceptInput {
+  householdId: ID! @nodeID(of: "Household")
+  name: String!
+  categoryId: ID @nodeID(of: "Category")
+}
+
+type CreateProductConceptUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/create_product_variant_mutation.graphql", Input: `extend type Mutation {
+  createProductVariant(input: CreateProductVariantInput!): CreateProductVariantResult!
+}
+
+union CreateProductVariantResult = CreateProductVariantSuccess | CreateProductVariantUserError
+
+type CreateProductVariantSuccess {
+  result: ProductVariant!
+}
+
+input CreateProductVariantInput {
+  householdId: ID! @nodeID(of: "Household")
+  conceptId: ID! @nodeID(of: "ProductConcept")
+  name: String!
+  brand: String
+  packageSize: String
+  barcode: String
+}
+
+type CreateProductVariantUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/create_purchase_mutation.graphql", Input: `extend type Mutation {
+  createPurchase(input: CreatePurchaseInput!): CreatePurchaseResult!
+}
+
+union CreatePurchaseResult = CreatePurchaseSuccess | CreatePurchaseUserError
+
+type CreatePurchaseSuccess {
+  result: Purchase!
+}
+
+input CreatePurchaseInput {
+  idempotencyKey: String!
+  householdId: ID! @nodeID(of: "Household")
+  occurredAt: DateTime!
+  merchant: String!
+  origin: PurchaseOrigin
+  paymentAllocations: [PurchasePaymentInput!]
+  sourceDocumentId: ID
+  sourceReference: String
+  receiptCandidateId: String
+  manualAmountOverrideReason: String
+  items: [PurchaseItemInput!]!
+}
+
+input PurchaseItemInput {
+  name: String!
+  amountYen: Long!
+  quantity: PurchaseQuantityInput
+  printedUnitPrice: PrintedUnitPriceInput
+  categoryId: ID @nodeID(of: "Category")
+  productVariantId: ID @nodeID(of: "ProductVariant")
+  allocations: [AllocationInput!]
+}
+
+type CreatePurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/create_recurring_expense_mutation.graphql", Input: `extend type Mutation {
+  createRecurringExpense(input: CreateRecurringExpenseInput!): CreateRecurringExpenseResult!
+}
+
+union CreateRecurringExpenseResult = CreateRecurringExpenseSuccess | CreateRecurringExpenseUserError
+
+type CreateRecurringExpenseSuccess {
+  result: RecurringExpense!
+}
+
+input CreateRecurringExpenseInput {
+  householdId: ID! @nodeID(of: "Household")
+  name: String!
+  merchant: String!
+  amountYen: Long!
+  categoryId: ID @nodeID(of: "Category")
+  paymentAccountId: ID @nodeID(of: "Account")
+  cadence: RecurringExpenseCadence!
+  startsOn: Date!
+  nextDueOn: Date!
+  endsOn: Date
+}
+
+type CreateRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/create_tag_mutation.graphql", Input: `extend type Mutation {
+  createTag(input: CreateTagInput!): CreateTagResult!
+}
+
+union CreateTagResult = CreateTagSuccess | CreateTagUserError
+
+type CreateTagSuccess {
+  result: Tag!
+}
+
+input CreateTagInput {
+  householdId: ID! @nodeID(of: "Household")
+  name: String!
+}
+
+type CreateTagUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
@@ -5410,31 +5685,6 @@ type FundingScheduleConnection {
 
 extend type Query {
   fundingSchedules(householdId: ID! @nodeID(of: "Household"), active: Boolean, after: String, before: String, first: Int, last: Int): FundingScheduleConnection!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/funding_schedule_mutations.graphql", Input: `extend type Mutation {
-  setFundingSchedule(input: SetFundingScheduleInput!): SetFundingScheduleResult!
-}
-
-union SetFundingScheduleResult = SetFundingScheduleSuccess | SetFundingScheduleUserError
-
-type SetFundingScheduleSuccess {
-  result: FundingSchedule!
-}
-
-input SetFundingScheduleInput {
-  householdId: ID! @nodeID(of: "Household")
-  memberId: ID! @nodeID(of: "Member")
-  poolId: ID! @nodeID(of: "Pool")
-  amountYen: Long!
-  cadence: FundingScheduleCadence!
-  startsOn: Date!
-  endsOn: Date
-}
-
-type SetFundingScheduleUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/household.graphql", Input: `type Household implements Node {
@@ -5485,90 +5735,6 @@ type HouseholdInvitationConnection {
 
 extend type Query {
   householdInvitations(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): HouseholdInvitationConnection!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/household_invitation_mutations.graphql", Input: `extend type Mutation {
-  acceptHouseholdInvitation(input: AcceptHouseholdInvitationInput!): AcceptHouseholdInvitationResult!
-}
-
-input AcceptHouseholdInvitationInput {
-  token: String!
-}
-
-union AcceptHouseholdInvitationResult = AcceptHouseholdInvitationSuccess | AcceptHouseholdInvitationUserError
-
-type AcceptHouseholdInvitationSuccess {
-  result: Household!
-}
-
-type AcceptHouseholdInvitationUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-type CreatedHouseholdInvitation {
-  invitation: HouseholdInvitation!
-  token: String!
-}
-
-extend type Mutation {
-  createHouseholdInvitation(input: CreateHouseholdInvitationInput!): CreateHouseholdInvitationResult!
-}
-
-union CreateHouseholdInvitationResult = CreateHouseholdInvitationSuccess | CreateHouseholdInvitationUserError
-
-type CreateHouseholdInvitationSuccess {
-  result: CreatedHouseholdInvitation!
-}
-
-input CreateHouseholdInvitationInput {
-  householdId: ID! @nodeID(of: "Household")
-  expiresAt: DateTime!
-}
-
-type CreateHouseholdInvitationUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  revokeHouseholdInvitation(input: RevokeHouseholdInvitationInput!): RevokeHouseholdInvitationResult!
-}
-
-input RevokeHouseholdInvitationInput {
-  householdId: ID! @nodeID(of: "Household")
-  invitationId: ID! @nodeID(of: "HouseholdInvitation")
-}
-
-union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | RevokeHouseholdInvitationUserError
-
-type RevokeHouseholdInvitationSuccess {
-  result: HouseholdInvitation!
-}
-
-type RevokeHouseholdInvitationUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/household_mutations.graphql", Input: `extend type Mutation {
-  createHousehold(input: CreateHouseholdInput!): CreateHouseholdResult!
-}
-
-union CreateHouseholdResult = CreateHouseholdSuccess | CreateHouseholdUserError
-
-type CreateHouseholdSuccess {
-  result: Household!
-}
-
-input CreateHouseholdInput {
-  name: String!
-  memberNames: [String!]!
-}
-
-type CreateHouseholdUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/ledger_entry.graphql", Input: `interface LedgerEntry implements Node {
@@ -5644,165 +5810,6 @@ type LedgerConnection {
 
 extend type Query {
   ledger(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): LedgerConnection!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/ledger_mutations.graphql", Input: `extend type Mutation {
-  closePeriod(input: ClosePeriodInput!): ClosePeriodResult!
-}
-
-union ClosePeriodResult = ClosePeriodSuccess | ClosePeriodUserError
-
-type ClosePeriodSuccess {
-  result: Settlement!
-}
-
-input ClosePeriodInput {
-  householdId: ID! @nodeID(of: "Household")
-  period: YearMonth!
-  expectedRevision: Int!
-}
-
-type ClosePeriodUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  recordAccountMovement(input: RecordAccountMovementInput!): RecordAccountMovementResult!
-}
-
-union RecordAccountMovementResult = RecordAccountMovementSuccess | RecordAccountMovementUserError
-
-type RecordAccountMovementSuccess {
-  result: AccountMovement!
-}
-
-input RecordAccountMovementInput {
-  householdId: ID! @nodeID(of: "Household")
-  kind: AccountMovementKind!
-  fromAccountId: ID! @nodeID(of: "Account")
-  toAccountId: ID! @nodeID(of: "Account")
-  amountYen: Long!
-  occurredAt: DateTime!
-  description: String!
-  idempotencyKey: String!
-}
-
-type RecordAccountMovementUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  recordExternalIncome(input: RecordExternalIncomeInput!): RecordExternalIncomeResult!
-}
-
-union RecordExternalIncomeResult = RecordExternalIncomeSuccess | RecordExternalIncomeUserError
-
-type RecordExternalIncomeSuccess {
-  result: AccountIncome!
-}
-
-input RecordExternalIncomeInput {
-  householdId: ID! @nodeID(of: "Household")
-  accountId: ID! @nodeID(of: "Account")
-  amountYen: Long!
-  occurredAt: DateTime!
-  description: String!
-  idempotencyKey: String!
-}
-
-type RecordExternalIncomeUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  recordFunding(input: RecordFundingInput!): RecordFundingResult!
-}
-
-union RecordFundingResult = RecordFundingSuccess | RecordFundingUserError
-
-type RecordFundingSuccess {
-  result: LedgerEntry!
-}
-
-input RecordFundingInput {
-  householdId: ID! @nodeID(of: "Household")
-  memberId: ID! @nodeID(of: "Member")
-  poolId: ID! @nodeID(of: "Pool")
-  amountYen: Long!
-  occurredAt: DateTime!
-  idempotencyKey: String!
-  sourceAccountId: ID @nodeID(of: "Account")
-  destinationAccountId: ID @nodeID(of: "Account")
-}
-
-type RecordFundingUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  recordRepayment(input: RecordRepaymentInput!): RecordRepaymentResult!
-}
-
-union RecordRepaymentResult = RecordRepaymentSuccess | RecordRepaymentUserError
-
-type RecordRepaymentSuccess {
-  result: LedgerEntry!
-}
-
-input RecordRepaymentInput {
-  householdId: ID! @nodeID(of: "Household")
-  fromMemberId: ID! @nodeID(of: "Member")
-  toMemberId: ID! @nodeID(of: "Member")
-  loanId: ID! @nodeID(of: "LoanBalance")
-  paymentAccountId: ID @nodeID(of: "Account")
-  destinationAccountId: ID @nodeID(of: "Account")
-  amountYen: Long!
-  occurredAt: DateTime!
-  description: String!
-  idempotencyKey: String!
-}
-
-type RecordRepaymentUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  recordTransfer(input: RecordTransferInput!): RecordTransferResult!
-}
-
-union RecordTransferResult = RecordTransferSuccess | RecordTransferUserError
-
-type RecordTransferSuccess {
-  result: LedgerEntry!
-}
-
-input RecordTransferInput {
-  householdId: ID! @nodeID(of: "Household")
-  fromMemberId: ID! @nodeID(of: "Member")
-  toMemberId: ID! @nodeID(of: "Member")
-  kind: TransferInputKind!
-  paymentAccountId: ID @nodeID(of: "Account")
-  destinationAccountId: ID @nodeID(of: "Account")
-  amountYen: Long!
-  occurredAt: DateTime!
-  description: String!
-  idempotencyKey: String!
-}
-
-enum TransferInputKind {
-  ADVANCE
-  LOAN
-  GIFT
-}
-
-type RecordTransferUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/loan_balance.graphql", Input: `type LoanBalance implements Node {
@@ -5895,52 +5902,23 @@ enum SharedPoolSettlementPolicy {
   REIMBURSE_PERSONAL
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/pool_mutations.graphql", Input: `extend type Mutation {
-  createPool(input: CreatePoolInput!): CreatePoolResult!
+	{Name: "../../graphql/post_purchase_mutation.graphql", Input: `extend type Mutation {
+  postPurchase(input: PostPurchaseInput!): PostPurchaseResult!
 }
 
-union CreatePoolResult = CreatePoolSuccess | CreatePoolUserError
-
-type CreatePoolSuccess {
-  result: Pool!
+input PostPurchaseInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+  expectedRevision: Int!
+  idempotencyKey: String!
 }
 
-input CreatePoolInput {
-  householdId: ID! @nodeID(of: "Household")
-  name: String!
-  kind: PoolKind!
+union PostPurchaseResult = PostPurchaseSuccess | PostPurchaseUserError
+
+type PostPurchaseSuccess {
+  result: Purchase!
 }
 
-type CreatePoolUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  setPoolFundingRule(input: SetPoolFundingRuleInput!): SetPoolFundingRuleResult!
-}
-
-union SetPoolFundingRuleResult = SetPoolFundingRuleSuccess | SetPoolFundingRuleUserError
-
-type SetPoolFundingRuleSuccess {
-  result: Pool!
-}
-
-input SetPoolFundingRuleInput {
-  householdId: ID! @nodeID(of: "Household")
-  poolId: ID! @nodeID(of: "Pool")
-  ownerMemberId: ID @nodeID(of: "Member")
-  fundingShares: [PoolFundingShareInput!]!
-  settlementPolicy: SharedPoolSettlementPolicy
-  expectedVersion: Int!
-}
-
-input PoolFundingShareInput {
-  memberId: ID! @nodeID(of: "Member")
-  weight: Long!
-}
-
-type SetPoolFundingRuleUserError implements MutationError {
+type PostPurchaseUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
@@ -5978,73 +5956,6 @@ type ProductConceptConnection {
 
 extend type Query {
   productCatalog(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): ProductConceptConnection!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/product_mutations.graphql", Input: `extend type Mutation {
-  createProductConcept(input: CreateProductConceptInput!): CreateProductConceptResult!
-}
-
-union CreateProductConceptResult = CreateProductConceptSuccess | CreateProductConceptUserError
-
-type CreateProductConceptSuccess {
-  result: ProductConcept!
-}
-
-input CreateProductConceptInput {
-  householdId: ID! @nodeID(of: "Household")
-  name: String!
-  categoryId: ID @nodeID(of: "Category")
-}
-
-type CreateProductConceptUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  createProductVariant(input: CreateProductVariantInput!): CreateProductVariantResult!
-}
-
-union CreateProductVariantResult = CreateProductVariantSuccess | CreateProductVariantUserError
-
-type CreateProductVariantSuccess {
-  result: ProductVariant!
-}
-
-input CreateProductVariantInput {
-  householdId: ID! @nodeID(of: "Household")
-  conceptId: ID! @nodeID(of: "ProductConcept")
-  name: String!
-  brand: String
-  packageSize: String
-  barcode: String
-}
-
-type CreateProductVariantUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  setProductAlias(input: SetProductAliasInput!): SetProductAliasResult!
-}
-
-union SetProductAliasResult = SetProductAliasSuccess | SetProductAliasUserError
-
-type SetProductAliasSuccess {
-  result: ProductAlias!
-}
-
-input SetProductAliasInput {
-  householdId: ID! @nodeID(of: "Household")
-  variantId: ID! @nodeID(of: "ProductVariant")
-  merchant: String!
-  alias: String!
-}
-
-type SetProductAliasUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/product_suggestion.graphql", Input: `type ProductSuggestion {
@@ -6194,217 +6105,6 @@ type EffectiveUnitPrice {
   denominator: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/purchase_item_mutations.graphql", Input: `extend type Mutation {
-  updatePurchaseItem(input: UpdatePurchaseItemInput!): UpdatePurchaseItemResult!
-}
-
-union UpdatePurchaseItemResult = UpdatePurchaseItemSuccess | UpdatePurchaseItemUserError
-
-type UpdatePurchaseItemSuccess {
-  result: PurchaseItem!
-}
-
-input UpdatePurchaseItemInput {
-  itemId: ID! @nodeID(of: "PurchaseItem")
-  baseRevision: Int!
-  name: String @goField(omittable: true)
-  amountYen: Long @goField(omittable: true)
-  quantity: PurchaseQuantityInput @goField(omittable: true)
-  printedUnitPrice: PrintedUnitPriceInput @goField(omittable: true)
-  categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
-  productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
-  productLearning: ProductLearningScope = ITEM_ONLY
-  variantName: String
-  allocations: [AllocationInput!] @goField(omittable: true)
-}
-
-enum ProductLearningScope {
-  ITEM_ONLY
-  VARIANT_NAME
-  MERCHANT_ALIAS
-}
-
-type UpdatePurchaseItemUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  bulkUpdatePurchaseItems(input: BulkUpdatePurchaseItemsInput!): BulkUpdatePurchaseItemsResult!
-}
-
-union BulkUpdatePurchaseItemsResult = BulkUpdatePurchaseItemsSuccess | BulkUpdatePurchaseItemsUserError
-
-type BulkUpdatePurchaseItemsSuccess {
-  items: [PurchaseItem!]!
-}
-
-input BulkUpdatePurchaseItemsInput {
-  targets: [PurchaseItemTargetInput!]!
-  patch: BulkPurchaseItemPatch!
-}
-
-input BulkPurchaseItemPatch {
-  categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
-  productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
-  allocations: [AllocationInput!] @goField(omittable: true)
-  tagIds: [ID!] @nodeID(of: "Tag") @goField(omittable: true)
-}
-
-input PurchaseItemTargetInput {
-  itemId: ID! @nodeID(of: "PurchaseItem")
-  baseRevision: Int!
-}
-
-type BulkUpdatePurchaseItemsUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/purchase_mutations.graphql", Input: `extend type Mutation {
-  createPurchase(input: CreatePurchaseInput!): CreatePurchaseResult!
-}
-
-union CreatePurchaseResult = CreatePurchaseSuccess | CreatePurchaseUserError
-
-type CreatePurchaseSuccess {
-  result: Purchase!
-}
-
-input CreatePurchaseInput {
-  idempotencyKey: String!
-  householdId: ID! @nodeID(of: "Household")
-  occurredAt: DateTime!
-  merchant: String!
-  origin: PurchaseOrigin
-  paymentAllocations: [PurchasePaymentInput!]
-  sourceDocumentId: ID
-  sourceReference: String
-  receiptCandidateId: String
-  manualAmountOverrideReason: String
-  items: [PurchaseItemInput!]!
-}
-
-input PurchaseItemInput {
-  name: String!
-  amountYen: Long!
-  quantity: PurchaseQuantityInput
-  printedUnitPrice: PrintedUnitPriceInput
-  categoryId: ID @nodeID(of: "Category")
-  productVariantId: ID @nodeID(of: "ProductVariant")
-  allocations: [AllocationInput!]
-}
-
-type CreatePurchaseUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  postPurchase(input: PostPurchaseInput!): PostPurchaseResult!
-}
-
-input PostPurchaseInput {
-  purchaseId: ID! @nodeID(of: "Purchase")
-  expectedRevision: Int!
-  idempotencyKey: String!
-}
-
-union PostPurchaseResult = PostPurchaseSuccess | PostPurchaseUserError
-
-type PostPurchaseSuccess {
-  result: Purchase!
-}
-
-type PostPurchaseUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  updatePurchase(input: UpdatePurchaseInput!): UpdatePurchaseResult!
-}
-
-union UpdatePurchaseResult = UpdatePurchaseSuccess | UpdatePurchaseUserError
-
-type UpdatePurchaseSuccess {
-  result: Purchase!
-}
-
-input UpdatePurchaseInput {
-  purchaseId: ID! @nodeID(of: "Purchase")
-  baseRevision: Int!
-  patch: PurchasePatch!
-}
-
-input PurchasePatch {
-  occurredAt: DateTime @goField(omittable: true)
-  merchant: String @goField(omittable: true)
-  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
-}
-
-type UpdatePurchaseUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  correctPurchase(input: CorrectPurchaseInput!): CorrectPurchaseResult!
-}
-
-union CorrectPurchaseResult = CorrectPurchaseSuccess | CorrectPurchaseUserError
-
-type CorrectPurchaseSuccess {
-  result: Purchase!
-}
-
-input CorrectPurchaseInput {
-  householdId: ID! @nodeID(of: "Household")
-  purchaseId: ID! @nodeID(of: "Purchase")
-  itemId: ID @nodeID(of: "PurchaseItem")
-  amountDeltaYen: Long!
-  reason: String!
-  allocations: [AllocationInput!]
-  paymentAllocations: [PurchasePaymentInput!]
-  idempotencyKey: String!
-}
-
-type CorrectPurchaseUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  bulkUpdatePurchases(input: BulkUpdatePurchasesInput!): BulkUpdatePurchasesResult!
-}
-
-union BulkUpdatePurchasesResult = BulkUpdatePurchasesSuccess | BulkUpdatePurchasesUserError
-
-type BulkUpdatePurchasesSuccess {
-  purchases: [Purchase!]!
-}
-
-input BulkUpdatePurchasesInput {
-  targets: [PurchaseUpdateTargetInput!]!
-}
-
-input BulkPurchasePatch {
-  occurredAt: DateTime @goField(omittable: true)
-  merchant: String @goField(omittable: true)
-  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
-}
-
-input PurchaseUpdateTargetInput {
-  purchaseId: ID! @nodeID(of: "Purchase")
-  baseRevision: Int!
-  patch: BulkPurchasePatch!
-}
-
-type BulkUpdatePurchasesUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/purchase_subscription.graphql", Input: `type PurchaseChange {
   cursor: String!
   kind: PurchaseChangeKind!
@@ -6448,6 +6148,144 @@ extend type Subscription {
   purchaseChanges(householdId: ID! @nodeID(of: "Household"), after: String): PurchaseChange!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/record_account_movement_mutation.graphql", Input: `extend type Mutation {
+  recordAccountMovement(input: RecordAccountMovementInput!): RecordAccountMovementResult!
+}
+
+union RecordAccountMovementResult = RecordAccountMovementSuccess | RecordAccountMovementUserError
+
+type RecordAccountMovementSuccess {
+  result: AccountMovement!
+}
+
+input RecordAccountMovementInput {
+  householdId: ID! @nodeID(of: "Household")
+  kind: AccountMovementKind!
+  fromAccountId: ID! @nodeID(of: "Account")
+  toAccountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
+  occurredAt: DateTime!
+  description: String!
+  idempotencyKey: String!
+}
+
+type RecordAccountMovementUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/record_external_income_mutation.graphql", Input: `extend type Mutation {
+  recordExternalIncome(input: RecordExternalIncomeInput!): RecordExternalIncomeResult!
+}
+
+union RecordExternalIncomeResult = RecordExternalIncomeSuccess | RecordExternalIncomeUserError
+
+type RecordExternalIncomeSuccess {
+  result: AccountIncome!
+}
+
+input RecordExternalIncomeInput {
+  householdId: ID! @nodeID(of: "Household")
+  accountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
+  occurredAt: DateTime!
+  description: String!
+  idempotencyKey: String!
+}
+
+type RecordExternalIncomeUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/record_funding_mutation.graphql", Input: `extend type Mutation {
+  recordFunding(input: RecordFundingInput!): RecordFundingResult!
+}
+
+union RecordFundingResult = RecordFundingSuccess | RecordFundingUserError
+
+type RecordFundingSuccess {
+  result: LedgerEntry!
+}
+
+input RecordFundingInput {
+  householdId: ID! @nodeID(of: "Household")
+  memberId: ID! @nodeID(of: "Member")
+  poolId: ID! @nodeID(of: "Pool")
+  amountYen: Long!
+  occurredAt: DateTime!
+  idempotencyKey: String!
+  sourceAccountId: ID @nodeID(of: "Account")
+  destinationAccountId: ID @nodeID(of: "Account")
+}
+
+type RecordFundingUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/record_repayment_mutation.graphql", Input: `extend type Mutation {
+  recordRepayment(input: RecordRepaymentInput!): RecordRepaymentResult!
+}
+
+union RecordRepaymentResult = RecordRepaymentSuccess | RecordRepaymentUserError
+
+type RecordRepaymentSuccess {
+  result: LedgerEntry!
+}
+
+input RecordRepaymentInput {
+  householdId: ID! @nodeID(of: "Household")
+  fromMemberId: ID! @nodeID(of: "Member")
+  toMemberId: ID! @nodeID(of: "Member")
+  loanId: ID! @nodeID(of: "LoanBalance")
+  paymentAccountId: ID @nodeID(of: "Account")
+  destinationAccountId: ID @nodeID(of: "Account")
+  amountYen: Long!
+  occurredAt: DateTime!
+  description: String!
+  idempotencyKey: String!
+}
+
+type RecordRepaymentUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/record_transfer_mutation.graphql", Input: `extend type Mutation {
+  recordTransfer(input: RecordTransferInput!): RecordTransferResult!
+}
+
+union RecordTransferResult = RecordTransferSuccess | RecordTransferUserError
+
+type RecordTransferSuccess {
+  result: LedgerEntry!
+}
+
+input RecordTransferInput {
+  householdId: ID! @nodeID(of: "Household")
+  fromMemberId: ID! @nodeID(of: "Member")
+  toMemberId: ID! @nodeID(of: "Member")
+  kind: TransferInputKind!
+  paymentAccountId: ID @nodeID(of: "Account")
+  destinationAccountId: ID @nodeID(of: "Account")
+  amountYen: Long!
+  occurredAt: DateTime!
+  description: String!
+  idempotencyKey: String!
+}
+
+enum TransferInputKind {
+  ADVANCE
+  LOAN
+  GIFT
+}
+
+type RecordTransferUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/recurring_expense.graphql", Input: `type RecurringExpense implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
@@ -6486,81 +6324,22 @@ type RecurringExpenseConnection {
   totalCount: Int!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/recurring_expense_mutations.graphql", Input: `extend type Mutation {
-  createRecurringExpense(input: CreateRecurringExpenseInput!): CreateRecurringExpenseResult!
+	{Name: "../../graphql/revoke_household_invitation_mutation.graphql", Input: `extend type Mutation {
+  revokeHouseholdInvitation(input: RevokeHouseholdInvitationInput!): RevokeHouseholdInvitationResult!
 }
 
-union CreateRecurringExpenseResult = CreateRecurringExpenseSuccess | CreateRecurringExpenseUserError
-
-type CreateRecurringExpenseSuccess {
-  result: RecurringExpense!
-}
-
-input CreateRecurringExpenseInput {
+input RevokeHouseholdInvitationInput {
   householdId: ID! @nodeID(of: "Household")
-  name: String!
-  merchant: String!
-  amountYen: Long!
-  categoryId: ID @nodeID(of: "Category")
-  paymentAccountId: ID @nodeID(of: "Account")
-  cadence: RecurringExpenseCadence!
-  startsOn: Date!
-  nextDueOn: Date!
-  endsOn: Date
+  invitationId: ID! @nodeID(of: "HouseholdInvitation")
 }
 
-type CreateRecurringExpenseUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
+union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | RevokeHouseholdInvitationUserError
+
+type RevokeHouseholdInvitationSuccess {
+  result: HouseholdInvitation!
 }
 
-extend type Mutation {
-  updateRecurringExpense(input: UpdateRecurringExpenseInput!): UpdateRecurringExpenseResult!
-}
-
-union UpdateRecurringExpenseResult = UpdateRecurringExpenseSuccess | UpdateRecurringExpenseUserError
-
-type UpdateRecurringExpenseSuccess {
-  result: RecurringExpense!
-}
-
-input UpdateRecurringExpenseInput {
-  householdId: ID! @nodeID(of: "Household")
-  expenseId: ID! @nodeID(of: "RecurringExpense")
-  baseRevision: Int!
-  name: String!
-  merchant: String!
-  amountYen: Long!
-  categoryId: ID @nodeID(of: "Category")
-  paymentAccountId: ID @nodeID(of: "Account")
-  cadence: RecurringExpenseCadence!
-  startsOn: Date!
-  nextDueOn: Date!
-  endsOn: Date
-}
-
-type UpdateRecurringExpenseUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  archiveRecurringExpense(input: ArchiveRecurringExpenseInput!): ArchiveRecurringExpenseResult!
-}
-
-input ArchiveRecurringExpenseInput {
-  expenseId: ID! @nodeID(of: "RecurringExpense")
-  baseRevision: Int!
-  archived: Boolean!
-}
-
-union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | ArchiveRecurringExpenseUserError
-
-type ArchiveRecurringExpenseSuccess {
-  result: RecurringExpense!
-}
-
-type ArchiveRecurringExpenseUserError implements MutationError {
+type RevokeHouseholdInvitationUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
@@ -6601,6 +6380,150 @@ enum MutationErrorCode {
 }
 
 interface MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/set_allocation_rule_mutation.graphql", Input: `extend type Mutation {
+  setAllocationRule(input: SetAllocationRuleInput!): SetAllocationRuleResult!
+}
+
+union SetAllocationRuleResult = SetAllocationRuleSuccess | SetAllocationRuleUserError
+
+type SetAllocationRuleSuccess {
+  result: AllocationRule!
+}
+
+input SetAllocationRuleInput {
+  householdId: ID! @nodeID(of: "Household")
+  target: AllocationRuleTargetInput!
+  allocations: [AllocationInput!]!
+}
+
+input AllocationRuleTargetInput @oneOf {
+  categoryId: ID @nodeID(of: "Category")
+  merchant: String
+  productConceptId: ID @nodeID(of: "ProductConcept")
+  productVariantId: ID @nodeID(of: "ProductVariant")
+}
+
+type SetAllocationRuleUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/set_category_archived_mutation.graphql", Input: `extend type Mutation {
+  setCategoryArchived(input: SetCategoryArchivedInput!): SetCategoryArchivedResult!
+}
+
+input SetCategoryArchivedInput {
+  categoryId: ID! @nodeID(of: "Category")
+  archived: Boolean!
+}
+
+union SetCategoryArchivedResult = SetCategoryArchivedSuccess | SetCategoryArchivedUserError
+
+type SetCategoryArchivedSuccess {
+  result: Category!
+}
+
+type SetCategoryArchivedUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/set_default_allocation_mutation.graphql", Input: `extend type Mutation {
+  setDefaultAllocation(input: SetDefaultAllocationInput!): SetDefaultAllocationResult!
+}
+
+union SetDefaultAllocationResult = SetDefaultAllocationSuccess | SetDefaultAllocationUserError
+
+type SetDefaultAllocationSuccess {
+  result: Household!
+}
+
+input SetDefaultAllocationInput {
+  householdId: ID! @nodeID(of: "Household")
+  allocations: [AllocationInput!]!
+}
+
+type SetDefaultAllocationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/set_funding_schedule_mutation.graphql", Input: `extend type Mutation {
+  setFundingSchedule(input: SetFundingScheduleInput!): SetFundingScheduleResult!
+}
+
+union SetFundingScheduleResult = SetFundingScheduleSuccess | SetFundingScheduleUserError
+
+type SetFundingScheduleSuccess {
+  result: FundingSchedule!
+}
+
+input SetFundingScheduleInput {
+  householdId: ID! @nodeID(of: "Household")
+  memberId: ID! @nodeID(of: "Member")
+  poolId: ID! @nodeID(of: "Pool")
+  amountYen: Long!
+  cadence: FundingScheduleCadence!
+  startsOn: Date!
+  endsOn: Date
+}
+
+type SetFundingScheduleUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/set_pool_funding_rule_mutation.graphql", Input: `extend type Mutation {
+  setPoolFundingRule(input: SetPoolFundingRuleInput!): SetPoolFundingRuleResult!
+}
+
+union SetPoolFundingRuleResult = SetPoolFundingRuleSuccess | SetPoolFundingRuleUserError
+
+type SetPoolFundingRuleSuccess {
+  result: Pool!
+}
+
+input SetPoolFundingRuleInput {
+  householdId: ID! @nodeID(of: "Household")
+  poolId: ID! @nodeID(of: "Pool")
+  ownerMemberId: ID @nodeID(of: "Member")
+  fundingShares: [PoolFundingShareInput!]!
+  settlementPolicy: SharedPoolSettlementPolicy
+  expectedVersion: Int!
+}
+
+input PoolFundingShareInput {
+  memberId: ID! @nodeID(of: "Member")
+  weight: Long!
+}
+
+type SetPoolFundingRuleUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/set_product_alias_mutation.graphql", Input: `extend type Mutation {
+  setProductAlias(input: SetProductAliasInput!): SetProductAliasResult!
+}
+
+union SetProductAliasResult = SetProductAliasSuccess | SetProductAliasUserError
+
+type SetProductAliasSuccess {
+  result: ProductAlias!
+}
+
+input SetProductAliasInput {
+  householdId: ID! @nodeID(of: "Household")
+  variantId: ID! @nodeID(of: "ProductVariant")
+  merchant: String!
+  alias: String!
+}
+
+type SetProductAliasUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
@@ -6648,68 +6571,6 @@ extend type Query {
   tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/tag_mutations.graphql", Input: `extend type Mutation {
-  createTag(input: CreateTagInput!): CreateTagResult!
-}
-
-union CreateTagResult = CreateTagSuccess | CreateTagUserError
-
-type CreateTagSuccess {
-  result: Tag!
-}
-
-input CreateTagInput {
-  householdId: ID! @nodeID(of: "Household")
-  name: String!
-}
-
-type CreateTagUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  updateTag(input: UpdateTagInput!): UpdateTagResult!
-}
-
-union UpdateTagResult = UpdateTagSuccess | UpdateTagUserError
-
-type UpdateTagSuccess {
-  result: Tag!
-}
-
-input UpdateTagInput {
-  tagId: ID! @nodeID(of: "Tag")
-  baseRevision: Int!
-  name: String!
-}
-
-type UpdateTagUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-extend type Mutation {
-  archiveTag(input: ArchiveTagInput!): ArchiveTagResult!
-}
-
-input ArchiveTagInput {
-  tagId: ID! @nodeID(of: "Tag")
-  baseRevision: Int!
-  archived: Boolean!
-}
-
-union ArchiveTagResult = ArchiveTagSuccess | ArchiveTagUserError
-
-type ArchiveTagSuccess {
-  result: Tag!
-}
-
-type ArchiveTagUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/unmatched_observation.graphql", Input: `type UnmatchedObservation implements Node {
   id: ID! @goField(forceResolver: true)
   documentId: ID!
@@ -6742,6 +6603,145 @@ type UnmatchedObservationConnection {
 
 extend type Query {
   unmatchedObservations(householdId: ID! @nodeID(of: "Household"), from: YearMonth, to: YearMonth, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, before: String, first: Int, last: Int): UnmatchedObservationConnection!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/update_budget_mutation.graphql", Input: `extend type Mutation {
+  updateBudget(input: UpdateBudgetInput!): UpdateBudgetResult!
+}
+
+union UpdateBudgetResult = UpdateBudgetSuccess | UpdateBudgetUserError
+
+type UpdateBudgetSuccess {
+  result: Budget!
+}
+
+input UpdateBudgetInput {
+  householdId: ID! @nodeID(of: "Household")
+  budgetId: ID! @nodeID(of: "Budget")
+  baseRevision: Int!
+  categoryId: ID @nodeID(of: "Category")
+  name: String!
+  amountYen: Long!
+  startsOn: Date!
+  endsOn: Date
+}
+
+type UpdateBudgetUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/update_purchase_item_mutation.graphql", Input: `extend type Mutation {
+  updatePurchaseItem(input: UpdatePurchaseItemInput!): UpdatePurchaseItemResult!
+}
+
+union UpdatePurchaseItemResult = UpdatePurchaseItemSuccess | UpdatePurchaseItemUserError
+
+type UpdatePurchaseItemSuccess {
+  result: PurchaseItem!
+}
+
+input UpdatePurchaseItemInput {
+  itemId: ID! @nodeID(of: "PurchaseItem")
+  baseRevision: Int!
+  name: String @goField(omittable: true)
+  amountYen: Long @goField(omittable: true)
+  quantity: PurchaseQuantityInput @goField(omittable: true)
+  printedUnitPrice: PrintedUnitPriceInput @goField(omittable: true)
+  categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
+  productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
+  productLearning: ProductLearningScope = ITEM_ONLY
+  variantName: String
+  allocations: [AllocationInput!] @goField(omittable: true)
+}
+
+enum ProductLearningScope {
+  ITEM_ONLY
+  VARIANT_NAME
+  MERCHANT_ALIAS
+}
+
+type UpdatePurchaseItemUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/update_purchase_mutation.graphql", Input: `extend type Mutation {
+  updatePurchase(input: UpdatePurchaseInput!): UpdatePurchaseResult!
+}
+
+union UpdatePurchaseResult = UpdatePurchaseSuccess | UpdatePurchaseUserError
+
+type UpdatePurchaseSuccess {
+  result: Purchase!
+}
+
+input UpdatePurchaseInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+  baseRevision: Int!
+  patch: PurchasePatch!
+}
+
+input PurchasePatch {
+  occurredAt: DateTime @goField(omittable: true)
+  merchant: String @goField(omittable: true)
+  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
+}
+
+type UpdatePurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/update_recurring_expense_mutation.graphql", Input: `extend type Mutation {
+  updateRecurringExpense(input: UpdateRecurringExpenseInput!): UpdateRecurringExpenseResult!
+}
+
+union UpdateRecurringExpenseResult = UpdateRecurringExpenseSuccess | UpdateRecurringExpenseUserError
+
+type UpdateRecurringExpenseSuccess {
+  result: RecurringExpense!
+}
+
+input UpdateRecurringExpenseInput {
+  householdId: ID! @nodeID(of: "Household")
+  expenseId: ID! @nodeID(of: "RecurringExpense")
+  baseRevision: Int!
+  name: String!
+  merchant: String!
+  amountYen: Long!
+  categoryId: ID @nodeID(of: "Category")
+  paymentAccountId: ID @nodeID(of: "Account")
+  cadence: RecurringExpenseCadence!
+  startsOn: Date!
+  nextDueOn: Date!
+  endsOn: Date
+}
+
+type UpdateRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/update_tag_mutation.graphql", Input: `extend type Mutation {
+  updateTag(input: UpdateTagInput!): UpdateTagResult!
+}
+
+union UpdateTagResult = UpdateTagSuccess | UpdateTagUserError
+
+type UpdateTagSuccess {
+  result: Tag!
+}
+
+input UpdateTagInput {
+  tagId: ID! @nodeID(of: "Tag")
+  baseRevision: Int!
+  name: String!
+}
+
+type UpdateTagUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/viewer.graphql", Input: `type Viewer {
@@ -16009,34 +16009,34 @@ func (ec *executionContext) fieldContext_MonthlyMemberSpendingReport_hasUnattrib
 	return graphql.NewScalarFieldContext("MonthlyMemberSpendingReport", field, false, false, errors.New("field of type Boolean does not have child fields"))
 }
 
-func (ec *executionContext) _Mutation_createAccount(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mutation_acceptHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
 		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_createAccount(ctx, field)
+			return ec.fieldContext_Mutation_acceptHouseholdInvitation(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreateAccount(ctx, fc.Args["input"].(model.CreateAccountInput))
+			return ec.Resolvers.Mutation().AcceptHouseholdInvitation(ctx, fc.Args["input"].(model.AcceptHouseholdInvitationInput))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.CreateAccountResult) graphql.Marshaler {
-			return ec.marshalNCreateAccountResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateAccountResult(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.AcceptHouseholdInvitationResult) graphql.Marshaler {
+			return ec.marshalNAcceptHouseholdInvitationResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAcceptHouseholdInvitationResult(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
-func (ec *executionContext) fieldContext_Mutation_createAccount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Mutation_acceptHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Mutation",
 		Field:      field,
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type CreateAccountResult does not have child fields")
+			return nil, errors.New("field of type AcceptHouseholdInvitationResult does not have child fields")
 		},
 	}
 	defer func() {
@@ -16046,183 +16046,7 @@ func (ec *executionContext) fieldContext_Mutation_createAccount(ctx context.Cont
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_createAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_setDefaultAllocation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_setDefaultAllocation(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().SetDefaultAllocation(ctx, fc.Args["input"].(model.SetDefaultAllocationInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.SetDefaultAllocationResult) graphql.Marshaler {
-			return ec.marshalNSetDefaultAllocationResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetDefaultAllocationResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_setDefaultAllocation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type SetDefaultAllocationResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_setDefaultAllocation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_setAllocationRule(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_setAllocationRule(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().SetAllocationRule(ctx, fc.Args["input"].(model.SetAllocationRuleInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.SetAllocationRuleResult) graphql.Marshaler {
-			return ec.marshalNSetAllocationRuleResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetAllocationRuleResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_setAllocationRule(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type SetAllocationRuleResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_setAllocationRule_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_createBudget(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_createBudget(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreateBudget(ctx, fc.Args["input"].(model.CreateBudgetInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.CreateBudgetResult) graphql.Marshaler {
-			return ec.marshalNCreateBudgetResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateBudgetResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_createBudget(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type CreateBudgetResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_createBudget_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_updateBudget(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_updateBudget(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().UpdateBudget(ctx, fc.Args["input"].(model.UpdateBudgetInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.UpdateBudgetResult) graphql.Marshaler {
-			return ec.marshalNUpdateBudgetResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdateBudgetResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_updateBudget(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type UpdateBudgetResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_updateBudget_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Mutation_acceptHouseholdInvitation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -16273,6 +16097,358 @@ func (ec *executionContext) fieldContext_Mutation_archiveBudget(ctx context.Cont
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_archiveRecurringExpense(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_archiveRecurringExpense(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().ArchiveRecurringExpense(ctx, fc.Args["input"].(model.ArchiveRecurringExpenseInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.ArchiveRecurringExpenseResult) graphql.Marshaler {
+			return ec.marshalNArchiveRecurringExpenseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐArchiveRecurringExpenseResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_archiveRecurringExpense(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ArchiveRecurringExpenseResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_archiveRecurringExpense_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_archiveTag(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_archiveTag(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().ArchiveTag(ctx, fc.Args["input"].(model.ArchiveTagInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.ArchiveTagResult) graphql.Marshaler {
+			return ec.marshalNArchiveTagResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐArchiveTagResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_archiveTag(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ArchiveTagResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_archiveTag_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_bulkUpdatePurchaseItems(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_bulkUpdatePurchaseItems(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().BulkUpdatePurchaseItems(ctx, fc.Args["input"].(model.BulkUpdatePurchaseItemsInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.BulkUpdatePurchaseItemsResult) graphql.Marshaler {
+			return ec.marshalNBulkUpdatePurchaseItemsResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchaseItemsResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_bulkUpdatePurchaseItems(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type BulkUpdatePurchaseItemsResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_bulkUpdatePurchaseItems_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_bulkUpdatePurchases(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_bulkUpdatePurchases(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().BulkUpdatePurchases(ctx, fc.Args["input"].(model.BulkUpdatePurchasesInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.BulkUpdatePurchasesResult) graphql.Marshaler {
+			return ec.marshalNBulkUpdatePurchasesResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_bulkUpdatePurchases(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type BulkUpdatePurchasesResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_bulkUpdatePurchases_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_closePeriod(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_closePeriod(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().ClosePeriod(ctx, fc.Args["input"].(model.ClosePeriodInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.ClosePeriodResult) graphql.Marshaler {
+			return ec.marshalNClosePeriodResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐClosePeriodResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_closePeriod(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ClosePeriodResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_closePeriod_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_correctPurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_correctPurchase(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CorrectPurchase(ctx, fc.Args["input"].(model.CorrectPurchaseInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CorrectPurchaseResult) graphql.Marshaler {
+			return ec.marshalNCorrectPurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCorrectPurchaseResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_correctPurchase(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CorrectPurchaseResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_correctPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createAccount(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createAccount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateAccount(ctx, fc.Args["input"].(model.CreateAccountInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CreateAccountResult) graphql.Marshaler {
+			return ec.marshalNCreateAccountResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateAccountResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createAccount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CreateAccountResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createBudget(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createBudget(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateBudget(ctx, fc.Args["input"].(model.CreateBudgetInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CreateBudgetResult) graphql.Marshaler {
+			return ec.marshalNCreateBudgetResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateBudgetResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createBudget(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CreateBudgetResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createBudget_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_createCategory(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -16311,138 +16487,6 @@ func (ec *executionContext) fieldContext_Mutation_createCategory(ctx context.Con
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_createCategory_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_setCategoryArchived(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_setCategoryArchived(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().SetCategoryArchived(ctx, fc.Args["input"].(model.SetCategoryArchivedInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.SetCategoryArchivedResult) graphql.Marshaler {
-			return ec.marshalNSetCategoryArchivedResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetCategoryArchivedResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_setCategoryArchived(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type SetCategoryArchivedResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_setCategoryArchived_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_setFundingSchedule(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_setFundingSchedule(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().SetFundingSchedule(ctx, fc.Args["input"].(model.SetFundingScheduleInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.SetFundingScheduleResult) graphql.Marshaler {
-			return ec.marshalNSetFundingScheduleResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetFundingScheduleResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_setFundingSchedule(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type SetFundingScheduleResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_setFundingSchedule_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_acceptHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_acceptHouseholdInvitation(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().AcceptHouseholdInvitation(ctx, fc.Args["input"].(model.AcceptHouseholdInvitationInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.AcceptHouseholdInvitationResult) graphql.Marshaler {
-			return ec.marshalNAcceptHouseholdInvitationResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAcceptHouseholdInvitationResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_acceptHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type AcceptHouseholdInvitationResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_acceptHouseholdInvitation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -16493,50 +16537,6 @@ func (ec *executionContext) fieldContext_Mutation_createHouseholdInvitation(ctx 
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_revokeHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_revokeHouseholdInvitation(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().RevokeHouseholdInvitation(ctx, fc.Args["input"].(model.RevokeHouseholdInvitationInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.RevokeHouseholdInvitationResult) graphql.Marshaler {
-			return ec.marshalNRevokeHouseholdInvitationResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRevokeHouseholdInvitationResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_revokeHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type RevokeHouseholdInvitationResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_revokeHouseholdInvitation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
 func (ec *executionContext) _Mutation_createHousehold(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -16581,34 +16581,34 @@ func (ec *executionContext) fieldContext_Mutation_createHousehold(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_closePeriod(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mutation_createPool(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
 		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_closePeriod(ctx, field)
+			return ec.fieldContext_Mutation_createPool(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().ClosePeriod(ctx, fc.Args["input"].(model.ClosePeriodInput))
+			return ec.Resolvers.Mutation().CreatePool(ctx, fc.Args["input"].(model.CreatePoolInput))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.ClosePeriodResult) graphql.Marshaler {
-			return ec.marshalNClosePeriodResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐClosePeriodResult(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.CreatePoolResult) graphql.Marshaler {
+			return ec.marshalNCreatePoolResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatePoolResult(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
-func (ec *executionContext) fieldContext_Mutation_closePeriod(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Mutation_createPool(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Mutation",
 		Field:      field,
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type ClosePeriodResult does not have child fields")
+			return nil, errors.New("field of type CreatePoolResult does not have child fields")
 		},
 	}
 	defer func() {
@@ -16618,7 +16618,271 @@ func (ec *executionContext) fieldContext_Mutation_closePeriod(ctx context.Contex
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_closePeriod_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Mutation_createPool_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createProductConcept(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createProductConcept(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateProductConcept(ctx, fc.Args["input"].(model.CreateProductConceptInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CreateProductConceptResult) graphql.Marshaler {
+			return ec.marshalNCreateProductConceptResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateProductConceptResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createProductConcept(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CreateProductConceptResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createProductConcept_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createProductVariant(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createProductVariant(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateProductVariant(ctx, fc.Args["input"].(model.CreateProductVariantInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CreateProductVariantResult) graphql.Marshaler {
+			return ec.marshalNCreateProductVariantResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateProductVariantResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createProductVariant(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CreateProductVariantResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createProductVariant_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createPurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createPurchase(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreatePurchase(ctx, fc.Args["input"].(model.CreatePurchaseInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CreatePurchaseResult) graphql.Marshaler {
+			return ec.marshalNCreatePurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatePurchaseResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createPurchase(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CreatePurchaseResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createRecurringExpense(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createRecurringExpense(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateRecurringExpense(ctx, fc.Args["input"].(model.CreateRecurringExpenseInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CreateRecurringExpenseResult) graphql.Marshaler {
+			return ec.marshalNCreateRecurringExpenseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateRecurringExpenseResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createRecurringExpense(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CreateRecurringExpenseResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createRecurringExpense_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createTag(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createTag(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateTag(ctx, fc.Args["input"].(model.CreateTagInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CreateTagResult) graphql.Marshaler {
+			return ec.marshalNCreateTagResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateTagResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createTag(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CreateTagResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createTag_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_postPurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_postPurchase(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().PostPurchase(ctx, fc.Args["input"].(model.PostPurchaseInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.PostPurchaseResult) graphql.Marshaler {
+			return ec.marshalNPostPurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPostPurchaseResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_postPurchase(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type PostPurchaseResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_postPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -16845,34 +17109,34 @@ func (ec *executionContext) fieldContext_Mutation_recordTransfer(ctx context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_createPool(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mutation_revokeHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
 		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_createPool(ctx, field)
+			return ec.fieldContext_Mutation_revokeHouseholdInvitation(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreatePool(ctx, fc.Args["input"].(model.CreatePoolInput))
+			return ec.Resolvers.Mutation().RevokeHouseholdInvitation(ctx, fc.Args["input"].(model.RevokeHouseholdInvitationInput))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.CreatePoolResult) graphql.Marshaler {
-			return ec.marshalNCreatePoolResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatePoolResult(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.RevokeHouseholdInvitationResult) graphql.Marshaler {
+			return ec.marshalNRevokeHouseholdInvitationResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRevokeHouseholdInvitationResult(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
-func (ec *executionContext) fieldContext_Mutation_createPool(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Mutation_revokeHouseholdInvitation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Mutation",
 		Field:      field,
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type CreatePoolResult does not have child fields")
+			return nil, errors.New("field of type RevokeHouseholdInvitationResult does not have child fields")
 		},
 	}
 	defer func() {
@@ -16882,7 +17146,183 @@ func (ec *executionContext) fieldContext_Mutation_createPool(ctx context.Context
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_createPool_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Mutation_revokeHouseholdInvitation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_setAllocationRule(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setAllocationRule(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetAllocationRule(ctx, fc.Args["input"].(model.SetAllocationRuleInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.SetAllocationRuleResult) graphql.Marshaler {
+			return ec.marshalNSetAllocationRuleResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetAllocationRuleResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setAllocationRule(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type SetAllocationRuleResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setAllocationRule_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_setCategoryArchived(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setCategoryArchived(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetCategoryArchived(ctx, fc.Args["input"].(model.SetCategoryArchivedInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.SetCategoryArchivedResult) graphql.Marshaler {
+			return ec.marshalNSetCategoryArchivedResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetCategoryArchivedResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setCategoryArchived(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type SetCategoryArchivedResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setCategoryArchived_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_setDefaultAllocation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setDefaultAllocation(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetDefaultAllocation(ctx, fc.Args["input"].(model.SetDefaultAllocationInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.SetDefaultAllocationResult) graphql.Marshaler {
+			return ec.marshalNSetDefaultAllocationResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetDefaultAllocationResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setDefaultAllocation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type SetDefaultAllocationResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setDefaultAllocation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_setFundingSchedule(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setFundingSchedule(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetFundingSchedule(ctx, fc.Args["input"].(model.SetFundingScheduleInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.SetFundingScheduleResult) graphql.Marshaler {
+			return ec.marshalNSetFundingScheduleResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetFundingScheduleResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setFundingSchedule(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type SetFundingScheduleResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setFundingSchedule_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -16933,94 +17373,6 @@ func (ec *executionContext) fieldContext_Mutation_setPoolFundingRule(ctx context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_createProductConcept(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_createProductConcept(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreateProductConcept(ctx, fc.Args["input"].(model.CreateProductConceptInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.CreateProductConceptResult) graphql.Marshaler {
-			return ec.marshalNCreateProductConceptResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateProductConceptResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_createProductConcept(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type CreateProductConceptResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_createProductConcept_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_createProductVariant(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_createProductVariant(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreateProductVariant(ctx, fc.Args["input"].(model.CreateProductVariantInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.CreateProductVariantResult) graphql.Marshaler {
-			return ec.marshalNCreateProductVariantResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateProductVariantResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_createProductVariant(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type CreateProductVariantResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_createProductVariant_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
 func (ec *executionContext) _Mutation_setProductAlias(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -17059,6 +17411,50 @@ func (ec *executionContext) fieldContext_Mutation_setProductAlias(ctx context.Co
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_setProductAlias_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_updateBudget(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_updateBudget(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().UpdateBudget(ctx, fc.Args["input"].(model.UpdateBudgetInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.UpdateBudgetResult) graphql.Marshaler {
+			return ec.marshalNUpdateBudgetResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdateBudgetResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_updateBudget(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type UpdateBudgetResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_updateBudget_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -17109,138 +17505,6 @@ func (ec *executionContext) fieldContext_Mutation_updatePurchaseItem(ctx context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_bulkUpdatePurchaseItems(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_bulkUpdatePurchaseItems(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().BulkUpdatePurchaseItems(ctx, fc.Args["input"].(model.BulkUpdatePurchaseItemsInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.BulkUpdatePurchaseItemsResult) graphql.Marshaler {
-			return ec.marshalNBulkUpdatePurchaseItemsResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchaseItemsResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_bulkUpdatePurchaseItems(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type BulkUpdatePurchaseItemsResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_bulkUpdatePurchaseItems_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_createPurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_createPurchase(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreatePurchase(ctx, fc.Args["input"].(model.CreatePurchaseInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.CreatePurchaseResult) graphql.Marshaler {
-			return ec.marshalNCreatePurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreatePurchaseResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_createPurchase(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type CreatePurchaseResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_createPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_postPurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_postPurchase(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().PostPurchase(ctx, fc.Args["input"].(model.PostPurchaseInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.PostPurchaseResult) graphql.Marshaler {
-			return ec.marshalNPostPurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPostPurchaseResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_postPurchase(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type PostPurchaseResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_postPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
 func (ec *executionContext) _Mutation_updatePurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -17279,138 +17543,6 @@ func (ec *executionContext) fieldContext_Mutation_updatePurchase(ctx context.Con
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_updatePurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_correctPurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_correctPurchase(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CorrectPurchase(ctx, fc.Args["input"].(model.CorrectPurchaseInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.CorrectPurchaseResult) graphql.Marshaler {
-			return ec.marshalNCorrectPurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCorrectPurchaseResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_correctPurchase(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type CorrectPurchaseResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_correctPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_bulkUpdatePurchases(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_bulkUpdatePurchases(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().BulkUpdatePurchases(ctx, fc.Args["input"].(model.BulkUpdatePurchasesInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.BulkUpdatePurchasesResult) graphql.Marshaler {
-			return ec.marshalNBulkUpdatePurchasesResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_bulkUpdatePurchases(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type BulkUpdatePurchasesResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_bulkUpdatePurchases_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_createRecurringExpense(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_createRecurringExpense(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreateRecurringExpense(ctx, fc.Args["input"].(model.CreateRecurringExpenseInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.CreateRecurringExpenseResult) graphql.Marshaler {
-			return ec.marshalNCreateRecurringExpenseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateRecurringExpenseResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_createRecurringExpense(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type CreateRecurringExpenseResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_createRecurringExpense_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -17461,94 +17593,6 @@ func (ec *executionContext) fieldContext_Mutation_updateRecurringExpense(ctx con
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_archiveRecurringExpense(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_archiveRecurringExpense(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().ArchiveRecurringExpense(ctx, fc.Args["input"].(model.ArchiveRecurringExpenseInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.ArchiveRecurringExpenseResult) graphql.Marshaler {
-			return ec.marshalNArchiveRecurringExpenseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐArchiveRecurringExpenseResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_archiveRecurringExpense(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type ArchiveRecurringExpenseResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_archiveRecurringExpense_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_createTag(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_createTag(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreateTag(ctx, fc.Args["input"].(model.CreateTagInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.CreateTagResult) graphql.Marshaler {
-			return ec.marshalNCreateTagResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateTagResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_createTag(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type CreateTagResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_createTag_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
 func (ec *executionContext) _Mutation_updateTag(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -17587,50 +17631,6 @@ func (ec *executionContext) fieldContext_Mutation_updateTag(ctx context.Context,
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_updateTag_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_archiveTag(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_archiveTag(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().ArchiveTag(ctx, fc.Args["input"].(model.ArchiveTagInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.ArchiveTagResult) graphql.Marshaler {
-			return ec.marshalNArchiveTagResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐArchiveTagResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_archiveTag(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type ArchiveTagResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_archiveTag_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -36691,37 +36691,9 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
-		case "createAccount":
+		case "acceptHouseholdInvitation":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_createAccount(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "setDefaultAllocation":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_setDefaultAllocation(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "setAllocationRule":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_setAllocationRule(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "createBudget":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_createBudget(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "updateBudget":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_updateBudget(ctx, field)
+				return ec._Mutation_acceptHouseholdInvitation(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -36733,30 +36705,65 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "archiveRecurringExpense":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_archiveRecurringExpense(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "archiveTag":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_archiveTag(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "bulkUpdatePurchaseItems":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_bulkUpdatePurchaseItems(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "bulkUpdatePurchases":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_bulkUpdatePurchases(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "closePeriod":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_closePeriod(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "correctPurchase":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_correctPurchase(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createAccount":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createAccount(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createBudget":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createBudget(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "createCategory":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createCategory(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "setCategoryArchived":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_setCategoryArchived(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "setFundingSchedule":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_setFundingSchedule(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "acceptHouseholdInvitation":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_acceptHouseholdInvitation(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -36768,13 +36775,6 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "revokeHouseholdInvitation":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_revokeHouseholdInvitation(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
 		case "createHousehold":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createHousehold(ctx, field)
@@ -36782,9 +36782,51 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "closePeriod":
+		case "createPool":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_closePeriod(ctx, field)
+				return ec._Mutation_createPool(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createProductConcept":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createProductConcept(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createProductVariant":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createProductVariant(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createPurchase":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createPurchase(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createRecurringExpense":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createRecurringExpense(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createTag":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createTag(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "postPurchase":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_postPurchase(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -36824,9 +36866,37 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "createPool":
+		case "revokeHouseholdInvitation":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_createPool(ctx, field)
+				return ec._Mutation_revokeHouseholdInvitation(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "setAllocationRule":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setAllocationRule(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "setCategoryArchived":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setCategoryArchived(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "setDefaultAllocation":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setDefaultAllocation(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "setFundingSchedule":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setFundingSchedule(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -36838,23 +36908,16 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "createProductConcept":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_createProductConcept(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "createProductVariant":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_createProductVariant(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
 		case "setProductAlias":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_setProductAlias(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updateBudget":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_updateBudget(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -36866,51 +36929,9 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "bulkUpdatePurchaseItems":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_bulkUpdatePurchaseItems(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "createPurchase":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_createPurchase(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "postPurchase":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_postPurchase(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
 		case "updatePurchase":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_updatePurchase(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "correctPurchase":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_correctPurchase(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "bulkUpdatePurchases":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_bulkUpdatePurchases(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "createRecurringExpense":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_createRecurringExpense(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -36922,30 +36943,9 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "archiveRecurringExpense":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_archiveRecurringExpense(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "createTag":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_createTag(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
 		case "updateTag":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_updateTag(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "archiveTag":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_archiveTag(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++

@@ -1,0 +1,23 @@
+extend type Mutation {
+  recordExternalIncome(input: RecordExternalIncomeInput!): RecordExternalIncomeResult!
+}
+
+union RecordExternalIncomeResult = RecordExternalIncomeSuccess | RecordExternalIncomeUserError
+
+type RecordExternalIncomeSuccess {
+  result: AccountIncome!
+}
+
+input RecordExternalIncomeInput {
+  householdId: ID! @nodeID(of: "Household")
+  accountId: ID! @nodeID(of: "Account")
+  amountYen: Long!
+  occurredAt: DateTime!
+  description: String!
+  idempotencyKey: String!
+}
+
+type RecordExternalIncomeUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

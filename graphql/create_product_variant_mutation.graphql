@@ -1,0 +1,23 @@
+extend type Mutation {
+  createProductVariant(input: CreateProductVariantInput!): CreateProductVariantResult!
+}
+
+union CreateProductVariantResult = CreateProductVariantSuccess | CreateProductVariantUserError
+
+type CreateProductVariantSuccess {
+  result: ProductVariant!
+}
+
+input CreateProductVariantInput {
+  householdId: ID! @nodeID(of: "Household")
+  conceptId: ID! @nodeID(of: "ProductConcept")
+  name: String!
+  brand: String
+  packageSize: String
+  barcode: String
+}
+
+type CreateProductVariantUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
