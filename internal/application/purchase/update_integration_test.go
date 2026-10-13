@@ -87,8 +87,8 @@ func TestServiceUpdatePersistsRevisionEventAndRollsBackHookFailure(t *testing.T)
 		Merchant: &updatedMerchant, ChangedFields: []string{updateFieldMerchant},
 	}, UpdateOperations{
 		LockAccountingPeriods: func(_ context.Context, _ pgx.Tx, _ string, periods ...string) error {
-			if len(periods) != 1 {
-				t.Errorf("period lock received %d periods; want one", len(periods))
+			if len(periods) != 2 || periods[0] != "2026-10" || periods[1] != "2026-10" {
+				t.Errorf("period lock received %v; want old and target period 2026-10", periods)
 			}
 			return nil
 		},
