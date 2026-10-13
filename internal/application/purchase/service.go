@@ -443,7 +443,7 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 			return CreateResult{}, err
 		}
 	}
-	if err := writeEvent(ctx, tx, householdUUID, purchaseUUID, "purchase.created", 1, []string{}, createdBy); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, householdUUID, purchaseUUID, "purchase.created", 1, []string{}, createdBy); err != nil {
 		return CreateResult{}, err
 	}
 	return CreateResult{PurchaseID: purchaseID}, nil
@@ -624,10 +624,6 @@ func ensureAccountingPeriod(ctx context.Context, executor bob.Executor, househol
 	status, revision := "OPEN", int64(0)
 	_, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{HouseholdID: &householdID, Period: &period, Status: &status, Revision: &revision}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, executor)
 	return err
-}
-
-func writeEvent(ctx context.Context, tx pgx.Tx, householdID, entityID gofrsuuid.UUID, eventType string, revision int64, fields []string, actorID gofrsuuid.UUID) error {
-	return accounting.RecordEvent(ctx, bobpgx.NewTx(tx, nil), householdID, entityID, eventType, revision, fields, actorID)
 }
 
 func normalizeMerchant(value string) string {

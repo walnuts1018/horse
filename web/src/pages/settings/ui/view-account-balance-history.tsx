@@ -1,7 +1,7 @@
 import styles from "./settings-page.module.css";
 import { useEffect, useRef, useState } from "react";
-import { readGraphql, type AccountBalanceAnalysis, type Household } from "../../../shared/api";
-import { accountBalanceAnalysisQuery } from "../api/account-balance-analysis";
+import { type AccountBalanceAnalysis, type Household } from "../../../shared/api";
+import { readAccountBalanceAnalysis } from "../api/read-account-balance-analysis";
 import { InlineError } from "../../../shared/ui";
 
 type Account = Household["accounts"][number];
@@ -99,19 +99,15 @@ export function ViewAccountBalanceHistory({
     setLoadingMore(false);
     setError("");
     setMoreError("");
-    void readGraphql<{ accountBalanceAnalysis: AccountBalanceAnalysis }>(
-      accountBalanceAnalysisQuery,
-      {
-        householdId,
-        accountId,
-        from,
-        to,
-        first: 100,
-      },
-    )
+    void readAccountBalanceAnalysis({
+      householdId,
+      accountId,
+      from,
+      to,
+      first: 100,
+    })
       .then((result) => {
-        if (generation.current === currentGeneration)
-          setBalanceHistory(result.accountBalanceAnalysis);
+        if (generation.current === currentGeneration) setBalanceHistory(result);
       })
       .catch((reason) => {
         if (generation.current === currentGeneration) setError((reason as Error).message);
@@ -137,26 +133,22 @@ export function ViewAccountBalanceHistory({
     setLoadingMore(true);
     setMoreError("");
     try {
-      const result = await readGraphql<{ accountBalanceAnalysis: AccountBalanceAnalysis }>(
-        accountBalanceAnalysisQuery,
-        {
-          householdId,
-          accountId,
-          from,
-          to,
-          first: 100,
-          after,
-        },
-      );
+      const result = await readAccountBalanceAnalysis({
+        householdId,
+        accountId,
+        from,
+        to,
+        first: 100,
+        after,
+      });
       if (generation.current !== currentGeneration) return;
       setBalanceHistory((current) => {
-        if (!current || current.accountId !== result.accountBalanceAnalysis.accountId)
-          return current;
+        if (!current || current.accountId !== result.accountId) return current;
         return {
           ...current,
           changes: {
-            ...result.accountBalanceAnalysis.changes,
-            edges: [...current.changes.edges, ...result.accountBalanceAnalysis.changes.edges],
+            ...result.changes,
+            edges: [...current.changes.edges, ...result.changes.edges],
           },
         };
       });

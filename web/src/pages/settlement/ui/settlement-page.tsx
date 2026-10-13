@@ -6,7 +6,7 @@ import {
   type Household,
   type Settlement,
 } from "../../../shared/api";
-import { closePeriodMutation, settlementQuery } from "../../../entities/settlement";
+import { closePeriodMutation } from "../../../entities/settlement";
 import {
   recordFundingMutation,
   recordTransferMutation,
@@ -16,6 +16,7 @@ import { InlineError } from "../../../shared/ui";
 import { japanMonth } from "../../../shared/lib";
 import "./settlement-page.css";
 import { formatSettlementYen as yen, settlementTotalDue } from "../model/settlement-view";
+import { readSettlement } from "../api/read-settlement";
 import {
   clearFundingIntent,
   clearTransferIntent,
@@ -109,15 +110,12 @@ export function SettlementPage({
     setLoadError("");
     try {
       refreshLedger();
-      const settlementData = await readGraphql<{ settlement: Settlement }>(settlementQuery, {
-        householdId: requestedHouseholdId,
-        period: requestedPeriod,
-      });
+      const settlementData = await readSettlement(requestedHouseholdId, requestedPeriod);
       if (request !== loadRequest.current) return;
       setSettlementSnapshot({
         householdId: requestedHouseholdId,
         period: requestedPeriod,
-        value: settlementData.settlement,
+        value: settlementData,
       });
     } catch (reason) {
       if (request === loadRequest.current) setLoadError((reason as Error).message);

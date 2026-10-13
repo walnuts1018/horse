@@ -182,11 +182,11 @@ Purchaseの履歴QueryをRelay生成operationへ移し、Purchase Entityのmappe
 
 runtimeの`internal/**/*.go`を監査し、直接のSQL文文字列、`psql.Raw`、Bob以外からの`Query`・`Exec`・`Prepare`呼び出しがないことを確認しました。GraphQL filter統合テストは専用PostgreSQLで成功し、既存fixtureの件数と順序を正しく反映しました。会計fixtureの1円購入は負担先poolを固定してUUID順に依存する端数差を除きました。Webの型検査、FSD、lint、format、Relay検証、本番buildと差分検査が成功しました。
 
-商品カタログ一覧、商品候補、ホームの概要・月間支出・精算結果、分析の月間支出・メンバー別支出をpage/entity所有のAPI・mapperへ移しました。Relay生成型を入力にし、手書き通信型と対象read pathの`readGraphql<T>`を除去しました。画面のfallbackと既存更新依存を維持しました。
+商品カタログ一覧、商品候補、残高一覧と履歴、招待一覧、ホームの概要・月間支出・精算結果、分析の月間支出・メンバー別支出、Settlement・貸付残高、未照合観測をpage/entity所有のAPI・mapperへ移しました。Relay生成型を入力にし、手書き通信型と対象read pathの`readGraphql<T>`を除去しました。画面のfallback・pagination・更新依存を維持しました。残る`readGraphql<T>`利用はMutationです。
 
 設定画面専用のレイアウト、section、行、負担設定、招待リンクのstyleを`pages/settings/ui/settings-page.module.css`へ移しました。設定画面以外でも使う招待prompt、件数badge、avatarの基本形はglobal stylesheetに残しました。`global.css`は4,522行です。
 
-HouseholdEventのJSON化とBob insertを`accounting.RecordEvent`へ集約しました。冪等性検証は各操作でfingerprintとresourceの契約が異なり、同じ処理へまとめると契約を曖昧にするため、個別に維持します。対象ApplicationのGoテストと`golangci-lint`が成功しました。
+HouseholdEventのJSON化とBob insertを`accounting.RecordEvent`へ集約し、購入・入金・振替・planningから呼び出しました。冪等性検証は各操作でfingerprintとresourceの契約が異なり、同じ処理へまとめると契約を曖昧にするため、個別に維持します。対象ApplicationのGoテストと`golangci-lint`が成功しました。
 
 2026年10月14日に合成PNGをPaid Projectの`gemini-3.8-flash`へ1回送信しました。応答は店名「合成テスト店」、品目2件、8%税情報、合計378円を含み、modelVersionは`gemini-3.8-flash`でした。usage metadataは入力1,731token、出力295tokenです。公式のStandard料金を用いた推定額は$0.0024045（当時のアプリ為替158.535円/$で約0.38円）で、実請求額ではありません（[Gemini API料金表](https://ai.google.dev/gemini-api/docs/pricing)）。合成画像と一時Job、Pod、ServiceAccount、NetworkPolicyは削除し、APIキー値は読み取らず出力していません。
 

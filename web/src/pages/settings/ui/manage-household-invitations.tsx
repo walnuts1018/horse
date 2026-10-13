@@ -4,16 +4,14 @@ import { Plus } from "lucide-react";
 import {
   readGraphql,
   type CreateHouseholdInvitationMutation$data,
-  type HouseholdInvitationsQuery$data,
   type RevokeHouseholdInvitationMutation$data,
 } from "../../../shared/api";
 import {
   createHouseholdInvitationMutation,
-  householdInvitationsQuery,
+  readHouseholdInvitations,
   revokeHouseholdInvitationMutation,
+  type HouseholdInvitation,
 } from "../api/household-invitations";
-
-type Invitation = HouseholdInvitationsQuery$data["householdInvitations"]["edges"][number]["node"];
 
 export function ManageHouseholdInvitations({
   householdId,
@@ -30,7 +28,7 @@ export function ManageHouseholdInvitations({
   onPendingChange: (pending: boolean) => void;
   onInvitationFormSaved: () => void;
 }) {
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [invitations, setInvitations] = useState<HouseholdInvitation[]>([]);
   const [invitationsCursor, setInvitationsCursor] = useState<string | null>(null);
   const [invitationsHasNextPage, setInvitationsHasNextPage] = useState(false);
   const [invitationsPageLoading, setInvitationsPageLoading] = useState(false);
@@ -39,30 +37,20 @@ export function ManageHouseholdInvitations({
   const [expiresInDays, setExpiresInDays] = useState("7");
 
   const refreshInvitations = useCallback(async () => {
-    const result = await readGraphql<HouseholdInvitationsQuery$data>(householdInvitationsQuery, {
-      householdId,
-      first: 50,
-    });
-    setInvitations(result.householdInvitations.edges.map((edge) => edge.node));
-    setInvitationsCursor(result.householdInvitations.pageInfo.endCursor ?? null);
-    setInvitationsHasNextPage(result.householdInvitations.pageInfo.hasNextPage);
+    const page = await readHouseholdInvitations(householdId);
+    setInvitations(page.invitations);
+    setInvitationsCursor(page.endCursor);
+    setInvitationsHasNextPage(page.hasNextPage);
   }, [householdId]);
 
   const loadMoreInvitations = async () => {
     if (!invitationsCursor || invitationsPageLoading) return;
     setInvitationsPageLoading(true);
     try {
-      const result = await readGraphql<HouseholdInvitationsQuery$data>(householdInvitationsQuery, {
-        householdId,
-        after: invitationsCursor,
-        first: 50,
-      });
-      setInvitations((current) => [
-        ...current,
-        ...result.householdInvitations.edges.map((edge) => edge.node),
-      ]);
-      setInvitationsCursor(result.householdInvitations.pageInfo.endCursor ?? null);
-      setInvitationsHasNextPage(result.householdInvitations.pageInfo.hasNextPage);
+      const page = await readHouseholdInvitations(householdId, invitationsCursor);
+      setInvitations((current) => [...current, ...page.invitations]);
+      setInvitationsCursor(page.endCursor);
+      setInvitationsHasNextPage(page.hasNextPage);
     } catch (reason) {
       onNotice((reason as Error).message, "error");
     } finally {

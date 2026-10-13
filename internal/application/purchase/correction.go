@@ -468,7 +468,7 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 	}).Exec(ctx, executor); err != nil {
 		return CorrectionResult{}, err
 	}
-	if err := writeEvent(ctx, tx, householdUUID, purchaseUUID, "purchase.corrected", 1, []string{"correction"}, actorUUID); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, householdUUID, purchaseUUID, "purchase.corrected", 1, []string{"correction"}, actorUUID); err != nil {
 		return CorrectionResult{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

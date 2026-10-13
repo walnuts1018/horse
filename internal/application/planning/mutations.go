@@ -3,21 +3,18 @@ package planning
 import (
 	"context"
 	"database/sql"
-	jsonv1 "encoding/json"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
-	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -157,7 +154,7 @@ func (s *Service) SetBudget(ctx context.Context, command BudgetCommand) (BudgetR
 	if err != nil {
 		return BudgetResult{}, err
 	}
-	if err := writeEvent(ctx, tx, householdID, row.ID, "budget.updated", row.Revision, []string{"name", "amountYen", "categoryId", "startsOn", "endsOn"}, actorID); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, householdID, row.ID, "budget.updated", row.Revision, []string{"name", "amountYen", "categoryId", "startsOn", "endsOn"}, actorID); err != nil {
 		return BudgetResult{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -199,7 +196,7 @@ func (s *Service) ArchiveBudget(ctx context.Context, actorID, householdID, budge
 	if _, err := models.Budgets.Update((&models.BudgetSetter{Archived: &archived, Revision: &revisionValue}).UpdateMod(), um.Where(models.Budgets.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
 		return BudgetResult{}, err
 	}
-	if err := writeEvent(ctx, tx, hhID, id, "budget.archived", revisionValue, []string{"archived"}, actor); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, hhID, id, "budget.archived", revisionValue, []string{"archived"}, actor); err != nil {
 		return BudgetResult{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -270,7 +267,7 @@ func (s *Service) SetRecurringExpense(ctx context.Context, command RecurringExpe
 	if err != nil {
 		return RecurringExpenseResult{}, err
 	}
-	if err := writeEvent(ctx, tx, householdID, row.ID, "recurring_expense.updated", row.Revision, []string{"name", "merchant", "amountYen", "categoryId", "paymentAccountId", "cadence", "startsOn", "nextDueOn", "endsOn"}, actorID); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, householdID, row.ID, "recurring_expense.updated", row.Revision, []string{"name", "merchant", "amountYen", "categoryId", "paymentAccountId", "cadence", "startsOn", "nextDueOn", "endsOn"}, actorID); err != nil {
 		return RecurringExpenseResult{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -312,7 +309,7 @@ func (s *Service) ArchiveRecurringExpense(ctx context.Context, actorID, househol
 	if _, err := models.RecurringExpenses.Update((&models.RecurringExpenseSetter{Archived: &archived, Revision: &revisionValue}).UpdateMod(), um.Where(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
 		return RecurringExpenseResult{}, err
 	}
-	if err := writeEvent(ctx, tx, hhID, id, "recurring_expense.archived", revisionValue, []string{"archived"}, actor); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, hhID, id, "recurring_expense.archived", revisionValue, []string{"archived"}, actor); err != nil {
 		return RecurringExpenseResult{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -380,15 +377,4 @@ func parseUUID(value string) (gofrsuuid.UUID, error) {
 
 func newUUID() gofrsuuid.UUID {
 	return gofrsuuid.Must(gofrsuuid.NewV7())
-}
-
-func writeEvent(ctx context.Context, tx pgx.Tx, householdID, entityID gofrsuuid.UUID, eventType string, revision int64, fields []string, actorID gofrsuuid.UUID) error {
-	encoded, err := json.Marshal(fields)
-	if err != nil {
-		return err
-	}
-	changedFields := types.JSON[jsonv1.RawMessage]{Val: encoded}
-	actor := sql.Null[gofrsuuid.UUID]{V: actorID, Valid: true}
-	_, err = models.HouseholdEvents.Insert(&models.HouseholdEventSetter{HouseholdID: &householdID, Type: &eventType, EntityID: &entityID, Revision: &revision, ChangedFields: &changedFields, ActorID: &actor}).Exec(ctx, bobpgx.NewTx(tx, nil))
-	return err
 }

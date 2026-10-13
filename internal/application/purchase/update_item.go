@@ -282,7 +282,7 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (Up
 		if err != nil {
 			return UpdateResult{}, err
 		}
-		if err := writeEvent(ctx, tx, householdID, variant.ID, "product.variant.renamed", variant.Revision, []string{itemFieldName}, actorUUID); err != nil {
+		if err := accounting.RecordEvent(ctx, executor, householdID, variant.ID, "product.variant.renamed", variant.Revision, []string{itemFieldName}, actorUUID); err != nil {
 			return UpdateResult{}, err
 		}
 	}
@@ -322,7 +322,7 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (Up
 			if err != nil {
 				return UpdateResult{}, err
 			}
-			if err := writeEvent(ctx, tx, householdID, alias.ID, "product.alias.learned", alias.Revision, []string{"alias", "variantId", "merchant"}, actorUUID); err != nil {
+			if err := accounting.RecordEvent(ctx, executor, householdID, alias.ID, "product.alias.learned", alias.Revision, []string{"alias", "variantId", "merchant"}, actorUUID); err != nil {
 				return UpdateResult{}, err
 			}
 		}
@@ -376,7 +376,7 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (Up
 	).Exec(ctx, executor); err != nil {
 		return UpdateResult{}, err
 	}
-	if err := writeEvent(ctx, tx, householdID, itemUUID, "purchase.item.updated", newRevision, command.ChangedFields, actorUUID); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, householdID, itemUUID, "purchase.item.updated", newRevision, command.ChangedFields, actorUUID); err != nil {
 		return UpdateResult{}, err
 	}
 	if status == postedStatus {

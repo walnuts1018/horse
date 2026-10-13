@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchQuery } from "react-relay";
 import {
-  readGraphql,
-  type Connection,
+  getRelayEnvironment,
   type SourceKind,
+  type UnmatchedObservationsQuery,
+  type UnmatchedObservationsQuery$data,
   type UnmatchedObservation,
   type UnmatchedObservationState,
 } from "../../../../shared/api";
 import { unmatchedObservationsQuery } from "./operations";
+
+type ObservationRecord =
+  UnmatchedObservationsQuery$data["unmatchedObservations"]["edges"][number]["node"];
 
 type Options = {
   enabled?: boolean;
@@ -51,20 +56,24 @@ export function useUnmatchedObservations(householdId: string, options: Options =
     setError("");
     setMoreError("");
     try {
-      const result = await readGraphql<{ unmatchedObservations: Connection<UnmatchedObservation> }>(
-        unmatchedObservationsQuery,
-        {
-          householdId,
-          from: options.from,
-          to: options.to,
-          sourceKind: options.sourceKind,
-          state: options.state,
-          first: options.first ?? 50,
-        },
-      );
+      const result: UnmatchedObservationsQuery$data | undefined =
+        await fetchQuery<UnmatchedObservationsQuery>(
+          getRelayEnvironment(),
+          unmatchedObservationsQuery,
+          {
+            householdId,
+            from: options.from,
+            to: options.to,
+            sourceKind: options.sourceKind,
+            state: options.state,
+            first: options.first ?? 50,
+          },
+          { fetchPolicy: "network-only" },
+        ).toPromise();
+      if (!result) throw new Error("未照合候補を取得できませんでした");
       if (generation.current !== currentGeneration) return;
       const page = result.unmatchedObservations;
-      setObservations(page.edges.map((edge) => edge.node));
+      setObservations(page.edges.map(({ node }) => mapObservation(node)));
       setTotalCount(page.totalCount);
       setDataKey(queryKey);
       cursor.current = page.pageInfo.endCursor ?? null;
@@ -97,21 +106,28 @@ export function useUnmatchedObservations(householdId: string, options: Options =
     setLoadingMore(true);
     setMoreError("");
     try {
-      const result = await readGraphql<{ unmatchedObservations: Connection<UnmatchedObservation> }>(
-        unmatchedObservationsQuery,
-        {
-          householdId,
-          from: options.from,
-          to: options.to,
-          sourceKind: options.sourceKind,
-          state: options.state,
-          after,
-          first: options.first ?? 50,
-        },
-      );
+      const result: UnmatchedObservationsQuery$data | undefined =
+        await fetchQuery<UnmatchedObservationsQuery>(
+          getRelayEnvironment(),
+          unmatchedObservationsQuery,
+          {
+            householdId,
+            from: options.from,
+            to: options.to,
+            sourceKind: options.sourceKind,
+            state: options.state,
+            after,
+            first: options.first ?? 50,
+          },
+          { fetchPolicy: "network-only" },
+        ).toPromise();
+      if (!result) throw new Error("未照合候補を取得できませんでした");
       if (generation.current !== currentGeneration) return;
       const page = result.unmatchedObservations;
-      setObservations((current) => [...current, ...page.edges.map((edge) => edge.node)]);
+      setObservations((current) => [
+        ...current,
+        ...page.edges.map(({ node }) => mapObservation(node)),
+      ]);
       setTotalCount(page.totalCount);
       setDataKey(queryKey);
       cursor.current = page.pageInfo.endCursor ?? null;
@@ -158,4 +174,47 @@ export function useUnmatchedObservations(householdId: string, options: Options =
     refresh,
     loadMore,
   };
+}
+
+function mapObservation(record: ObservationRecord): UnmatchedObservation {
+  const fields = {
+    documentId: record.documentId,
+    sourceReference: record.sourceReference,
+    sourceKind: mapSourceKind(record.sourceKind),
+    merchant: record.merchant,
+    occurredAt: record.occurredAt,
+    amountYen: Number(record.amountYen),
+    orderId: record.orderId,
+    transactionId: record.transactionId,
+  };
+  switch (record.__typename) {
+    case "UnmatchedObservation":
+      return { __typename: record.__typename, ...fields };
+    case "ConfirmedObservation":
+      if (!record.purchase) throw new Error("照合済み候補に購入情報がありません");
+      return {
+        __typename: record.__typename,
+        ...fields,
+        purchase: {
+          id: record.purchase.id,
+          merchant: record.purchase.merchant,
+          occurredAt: record.purchase.occurredAt,
+        },
+      };
+    default:
+      throw new Error(`未対応の照合候補型です: ${record.__typename}`);
+  }
+}
+
+function mapSourceKind(sourceKind: ObservationRecord["sourceKind"]): SourceKind {
+  switch (sourceKind) {
+    case "BANK":
+    case "CARD":
+    case "EMAIL":
+    case "ORDER":
+    case "RECEIPT":
+      return sourceKind;
+    default:
+      throw new Error(`未対応の照合元です: ${sourceKind}`);
+  }
 }

@@ -1,4 +1,62 @@
-import { graphql } from "react-relay";
+import { fetchQuery, graphql } from "react-relay";
+import {
+  getRelayEnvironment,
+  type HouseholdInvitationsQuery,
+  type HouseholdInvitationsQuery$data,
+} from "../../../shared/api";
+
+export type HouseholdInvitation = {
+  __typename:
+    | "PendingHouseholdInvitation"
+    | "AcceptedHouseholdInvitation"
+    | "RevokedHouseholdInvitation"
+    | "ExpiredHouseholdInvitation";
+  id: string;
+  expiresAt: string;
+};
+
+export type HouseholdInvitationPage = {
+  invitations: HouseholdInvitation[];
+  endCursor: string | null;
+  hasNextPage: boolean;
+};
+
+type HouseholdInvitationRecord =
+  HouseholdInvitationsQuery$data["householdInvitations"]["edges"][number]["node"];
+
+export async function readHouseholdInvitations(
+  householdId: string,
+  after?: string,
+): Promise<HouseholdInvitationPage> {
+  const data = await fetchQuery<HouseholdInvitationsQuery>(
+    getRelayEnvironment(),
+    householdInvitationsQuery,
+    { householdId, after, first: 50 },
+    { fetchPolicy: "network-only" },
+  ).toPromise();
+  if (!data) throw new Error("招待一覧を取得できませんでした");
+  return {
+    invitations: data.householdInvitations.edges.map(({ node }) => mapHouseholdInvitation(node)),
+    endCursor: data.householdInvitations.pageInfo.endCursor ?? null,
+    hasNextPage: data.householdInvitations.pageInfo.hasNextPage,
+  };
+}
+
+function mapHouseholdInvitation(record: HouseholdInvitationRecord): HouseholdInvitation {
+  switch (record.__typename) {
+    case "PendingHouseholdInvitation":
+    case "AcceptedHouseholdInvitation":
+    case "RevokedHouseholdInvitation":
+    case "ExpiredHouseholdInvitation":
+      return {
+        __typename: record.__typename,
+        id: record.id,
+        expiresAt: record.expiresAt,
+      };
+    default:
+      throw new Error(`未対応の招待型です: ${record.__typename}`);
+  }
+}
 
 export const householdInvitationsQuery = graphql`
   query HouseholdInvitationsQuery($householdId: ID!, $after: String, $first: Int) {

@@ -158,7 +158,7 @@ func (s *Service) post(ctx context.Context, tx pgx.Tx, input PostCommand, finger
 	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{HouseholdID: &householdID, Key: &input.IdempotencyKey, Operation: &operation, ResourceID: &resource, RequestFingerprint: &fingerprintValue}).Exec(ctx, executor); err != nil {
 		return PostResult{}, err
 	}
-	if err := writeEvent(ctx, tx, householdID, purchaseID, "purchase.posted", revision, []string{"status"}, actorID); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, householdID, purchaseID, "purchase.posted", revision, []string{"status"}, actorID); err != nil {
 		return PostResult{}, err
 	}
 	return PostResult{PurchaseID: purchaseID.String()}, nil

@@ -3,11 +3,11 @@ import { Check, Plus, Wallet } from "lucide-react";
 import {
   makeIdempotencyKey,
   readGraphql,
-  type Connection,
   type Household,
   type LoanBalance,
 } from "../../../shared/api";
-import { loanBalancesQuery, recordRepaymentMutation } from "../../../entities/ledger";
+import { recordRepaymentMutation } from "../../../entities/ledger";
+import { readLoanBalances } from "../api/read-settlement";
 import { InlineError } from "../../../shared/ui";
 import {
   clearTransferIntent,
@@ -76,14 +76,11 @@ export function SettlementLoans({
     setHasNextPage(false);
     setLoadingMore(false);
     try {
-      const result = await readGraphql<{ loanBalances: Connection<LoanBalance> }>(
-        loanBalancesQuery,
-        { householdId: household.id, first: 50 },
-      );
+      const result = await readLoanBalances(household.id, { first: 50 });
       if (currentRequest !== request.current) return;
-      setLoans(result.loanBalances.edges.map((edge) => edge.node));
-      setCursor(result.loanBalances.pageInfo.endCursor ?? null);
-      setHasNextPage(result.loanBalances.pageInfo.hasNextPage);
+      setLoans(result.loans);
+      setCursor(result.endCursor);
+      setHasNextPage(result.hasNextPage);
     } catch (reason) {
       if (currentRequest === request.current) setLoadError((reason as Error).message);
     } finally {
@@ -97,14 +94,11 @@ export function SettlementLoans({
     setLoadingMore(true);
     setLoadError("");
     try {
-      const result = await readGraphql<{ loanBalances: Connection<LoanBalance> }>(
-        loanBalancesQuery,
-        { householdId: household.id, after: cursor, first: 50 },
-      );
+      const result = await readLoanBalances(household.id, { after: cursor, first: 50 });
       if (currentRequest !== request.current) return;
-      setLoans((current) => [...current, ...result.loanBalances.edges.map((edge) => edge.node)]);
-      setCursor(result.loanBalances.pageInfo.endCursor ?? null);
-      setHasNextPage(result.loanBalances.pageInfo.hasNextPage);
+      setLoans((current) => [...current, ...result.loans]);
+      setCursor(result.endCursor);
+      setHasNextPage(result.hasNextPage);
     } catch (reason) {
       if (currentRequest === request.current) setLoadError((reason as Error).message);
     } finally {

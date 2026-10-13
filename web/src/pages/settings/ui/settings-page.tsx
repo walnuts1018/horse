@@ -15,7 +15,7 @@ import { ViewAccountBalanceHistory } from "./view-account-balance-history";
 import { ManageAccountActivity } from "./manage-account-activity";
 import { ManageAllocationCatalog } from "./manage-allocation-catalog";
 import { ManageAccountSettings } from "./manage-account-settings";
-import { accountBalancesQuery } from "../../../entities/ledger";
+import { readAccountBalances } from "../api/read-account-balances";
 
 type SettingsTab = "accounts" | "allocation" | "catalog" | "planning" | "members";
 
@@ -132,10 +132,7 @@ export function SettingsPage({
     if (form?.dataset.unsavedId) markFormDirty(form.dataset.unsavedId);
   };
   const refreshPlanning = async () => {
-    const result = await readGraphql<{ accountBalances: AccountBalance[] }>(accountBalancesQuery, {
-      householdId: household.id,
-    });
-    setBalances(result.accountBalances);
+    setBalances(await readAccountBalances(household.id));
   };
   useEffect(() => {
     void refreshPlanning().catch((reason) => onNotice((reason as Error).message, "error"));
