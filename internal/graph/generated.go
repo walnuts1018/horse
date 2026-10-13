@@ -5280,21 +5280,13 @@ type BulkUpdatePurchaseItemsSuccess {
 input BulkUpdatePurchaseItemsInput {
   targets: [PurchaseItemTargetInput!]!
   patch: BulkPurchaseItemPatch!
-  changedFields: [BulkPurchaseItemChangedField!]!
-}
-
-enum BulkPurchaseItemChangedField {
-  CATEGORY_ID
-  PRODUCT_VARIANT_ID
-  ALLOCATIONS
-  TAGS
 }
 
 input BulkPurchaseItemPatch {
-  categoryId: ID @nodeID(of: "Category")
-  productVariantId: ID @nodeID(of: "ProductVariant")
-  allocations: [AllocationInput!]
-  tagIds: [ID!] @nodeID(of: "Tag")
+  categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
+  productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
+  allocations: [AllocationInput!] @goField(omittable: true)
+  tagIds: [ID!] @nodeID(of: "Tag") @goField(omittable: true)
 }
 
 input PurchaseItemTargetInput {
@@ -5319,19 +5311,12 @@ type BulkUpdatePurchasesSuccess {
 
 input BulkUpdatePurchasesInput {
   targets: [PurchaseUpdateTargetInput!]!
-  changedFields: [BulkUpdatePurchasesChangedField!]!
-}
-
-enum BulkUpdatePurchasesChangedField {
-  OCCURRED_AT
-  MERCHANT
-  PAYMENT_ALLOCATIONS
 }
 
 input BulkPurchasePatch {
-  occurredAt: DateTime
-  merchant: String
-  paymentAllocations: [PurchasePaymentInput!]
+  occurredAt: DateTime @goField(omittable: true)
+  merchant: String @goField(omittable: true)
+  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
 }
 
 input PurchaseUpdateTargetInput {
@@ -6659,26 +6644,15 @@ type UpdatePurchaseItemSuccess {
 input UpdatePurchaseItemInput {
   itemId: ID! @nodeID(of: "PurchaseItem")
   baseRevision: Int!
-  name: String
-  amountYen: Long
+  name: String @goField(omittable: true)
+  amountYen: Long @goField(omittable: true)
   quantity: PurchaseQuantityInput @goField(omittable: true)
   printedUnitPrice: PrintedUnitPriceInput @goField(omittable: true)
-  categoryId: ID @nodeID(of: "Category")
-  productVariantId: ID @nodeID(of: "ProductVariant")
+  categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
+  productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
   productLearning: ProductLearningScope = ITEM_ONLY
   variantName: String
-  allocations: [AllocationInput!]
-  changedFields: [PurchaseItemChangedField!]!
-}
-
-enum PurchaseItemChangedField {
-  NAME
-  AMOUNT_YEN
-  QUANTITY
-  PRINTED_UNIT_PRICE
-  CATEGORY_ID
-  PRODUCT_VARIANT_ID
-  ALLOCATIONS
+  allocations: [AllocationInput!] @goField(omittable: true)
 }
 
 enum ProductLearningScope {
@@ -6706,19 +6680,12 @@ input UpdatePurchaseInput {
   purchaseId: ID! @nodeID(of: "Purchase")
   baseRevision: Int!
   patch: PurchasePatch!
-  changedFields: [UpdatePurchaseChangedField!]!
 }
 
 input PurchasePatch {
-  occurredAt: DateTime
-  merchant: String
-  paymentAllocations: [PurchasePaymentInput!]
-}
-
-enum UpdatePurchaseChangedField {
-  OCCURRED_AT
-  MERCHANT
-  PAYMENT_ALLOCATIONS
+  occurredAt: DateTime @goField(omittable: true)
+  merchant: String @goField(omittable: true)
+  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
 }
 
 type UpdatePurchaseUserError implements MutationError {
@@ -26294,9 +26261,9 @@ func (ec *executionContext) unmarshalInputBulkPurchaseItemPatch(ctx context.Cont
 				return it, graphql.ErrorOnPath(ctx, err)
 			}
 			if data, ok := tmp.(*string); ok {
-				it.CategoryID = data
+				it.CategoryID = graphql.OmittableOf(data)
 			} else if tmp == nil {
-				it.CategoryID = nil
+				it.CategoryID = graphql.OmittableOf[*string](nil)
 			} else {
 				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
 				return it, graphql.ErrorOnPath(ctx, err)
@@ -26323,9 +26290,9 @@ func (ec *executionContext) unmarshalInputBulkPurchaseItemPatch(ctx context.Cont
 				return it, graphql.ErrorOnPath(ctx, err)
 			}
 			if data, ok := tmp.(*string); ok {
-				it.ProductVariantID = data
+				it.ProductVariantID = graphql.OmittableOf(data)
 			} else if tmp == nil {
-				it.ProductVariantID = nil
+				it.ProductVariantID = graphql.OmittableOf[*string](nil)
 			} else {
 				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
 				return it, graphql.ErrorOnPath(ctx, err)
@@ -26336,7 +26303,7 @@ func (ec *executionContext) unmarshalInputBulkPurchaseItemPatch(ctx context.Cont
 			if err != nil {
 				return it, err
 			}
-			it.Allocations = data
+			it.Allocations = graphql.OmittableOf(data)
 		case "tagIds":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("tagIds"))
 			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚕstringᚄ(ctx, v) }
@@ -26359,9 +26326,9 @@ func (ec *executionContext) unmarshalInputBulkPurchaseItemPatch(ctx context.Cont
 				return it, graphql.ErrorOnPath(ctx, err)
 			}
 			if data, ok := tmp.([]string); ok {
-				it.TagIds = data
+				it.TagIds = graphql.OmittableOf(data)
 			} else if tmp == nil {
-				it.TagIds = nil
+				it.TagIds = graphql.OmittableOf[[]string](nil)
 			} else {
 				err := fmt.Errorf(`unexpected type %T from directive, should be []string`, tmp)
 				return it, graphql.ErrorOnPath(ctx, err)
@@ -26395,21 +26362,21 @@ func (ec *executionContext) unmarshalInputBulkPurchasePatch(ctx context.Context,
 			if err != nil {
 				return it, err
 			}
-			it.OccurredAt = data
+			it.OccurredAt = graphql.OmittableOf(data)
 		case "merchant":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("merchant"))
 			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
-			it.Merchant = data
+			it.Merchant = graphql.OmittableOf(data)
 		case "paymentAllocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAllocations"))
 			data, err := ec.unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
-			it.PaymentAllocations = data
+			it.PaymentAllocations = graphql.OmittableOf(data)
 		}
 	}
 	return it, nil
@@ -26426,7 +26393,7 @@ func (ec *executionContext) unmarshalInputBulkUpdatePurchaseItemsInput(ctx conte
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"targets", "patch", "changedFields"}
+	fieldsInOrder := [...]string{"targets", "patch"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -26447,13 +26414,6 @@ func (ec *executionContext) unmarshalInputBulkUpdatePurchaseItemsInput(ctx conte
 				return it, err
 			}
 			it.Patch = data
-		case "changedFields":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("changedFields"))
-			data, err := ec.unmarshalNBulkPurchaseItemChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchaseItemChangedFieldᚄ(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.ChangedFields = data
 		}
 	}
 	return it, nil
@@ -26470,7 +26430,7 @@ func (ec *executionContext) unmarshalInputBulkUpdatePurchasesInput(ctx context.C
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"targets", "changedFields"}
+	fieldsInOrder := [...]string{"targets"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -26484,13 +26444,6 @@ func (ec *executionContext) unmarshalInputBulkUpdatePurchasesInput(ctx context.C
 				return it, err
 			}
 			it.Targets = data
-		case "changedFields":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("changedFields"))
-			data, err := ec.unmarshalNBulkUpdatePurchasesChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedFieldᚄ(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.ChangedFields = data
 		}
 	}
 	return it, nil
@@ -28032,21 +27985,21 @@ func (ec *executionContext) unmarshalInputPurchasePatch(ctx context.Context, obj
 			if err != nil {
 				return it, err
 			}
-			it.OccurredAt = data
+			it.OccurredAt = graphql.OmittableOf(data)
 		case "merchant":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("merchant"))
 			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
-			it.Merchant = data
+			it.Merchant = graphql.OmittableOf(data)
 		case "paymentAllocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAllocations"))
 			data, err := ec.unmarshalOPurchasePaymentInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePaymentInputᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
-			it.PaymentAllocations = data
+			it.PaymentAllocations = graphql.OmittableOf(data)
 		}
 	}
 	return it, nil
@@ -29815,7 +29768,7 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"purchaseId", "baseRevision", "patch", "changedFields"}
+	fieldsInOrder := [...]string{"purchaseId", "baseRevision", "patch"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -29863,13 +29816,6 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseInput(ctx context.Contex
 				return it, err
 			}
 			it.Patch = data
-		case "changedFields":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("changedFields"))
-			data, err := ec.unmarshalNUpdatePurchaseChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedFieldᚄ(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.ChangedFields = data
 		}
 	}
 	return it, nil
@@ -29890,7 +29836,7 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseItemInput(ctx context.Co
 		asMap["productLearning"] = "ITEM_ONLY"
 	}
 
-	fieldsInOrder := [...]string{"itemId", "baseRevision", "name", "amountYen", "quantity", "printedUnitPrice", "categoryId", "productVariantId", "productLearning", "variantName", "allocations", "changedFields"}
+	fieldsInOrder := [...]string{"itemId", "baseRevision", "name", "amountYen", "quantity", "printedUnitPrice", "categoryId", "productVariantId", "productLearning", "variantName", "allocations"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -29937,14 +29883,14 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseItemInput(ctx context.Co
 			if err != nil {
 				return it, err
 			}
-			it.Name = data
+			it.Name = graphql.OmittableOf(data)
 		case "amountYen":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("amountYen"))
 			data, err := ec.unmarshalOLong2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
 			if err != nil {
 				return it, err
 			}
-			it.AmountYen = data
+			it.AmountYen = graphql.OmittableOf(data)
 		case "quantity":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("quantity"))
 			data, err := ec.unmarshalOPurchaseQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx, v)
@@ -29981,9 +29927,9 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseItemInput(ctx context.Co
 				return it, graphql.ErrorOnPath(ctx, err)
 			}
 			if data, ok := tmp.(*string); ok {
-				it.CategoryID = data
+				it.CategoryID = graphql.OmittableOf(data)
 			} else if tmp == nil {
-				it.CategoryID = nil
+				it.CategoryID = graphql.OmittableOf[*string](nil)
 			} else {
 				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
 				return it, graphql.ErrorOnPath(ctx, err)
@@ -30010,9 +29956,9 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseItemInput(ctx context.Co
 				return it, graphql.ErrorOnPath(ctx, err)
 			}
 			if data, ok := tmp.(*string); ok {
-				it.ProductVariantID = data
+				it.ProductVariantID = graphql.OmittableOf(data)
 			} else if tmp == nil {
-				it.ProductVariantID = nil
+				it.ProductVariantID = graphql.OmittableOf[*string](nil)
 			} else {
 				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
 				return it, graphql.ErrorOnPath(ctx, err)
@@ -30037,14 +29983,7 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseItemInput(ctx context.Co
 			if err != nil {
 				return it, err
 			}
-			it.Allocations = data
-		case "changedFields":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("changedFields"))
-			data, err := ec.unmarshalNPurchaseItemChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseItemChangedFieldᚄ(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.ChangedFields = data
+			it.Allocations = graphql.OmittableOf(data)
 		}
 	}
 	return it, nil
@@ -42947,46 +42886,6 @@ func (ec *executionContext) marshalNBudget2ᚖgithubᚗcomᚋwalnuts1018ᚋhorse
 	return ec._Budget(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNBulkPurchaseItemChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchaseItemChangedField(ctx context.Context, v any) (model.BulkPurchaseItemChangedField, error) {
-	var res model.BulkPurchaseItemChangedField
-	err := res.UnmarshalGQL(v)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
-func (ec *executionContext) marshalNBulkPurchaseItemChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchaseItemChangedField(ctx context.Context, sel ast.SelectionSet, v model.BulkPurchaseItemChangedField) graphql.Marshaler {
-	return v
-}
-
-func (ec *executionContext) unmarshalNBulkPurchaseItemChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchaseItemChangedFieldᚄ(ctx context.Context, v any) ([]model.BulkPurchaseItemChangedField, error) {
-	vSlice := graphql.CoerceList(v)
-	var err error
-	res := make([]model.BulkPurchaseItemChangedField, len(vSlice))
-	for i := range vSlice {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNBulkPurchaseItemChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchaseItemChangedField(ctx, vSlice[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return res, nil
-}
-
-func (ec *executionContext) marshalNBulkPurchaseItemChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchaseItemChangedFieldᚄ(ctx context.Context, sel ast.SelectionSet, v []model.BulkPurchaseItemChangedField) graphql.Marshaler {
-	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
-		fc := graphql.GetFieldContext(ctx)
-		fc.Result = &v[i]
-		return ec.marshalNBulkPurchaseItemChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchaseItemChangedField(ctx, sel, v[i])
-	})
-
-	for _, e := range ret {
-		if e == graphql.Null {
-			return graphql.Null
-		}
-	}
-
-	return ret
-}
-
 func (ec *executionContext) unmarshalNBulkPurchaseItemPatch2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkPurchaseItemPatch(ctx context.Context, v any) (*model.BulkPurchaseItemPatch, error) {
 	res, err := ec.unmarshalInputBulkPurchaseItemPatch(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
@@ -43010,46 +42909,6 @@ func (ec *executionContext) marshalNBulkUpdatePurchaseItemsResult2githubᚗcom�
 		return graphql.Null
 	}
 	return ec._BulkUpdatePurchaseItemsResult(ctx, sel, v)
-}
-
-func (ec *executionContext) unmarshalNBulkUpdatePurchasesChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedField(ctx context.Context, v any) (model.BulkUpdatePurchasesChangedField, error) {
-	var res model.BulkUpdatePurchasesChangedField
-	err := res.UnmarshalGQL(v)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
-func (ec *executionContext) marshalNBulkUpdatePurchasesChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedField(ctx context.Context, sel ast.SelectionSet, v model.BulkUpdatePurchasesChangedField) graphql.Marshaler {
-	return v
-}
-
-func (ec *executionContext) unmarshalNBulkUpdatePurchasesChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedFieldᚄ(ctx context.Context, v any) ([]model.BulkUpdatePurchasesChangedField, error) {
-	vSlice := graphql.CoerceList(v)
-	var err error
-	res := make([]model.BulkUpdatePurchasesChangedField, len(vSlice))
-	for i := range vSlice {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNBulkUpdatePurchasesChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedField(ctx, vSlice[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return res, nil
-}
-
-func (ec *executionContext) marshalNBulkUpdatePurchasesChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedFieldᚄ(ctx context.Context, sel ast.SelectionSet, v []model.BulkUpdatePurchasesChangedField) graphql.Marshaler {
-	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
-		fc := graphql.GetFieldContext(ctx)
-		fc.Result = &v[i]
-		return ec.marshalNBulkUpdatePurchasesChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedField(ctx, sel, v[i])
-	})
-
-	for _, e := range ret {
-		if e == graphql.Null {
-			return graphql.Null
-		}
-	}
-
-	return ret
 }
 
 func (ec *executionContext) unmarshalNBulkUpdatePurchasesInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesInput(ctx context.Context, v any) (model.BulkUpdatePurchasesInput, error) {
@@ -44151,46 +44010,6 @@ func (ec *executionContext) marshalNPurchaseItem2ᚖgithubᚗcomᚋwalnuts1018�
 	return ec._PurchaseItem(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNPurchaseItemChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseItemChangedField(ctx context.Context, v any) (model.PurchaseItemChangedField, error) {
-	var res model.PurchaseItemChangedField
-	err := res.UnmarshalGQL(v)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
-func (ec *executionContext) marshalNPurchaseItemChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseItemChangedField(ctx context.Context, sel ast.SelectionSet, v model.PurchaseItemChangedField) graphql.Marshaler {
-	return v
-}
-
-func (ec *executionContext) unmarshalNPurchaseItemChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseItemChangedFieldᚄ(ctx context.Context, v any) ([]model.PurchaseItemChangedField, error) {
-	vSlice := graphql.CoerceList(v)
-	var err error
-	res := make([]model.PurchaseItemChangedField, len(vSlice))
-	for i := range vSlice {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNPurchaseItemChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseItemChangedField(ctx, vSlice[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return res, nil
-}
-
-func (ec *executionContext) marshalNPurchaseItemChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseItemChangedFieldᚄ(ctx context.Context, sel ast.SelectionSet, v []model.PurchaseItemChangedField) graphql.Marshaler {
-	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
-		fc := graphql.GetFieldContext(ctx)
-		fc.Result = &v[i]
-		return ec.marshalNPurchaseItemChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseItemChangedField(ctx, sel, v[i])
-	})
-
-	for _, e := range ret {
-		if e == graphql.Null {
-			return graphql.Null
-		}
-	}
-
-	return ret
-}
-
 func (ec *executionContext) unmarshalNPurchaseItemInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseItemInputᚄ(ctx context.Context, v any) ([]*model.PurchaseItemInput, error) {
 	vSlice := graphql.CoerceList(v)
 	var err error
@@ -44801,46 +44620,6 @@ func (ec *executionContext) marshalNUpdateBudgetResult2githubᚗcomᚋwalnuts101
 		return graphql.Null
 	}
 	return ec._UpdateBudgetResult(ctx, sel, v)
-}
-
-func (ec *executionContext) unmarshalNUpdatePurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedField(ctx context.Context, v any) (model.UpdatePurchaseChangedField, error) {
-	var res model.UpdatePurchaseChangedField
-	err := res.UnmarshalGQL(v)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
-func (ec *executionContext) marshalNUpdatePurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedField(ctx context.Context, sel ast.SelectionSet, v model.UpdatePurchaseChangedField) graphql.Marshaler {
-	return v
-}
-
-func (ec *executionContext) unmarshalNUpdatePurchaseChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedFieldᚄ(ctx context.Context, v any) ([]model.UpdatePurchaseChangedField, error) {
-	vSlice := graphql.CoerceList(v)
-	var err error
-	res := make([]model.UpdatePurchaseChangedField, len(vSlice))
-	for i := range vSlice {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNUpdatePurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedField(ctx, vSlice[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return res, nil
-}
-
-func (ec *executionContext) marshalNUpdatePurchaseChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedFieldᚄ(ctx context.Context, sel ast.SelectionSet, v []model.UpdatePurchaseChangedField) graphql.Marshaler {
-	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
-		fc := graphql.GetFieldContext(ctx)
-		fc.Result = &v[i]
-		return ec.marshalNUpdatePurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedField(ctx, sel, v[i])
-	})
-
-	for _, e := range ret {
-		if e == graphql.Null {
-			return graphql.Null
-		}
-	}
-
-	return ret
 }
 
 func (ec *executionContext) unmarshalNUpdatePurchaseInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseInput(ctx context.Context, v any) (model.UpdatePurchaseInput, error) {

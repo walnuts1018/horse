@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bb3de8f7263233ba8a05b89a8461de38>>
+ * @generated SignedSource<<c15496c69300f4f2fdbb243a5f7fb38c>>
  * @lightSyntaxTransform
  */
 
@@ -8,10 +8,8 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type BulkUpdatePurchasesChangedField = "MERCHANT" | "OCCURRED_AT" | "PAYMENT_ALLOCATIONS" | "%future added value";
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type BulkUpdatePurchasesInput = {
-  changedFields: ReadonlyArray<BulkUpdatePurchasesChangedField>;
   targets: ReadonlyArray<PurchaseUpdateTargetInput>;
 };
 export type PurchaseUpdateTargetInput = {

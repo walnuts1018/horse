@@ -99,7 +99,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		t.Fatalf("manual purchase origin was conflated with evidence state: %#v", purchase)
 	}
 	updatedAmount := model.Long(1200)
-	if _, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: &updatedAmount, ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldAmountYen}}); err != nil {
+	if _, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: omittable(&updatedAmount)}); err != nil {
 		t.Fatal(err)
 	}
 	purchase, err = loadPurchase(ctx, db, purchase.ID)
@@ -366,10 +366,9 @@ func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshots
 	}
 	updated, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{
 		PurchaseID: posted.ID, BaseRevision: posted.Revision,
-		Patch: &model.PurchasePatch{PaymentAllocations: []*model.PurchasePaymentInput{
+		Patch: &model.PurchasePatch{PaymentAllocations: omittable([]*model.PurchasePaymentInput{
 			{PaymentAccountID: accountOne.ID, AmountYen: 300}, {PaymentAccountID: accountOneNew.ID, AmountYen: 300}, {PaymentAccountID: accountTwo.ID, AmountYen: 400},
-		}},
-		ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldPaymentAllocations},
+		})},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -378,8 +377,7 @@ func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshots
 	item := posted.Items[0]
 	_, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
 		ItemID: item.ID, BaseRevision: item.Revision,
-		Allocations:   []*model.AllocationInput{{PoolID: poolOne.ID, Weight: 1}, {PoolID: poolTwo.ID, Weight: 1}},
-		ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldAllocations},
+		Allocations: omittable([]*model.AllocationInput{{PoolID: poolOne.ID, Weight: 1}, {PoolID: poolTwo.ID, Weight: 1}}),
 	})
 	if err != nil {
 		t.Fatal(err)

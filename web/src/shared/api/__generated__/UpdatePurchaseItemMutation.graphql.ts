@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<302262b04802eed1218a7b02a6db5362>>
+ * @generated SignedSource<<5e68ccdb92ea30f8dff4c3ff03e63b6b>>
  * @lightSyntaxTransform
  */
 
@@ -10,13 +10,11 @@
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type ProductLearningScope = "ITEM_ONLY" | "MERCHANT_ALIAS" | "VARIANT_NAME" | "%future added value";
-export type PurchaseItemChangedField = "ALLOCATIONS" | "AMOUNT_YEN" | "CATEGORY_ID" | "NAME" | "PRINTED_UNIT_PRICE" | "PRODUCT_VARIANT_ID" | "QUANTITY" | "%future added value";
 export type UpdatePurchaseItemInput = {
   allocations?: ReadonlyArray<AllocationInput> | null | undefined;
   amountYen?: any | null | undefined;
   baseRevision: number;
   categoryId?: string | null | undefined;
-  changedFields: ReadonlyArray<PurchaseItemChangedField>;
   itemId: string;
   name?: string | null | undefined;
   printedUnitPrice?: PrintedUnitPriceInput | null | undefined;

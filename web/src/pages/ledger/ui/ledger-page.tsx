@@ -21,10 +21,6 @@ import {
   correctPurchaseMutation,
   postPurchaseMutation,
   purchasesQuery,
-  type BulkPurchaseItemChangedField,
-  type UpdatePurchaseChangedField,
-  type BulkUpdatePurchasesChangedField,
-  type PurchaseItemChangedField,
   updatePurchaseItemMutation,
   updatePurchaseMutation,
   useHouseholdPurchases,
@@ -54,72 +50,6 @@ const yen = (amount = 0) =>
   }).format(amount);
 const sameNullableString = (left?: string | null, right?: string | null) =>
   (left ?? "") === (right ?? "");
-const toPurchaseChangedFields = (fields: readonly string[]): UpdatePurchaseChangedField[] =>
-  fields.map((field) => {
-    switch (field) {
-      case "occurredAt":
-        return "OCCURRED_AT";
-      case "merchant":
-        return "MERCHANT";
-      case "paymentAllocations":
-        return "PAYMENT_ALLOCATIONS";
-      default:
-        throw new Error("不明な買い物の変更項目です");
-    }
-  });
-const toBulkUpdatePurchasesChangedFields = (
-  fields: readonly string[],
-): BulkUpdatePurchasesChangedField[] =>
-  fields.map((field) => {
-    switch (field) {
-      case "occurredAt":
-        return "OCCURRED_AT";
-      case "merchant":
-        return "MERCHANT";
-      case "paymentAllocations":
-        return "PAYMENT_ALLOCATIONS";
-      default:
-        throw new Error("不明な一括買い物の変更項目です");
-    }
-  });
-const toPurchaseItemChangedFields = (fields: readonly string[]): PurchaseItemChangedField[] =>
-  fields.map((field) => {
-    switch (field) {
-      case "name":
-        return "NAME";
-      case "amountYen":
-        return "AMOUNT_YEN";
-      case "quantity":
-        return "QUANTITY";
-      case "printedUnitPrice":
-        return "PRINTED_UNIT_PRICE";
-      case "categoryId":
-        return "CATEGORY_ID";
-      case "productVariantId":
-        return "PRODUCT_VARIANT_ID";
-      case "allocations":
-        return "ALLOCATIONS";
-      default:
-        throw new Error("不明な品目の変更項目です");
-    }
-  });
-const toBulkPurchaseItemChangedFields = (
-  fields: readonly string[],
-): BulkPurchaseItemChangedField[] =>
-  fields.map((field) => {
-    switch (field) {
-      case "categoryId":
-        return "CATEGORY_ID";
-      case "productVariantId":
-        return "PRODUCT_VARIANT_ID";
-      case "allocations":
-        return "ALLOCATIONS";
-      case "tags":
-        return "TAGS";
-      default:
-        throw new Error("不明な一括品目の変更項目です");
-    }
-  });
 const purchaseMonth = (occurredAt: string) =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
@@ -204,7 +134,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     purchaseId: string;
     baseRevision: number;
     patch: Record<string, unknown>;
-    changedFields: string[];
   }> | null>(null);
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkAllocationsActive, setBulkAllocationsActive] = useState(false);
@@ -219,7 +148,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     itemId: string;
     baseRevision: number;
     patch: Record<string, unknown>;
-    changedFields: string[];
   }> | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -563,17 +491,27 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       ...changedPatch,
       ...(quantityChanged
         ? {
-            quantityNumerator: quantity?.numerator ?? null,
-            quantityDenominator: quantity?.denominator ?? null,
-            quantityUnit: quantity?.unit ?? null,
+            quantity: quantity
+              ? {
+                  numerator: quantity.numerator,
+                  denominator: quantity.denominator,
+                  unit: quantity.unit,
+                }
+              : null,
           }
         : {}),
       ...(printedPriceChanged
         ? {
-            printedUnitPriceYen: hasPrintedPrice ? printedPrice : null,
-            printedUnitPriceQuantityNumerator: printedBasis?.numerator ?? null,
-            printedUnitPriceQuantityDenominator: printedBasis?.denominator ?? null,
-            printedUnitPriceUnit: printedBasis?.unit ?? null,
+            printedUnitPrice: hasPrintedPrice
+              ? {
+                  amountYen: printedPrice as number,
+                  basis: {
+                    numerator: printedBasis?.numerator as string,
+                    denominator: printedBasis?.denominator as string,
+                    unit: printedBasis?.unit as string,
+                  },
+                }
+              : null,
           }
         : {}),
       ...(baseChangedFields.includes("productVariantId") && patch.productVariantId
@@ -584,7 +522,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
               : {}),
           }
         : {}),
-      changedFields: toPurchaseItemChangedFields(changedFields),
     });
     try {
       await mutateUpdatePurchaseItem({
@@ -668,7 +605,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           purchaseId: purchase.id,
           baseRevision: purchase.revision,
           patch: changedPatch,
-          changedFields: toPurchaseChangedFields(changedFields),
         },
       });
       await refresh();
@@ -693,7 +629,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                   purchaseId: latest.id,
                   baseRevision: latest.revision,
                   patch: changedPatch,
-                  changedFields: toPurchaseChangedFields(changedFields),
                 },
               });
               await refresh();
@@ -840,7 +775,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         input: {
           targets: targets.map(({ item }) => ({ itemId: item.id, baseRevision: item.revision })),
           patch,
-          changedFields: toBulkPurchaseItemChangedFields(changedFields),
         },
       });
       const undoEntries: NonNullable<typeof bulkUndo> = targets.map(({ item }) => {
@@ -858,7 +792,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             result.bulkUpdatePurchaseItems.find((updated) => updated.id === item.id)?.revision ??
             item.revision + 1,
           patch: undoPatch,
-          changedFields,
         };
       });
       setBulkUndo(undoEntries.length ? undoEntries : null);
@@ -886,7 +819,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     try {
       const groups = new Map<string, NonNullable<typeof bulkUndo>>();
       for (const entry of bulkUndo) {
-        const key = JSON.stringify([entry.patch, entry.changedFields]);
+        const key = JSON.stringify(entry.patch);
         groups.set(key, [...(groups.get(key) ?? []), entry]);
       }
       for (const group of groups.values()) {
@@ -895,7 +828,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           input: {
             targets: group.map(({ itemId, baseRevision }) => ({ itemId, baseRevision })),
             patch: group[0].patch,
-            changedFields: toBulkPurchaseItemChangedFields(group[0].changedFields),
           },
         });
         undone += group.length;
@@ -941,7 +873,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                 : {}),
             },
           })),
-          changedFields: toBulkUpdatePurchasesChangedFields(changedFields),
         },
       });
       for (const purchase of targets) {
@@ -961,7 +892,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             result.bulkUpdatePurchases.purchases.find((updated) => updated.id === purchase.id)
               ?.revision ?? purchase.revision + 1,
           patch,
-          changedFields,
         });
       }
       setPurchaseBulkUndo(undoEntries.length ? undoEntries : null);
@@ -995,7 +925,6 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             baseRevision: entry.baseRevision,
             patch: entry.patch,
           })),
-          changedFields: toBulkUpdatePurchasesChangedFields(purchaseBulkUndo[0].changedFields),
         },
       });
       setPurchaseBulkUndo(null);

@@ -12,19 +12,12 @@ input UpdatePurchaseInput {
   purchaseId: ID! @nodeID(of: "Purchase")
   baseRevision: Int!
   patch: PurchasePatch!
-  changedFields: [UpdatePurchaseChangedField!]!
 }
 
 input PurchasePatch {
-  occurredAt: DateTime
-  merchant: String
-  paymentAllocations: [PurchasePaymentInput!]
-}
-
-enum UpdatePurchaseChangedField {
-  OCCURRED_AT
-  MERCHANT
-  PAYMENT_ALLOCATIONS
+  occurredAt: DateTime @goField(omittable: true)
+  merchant: String @goField(omittable: true)
+  paymentAllocations: [PurchasePaymentInput!] @goField(omittable: true)
 }
 
 type UpdatePurchaseUserError implements MutationError {

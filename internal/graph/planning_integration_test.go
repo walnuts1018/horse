@@ -109,7 +109,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	beforePoolB := amountForPool(item.Allocations, poolB.ID)
 	updatedNumerator, updatedDenominator := "4", "1"
 	updatedQuantity, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
-		ItemID: item.ID, BaseRevision: item.Revision, Quantity: graphql.OmittableOf[*model.PurchaseQuantityInput](&model.PurchaseQuantityInput{Numerator: updatedNumerator, Denominator: updatedDenominator, Unit: quantityUnit}), ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldQuantity},
+		ItemID: item.ID, BaseRevision: item.Revision, Quantity: graphql.OmittableOf[*model.PurchaseQuantityInput](&model.PurchaseQuantityInput{Numerator: updatedNumerator, Denominator: updatedDenominator, Unit: quantityUnit}),
 	})
 	if err != nil || updatedQuantity.AmountYen != item.AmountYen || amountForPool(updatedQuantity.Allocations, poolA.ID) != beforePoolA || amountForPool(updatedQuantity.Allocations, poolB.ID) != beforePoolB ||
 		updatedQuantity.EffectiveUnitPrice == nil || updatedQuantity.EffectiveUnitPrice.NumeratorYen != "125" || updatedQuantity.EffectiveUnitPrice.Denominator != "1" ||
@@ -145,9 +145,8 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 		{ItemID: purchase.Items[1].ID, BaseRevision: purchase.Items[1].Revision},
 	}
 	updated, err := resolver.bulkUpdatePurchaseItems(ctx, model.BulkUpdatePurchaseItemsInput{
-		Targets:       itemTargets,
-		Patch:         &model.BulkPurchaseItemPatch{CategoryID: &category.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 3}, {PoolID: poolB.ID, Weight: 1}}, TagIds: []string{tag.ID}},
-		ChangedFields: []model.BulkPurchaseItemChangedField{model.BulkPurchaseItemChangedFieldCategoryID, model.BulkPurchaseItemChangedFieldAllocations, model.BulkPurchaseItemChangedFieldTags},
+		Targets: itemTargets,
+		Patch:   &model.BulkPurchaseItemPatch{CategoryID: omittable(&category.ID), Allocations: omittable([]*model.AllocationInput{{PoolID: poolA.ID, Weight: 3}, {PoolID: poolB.ID, Weight: 1}}), TagIds: omittable([]string{tag.ID})},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +156,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	}
 	stale, err := resolver.bulkUpdatePurchaseItems(ctx, model.BulkUpdatePurchaseItemsInput{
 		Targets: []*model.PurchaseItemTargetInput{{ItemID: updated[0].ID, BaseRevision: updated[0].Revision}, {ItemID: updated[1].ID, BaseRevision: 1}},
-		Patch:   &model.BulkPurchaseItemPatch{TagIds: []string{}}, ChangedFields: []model.BulkPurchaseItemChangedField{model.BulkPurchaseItemChangedFieldTags},
+		Patch:   &model.BulkPurchaseItemPatch{TagIds: omittable([]string{})},
 	})
 	if stale != nil || !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale target must reject the entire bulk operation: result=%#v error=%v", stale, err)

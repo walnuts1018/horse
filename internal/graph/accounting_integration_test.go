@@ -182,7 +182,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || correctedPurchase.Items[0].ProductVariantID != nil {
 		t.Fatalf("unmatched product should remain unnormalized until the user selects a candidate: purchase=%#v error=%v", correctedPurchase, err)
 	}
-	learnedItem, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: correctedPurchase.Items[0].ID, BaseRevision: correctedPurchase.Items[0].Revision, ProductVariantID: &productVariant.ID, ProductLearning: new(model.ProductLearningScopeMerchantAlias), ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldProductVariantID}})
+	learnedItem, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: correctedPurchase.Items[0].ID, BaseRevision: correctedPurchase.Items[0].Revision, ProductVariantID: omittable(&productVariant.ID), ProductLearning: new(model.ProductLearningScopeMerchantAlias)})
 	if err != nil || learnedItem.ProductVariantID == nil || *learnedItem.ProductVariantID != productVariant.ID {
 		t.Fatalf("merchant alias correction did not link the canonical variant: item=%#v error=%v", learnedItem, err)
 	}
@@ -195,7 +195,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("learned store alias was not suggested first: suggestions=%#v error=%v", suggestions, err)
 	}
 	canonicalName := "Plain yogurt 400g unsweetened"
-	learnedItem, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: learnedItem.ID, BaseRevision: learnedItem.Revision, ProductVariantID: &productVariant.ID, ProductLearning: new(model.ProductLearningScopeVariantName), VariantName: &canonicalName, ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldProductVariantID}})
+	learnedItem, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: learnedItem.ID, BaseRevision: learnedItem.Revision, ProductVariantID: omittable(&productVariant.ID), ProductLearning: new(model.ProductLearningScopeVariantName), VariantName: &canonicalName})
 	if err != nil {
 		t.Fatalf("normalized product name correction failed: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	}
 	changedAmount := model.Long(500)
 	changedAllocations := []*model.AllocationInput{{PoolID: poolA.ID, Weight: 3}, {PoolID: poolB.ID, Weight: 2}}
-	updatedItem, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: &changedAmount, Allocations: changedAllocations, ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldAmountYen, model.PurchaseItemChangedFieldAllocations}})
+	updatedItem, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: omittable(&changedAmount), Allocations: omittable(changedAllocations)})
 	if err != nil || updatedItem.AmountYen != 500 {
 		t.Fatalf("amount and allocation update failed: item=%#v error=%v", updatedItem, err)
 	}
@@ -303,7 +303,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	}
 	invalidAmount := model.Long(900)
 	invalidAllocations := []*model.AllocationInput{{PoolID: uuid.NewV7().String(), Weight: 1}}
-	_, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: updatedItem.ID, BaseRevision: updatedItem.Revision, AmountYen: &invalidAmount, Allocations: invalidAllocations, ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldAmountYen, model.PurchaseItemChangedFieldAllocations}})
+	_, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: updatedItem.ID, BaseRevision: updatedItem.Revision, AmountYen: omittable(&invalidAmount), Allocations: omittable(invalidAllocations)})
 	if err == nil {
 		t.Fatal("invalid allocation update should fail")
 	}
@@ -317,16 +317,16 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("failed update was not rolled back atomically: amount=%d allocated=%d error=%v", persistedAmount, allocationTotal, err)
 	}
 	merchant := "market changed"
-	purchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: purchase.Revision, Patch: &model.PurchasePatch{Merchant: &merchant}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldMerchant}})
+	purchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: purchase.Revision, Patch: &model.PurchasePatch{Merchant: omittable(&merchant)}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	occurredAt := model.DateTime("2026-04-13T12:00:00Z")
-	purchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: 1, Patch: &model.PurchasePatch{OccurredAt: &occurredAt}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldOccurredAt}})
+	purchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: 1, Patch: &model.PurchasePatch{OccurredAt: omittable(&occurredAt)}})
 	if err != nil {
 		t.Fatalf("disjoint stale fields should merge: %v", err)
 	}
-	if _, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: 1, Patch: &model.PurchasePatch{Merchant: &merchant}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldMerchant}}); !errors.Is(err, ErrConflict) {
+	if _, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: 1, Patch: &model.PurchasePatch{Merchant: omittable(&merchant)}}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("same stale field should conflict, got %v", err)
 	}
 	if len(purchase.Items) != 1 || purchase.Items[0].Allocations[0].AmountYen == nil || *purchase.Items[0].Allocations[0].AmountYen != 300 || *purchase.Items[0].Allocations[1].AmountYen != 200 {
@@ -500,8 +500,8 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	postedAmount := model.Long(700)
 	postedAllocations := []*model.AllocationInput{{PoolID: poolA.ID, Weight: 3}, {PoolID: poolB.ID, Weight: 2}}
 	updatedPurchaseItem, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
-		ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: &postedAmount,
-		Allocations: postedAllocations, ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldAmountYen, model.PurchaseItemChangedFieldAllocations},
+		ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, AmountYen: omittable(&postedAmount),
+		Allocations: omittable(postedAllocations),
 	})
 	if err != nil || updatedPurchaseItem.AmountYen != 700 {
 		t.Fatalf("open-period draft amount/allocation update should succeed: item=%#v error=%v", updatedPurchaseItem, err)
@@ -517,13 +517,13 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	postedMerchant := "edited after posting"
 	postedOccurredAt := model.DateTime("2026-04-14T12:00:00Z")
 	postedPurchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: postedPurchase.ID, BaseRevision: postedPurchase.Revision, Patch: &model.PurchasePatch{
-		Merchant: &postedMerchant, OccurredAt: &postedOccurredAt,
-	}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldMerchant, model.UpdatePurchaseChangedFieldOccurredAt}})
+		Merchant: omittable(&postedMerchant), OccurredAt: omittable(&postedOccurredAt),
+	}})
 	if err != nil {
 		t.Fatalf("open-period metadata update should allow a posted purchase: %v", err)
 	}
 	postedItem := postedPurchase.Items[0]
-	postedItem, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: postedItem.ID, BaseRevision: postedItem.Revision, ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldCategoryID}})
+	postedItem, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: postedItem.ID, BaseRevision: postedItem.Revision, CategoryID: omittable[*string](nil)})
 	if err != nil || postedItem.CategoryID != nil {
 		t.Fatalf("explicit null category should clear the category: item=%#v error=%v", postedItem, err)
 	}
@@ -537,7 +537,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || allocationErr != nil || !categoryIsNull || uncategorizedAllocationTotal != 700 {
 		t.Fatalf("category clearing changed the allocation total: categoryIsNull=%v allocated=%d error=%v", categoryIsNull, uncategorizedAllocationTotal, err)
 	}
-	postedItem, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: postedItem.ID, BaseRevision: postedItem.Revision, CategoryID: &category.ID, ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldCategoryID}})
+	postedItem, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: postedItem.ID, BaseRevision: postedItem.Revision, CategoryID: omittable(&category.ID)})
 	if err != nil || postedItem.CategoryID == nil || *postedItem.CategoryID != category.ID {
 		t.Fatalf("category restoration should succeed after clearing: item=%#v error=%v", postedItem, err)
 	}
@@ -581,7 +581,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if len(settlement.Lines) != 2 {
 		t.Fatalf("expected two settlement lines, got %#v", settlement.Lines)
 	}
-	if _, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: postedPurchase.ID, BaseRevision: postedPurchase.Revision, Patch: &model.PurchasePatch{Merchant: &postedMerchant}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldMerchant}}); !errors.Is(err, ErrConflict) {
+	if _, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: postedPurchase.ID, BaseRevision: postedPurchase.Revision, Patch: &model.PurchasePatch{Merchant: omittable(&postedMerchant)}}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("closed purchase edits must require a correction: %v", err)
 	}
 	accountSwitchPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
@@ -612,7 +612,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	}
 	accountSwitchPurchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{
 		PurchaseID: accountSwitchPurchase.ID, BaseRevision: accountSwitchPurchase.Revision,
-		Patch: &model.PurchasePatch{PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: alternatePaymentAccount.ID, AmountYen: 500}}}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldPaymentAllocations},
+		Patch: &model.PurchasePatch{PaymentAllocations: omittable([]*model.PurchasePaymentInput{{PaymentAccountID: alternatePaymentAccount.ID, AmountYen: 500}})},
 	})
 	if err != nil || len(accountSwitchPurchase.PaymentAllocations) != 1 || accountSwitchPurchase.PaymentAllocations[0].PaymentAccountID != alternatePaymentAccount.ID {
 		t.Fatalf("posted purchase payment account should change: purchase=%#v error=%v", accountSwitchPurchase, err)
@@ -640,12 +640,11 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		Targets: []*model.PurchaseUpdateTargetInput{{
 			PurchaseID:   accountSwitchPurchase.ID,
 			BaseRevision: accountSwitchPurchase.Revision,
-			Patch: &model.BulkPurchasePatch{PaymentAllocations: []*model.PurchasePaymentInput{
+			Patch: &model.BulkPurchasePatch{PaymentAllocations: omittable([]*model.PurchasePaymentInput{
 				{PaymentAccountID: paymentAccount.ID, AmountYen: 200},
 				{PaymentAccountID: alternatePaymentAccount.ID, AmountYen: 300},
-			}},
+			})},
 		}},
-		ChangedFields: []model.BulkUpdatePurchasesChangedField{model.BulkUpdatePurchasesChangedFieldPaymentAllocations},
 	})
 	if err != nil || len(bulkUpdatedPurchases) != 1 {
 		t.Fatalf("posted purchase payment allocations should update in bulk: %v", err)

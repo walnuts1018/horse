@@ -11,26 +11,15 @@ type UpdatePurchaseItemSuccess {
 input UpdatePurchaseItemInput {
   itemId: ID! @nodeID(of: "PurchaseItem")
   baseRevision: Int!
-  name: String
-  amountYen: Long
+  name: String @goField(omittable: true)
+  amountYen: Long @goField(omittable: true)
   quantity: PurchaseQuantityInput @goField(omittable: true)
   printedUnitPrice: PrintedUnitPriceInput @goField(omittable: true)
-  categoryId: ID @nodeID(of: "Category")
-  productVariantId: ID @nodeID(of: "ProductVariant")
+  categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
+  productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
   productLearning: ProductLearningScope = ITEM_ONLY
   variantName: String
-  allocations: [AllocationInput!]
-  changedFields: [PurchaseItemChangedField!]!
-}
-
-enum PurchaseItemChangedField {
-  NAME
-  AMOUNT_YEN
-  QUANTITY
-  PRINTED_UNIT_PRICE
-  CATEGORY_ID
-  PRODUCT_VARIANT_ID
-  ALLOCATIONS
+  allocations: [AllocationInput!] @goField(omittable: true)
 }
 
 enum ProductLearningScope {

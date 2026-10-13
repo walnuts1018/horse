@@ -22,6 +22,7 @@ import (
 
 type bulkPurchaseTarget struct {
 	input          *model.PurchaseUpdateTargetInput
+	changedFields  []string
 	id             gofrsuuid.UUID
 	observedHouse  gofrsuuid.UUID
 	observedAt     time.Time
@@ -32,19 +33,12 @@ type bulkPurchaseTarget struct {
 }
 
 func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.BulkUpdatePurchasesInput) ([]*model.Purchase, error) {
-	changedFields := purchaseChangedFieldKeys(input.ChangedFields)
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if len(input.Targets) == 0 || len(input.Targets) > 100 {
 		return nil, fmt.Errorf("%w: select between one and one hundred purchases", ErrBadInput)
-	}
-	if err := validateChangedFields(changedFields, "occurredAt", "merchant", "paymentAllocations"); err != nil {
-		return nil, err
-	}
-	if len(changedFields) == 0 {
-		return nil, fmt.Errorf("%w: select at least one field", ErrBadInput)
 	}
 	seen := make(map[string]struct{}, len(input.Targets))
 	for _, target := range input.Targets {
@@ -55,7 +49,11 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 			return nil, fmt.Errorf("%w: duplicate purchase target", ErrBadInput)
 		}
 		seen[target.PurchaseID] = struct{}{}
-		if err := validatePurchasePatchFields(target.Patch, changedFields); err != nil {
+		changedFields, err := bulkPurchasePatchChangedFieldKeys(target.Patch)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateChangedFields(changedFields, "occurredAt", "merchant", "paymentAllocations"); err != nil {
 			return nil, err
 		}
 	}
@@ -89,16 +87,20 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 		} else if householdID != purchase.HouseholdID {
 			return nil, fmt.Errorf("%w: all purchases must belong to one household", ErrBadInput)
 		}
+		changedFields, err := bulkPurchasePatchChangedFieldKeys(target.Patch)
+		if err != nil {
+			return nil, err
+		}
 		targetAt := purchase.OccurredAt
-		if target.Patch.OccurredAt != nil {
-			targetAt, err = parseTime(*target.Patch.OccurredAt)
+		if slices.Contains(changedFields, "occurredAt") {
+			targetAt, err = parseTime(*target.Patch.OccurredAt.Value())
 			if err != nil {
 				return nil, err
 			}
 		}
 		periods = append(periods, accountingPeriod(purchase.OccurredAt), accountingPeriod(targetAt))
 		targets = append(targets, bulkPurchaseTarget{
-			input: target, id: id, observedHouse: purchase.HouseholdID,
+			input: target, changedFields: changedFields, id: id, observedHouse: purchase.HouseholdID,
 			observedAt: purchase.OccurredAt, targetAt: targetAt,
 		})
 	}
@@ -131,25 +133,25 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 		if target.input.BaseRevision > int(purchase.Revision) {
 			return nil, ErrConflict
 		}
-		conflict, err := valuesConflict(purchase.FieldRevisions.Val, target.input.BaseRevision, changedFields)
+		conflict, err := valuesConflict(purchase.FieldRevisions.Val, target.input.BaseRevision, target.changedFields)
 		if err != nil {
 			return nil, err
 		}
 		if conflict {
 			return nil, ErrConflict
 		}
-		if target.input.Patch.OccurredAt != nil {
-			target.targetAt, err = parseTime(*target.input.Patch.OccurredAt)
+		if slices.Contains(target.changedFields, "occurredAt") {
+			target.targetAt, err = parseTime(*target.input.Patch.OccurredAt.Value())
 			if err != nil {
 				return nil, err
 			}
 		}
-		if target.input.Patch.Merchant != nil && len(strings.TrimSpace(*target.input.Patch.Merchant)) > 240 {
+		if slices.Contains(target.changedFields, "merchant") && len(strings.TrimSpace(*target.input.Patch.Merchant.Value())) > 240 {
 			return nil, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
 		}
-		target.updatePayments = slices.Contains(changedFields, "paymentAllocations")
+		target.updatePayments = slices.Contains(target.changedFields, "paymentAllocations")
 		if target.updatePayments {
-			target.payments, err = validatePurchasePaymentInputs(ctx, tx, householdID.String(), target.input.Patch.PaymentAllocations)
+			target.payments, err = validatePurchasePaymentInputs(ctx, tx, householdID.String(), target.input.Patch.PaymentAllocations.Value())
 			if err != nil {
 				return nil, err
 			}
@@ -191,17 +193,17 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 		patch := target.input.Patch
 		purchase := target.purchase
 		newRevision := purchase.Revision + 1
-		fieldRevisions, err := setFieldRevisions(purchase.FieldRevisions.Val, changedFields, newRevision)
+		fieldRevisions, err := setFieldRevisions(purchase.FieldRevisions.Val, target.changedFields, newRevision)
 		if err != nil {
 			return nil, err
 		}
 		occurredAt := purchase.OccurredAt
-		if slices.Contains(changedFields, "occurredAt") {
+		if slices.Contains(target.changedFields, "occurredAt") {
 			occurredAt = target.targetAt
 		}
 		merchant := purchase.Merchant
-		if slices.Contains(changedFields, "merchant") {
-			merchant = strings.TrimSpace(*patch.Merchant)
+		if slices.Contains(target.changedFields, "merchant") {
+			merchant = strings.TrimSpace(*patch.Merchant.Value())
 		}
 		paymentAccountID := purchase.PaymentAccountID
 		if target.updatePayments {
@@ -224,7 +226,7 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 				return nil, err
 			}
 		}
-		if err := writeEvent(ctx, tx, householdID.String(), "purchase.updated", target.input.PurchaseID, newRevision, changedFields, user.MemberID); err != nil {
+		if err := writeEvent(ctx, tx, householdID.String(), "purchase.updated", target.input.PurchaseID, newRevision, target.changedFields, user.MemberID); err != nil {
 			return nil, err
 		}
 	}
@@ -240,29 +242,4 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 		result = append(result, purchase)
 	}
 	return result, nil
-}
-
-func validatePurchasePatchFields(patch *model.BulkPurchasePatch, changedFields []string) error {
-	if patch.OccurredAt != nil && !slices.Contains(changedFields, "occurredAt") ||
-		patch.Merchant != nil && !slices.Contains(changedFields, "merchant") ||
-		patch.PaymentAllocations != nil && !slices.Contains(changedFields, "paymentAllocations") {
-		return fmt.Errorf("%w: patch contains fields missing from changedFields", ErrBadInput)
-	}
-	for _, field := range changedFields {
-		switch field {
-		case "occurredAt":
-			if patch.OccurredAt == nil {
-				return fmt.Errorf("%w: changed field has no value", ErrBadInput)
-			}
-		case "merchant":
-			if patch.Merchant == nil {
-				return fmt.Errorf("%w: changed field has no value", ErrBadInput)
-			}
-		case "paymentAllocations":
-			if patch.PaymentAllocations == nil {
-				return fmt.Errorf("%w: changed field has no value", ErrBadInput)
-			}
-		}
-	}
-	return nil
 }
