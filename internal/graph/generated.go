@@ -5307,7 +5307,13 @@ type BulkUpdatePurchasesSuccess {
 
 input BulkUpdatePurchasesInput {
   targets: [PurchaseUpdateTargetInput!]!
-  changedFields: [PurchaseChangedField!]!
+  changedFields: [BulkUpdatePurchasesChangedField!]!
+}
+
+enum BulkUpdatePurchasesChangedField {
+  OCCURRED_AT
+  MERCHANT
+  PAYMENT_ALLOCATIONS
 }
 
 input BulkPurchasePatch {
@@ -5379,6 +5385,16 @@ input CorrectPurchaseInput {
 type CorrectPurchaseUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/correction_ledger_entry.graphql", Input: `type CorrectionLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  purchase: Purchase!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/create_account_mutation.graphql", Input: `extend type Mutation {
@@ -5652,6 +5668,17 @@ type CreateTagUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/funding_ledger_entry.graphql", Input: `type FundingLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  member: Member!
+  pool: Pool!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/funding_schedule.graphql", Input: `enum FundingScheduleCadence {
   MONTHLY
 }
@@ -5753,57 +5780,6 @@ type LedgerConnection {
   edges: [LedgerEdge!]!
   pageInfo: PageInfo!
   totalCount: Int!
-}
-
-type PurchaseLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  purchase: Purchase!
-}
-
-type FundingLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  member: Member!
-  pool: Pool!
-}
-
-type TransferLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  fromMember: Member!
-  toMember: Member!
-  transferKind: TransferKind!
-  loan: LoanBalance
-}
-
-enum TransferKind {
-  ADVANCE
-  LOAN
-  REPAYMENT
-  GIFT
-}
-
-type CorrectionLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: String!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: String!
-  purchase: Purchase!
 }
 
 extend type Query {
@@ -6007,12 +5983,6 @@ enum PurchaseOrigin {
   UNKNOWN
 }
 
-enum PurchaseChangedField {
-  OCCURRED_AT
-  MERCHANT
-  PAYMENT_ALLOCATIONS
-}
-
 type PurchasePayment {
   paymentAccountId: ID! @goField(forceResolver: true)
   account: Account!
@@ -6094,6 +6064,16 @@ input PrintedUnitPriceInput {
 type EffectiveUnitPrice {
   numeratorYen: String!
   denominator: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/purchase_ledger_entry.graphql", Input: `type PurchaseLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  purchase: Purchase!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/purchase_subscription.graphql", Input: `type PurchaseChange {
@@ -6546,6 +6526,26 @@ extend type Query {
   tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/transfer_ledger_entry.graphql", Input: `type TransferLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: String!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: String!
+  fromMember: Member!
+  toMember: Member!
+  transferKind: TransferKind!
+  loan: LoanBalance
+}
+
+enum TransferKind {
+  ADVANCE
+  LOAN
+  REPAYMENT
+  GIFT
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/unmatched_observation.graphql", Input: `type UnmatchedObservation implements Node {
   id: ID! @goField(forceResolver: true)
   documentId: ID!
@@ -6666,13 +6666,19 @@ input UpdatePurchaseInput {
   purchaseId: ID! @nodeID(of: "Purchase")
   baseRevision: Int!
   patch: PurchasePatch!
-  changedFields: [PurchaseChangedField!]!
+  changedFields: [UpdatePurchaseChangedField!]!
 }
 
 input PurchasePatch {
   occurredAt: String
   merchant: String
   paymentAllocations: [PurchasePaymentInput!]
+}
+
+enum UpdatePurchaseChangedField {
+  OCCURRED_AT
+  MERCHANT
+  PAYMENT_ALLOCATIONS
 }
 
 type UpdatePurchaseUserError implements MutationError {
@@ -26302,7 +26308,7 @@ func (ec *executionContext) unmarshalInputBulkUpdatePurchasesInput(ctx context.C
 			it.Targets = data
 		case "changedFields":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("changedFields"))
-			data, err := ec.unmarshalNPurchaseChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangedFieldᚄ(ctx, v)
+			data, err := ec.unmarshalNBulkUpdatePurchasesChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedFieldᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -29768,7 +29774,7 @@ func (ec *executionContext) unmarshalInputUpdatePurchaseInput(ctx context.Contex
 			it.Patch = data
 		case "changedFields":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("changedFields"))
-			data, err := ec.unmarshalNPurchaseChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangedFieldᚄ(ctx, v)
+			data, err := ec.unmarshalNUpdatePurchaseChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedFieldᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -42743,6 +42749,46 @@ func (ec *executionContext) marshalNBulkUpdatePurchaseItemsResult2githubᚗcom�
 	return ec._BulkUpdatePurchaseItemsResult(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNBulkUpdatePurchasesChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedField(ctx context.Context, v any) (model.BulkUpdatePurchasesChangedField, error) {
+	var res model.BulkUpdatePurchasesChangedField
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNBulkUpdatePurchasesChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedField(ctx context.Context, sel ast.SelectionSet, v model.BulkUpdatePurchasesChangedField) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) unmarshalNBulkUpdatePurchasesChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedFieldᚄ(ctx context.Context, v any) ([]model.BulkUpdatePurchasesChangedField, error) {
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]model.BulkUpdatePurchasesChangedField, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNBulkUpdatePurchasesChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedField(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNBulkUpdatePurchasesChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedFieldᚄ(ctx context.Context, sel ast.SelectionSet, v []model.BulkUpdatePurchasesChangedField) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNBulkUpdatePurchasesChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesChangedField(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalNBulkUpdatePurchasesInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐBulkUpdatePurchasesInput(ctx context.Context, v any) (model.BulkUpdatePurchasesInput, error) {
 	res, err := ec.unmarshalInputBulkUpdatePurchasesInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -43694,46 +43740,6 @@ func (ec *executionContext) marshalNPurchaseChangeKind2githubᚗcomᚋwalnuts101
 	return v
 }
 
-func (ec *executionContext) unmarshalNPurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangedField(ctx context.Context, v any) (model.PurchaseChangedField, error) {
-	var res model.PurchaseChangedField
-	err := res.UnmarshalGQL(v)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
-func (ec *executionContext) marshalNPurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangedField(ctx context.Context, sel ast.SelectionSet, v model.PurchaseChangedField) graphql.Marshaler {
-	return v
-}
-
-func (ec *executionContext) unmarshalNPurchaseChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangedFieldᚄ(ctx context.Context, v any) ([]model.PurchaseChangedField, error) {
-	vSlice := graphql.CoerceList(v)
-	var err error
-	res := make([]model.PurchaseChangedField, len(vSlice))
-	for i := range vSlice {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNPurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangedField(ctx, vSlice[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return res, nil
-}
-
-func (ec *executionContext) marshalNPurchaseChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangedFieldᚄ(ctx context.Context, sel ast.SelectionSet, v []model.PurchaseChangedField) graphql.Marshaler {
-	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
-		fc := graphql.GetFieldContext(ctx)
-		fc.Result = &v[i]
-		return ec.marshalNPurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChangedField(ctx, sel, v[i])
-	})
-
-	for _, e := range ret {
-		if e == graphql.Null {
-			return graphql.Null
-		}
-	}
-
-	return ret
-}
-
 func (ec *executionContext) marshalNPurchaseConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseConnection(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseConnection) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -44472,6 +44478,46 @@ func (ec *executionContext) marshalNUpdateBudgetResult2githubᚗcomᚋwalnuts101
 		return graphql.Null
 	}
 	return ec._UpdateBudgetResult(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNUpdatePurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedField(ctx context.Context, v any) (model.UpdatePurchaseChangedField, error) {
+	var res model.UpdatePurchaseChangedField
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNUpdatePurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedField(ctx context.Context, sel ast.SelectionSet, v model.UpdatePurchaseChangedField) graphql.Marshaler {
+	return v
+}
+
+func (ec *executionContext) unmarshalNUpdatePurchaseChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedFieldᚄ(ctx context.Context, v any) ([]model.UpdatePurchaseChangedField, error) {
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]model.UpdatePurchaseChangedField, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNUpdatePurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedField(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNUpdatePurchaseChangedField2ᚕgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedFieldᚄ(ctx context.Context, sel ast.SelectionSet, v []model.UpdatePurchaseChangedField) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNUpdatePurchaseChangedField2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseChangedField(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalNUpdatePurchaseInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseInput(ctx context.Context, v any) (model.UpdatePurchaseInput, error) {

@@ -10,7 +10,13 @@ type BulkUpdatePurchasesSuccess {
 
 input BulkUpdatePurchasesInput {
   targets: [PurchaseUpdateTargetInput!]!
-  changedFields: [PurchaseChangedField!]!
+  changedFields: [BulkUpdatePurchasesChangedField!]!
+}
+
+enum BulkUpdatePurchasesChangedField {
+  OCCURRED_AT
+  MERCHANT
+  PAYMENT_ALLOCATIONS
 }
 
 input BulkPurchasePatch {

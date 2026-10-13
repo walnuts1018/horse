@@ -3038,15 +3038,15 @@ func setFieldRevisions(current []byte, fields []string, revision int64) ([]byte,
 	return json.Marshal(revisions)
 }
 
-func purchaseChangedFieldKeys(fields []model.PurchaseChangedField) []string {
+func purchaseChangedFieldKeys[T ~string](fields []T) []string {
 	keys := make([]string, len(fields))
 	for i, field := range fields {
-		switch field {
-		case model.PurchaseChangedFieldOccurredAt:
+		switch string(field) {
+		case "OCCURRED_AT":
 			keys[i] = "occurredAt"
-		case model.PurchaseChangedFieldMerchant:
+		case "MERCHANT":
 			keys[i] = "merchant"
-		case model.PurchaseChangedFieldPaymentAllocations:
+		case "PAYMENT_ALLOCATIONS":
 			keys[i] = "paymentAllocations"
 		default:
 			keys[i] = string(field)

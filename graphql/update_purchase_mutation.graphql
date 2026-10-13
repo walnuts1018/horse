@@ -12,13 +12,19 @@ input UpdatePurchaseInput {
   purchaseId: ID! @nodeID(of: "Purchase")
   baseRevision: Int!
   patch: PurchasePatch!
-  changedFields: [PurchaseChangedField!]!
+  changedFields: [UpdatePurchaseChangedField!]!
 }
 
 input PurchasePatch {
   occurredAt: String
   merchant: String
   paymentAllocations: [PurchasePaymentInput!]
+}
+
+enum UpdatePurchaseChangedField {
+  OCCURRED_AT
+  MERCHANT
+  PAYMENT_ALLOCATIONS
 }
 
 type UpdatePurchaseUserError implements MutationError {

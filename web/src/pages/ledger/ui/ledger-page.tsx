@@ -22,7 +22,8 @@ import {
   postPurchaseMutation,
   purchasesQuery,
   type BulkPurchaseItemChangedField,
-  type PurchaseChangedField,
+  type UpdatePurchaseChangedField,
+  type BulkUpdatePurchasesChangedField,
   type PurchaseItemChangedField,
   updatePurchaseItemMutation,
   updatePurchaseMutation,
@@ -53,7 +54,7 @@ const yen = (amount = 0) =>
   }).format(amount);
 const sameNullableString = (left?: string | null, right?: string | null) =>
   (left ?? "") === (right ?? "");
-const toPurchaseChangedFields = (fields: readonly string[]): PurchaseChangedField[] =>
+const toPurchaseChangedFields = (fields: readonly string[]): UpdatePurchaseChangedField[] =>
   fields.map((field) => {
     switch (field) {
       case "occurredAt":
@@ -64,6 +65,21 @@ const toPurchaseChangedFields = (fields: readonly string[]): PurchaseChangedFiel
         return "PAYMENT_ALLOCATIONS";
       default:
         throw new Error("不明な買い物の変更項目です");
+    }
+  });
+const toBulkUpdatePurchasesChangedFields = (
+  fields: readonly string[],
+): BulkUpdatePurchasesChangedField[] =>
+  fields.map((field) => {
+    switch (field) {
+      case "occurredAt":
+        return "OCCURRED_AT";
+      case "merchant":
+        return "MERCHANT";
+      case "paymentAllocations":
+        return "PAYMENT_ALLOCATIONS";
+      default:
+        throw new Error("不明な一括買い物の変更項目です");
     }
   });
 const toPurchaseItemChangedFields = (fields: readonly string[]): PurchaseItemChangedField[] =>
@@ -925,7 +941,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                 : {}),
             },
           })),
-          changedFields: toPurchaseChangedFields(changedFields),
+          changedFields: toBulkUpdatePurchasesChangedFields(changedFields),
         },
       });
       for (const purchase of targets) {
@@ -979,7 +995,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             baseRevision: entry.baseRevision,
             patch: entry.patch,
           })),
-          changedFields: toPurchaseChangedFields(purchaseBulkUndo[0].changedFields),
+          changedFields: toBulkUpdatePurchasesChangedFields(purchaseBulkUndo[0].changedFields),
         },
       });
       setPurchaseBulkUndo(null);

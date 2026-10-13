@@ -317,16 +317,16 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("failed update was not rolled back atomically: amount=%d allocated=%d error=%v", persistedAmount, allocationTotal, err)
 	}
 	merchant := "market changed"
-	purchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: purchase.Revision, Patch: &model.PurchasePatch{Merchant: &merchant}, ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldMerchant}})
+	purchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: purchase.Revision, Patch: &model.PurchasePatch{Merchant: &merchant}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldMerchant}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	occurredAt := "2026-04-13T12:00:00Z"
-	purchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: 1, Patch: &model.PurchasePatch{OccurredAt: &occurredAt}, ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldOccurredAt}})
+	purchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: 1, Patch: &model.PurchasePatch{OccurredAt: &occurredAt}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldOccurredAt}})
 	if err != nil {
 		t.Fatalf("disjoint stale fields should merge: %v", err)
 	}
-	if _, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: 1, Patch: &model.PurchasePatch{Merchant: &merchant}, ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldMerchant}}); !errors.Is(err, ErrConflict) {
+	if _, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: 1, Patch: &model.PurchasePatch{Merchant: &merchant}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldMerchant}}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("same stale field should conflict, got %v", err)
 	}
 	if len(purchase.Items) != 1 || purchase.Items[0].Allocations[0].AmountYen == nil || *purchase.Items[0].Allocations[0].AmountYen != 300 || *purchase.Items[0].Allocations[1].AmountYen != 200 {
@@ -518,7 +518,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	postedOccurredAt := "2026-04-14T12:00:00Z"
 	postedPurchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: postedPurchase.ID, BaseRevision: postedPurchase.Revision, Patch: &model.PurchasePatch{
 		Merchant: &postedMerchant, OccurredAt: &postedOccurredAt,
-	}, ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldMerchant, model.PurchaseChangedFieldOccurredAt}})
+	}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldMerchant, model.UpdatePurchaseChangedFieldOccurredAt}})
 	if err != nil {
 		t.Fatalf("open-period metadata update should allow a posted purchase: %v", err)
 	}
@@ -581,7 +581,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if len(settlement.Lines) != 2 {
 		t.Fatalf("expected two settlement lines, got %#v", settlement.Lines)
 	}
-	if _, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: postedPurchase.ID, BaseRevision: postedPurchase.Revision, Patch: &model.PurchasePatch{Merchant: &postedMerchant}, ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldMerchant}}); !errors.Is(err, ErrConflict) {
+	if _, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: postedPurchase.ID, BaseRevision: postedPurchase.Revision, Patch: &model.PurchasePatch{Merchant: &postedMerchant}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldMerchant}}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("closed purchase edits must require a correction: %v", err)
 	}
 	accountSwitchPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
@@ -612,7 +612,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	}
 	accountSwitchPurchase, err = resolver.updatePurchase(ctx, model.UpdatePurchaseInput{
 		PurchaseID: accountSwitchPurchase.ID, BaseRevision: accountSwitchPurchase.Revision,
-		Patch: &model.PurchasePatch{PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: alternatePaymentAccount.ID, AmountYen: 500}}}, ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldPaymentAllocations},
+		Patch: &model.PurchasePatch{PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: alternatePaymentAccount.ID, AmountYen: 500}}}, ChangedFields: []model.UpdatePurchaseChangedField{model.UpdatePurchaseChangedFieldPaymentAllocations},
 	})
 	if err != nil || len(accountSwitchPurchase.PaymentAllocations) != 1 || accountSwitchPurchase.PaymentAllocations[0].PaymentAccountID != alternatePaymentAccount.ID {
 		t.Fatalf("posted purchase payment account should change: purchase=%#v error=%v", accountSwitchPurchase, err)
@@ -645,7 +645,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 				{PaymentAccountID: alternatePaymentAccount.ID, AmountYen: 300},
 			}},
 		}},
-		ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldPaymentAllocations},
+		ChangedFields: []model.BulkUpdatePurchasesChangedField{model.BulkUpdatePurchasesChangedFieldPaymentAllocations},
 	})
 	if err != nil || len(bulkUpdatedPurchases) != 1 {
 		t.Fatalf("posted purchase payment allocations should update in bulk: %v", err)
