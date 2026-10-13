@@ -5454,17 +5454,6 @@ extend type Query {
   monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): MonthlyMemberSpendingReport!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/mutation_error.graphql", Input: `enum MutationErrorCode {
-  BAD_INPUT
-  CONFLICT
-  NOT_FOUND
-}
-
-interface MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/pool.graphql", Input: `type Pool implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
@@ -5897,6 +5886,17 @@ type PageInfo {
   hasPreviousPage: Boolean!
   startCursor: String
   endCursor: String
+}
+
+enum MutationErrorCode {
+  BAD_INPUT
+  CONFLICT
+  NOT_FOUND
+}
+
+interface MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/set_allocation_rule_mutation.graphql", Input: `extend type Mutation {

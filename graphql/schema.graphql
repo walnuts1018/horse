@@ -20,3 +20,14 @@ type PageInfo {
   startCursor: String
   endCursor: String
 }
+
+enum MutationErrorCode {
+  BAD_INPUT
+  CONFLICT
+  NOT_FOUND
+}
+
+interface MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
