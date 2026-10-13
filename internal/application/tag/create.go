@@ -14,6 +14,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -28,7 +29,7 @@ func NewService(db *pgxpool.Pool) *Service {
 type CreateCommand struct {
 	ActorID     string
 	HouseholdID string
-	Name        string
+	Name        string `validate:"notblank,max=80"`
 }
 
 type Tag struct {
@@ -40,10 +41,11 @@ type Tag struct {
 }
 
 func (s *Service) Create(ctx context.Context, command CreateCommand) (Tag, error) {
-	name := strings.TrimSpace(command.Name)
-	if name == "" || len(name) > 80 {
-		return Tag{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid tag name"))
+	command.Name = strings.TrimSpace(command.Name)
+	if err := inputvalidation.Check(command); err != nil {
+		return Tag{}, err
 	}
+	name := command.Name
 	householdID, err := gofrsuuid.FromString(command.HouseholdID)
 	if err != nil {
 		return Tag{}, apperror.Wrap(apperror.KindNotFound, err)

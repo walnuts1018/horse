@@ -15,6 +15,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -30,8 +31,8 @@ type SetAliasCommand struct {
 	ActorID     string
 	HouseholdID string
 	VariantID   string
-	Merchant    string
-	Alias       string
+	Merchant    string `validate:"notblank,max=240"`
+	Alias       string `validate:"notblank,max=240"`
 }
 
 type Alias struct {
@@ -39,12 +40,14 @@ type Alias struct {
 }
 
 func (s *Service) SetAlias(ctx context.Context, command SetAliasCommand) (Alias, error) {
-	alias := strings.TrimSpace(command.Alias)
 	merchantKey := normalizeText(command.Merchant)
-	normalizedAlias := normalizeText(alias)
-	if alias == "" || len(alias) > 240 || merchantKey == "" || len(merchantKey) > 240 {
-		return Alias{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid merchant product alias"))
+	command.Merchant = merchantKey
+	command.Alias = strings.TrimSpace(command.Alias)
+	if err := inputvalidation.Check(command); err != nil {
+		return Alias{}, err
 	}
+	alias := command.Alias
+	normalizedAlias := normalizeText(alias)
 	householdID, err := parseID(command.HouseholdID)
 	if err != nil {
 		return Alias{}, apperror.Wrap(apperror.KindNotFound, err)

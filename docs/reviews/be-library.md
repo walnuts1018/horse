@@ -1,12 +1,12 @@
 # バックエンドライブラリの未解決候補
 
-実装済みのライブラリ導入・不採用の判断は[レビュー対応記録](../decisions/review-responses.md)に記録しています。このファイルにはまだ結論が出ていない候補だけを残します。
+実装済みのライブラリ導入・不採用の判断は[レビュー対応記録](../decisions/review-responses.md)に記録しています。このファイルには適用範囲と維持する境界を記録します。
 
-## 未解決候補
+## 適用範囲と境界
 
-| ライブラリ | 検討事項 |
+| ライブラリ | 適用範囲 |
 | --- | --- |
-| `github.com/go-playground/validator/v10` | Worker設定では構造検証に利用済みです。GraphQL入力への共通適用範囲と、金額・期間・会計整合性などの業務検証との境界は未整理です。 |
+| `github.com/go-playground/validator/v10` | Worker設定と、タグ・カテゴリ・商品別名・予算・定期支出のApplication commandにある文字列の空欄・長さを検証します。GraphQLの必須値、scalar、Global IDの形式はgqlgenで検証し、金額・期間・配賦・会計整合性は各Application Serviceの業務検証に残します。 |
 
 ## 維持する境界
 

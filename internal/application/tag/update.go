@@ -13,6 +13,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -20,7 +21,7 @@ type UpdateCommand struct {
 	ActorID      string
 	TagID        string
 	BaseRevision int
-	Name         string
+	Name         string `validate:"notblank,max=80"`
 }
 
 type ArchiveCommand struct {
@@ -31,10 +32,11 @@ type ArchiveCommand struct {
 }
 
 func (s *Service) Update(ctx context.Context, command UpdateCommand) (Tag, error) {
-	name := strings.TrimSpace(command.Name)
-	if name == "" || len(name) > 80 {
-		return Tag{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid tag name"))
+	command.Name = strings.TrimSpace(command.Name)
+	if err := inputvalidation.Check(command); err != nil {
+		return Tag{}, err
 	}
+	name := command.Name
 	return s.update(ctx, command.ActorID, command.TagID, command.BaseRevision, "tag.updated", []string{"name"}, func(_ *models.Tag, revision int64) *models.TagSetter {
 		return &models.TagSetter{Name: &name, Revision: &revision}
 	})

@@ -16,6 +16,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -41,7 +42,7 @@ type BudgetCommand struct {
 	BudgetID    *string
 	Revision    *int
 	CategoryID  *string
-	Name        string
+	Name        string `validate:"notblank,max=120"`
 	AmountYen   int64
 	StartsOn    time.Time
 	EndsOn      *time.Time
@@ -64,8 +65,8 @@ type RecurringExpenseCommand struct {
 	HouseholdID      string
 	ExpenseID        *string
 	Revision         *int
-	Name             string
-	Merchant         string
+	Name             string `validate:"notblank,max=160"`
+	Merchant         string `validate:"max=240"`
 	AmountYen        int64
 	CategoryID       *string
 	PaymentAccountID *string
@@ -93,8 +94,12 @@ type RecurringExpenseResult struct {
 }
 
 func (s *Service) SetBudget(ctx context.Context, command BudgetCommand) (BudgetResult, error) {
-	name := strings.TrimSpace(command.Name)
-	if name == "" || len(name) > 120 || command.AmountYen <= 0 || command.AmountYen > maxMoney || command.StartsOn.IsZero() {
+	command.Name = strings.TrimSpace(command.Name)
+	if err := inputvalidation.Check(command); err != nil {
+		return BudgetResult{}, err
+	}
+	name := command.Name
+	if command.AmountYen <= 0 || command.AmountYen > maxMoney || command.StartsOn.IsZero() {
 		return BudgetResult{}, fmt.Errorf("%w: invalid budget", ErrBadInput)
 	}
 	if command.EndsOn != nil && command.EndsOn.Before(command.StartsOn) {
@@ -207,8 +212,12 @@ func (s *Service) ArchiveBudget(ctx context.Context, actorID, householdID, budge
 }
 
 func (s *Service) SetRecurringExpense(ctx context.Context, command RecurringExpenseCommand) (RecurringExpenseResult, error) {
-	name, merchant := strings.TrimSpace(command.Name), strings.TrimSpace(command.Merchant)
-	if name == "" || len(name) > 160 || len(merchant) > 240 || command.AmountYen <= 0 || command.AmountYen > maxMoney || command.StartsOn.IsZero() || command.NextDueOn.Before(command.StartsOn) {
+	command.Name, command.Merchant = strings.TrimSpace(command.Name), strings.TrimSpace(command.Merchant)
+	if err := inputvalidation.Check(command); err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	name, merchant := command.Name, command.Merchant
+	if command.AmountYen <= 0 || command.AmountYen > maxMoney || command.StartsOn.IsZero() || command.NextDueOn.Before(command.StartsOn) {
 		return RecurringExpenseResult{}, fmt.Errorf("%w: invalid recurring expense", ErrBadInput)
 	}
 	if command.Cadence != "WEEKLY" && command.Cadence != "MONTHLY" && command.Cadence != "YEARLY" {
