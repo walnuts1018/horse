@@ -3,6 +3,8 @@ package graph
 import (
 	"slices"
 	"testing"
+
+	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
 func TestNodeIDDirectiveDecodesList(t *testing.T) {
@@ -39,5 +41,44 @@ func TestNodeIDDirectiveDecodesLoanBalance(t *testing.T) {
 	}
 	if value != rawID {
 		t.Fatalf("NodeIDDirective() = %#v, want %q", value, rawID)
+	}
+}
+
+func TestNodeReferenceResolversReturnGlobalIDs(t *testing.T) {
+	const householdID = "123e4567-e89b-42d3-a456-426614174000"
+	const lenderID = "123e4567-e89b-42d3-a456-426614174001"
+	const borrowerID = "123e4567-e89b-42d3-a456-426614174002"
+
+	tagHouseholdID, err := (&Resolver{}).Tag().HouseholdID(t.Context(), &model.Tag{HouseholdID: householdID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHouseholdID, err := encodeNodeID("Household", householdID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tagHouseholdID != wantHouseholdID {
+		t.Fatalf("Tag.householdId = %q, want %q", tagHouseholdID, wantHouseholdID)
+	}
+
+	loanBalance := &model.LoanBalance{LenderMemberID: lenderID, BorrowerMemberID: borrowerID}
+	lenderGlobalID, err := (&Resolver{}).LoanBalance().LenderMemberID(t.Context(), loanBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	borrowerGlobalID, err := (&Resolver{}).LoanBalance().BorrowerMemberID(t.Context(), loanBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLenderGlobalID, err := encodeNodeID("Member", lenderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantBorrowerGlobalID, err := encodeNodeID("Member", borrowerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lenderGlobalID != wantLenderGlobalID || borrowerGlobalID != wantBorrowerGlobalID {
+		t.Fatalf("LoanBalance member IDs = %q, %q; want %q, %q", lenderGlobalID, borrowerGlobalID, wantLenderGlobalID, wantBorrowerGlobalID)
 	}
 }

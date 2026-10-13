@@ -21,6 +21,11 @@ func (r *tagResolver) ID(ctx context.Context, obj *model.Tag) (string, error) {
 	return encodeNodeID("Tag", obj.ID)
 }
 
+// HouseholdID is the resolver for the householdId field.
+func (r *tagResolver) HouseholdID(ctx context.Context, obj *model.Tag) (string, error) {
+	return encodeNodeID("Household", obj.HouseholdID)
+}
+
 // Tag returns TagResolver implementation.
 func (r *Resolver) Tag() TagResolver { return &tagResolver{r} }
 

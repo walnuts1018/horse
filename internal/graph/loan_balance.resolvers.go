@@ -11,6 +11,16 @@ import (
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
+// LenderMemberID is the resolver for the lenderMemberId field.
+func (r *loanBalanceResolver) LenderMemberID(ctx context.Context, obj *model.LoanBalance) (string, error) {
+	return encodeNodeID("Member", obj.LenderMemberID)
+}
+
+// BorrowerMemberID is the resolver for the borrowerMemberId field.
+func (r *loanBalanceResolver) BorrowerMemberID(ctx context.Context, obj *model.LoanBalance) (string, error) {
+	return encodeNodeID("Member", obj.BorrowerMemberID)
+}
+
 // LoanBalances is the resolver for the loanBalances field.
 func (r *queryResolver) LoanBalances(ctx context.Context, householdID string, after *string, first *int) (*model.LoanBalanceConnection, error) {
 	pageSize := 50
@@ -19,3 +29,8 @@ func (r *queryResolver) LoanBalances(ctx context.Context, householdID string, af
 	}
 	return r.loanBalances(ctx, householdID, after, pageSize)
 }
+
+// LoanBalance returns LoanBalanceResolver implementation.
+func (r *Resolver) LoanBalance() LoanBalanceResolver { return &loanBalanceResolver{r} }
+
+type loanBalanceResolver struct{ *Resolver }

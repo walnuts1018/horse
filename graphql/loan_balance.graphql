@@ -1,7 +1,7 @@
 type LoanBalance implements Node {
   id: ID!
-  lenderMemberId: ID!
-  borrowerMemberId: ID!
+  lenderMemberId: ID! @goField(forceResolver: true)
+  borrowerMemberId: ID! @goField(forceResolver: true)
   principalYen: Long!
   repaidYen: Long!
   balanceYen: Long!

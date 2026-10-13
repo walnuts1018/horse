@@ -41,6 +41,7 @@ type ResolverRoot interface {
 	FundingLedgerEntry() FundingLedgerEntryResolver
 	Household() HouseholdResolver
 	HouseholdInvitation() HouseholdInvitationResolver
+	LoanBalance() LoanBalanceResolver
 	Member() MemberResolver
 	MonthlyCategorySpending() MonthlyCategorySpendingResolver
 	MonthlyMemberSpending() MonthlyMemberSpendingResolver
@@ -1011,6 +1012,10 @@ type HouseholdInvitationResolver interface {
 	ID(ctx context.Context, obj *model.HouseholdInvitation) (string, error)
 	HouseholdID(ctx context.Context, obj *model.HouseholdInvitation) (string, error)
 }
+type LoanBalanceResolver interface {
+	LenderMemberID(ctx context.Context, obj *model.LoanBalance) (string, error)
+	BorrowerMemberID(ctx context.Context, obj *model.LoanBalance) (string, error)
+}
 type MemberResolver interface {
 	ID(ctx context.Context, obj *model.Member) (string, error)
 }
@@ -1139,6 +1144,7 @@ type SettlementLineResolver interface {
 }
 type TagResolver interface {
 	ID(ctx context.Context, obj *model.Tag) (string, error)
+	HouseholdID(ctx context.Context, obj *model.Tag) (string, error)
 }
 type TransferLedgerEntryResolver interface {
 	ID(ctx context.Context, obj *model.TransferLedgerEntry) (string, error)
@@ -5309,8 +5315,8 @@ extend type Query {
 `, BuiltIn: false},
 	{Name: "../../graphql/loan_balance.graphql", Input: `type LoanBalance implements Node {
   id: ID!
-  lenderMemberId: ID!
-  borrowerMemberId: ID!
+  lenderMemberId: ID! @goField(forceResolver: true)
+  borrowerMemberId: ID! @goField(forceResolver: true)
   principalYen: Long!
   repaidYen: Long!
   balanceYen: Long!
@@ -6018,7 +6024,7 @@ extend type Query {
 `, BuiltIn: false},
 	{Name: "../../graphql/tag.graphql", Input: `type Tag implements Node {
   id: ID! @goField(forceResolver: true)
-  householdId: ID!
+  householdId: ID! @goField(forceResolver: true)
   name: String!
   archived: Boolean!
   revision: Int!
@@ -14267,7 +14273,7 @@ func (ec *executionContext) _LoanBalance_lenderMemberId(ctx context.Context, fie
 			return ec.fieldContext_LoanBalance_lenderMemberId(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
-			return obj.LenderMemberID, nil
+			return ec.Resolvers.LoanBalance().LenderMemberID(ctx, obj)
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
@@ -14278,7 +14284,7 @@ func (ec *executionContext) _LoanBalance_lenderMemberId(ctx context.Context, fie
 	)
 }
 func (ec *executionContext) fieldContext_LoanBalance_lenderMemberId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("LoanBalance", field, false, false, errors.New("field of type ID does not have child fields"))
+	return graphql.NewScalarFieldContext("LoanBalance", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
 func (ec *executionContext) _LoanBalance_borrowerMemberId(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalance) (ret graphql.Marshaler) {
@@ -14290,7 +14296,7 @@ func (ec *executionContext) _LoanBalance_borrowerMemberId(ctx context.Context, f
 			return ec.fieldContext_LoanBalance_borrowerMemberId(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
-			return obj.BorrowerMemberID, nil
+			return ec.Resolvers.LoanBalance().BorrowerMemberID(ctx, obj)
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
@@ -14301,7 +14307,7 @@ func (ec *executionContext) _LoanBalance_borrowerMemberId(ctx context.Context, f
 	)
 }
 func (ec *executionContext) fieldContext_LoanBalance_borrowerMemberId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("LoanBalance", field, false, false, errors.New("field of type ID does not have child fields"))
+	return graphql.NewScalarFieldContext("LoanBalance", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
 func (ec *executionContext) _LoanBalance_principalYen(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalance) (ret graphql.Marshaler) {
@@ -21939,7 +21945,7 @@ func (ec *executionContext) _Tag_householdId(ctx context.Context, field graphql.
 			return ec.fieldContext_Tag_householdId(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
-			return obj.HouseholdID, nil
+			return ec.Resolvers.Tag().HouseholdID(ctx, obj)
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
@@ -21950,7 +21956,7 @@ func (ec *executionContext) _Tag_householdId(ctx context.Context, field graphql.
 	)
 }
 func (ec *executionContext) fieldContext_Tag_householdId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("Tag", field, false, false, errors.New("field of type ID does not have child fields"))
+	return graphql.NewScalarFieldContext("Tag", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
 func (ec *executionContext) _Tag_name(ctx context.Context, field graphql.CollectedField, obj *model.Tag) (ret graphql.Marshaler) {
@@ -33068,37 +33074,103 @@ func (ec *executionContext) _LoanBalance(ctx context.Context, sel ast.SelectionS
 		case "id":
 			out.Values[i] = ec._LoanBalance_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "lenderMemberId":
-			out.Values[i] = ec._LoanBalance_lenderMemberId(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._LoanBalance_lenderMemberId(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "borrowerMemberId":
-			out.Values[i] = ec._LoanBalance_borrowerMemberId(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._LoanBalance_borrowerMemberId(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "principalYen":
 			out.Values[i] = ec._LoanBalance_principalYen(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "repaidYen":
 			out.Values[i] = ec._LoanBalance_repaidYen(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "balanceYen":
 			out.Values[i] = ec._LoanBalance_balanceYen(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "createdAt":
 			out.Values[i] = ec._LoanBalance_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -37854,10 +37926,43 @@ func (ec *executionContext) _Tag(ctx context.Context, sel ast.SelectionSet, obj 
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "householdId":
-			out.Values[i] = ec._Tag_householdId(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&out.Invalids, 1)
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Tag_householdId(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "name":
 			out.Values[i] = ec._Tag_name(ctx, field, obj)
 			if out.Values[i] == graphql.Null {

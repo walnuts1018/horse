@@ -1,6 +1,6 @@
 type Tag implements Node {
   id: ID! @goField(forceResolver: true)
-  householdId: ID!
+  householdId: ID! @goField(forceResolver: true)
   name: String!
   archived: Boolean!
   revision: Int!
