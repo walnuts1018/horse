@@ -70,7 +70,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid source kind", http.StatusBadRequest)
 		return
 	}
-	householdUUID, err := gofrsuuid.FromString(householdID)
+	householdUUID, err := parseNodeIDOrUUID(householdID, "Household")
 	if err != nil {
 		http.Error(w, "household not found", http.StatusNotFound)
 		return
@@ -104,6 +104,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported document type", http.StatusUnsupportedMediaType)
 		return
 	}
+	householdID = householdUUID.String()
 	key, hash, err := s.cfg.Store.Put(r.Context(), householdID, mimeType, data)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "document storage failed", "error", err)
@@ -307,7 +308,7 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	householdID := r.URL.Query().Get("householdId")
-	householdUUID, err := gofrsuuid.FromString(householdID)
+	householdUUID, err := parseNodeIDOrUUID(householdID, "Household")
 	if err != nil {
 		http.NotFound(w, r)
 		return

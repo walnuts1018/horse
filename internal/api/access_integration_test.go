@@ -5,13 +5,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	stdjson "encoding/json"
 	"encoding/json/v2"
 	"image"
 	"image/png"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -36,12 +36,15 @@ import (
 )
 
 type previewTestStore struct {
-	document ingestion.Document
-	gets     int
+	document        ingestion.Document
+	gets            int
+	putHouseholdIDs []string
 }
 
-func (s *previewTestStore) Put(context.Context, string, string, []byte) (string, string, error) {
-	return "", "", nil
+func (s *previewTestStore) Put(_ context.Context, householdID, _ string, data []byte) (string, string, error) {
+	s.putHouseholdIDs = append(s.putHouseholdIDs, householdID)
+	hash := ingestion.DocumentHash(data)
+	return householdID + "/originals/" + hash, hash, nil
 }
 
 func (s *previewTestStore) Get(_ context.Context, _ string, mimeType string) (ingestion.Document, error) {
@@ -152,7 +155,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	defer ocrServer.Close()
 	server := New(db, authService, slog.New(slog.NewTextHandler(io.Discard, nil)), Config{PublicOrigin: "http://horse.test", Store: store, OCR: ingestion.OCR{Endpoint: ocrServer.URL}}).Handler()
 
-	householdNodeID := base64.RawURLEncoding.EncodeToString(append([]byte("Household:"), householdUUID[:]...))
+	householdNodeID := relayid.Encode("Household", householdUUID[:])
 	graphqlRequest := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader(`{"query":"query($id: ID!) { household(id: $id) { id name } }","variables":{"id":"`+householdNodeID+`"}}`))
 	graphqlRequest.Header.Set("Origin", "http://horse.test")
 	graphqlRequest.Header.Set("Content-Type", "application/json")
@@ -234,6 +237,58 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	server.ServeHTTP(evidenceResponse, evidenceRequest)
 	if evidenceResponse.Code != http.StatusOK || strings.TrimSpace(evidenceResponse.Body.String()) != `{"evidence":[]}` {
 		t.Fatalf("purchase global ID did not return empty evidence: status=%d body=%s", evidenceResponse.Code, evidenceResponse.Body.String())
+	}
+	documentsRequest := httptest.NewRequest(http.MethodGet, "/documents?householdId="+householdNodeID, nil)
+	documentsRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	documentsResponse := httptest.NewRecorder()
+	server.ServeHTTP(documentsResponse, documentsRequest)
+	if documentsResponse.Code != http.StatusOK || !strings.Contains(documentsResponse.Body.String(), documentID) {
+		t.Fatalf("household global ID document list failed: status=%d body=%s", documentsResponse.Code, documentsResponse.Body.String())
+	}
+	var uploadBody bytes.Buffer
+	uploadForm := multipart.NewWriter(&uploadBody)
+	if err := uploadForm.WriteField("householdId", householdNodeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := uploadForm.WriteField("sourceKind", "receipt"); err != nil {
+		t.Fatal(err)
+	}
+	filePart, err := uploadForm.CreateFormFile("file", "receipt.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := filePart.Write(previewPNG.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := uploadForm.Close(); err != nil {
+		t.Fatal(err)
+	}
+	uploadRequest := httptest.NewRequest(http.MethodPost, "/documents", &uploadBody)
+	uploadRequest.Header.Set("Origin", "http://horse.test")
+	uploadRequest.Header.Set("Content-Type", uploadForm.FormDataContentType())
+	uploadRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	uploadResponse := httptest.NewRecorder()
+	server.ServeHTTP(uploadResponse, uploadRequest)
+	if uploadResponse.Code != http.StatusAccepted || !strings.Contains(uploadResponse.Body.String(), `"householdId":"`+householdID+`"`) {
+		t.Fatalf("household global ID document upload failed: status=%d body=%s", uploadResponse.Code, uploadResponse.Body.String())
+	}
+	if len(store.putHouseholdIDs) != 1 || store.putHouseholdIDs[0] != householdID {
+		t.Fatalf("document storage received non-canonical household ID: %v", store.putHouseholdIDs)
+	}
+	var uploaded map[string]any
+	if err := stdjson.Unmarshal(uploadResponse.Body.Bytes(), &uploaded); err != nil {
+		t.Fatal(err)
+	}
+	uploadedID, ok := uploaded["id"].(string)
+	if !ok || uploadedID == "" {
+		t.Fatalf("uploaded document ID missing: %s", uploadResponse.Body.String())
+	}
+	documentsRequest = httptest.NewRequest(http.MethodGet, "/documents?householdId="+householdID, nil)
+	documentsRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	documentsResponse = httptest.NewRecorder()
+	server.ServeHTTP(documentsResponse, documentsRequest)
+	if documentsResponse.Code != http.StatusOK || !strings.Contains(documentsResponse.Body.String(), uploadedID) {
+		t.Fatalf("raw household UUID compatibility failed: status=%d body=%s", documentsResponse.Code, documentsResponse.Body.String())
 	}
 	invalidPreviewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview?page=-1", nil)
 	invalidPreviewRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
