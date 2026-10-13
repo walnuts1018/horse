@@ -18,11 +18,37 @@ export const budgetsQuery = graphql`
   }
 `;
 
-export const setBudgetMutation = graphql`
-  mutation SetBudgetMutation($input: SetBudgetInput!) {
-    setBudget(input: $input) {
+export const createBudgetMutation = graphql`
+  mutation CreateBudgetMutation($input: CreateBudgetInput!) {
+    createBudget(input: $input) {
       __typename
-      ... on SetBudgetSuccess {
+      ... on CreateBudgetSuccess {
+        result {
+          id
+          categoryId
+          name
+          amountYen
+          actualYen
+          remainingYen
+          startsOn
+          endsOn
+          archived
+          revision
+        }
+      }
+      ... on MutationError {
+        code
+        message
+      }
+    }
+  }
+`;
+
+export const updateBudgetMutation = graphql`
+  mutation UpdateBudgetMutation($input: UpdateBudgetInput!) {
+    updateBudget(input: $input) {
+      __typename
+      ... on UpdateBudgetSuccess {
         result {
           id
           categoryId

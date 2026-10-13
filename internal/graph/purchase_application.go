@@ -12,9 +12,6 @@ func (r *mutationResolver) createPurchase(ctx context.Context, input model.Creat
 	if err != nil {
 		return nil, err
 	}
-	if input.Status != nil && *input.Status != model.PurchaseStatusDraft {
-		return nil, ErrBadInput
-	}
 	fingerprint, err := mutationRequestFingerprint(input)
 	if err != nil {
 		return nil, err

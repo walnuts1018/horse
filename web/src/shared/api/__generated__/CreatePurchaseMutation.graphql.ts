@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<cf1931003b9b0f994955c397304f1569>>
+ * @generated SignedSource<<f033f0d88224b8821020dd29bca98591>>
  * @lightSyntaxTransform
  */
 
@@ -23,7 +23,6 @@ export type CreatePurchaseInput = {
   receiptCandidateId?: string | null | undefined;
   sourceDocumentId?: string | null | undefined;
   sourceReference?: string | null | undefined;
-  status?: PurchaseStatus | null | undefined;
 };
 export type PurchasePaymentInput = {
   amountYen: any;

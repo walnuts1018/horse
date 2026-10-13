@@ -55,7 +55,7 @@ export type RecurringExpense = {
   currency: string;
   categoryId?: string | null;
   paymentAccountId?: string | null;
-  cadence: string;
+  cadence: "WEEKLY" | "MONTHLY" | "YEARLY";
   startsOn: string;
   nextDueOn: string;
   endsOn?: string | null;

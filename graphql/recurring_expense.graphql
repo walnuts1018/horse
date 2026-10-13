@@ -7,12 +7,18 @@ type RecurringExpense implements Node {
   currency: String!
   categoryId: ID @goField(forceResolver: true)
   paymentAccountId: ID @goField(forceResolver: true)
-  cadence: String!
+  cadence: RecurringExpenseCadence!
   startsOn: String!
   nextDueOn: String!
   endsOn: String
   archived: Boolean!
   revision: Int!
+}
+
+enum RecurringExpenseCadence {
+  WEEKLY
+  MONTHLY
+  YEARLY
 }
 
 extend type Query {

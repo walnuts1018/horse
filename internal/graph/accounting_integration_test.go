@@ -1017,7 +1017,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if _, err := resolver.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: sharedPool.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
-	budget, err := resolver.setBudget(ctx, model.SetBudgetInput{HouseholdID: household.ID, CategoryID: &category.ID, Name: "June groceries", AmountYen: 2000, StartsOn: "2026-06-01"})
+	budget, err := resolver.setBudget(ctx, budgetWriteInput{HouseholdID: household.ID, CategoryID: &category.ID, Name: "June groceries", AmountYen: 2000, StartsOn: "2026-06-01"})
 	if err != nil {
 		t.Fatal(err)
 	}

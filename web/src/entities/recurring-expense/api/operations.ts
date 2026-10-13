@@ -40,11 +40,39 @@ export const recurringExpensesQuery = graphql`
   }
 `;
 
-export const setRecurringExpenseMutation = graphql`
-  mutation SetRecurringExpenseMutation($input: SetRecurringExpenseInput!) {
-    setRecurringExpense(input: $input) {
+export const createRecurringExpenseMutation = graphql`
+  mutation CreateRecurringExpenseMutation($input: CreateRecurringExpenseInput!) {
+    createRecurringExpense(input: $input) {
       __typename
-      ... on SetRecurringExpenseSuccess {
+      ... on CreateRecurringExpenseSuccess {
+        result {
+          id
+          name
+          merchant
+          amountYen
+          categoryId
+          paymentAccountId
+          cadence
+          startsOn
+          nextDueOn
+          endsOn
+          archived
+          revision
+        }
+      }
+      ... on MutationError {
+        code
+        message
+      }
+    }
+  }
+`;
+
+export const updateRecurringExpenseMutation = graphql`
+  mutation UpdateRecurringExpenseMutation($input: UpdateRecurringExpenseInput!) {
+    updateRecurringExpense(input: $input) {
+      __typename
+      ... on UpdateRecurringExpenseSuccess {
         result {
           id
           name

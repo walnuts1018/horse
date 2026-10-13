@@ -47,6 +47,10 @@ type CreateAccountResult interface {
 	IsCreateAccountResult()
 }
 
+type CreateBudgetResult interface {
+	IsCreateBudgetResult()
+}
+
 type CreateCategoryResult interface {
 	IsCreateCategoryResult()
 }
@@ -73,6 +77,10 @@ type CreateProductVariantResult interface {
 
 type CreatePurchaseResult interface {
 	IsCreatePurchaseResult()
+}
+
+type CreateRecurringExpenseResult interface {
+	IsCreateRecurringExpenseResult()
 }
 
 type CreateTagResult interface {
@@ -128,10 +136,6 @@ type SetAllocationRuleResult interface {
 	IsSetAllocationRuleResult()
 }
 
-type SetBudgetResult interface {
-	IsSetBudgetResult()
-}
-
 type SetCategoryArchivedResult interface {
 	IsSetCategoryArchivedResult()
 }
@@ -152,8 +156,8 @@ type SetProductAliasResult interface {
 	IsSetProductAliasResult()
 }
 
-type SetRecurringExpenseResult interface {
-	IsSetRecurringExpenseResult()
+type UpdateBudgetResult interface {
+	IsUpdateBudgetResult()
 }
 
 type UpdatePurchaseItemResult interface {
@@ -162,6 +166,10 @@ type UpdatePurchaseItemResult interface {
 
 type UpdatePurchaseResult interface {
 	IsUpdatePurchaseResult()
+}
+
+type UpdateRecurringExpenseResult interface {
+	IsUpdateRecurringExpenseResult()
 }
 
 type UpdateTagResult interface {
@@ -562,6 +570,32 @@ func (CreateAccountUserError) IsMutationError()                {}
 func (this CreateAccountUserError) GetCode() MutationErrorCode { return this.Code }
 func (this CreateAccountUserError) GetMessage() string         { return this.Message }
 
+type CreateBudgetInput struct {
+	HouseholdID string  `json:"householdId"`
+	CategoryID  *string `json:"categoryId,omitempty"`
+	Name        string  `json:"name"`
+	AmountYen   Long    `json:"amountYen"`
+	StartsOn    string  `json:"startsOn"`
+	EndsOn      *string `json:"endsOn,omitempty"`
+}
+
+type CreateBudgetSuccess struct {
+	Result *Budget `json:"result"`
+}
+
+func (CreateBudgetSuccess) IsCreateBudgetResult() {}
+
+type CreateBudgetUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreateBudgetUserError) IsCreateBudgetResult() {}
+
+func (CreateBudgetUserError) IsMutationError()                {}
+func (this CreateBudgetUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreateBudgetUserError) GetMessage() string         { return this.Message }
+
 type CreateCategoryInput struct {
 	HouseholdID string  `json:"householdId"`
 	Name        string  `json:"name"`
@@ -713,7 +747,6 @@ type CreatePurchaseInput struct {
 	ReceiptCandidateID         *string                 `json:"receiptCandidateId,omitempty"`
 	ManualAmountOverrideReason *string                 `json:"manualAmountOverrideReason,omitempty"`
 	Items                      []*PurchaseItemInput    `json:"items"`
-	Status                     *PurchaseStatus         `json:"status,omitempty"`
 }
 
 type CreatePurchaseSuccess struct {
@@ -732,6 +765,36 @@ func (CreatePurchaseUserError) IsCreatePurchaseResult() {}
 func (CreatePurchaseUserError) IsMutationError()                {}
 func (this CreatePurchaseUserError) GetCode() MutationErrorCode { return this.Code }
 func (this CreatePurchaseUserError) GetMessage() string         { return this.Message }
+
+type CreateRecurringExpenseInput struct {
+	HouseholdID      string                  `json:"householdId"`
+	Name             string                  `json:"name"`
+	Merchant         string                  `json:"merchant"`
+	AmountYen        Long                    `json:"amountYen"`
+	CategoryID       *string                 `json:"categoryId,omitempty"`
+	PaymentAccountID *string                 `json:"paymentAccountId,omitempty"`
+	Cadence          RecurringExpenseCadence `json:"cadence"`
+	StartsOn         string                  `json:"startsOn"`
+	NextDueOn        string                  `json:"nextDueOn"`
+	EndsOn           *string                 `json:"endsOn,omitempty"`
+}
+
+type CreateRecurringExpenseSuccess struct {
+	Result *RecurringExpense `json:"result"`
+}
+
+func (CreateRecurringExpenseSuccess) IsCreateRecurringExpenseResult() {}
+
+type CreateRecurringExpenseUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (CreateRecurringExpenseUserError) IsCreateRecurringExpenseResult() {}
+
+func (CreateRecurringExpenseUserError) IsMutationError()                {}
+func (this CreateRecurringExpenseUserError) GetCode() MutationErrorCode { return this.Code }
+func (this CreateRecurringExpenseUserError) GetMessage() string         { return this.Message }
 
 type CreateTagInput struct {
 	HouseholdID string `json:"householdId"`
@@ -1325,20 +1388,20 @@ func (this RecordTransferUserError) GetCode() MutationErrorCode { return this.Co
 func (this RecordTransferUserError) GetMessage() string         { return this.Message }
 
 type RecurringExpense struct {
-	ID               string  `json:"id"`
-	HouseholdID      string  `json:"householdId"`
-	Name             string  `json:"name"`
-	Merchant         string  `json:"merchant"`
-	AmountYen        Long    `json:"amountYen"`
-	Currency         string  `json:"currency"`
-	CategoryID       *string `json:"categoryId,omitempty"`
-	PaymentAccountID *string `json:"paymentAccountId,omitempty"`
-	Cadence          string  `json:"cadence"`
-	StartsOn         string  `json:"startsOn"`
-	NextDueOn        string  `json:"nextDueOn"`
-	EndsOn           *string `json:"endsOn,omitempty"`
-	Archived         bool    `json:"archived"`
-	Revision         int     `json:"revision"`
+	ID               string                  `json:"id"`
+	HouseholdID      string                  `json:"householdId"`
+	Name             string                  `json:"name"`
+	Merchant         string                  `json:"merchant"`
+	AmountYen        Long                    `json:"amountYen"`
+	Currency         string                  `json:"currency"`
+	CategoryID       *string                 `json:"categoryId,omitempty"`
+	PaymentAccountID *string                 `json:"paymentAccountId,omitempty"`
+	Cadence          RecurringExpenseCadence `json:"cadence"`
+	StartsOn         string                  `json:"startsOn"`
+	NextDueOn        string                  `json:"nextDueOn"`
+	EndsOn           *string                 `json:"endsOn,omitempty"`
+	Archived         bool                    `json:"archived"`
+	Revision         int                     `json:"revision"`
 }
 
 func (RecurringExpense) IsNode() {}
@@ -1401,34 +1464,6 @@ func (SetAllocationRuleUserError) IsSetAllocationRuleResult() {}
 func (SetAllocationRuleUserError) IsMutationError()                {}
 func (this SetAllocationRuleUserError) GetCode() MutationErrorCode { return this.Code }
 func (this SetAllocationRuleUserError) GetMessage() string         { return this.Message }
-
-type SetBudgetInput struct {
-	HouseholdID  string  `json:"householdId"`
-	BudgetID     *string `json:"budgetId,omitempty"`
-	BaseRevision *int    `json:"baseRevision,omitempty"`
-	CategoryID   *string `json:"categoryId,omitempty"`
-	Name         string  `json:"name"`
-	AmountYen    Long    `json:"amountYen"`
-	StartsOn     string  `json:"startsOn"`
-	EndsOn       *string `json:"endsOn,omitempty"`
-}
-
-type SetBudgetSuccess struct {
-	Result *Budget `json:"result"`
-}
-
-func (SetBudgetSuccess) IsSetBudgetResult() {}
-
-type SetBudgetUserError struct {
-	Code    MutationErrorCode `json:"code"`
-	Message string            `json:"message"`
-}
-
-func (SetBudgetUserError) IsSetBudgetResult() {}
-
-func (SetBudgetUserError) IsMutationError()                {}
-func (this SetBudgetUserError) GetCode() MutationErrorCode { return this.Code }
-func (this SetBudgetUserError) GetMessage() string         { return this.Message }
 
 type SetCategoryArchivedInput struct {
 	CategoryID string `json:"categoryId"`
@@ -1551,38 +1586,6 @@ func (SetProductAliasUserError) IsMutationError()                {}
 func (this SetProductAliasUserError) GetCode() MutationErrorCode { return this.Code }
 func (this SetProductAliasUserError) GetMessage() string         { return this.Message }
 
-type SetRecurringExpenseInput struct {
-	HouseholdID      string  `json:"householdId"`
-	ExpenseID        *string `json:"expenseId,omitempty"`
-	BaseRevision     *int    `json:"baseRevision,omitempty"`
-	Name             string  `json:"name"`
-	Merchant         string  `json:"merchant"`
-	AmountYen        Long    `json:"amountYen"`
-	CategoryID       *string `json:"categoryId,omitempty"`
-	PaymentAccountID *string `json:"paymentAccountId,omitempty"`
-	Cadence          string  `json:"cadence"`
-	StartsOn         string  `json:"startsOn"`
-	NextDueOn        string  `json:"nextDueOn"`
-	EndsOn           *string `json:"endsOn,omitempty"`
-}
-
-type SetRecurringExpenseSuccess struct {
-	Result *RecurringExpense `json:"result"`
-}
-
-func (SetRecurringExpenseSuccess) IsSetRecurringExpenseResult() {}
-
-type SetRecurringExpenseUserError struct {
-	Code    MutationErrorCode `json:"code"`
-	Message string            `json:"message"`
-}
-
-func (SetRecurringExpenseUserError) IsSetRecurringExpenseResult() {}
-
-func (SetRecurringExpenseUserError) IsMutationError()                {}
-func (this SetRecurringExpenseUserError) GetCode() MutationErrorCode { return this.Code }
-func (this SetRecurringExpenseUserError) GetMessage() string         { return this.Message }
-
 type Settlement struct {
 	ID          string            `json:"id"`
 	HouseholdID string            `json:"householdId"`
@@ -1670,6 +1673,34 @@ type UnmatchedObservationEdge struct {
 	Node   *UnmatchedObservation `json:"node"`
 }
 
+type UpdateBudgetInput struct {
+	HouseholdID  string  `json:"householdId"`
+	BudgetID     string  `json:"budgetId"`
+	BaseRevision int     `json:"baseRevision"`
+	CategoryID   *string `json:"categoryId,omitempty"`
+	Name         string  `json:"name"`
+	AmountYen    Long    `json:"amountYen"`
+	StartsOn     string  `json:"startsOn"`
+	EndsOn       *string `json:"endsOn,omitempty"`
+}
+
+type UpdateBudgetSuccess struct {
+	Result *Budget `json:"result"`
+}
+
+func (UpdateBudgetSuccess) IsUpdateBudgetResult() {}
+
+type UpdateBudgetUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (UpdateBudgetUserError) IsUpdateBudgetResult() {}
+
+func (UpdateBudgetUserError) IsMutationError()                {}
+func (this UpdateBudgetUserError) GetCode() MutationErrorCode { return this.Code }
+func (this UpdateBudgetUserError) GetMessage() string         { return this.Message }
+
 type UpdatePurchaseInput struct {
 	PurchaseID    string                 `json:"purchaseId"`
 	BaseRevision  int                    `json:"baseRevision"`
@@ -1725,6 +1756,38 @@ func (UpdatePurchaseUserError) IsUpdatePurchaseResult() {}
 func (UpdatePurchaseUserError) IsMutationError()                {}
 func (this UpdatePurchaseUserError) GetCode() MutationErrorCode { return this.Code }
 func (this UpdatePurchaseUserError) GetMessage() string         { return this.Message }
+
+type UpdateRecurringExpenseInput struct {
+	HouseholdID      string                  `json:"householdId"`
+	ExpenseID        string                  `json:"expenseId"`
+	BaseRevision     int                     `json:"baseRevision"`
+	Name             string                  `json:"name"`
+	Merchant         string                  `json:"merchant"`
+	AmountYen        Long                    `json:"amountYen"`
+	CategoryID       *string                 `json:"categoryId,omitempty"`
+	PaymentAccountID *string                 `json:"paymentAccountId,omitempty"`
+	Cadence          RecurringExpenseCadence `json:"cadence"`
+	StartsOn         string                  `json:"startsOn"`
+	NextDueOn        string                  `json:"nextDueOn"`
+	EndsOn           *string                 `json:"endsOn,omitempty"`
+}
+
+type UpdateRecurringExpenseSuccess struct {
+	Result *RecurringExpense `json:"result"`
+}
+
+func (UpdateRecurringExpenseSuccess) IsUpdateRecurringExpenseResult() {}
+
+type UpdateRecurringExpenseUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (UpdateRecurringExpenseUserError) IsUpdateRecurringExpenseResult() {}
+
+func (UpdateRecurringExpenseUserError) IsMutationError()                {}
+func (this UpdateRecurringExpenseUserError) GetCode() MutationErrorCode { return this.Code }
+func (this UpdateRecurringExpenseUserError) GetMessage() string         { return this.Message }
 
 type UpdateTagInput struct {
 	TagID        string `json:"tagId"`
@@ -2616,6 +2679,63 @@ func (e *PurchaseStatus) UnmarshalJSON(b []byte) error {
 }
 
 func (e PurchaseStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type RecurringExpenseCadence string
+
+const (
+	RecurringExpenseCadenceWeekly  RecurringExpenseCadence = "WEEKLY"
+	RecurringExpenseCadenceMonthly RecurringExpenseCadence = "MONTHLY"
+	RecurringExpenseCadenceYearly  RecurringExpenseCadence = "YEARLY"
+)
+
+var AllRecurringExpenseCadence = []RecurringExpenseCadence{
+	RecurringExpenseCadenceWeekly,
+	RecurringExpenseCadenceMonthly,
+	RecurringExpenseCadenceYearly,
+}
+
+func (e RecurringExpenseCadence) IsValid() bool {
+	switch e {
+	case RecurringExpenseCadenceWeekly, RecurringExpenseCadenceMonthly, RecurringExpenseCadenceYearly:
+		return true
+	}
+	return false
+}
+
+func (e RecurringExpenseCadence) String() string {
+	return string(e)
+}
+
+func (e *RecurringExpenseCadence) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = RecurringExpenseCadence(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid RecurringExpenseCadence", str)
+	}
+	return nil
+}
+
+func (e RecurringExpenseCadence) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *RecurringExpenseCadence) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e RecurringExpenseCadence) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

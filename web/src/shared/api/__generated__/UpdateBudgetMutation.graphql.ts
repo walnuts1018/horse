@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ff9744fdba9b8d09e14c65aa3a3c7056>>
+ * @generated SignedSource<<541668bc7e7b884ce3b09136b8b0eb0a>>
  * @lightSyntaxTransform
  */
 
@@ -9,21 +9,21 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type SetBudgetInput = {
+export type UpdateBudgetInput = {
   amountYen: any;
-  baseRevision?: number | null | undefined;
-  budgetId?: string | null | undefined;
+  baseRevision: number;
+  budgetId: string;
   categoryId?: string | null | undefined;
   endsOn?: string | null | undefined;
   householdId: string;
   name: string;
   startsOn: string;
 };
-export type SetBudgetMutation$variables = {
-  input: SetBudgetInput;
+export type UpdateBudgetMutation$variables = {
+  input: UpdateBudgetInput;
 };
-export type SetBudgetMutation$data = {
-  readonly setBudget: {
+export type UpdateBudgetMutation$data = {
+  readonly updateBudget: {
     readonly __typename: string;
     readonly code?: MutationErrorCode;
     readonly message?: string;
@@ -41,9 +41,9 @@ export type SetBudgetMutation$data = {
     };
   };
 };
-export type SetBudgetMutation = {
-  response: SetBudgetMutation$data;
-  variables: SetBudgetMutation$variables;
+export type UpdateBudgetMutation = {
+  response: UpdateBudgetMutation$data;
+  variables: UpdateBudgetMutation$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -66,7 +66,7 @@ v1 = [
     ],
     "concreteType": null,
     "kind": "LinkedField",
-    "name": "setBudget",
+    "name": "updateBudget",
     "plural": false,
     "selections": [
       {
@@ -161,7 +161,7 @@ v1 = [
             "storageKey": null
           }
         ],
-        "type": "SetBudgetSuccess",
+        "type": "UpdateBudgetSuccess",
         "abstractKey": null
       },
       {
@@ -194,7 +194,7 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "SetBudgetMutation",
+    "name": "UpdateBudgetMutation",
     "selections": (v1/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
@@ -203,20 +203,20 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
-    "name": "SetBudgetMutation",
+    "name": "UpdateBudgetMutation",
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "d9c339eab74d20c63d4026c244708403",
+    "cacheID": "ac525eebe0cb2519409dea6eaaf0e94e",
     "id": null,
     "metadata": {},
-    "name": "SetBudgetMutation",
+    "name": "UpdateBudgetMutation",
     "operationKind": "mutation",
-    "text": "mutation SetBudgetMutation(\n  $input: SetBudgetInput!\n) {\n  setBudget(input: $input) {\n    __typename\n    ... on SetBudgetSuccess {\n      result {\n        id\n        categoryId\n        name\n        amountYen\n        actualYen\n        remainingYen\n        startsOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation UpdateBudgetMutation(\n  $input: UpdateBudgetInput!\n) {\n  updateBudget(input: $input) {\n    __typename\n    ... on UpdateBudgetSuccess {\n      result {\n        id\n        categoryId\n        name\n        amountYen\n        actualYen\n        remainingYen\n        startsOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "811abbf4a0750cf7be2d822b3462a29a";
+(node as any).hash = "9c67435c15b7be4854abbbfefbac6853";
 
 export default node;

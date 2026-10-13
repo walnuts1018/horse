@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ba910922694fd28c98335a3bc166195a>>
+ * @generated SignedSource<<79ccf4db7d7a8a20aac38c9933a50ec7>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type RecurringExpenseCadence = "MONTHLY" | "WEEKLY" | "YEARLY" | "%future added value";
 export type RecurringExpensesQuery$variables = {
   after?: string | null | undefined;
   first?: number | null | undefined;
@@ -21,7 +22,7 @@ export type RecurringExpensesQuery$data = {
       readonly node: {
         readonly amountYen: any;
         readonly archived: boolean;
-        readonly cadence: string;
+        readonly cadence: RecurringExpenseCadence;
         readonly categoryId: string | null | undefined;
         readonly currency: string;
         readonly endsOn: string | null | undefined;

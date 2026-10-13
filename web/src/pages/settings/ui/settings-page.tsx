@@ -26,11 +26,17 @@ import {
   setDefaultAllocationMutation,
   setPoolFundingRuleMutation,
 } from "../api/operations";
-import { archiveBudgetMutation, budgetsQuery, setBudgetMutation } from "../../../entities/budget";
+import {
+  archiveBudgetMutation,
+  budgetsQuery,
+  createBudgetMutation,
+  updateBudgetMutation,
+} from "../../../entities/budget";
 import {
   archiveRecurringExpenseMutation,
+  createRecurringExpenseMutation,
   readRecurringExpenses,
-  setRecurringExpenseMutation,
+  updateRecurringExpenseMutation,
 } from "../../../entities/recurring-expense";
 import {
   archiveTagMutation,
@@ -180,7 +186,7 @@ export function SettingsPage({
   const [recurringAmount, setRecurringAmount] = useState("");
   const [recurringCategoryId, setRecurringCategoryId] = useState("");
   const [recurringAccountId, setRecurringAccountId] = useState("");
-  const [recurringCadence, setRecurringCadence] = useState("MONTHLY");
+  const [recurringCadence, setRecurringCadence] = useState<RecurringExpense["cadence"]>("MONTHLY");
   const [recurringStartsOn, setRecurringStartsOn] = useState(new Date().toISOString().slice(0, 10));
   const [recurringNextDueOn, setRecurringNextDueOn] = useState(
     new Date().toISOString().slice(0, 10),
@@ -561,23 +567,26 @@ export function SettingsPage({
     if (!amountYen || amountYen < 1) return;
     setPending(true);
     try {
-      await readGraphql(setBudgetMutation, {
-        input: {
-          householdId: household.id,
-          budgetId: editingBudget?.id,
-          baseRevision: editingBudget?.revision,
-          categoryId: budgetCategoryId || null,
-          name:
-            budgetName.trim() ||
-            (budgetCategoryId
-              ? household.categories.find((category) => category.id === budgetCategoryId)?.name
-              : "全体予算") ||
-            "全体予算",
-          amountYen,
-          startsOn: editingBudget?.startsOn ?? `${budgetPeriod}-01`,
-          endsOn: editingBudget?.endsOn ?? null,
-        },
-      });
+      const input = {
+        householdId: household.id,
+        categoryId: budgetCategoryId || null,
+        name:
+          budgetName.trim() ||
+          (budgetCategoryId
+            ? household.categories.find((category) => category.id === budgetCategoryId)?.name
+            : "全体予算") ||
+          "全体予算",
+        amountYen,
+        startsOn: editingBudget?.startsOn ?? `${budgetPeriod}-01`,
+        endsOn: editingBudget?.endsOn ?? null,
+      };
+      if (editingBudget) {
+        await readGraphql(updateBudgetMutation, {
+          input: { ...input, budgetId: editingBudget.id, baseRevision: editingBudget.revision },
+        });
+      } else {
+        await readGraphql(createBudgetMutation, { input });
+      }
       setEditingBudget(null);
       setBudgetName("");
       setBudgetAmount("");
@@ -619,22 +628,29 @@ export function SettingsPage({
     if (!recurringName.trim() || !amountYen || amountYen < 1) return;
     setPending(true);
     try {
-      await readGraphql(setRecurringExpenseMutation, {
-        input: {
-          householdId: household.id,
-          expenseId: editingRecurring?.id,
-          baseRevision: editingRecurring?.revision,
-          name: recurringName.trim(),
-          merchant: recurringMerchant.trim(),
-          amountYen,
-          categoryId: recurringCategoryId || null,
-          paymentAccountId: recurringAccountId || null,
-          cadence: recurringCadence,
-          startsOn: recurringStartsOn,
-          nextDueOn: recurringNextDueOn,
-          endsOn: recurringEndsOn || null,
-        },
-      });
+      const input = {
+        householdId: household.id,
+        name: recurringName.trim(),
+        merchant: recurringMerchant.trim(),
+        amountYen,
+        categoryId: recurringCategoryId || null,
+        paymentAccountId: recurringAccountId || null,
+        cadence: recurringCadence,
+        startsOn: recurringStartsOn,
+        nextDueOn: recurringNextDueOn,
+        endsOn: recurringEndsOn || null,
+      };
+      if (editingRecurring) {
+        await readGraphql(updateRecurringExpenseMutation, {
+          input: {
+            ...input,
+            expenseId: editingRecurring.id,
+            baseRevision: editingRecurring.revision,
+          },
+        });
+      } else {
+        await readGraphql(createRecurringExpenseMutation, { input });
+      }
       setEditingRecurring(null);
       setRecurringName("");
       setRecurringMerchant("");
@@ -1986,7 +2002,9 @@ export function SettingsPage({
             <select
               aria-label="頻度"
               value={recurringCadence}
-              onChange={(event) => setRecurringCadence(event.target.value)}
+              onChange={(event) =>
+                setRecurringCadence(event.target.value as RecurringExpense["cadence"])
+              }
             >
               <option value="WEEKLY">毎週</option>
               <option value="MONTHLY">毎月</option>

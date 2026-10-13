@@ -432,7 +432,33 @@ func updateBulkItem(ctx context.Context, tx pgx.Tx, executor bob.Executor, item 
 	return newRevision, nil
 }
 
-func (r *mutationResolver) setBudget(ctx context.Context, input model.SetBudgetInput) (*model.Budget, error) {
+type budgetWriteInput struct {
+	HouseholdID  string
+	BudgetID     *string
+	BaseRevision *int
+	CategoryID   *string
+	Name         string
+	AmountYen    int64
+	StartsOn     string
+	EndsOn       *string
+}
+
+type recurringExpenseWriteInput struct {
+	HouseholdID      string
+	ExpenseID        *string
+	BaseRevision     *int
+	Name             string
+	Merchant         string
+	AmountYen        int64
+	CategoryID       *string
+	PaymentAccountID *string
+	Cadence          string
+	StartsOn         string
+	NextDueOn        string
+	EndsOn           *string
+}
+
+func (r *mutationResolver) setBudget(ctx context.Context, input budgetWriteInput) (*model.Budget, error) {
 	user, err := requireMember(ctx, r.DB, input.HouseholdID)
 	if err != nil {
 		return nil, err
@@ -642,7 +668,7 @@ func budgetModel(ctx context.Context, db *pgxpool.Pool, row *models.Budget, mont
 	return result, nil
 }
 
-func (r *mutationResolver) setRecurringExpense(ctx context.Context, input model.SetRecurringExpenseInput) (*model.RecurringExpense, error) {
+func (r *mutationResolver) setRecurringExpense(ctx context.Context, input recurringExpenseWriteInput) (*model.RecurringExpense, error) {
 	user, err := requireMember(ctx, r.DB, input.HouseholdID)
 	if err != nil {
 		return nil, err
@@ -767,7 +793,7 @@ func (r *mutationResolver) archiveRecurringExpense(ctx context.Context, expenseI
 }
 
 func recurringExpenseModel(row *models.RecurringExpense) *model.RecurringExpense {
-	result := &model.RecurringExpense{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Name: row.Name, Merchant: row.Merchant, AmountYen: graphLong(row.AmountYen), Currency: row.Currency, Cadence: row.Cadence, StartsOn: row.StartsOn.Format(time.DateOnly), NextDueOn: row.NextDueOn.Format(time.DateOnly), Archived: row.Archived, Revision: int(row.Revision)}
+	result := &model.RecurringExpense{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Name: row.Name, Merchant: row.Merchant, AmountYen: graphLong(row.AmountYen), Currency: row.Currency, Cadence: model.RecurringExpenseCadence(row.Cadence), StartsOn: row.StartsOn.Format(time.DateOnly), NextDueOn: row.NextDueOn.Format(time.DateOnly), Archived: row.Archived, Revision: int(row.Revision)}
 	if row.CategoryID.Valid {
 		id := row.CategoryID.V.String()
 		result.CategoryID = &id

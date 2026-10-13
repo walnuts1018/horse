@@ -1,6 +1,7 @@
 export {
   archiveRecurringExpenseMutation,
   recurringExpensesQuery,
-  setRecurringExpenseMutation,
+  createRecurringExpenseMutation,
+  updateRecurringExpenseMutation,
 } from "./api/operations";
 export { readRecurringExpenses } from "./api/read-recurring-expenses";

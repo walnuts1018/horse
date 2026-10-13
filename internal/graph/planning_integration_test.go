@@ -169,7 +169,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if _, err := resolver.postPurchase(ctx, purchase.ID, reloaded.Revision, uuid.NewV7().String()); err != nil {
 		t.Fatal(err)
 	}
-	budget, err := resolver.setBudget(ctx, model.SetBudgetInput{HouseholdID: household.ID, CategoryID: &category.ID, Name: "Food", AmountYen: 1000, StartsOn: "2026-04-01"})
+	budget, err := resolver.setBudget(ctx, budgetWriteInput{HouseholdID: household.ID, CategoryID: &category.ID, Name: "Food", AmountYen: 1000, StartsOn: "2026-04-01"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if len(budgets) != 1 || budgets[0].ID != budget.ID || budgets[0].ActualYen != 800 || budgets[0].RemainingYen != 200 {
 		t.Fatalf("budget should compare posted category actuals to the cap: %#v", budgets)
 	}
-	allBudget, err := resolver.setBudget(ctx, model.SetBudgetInput{HouseholdID: household.ID, Name: "All spending", AmountYen: 2000, StartsOn: "2026-04-01"})
+	allBudget, err := resolver.setBudget(ctx, budgetWriteInput{HouseholdID: household.ID, Name: "All spending", AmountYen: 2000, StartsOn: "2026-04-01"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,11 +193,11 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 			t.Fatalf("uncategorized budget should include all posted spending: %#v", entry)
 		}
 	}
-	recurring, err := resolver.setRecurringExpense(ctx, model.SetRecurringExpenseInput{HouseholdID: household.ID, Name: "Internet", Merchant: "ISP", AmountYen: 4500, CategoryID: &category.ID, Cadence: "MONTHLY", StartsOn: "2026-04-01", NextDueOn: "2026-05-01"})
+	recurring, err := resolver.setRecurringExpense(ctx, recurringExpenseWriteInput{HouseholdID: household.ID, Name: "Internet", Merchant: "ISP", AmountYen: 4500, CategoryID: &category.ID, Cadence: "MONTHLY", StartsOn: "2026-04-01", NextDueOn: "2026-05-01"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	nextRecurring, err := resolver.setRecurringExpense(ctx, model.SetRecurringExpenseInput{HouseholdID: household.ID, Name: "Phone", Merchant: "Telco", AmountYen: 2000, CategoryID: &category.ID, Cadence: "MONTHLY", StartsOn: "2026-04-01", NextDueOn: "2026-06-01"})
+	nextRecurring, err := resolver.setRecurringExpense(ctx, recurringExpenseWriteInput{HouseholdID: household.ID, Name: "Phone", Merchant: "Telco", AmountYen: 2000, CategoryID: &category.ID, Cadence: "MONTHLY", StartsOn: "2026-04-01", NextDueOn: "2026-06-01"})
 	if err != nil {
 		t.Fatal(err)
 	}

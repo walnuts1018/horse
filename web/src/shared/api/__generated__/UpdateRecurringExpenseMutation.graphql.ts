@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<430f7d02c86bdce8fa25775aa04ebc66>>
+ * @generated SignedSource<<e6d176f27533ca0e197fc249e8722983>>
  * @lightSyntaxTransform
  */
 
@@ -9,13 +9,14 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type SetRecurringExpenseInput = {
+export type RecurringExpenseCadence = "MONTHLY" | "WEEKLY" | "YEARLY" | "%future added value";
+export type UpdateRecurringExpenseInput = {
   amountYen: any;
-  baseRevision?: number | null | undefined;
-  cadence: string;
+  baseRevision: number;
+  cadence: RecurringExpenseCadence;
   categoryId?: string | null | undefined;
   endsOn?: string | null | undefined;
-  expenseId?: string | null | undefined;
+  expenseId: string;
   householdId: string;
   merchant: string;
   name: string;
@@ -23,18 +24,18 @@ export type SetRecurringExpenseInput = {
   paymentAccountId?: string | null | undefined;
   startsOn: string;
 };
-export type SetRecurringExpenseMutation$variables = {
-  input: SetRecurringExpenseInput;
+export type UpdateRecurringExpenseMutation$variables = {
+  input: UpdateRecurringExpenseInput;
 };
-export type SetRecurringExpenseMutation$data = {
-  readonly setRecurringExpense: {
+export type UpdateRecurringExpenseMutation$data = {
+  readonly updateRecurringExpense: {
     readonly __typename: string;
     readonly code?: MutationErrorCode;
     readonly message?: string;
     readonly result?: {
       readonly amountYen: any;
       readonly archived: boolean;
-      readonly cadence: string;
+      readonly cadence: RecurringExpenseCadence;
       readonly categoryId: string | null | undefined;
       readonly endsOn: string | null | undefined;
       readonly id: string;
@@ -47,9 +48,9 @@ export type SetRecurringExpenseMutation$data = {
     };
   };
 };
-export type SetRecurringExpenseMutation = {
-  response: SetRecurringExpenseMutation$data;
-  variables: SetRecurringExpenseMutation$variables;
+export type UpdateRecurringExpenseMutation = {
+  response: UpdateRecurringExpenseMutation$data;
+  variables: UpdateRecurringExpenseMutation$variables;
 };
 
 const node: ConcreteRequest = (function(){
@@ -72,7 +73,7 @@ v1 = [
     ],
     "concreteType": null,
     "kind": "LinkedField",
-    "name": "setRecurringExpense",
+    "name": "updateRecurringExpense",
     "plural": false,
     "selections": [
       {
@@ -181,7 +182,7 @@ v1 = [
             "storageKey": null
           }
         ],
-        "type": "SetRecurringExpenseSuccess",
+        "type": "UpdateRecurringExpenseSuccess",
         "abstractKey": null
       },
       {
@@ -214,7 +215,7 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "SetRecurringExpenseMutation",
+    "name": "UpdateRecurringExpenseMutation",
     "selections": (v1/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
@@ -223,20 +224,20 @@ return {
   "operation": {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
-    "name": "SetRecurringExpenseMutation",
+    "name": "UpdateRecurringExpenseMutation",
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "4b33889adbecb1cb487a13d2b06c652b",
+    "cacheID": "298f18a817e5d002909315256c715b16",
     "id": null,
     "metadata": {},
-    "name": "SetRecurringExpenseMutation",
+    "name": "UpdateRecurringExpenseMutation",
     "operationKind": "mutation",
-    "text": "mutation SetRecurringExpenseMutation(\n  $input: SetRecurringExpenseInput!\n) {\n  setRecurringExpense(input: $input) {\n    __typename\n    ... on SetRecurringExpenseSuccess {\n      result {\n        id\n        name\n        merchant\n        amountYen\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation UpdateRecurringExpenseMutation(\n  $input: UpdateRecurringExpenseInput!\n) {\n  updateRecurringExpense(input: $input) {\n    __typename\n    ... on UpdateRecurringExpenseSuccess {\n      result {\n        id\n        name\n        merchant\n        amountYen\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "cf4e527fc3ec1d81e3e3827882b8a9a7";
+(node as any).hash = "ad89d149fc4be5c5151ddb9dc3c7b9fb";
 
 export default node;

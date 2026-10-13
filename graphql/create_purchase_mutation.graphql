@@ -20,7 +20,6 @@ input CreatePurchaseInput {
   receiptCandidateId: String
   manualAmountOverrideReason: String
   items: [PurchaseItemInput!]!
-  status: PurchaseStatus
 }
 
 input PurchaseItemInput {

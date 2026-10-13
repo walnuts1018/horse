@@ -1,0 +1,29 @@
+extend type Mutation {
+  updateRecurringExpense(input: UpdateRecurringExpenseInput!): UpdateRecurringExpenseResult!
+}
+
+union UpdateRecurringExpenseResult = UpdateRecurringExpenseSuccess | UpdateRecurringExpenseUserError
+
+type UpdateRecurringExpenseSuccess {
+  result: RecurringExpense!
+}
+
+input UpdateRecurringExpenseInput {
+  householdId: ID! @nodeID(of: "Household")
+  expenseId: ID! @nodeID(of: "RecurringExpense")
+  baseRevision: Int!
+  name: String!
+  merchant: String!
+  amountYen: Long!
+  categoryId: ID @nodeID(of: "Category")
+  paymentAccountId: ID @nodeID(of: "Account")
+  cadence: RecurringExpenseCadence!
+  startsOn: String!
+  nextDueOn: String!
+  endsOn: String
+}
+
+type UpdateRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
