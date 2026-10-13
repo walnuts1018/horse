@@ -4,7 +4,7 @@
 
 ## 画面固有CSSと重要な処理の境界
 
-[global.css](../../web/src/app/styles/global.css)には共通規則と複数画面で使う購入行・見出し・パネル、および未分離の他画面固有規則が残ります。ホーム画面だけで使う規則は[home-page.css](../../web/src/pages/home/ui/home-page.css)へ、明細取込画面だけで使う明細レビュー規則は[imports-page.css](../../web/src/pages/imports/ui/imports-page.css)へ、精算画面の資金調達・借入規則は[settlement-page.css](../../web/src/pages/settlement/ui/settlement-page.css)へ、分析画面のコントロール規則は[analysis-page.css](../../web/src/pages/analysis/ui/analysis-page.css)へ移しました。残るレビュー範囲は、共通規則の所有先と他画面固有規則のpage sliceへの分離可否です。
+[global.css](../../web/src/app/styles/global.css)には共通規則と複数画面で使う購入行・見出し・パネル、および未分離の他画面固有規則が残ります。ホーム画面だけで使う規則は[home-page.css](../../web/src/pages/home/ui/home-page.css)へ、明細取込画面だけで使う明細レビュー規則は[imports-page.css](../../web/src/pages/imports/ui/imports-page.css)へ、精算画面の資金調達・借入規則は[settlement-page.css](../../web/src/pages/settlement/ui/settlement-page.css)へ、分析画面のコントロール規則は[analysis-page.css](../../web/src/pages/analysis/ui/analysis-page.css)へ、帳簿画面の検索入力と件数表示規則は[ledger-page.css](../../web/src/pages/ledger/ui/ledger-page.css)へ移しました。残るレビュー範囲は、共通規則の所有先と他画面固有規則のpage sliceへの分離可否です。
 
 ## GraphQLの購入読み込み範囲
 

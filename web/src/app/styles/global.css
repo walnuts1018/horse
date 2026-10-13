@@ -1062,33 +1062,6 @@ form.ledger-filters .select-filter input[type="number"] {
   font-size: 10px;
 }
 
-.input-with-icon {
-  height: 38px;
-  width: min(350px, 55%);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 11px;
-  border: 1px solid #e8ede8;
-  background: #fff;
-  border-radius: 9px;
-  color: #a2ada5;
-}
-
-.input-with-icon input {
-  border: 0;
-  outline: 0;
-  background: none;
-  min-width: 0;
-  flex: 1;
-  color: #526158;
-  font-size: 10px;
-}
-
-.input-with-icon input::placeholder {
-  color: #a7b1aa;
-}
-
 .select-filter {
   height: 38px;
   display: flex;
@@ -1108,12 +1081,6 @@ form.ledger-filters .select-filter input[type="number"] {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #5f6d65;
-  font-size: 10px;
-}
-
-.record-count {
-  margin-left: auto;
   color: #5f6d65;
   font-size: 10px;
 }
@@ -1538,12 +1505,6 @@ form.ledger-filters .select-filter input[type="number"] {
     min-width: 130px;
   }
 
-  .input-with-icon {
-    width: 100%;
-    flex: 1;
-    height: 35px;
-  }
-
   .select-filter {
     height: 35px;
     padding: 0 7px;
@@ -1553,10 +1514,6 @@ form.ledger-filters .select-filter input[type="number"] {
   .select-filter input {
     width: 99px;
     font-size: 9px;
-  }
-
-  .record-count {
-    display: none;
   }
 
   .purchase-row {
