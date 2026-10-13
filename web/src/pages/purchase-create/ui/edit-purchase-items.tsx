@@ -6,13 +6,13 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
 } from "react";
-import { Plus, ReceiptJapaneseYen, Search, X } from "lucide-react";
 import { z } from "zod";
 import { type Household, type Purchase } from "../../../shared/api";
 import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
 import type { PurchaseDraftItem } from "../../../shared/lib";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
-import { EditPurchaseItemAllocations } from "./edit-purchase-item-allocations";
+import { PurchaseItemsGrid } from "./purchase-items-grid";
+import { PurchaseItemEntry } from "./purchase-item-entry";
 
 const purchaseItemSchema = z.object({
   name: z.string().trim().min(1),
@@ -416,257 +416,68 @@ export function EditPurchaseItems({
           負担 <b>{household.pools.map((pool) => pool.name.slice(0, 1)).join(" / ") || "標準"}</b>
         </span>
       </div>
-      <div className={`item-table-head ${classNames.itemTable}`}>
-        <span>品名</span>
-        <span>金額</span>
-        <span>カテゴリ</span>
-        <span>負担</span>
-        <span />
-      </div>
-      <div className={`item-list ${classNames.itemList}`} ref={itemGridRef}>
-        {draft.items.map((item, index) => (
-          <div className="item-entry" key={item.key}>
-            <div className="item-edit-row">
-              <span className="item-index">{String(index + 1).padStart(2, "0")}</span>
-              <input
-                aria-label="品名"
-                data-grid-row={index}
-                data-grid-column="name"
-                value={item.name}
-                onChange={(event) => patchItem(item.key, { name: event.target.value })}
-                onKeyDown={(event) => onItemGridKey(event, index, "name")}
-              />
-              <div className="yen-input">
-                <span>¥</span>
-                <input
-                  aria-label="金額"
-                  data-grid-row={index}
-                  data-grid-column="amount"
-                  inputMode="numeric"
-                  value={item.amount}
-                  onChange={(event) =>
-                    patchItem(item.key, { amount: event.target.value.replace(/\D/g, "") })
-                  }
-                  onKeyDown={(event) => onItemGridKey(event, index, "amount")}
-                />
-              </div>
-              <select
-                aria-label="カテゴリ"
-                value={item.categoryId}
-                onChange={(event) => patchItem(item.key, { categoryId: event.target.value })}
-              >
-                <option value="">未分類</option>
-                {enabledCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-              <EditPurchaseItemAllocations
-                allocations={item.allocations}
-                defaultAllocations={defaultAllocations}
-                pools={household.pools}
-                onChange={(allocations) => patchItem(item.key, { allocations })}
-              />
-              <button
-                type="button"
-                className="row-remove"
-                aria-label="品目を削除"
-                onClick={() => removeItem(item.key)}
-              >
-                <X size={15} />
-              </button>
-            </div>
-            <details className="item-measure-details">
-              <summary>数量</summary>
-              <label>
-                数量
-                <input
-                  aria-label={`${item.name}の数量`}
-                  value={item.quantity ?? ""}
-                  onChange={(event) => patchItem(item.key, { quantity: event.target.value })}
-                  placeholder="1、1/2"
-                />
-              </label>
-              <label>
-                単位
-                <input
-                  aria-label={`${item.name}の数量単位`}
-                  value={item.quantityUnit ?? ""}
-                  onChange={(event) => patchItem(item.key, { quantityUnit: event.target.value })}
-                  placeholder="個、g、ml"
-                  maxLength={32}
-                />
-              </label>
-            </details>
-          </div>
-        ))}
-        {draft.items.length === 0 && (
-          <div className="empty-items">
-            <ReceiptJapaneseYen size={24} />
-            <span>品名と金額を入力して追加</span>
-          </div>
-        )}
-      </div>
-      <div className={`entry-form ${focused ? "entry-focused" : ""} ${classNames.entryForm}`}>
-        <div className={`entry-input-wrap name-wrap ${classNames.entryInputTarget}`}>
-          <input
-            ref={nameRef}
-            value={draft.itemName}
-            onChange={(event) => {
-              markDirty();
-              changeItemName(event.target.value);
-            }}
-            onFocus={() => {
-              setFocused("name");
-              setSuggestionsDismissed(false);
-            }}
-            onBlur={() => window.setTimeout(() => setFocused(null), 160)}
-            onKeyDown={onNameKey}
-            onPaste={pasteRows}
-            onCompositionStart={() => {
-              composing.current = true;
-            }}
-            onCompositionEnd={() => {
-              composing.current = false;
-            }}
-            enterKeyHint="next"
-            placeholder="品名を入力"
-            aria-label="品名"
-            role="combobox"
-            aria-autocomplete="list"
-            aria-controls="purchase-item-suggestions"
-            aria-expanded={
-              focused === "name" && visibleSuggestionCount > 0 && !suggestionsDismissed
-            }
-            aria-activedescendant={
-              activeSuggestionIndex >= 0 && !suggestionsDismissed
-                ? `purchase-item-suggestion-${activeSuggestionIndex}`
-                : undefined
-            }
-            autoComplete="off"
-          />
-          <kbd>Enter</kbd>
-          {focused === "name" &&
-            !suggestionsDismissed &&
-            suggestions.length > 0 &&
-            productSuggestions.length === 0 && (
-              <div
-                className="suggestions"
-                id="purchase-item-suggestions"
-                role="listbox"
-                aria-label="購入履歴の商品候補"
-              >
-                {suggestions.map((name, index) => (
-                  <button
-                    type="button"
-                    key={name}
-                    id={`purchase-item-suggestion-${index}`}
-                    role="option"
-                    aria-selected={activeSuggestionIndex === index}
-                    style={{ background: activeSuggestionIndex === index ? "#f3f7f3" : undefined }}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onMouseEnter={() => setActiveSuggestionIndex(index)}
-                    onClick={() => selectHistorySuggestion(name)}
-                  >
-                    <Search size={13} />
-                    {name}
-                    <span>購入履歴</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          {focused === "name" &&
-            !suggestionsDismissed &&
-            productSuggestions.length > 0 &&
-            !selectedProductVariantId && (
-              <div
-                className="suggestions product-suggestions"
-                id="purchase-item-suggestions"
-                role="listbox"
-                aria-label="商品候補"
-              >
-                {productSuggestions.map((candidate, index) => (
-                  <button
-                    type="button"
-                    key={candidate.variant.id}
-                    id={`purchase-item-suggestion-${index}`}
-                    role="option"
-                    aria-selected={activeSuggestionIndex === index}
-                    style={{ background: activeSuggestionIndex === index ? "#f3f7f3" : undefined }}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onMouseEnter={() => setActiveSuggestionIndex(index)}
-                    onClick={() => selectProductSuggestion(candidate)}
-                  >
-                    <Search size={13} />
-                    <span>{candidate.matchedName}</span>
-                    <small>
-                      {candidate.concept.name} · {candidate.variant.name}
-                    </small>
-                  </button>
-                ))}
-              </div>
-            )}
-          {selectedProductVariantId && (
-            <small className="selected-product-label">商品を選択済み</small>
-          )}
-        </div>
-        <div className={`entry-input-wrap amount-wrap ${classNames.entryInputTarget}`}>
-          <span>¥</span>
-          <input
-            ref={amountRef}
-            value={draft.itemAmount}
-            inputMode="numeric"
-            onChange={(event) => {
-              markDirty();
-              update({ ...draft, itemAmount: event.target.value.replace(/\D/g, "") });
-            }}
-            onFocus={() => setFocused("amount")}
-            onBlur={() => window.setTimeout(() => setFocused(null), 160)}
-            onKeyDown={onAmountKey}
-            onCompositionStart={() => {
-              composing.current = true;
-            }}
-            onCompositionEnd={() => {
-              composing.current = false;
-            }}
-            enterKeyHint="next"
-            onPaste={pasteRows}
-            placeholder="金額"
-            aria-label="金額"
-          />
-        </div>
-        <select
-          aria-label="新しい品目のカテゴリ"
-          value={draft.categoryId}
-          onChange={(event) => {
-            markDirty();
-            updateCategory(event.target.value, "manual");
-          }}
-        >
-          <option value="">未分類</option>
-          {enabledCategories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="button button-add"
-          disabled={!draft.itemName.trim() || !draft.itemAmount.trim()}
-          onClick={addItem}
-        >
-          <Plus size={16} />
-          <span>品目を追加</span>
-        </button>
-      </div>
-      <div className={`entry-hint ${classNames.entryHint}`}>
-        <span>
-          <kbd>Enter</kbd>で品名から金額へ、もう一度で追加
-        </span>
-        <span>表計算の行を貼り付けできます</span>
-      </div>
+      <PurchaseItemsGrid
+        items={draft.items}
+        household={household}
+        defaultAllocations={defaultAllocations}
+        enabledCategories={enabledCategories}
+        classNames={{ itemTable: classNames.itemTable, itemList: classNames.itemList }}
+        gridRef={itemGridRef}
+        onKeyDown={onItemGridKey}
+        onPatch={patchItem}
+        onRemove={removeItem}
+      />
+      <PurchaseItemEntry
+        itemName={draft.itemName}
+        itemAmount={draft.itemAmount}
+        categoryId={draft.categoryId}
+        categories={enabledCategories}
+        suggestions={suggestions}
+        productSuggestions={productSuggestions}
+        selectedProductVariantId={selectedProductVariantId}
+        activeSuggestionIndex={activeSuggestionIndex}
+        suggestionsDismissed={suggestionsDismissed}
+        focused={focused}
+        classNames={{
+          entryForm: classNames.entryForm,
+          entryHint: classNames.entryHint,
+          entryInputTarget: classNames.entryInputTarget,
+        }}
+        nameRef={nameRef}
+        amountRef={amountRef}
+        onNameChange={(name) => {
+          markDirty();
+          changeItemName(name);
+        }}
+        onNameFocus={() => {
+          setFocused("name");
+          setSuggestionsDismissed(false);
+        }}
+        onNameBlur={() => window.setTimeout(() => setFocused(null), 160)}
+        onNameKey={onNameKey}
+        onPaste={pasteRows}
+        onCompositionStart={() => {
+          composing.current = true;
+        }}
+        onCompositionEnd={() => {
+          composing.current = false;
+        }}
+        onSelectHistorySuggestion={selectHistorySuggestion}
+        onSelectProductSuggestion={selectProductSuggestion}
+        onSuggestionHover={setActiveSuggestionIndex}
+        onAmountChange={(amount) => {
+          markDirty();
+          update({ ...draft, itemAmount: amount.replace(/\D/g, "") });
+        }}
+        onAmountFocus={() => setFocused("amount")}
+        onAmountBlur={() => window.setTimeout(() => setFocused(null), 160)}
+        onAmountKey={onAmountKey}
+        onCategoryChange={(id) => {
+          markDirty();
+          updateCategory(id, "manual");
+        }}
+        onAdd={addItem}
+      />
     </>
   );
 }

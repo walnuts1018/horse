@@ -1,18 +1,5 @@
 import type { ProductConcept, PurchaseItem } from "../../../shared/api";
-
-export type LedgerItemDraft = {
-  name: string;
-  amountYen: string;
-  quantity: string;
-  quantityUnit: string;
-  printedUnitPriceYen: string;
-  printedBasisQuantity: string;
-  printedUnitPriceUnit: string;
-  categoryId: string;
-  productVariantId: string;
-  productLearning: "ITEM_ONLY" | "VARIANT_NAME" | "MERCHANT_ALIAS";
-  variantName: string;
-};
+import type { LedgerItemDraft } from "../model/purchase-item-draft";
 
 export function PurchaseItemEditor({
   item,

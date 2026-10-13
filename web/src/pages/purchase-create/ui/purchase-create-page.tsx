@@ -1,26 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, Undo2 } from "lucide-react";
-import {
-  makeIdempotencyKey,
-  type CreatePurchaseInput,
-  type Household,
-  type Purchase,
-} from "../../../shared/api";
+import { type Household, type Purchase } from "../../../shared/api";
 import { readHouseholdPurchases } from "../../../entities/purchase";
-import {
-  enqueuePurchase,
-  deletePurchaseDraft,
-  loadPurchaseDraft,
-  savePurchaseDraft,
-  usePurchaseOutbox,
-  parseQuantity,
-} from "../../../shared/lib";
+import { usePurchaseOutbox } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
 import { usePurchasePayments } from "../model/purchase-payments";
+import { usePurchaseDraft } from "../model/use-purchase-draft";
+import { usePurchaseSubmission } from "../model/use-purchase-submission";
 import { EditPurchaseDetails } from "./edit-purchase-details";
 import { EditPurchasePayments } from "./edit-purchase-payments";
 import { PurchaseItemsComposer } from "./purchase-items-composer";
+import "./purchase-create-page.css";
 import styles from "./purchase-create-page.module.css";
 
 const yen = (amount = 0) =>
@@ -53,27 +44,10 @@ export function PurchaseCreatePage({
   const [itemsResetToken, setItemsResetToken] = useState(0);
   const [undoToken, setUndoToken] = useState(0);
   const [undoAvailable, setUndoAvailable] = useState(false);
-  const [storageReady, setStorageReady] = useState(false);
-  const [draftHouseholdId, setDraftHouseholdId] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState("");
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [savedAt, setSavedAt] = useState<Date | null>(null);
-  const [draftSaveError, setDraftSaveError] = useState("");
   const [history, setHistory] = useState<Purchase[]>([]);
-  const saving = useRef(false);
-  const draftTimer = useRef<number | null>(null);
-  const skipDraftSave = useRef(false);
-  const editVersion = useRef(0);
-  const markUnsaved = () => {
-    editVersion.current += 1;
-    onUnsavedChanges(true);
-    setHasUnsavedChanges(true);
-  };
-  useEffect(() => {
-    onUnsavedChanges(hasUnsavedChanges);
-    return () => onUnsavedChanges(false);
-  }, [hasUnsavedChanges, onUnsavedChanges]);
+  const markUnsavedRef = useRef<() => void>(() => {});
+  const markUnsaved = () => markUnsavedRef.current();
+  const [copiedPurchase, setCopiedPurchase] = useState<Purchase | null>(null);
   const outbox = usePurchaseOutbox();
   const householdOutbox = outbox.entries.filter(
     (entry) => entry.input.householdId === household.id,
@@ -85,133 +59,73 @@ export function PurchaseCreatePage({
   const itemTotal = sum(items.map((item) => Number(item.amount) || 0));
   const payments = usePurchasePayments(household, itemTotal, markUnsaved);
   const { rows: paymentRows, autoTotal: paymentAutoTotal } = payments;
-  const draft = {
-    merchant,
-    occurredAt,
-    paymentAllocations: paymentRows.map((payment) => ({
-      paymentAccountId: payment.paymentAccountId,
-      amountYen:
-        paymentAutoTotal && paymentRows.length === 1 ? String(itemTotal) : payment.amountYen,
-    })),
-    paymentAutoTotal,
-    ...itemsValue,
-  };
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-  const persistDraft = useCallback(async () => {
-    const current = draftRef.current;
-    const version = editVersion.current;
-    const hasContent = Boolean(
-      current.merchant.trim() ||
-      current.itemName.trim() ||
-      current.itemAmount ||
-      current.items.length,
-    );
-    setDraftSaveError("");
-    try {
-      if (hasContent) await savePurchaseDraft(household.id, current);
-      else await deletePurchaseDraft(household.id);
-      setSavedAt(new Date());
-      if (editVersion.current === version) {
-        onUnsavedChanges(false);
-        setHasUnsavedChanges(false);
-      }
-    } catch (reason) {
-      if (editVersion.current === version) {
-        onUnsavedChanges(true);
-        setDraftSaveError((reason as Error).message);
-        setHasUnsavedChanges(true);
-      }
-    }
-  }, [household.id, onUnsavedChanges]);
-  useEffect(() => {
-    let active = true;
-    setStorageReady(false);
-    setDraftHouseholdId(null);
-    void loadPurchaseDraft(household.id)
-      .then((loaded) => {
-        if (!active) return;
-        if (loaded) {
-          setMerchant(loaded.merchant);
-          setOccurredAt(loaded.occurredAt || localDateTime());
-          if (loaded.paymentAllocations?.length) {
-            payments.setRows(
-              loaded.paymentAllocations.map((payment) => ({
-                key: crypto.randomUUID(),
-                paymentAccountId: payment.paymentAccountId,
-                amountYen: payment.amountYen,
-              })),
-            );
-            payments.setAutoTotal(loaded.paymentAutoTotal ?? false);
-          } else {
-            payments.setRows([
-              {
-                key: crypto.randomUUID(),
-                paymentAccountId: loaded.paymentAccountId || household.accounts[0]?.id || "",
-                amountYen: "",
-              },
-            ]);
-            payments.setAutoTotal(true);
-          }
-          const restoredCategoryId = isEnabledCategory(loaded.categoryId) ? loaded.categoryId! : "";
-          setItemsValue({
-            itemName: loaded.itemName,
-            itemAmount: loaded.itemAmount,
-            categoryId: restoredCategoryId,
-            items: loaded.items.map((item) => ({
-              ...item,
-              categoryId: isEnabledCategory(item.categoryId) ? item.categoryId : "",
-            })),
-          });
-          setSavedAt(new Date());
-        }
-        setDraftHouseholdId(household.id);
-      })
-      .catch((reason) => active && setMessage((reason as Error).message))
-      .finally(() => active && setStorageReady(true));
-    return () => {
-      active = false;
-    };
-  }, [household.id]);
-  useEffect(() => {
-    if (!storageReady || draftHouseholdId !== household.id) return;
-    if (skipDraftSave.current) {
-      skipDraftSave.current = false;
-      return;
-    }
-    if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
-    draftTimer.current = window.setTimeout(() => void persistDraft(), 450);
-    return () => {
-      if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
-    };
-  }, [
-    household.id,
-    persistDraft,
-    storageReady,
-    draftHouseholdId,
-    merchant,
-    occurredAt,
-    paymentRows,
-    paymentAutoTotal,
-    itemsValue,
-  ]);
-  useEffect(
-    () => () => {
-      if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
-      if (storageReady && draftHouseholdId === household.id) {
-        const current = draftRef.current;
-        if (
-          current.merchant.trim() ||
-          current.itemName.trim() ||
-          current.itemAmount ||
-          current.items.length
-        )
-          void savePurchaseDraft(household.id, current);
-        else void deletePurchaseDraft(household.id);
-      }
-    },
-    [household.id, storageReady, draftHouseholdId],
+  const draft = useMemo(
+    () => ({
+      merchant,
+      occurredAt,
+      paymentAllocations: paymentRows.map((payment) => ({
+        paymentAccountId: payment.paymentAccountId,
+        amountYen:
+          paymentAutoTotal && paymentRows.length === 1 ? String(itemTotal) : payment.amountYen,
+      })),
+      paymentAutoTotal,
+      ...itemsValue,
+    }),
+    [merchant, occurredAt, paymentRows, paymentAutoTotal, itemTotal, itemsValue],
   );
+  const draftPersistence = usePurchaseDraft({
+    householdId: household.id,
+    draft,
+    restore: (loaded) => {
+      setMerchant(loaded.merchant);
+      setOccurredAt(loaded.occurredAt || localDateTime());
+      if (loaded.paymentAllocations?.length) {
+        payments.setRows(
+          loaded.paymentAllocations.map((payment) => ({
+            key: crypto.randomUUID(),
+            paymentAccountId: payment.paymentAccountId,
+            amountYen: payment.amountYen,
+          })),
+        );
+        payments.setAutoTotal(loaded.paymentAutoTotal ?? false);
+      } else {
+        payments.setRows([
+          {
+            key: crypto.randomUUID(),
+            paymentAccountId: loaded.paymentAccountId || household.accounts[0]?.id || "",
+            amountYen: "",
+          },
+        ]);
+        payments.setAutoTotal(true);
+      }
+      const restoredCategoryId = isEnabledCategory(loaded.categoryId) ? loaded.categoryId! : "";
+      setItemsValue({
+        itemName: loaded.itemName,
+        itemAmount: loaded.itemAmount,
+        categoryId: restoredCategoryId,
+        items: loaded.items.map((item) => ({
+          ...item,
+          categoryId: isEnabledCategory(item.categoryId) ? item.categoryId : "",
+        })),
+      });
+    },
+    onLoadError: (error) => setMessage(error.message),
+    onUnsavedChanges,
+  });
+  markUnsavedRef.current = draftPersistence.markUnsaved;
+  const {
+    storageReady,
+    hasUnsavedChanges,
+    savedAt,
+    saveError: draftSaveError,
+    persistDraft,
+    queued,
+    cancelScheduledSave,
+  } = draftPersistence;
+  useEffect(() => {
+    onUnsavedChanges(hasUnsavedChanges);
+    return () => onUnsavedChanges(false);
+  }, [hasUnsavedChanges, onUnsavedChanges]);
   useEffect(() => {
     void readHouseholdPurchases(household.id, 80)
       .then(setHistory)
@@ -228,9 +142,29 @@ export function PurchaseCreatePage({
       .filter((name) => name && !seen.has(name) && Boolean(seen.add(name)))
       .slice(0, 5);
   }, [recentPurchases]);
-  const [copiedPurchase, setCopiedPurchase] = useState<Purchase | null>(null);
   const paymentAmount = payments.amount;
   const paymentDifference = payments.difference;
+  const submission = usePurchaseSubmission({
+    household,
+    merchant,
+    occurredAt,
+    items,
+    paymentRows,
+    paymentAmount,
+    paymentDifference,
+    cancelScheduledSave,
+    onQueued,
+    onSaved: () => {
+      queued();
+      setMerchant("");
+      setOccurredAt(localDateTime());
+      payments.reset();
+      setItemsValue(emptyPurchaseItemsValue());
+      setItemsResetToken((token) => token + 1);
+      setUndoAvailable(false);
+    },
+  });
+  const { pending, message, setMessage, submit } = submission;
   const hasDraftContent = Boolean(merchant.trim() || itemName.trim() || itemAmount || items.length);
   const draftStatus = hasUnsavedChanges
     ? "未保存"
@@ -244,79 +178,6 @@ export function PurchaseCreatePage({
     setCopiedPurchase({ ...purchase });
     setMessage("");
   };
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    if (saving.current) return;
-    if (!items.length) {
-      setMessage("品目を1つ以上追加してください");
-      return;
-    }
-    if (!household.accounts.length) {
-      setMessage("設定で決済元を登録してください");
-      return;
-    }
-    if (
-      !paymentRows.length ||
-      paymentRows.some((payment) => !payment.paymentAccountId || paymentAmount(payment) < 1) ||
-      paymentDifference !== 0
-    ) {
-      setMessage("決済元と金額を確認してください");
-      return;
-    }
-    saving.current = true;
-    setPending(true);
-    setMessage("");
-    try {
-      if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
-      const input: CreatePurchaseInput = {
-        idempotencyKey: makeIdempotencyKey(),
-        householdId: household.id,
-        occurredAt: new Date(occurredAt).toISOString(),
-        merchant: merchant.trim(),
-        origin: "MANUAL",
-        paymentAllocations: paymentRows.map((payment) => ({
-          paymentAccountId: payment.paymentAccountId,
-          amountYen: paymentAmount(payment),
-        })),
-        items: items.map((item) => {
-          const quantity = parseQuantity(item.quantity ?? "", item.quantityUnit ?? "");
-          return {
-            name: item.name,
-            amountYen: Number(item.amount),
-            categoryId: item.categoryId || null,
-            allocations: item.allocations.length
-              ? item.allocations.filter((allocation) => allocation.weight > 0)
-              : null,
-            productVariantId: item.productVariantId || null,
-            ...(quantity
-              ? {
-                  quantityNumerator: quantity.numerator,
-                  quantityDenominator: quantity.denominator,
-                  quantityUnit: quantity.unit,
-                }
-              : {}),
-          };
-        }),
-      };
-      await enqueuePurchase(input);
-      skipDraftSave.current = true;
-      setMerchant("");
-      setOccurredAt(localDateTime());
-      payments.reset();
-      setItemsValue(emptyPurchaseItemsValue());
-      setItemsResetToken((token) => token + 1);
-      setUndoAvailable(false);
-      setSavedAt(null);
-      onUnsavedChanges(false);
-      setHasUnsavedChanges(false);
-      onQueued(input.idempotencyKey);
-    } catch (reason) {
-      setMessage((reason as Error).message);
-    } finally {
-      saving.current = false;
-      setPending(false);
-    }
-  };
   if (!storageReady)
     return (
       <main className="loading-screen">
@@ -324,7 +185,7 @@ export function PurchaseCreatePage({
       </main>
     );
   return (
-    <form className={`composer ${styles.composer}`} onSubmit={save}>
+    <form className={`composer ${styles.composer}`} onSubmit={submit}>
       <div className={`composer-heading ${styles.heading}`}>
         <div>
           <button type="button" className="back-link" onClick={onBack}>

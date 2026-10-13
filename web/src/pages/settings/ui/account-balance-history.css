@@ -1,0 +1,77 @@
+.account-balance-analysis .analysis-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-balance-changes {
+  display: grid;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+  margin-top: 12px;
+}
+
+.account-balance-change {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.5fr) minmax(60px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+
+.account-balance-change-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.account-balance-change-copy b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-balance-change-copy small,
+.account-balance-change > small {
+  color: var(--muted);
+}
+
+.account-balance-change-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #edf1ed;
+}
+
+.account-balance-change-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #4d8963;
+}
+
+.account-balance-change-bar i.account-balance-negative {
+  background: #b9704f;
+}
+
+.account-balance-negative-text {
+  color: #a45b3e;
+}
+
+@media (width <= 700px) {
+  .account-balance-change {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .account-balance-change-bar {
+    grid-column: 1;
+  }
+
+  .account-balance-change > small {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}

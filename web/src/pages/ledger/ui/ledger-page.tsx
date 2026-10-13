@@ -1,43 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, ChevronDown, ChevronRight, Plus, Search } from "lucide-react";
-import {
-  ApiError,
-  makeIdempotencyKey,
-  type Household,
-  type Purchase,
-  type PurchaseItem,
-  type ProductConcept,
-  type PurchasePaymentInput,
-  type Tag,
-  type SourceKind,
-  type UnmatchedObservationState,
-} from "../../../shared/api";
-import {
-  mapUpdatePurchaseItemInput,
-  usePostPurchaseMutation,
-  useUpdatePurchaseMutation,
-  useUpdatePurchaseItem,
-  useHouseholdPurchases,
-} from "../../../entities/purchase";
-import { readProductCatalog } from "../../../entities/product";
+import { BookOpen, ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { type Household, type Tag } from "../../../shared/api";
+import { useHouseholdPurchases } from "../../../entities/purchase";
 import { readTags } from "../../../entities/tag";
 import { EmptyState, InlineError } from "../../../shared/ui";
-import { formatQuantity, parseQuantity } from "../../../shared/lib";
-import { createPurchaseDraft, type PurchaseDraft } from "../model/purchase-draft";
 import { getRemainingRefundAmount } from "../model/purchase-correction";
-import { readLedgerPurchase } from "../api/read-ledger-purchase";
 import { useLedgerItemBulkEdit } from "../model/ledger-item-bulk-edit";
 import { usePurchaseBulkEdit } from "../model/purchase-bulk-edit";
 import { usePurchaseEvidence } from "../model/use-purchase-evidence";
+import { useLedgerPurchaseEditor } from "../model/use-ledger-purchase-editor";
 import { ObservationLedger } from "./observation-ledger";
 import { PurchaseBulkActions } from "./purchase-bulk-actions";
 import { PurchaseCorrection } from "./purchase-correction";
 import { PurchaseEvidence } from "./purchase-evidence";
 import { PurchaseEditForm } from "./purchase-edit-form";
 import { LedgerItemBulkActions } from "./ledger-item-bulk-actions";
-import { PurchaseItemEditor, type LedgerItemDraft } from "./purchase-item-editor";
+import { PurchaseItemEditor } from "./purchase-item-editor";
+import { LedgerFilters } from "./ledger-filters";
 import { toPurchaseAmountVariables, type LedgerSearch } from "../model/ledger-search";
 import styles from "./ledger-search.module.css";
+import "./ledger-page.css";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -45,8 +27,6 @@ const yen = (amount = 0) =>
     currency: "JPY",
     maximumFractionDigits: 0,
   }).format(amount);
-const sameNullableString = (left?: string | null, right?: string | null) =>
-  (left ?? "") === (right ?? "");
 const purchaseMonth = (occurredAt: string) =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
@@ -76,9 +56,6 @@ export function LedgerPage({
     onUnsavedChanges(false);
     return () => onUnsavedChanges(false);
   }, [onUnsavedChanges]);
-  const { mutate: mutatePostPurchase } = usePostPurchaseMutation();
-  const mutateUpdatePurchaseItem = useUpdatePurchaseItem();
-  const { mutate: mutateUpdatePurchase } = useUpdatePurchaseMutation();
   const {
     recordMode,
     viewMode,
@@ -190,32 +167,28 @@ export function LedgerPage({
   const [tagsLoaded, setTagsLoaded] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const { evidence: purchaseEvidence, error: evidenceError } = usePurchaseEvidence(expanded);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
-  const [itemDrafts, setItemDrafts] = useState<Record<string, LedgerItemDraft>>({});
-  const [catalog, setCatalog] = useState<ProductConcept[]>([]);
+  const purchaseEditor = useLedgerPurchaseEditor({ household, refresh });
+  const {
+    catalog,
+    conflict,
+    correctionTarget,
+    editError,
+    editing,
+    itemDrafts,
+    postDraftPurchase,
+    postingPurchase,
+    purchaseDraft,
+    saveItem,
+    savePurchase,
+    setCorrectionTarget,
+    setEditError,
+    setEditing,
+    setItemDrafts,
+    setPurchaseDraft,
+    startCorrection,
+    startEditing,
+  } = purchaseEditor;
   const [highlightedEvidenceItem, setHighlightedEvidenceItem] = useState<string | null>(null);
-  const [editError, setEditError] = useState("");
-  const [postingPurchase, setPostingPurchase] = useState<string | null>(null);
-  const postDraftPurchase = async (purchase: Purchase) => {
-    setPostingPurchase(purchase.id);
-    setEditError("");
-    try {
-      await mutatePostPurchase({
-        input: {
-          purchaseId: purchase.id,
-          expectedRevision: purchase.revision,
-          idempotencyKey: makeIdempotencyKey(),
-        },
-      });
-      await refresh();
-    } catch (reason) {
-      await refresh();
-      setEditError((reason as Error).message);
-    } finally {
-      setPostingPurchase(null);
-    }
-  };
   useEffect(() => {
     setHighlightedEvidenceItem(null);
   }, [expanded]);
@@ -264,267 +237,6 @@ export function LedgerPage({
     tags,
     tagsLoaded,
   ]);
-  const [correctionTarget, setCorrectionTarget] = useState<{
-    purchaseId: string;
-    itemId: string;
-  } | null>(null);
-  const [conflict, setConflict] = useState<{
-    label: string;
-    localValue: string;
-    serverValue: string;
-    retry: () => Promise<void>;
-    discard: () => Promise<void>;
-  } | null>(null);
-  const latestPurchase = (purchaseId: string) => readLedgerPurchase(household.id, purchaseId);
-  useEffect(() => {
-    let active = true;
-    void readProductCatalog(household.id)
-      .then((products) => active && setCatalog(products))
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [household.id]);
-  const startEditing = (purchase: Purchase) => {
-    setEditing(purchase.id);
-    setPurchaseDraft(createPurchaseDraft(purchase));
-    setItemDrafts(
-      Object.fromEntries(
-        purchase.items.map((item) => [
-          item.id,
-          {
-            name: item.name,
-            amountYen: String(item.amountYen),
-            quantity: formatQuantity(item.quantityNumerator, item.quantityDenominator),
-            quantityUnit: item.quantityUnit ?? "",
-            printedUnitPriceYen:
-              item.printedUnitPriceYen == null ? "" : String(item.printedUnitPriceYen),
-            printedBasisQuantity: formatQuantity(
-              item.printedUnitPriceQuantityNumerator,
-              item.printedUnitPriceQuantityDenominator,
-            ),
-            printedUnitPriceUnit: item.printedUnitPriceUnit ?? "",
-            categoryId: item.categoryId ?? "",
-            productVariantId: item.productVariantId ?? "",
-            productLearning: "ITEM_ONLY",
-            variantName: "",
-          },
-        ]),
-      ),
-    );
-    setConflict(null);
-    setEditError("");
-  };
-  const startCorrection = (purchase: Purchase, item: PurchaseItem) => {
-    setCorrectionTarget({ purchaseId: purchase.id, itemId: item.id });
-  };
-  const saveItem = async (purchase: Purchase, item: PurchaseItem) => {
-    const draft = itemDrafts[item.id];
-    if (!draft || !draft.name.trim() || Number(draft.amountYen) < 1) return;
-    let quantity;
-    let printedBasis;
-    try {
-      quantity = parseQuantity(draft.quantity, draft.quantityUnit);
-      printedBasis = parseQuantity(draft.printedBasisQuantity, draft.printedUnitPriceUnit);
-    } catch (reason) {
-      setEditError((reason as Error).message);
-      return;
-    }
-    const printedPriceText = draft.printedUnitPriceYen.trim();
-    const hasPrintedPrice = Boolean(
-      printedPriceText || draft.printedBasisQuantity.trim() || draft.printedUnitPriceUnit.trim(),
-    );
-    const printedPrice = printedPriceText ? Number(printedPriceText.replace(/\D/g, "")) : null;
-    if (
-      hasPrintedPrice &&
-      (!printedBasis || printedPrice === null || !Number.isSafeInteger(printedPrice))
-    ) {
-      setEditError("印字単価、基準量、単位を確認してください");
-      return;
-    }
-    const patch = {
-      name: draft.name.trim(),
-      amountYen: Number(draft.amountYen),
-      categoryId: draft.categoryId || null,
-      productVariantId: draft.productVariantId || null,
-    };
-    const baseChangedFields = [
-      ...(patch.name !== item.name ? ["name"] : []),
-      ...(patch.amountYen !== item.amountYen ? ["amountYen"] : []),
-      ...(!sameNullableString(patch.categoryId, item.categoryId) ? ["categoryId"] : []),
-      ...(!sameNullableString(patch.productVariantId, item.productVariantId)
-        ? ["productVariantId"]
-        : []),
-    ] as Array<keyof typeof patch>;
-    const quantityChanged =
-      !sameNullableString(quantity?.numerator, item.quantityNumerator) ||
-      !sameNullableString(quantity?.denominator, item.quantityDenominator) ||
-      !sameNullableString(quantity?.unit, item.quantityUnit);
-    const printedPriceChanged =
-      (printedPrice ?? null) !== (item.printedUnitPriceYen ?? null) ||
-      !sameNullableString(printedBasis?.numerator, item.printedUnitPriceQuantityNumerator) ||
-      !sameNullableString(printedBasis?.denominator, item.printedUnitPriceQuantityDenominator) ||
-      !sameNullableString(printedBasis?.unit, item.printedUnitPriceUnit);
-    const changedFields = [
-      ...baseChangedFields,
-      ...(quantityChanged ? ["quantity"] : []),
-      ...(printedPriceChanged ? ["printedUnitPrice"] : []),
-    ];
-    if (!changedFields.length) return;
-    const changedPatch = Object.fromEntries(
-      baseChangedFields.map((field) => [field, patch[field]]),
-    );
-    const inputForRevision = (baseRevision: number) =>
-      mapUpdatePurchaseItemInput({
-        itemId: item.id,
-        baseRevision,
-        ...changedPatch,
-        ...(quantityChanged
-          ? {
-              quantityNumerator: quantity?.numerator ?? null,
-              quantityDenominator: quantity?.denominator ?? null,
-              quantityUnit: quantity?.unit ?? null,
-            }
-          : {}),
-        ...(printedPriceChanged
-          ? {
-              printedUnitPriceYen: hasPrintedPrice ? printedPrice : null,
-              printedUnitPriceQuantityNumerator: printedBasis?.numerator ?? null,
-              printedUnitPriceQuantityDenominator: printedBasis?.denominator ?? null,
-              printedUnitPriceUnit: printedBasis?.unit ?? null,
-            }
-          : {}),
-        ...(baseChangedFields.includes("productVariantId") && patch.productVariantId
-          ? {
-              productLearning:
-                draft.productLearning === "VARIANT_NAME"
-                  ? { variantName: draft.variantName.trim() }
-                  : draft.productLearning === "MERCHANT_ALIAS"
-                    ? { merchantAlias: true }
-                    : { itemOnly: true },
-            }
-          : {}),
-      });
-    try {
-      await mutateUpdatePurchaseItem({
-        input: inputForRevision(item.revision),
-      });
-      await refresh();
-      setEditError("");
-    } catch (reason) {
-      if (
-        (reason instanceof ApiError && reason.code === "CONFLICT") ||
-        (reason as Error).message.toLowerCase().includes("conflict")
-      ) {
-        const latest = await latestPurchase(purchase.id);
-        const current = latest?.items.find((row) => row.id === item.id);
-        await refresh();
-        if (current)
-          setConflict({
-            label: `${item.name}の品目`,
-            localValue: changedFields
-              .map((field) => `${field}: ${String(patch[field as keyof typeof patch] ?? "未分類")}`)
-              .join("、"),
-            serverValue: `${current.name} · ${yen(current.amountYen)}`,
-            retry: async () => {
-              await mutateUpdatePurchaseItem({
-                input: inputForRevision(current.revision),
-              });
-              await refresh();
-              setConflict(null);
-            },
-            discard: async () => {
-              await refresh();
-              setConflict(null);
-            },
-          });
-      } else setEditError((reason as Error).message);
-    }
-  };
-  const savePurchase = async (purchase: Purchase) => {
-    if (!purchaseDraft) return;
-    const paymentAllocations: PurchasePaymentInput[] = purchaseDraft.paymentAllocations.map(
-      (payment) => ({
-        paymentAccountId: payment.paymentAccountId,
-        amountYen: Number(payment.amountYen),
-      }),
-    );
-    const currentAllocations = purchase.paymentAllocations.map((payment) => ({
-      paymentAccountId: payment.paymentAccountId,
-      amountYen: payment.amountYen,
-    }));
-    const paymentAllocationsChanged =
-      JSON.stringify(paymentAllocations) !== JSON.stringify(currentAllocations);
-    if (
-      paymentAllocationsChanged &&
-      (paymentAllocations.some(
-        (payment) =>
-          !payment.paymentAccountId ||
-          !Number.isSafeInteger(payment.amountYen) ||
-          payment.amountYen < 1,
-      ) ||
-        paymentAllocations.reduce((total, payment) => total + payment.amountYen, 0) !==
-          purchase.totalYen)
-    ) {
-      setEditError("決済元と金額を確認してください");
-      return;
-    }
-    const patch = {
-      merchant: purchaseDraft.merchant.trim(),
-      occurredAt: new Date(purchaseDraft.occurredAt).toISOString(),
-      paymentAllocations,
-    };
-    const changedFields = [
-      ...(patch.merchant !== purchase.merchant ? ["merchant"] : []),
-      ...(Date.parse(patch.occurredAt) !== Date.parse(purchase.occurredAt) ? ["occurredAt"] : []),
-      ...(paymentAllocationsChanged ? ["paymentAllocations"] : []),
-    ] as Array<keyof typeof patch>;
-    if (!changedFields.length) return;
-    const changedPatch = Object.fromEntries(changedFields.map((field) => [field, patch[field]]));
-    try {
-      await mutateUpdatePurchase({
-        input: {
-          purchaseId: purchase.id,
-          baseRevision: purchase.revision,
-          patch: changedPatch,
-        },
-      });
-      await refresh();
-      setEditing(null);
-      setConflict(null);
-      setEditError("");
-    } catch (reason) {
-      if (
-        (reason instanceof ApiError && reason.code === "CONFLICT") ||
-        (reason as Error).message.toLowerCase().includes("conflict")
-      ) {
-        const latest = await latestPurchase(purchase.id);
-        await refresh();
-        if (latest)
-          setConflict({
-            label: "買い物の情報",
-            localValue: `${patch.merchant} · ${new Date(patch.occurredAt).toLocaleString("ja-JP")}`,
-            serverValue: `${latest.merchant} · ${new Date(latest.occurredAt).toLocaleString("ja-JP")}`,
-            retry: async () => {
-              await mutateUpdatePurchase({
-                input: {
-                  purchaseId: latest.id,
-                  baseRevision: latest.revision,
-                  patch: changedPatch,
-                },
-              });
-              await refresh();
-              setConflict(null);
-            },
-            discard: async () => {
-              await refresh();
-              setConflict(null);
-              setEditing(null);
-            },
-          });
-      } else setEditError((reason as Error).message);
-    }
-  };
   const filtered = purchases;
   const filteredItems = purchases.flatMap((purchase) =>
     purchase.items.map((item) => ({ purchase, item })),
@@ -544,220 +256,20 @@ export function LedgerPage({
           買い物を追加
         </button>
       </div>
-      <div className={styles.controls}>
-        {recordMode === "purchases" && (
-          <label className="input-with-icon">
-            <Search size={16} />
-            <input
-              value={search}
-              onChange={(e) => updateFilters({ search: e.target.value })}
-              placeholder="店名、品名で検索"
-            />
-          </label>
-        )}
-        <label className="select-filter">
-          <span>開始</span>
-          <input
-            aria-label="開始月"
-            type="month"
-            value={fromMonth}
-            onChange={(event) => updateFilters({ fromMonth: event.target.value })}
-          />
-        </label>
-        <label className="select-filter">
-          <span>終了</span>
-          <input
-            aria-label="終了月"
-            type="month"
-            value={toMonth}
-            onChange={(event) => updateFilters({ toMonth: event.target.value })}
-          />
-        </label>
-        <div className="record-count">
-          {recordMode === "observations"
+      <LedgerFilters
+        household={household}
+        filters={filters}
+        tags={tags}
+        recordCount={
+          recordMode === "observations"
             ? `${observationCount.count}/${observationCount.totalCount}件表示`
             : viewMode === "items"
               ? `${filteredItems.length}品目表示 · ${purchases.length}/${totalCount}件購入取得`
-              : `${filtered.length}件表示 · ${purchases.length}/${totalCount}件読込`}
-        </div>
-      </div>
-      <div className={styles.filters}>
-        <label className="select-filter">
-          <span>表示</span>
-          <select
-            value={recordMode}
-            onChange={(event) => {
-              const mode = event.target.value as "purchases" | "observations";
-              updateFilters({ recordMode: mode });
-              if (mode === "observations") {
-                ledgerItemBulkEdit.clearSelection();
-              }
-            }}
-          >
-            <option value="purchases">購入履歴</option>
-            <option value="observations">照合候補</option>
-          </select>
-        </label>
-        {recordMode === "purchases" && (
-          <label className="select-filter">
-            <span>単位</span>
-            <select
-              value={viewMode}
-              onChange={(event) => {
-                updateFilters({ viewMode: event.target.value as "purchases" | "items" });
-                ledgerItemBulkEdit.clearSelection();
-              }}
-            >
-              <option value="purchases">購入</option>
-              <option value="items">品目</option>
-            </select>
-          </label>
-        )}
-        {recordMode === "purchases" ? (
-          <>
-            <label className="select-filter">
-              <span>入力元</span>
-              <select
-                value={originFilter}
-                onChange={(event) =>
-                  updateFilters({ originFilter: event.target.value as Purchase["origin"] | "" })
-                }
-              >
-                <option value="">すべて</option>
-                <option value="AI">AI入力</option>
-                <option value="MANUAL">手入力</option>
-                <option value="UNKNOWN">不明</option>
-              </select>
-            </label>
-            <label className="select-filter">
-              <span>原本</span>
-              <select
-                value={evidenceFilter}
-                onChange={(event) =>
-                  updateFilters({ evidenceFilter: event.target.value as "true" | "false" | "" })
-                }
-              >
-                <option value="">すべて</option>
-                <option value="true">あり</option>
-                <option value="false">なし</option>
-              </select>
-            </label>
-            <label className="select-filter">
-              <span>カテゴリ</span>
-              <select
-                value={categoryFilter}
-                onChange={(event) => updateFilters({ categoryFilter: event.target.value })}
-              >
-                <option value="">すべて</option>
-                <option value="__uncategorized">未分類</option>
-                {household.categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="select-filter">
-              <span>負担先</span>
-              <select
-                value={poolFilter}
-                onChange={(event) => updateFilters({ poolFilter: event.target.value })}
-              >
-                <option value="">すべて</option>
-                {household.pools.map((pool) => (
-                  <option key={pool.id} value={pool.id}>
-                    {pool.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="select-filter">
-              <span>決済元</span>
-              <select
-                value={accountFilter}
-                onChange={(event) => updateFilters({ accountFilter: event.target.value })}
-              >
-                <option value="">すべて</option>
-                {household.accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="select-filter">
-              <span>タグ</span>
-              <select
-                value={tagFilter}
-                onChange={(event) => updateFilters({ tagFilter: event.target.value })}
-              >
-                <option value="">すべて</option>
-                {tags
-                  .filter((tag) => !tag.archived)
-                  .map((tag) => (
-                    <option key={tag.id} value={tag.id}>
-                      {tag.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label className="select-filter">
-              <span>{viewMode === "items" ? "品目額" : "購入額"}</span>
-              <input
-                aria-label="最低金額"
-                type="number"
-                min="0"
-                placeholder="下限"
-                value={minimumAmount}
-                onChange={(event) => updateFilters({ minimumAmount: event.target.value })}
-              />
-              <span>〜</span>
-              <input
-                aria-label="最高金額"
-                type="number"
-                min="0"
-                placeholder="上限"
-                value={maximumAmount}
-                onChange={(event) => updateFilters({ maximumAmount: event.target.value })}
-              />
-            </label>
-          </>
-        ) : (
-          <>
-            <label className="select-filter">
-              <span>状態</span>
-              <select
-                value={observationStateFilter}
-                onChange={(event) =>
-                  updateFilters({
-                    observationStateFilter: event.target.value as UnmatchedObservationState | "",
-                  })
-                }
-              >
-                <option value="UNMATCHED">未照合</option>
-                <option value="CONFIRMED">照合済み</option>
-                <option value="">すべて</option>
-              </select>
-            </label>
-            <label className="select-filter">
-              <span>入力元</span>
-              <select
-                value={observationSourceFilter}
-                onChange={(event) =>
-                  updateFilters({ observationSourceFilter: event.target.value as SourceKind | "" })
-                }
-              >
-                <option value="">すべて</option>
-                <option value="RECEIPT">レシート</option>
-                <option value="ORDER">注文</option>
-                <option value="EMAIL">メール</option>
-                <option value="CARD">カード</option>
-                <option value="BANK">銀行</option>
-              </select>
-            </label>
-          </>
-        )}
-      </div>
+              : `${filtered.length}件表示 · ${purchases.length}/${totalCount}件読込`
+        }
+        onFiltersChange={onFiltersChange}
+        onClearSelection={ledgerItemBulkEdit.clearSelection}
+      />
       <PurchaseBulkActions
         accounts={household.accounts}
         bulkEdit={purchaseBulkEdit}

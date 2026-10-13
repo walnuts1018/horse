@@ -1,3 +1,4 @@
+import "./account-balance-history.css";
 import styles from "./settings-page.module.css";
 import { useEffect, useRef, useState } from "react";
 import { type AccountBalanceAnalysis, type Household } from "../../../shared/api";

@@ -1,0 +1,197 @@
+.dropzone {
+  min-height: 300px;
+  border: 1px dashed #c8d8cb;
+  border-radius: 15px;
+  background: #f5f9f4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.dropzone-active {
+  border-color: #6fa587;
+  background: #edf6ee;
+}
+
+.drop-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: #e4f0e5;
+  color: #6c9a75;
+  margin-bottom: 13px;
+}
+
+.dropzone h2 {
+  font:
+    600 16px "Noto Sans JP Variable",
+    "Noto Sans JP",
+    sans-serif;
+  margin: 0;
+  color: #516256;
+}
+
+.dropzone p {
+  font-size: 10px;
+  color: #5f6d65;
+  margin: 7px 0 17px;
+}
+
+.dropzone .button {
+  height: 36px;
+  font-size: 10px;
+}
+
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.page-heading .page-import-actions {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.dropzone-import-actions {
+  justify-content: center;
+}
+
+.drop-caption {
+  color: #5f6d65;
+  font-size: 8px;
+  margin-top: 15px;
+}
+
+.import-layout {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 14px;
+}
+
+.import-review {
+  padding: 18px;
+}
+
+.import-review .panel-heading {
+  align-items: center;
+}
+
+.file-review-row {
+  min-height: 64px;
+  border-top: 1px solid #eff2ef;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.persisted-document-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid #eff2ef;
+}
+
+.persisted-document-row .file-review-row {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.persisted-document-row .review-selected {
+  background: #f4f8f4;
+}
+
+.persisted-document-row .text-button {
+  flex: none;
+}
+
+.file-review-row > img,
+.file-thumb {
+  width: 37px;
+  height: 43px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #f0f4ef;
+}
+
+.file-thumb {
+  display: grid;
+  place-items: center;
+  color: #83a087;
+}
+
+.file-review-row > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-review-row b,
+.file-review-row small {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-review-row b {
+  font-size: 9px;
+  color: #58675e;
+}
+
+.file-review-row small {
+  font-size: 8px;
+  color: #5f6d65;
+  margin-top: 4px;
+}
+
+.import-review > .button {
+  margin-top: 12px;
+}
+
+.import-note {
+  margin: 13px 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #5f6d65;
+  font-size: 9px;
+}
+
+.import-note svg {
+  color: #85a68a;
+}
+
+@media (width <= 760px) {
+  .page-heading .page-import-actions {
+    display: none;
+  }
+
+  .import-layout {
+    grid-template-columns: 1fr;
+    gap: 11px;
+  }
+
+  .dropzone {
+    min-height: 240px;
+  }
+
+  .import-review {
+    padding: 15px;
+  }
+
+  .drop-caption,
+  .file-review-row b,
+  .file-review-row small,
+  .import-note {
+    font-size: 10px;
+  }
+}

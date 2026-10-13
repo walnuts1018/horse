@@ -1,21 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Plus } from "lucide-react";
-import type { Household, Settlement } from "../../../shared/api";
+import type { Household } from "../../../shared/api";
 import { useHouseholdLedger } from "../../../entities/ledger";
-import { InlineError } from "../../../shared/ui";
-import { japanMonth } from "../../../shared/lib";
 import "./settlement-page.css";
 import { settlementTotalDue } from "../model/settlement-view";
-import { readSettlement } from "../api/read-settlement";
-import { closeSettlementPeriod } from "../api/settlement-mutations";
 import { SettlementLoans } from "./settlement-loans";
 import { SettlementCloseConfirmation } from "./settlement-close-confirmation";
 import { SettlementPeriodPicker } from "./settlement-period-picker";
 import { SettlementPreview } from "./settlement-preview";
 import { SettlementTransferForm } from "./settlement-transfer-form";
 import { SettlementLedger } from "./settlement-ledger";
+import { SettlementFeedback } from "./settlement-feedback";
 import { useSettlementTransfer } from "../model/settlement-transfer";
 import { useSettlementFunding } from "../model/settlement-funding";
+import { useSettlementPeriod } from "../model/settlement-period";
+import { useSettlementPeriodClose } from "../model/settlement-period-close";
+import { useSettlementLoanState } from "../model/settlement-loan-state";
 
 export function SettlementPage({
   household,
@@ -24,21 +24,9 @@ export function SettlementPage({
   household: Household;
   onUnsavedChanges: (unsaved: boolean) => void;
 }) {
-  const [period, setPeriod] = useState(() => japanMonth(new Date()));
-  const [settlementSnapshot, setSettlementSnapshot] = useState<{
-    householdId: string;
-    period: string;
-    value: Settlement;
-  } | null>(null);
-  const settlement =
-    settlementSnapshot?.householdId === household.id && settlementSnapshot.period === period
-      ? settlementSnapshot.value
-      : null;
-  const activePeriod = useRef(period);
-  activePeriod.current = period;
-  const activeHouseholdId = useRef(household.id);
-  activeHouseholdId.current = household.id;
-  const loadRequest = useRef(0);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [pending, setPending] = useState(false);
   const {
     entries,
     hasNextPage: ledgerHasNextPage,
@@ -47,32 +35,9 @@ export function SettlementPage({
     loadMore: loadMoreLedger,
     refresh: refreshLedger,
   } = useHouseholdLedger(household.id);
-  const [hasUnsavedLoanRepayment, setHasUnsavedLoanRepayment] = useState(false);
-  const [hasPendingLoanRepayment, setHasPendingLoanRepayment] = useState(false);
-  const [loanRefreshSignal, setLoanRefreshSignal] = useState(0);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [loadError, setLoadError] = useState("");
-  const [pending, setPending] = useState(false);
-  const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
-  const load = async () => {
-    const request = ++loadRequest.current;
-    const requestedPeriod = activePeriod.current;
-    const requestedHouseholdId = activeHouseholdId.current;
-    setLoadError("");
-    try {
-      refreshLedger();
-      const settlementData = await readSettlement(requestedHouseholdId, requestedPeriod);
-      if (request !== loadRequest.current) return;
-      setSettlementSnapshot({
-        householdId: requestedHouseholdId,
-        period: requestedPeriod,
-        value: settlementData,
-      });
-    } catch (reason) {
-      if (request === loadRequest.current) setLoadError((reason as Error).message);
-    }
-  };
+  const periodState = useSettlementPeriod(household.id, refreshLedger);
+  const { load, loadError, period, setPeriod, settlement, snapshot } = periodState;
+  const loanState = useSettlementLoanState({ setSuccess, reload: load });
   const funding = useSettlementFunding({
     household,
     settlement,
@@ -81,54 +46,39 @@ export function SettlementPage({
     setSuccess,
     onRecorded: load,
   });
-  useEffect(() => {
-    void load();
-  }, [household.id, period]);
   const transfer = useSettlementTransfer({
     household,
     setPending,
     setError,
     setSuccess,
     onRecorded: async () => {
-      setLoanRefreshSignal((current) => current + 1);
+      loanState.onTransferRecorded();
       await load();
     },
   });
   useEffect(() => {
     onUnsavedChanges(
-      transfer.hasUnsavedTransfer || funding.hasUnsavedFunding || hasUnsavedLoanRepayment,
+      transfer.hasUnsavedTransfer || funding.hasUnsavedFunding || loanState.hasUnsavedRepayment,
     );
     return () => onUnsavedChanges(false);
   }, [
     funding.hasUnsavedFunding,
-    hasUnsavedLoanRepayment,
+    loanState.hasUnsavedRepayment,
     transfer.hasUnsavedTransfer,
     onUnsavedChanges,
   ]);
-  const close = async () => {
-    if (!settlement || !settlementSnapshot || settlementSnapshot.period !== period) return;
-    const targetHouseholdId = settlementSnapshot.householdId;
-    const targetPeriod = settlementSnapshot.period;
-    const expectedRevision = settlement.revision;
-    setPending(true);
-    setSuccess("");
-    try {
-      await closeSettlementPeriod({
-        householdId: targetHouseholdId,
-        period: targetPeriod,
-        expectedRevision,
-      });
-      setCloseConfirmationOpen(false);
-      await load();
-    } catch (reason) {
-      setError((reason as Error).message);
-    } finally {
-      setPending(false);
-    }
-  };
+  const periodClose = useSettlementPeriodClose({
+    settlement,
+    snapshot,
+    period,
+    setPending,
+    setError,
+    setSuccess,
+    reload: load,
+  });
   const totalDue = settlementTotalDue(settlement);
   const parsedTransferAmount = Number(transfer.transferAmount);
-  const hasPendingTransfer = transfer.hasPendingTransfer || hasPendingLoanRepayment;
+  const hasPendingTransfer = transfer.hasPendingTransfer || loanState.hasPendingRepayment;
   const invalidTransferAmount =
     !Number.isSafeInteger(parsedTransferAmount) || parsedTransferAmount < 1;
   return (
@@ -143,24 +93,16 @@ export function SettlementPage({
           period={period}
           onChange={(nextPeriod) => {
             setPeriod(nextPeriod);
-            setCloseConfirmationOpen(false);
+            periodClose.setConfirmationOpen(false);
           }}
         />
       </div>
-      {error && <InlineError message={error} />}
-      {success && (
-        <p className="settlement-confirmation" role="status">
-          {success}
-        </p>
-      )}
-      {loadError && (
-        <div className="settlement-load-error">
-          <InlineError message={loadError} />
-          <button className="text-button" type="button" onClick={() => void load()}>
-            再試行
-          </button>
-        </div>
-      )}
+      <SettlementFeedback
+        error={error}
+        success={success}
+        loadError={loadError}
+        onRetryLoad={() => void load()}
+      />
       <SettlementPreview
         household={household}
         settlement={settlement}
@@ -185,7 +127,7 @@ export function SettlementPage({
             className="button button-soft"
             disabled={!settlement || pending || settlement.__typename === "ClosedSettlement"}
             onClick={() => {
-              setCloseConfirmationOpen(true);
+              periodClose.setConfirmationOpen(true);
             }}
           >
             <Check size={16} />
@@ -193,23 +135,23 @@ export function SettlementPage({
           </button>
           <button
             className="button button-primary"
-            disabled={hasPendingLoanRepayment}
+            disabled={loanState.hasPendingRepayment}
             onClick={() => {
-              transfer.toggle(hasPendingLoanRepayment);
+              transfer.toggle(loanState.hasPendingRepayment);
             }}
           >
             <Plus size={16} />
             送金を記録
           </button>
         </div>
-        {closeConfirmationOpen && settlement?.__typename === "OpenSettlement" && (
+        {periodClose.confirmationOpen && settlement?.__typename === "OpenSettlement" && (
           <SettlementCloseConfirmation
             settlement={settlement}
             period={period}
             totalDue={totalDue}
             pending={pending}
-            onClose={() => setCloseConfirmationOpen(false)}
-            onConfirm={() => void close()}
+            onClose={() => periodClose.setConfirmationOpen(false)}
+            onConfirm={() => void periodClose.close()}
           />
         )}
         {transfer.transferOpen && (
@@ -261,18 +203,15 @@ export function SettlementPage({
       </section>
       <SettlementLoans
         household={household}
-        refreshSignal={loanRefreshSignal}
+        refreshSignal={loanState.refreshSignal}
         canRecordLoan={!hasPendingTransfer}
         canManageRepayments={!transfer.pendingTransfer}
         onRecordLoan={() => {
           transfer.prepareLoan();
         }}
-        onPendingIntentChange={setHasPendingLoanRepayment}
-        onRecorded={() => {
-          setSuccess("返済を記録しました");
-          void load();
-        }}
-        onUnsavedChanges={setHasUnsavedLoanRepayment}
+        onPendingIntentChange={loanState.setHasPendingRepayment}
+        onRecorded={loanState.onRepaymentRecorded}
+        onUnsavedChanges={loanState.setHasUnsavedRepayment}
       />
       <SettlementLedger
         household={household}
