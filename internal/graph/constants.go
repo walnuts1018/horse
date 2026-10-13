@@ -12,6 +12,7 @@ const (
 	nodeTypeAccountIncome           = "AccountIncome"
 	nodeTypeAccountMovement         = "AccountMovement"
 	nodeTypeAccountOpeningBalance   = "AccountOpeningBalance"
+	cursorTypeAccountBalanceChange  = "AccountBalanceChange"
 	nodeTypeAllocationRule          = "AllocationRule"
 	nodeTypeBudget                  = "Budget"
 	nodeTypeCategory                = "Category"

@@ -139,7 +139,7 @@ export type AccountBalanceAnalysis = {
   to: string;
   openingBalanceYen: number;
   closingBalanceYen: number;
-  changes: AccountBalanceChange[];
+  changes: Connection<AccountBalanceChange>;
 };
 export type AccountIncome = {
   id: string;

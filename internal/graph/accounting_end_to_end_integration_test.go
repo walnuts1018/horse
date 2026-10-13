@@ -130,12 +130,12 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 		{accountID: fromAccount.ID, opening: 1000, change: -250, closing: 750},
 		{accountID: toAccount.ID, opening: 300, change: 250, closing: 550},
 	} {
-		analysis, err := apiResolver.Query().AccountBalanceAnalysis(ctx, household.ID, expected.accountID, "2026-06", "2026-06")
+		analysis, err := apiResolver.Query().AccountBalanceAnalysis(ctx, household.ID, expected.accountID, "2026-06", "2026-06", nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if analysis.OpeningBalanceYen != model.Long(expected.opening) || analysis.ClosingBalanceYen != model.Long(expected.closing) ||
-			len(analysis.Changes) != 1 || analysis.Changes[0].ChangeYen != model.Long(expected.change) || accountBalanceSourceType(analysis.Changes[0].Source) != graphQLAccountMovementType {
+			len(analysis.Changes.Edges) != 1 || analysis.Changes.Edges[0].Node.ChangeYen != model.Long(expected.change) || accountBalanceSourceType(analysis.Changes.Edges[0].Node.Source) != graphQLAccountMovementType {
 			t.Fatalf("account analysis did not reflect its side of the transfer: account=%s analysis=%#v", expected.accountID, analysis)
 		}
 	}
@@ -320,12 +320,12 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 		nextLines[memberB].MonthlyAdjustmentYen != -40 || nextLines[memberB].PriorBalanceYen != 400 || nextLines[memberB].AmountDueYen != 360 {
 		t.Fatalf("next settlement did not apply the correction while carrying the closed balance: %#v", nextLines)
 	}
-	accountAnalysis, err := query.AccountBalanceAnalysis(ctx, household.ID, account.ID, model.YearMonth(correctionPeriod), model.YearMonth(correctionPeriod))
+	accountAnalysis, err := query.AccountBalanceAnalysis(ctx, household.ID, account.ID, model.YearMonth(correctionPeriod), model.YearMonth(correctionPeriod), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(accountAnalysis.Changes) != 1 || accountAnalysis.Changes[0].ChangeYen != -100 || accountAnalysis.ClosingBalanceYen != accountAnalysis.OpeningBalanceYen-100 ||
-		accountBalanceSourceType(accountAnalysis.Changes[0].Source) != "PurchaseItemCorrection" {
+	if len(accountAnalysis.Changes.Edges) != 1 || accountAnalysis.Changes.Edges[0].Node.ChangeYen != -100 || accountAnalysis.ClosingBalanceYen != accountAnalysis.OpeningBalanceYen-100 ||
+		accountBalanceSourceType(accountAnalysis.Changes.Edges[0].Node.Source) != "PurchaseItemCorrection" {
 		t.Fatalf("correction period card balance analysis did not reflect the refund: %#v", accountAnalysis)
 	}
 }

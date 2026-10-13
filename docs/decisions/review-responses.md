@@ -32,7 +32,9 @@ Go API・Worker・Atlas MigrationとWebを別イメージに分け、依存取�
 
 mutationごとの入力ファイル分割、Relay契約、状態別型の修正を進めています。型ごとのファイル分割、ブラウザーからの操作、CI、公開環境での動作を確認するまで`docs/reviews/graphql.md`を残します。
 
-タグ一覧を`TagConnection`に変更し、`first`/`after`と`last`/`before`によるページングを追加しました。カーソルはタグ名とIDで安定順序を作り、カーソルの家庭スコープと`includeArchived`条件を検証します。Frontendの`readTags`は全ページを取得し、通常一覧ではアーカイブ済みを除外し、設定画面では従来どおり含めます。DB統合テストで前後ページ、アーカイブ条件、別家庭のカーソル拒否を確認します。gqlgen生成、Goコードのformatと対象テスト、FrontendのtypecheckとFeature-Sliced Design検査はローカルで通過しました。DB統合テストは`HORSE_TEST_DATABASE_URL`未設定のためローカルではskipされており、CIでの実行結果と公開環境の確認が残っています。
+タグ一覧を`TagConnection`に変更し、`first`/`after`と`last`/`before`によるページングを追加しました。カーソルはタグ名とIDで安定順序を作り、カーソルの家庭スコープと`includeArchived`条件を検証します。Frontendの`readTags`は全ページを取得し、通常一覧ではアーカイブ済みを除外し、設定画面では従来どおり含めます。DB統合テストでは前後ページ、アーカイブ条件、別家庭のカーソル拒否を確認します。`31b7c68`のCIではDB統合テストを含む他の検査は通過しましたが、`readTags`の型推論がFrontend型検査で失敗しました。明示的な型注釈を加え、ローカル型検査は通過しました。gqlgen生成、Goコードのformatと対象テスト、Feature-Sliced Design検査もローカルで通過しています。修正後のCIと公開環境の確認が残っています。
+
+口座残高分析の`changes`をConnection化し、Frontendは最新100件を初期表示して古い履歴を追加取得する形に変更しました。各行の残高と期間開始・終了残高は全期間の仕訳から計算して返し、ページ範囲だけで残高を再計算しません。レスポンス量を抑える変更であり、DB読取量の削減は主張しません。複数年のページ境界、全ページの行残高、安定順序を確認するDB統合テストを追加しました。統合テストは`HORSE_TEST_DATABASE_URL`未設定のためローカルではskipされており、CI、Frontend型検査、公開環境の確認が済むまでこのレビュー項目は未完了として扱います。
 
 ### 同時編集と締め後訂正
 

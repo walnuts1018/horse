@@ -136,6 +136,17 @@ type ComplexityRoot struct {
 		Source      func(childComplexity int) int
 	}
 
+	AccountBalanceChangeConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	AccountBalanceChangeEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
+
 	AccountIncome struct {
 		AccountID   func(childComplexity int) int
 		AmountYen   func(childComplexity int) int
@@ -859,7 +870,7 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		AccountBalanceAnalysis  func(childComplexity int, householdID string, accountID string, from model.YearMonth, to model.YearMonth) int
+		AccountBalanceAnalysis  func(childComplexity int, householdID string, accountID string, from model.YearMonth, to model.YearMonth, first *int, after *string) int
 		AccountBalances         func(childComplexity int, householdID string) int
 		AccountIncomes          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		AccountMovements        func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
@@ -1393,7 +1404,7 @@ type QueryResolver interface {
 	Node(ctx context.Context, id string) (model.Node, error)
 	Nodes(ctx context.Context, ids []string) ([]model.Node, error)
 	AccountBalances(ctx context.Context, householdID string) ([]*model.AccountBalance, error)
-	AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from model.YearMonth, to model.YearMonth) (*model.AccountBalanceAnalysis, error)
+	AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from model.YearMonth, to model.YearMonth, first *int, after *string) (*model.AccountBalanceAnalysis, error)
 	AccountIncomes(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AccountIncomeConnection, error)
 	AccountMovements(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AccountMovementConnection, error)
 	AllocationRules(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AllocationRuleConnection, error)
@@ -1644,6 +1655,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AccountBalanceChange.Source(childComplexity), true
+
+	case "AccountBalanceChangeConnection.edges":
+		if e.ComplexityRoot.AccountBalanceChangeConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChangeConnection.Edges(childComplexity), true
+	case "AccountBalanceChangeConnection.pageInfo":
+		if e.ComplexityRoot.AccountBalanceChangeConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChangeConnection.PageInfo(childComplexity), true
+	case "AccountBalanceChangeConnection.totalCount":
+		if e.ComplexityRoot.AccountBalanceChangeConnection.TotalCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChangeConnection.TotalCount(childComplexity), true
+
+	case "AccountBalanceChangeEdge.cursor":
+		if e.ComplexityRoot.AccountBalanceChangeEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChangeEdge.Cursor(childComplexity), true
+	case "AccountBalanceChangeEdge.node":
+		if e.ComplexityRoot.AccountBalanceChangeEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountBalanceChangeEdge.Node(childComplexity), true
 
 	case "AccountIncome.accountId":
 		if e.ComplexityRoot.AccountIncome.AccountID == nil {
@@ -4426,7 +4469,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.AccountBalanceAnalysis(childComplexity, args["householdId"].(string), args["accountId"].(string), args["from"].(model.YearMonth), args["to"].(model.YearMonth)), true
+		return e.ComplexityRoot.Query.AccountBalanceAnalysis(childComplexity, args["householdId"].(string), args["accountId"].(string), args["from"].(model.YearMonth), args["to"].(model.YearMonth), args["first"].(*int), args["after"].(*string)), true
 	case "Query.accountBalances":
 		if e.ComplexityRoot.Query.AccountBalances == nil {
 			break
@@ -5784,7 +5827,7 @@ extend type Query {
   to: YearMonth!
   openingBalanceYen: Long!
   closingBalanceYen: Long!
-  changes: [AccountBalanceChange!]!
+  changes: AccountBalanceChangeConnection!
 }
 
 type AccountBalanceChange {
@@ -5795,6 +5838,17 @@ type AccountBalanceChange {
   balanceYen: Long!
 }
 
+type AccountBalanceChangeEdge {
+  cursor: String!
+  node: AccountBalanceChange!
+}
+
+type AccountBalanceChangeConnection {
+  edges: [AccountBalanceChangeEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 union AccountBalanceSource = AccountOpeningBalance | Purchase | PurchaseWideCorrection | PurchaseItemCorrection | CorrectionLedgerEntry | FundingLedgerEntry | PurchaseLedgerEntry | AdvanceTransferLedgerEntry | LoanTransferLedgerEntry | RepaymentTransferLedgerEntry | GiftTransferLedgerEntry | AccountMovement | AccountIncome
 
 type AccountOpeningBalance implements Node {
@@ -5803,7 +5857,7 @@ type AccountOpeningBalance implements Node {
 }
 
 extend type Query {
-  accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: YearMonth!, to: YearMonth!): AccountBalanceAnalysis!
+  accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: YearMonth!, to: YearMonth!, first: Int, after: String): AccountBalanceAnalysis!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/account_income.graphql", Input: `type AccountIncome implements Node {
@@ -7790,6 +7844,28 @@ func (ec *executionContext) childFields_AccountBalanceChange(ctx context.Context
 	return nil, fmt.Errorf("no field named %q was found under type AccountBalanceChange", field.Name)
 }
 
+func (ec *executionContext) childFields_AccountBalanceChangeConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_AccountBalanceChangeConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_AccountBalanceChangeConnection_pageInfo(ctx, field)
+	case "totalCount":
+		return ec.fieldContext_AccountBalanceChangeConnection_totalCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AccountBalanceChangeConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_AccountBalanceChangeEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_AccountBalanceChangeEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_AccountBalanceChangeEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type AccountBalanceChangeEdge", field.Name)
+}
+
 func (ec *executionContext) childFields_AccountIncome(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "id":
@@ -9389,6 +9465,22 @@ func (ec *executionContext) field_Query_accountBalanceAnalysis_args(ctx context.
 		return nil, err
 	}
 	args["to"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg4
+	arg5, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg5
 	return args, nil
 }
 
@@ -11839,8 +11931,8 @@ func (ec *executionContext) _AccountBalanceAnalysis_changes(ctx context.Context,
 			return obj.Changes, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []*model.AccountBalanceChange) graphql.Marshaler {
-			return ec.marshalNAccountBalanceChange2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChangeᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountBalanceChangeConnection) graphql.Marshaler {
+			return ec.marshalNAccountBalanceChangeConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChangeConnection(ctx, selections, v)
 		},
 		true,
 		true,
@@ -11853,7 +11945,7 @@ func (ec *executionContext) fieldContext_AccountBalanceAnalysis_changes(_ contex
 		IsMethod:   false,
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_AccountBalanceChange(ctx, field)
+			return ec.childFields_AccountBalanceChangeConnection(ctx, field)
 		},
 	}
 	return fc, nil
@@ -11972,6 +12064,148 @@ func (ec *executionContext) _AccountBalanceChange_balanceYen(ctx context.Context
 }
 func (ec *executionContext) fieldContext_AccountBalanceChange_balanceYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("AccountBalanceChange", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceChangeConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChangeConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChangeConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.AccountBalanceChangeEdge) graphql.Marshaler {
+			return ec.marshalNAccountBalanceChangeEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChangeEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChangeConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountBalanceChangeConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountBalanceChangeEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AccountBalanceChangeConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChangeConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChangeConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChangeConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountBalanceChangeConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AccountBalanceChangeConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChangeConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChangeConnection_totalCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChangeConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceChangeConnection", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceChangeEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChangeEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChangeEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChangeEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("AccountBalanceChangeEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _AccountBalanceChangeEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.AccountBalanceChangeEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountBalanceChangeEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountBalanceChange) graphql.Marshaler {
+			return ec.marshalNAccountBalanceChange2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChange(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountBalanceChangeEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountBalanceChangeEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountBalanceChange(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _AccountIncome_id(ctx context.Context, field graphql.CollectedField, obj *model.AccountIncome) (ret graphql.Marshaler) {
@@ -23232,7 +23466,7 @@ func (ec *executionContext) _Query_accountBalanceAnalysis(ctx context.Context, f
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().AccountBalanceAnalysis(ctx, fc.Args["householdId"].(string), fc.Args["accountId"].(string), fc.Args["from"].(model.YearMonth), fc.Args["to"].(model.YearMonth))
+			return ec.Resolvers.Query().AccountBalanceAnalysis(ctx, fc.Args["householdId"].(string), fc.Args["accountId"].(string), fc.Args["from"].(model.YearMonth), fc.Args["to"].(model.YearMonth), fc.Args["first"].(*int), fc.Args["after"].(*string))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountBalanceAnalysis) graphql.Marshaler {
@@ -36598,6 +36832,97 @@ func (ec *executionContext) _AccountBalanceChange(ctx context.Context, sel ast.S
 	return out
 }
 
+var accountBalanceChangeConnectionImplementors = []string{"AccountBalanceChangeConnection"}
+
+func (ec *executionContext) _AccountBalanceChangeConnection(ctx context.Context, sel ast.SelectionSet, obj *model.AccountBalanceChangeConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountBalanceChangeConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountBalanceChangeConnection")
+		case "edges":
+			out.Values[i] = ec._AccountBalanceChangeConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._AccountBalanceChangeConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._AccountBalanceChangeConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var accountBalanceChangeEdgeImplementors = []string{"AccountBalanceChangeEdge"}
+
+func (ec *executionContext) _AccountBalanceChangeEdge(ctx context.Context, sel ast.SelectionSet, obj *model.AccountBalanceChangeEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, accountBalanceChangeEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AccountBalanceChangeEdge")
+		case "cursor":
+			out.Values[i] = ec._AccountBalanceChangeEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._AccountBalanceChangeEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var accountIncomeImplementors = []string{"AccountIncome", "AccountBalanceSource", "Node"}
 
 func (ec *executionContext) _AccountIncome(ctx context.Context, sel ast.SelectionSet, obj *model.AccountIncome) graphql.Marshaler {
@@ -48444,11 +48769,31 @@ func (ec *executionContext) marshalNAccountBalanceAnalysis2ᚖgithubᚗcomᚋwal
 	return ec._AccountBalanceAnalysis(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNAccountBalanceChange2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChangeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AccountBalanceChange) graphql.Marshaler {
+func (ec *executionContext) marshalNAccountBalanceChange2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChange(ctx context.Context, sel ast.SelectionSet, v *model.AccountBalanceChange) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountBalanceChange(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAccountBalanceChangeConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChangeConnection(ctx context.Context, sel ast.SelectionSet, v *model.AccountBalanceChangeConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AccountBalanceChangeConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAccountBalanceChangeEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChangeEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.AccountBalanceChangeEdge) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNAccountBalanceChange2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChange(ctx, sel, v[i])
+		return ec.marshalNAccountBalanceChangeEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChangeEdge(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -48460,14 +48805,14 @@ func (ec *executionContext) marshalNAccountBalanceChange2ᚕᚖgithubᚗcomᚋwa
 	return ret
 }
 
-func (ec *executionContext) marshalNAccountBalanceChange2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChange(ctx context.Context, sel ast.SelectionSet, v *model.AccountBalanceChange) graphql.Marshaler {
+func (ec *executionContext) marshalNAccountBalanceChangeEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceChangeEdge(ctx context.Context, sel ast.SelectionSet, v *model.AccountBalanceChangeEdge) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
-	return ec._AccountBalanceChange(ctx, sel, v)
+	return ec._AccountBalanceChangeEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNAccountBalanceSource2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountBalanceSource(ctx context.Context, sel ast.SelectionSet, v model.AccountBalanceSource) graphql.Marshaler {

@@ -18,7 +18,11 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID, accountID, from, to string) (*model.AccountBalanceAnalysis, error) {
+func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID, accountID, from, to string, first *int, after *string) (*model.AccountBalanceAnalysis, error) {
+	limit, _, err := pageDirection(first, nil)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
@@ -146,9 +150,48 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 			Description: description, ChangeYen: graphLong(change.amount), BalanceYen: graphLong(balance),
 		})
 	}
+	startIndex := 0
+	if cursorID, err := cursorID(after, cursorTypeAccountBalanceChange); err != nil {
+		return nil, err
+	} else if cursorID != nil {
+		cursorUUID, err := gofrsuuid.FromString(*cursorID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid account balance change cursor", ErrBadInput)
+		}
+		cursorIndex := slices.IndexFunc(visible, func(change *accountBalanceJournalChange) bool {
+			return change.journal.ID == cursorUUID
+		})
+		if cursorIndex < 0 {
+			return nil, ErrNotFound
+		}
+		startIndex = len(visible) - cursorIndex
+	}
+	slices.Reverse(visible)
+	slices.Reverse(result)
+	endIndex := min(startIndex+limit, len(result))
+	connection := &model.AccountBalanceChangeConnection{
+		Edges: make([]*model.AccountBalanceChangeEdge, 0, endIndex-startIndex),
+		PageInfo: &model.PageInfo{
+			HasNextPage:     endIndex < len(result),
+			HasPreviousPage: startIndex > 0,
+		},
+		TotalCount: len(result),
+	}
+	for index := startIndex; index < endIndex; index++ {
+		connection.Edges = append(connection.Edges, &model.AccountBalanceChangeEdge{
+			Cursor: encodeCursor(cursorTypeAccountBalanceChange, visible[index].journal.ID.String()),
+			Node:   result[index],
+		})
+	}
+	if len(connection.Edges) > 0 {
+		startCursor := connection.Edges[0].Cursor
+		endCursor := connection.Edges[len(connection.Edges)-1].Cursor
+		connection.PageInfo.StartCursor = &startCursor
+		connection.PageInfo.EndCursor = &endCursor
+	}
 	return &model.AccountBalanceAnalysis{
 		AccountID: accountUUID.String(), Currency: currencyJPY, From: model.YearMonth(from), To: model.YearMonth(to),
-		OpeningBalanceYen: graphLong(openingBalance), ClosingBalanceYen: graphLong(balance), Changes: result,
+		OpeningBalanceYen: graphLong(openingBalance), ClosingBalanceYen: graphLong(balance), Changes: connection,
 	}, nil
 }
 

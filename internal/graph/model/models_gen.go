@@ -247,13 +247,13 @@ type AccountBalance struct {
 }
 
 type AccountBalanceAnalysis struct {
-	AccountID         string                  `json:"accountId"`
-	Currency          string                  `json:"currency"`
-	From              YearMonth               `json:"from"`
-	To                YearMonth               `json:"to"`
-	OpeningBalanceYen Long                    `json:"openingBalanceYen"`
-	ClosingBalanceYen Long                    `json:"closingBalanceYen"`
-	Changes           []*AccountBalanceChange `json:"changes"`
+	AccountID         string                          `json:"accountId"`
+	Currency          string                          `json:"currency"`
+	From              YearMonth                       `json:"from"`
+	To                YearMonth                       `json:"to"`
+	OpeningBalanceYen Long                            `json:"openingBalanceYen"`
+	ClosingBalanceYen Long                            `json:"closingBalanceYen"`
+	Changes           *AccountBalanceChangeConnection `json:"changes"`
 }
 
 type AccountBalanceChange struct {
@@ -262,6 +262,17 @@ type AccountBalanceChange struct {
 	Description string               `json:"description"`
 	ChangeYen   Long                 `json:"changeYen"`
 	BalanceYen  Long                 `json:"balanceYen"`
+}
+
+type AccountBalanceChangeConnection struct {
+	Edges      []*AccountBalanceChangeEdge `json:"edges"`
+	PageInfo   *PageInfo                   `json:"pageInfo"`
+	TotalCount int                         `json:"totalCount"`
+}
+
+type AccountBalanceChangeEdge struct {
+	Cursor string                `json:"cursor"`
+	Node   *AccountBalanceChange `json:"node"`
 }
 
 type AccountIncome struct {

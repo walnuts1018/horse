@@ -12,15 +12,16 @@ export async function readTags(householdId: string, includeArchived = false): Pr
   const tags: Tag[] = [];
   let after: string | null = null;
   for (;;) {
-    const result = await readGraphql<TagsPage>(tagsQuery, {
+    const result: TagsPage = await readGraphql<TagsPage>(tagsQuery, {
       householdId,
       includeArchived,
       first: 100,
       after,
     });
-    tags.push(...result.tags.edges.map((edge) => edge.node));
-    const pageInfo = result.tags.pageInfo;
-    if (!pageInfo.hasNextPage || !pageInfo.endCursor || pageInfo.endCursor === after) return tags;
-    after = pageInfo.endCursor;
+    tags.push(...result.tags.edges.map((edge: TagsPage["tags"]["edges"][number]) => edge.node));
+    const pageInfo: TagsPage["tags"]["pageInfo"] = result.tags.pageInfo;
+    const endCursor: string | null | undefined = pageInfo.endCursor;
+    if (!pageInfo.hasNextPage || !endCursor || endCursor === after) return tags;
+    after = endCursor;
   }
 }

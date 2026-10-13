@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Activity, ArrowLeftRight, Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import {
   readGraphql,
@@ -222,9 +222,12 @@ export function SettingsPage({
   const [balanceHistoryTo, setBalanceHistoryTo] = useState(currentMonth);
   const [balanceHistory, setBalanceHistory] = useState<AccountBalanceAnalysis | null>(null);
   const [balanceHistoryRevision, setBalanceHistoryRevision] = useState(0);
-  const [balanceHistoryLimit, setBalanceHistoryLimit] = useState(100);
   const [balanceHistoryLoading, setBalanceHistoryLoading] = useState(false);
+  const [balanceHistoryLoadingMore, setBalanceHistoryLoadingMore] = useState(false);
   const [balanceHistoryError, setBalanceHistoryError] = useState("");
+  const [balanceHistoryMoreError, setBalanceHistoryMoreError] = useState("");
+  const balanceHistoryGeneration = useRef(0);
+  const balanceHistoryRequest = useRef(false);
   const [incomeAccountId, setIncomeAccountId] = useState("");
   const [incomeAmount, setIncomeAmount] = useState("");
   const [incomeDescription, setIncomeDescription] = useState("");
@@ -446,10 +449,14 @@ export function SettingsPage({
     }
   }, [household.accounts, balanceHistoryAccountId]);
   useEffect(() => {
+    const generation = ++balanceHistoryGeneration.current;
+    balanceHistoryRequest.current = false;
     if (!balanceHistoryAccountId) {
       setBalanceHistory(null);
       setBalanceHistoryError("");
       setBalanceHistoryLoading(false);
+      setBalanceHistoryLoadingMore(false);
+      setBalanceHistoryMoreError("");
       return;
     }
     if (
@@ -459,16 +466,17 @@ export function SettingsPage({
       monthIndex(balanceHistoryTo) - monthIndex(balanceHistoryFrom) > 120
     ) {
       setBalanceHistory(null);
-      setBalanceHistoryLimit(100);
       setBalanceHistoryError("期間は前後関係を確認し、10年以内で指定してください");
       setBalanceHistoryLoading(false);
+      setBalanceHistoryLoadingMore(false);
+      setBalanceHistoryMoreError("");
       return;
     }
-    let active = true;
     setBalanceHistory(null);
-    setBalanceHistoryLimit(100);
     setBalanceHistoryLoading(true);
+    setBalanceHistoryLoadingMore(false);
     setBalanceHistoryError("");
+    setBalanceHistoryMoreError("");
     void readGraphql<{ accountBalanceAnalysis: AccountBalanceAnalysis }>(
       accountBalanceAnalysisQuery,
       {
@@ -476,13 +484,22 @@ export function SettingsPage({
         accountId: balanceHistoryAccountId,
         from: balanceHistoryFrom,
         to: balanceHistoryTo,
+        first: 100,
       },
     )
-      .then((result) => active && setBalanceHistory(result.accountBalanceAnalysis))
-      .catch((reason) => active && setBalanceHistoryError((reason as Error).message))
-      .finally(() => active && setBalanceHistoryLoading(false));
+      .then((result) => {
+        if (balanceHistoryGeneration.current === generation)
+          setBalanceHistory(result.accountBalanceAnalysis);
+      })
+      .catch((reason) => {
+        if (balanceHistoryGeneration.current === generation)
+          setBalanceHistoryError((reason as Error).message);
+      })
+      .finally(() => {
+        if (balanceHistoryGeneration.current === generation) setBalanceHistoryLoading(false);
+      });
     return () => {
-      active = false;
+      if (balanceHistoryGeneration.current === generation) balanceHistoryGeneration.current++;
     };
   }, [
     household.id,
@@ -491,6 +508,53 @@ export function SettingsPage({
     balanceHistoryTo,
     balanceHistoryRevision,
   ]);
+  const loadMoreBalanceChanges = async () => {
+    const after = balanceHistory?.changes.pageInfo.endCursor;
+    if (
+      !balanceHistory ||
+      !balanceHistory.changes.pageInfo.hasNextPage ||
+      !after ||
+      balanceHistoryRequest.current
+    )
+      return;
+    const generation = balanceHistoryGeneration.current;
+    balanceHistoryRequest.current = true;
+    setBalanceHistoryLoadingMore(true);
+    setBalanceHistoryMoreError("");
+    try {
+      const result = await readGraphql<{ accountBalanceAnalysis: AccountBalanceAnalysis }>(
+        accountBalanceAnalysisQuery,
+        {
+          householdId: household.id,
+          accountId: balanceHistoryAccountId,
+          from: balanceHistoryFrom,
+          to: balanceHistoryTo,
+          first: 100,
+          after,
+        },
+      );
+      if (balanceHistoryGeneration.current !== generation) return;
+      setBalanceHistory((current) => {
+        if (!current || current.accountId !== result.accountBalanceAnalysis.accountId)
+          return current;
+        return {
+          ...current,
+          changes: {
+            ...result.accountBalanceAnalysis.changes,
+            edges: [...current.changes.edges, ...result.accountBalanceAnalysis.changes.edges],
+          },
+        };
+      });
+    } catch (reason) {
+      if (balanceHistoryGeneration.current === generation)
+        setBalanceHistoryMoreError((reason as Error).message);
+    } finally {
+      if (balanceHistoryGeneration.current === generation) {
+        balanceHistoryRequest.current = false;
+        setBalanceHistoryLoadingMore(false);
+      }
+    }
+  };
   useEffect(() => {
     setInvitationLink("");
     setIssuedInvitationId("");
@@ -1076,10 +1140,10 @@ export function SettingsPage({
       setPending(false);
     }
   };
-  const visibleBalanceChanges = balanceHistory?.changes.slice(-balanceHistoryLimit).reverse() ?? [];
+  const visibleBalanceChanges = balanceHistory?.changes.edges.map(({ node }) => node) ?? [];
   const maxBalanceChange =
-    balanceHistory?.changes.reduce(
-      (maximum, entry) => Math.max(maximum, Math.abs(entry.changeYen)),
+    balanceHistory?.changes.edges.reduce(
+      (maximum, { node }) => Math.max(maximum, Math.abs(node.changeYen)),
       1,
     ) ?? 1;
   return (
@@ -1311,16 +1375,18 @@ export function SettingsPage({
                     <small>残高 {yen(change.balanceYen)}</small>
                   </div>
                 ))}
-                {!balanceHistory.changes.length && <p>この期間に仕訳はありません</p>}
-                {balanceHistory.changes.length > visibleBalanceChanges.length && (
+                {!balanceHistory.changes.edges.length && <p>この期間に仕訳はありません</p>}
+                {balanceHistory.changes.pageInfo.hasNextPage && (
                   <button
                     className="text-button"
                     type="button"
-                    onClick={() => setBalanceHistoryLimit((limit) => limit + 100)}
+                    disabled={balanceHistoryLoadingMore}
+                    onClick={() => void loadMoreBalanceChanges()}
                   >
-                    過去の仕訳を表示
+                    {balanceHistoryLoadingMore ? "読み込み中" : "過去の仕訳を表示"}
                   </button>
                 )}
+                {balanceHistoryMoreError && <InlineError message={balanceHistoryMoreError} />}
               </div>
             </>
           ) : null}
