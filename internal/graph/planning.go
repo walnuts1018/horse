@@ -806,11 +806,11 @@ func (r *queryResolver) recurringExpenses(ctx context.Context, householdID strin
 	return result, nil
 }
 
-func (r *queryResolver) recurringExpenseConnection(ctx context.Context, householdID string, includeArchived bool, after *string, first int) (*model.RecurringExpenseConnection, error) {
+func (r *queryResolver) recurringExpenseConnection(ctx context.Context, householdID string, includeArchived bool, after, before *string, first, last *int) (*model.RecurringExpenseConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize, _, err := pageDirection(after, nil, &first, nil)
+	pageSize, backward, err := pageDirection(after, before, first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -828,9 +828,17 @@ func (r *queryResolver) recurringExpenseConnection(ctx context.Context, househol
 	if err != nil {
 		return nil, err
 	}
-	if afterID, err := cursorID(after, "RecurringExpense"); err != nil {
-		return nil, err
-	} else if afterID != nil {
+	for _, boundary := range []struct {
+		cursor   *string
+		isBefore bool
+	}{{cursor: after}, {cursor: before, isBefore: true}} {
+		afterID, err := cursorID(boundary.cursor, "RecurringExpense")
+		if err != nil {
+			return nil, err
+		}
+		if afterID == nil {
+			continue
+		}
 		cursorID, err := gofrsuuid.FromString(*afterID)
 		if err != nil {
 			return nil, fmt.Errorf("parse recurring expense cursor: %w", err)
@@ -845,20 +853,24 @@ func (r *queryResolver) recurringExpenseConnection(ctx context.Context, househol
 		if err != nil {
 			return nil, err
 		}
-		filters = append(filters, psql.Or(
-			models.RecurringExpenses.Columns.NextDueOn.GT(psql.Arg(cursor.NextDueOn)),
-			psql.And(
-				models.RecurringExpenses.Columns.NextDueOn.EQ(psql.Arg(cursor.NextDueOn)),
-				models.RecurringExpenses.Columns.ID.GT(psql.Arg(cursor.ID)),
-			),
-		))
+		filters = append(filters, recurringExpenseCursorFilter(cursor, boundary.isBefore))
 	}
-	rows, err := models.RecurringExpenses.Query(
-		sm.Where(psql.And(filters...)),
-		sm.OrderBy(models.RecurringExpenses.Columns.NextDueOn),
-		sm.OrderBy(models.RecurringExpenses.Columns.ID),
-		sm.Limit(pageSize+1),
-	).All(ctx, executor)
+	var rows []*models.RecurringExpense
+	if backward {
+		rows, err = models.RecurringExpenses.Query(
+			sm.Where(psql.And(filters...)),
+			sm.OrderBy(models.RecurringExpenses.Columns.NextDueOn).Desc(),
+			sm.OrderBy(models.RecurringExpenses.Columns.ID).Desc(),
+			sm.Limit(pageSize+1),
+		).All(ctx, executor)
+	} else {
+		rows, err = models.RecurringExpenses.Query(
+			sm.Where(psql.And(filters...)),
+			sm.OrderBy(models.RecurringExpenses.Columns.NextDueOn),
+			sm.OrderBy(models.RecurringExpenses.Columns.ID),
+			sm.Limit(pageSize+1),
+		).All(ctx, executor)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -866,10 +878,13 @@ func (r *queryResolver) recurringExpenseConnection(ctx context.Context, househol
 	if hasNextPage {
 		rows = rows[:pageSize]
 	}
+	if backward {
+		slices.Reverse(rows)
+	}
 	connection := &model.RecurringExpenseConnection{
 		Edges:      make([]*model.RecurringExpenseEdge, 0, len(rows)),
 		TotalCount: int(count),
-		PageInfo:   &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: after != nil && *after != ""},
+		PageInfo:   &model.PageInfo{HasNextPage: backward && before != nil && *before != "" || !backward && hasNextPage, HasPreviousPage: backward && hasNextPage || !backward && after != nil && *after != ""},
 	}
 	for _, row := range rows {
 		connection.Edges = append(connection.Edges, &model.RecurringExpenseEdge{
@@ -882,4 +897,23 @@ func (r *queryResolver) recurringExpenseConnection(ctx context.Context, househol
 		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &start, &end
 	}
 	return connection, nil
+}
+
+func recurringExpenseCursorFilter(cursor *models.RecurringExpense, isBefore bool) bob.Expression {
+	if isBefore {
+		return psql.Or(
+			models.RecurringExpenses.Columns.NextDueOn.LT(psql.Arg(cursor.NextDueOn)),
+			psql.And(
+				models.RecurringExpenses.Columns.NextDueOn.EQ(psql.Arg(cursor.NextDueOn)),
+				models.RecurringExpenses.Columns.ID.LT(psql.Arg(cursor.ID)),
+			),
+		)
+	}
+	return psql.Or(
+		models.RecurringExpenses.Columns.NextDueOn.GT(psql.Arg(cursor.NextDueOn)),
+		psql.And(
+			models.RecurringExpenses.Columns.NextDueOn.EQ(psql.Arg(cursor.NextDueOn)),
+			models.RecurringExpenses.Columns.ID.GT(psql.Arg(cursor.ID)),
+		),
+	)
 }

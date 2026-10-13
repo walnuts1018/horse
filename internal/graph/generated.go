@@ -682,24 +682,24 @@ type ComplexityRoot struct {
 	Query struct {
 		AccountBalanceAnalysis  func(childComplexity int, householdID string, accountID string, from string, to string) int
 		AccountBalances         func(childComplexity int, householdID string) int
-		AccountIncomes          func(childComplexity int, householdID string, after *string, first *int) int
-		AccountMovements        func(childComplexity int, householdID string, after *string, first *int) int
-		AllocationRules         func(childComplexity int, householdID string, after *string, first *int) int
+		AccountIncomes          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
+		AccountMovements        func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
+		AllocationRules         func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		Budgets                 func(childComplexity int, householdID string, period string) int
 		Household               func(childComplexity int, id string) int
-		HouseholdInvitations    func(childComplexity int, householdID string, after *string, first *int) int
+		HouseholdInvitations    func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		Households              func(childComplexity int) int
 		Ledger                  func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		LoanBalances            func(childComplexity int, householdID string, after *string, first *int) int
+		LoanBalances            func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		MonthlyCategorySpending func(childComplexity int, householdID string, from string, to string) int
 		MonthlyMemberSpending   func(childComplexity int, householdID string, from string, to string) int
 		Node                    func(childComplexity int, id string) int
 		Nodes                   func(childComplexity int, ids []string) int
-		ProductCatalog          func(childComplexity int, householdID string, after *string, first *int) int
+		ProductCatalog          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		ProductSuggestions      func(childComplexity int, householdID string, query string, merchant *string, first *int) int
 		PurchaseCorrections     func(childComplexity int, purchaseID string) int
 		Purchases               func(childComplexity int, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) int
-		RecurringExpenses       func(childComplexity int, householdID string, includeArchived *bool, after *string, first *int) int
+		RecurringExpenses       func(childComplexity int, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) int
 		Settlement              func(childComplexity int, householdID string, period string) int
 		Tags                    func(childComplexity int, householdID string, includeArchived *bool) int
 		UnmatchedObservations   func(childComplexity int, householdID string, from *string, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) int
@@ -1124,22 +1124,22 @@ type QueryResolver interface {
 	Nodes(ctx context.Context, ids []string) ([]model.Node, error)
 	AccountBalances(ctx context.Context, householdID string) ([]*model.AccountBalance, error)
 	AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from string, to string) (*model.AccountBalanceAnalysis, error)
-	AccountIncomes(ctx context.Context, householdID string, after *string, first *int) (*model.AccountIncomeConnection, error)
-	AccountMovements(ctx context.Context, householdID string, after *string, first *int) (*model.AccountMovementConnection, error)
-	AllocationRules(ctx context.Context, householdID string, after *string, first *int) (*model.AllocationRuleConnection, error)
+	AccountIncomes(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AccountIncomeConnection, error)
+	AccountMovements(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AccountMovementConnection, error)
+	AllocationRules(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AllocationRuleConnection, error)
 	Budgets(ctx context.Context, householdID string, period string) ([]*model.Budget, error)
 	Households(ctx context.Context) ([]*model.Household, error)
 	Household(ctx context.Context, id string) (*model.Household, error)
-	HouseholdInvitations(ctx context.Context, householdID string, after *string, first *int) (*model.HouseholdInvitationConnection, error)
+	HouseholdInvitations(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.HouseholdInvitationConnection, error)
 	Ledger(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.LedgerConnection, error)
-	LoanBalances(ctx context.Context, householdID string, after *string, first *int) (*model.LoanBalanceConnection, error)
+	LoanBalances(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.LoanBalanceConnection, error)
 	MonthlyCategorySpending(ctx context.Context, householdID string, from string, to string) ([]*model.MonthlyCategorySpending, error)
 	MonthlyMemberSpending(ctx context.Context, householdID string, from string, to string) (*model.MonthlyMemberSpendingReport, error)
-	ProductCatalog(ctx context.Context, householdID string, after *string, first *int) (*model.ProductConceptConnection, error)
+	ProductCatalog(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.ProductConceptConnection, error)
 	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first *int) ([]*model.ProductSuggestion, error)
 	Purchases(ctx context.Context, householdID string, from *string, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
 	PurchaseCorrections(ctx context.Context, purchaseID string) ([]*model.PurchaseCorrection, error)
-	RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool, after *string, first *int) (*model.RecurringExpenseConnection, error)
+	RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
 	Settlement(ctx context.Context, householdID string, period string) (*model.Settlement, error)
 	Tags(ctx context.Context, householdID string, includeArchived *bool) ([]*model.Tag, error)
 	UnmatchedObservations(ctx context.Context, householdID string, from *string, to *string, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) (*model.UnmatchedObservationConnection, error)
@@ -3555,7 +3555,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.AccountIncomes(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.AccountIncomes(childComplexity, args["householdId"].(string), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.accountMovements":
 		if e.ComplexityRoot.Query.AccountMovements == nil {
 			break
@@ -3566,7 +3566,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.AccountMovements(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.AccountMovements(childComplexity, args["householdId"].(string), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.allocationRules":
 		if e.ComplexityRoot.Query.AllocationRules == nil {
 			break
@@ -3577,7 +3577,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.AllocationRules(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.AllocationRules(childComplexity, args["householdId"].(string), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.budgets":
 		if e.ComplexityRoot.Query.Budgets == nil {
 			break
@@ -3610,7 +3610,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.HouseholdInvitations(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.HouseholdInvitations(childComplexity, args["householdId"].(string), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.households":
 		if e.ComplexityRoot.Query.Households == nil {
 			break
@@ -3639,7 +3639,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.LoanBalances(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.LoanBalances(childComplexity, args["householdId"].(string), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.monthlyCategorySpending":
 		if e.ComplexityRoot.Query.MonthlyCategorySpending == nil {
 			break
@@ -3694,7 +3694,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.ProductCatalog(childComplexity, args["householdId"].(string), args["after"].(*string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.ProductCatalog(childComplexity, args["householdId"].(string), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.productSuggestions":
 		if e.ComplexityRoot.Query.ProductSuggestions == nil {
 			break
@@ -3738,7 +3738,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.RecurringExpenses(childComplexity, args["householdId"].(string), args["includeArchived"].(*bool), args["after"].(*string), args["first"].(*int)), true
+		return e.ComplexityRoot.Query.RecurringExpenses(childComplexity, args["householdId"].(string), args["includeArchived"].(*bool), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.settlement":
 		if e.ComplexityRoot.Query.Settlement == nil {
 			break
@@ -4757,7 +4757,7 @@ type AccountIncomeConnection {
 }
 
 extend type Query {
-  accountIncomes(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AccountIncomeConnection!
+  accountIncomes(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AccountIncomeConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/account_movement.graphql", Input: `type AccountMovement implements Node {
@@ -4790,7 +4790,7 @@ enum AccountMovementKind {
 }
 
 extend type Query {
-  accountMovements(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AccountMovementConnection!
+  accountMovements(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AccountMovementConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/allocation.graphql", Input: `type Allocation {
@@ -4836,7 +4836,7 @@ type AllocationRuleConnection {
 }
 
 extend type Query {
-  allocationRules(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AllocationRuleConnection!
+  allocationRules(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AllocationRuleConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/archive_budget_mutation.graphql", Input: `extend type Mutation {
@@ -5289,7 +5289,7 @@ type HouseholdInvitationConnection {
 }
 
 extend type Query {
-  householdInvitations(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): HouseholdInvitationConnection!
+  householdInvitations(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): HouseholdInvitationConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/ledger_entry.graphql", Input: `interface LedgerEntry implements Node {
@@ -5389,7 +5389,7 @@ type LoanBalanceConnection {
 }
 
 extend type Query {
-  loanBalances(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): LoanBalanceConnection!
+  loanBalances(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): LoanBalanceConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/member.graphql", Input: `type Member implements Node {
@@ -5510,7 +5510,7 @@ type ProductConceptConnection {
 }
 
 extend type Query {
-  productCatalog(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): ProductConceptConnection!
+  productCatalog(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): ProductConceptConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/product_suggestion.graphql", Input: `type ProductSuggestion {
@@ -5807,7 +5807,7 @@ type RecordTransferUserError implements MutationError {
 }
 
 extend type Query {
-  recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false, after: String, first: Int = 50): RecurringExpenseConnection!
+  recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false, after: String, before: String, first: Int, last: Int): RecurringExpenseConnection!
 }
 
 type RecurringExpenseEdge {
@@ -8387,14 +8387,30 @@ func (ec *executionContext) field_Query_accountIncomes_args(ctx context.Context,
 		return nil, err
 	}
 	args["after"] = arg1
-	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg2
+	args["first"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "last",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["last"] = arg4
 	return args, nil
 }
 
@@ -8460,14 +8476,30 @@ func (ec *executionContext) field_Query_accountMovements_args(ctx context.Contex
 		return nil, err
 	}
 	args["after"] = arg1
-	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg2
+	args["first"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "last",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["last"] = arg4
 	return args, nil
 }
 
@@ -8533,14 +8565,30 @@ func (ec *executionContext) field_Query_allocationRules_args(ctx context.Context
 		return nil, err
 	}
 	args["after"] = arg1
-	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg2
+	args["first"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "last",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["last"] = arg4
 	return args, nil
 }
 
@@ -8671,14 +8719,30 @@ func (ec *executionContext) field_Query_householdInvitations_args(ctx context.Co
 		return nil, err
 	}
 	args["after"] = arg1
-	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg2
+	args["first"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "last",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["last"] = arg4
 	return args, nil
 }
 
@@ -8890,14 +8954,30 @@ func (ec *executionContext) field_Query_loanBalances_args(ctx context.Context, r
 		return nil, err
 	}
 	args["after"] = arg1
-	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg2
+	args["first"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "last",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["last"] = arg4
 	return args, nil
 }
 
@@ -9137,14 +9217,30 @@ func (ec *executionContext) field_Query_productCatalog_args(ctx context.Context,
 		return nil, err
 	}
 	args["after"] = arg1
-	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg2
+	args["first"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "last",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["last"] = arg4
 	return args, nil
 }
 
@@ -9477,14 +9573,30 @@ func (ec *executionContext) field_Query_recurringExpenses_args(ctx context.Conte
 		return nil, err
 	}
 	args["after"] = arg2
-	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg3
+	args["first"] = arg4
+	arg5, err := graphql.ProcessArgField(ctx, rawArgs, "last",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["last"] = arg5
 	return args, nil
 }
 
@@ -19348,7 +19460,7 @@ func (ec *executionContext) _Query_accountIncomes(ctx context.Context, field gra
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().AccountIncomes(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().AccountIncomes(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountIncomeConnection) graphql.Marshaler {
@@ -19392,7 +19504,7 @@ func (ec *executionContext) _Query_accountMovements(ctx context.Context, field g
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().AccountMovements(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().AccountMovements(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountMovementConnection) graphql.Marshaler {
@@ -19436,7 +19548,7 @@ func (ec *executionContext) _Query_allocationRules(ctx context.Context, field gr
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().AllocationRules(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().AllocationRules(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.AllocationRuleConnection) graphql.Marshaler {
@@ -19600,7 +19712,7 @@ func (ec *executionContext) _Query_householdInvitations(ctx context.Context, fie
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().HouseholdInvitations(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().HouseholdInvitations(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.HouseholdInvitationConnection) graphql.Marshaler {
@@ -19688,7 +19800,7 @@ func (ec *executionContext) _Query_loanBalances(ctx context.Context, field graph
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().LoanBalances(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().LoanBalances(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.LoanBalanceConnection) graphql.Marshaler {
@@ -19820,7 +19932,7 @@ func (ec *executionContext) _Query_productCatalog(ctx context.Context, field gra
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().ProductCatalog(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().ProductCatalog(ctx, fc.Args["householdId"].(string), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.ProductConceptConnection) graphql.Marshaler {
@@ -19996,7 +20108,7 @@ func (ec *executionContext) _Query_recurringExpenses(ctx context.Context, field 
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().RecurringExpenses(ctx, fc.Args["householdId"].(string), fc.Args["includeArchived"].(*bool), fc.Args["after"].(*string), fc.Args["first"].(*int))
+			return ec.Resolvers.Query().RecurringExpenses(ctx, fc.Args["householdId"].(string), fc.Args["includeArchived"].(*bool), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.RecurringExpenseConnection) graphql.Marshaler {

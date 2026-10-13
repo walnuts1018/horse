@@ -202,19 +202,23 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := 1
-	expenses, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil, nil, &first)
+	expenses, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil, nil, nil, &first, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(expenses.Edges) != 1 || expenses.Edges[0].Node.ID != recurring.ID || expenses.Edges[0].Node.NextDueOn != "2026-05-01" || expenses.TotalCount != 2 || !expenses.PageInfo.HasNextPage || expenses.PageInfo.EndCursor == nil {
 		t.Fatalf("recurring expense metadata did not round-trip: %#v", expenses)
 	}
-	secondPage, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil, expenses.PageInfo.EndCursor, &first)
+	secondPage, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil, expenses.PageInfo.EndCursor, nil, &first, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(secondPage.Edges) != 1 || secondPage.Edges[0].Node.ID != nextRecurring.ID || secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage {
 		t.Fatalf("recurring expense pagination did not advance by cursor: %#v", secondPage)
+	}
+	previousPage, err := (&Resolver{DB: db}).Query().RecurringExpenses(ctx, household.ID, nil, nil, secondPage.PageInfo.StartCursor, nil, &first)
+	if err != nil || len(previousPage.Edges) != 1 || previousPage.Edges[0].Node.ID != recurring.ID || !previousPage.PageInfo.HasNextPage || previousPage.PageInfo.HasPreviousPage {
+		t.Fatalf("recurring expense backward pagination failed: connection=%#v error=%v", previousPage, err)
 	}
 	bank, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Bank", Kind: model.AccountKindBank})
 	if err != nil {
@@ -250,13 +254,17 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	}
 	query := (&Resolver{DB: db}).Query()
 	pageSize := 1
-	firstPage, err := query.AccountMovements(ctx, household.ID, nil, &pageSize)
+	firstPage, err := query.AccountMovements(ctx, household.ID, nil, nil, &pageSize, nil)
 	if err != nil || len(firstPage.Edges) != 1 || firstPage.Edges[0].Node.ID != movement.ID || !firstPage.PageInfo.HasNextPage || firstPage.TotalCount != 2 || firstPage.PageInfo.EndCursor == nil {
 		t.Fatalf("first account movement page failed: connection=%#v error=%v", firstPage, err)
 	}
-	nextMovementPage, err := query.AccountMovements(ctx, household.ID, firstPage.PageInfo.EndCursor, &pageSize)
+	nextMovementPage, err := query.AccountMovements(ctx, household.ID, firstPage.PageInfo.EndCursor, nil, &pageSize, nil)
 	if err != nil || len(nextMovementPage.Edges) != 1 || nextMovementPage.Edges[0].Node.ID == movement.ID || nextMovementPage.PageInfo.HasNextPage || !nextMovementPage.PageInfo.HasPreviousPage {
 		t.Fatalf("next account movement page failed: connection=%#v error=%v", nextMovementPage, err)
+	}
+	previousMovementPage, err := query.AccountMovements(ctx, household.ID, nil, nextMovementPage.PageInfo.StartCursor, nil, &pageSize)
+	if err != nil || len(previousMovementPage.Edges) != 1 || previousMovementPage.Edges[0].Node.ID != movement.ID || !previousMovementPage.PageInfo.HasNextPage || previousMovementPage.PageInfo.HasPreviousPage {
+		t.Fatalf("account movement backward pagination failed: connection=%#v error=%v", previousMovementPage, err)
 	}
 	storedMovement, err := models.AccountMovements.Query(sm.Where(models.AccountMovements.Columns.ID.EQ(psql.Arg(generatedUUID(movement.ID))))).One(ctx, bobpgx.NewPool(db))
 	if err != nil {

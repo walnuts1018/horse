@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -277,21 +278,17 @@ func loadProductAlias(ctx context.Context, db productDB, aliasID string) (*model
 	return &model.ProductAlias{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), VariantID: row.VariantID.String(), MerchantKey: row.MerchantKey, Alias: row.AliasText, NormalizedAlias: row.NormalizedAlias, Revision: int(row.Revision)}, nil
 }
 
-func (r *queryResolver) productCatalog(ctx context.Context, householdID string, after *string, first *int) (*model.ProductConceptConnection, error) {
+func (r *queryResolver) productCatalog(ctx context.Context, householdID string, after, before *string, first, last *int) (*model.ProductConceptConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize := 50
-	if first != nil {
-		pageSize = *first
-	}
-	if pageSize < 1 || pageSize > 100 {
-		return nil, fmt.Errorf("%w: page size must be between 1 and 100", ErrBadInput)
+	pageSize, backward, err := pageDirection(after, before, first, last)
+	if err != nil {
+		return nil, err
 	}
 	householdUUID, _ := gofrsuuid.FromString(householdID)
 	filters := []bob.Expression{models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID))}
 	db := bobpgx.NewPool(r.DB)
-	var previousPage bool
 	if after != nil && *after != "" {
 		value, err := decodeCursor(*after, "ProductConcept")
 		if err != nil {
@@ -309,24 +306,57 @@ func (r *queryResolver) productCatalog(ctx context.Context, householdID string, 
 			models.ProductConcepts.Columns.NormalizedName.GT(psql.Arg(name)),
 			psql.And(models.ProductConcepts.Columns.NormalizedName.EQ(psql.Arg(name)), models.ProductConcepts.Columns.ID.GT(psql.Arg(cursorUUID))),
 		))
-		previousPage = true
+	}
+	if before != nil && *before != "" {
+		value, err := decodeCursor(*before, "ProductConcept")
+		if err != nil {
+			return nil, err
+		}
+		name, id, ok := strings.Cut(value, "\x00")
+		if !ok || name == "" || id == "" {
+			return nil, fmt.Errorf("%w: invalid ProductConcept cursor", ErrBadInput)
+		}
+		cursorUUID, err := gofrsuuid.FromString(id)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid ProductConcept cursor", ErrBadInput)
+		}
+		filters = append(filters, psql.Or(
+			models.ProductConcepts.Columns.NormalizedName.LT(psql.Arg(name)),
+			psql.And(models.ProductConcepts.Columns.NormalizedName.EQ(psql.Arg(name)), models.ProductConcepts.Columns.ID.LT(psql.Arg(cursorUUID))),
+		))
+	}
+	nameOrder := sm.OrderBy(models.ProductConcepts.Columns.NormalizedName)
+	idOrder := sm.OrderBy(models.ProductConcepts.Columns.ID)
+	if backward {
+		nameOrder = nameOrder.Desc()
+		idOrder = idOrder.Desc()
 	}
 	rows, err := models.ProductConcepts.Query(
 		sm.Where(psql.And(filters...)),
-		sm.OrderBy(models.ProductConcepts.Columns.NormalizedName),
-		sm.OrderBy(models.ProductConcepts.Columns.ID),
+		nameOrder,
+		idOrder,
 		sm.Limit(pageSize+1),
 	).All(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	hasNextPage := len(rows) > pageSize
-	if hasNextPage {
+	hasExtra := len(rows) > pageSize
+	if hasExtra {
 		rows = rows[:pageSize]
+	}
+	if backward {
+		slices.Reverse(rows)
+	}
+	pageInfo := &model.PageInfo{HasPreviousPage: backward && hasExtra, HasNextPage: !backward && hasExtra}
+	if !backward && after != nil && *after != "" {
+		pageInfo.HasPreviousPage = true
+	}
+	if backward && before != nil && *before != "" {
+		pageInfo.HasNextPage = true
 	}
 	connection := &model.ProductConceptConnection{
 		Edges:    make([]*model.ProductConceptEdge, 0, len(rows)),
-		PageInfo: &model.PageInfo{HasPreviousPage: previousPage, HasNextPage: hasNextPage},
+		PageInfo: pageInfo,
 	}
 	for _, conceptRow := range rows {
 		concept, err := loadProductConcept(ctx, db, conceptRow.ID.String())

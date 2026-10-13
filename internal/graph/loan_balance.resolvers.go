@@ -22,12 +22,8 @@ func (r *loanBalanceResolver) BorrowerMemberID(ctx context.Context, obj *model.L
 }
 
 // LoanBalances is the resolver for the loanBalances field.
-func (r *queryResolver) LoanBalances(ctx context.Context, householdID string, after *string, first *int) (*model.LoanBalanceConnection, error) {
-	pageSize := 50
-	if first != nil {
-		pageSize = *first
-	}
-	return r.loanBalances(ctx, householdID, after, pageSize)
+func (r *queryResolver) LoanBalances(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.LoanBalanceConnection, error) {
+	return r.loanBalances(ctx, householdID, after, before, first, last)
 }
 
 // LoanBalance returns LoanBalanceResolver implementation.

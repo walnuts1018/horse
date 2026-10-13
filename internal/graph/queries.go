@@ -82,11 +82,11 @@ func (r *queryResolver) household(ctx context.Context, id string) (*model.Househ
 	return household, err
 }
 
-func (r *queryResolver) allocationRules(ctx context.Context, householdID string, after *string, first int) (*model.AllocationRuleConnection, error) {
+func (r *queryResolver) allocationRules(ctx context.Context, householdID string, after, before *string, first, last *int) (*model.AllocationRuleConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize, _, err := pageDirection(after, nil, &first, nil)
+	pageSize, backward, err := pageDirection(after, before, first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -100,9 +100,17 @@ func (r *queryResolver) allocationRules(ctx context.Context, householdID string,
 	if err != nil {
 		return nil, err
 	}
-	if id, err := cursorID(after, "AllocationRule"); err != nil {
-		return nil, err
-	} else if id != nil {
+	for _, boundary := range []struct {
+		cursor   *string
+		isBefore bool
+	}{{cursor: after}, {cursor: before, isBefore: true}} {
+		id, err := cursorID(boundary.cursor, "AllocationRule")
+		if err != nil {
+			return nil, err
+		}
+		if id == nil {
+			continue
+		}
 		parsedCursorID, err := gofrsuuid.FromString(*id)
 		if err != nil {
 			return nil, fmt.Errorf("parse allocation rule cursor: %w", err)
@@ -117,36 +125,26 @@ func (r *queryResolver) allocationRules(ctx context.Context, householdID string,
 		if err != nil {
 			return nil, err
 		}
-		if cursor.CategoryID.Valid {
-			filters = append(filters, psql.Or(
-				models.AllocationRules.Columns.CategoryID.GT(psql.Arg(cursor.CategoryID.V)),
-				psql.And(models.AllocationRules.Columns.CategoryID.EQ(psql.Arg(cursor.CategoryID.V)), models.AllocationRules.Columns.ID.GT(psql.Arg(cursor.ID))),
-				models.AllocationRules.Columns.CategoryID.IsNull(),
-			))
-		} else if cursor.MerchantKey.Valid {
-			filters = append(filters, psql.And(
-				models.AllocationRules.Columns.CategoryID.IsNull(),
-				psql.Or(
-					models.AllocationRules.Columns.MerchantKey.GT(psql.Arg(cursor.MerchantKey.V)),
-					psql.And(models.AllocationRules.Columns.MerchantKey.EQ(psql.Arg(cursor.MerchantKey.V)), models.AllocationRules.Columns.ID.GT(psql.Arg(cursor.ID))),
-					models.AllocationRules.Columns.MerchantKey.IsNull(),
-				),
-			))
-		} else {
-			filters = append(filters, psql.And(
-				models.AllocationRules.Columns.CategoryID.IsNull(),
-				models.AllocationRules.Columns.MerchantKey.IsNull(),
-				models.AllocationRules.Columns.ID.GT(psql.Arg(cursor.ID)),
-			))
-		}
+		filters = append(filters, allocationRuleCursorFilter(cursor, boundary.isBefore))
 	}
-	rules, err := models.AllocationRules.Query(
-		sm.Where(psql.And(filters...)),
-		sm.OrderBy(models.AllocationRules.Columns.CategoryID).NullsLast(),
-		sm.OrderBy(models.AllocationRules.Columns.MerchantKey).NullsLast(),
-		sm.OrderBy(models.AllocationRules.Columns.ID),
-		sm.Limit(pageSize+1),
-	).All(ctx, executor)
+	var rules []*models.AllocationRule
+	if backward {
+		rules, err = models.AllocationRules.Query(
+			sm.Where(psql.And(filters...)),
+			sm.OrderBy(models.AllocationRules.Columns.CategoryID).Desc().NullsFirst(),
+			sm.OrderBy(models.AllocationRules.Columns.MerchantKey).Desc().NullsFirst(),
+			sm.OrderBy(models.AllocationRules.Columns.ID).Desc(),
+			sm.Limit(pageSize+1),
+		).All(ctx, executor)
+	} else {
+		rules, err = models.AllocationRules.Query(
+			sm.Where(psql.And(filters...)),
+			sm.OrderBy(models.AllocationRules.Columns.CategoryID).NullsLast(),
+			sm.OrderBy(models.AllocationRules.Columns.MerchantKey).NullsLast(),
+			sm.OrderBy(models.AllocationRules.Columns.ID),
+			sm.Limit(pageSize+1),
+		).All(ctx, executor)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +152,10 @@ func (r *queryResolver) allocationRules(ctx context.Context, householdID string,
 	if hasNextPage {
 		rules = rules[:pageSize]
 	}
-	connection := &model.AllocationRuleConnection{Edges: make([]*model.AllocationRuleEdge, 0, len(rules)), TotalCount: int(count), PageInfo: &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: after != nil && *after != ""}}
+	if backward {
+		slices.Reverse(rules)
+	}
+	connection := &model.AllocationRuleConnection{Edges: make([]*model.AllocationRuleEdge, 0, len(rules)), TotalCount: int(count), PageInfo: &model.PageInfo{HasNextPage: backward && before != nil && *before != "" || !backward && hasNextPage, HasPreviousPage: backward && hasNextPage || !backward && after != nil && *after != ""}}
 	for _, rule := range rules {
 		loaded, err := loadAllocationRule(ctx, r.DB, rule.ID.String())
 		if err != nil {
@@ -167,6 +168,54 @@ func (r *queryResolver) allocationRules(ctx context.Context, householdID string,
 		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &start, &end
 	}
 	return connection, nil
+}
+
+func allocationRuleCursorFilter(cursor *models.AllocationRule, isBefore bool) bob.Expression {
+	if cursor.CategoryID.Valid {
+		if isBefore {
+			return psql.Or(
+				models.AllocationRules.Columns.CategoryID.LT(psql.Arg(cursor.CategoryID.V)),
+				psql.And(models.AllocationRules.Columns.CategoryID.EQ(psql.Arg(cursor.CategoryID.V)), models.AllocationRules.Columns.ID.LT(psql.Arg(cursor.ID))),
+			)
+		}
+		return psql.Or(
+			models.AllocationRules.Columns.CategoryID.GT(psql.Arg(cursor.CategoryID.V)),
+			psql.And(models.AllocationRules.Columns.CategoryID.EQ(psql.Arg(cursor.CategoryID.V)), models.AllocationRules.Columns.ID.GT(psql.Arg(cursor.ID))),
+			models.AllocationRules.Columns.CategoryID.IsNull(),
+		)
+	}
+	if cursor.MerchantKey.Valid {
+		if isBefore {
+			return psql.And(
+				models.AllocationRules.Columns.CategoryID.IsNull(),
+				models.AllocationRules.Columns.MerchantKey.IsNotNull(),
+				psql.Or(
+					models.AllocationRules.Columns.MerchantKey.LT(psql.Arg(cursor.MerchantKey.V)),
+					psql.And(models.AllocationRules.Columns.MerchantKey.EQ(psql.Arg(cursor.MerchantKey.V)), models.AllocationRules.Columns.ID.LT(psql.Arg(cursor.ID))),
+				),
+			)
+		}
+		return psql.And(
+			models.AllocationRules.Columns.CategoryID.IsNull(),
+			psql.Or(
+				models.AllocationRules.Columns.MerchantKey.GT(psql.Arg(cursor.MerchantKey.V)),
+				psql.And(models.AllocationRules.Columns.MerchantKey.EQ(psql.Arg(cursor.MerchantKey.V)), models.AllocationRules.Columns.ID.GT(psql.Arg(cursor.ID))),
+				models.AllocationRules.Columns.MerchantKey.IsNull(),
+			),
+		)
+	}
+	if isBefore {
+		return psql.And(
+			models.AllocationRules.Columns.CategoryID.IsNull(),
+			models.AllocationRules.Columns.MerchantKey.IsNull(),
+			models.AllocationRules.Columns.ID.LT(psql.Arg(cursor.ID)),
+		)
+	}
+	return psql.And(
+		models.AllocationRules.Columns.CategoryID.IsNull(),
+		models.AllocationRules.Columns.MerchantKey.IsNull(),
+		models.AllocationRules.Columns.ID.GT(psql.Arg(cursor.ID)),
+	)
 }
 
 func loadAllocationRule(ctx context.Context, db *pgxpool.Pool, ruleID string) (*model.AllocationRule, error) {
@@ -527,11 +576,11 @@ func (r *queryResolver) purchaseCorrections(ctx context.Context, purchaseID stri
 	return loaded.Corrections, nil
 }
 
-func (r *queryResolver) loanBalances(ctx context.Context, householdID string, after *string, first int) (*model.LoanBalanceConnection, error) {
+func (r *queryResolver) loanBalances(ctx context.Context, householdID string, after, before *string, first, last *int) (*model.LoanBalanceConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize, _, err := pageDirection(after, nil, &first, nil)
+	pageSize, backward, err := pageDirection(after, before, first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -576,6 +625,7 @@ func (r *queryResolver) loanBalances(ctx context.Context, householdID string, af
 		return cmp.Compare(a.ID.String(), b.ID.String())
 	})
 	loanCount := len(loans)
+	start, end := 0, len(loans)
 	if id, err := cursorID(after, "LoanBalance"); err != nil {
 		return nil, err
 	} else if id != nil {
@@ -583,14 +633,29 @@ func (r *queryResolver) loanBalances(ctx context.Context, householdID string, af
 		if cursorIndex < 0 {
 			return nil, ErrNotFound
 		}
-		loans = loans[cursorIndex+1:]
+		start = cursorIndex + 1
 	}
-	hasNextPage := len(loans) > pageSize
-	if hasNextPage {
-		loans = loans[:pageSize]
+	if id, err := cursorID(before, "LoanBalance"); err != nil {
+		return nil, err
+	} else if id != nil {
+		cursorIndex := slices.IndexFunc(loans, func(loan *models.Transfer) bool { return loan.ID.String() == *id })
+		if cursorIndex < 0 {
+			return nil, ErrNotFound
+		}
+		end = cursorIndex
 	}
-	connection := &model.LoanBalanceConnection{Edges: make([]*model.LoanBalanceEdge, 0, len(loans)), TotalCount: loanCount, PageInfo: &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: after != nil && *after != ""}}
-	for _, loan := range loans {
+	if start > end {
+		return nil, fmt.Errorf("%w: cursor range is empty", ErrBadInput)
+	}
+	pageStart, pageEnd := start, end
+	if backward {
+		pageStart = max(start, end-pageSize)
+	} else {
+		pageEnd = min(end, start+pageSize)
+	}
+	pageLoans := loans[pageStart:pageEnd]
+	connection := &model.LoanBalanceConnection{Edges: make([]*model.LoanBalanceEdge, 0, len(pageLoans)), TotalCount: loanCount, PageInfo: &model.PageInfo{HasNextPage: pageEnd < loanCount, HasPreviousPage: pageStart > 0}}
+	for _, loan := range pageLoans {
 		ledger := ledgerByID[loan.LedgerEntryID]
 		if ledger == nil {
 			return nil, fmt.Errorf("loan transfer %s has no ledger entry", loan.ID)
@@ -602,9 +667,9 @@ func (r *queryResolver) loanBalances(ctx context.Context, householdID string, af
 		balance := &model.LoanBalance{ID: globalID, LenderMemberID: loan.FromMemberID.String(), BorrowerMemberID: loan.ToMemberID.String(), PrincipalYen: graphLong(loan.AmountYen), RepaidYen: graphLong(repaidByLoan[loan.ID]), BalanceYen: graphLong(loan.AmountYen - repaidByLoan[loan.ID]), CreatedAt: timeString(ledger.CreatedAt)}
 		connection.Edges = append(connection.Edges, &model.LoanBalanceEdge{Cursor: encodeCursor("LoanBalance", loan.ID.String()), Node: balance})
 	}
-	if len(loans) > 0 {
-		start, end := encodeCursor("LoanBalance", loans[0].ID.String()), encodeCursor("LoanBalance", loans[len(loans)-1].ID.String())
-		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &start, &end
+	if len(pageLoans) > 0 {
+		startCursor, endCursor := encodeCursor("LoanBalance", pageLoans[0].ID.String()), encodeCursor("LoanBalance", pageLoans[len(pageLoans)-1].ID.String())
+		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &startCursor, &endCursor
 	}
 	return connection, nil
 }

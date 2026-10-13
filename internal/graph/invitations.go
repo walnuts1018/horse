@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
@@ -82,7 +83,7 @@ func (r *mutationResolver) createHouseholdInvitation(ctx context.Context, input 
 	}, nil
 }
 
-func (r *queryResolver) householdInvitations(ctx context.Context, householdID string, after *string, first int) (*model.HouseholdInvitationConnection, error) {
+func (r *queryResolver) householdInvitations(ctx context.Context, householdID string, after, before *string, first, last *int) (*model.HouseholdInvitationConnection, error) {
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
@@ -91,7 +92,7 @@ func (r *queryResolver) householdInvitations(ctx context.Context, householdID st
 	if err := requireHouseholdOwner(ctx, executor, householdID, user.MemberID); err != nil {
 		return nil, err
 	}
-	pageSize, _, err := pageDirection(after, nil, &first, nil)
+	pageSize, backward, err := pageDirection(after, before, first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -122,20 +123,58 @@ func (r *queryResolver) householdInvitations(ctx context.Context, householdID st
 			psql.And(models.HouseholdInvitations.Columns.CreatedAt.EQ(psql.Arg(cursor.CreatedAt)), models.HouseholdInvitations.Columns.ID.GT(psql.Arg(cursor.ID))),
 		))
 	}
+	if id, err := cursorID(before, "HouseholdInvitation"); err != nil {
+		return nil, err
+	} else if id != nil {
+		parsedCursorID, err := gofrsuuid.FromString(*id)
+		if err != nil {
+			return nil, fmt.Errorf("parse household invitation cursor: %w", err)
+		}
+		cursor, err := models.HouseholdInvitations.Query(sm.Where(psql.And(
+			models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(parsedCursorID)),
+			models.HouseholdInvitations.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, psql.Or(
+			models.HouseholdInvitations.Columns.CreatedAt.GT(psql.Arg(cursor.CreatedAt)),
+			psql.And(models.HouseholdInvitations.Columns.CreatedAt.EQ(psql.Arg(cursor.CreatedAt)), models.HouseholdInvitations.Columns.ID.LT(psql.Arg(cursor.ID))),
+		))
+	}
+	createdAtOrder := sm.OrderBy(models.HouseholdInvitations.Columns.CreatedAt).Desc()
+	idOrder := sm.OrderBy(models.HouseholdInvitations.Columns.ID)
+	if backward {
+		createdAtOrder = sm.OrderBy(models.HouseholdInvitations.Columns.CreatedAt)
+		idOrder = sm.OrderBy(models.HouseholdInvitations.Columns.ID).Desc()
+	}
 	rows, err := models.HouseholdInvitations.Query(
 		sm.Where(psql.And(filters...)),
-		sm.OrderBy(models.HouseholdInvitations.Columns.CreatedAt).Desc(),
-		sm.OrderBy(models.HouseholdInvitations.Columns.ID),
+		createdAtOrder,
+		idOrder,
 		sm.Limit(pageSize+1),
 	).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	hasNextPage := len(rows) > pageSize
-	if hasNextPage {
+	hasExtra := len(rows) > pageSize
+	if hasExtra {
 		rows = rows[:pageSize]
 	}
-	connection := &model.HouseholdInvitationConnection{Edges: make([]*model.HouseholdInvitationEdge, 0, len(rows)), TotalCount: int(count), PageInfo: &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: after != nil && *after != ""}}
+	if backward {
+		slices.Reverse(rows)
+	}
+	pageInfo := &model.PageInfo{HasPreviousPage: backward && hasExtra, HasNextPage: !backward && hasExtra}
+	if !backward && after != nil && *after != "" {
+		pageInfo.HasPreviousPage = true
+	}
+	if backward && before != nil && *before != "" {
+		pageInfo.HasNextPage = true
+	}
+	connection := &model.HouseholdInvitationConnection{Edges: make([]*model.HouseholdInvitationEdge, 0, len(rows)), TotalCount: int(count), PageInfo: pageInfo}
 	for _, row := range rows {
 		invitation := householdInvitationModel(row, time.Now())
 		connection.Edges = append(connection.Edges, &model.HouseholdInvitationEdge{Cursor: encodeCursor("HouseholdInvitation", row.ID.String()), Node: invitation})

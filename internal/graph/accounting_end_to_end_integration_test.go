@@ -81,7 +81,7 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 		t.Fatal(err)
 	}
 
-	movements, err := apiResolver.Query().AccountMovements(ctx, household.ID, nil, nil)
+	movements, err := apiResolver.Query().AccountMovements(ctx, household.ID, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

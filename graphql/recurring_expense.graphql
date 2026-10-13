@@ -16,7 +16,7 @@ type RecurringExpense implements Node {
 }
 
 extend type Query {
-  recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false, after: String, first: Int = 50): RecurringExpenseConnection!
+  recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false, after: String, before: String, first: Int, last: Int): RecurringExpenseConnection!
 }
 
 type RecurringExpenseEdge {

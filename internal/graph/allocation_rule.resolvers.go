@@ -37,12 +37,8 @@ func (r *allocationRuleResolver) ProductVariantID(ctx context.Context, obj *mode
 }
 
 // AllocationRules is the resolver for the allocationRules field.
-func (r *queryResolver) AllocationRules(ctx context.Context, householdID string, after *string, first *int) (*model.AllocationRuleConnection, error) {
-	pageSize := 50
-	if first != nil {
-		pageSize = *first
-	}
-	return r.allocationRules(ctx, householdID, after, pageSize)
+func (r *queryResolver) AllocationRules(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AllocationRuleConnection, error) {
+	return r.allocationRules(ctx, householdID, after, before, first, last)
 }
 
 // AllocationRule returns AllocationRuleResolver implementation.

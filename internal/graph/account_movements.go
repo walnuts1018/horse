@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
@@ -305,11 +306,11 @@ func accountMovementModel(row *models.AccountMovement) *model.AccountMovement {
 	}
 }
 
-func (r *queryResolver) accountMovements(ctx context.Context, householdID string, after *string, first *int) (*model.AccountMovementConnection, error) {
+func (r *queryResolver) accountMovements(ctx context.Context, householdID string, after, before *string, first, last *int) (*model.AccountMovementConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	limit, _, err := pageDirection(after, nil, first, nil)
+	limit, backward, err := pageDirection(after, before, first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -340,22 +341,54 @@ func (r *queryResolver) accountMovements(ctx context.Context, householdID string
 		}
 		filters = append(filters, psql.Or(models.AccountMovements.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.AccountMovements.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.AccountMovements.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
+	if id, err := cursorID(before, "AccountMovement"); err != nil {
+		return nil, err
+	} else if id != nil {
+		parsedID, err := gofrsuuid.FromString(*id)
+		if err != nil {
+			return nil, fmt.Errorf("parse account movement cursor: %w", err)
+		}
+		cursor, err := models.AccountMovements.Query(sm.Where(psql.And(models.AccountMovements.Columns.ID.EQ(psql.Arg(parsedID)), baseFilter))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, psql.Or(models.AccountMovements.Columns.OccurredAt.GT(psql.Arg(cursor.OccurredAt)), psql.And(models.AccountMovements.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.AccountMovements.Columns.ID.GT(psql.Arg(cursor.ID)))))
+	}
+	occurredAtOrder := sm.OrderBy(models.AccountMovements.Columns.OccurredAt).Desc()
+	idOrder := sm.OrderBy(models.AccountMovements.Columns.ID).Desc()
+	if backward {
+		occurredAtOrder = sm.OrderBy(models.AccountMovements.Columns.OccurredAt)
+		idOrder = sm.OrderBy(models.AccountMovements.Columns.ID)
+	}
 	rows, err := models.AccountMovements.Query(
 		sm.Where(psql.And(filters...)),
-		sm.OrderBy(models.AccountMovements.Columns.OccurredAt).Desc(),
-		sm.OrderBy(models.AccountMovements.Columns.ID).Desc(),
+		occurredAtOrder,
+		idOrder,
 		sm.Limit(limit+1),
 	).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	hasNextPage := len(rows) > limit
-	if hasNextPage {
+	hasExtra := len(rows) > limit
+	if hasExtra {
 		rows = rows[:limit]
+	}
+	if backward {
+		slices.Reverse(rows)
+	}
+	pageInfo := &model.PageInfo{HasPreviousPage: backward && hasExtra, HasNextPage: !backward && hasExtra}
+	if !backward && after != nil && *after != "" {
+		pageInfo.HasPreviousPage = true
+	}
+	if backward && before != nil && *before != "" {
+		pageInfo.HasNextPage = true
 	}
 	connection := &model.AccountMovementConnection{
 		Edges:      make([]*model.AccountMovementEdge, 0, len(rows)),
-		PageInfo:   &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: after != nil && *after != ""},
+		PageInfo:   pageInfo,
 		TotalCount: int(totalCount),
 	}
 	for _, row := range rows {
@@ -370,11 +403,11 @@ func (r *queryResolver) accountMovements(ctx context.Context, householdID string
 	return connection, nil
 }
 
-func (r *queryResolver) accountIncomes(ctx context.Context, householdID string, after *string, first *int) (*model.AccountIncomeConnection, error) {
+func (r *queryResolver) accountIncomes(ctx context.Context, householdID string, after, before *string, first, last *int) (*model.AccountIncomeConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	limit, _, err := pageDirection(after, nil, first, nil)
+	limit, backward, err := pageDirection(after, before, first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -405,22 +438,54 @@ func (r *queryResolver) accountIncomes(ctx context.Context, householdID string, 
 		}
 		filters = append(filters, psql.Or(models.AccountIncomes.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.AccountIncomes.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.AccountIncomes.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
+	if id, err := cursorID(before, "AccountIncome"); err != nil {
+		return nil, err
+	} else if id != nil {
+		parsedID, err := gofrsuuid.FromString(*id)
+		if err != nil {
+			return nil, fmt.Errorf("parse account income cursor: %w", err)
+		}
+		cursor, err := models.AccountIncomes.Query(sm.Where(psql.And(models.AccountIncomes.Columns.ID.EQ(psql.Arg(parsedID)), baseFilter))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, psql.Or(models.AccountIncomes.Columns.OccurredAt.GT(psql.Arg(cursor.OccurredAt)), psql.And(models.AccountIncomes.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.AccountIncomes.Columns.ID.GT(psql.Arg(cursor.ID)))))
+	}
+	occurredAtOrder := sm.OrderBy(models.AccountIncomes.Columns.OccurredAt).Desc()
+	idOrder := sm.OrderBy(models.AccountIncomes.Columns.ID).Desc()
+	if backward {
+		occurredAtOrder = sm.OrderBy(models.AccountIncomes.Columns.OccurredAt)
+		idOrder = sm.OrderBy(models.AccountIncomes.Columns.ID)
+	}
 	rows, err := models.AccountIncomes.Query(
 		sm.Where(psql.And(filters...)),
-		sm.OrderBy(models.AccountIncomes.Columns.OccurredAt).Desc(),
-		sm.OrderBy(models.AccountIncomes.Columns.ID).Desc(),
+		occurredAtOrder,
+		idOrder,
 		sm.Limit(limit+1),
 	).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	hasNextPage := len(rows) > limit
-	if hasNextPage {
+	hasExtra := len(rows) > limit
+	if hasExtra {
 		rows = rows[:limit]
+	}
+	if backward {
+		slices.Reverse(rows)
+	}
+	pageInfo := &model.PageInfo{HasPreviousPage: backward && hasExtra, HasNextPage: !backward && hasExtra}
+	if !backward && after != nil && *after != "" {
+		pageInfo.HasPreviousPage = true
+	}
+	if backward && before != nil && *before != "" {
+		pageInfo.HasNextPage = true
 	}
 	connection := &model.AccountIncomeConnection{
 		Edges:      make([]*model.AccountIncomeEdge, 0, len(rows)),
-		PageInfo:   &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: after != nil && *after != ""},
+		PageInfo:   pageInfo,
 		TotalCount: int(totalCount),
 	}
 	for _, row := range rows {

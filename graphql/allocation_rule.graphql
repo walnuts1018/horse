@@ -29,5 +29,5 @@ type AllocationRuleConnection {
 }
 
 extend type Query {
-  allocationRules(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): AllocationRuleConnection!
+  allocationRules(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AllocationRuleConnection!
 }

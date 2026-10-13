@@ -68,7 +68,7 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 		}
 	}
 	pageSize := 2
-	firstPage, err := resolver.productCatalog(ctx, household.ID, nil, &pageSize)
+	firstPage, err := resolver.productCatalog(ctx, household.ID, nil, nil, &pageSize, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,12 +79,28 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 		t.Fatalf("first page is not in stable name order: %#v", firstPage.Edges)
 	}
 
-	secondPage, err := resolver.productCatalog(ctx, household.ID, firstPage.PageInfo.EndCursor, &pageSize)
+	secondPage, err := resolver.productCatalog(ctx, household.ID, firstPage.PageInfo.EndCursor, nil, &pageSize, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(secondPage.Edges) != 1 || secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage || secondPage.Edges[0].Node.Name != "Tea" {
 		t.Fatalf("second page does not continue after the cursor: page=%#v info=%#v", secondPage.Edges, secondPage.PageInfo)
+	}
+
+	lastPage, err := resolver.productCatalog(ctx, household.ID, nil, nil, nil, &pageSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lastPage.Edges) != 2 || lastPage.Edges[0].Node.Name != "Miso" || lastPage.Edges[1].Node.Name != "Tea" || !lastPage.PageInfo.HasPreviousPage || lastPage.PageInfo.HasNextPage {
+		t.Fatalf("last page has invalid ordering or pagination metadata: page=%#v info=%#v", lastPage.Edges, lastPage.PageInfo)
+	}
+
+	beforeSecondPage, err := resolver.productCatalog(ctx, household.ID, nil, secondPage.PageInfo.StartCursor, nil, &pageSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(beforeSecondPage.Edges) != 2 || beforeSecondPage.Edges[0].Node.Name != "Apple" || beforeSecondPage.Edges[1].Node.Name != "Miso" || beforeSecondPage.PageInfo.HasPreviousPage || !beforeSecondPage.PageInfo.HasNextPage {
+		t.Fatalf("page before cursor has invalid ordering or pagination metadata: page=%#v info=%#v", beforeSecondPage.Edges, beforeSecondPage.PageInfo)
 	}
 
 	suggestionConcept, err := mutation.createProductConcept(ctx, model.CreateProductConceptInput{HouseholdID: household.ID, Name: "Household products"})

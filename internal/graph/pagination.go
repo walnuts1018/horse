@@ -6,9 +6,6 @@ import (
 )
 
 func pageDirection(after, before *string, first, last *int) (int, bool, error) {
-	if after != nil && *after != "" && before != nil && *before != "" {
-		return 0, false, fmt.Errorf("%w: after and before cannot be used together", ErrBadInput)
-	}
 	if first != nil && last != nil {
 		return 0, false, fmt.Errorf("%w: first and last cannot be used together", ErrBadInput)
 	}

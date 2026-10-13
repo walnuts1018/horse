@@ -20,5 +20,5 @@ type ProductConceptConnection {
 }
 
 extend type Query {
-  productCatalog(householdId: ID! @nodeID(of: "Household"), after: String, first: Int = 50): ProductConceptConnection!
+  productCatalog(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): ProductConceptConnection!
 }
