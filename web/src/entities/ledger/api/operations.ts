@@ -35,7 +35,6 @@ export const householdLedgerFragment = graphql`
             toMember {
               id
             }
-            transferKind
           }
           ... on PurchaseLedgerEntry {
             purchase {
@@ -204,7 +203,10 @@ export const accountBalanceAnalysisQuery = graphql`
           ... on Purchase {
             id
           }
-          ... on PurchaseCorrection {
+          ... on PurchaseWideCorrection {
+            id
+          }
+          ... on PurchaseItemCorrection {
             id
           }
           ... on CorrectionLedgerEntry {
@@ -216,9 +218,12 @@ export const accountBalanceAnalysisQuery = graphql`
           ... on PurchaseLedgerEntry {
             id
           }
-          ... on TransferLedgerEntry {
+          ... on AdvanceTransferLedgerEntry {
             id
           }
+          ... on LoanTransferLedgerEntry { id }
+          ... on RepaymentTransferLedgerEntry { id }
+          ... on GiftTransferLedgerEntry { id }
           ... on AccountMovement {
             id
           }
@@ -337,7 +342,13 @@ export const ledgerEntryFields = graphql`
         id
         displayName
       }
-      transferKind
+    }
+    ... on LoanTransferLedgerEntry {
+      loan {
+        id
+      }
+    }
+    ... on RepaymentTransferLedgerEntry {
       loan {
         id
       }

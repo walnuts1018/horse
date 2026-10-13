@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<fb734e3c7852fd37562c68319b1b3204>>
+ * @generated SignedSource<<1d35d55b1bbf013ffc781ed0aad728de>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,6 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type HouseholdInvitationStatus = "ACCEPTED" | "EXPIRED" | "PENDING" | "REVOKED" | "%future added value";
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type RevokeHouseholdInvitationInput = {
   householdId: string;
@@ -23,9 +22,8 @@ export type RevokeHouseholdInvitationMutation$data = {
     readonly code?: MutationErrorCode;
     readonly message?: string;
     readonly result?: {
+      readonly __typename: string;
       readonly id: string;
-      readonly revokedAt: string | null | undefined;
-      readonly status: HouseholdInvitationStatus;
     };
   };
 };
@@ -42,7 +40,14 @@ var v0 = [
     "name": "input"
   }
 ],
-v1 = [
+v1 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "__typename",
+  "storageKey": null
+},
+v2 = [
   {
     "alias": null,
     "args": [
@@ -57,43 +62,24 @@ v1 = [
     "name": "revokeHouseholdInvitation",
     "plural": false,
     "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "__typename",
-        "storageKey": null
-      },
+      (v1/*:: as any*/),
       {
         "kind": "InlineFragment",
         "selections": [
           {
             "alias": null,
             "args": null,
-            "concreteType": "HouseholdInvitation",
+            "concreteType": null,
             "kind": "LinkedField",
             "name": "result",
             "plural": false,
             "selections": [
+              (v1/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
                 "name": "id",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "status",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "revokedAt",
                 "storageKey": null
               }
             ],
@@ -134,7 +120,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "RevokeHouseholdInvitationMutation",
-    "selections": (v1/*:: as any*/),
+    "selections": (v2/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
@@ -143,19 +129,19 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "RevokeHouseholdInvitationMutation",
-    "selections": (v1/*:: as any*/)
+    "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "2b3a149b990d1176634b8e5063b5b169",
+    "cacheID": "be0eff7f3e299e6dd60a04ddf121a6b1",
     "id": null,
     "metadata": {},
     "name": "RevokeHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation RevokeHouseholdInvitationMutation(\n  $input: RevokeHouseholdInvitationInput!\n) {\n  revokeHouseholdInvitation(input: $input) {\n    __typename\n    ... on RevokeHouseholdInvitationSuccess {\n      result {\n        id\n        status\n        revokedAt\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation RevokeHouseholdInvitationMutation(\n  $input: RevokeHouseholdInvitationInput!\n) {\n  revokeHouseholdInvitation(input: $input) {\n    __typename\n    ... on RevokeHouseholdInvitationSuccess {\n      result {\n        __typename\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "ecbbc1722d373f073206e9f856871501";
+(node as any).hash = "e43bf96beb5df6c4051a8b052a686548";
 
 export default node;

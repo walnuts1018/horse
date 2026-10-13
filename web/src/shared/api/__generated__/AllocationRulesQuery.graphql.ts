@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9048390476fc6d32bdd7acb3eecb73ff>>
+ * @generated SignedSource<<08fa1e8cfa3ac93aecb74baf19894be4>>
  * @lightSyntaxTransform
  */
 
@@ -19,7 +19,6 @@ export type AllocationRulesQuery$data = {
       readonly cursor: string;
       readonly node: {
         readonly allocations: ReadonlyArray<{
-          readonly amountYen: any | null | undefined;
           readonly poolId: string;
           readonly poolName: string;
           readonly weight: any;
@@ -147,13 +146,6 @@ v10 = {
       "args": null,
       "kind": "ScalarField",
       "name": "weight",
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "amountYen",
       "storageKey": null
     }
   ],
@@ -333,16 +325,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "cf6e7fe9876e6434abfceafefe172b32",
+    "cacheID": "aa6c25d874995ea433fb242b6c7cd0e6",
     "id": null,
     "metadata": {},
     "name": "AllocationRulesQuery",
     "operationKind": "query",
-    "text": "query AllocationRulesQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  allocationRules(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        target {\n          __typename\n          name\n          ... on Node {\n            __isNode: __typename\n            id\n          }\n        }\n        revision\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query AllocationRulesQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  allocationRules(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        target {\n          __typename\n          name\n          ... on Node {\n            __isNode: __typename\n            id\n          }\n        }\n        revision\n        allocations {\n          poolId\n          poolName\n          weight\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "eceb057170cf51becb39377d1ad17fe7";
+(node as any).hash = "8c6af558011dfb4349f2ecc14c388ca4";
 
 export default node;

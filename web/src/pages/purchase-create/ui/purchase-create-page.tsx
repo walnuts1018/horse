@@ -65,10 +65,12 @@ export function PurchaseCreatePage({
   household,
   onBack,
   onQueued,
+  onUnsavedChanges,
 }: {
   household: Household;
   onBack: () => void;
   onQueued: (idempotencyKey: string) => void;
+  onUnsavedChanges: (unsaved: boolean) => void;
 }) {
   const defaultCategoryId = household.categories.find((item) => !item.archived)?.id ?? "";
   const [merchant, setMerchant] = useState("");
@@ -93,6 +95,7 @@ export function PurchaseCreatePage({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [undoItems, setUndoItems] = useState<DraftItem[] | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [history, setHistory] = useState<Purchase[]>([]);
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
@@ -102,7 +105,16 @@ export function PurchaseCreatePage({
   const saving = useRef(false);
   const draftTimer = useRef<number | null>(null);
   const skipDraftSave = useRef(false);
+  const editVersion = useRef(0);
   const composing = useRef(false);
+  const markUnsaved = () => {
+    editVersion.current += 1;
+    setHasUnsavedChanges(true);
+  };
+  useEffect(() => {
+    onUnsavedChanges(hasUnsavedChanges);
+    return () => onUnsavedChanges(false);
+  }, [hasUnsavedChanges, onUnsavedChanges]);
   const updateCategory = (id: string, source: CategorySource) => {
     categorySource.current = source;
     setCategoryId(id);
@@ -191,6 +203,7 @@ export function PurchaseCreatePage({
     if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
     draftTimer.current = window.setTimeout(() => {
       const current = draftRef.current;
+      const version = editVersion.current;
       const store =
         current.merchant.trim() ||
         current.itemName.trim() ||
@@ -199,7 +212,10 @@ export function PurchaseCreatePage({
           ? savePurchaseDraft(household.id, current)
           : deletePurchaseDraft(household.id);
       void store
-        .then(() => setSavedAt(new Date()))
+        .then(() => {
+          setSavedAt(new Date());
+          if (editVersion.current === version) setHasUnsavedChanges(false);
+        })
         .catch((reason) => setMessage((reason as Error).message));
     }, 450);
     return () => {
@@ -315,6 +331,7 @@ export function PurchaseCreatePage({
   const hasDraftContent = Boolean(merchant.trim() || itemName.trim() || itemAmount || items.length);
 
   const addPaymentRow = () => {
+    markUnsaved();
     setPaymentRows((current) => [
       ...current.map((payment) => ({
         ...payment,
@@ -325,17 +342,21 @@ export function PurchaseCreatePage({
     setPaymentAutoTotal(false);
   };
   const patchPayment = (key: string, patch: Partial<PaymentDraft>) => {
+    markUnsaved();
     if (patch.amountYen !== undefined) setPaymentAutoTotal(false);
     setPaymentRows((current) =>
       current.map((payment) => (payment.key === key ? { ...payment, ...patch } : payment)),
     );
   };
-  const removePaymentRow = (key: string) =>
+  const removePaymentRow = (key: string) => {
+    markUnsaved();
     setPaymentRows((current) => current.filter((payment) => payment.key !== key));
+  };
 
   const addItem = (name = itemName, amount = itemAmount) => {
     const parsed = purchaseItemSchema.safeParse({ name, amount });
     if (!parsed.success) return false;
+    markUnsaved();
     const item: DraftItem = {
       key: crypto.randomUUID(),
       ...parsed.data,
@@ -440,6 +461,7 @@ export function PurchaseCreatePage({
       .map((line) => line.split(/\t|,(?=\s*\d)/).map((cell) => cell.trim()))
       .filter((cells) => cells[0] && cells[1] && /^¥?[\d,]+$/.test(cells[1]));
     if (!parsed.length) return;
+    markUnsaved();
     setUndoItems(items);
     setItems((current) => [
       ...current,
@@ -454,18 +476,23 @@ export function PurchaseCreatePage({
   };
   const removeItem = (key: string) => {
     if (!items.some((item) => item.key === key)) return;
+    markUnsaved();
     setUndoItems(items);
     setItems((current) => current.filter((item) => item.key !== key));
   };
   const undo = () => {
     if (undoItems) {
+      markUnsaved();
       setItems(undoItems);
       setUndoItems(null);
     }
   };
-  const patchItem = (key: string, patch: Partial<DraftItem>) =>
+  const patchItem = (key: string, patch: Partial<DraftItem>) => {
+    markUnsaved();
     setItems((current) => current.map((item) => (item.key === key ? { ...item, ...patch } : item)));
+  };
   const copyPurchaseItems = (purchase: Purchase) => {
+    markUnsaved();
     setUndoItems(items);
     setItems(
       purchase.items.map((item) => ({
@@ -558,6 +585,7 @@ export function PurchaseCreatePage({
       updateCategory(defaultCategoryId, "default");
       setItems([]);
       setSavedAt(null);
+      setHasUnsavedChanges(false);
       onQueued(input.idempotencyKey);
     } catch (reason) {
       setMessage((reason as Error).message);
@@ -610,7 +638,10 @@ export function PurchaseCreatePage({
             id="merchant"
             placeholder="例 スーパーいちば"
             value={merchant}
-            onChange={(e) => setMerchant(e.target.value)}
+            onChange={(e) => {
+              markUnsaved();
+              setMerchant(e.target.value);
+            }}
             list="merchant-suggestions"
             autoComplete="off"
           />
@@ -628,7 +659,10 @@ export function PurchaseCreatePage({
             id="occurred"
             type="datetime-local"
             value={occurredAt}
-            onChange={(e) => setOccurredAt(e.target.value)}
+            onChange={(e) => {
+              markUnsaved();
+              setOccurredAt(e.target.value);
+            }}
           />
         </div>
         <div className="field-group payment-allocation-field">
@@ -897,6 +931,7 @@ export function PurchaseCreatePage({
               ref={nameRef}
               value={itemName}
               onChange={(e) => {
+                markUnsaved();
                 changeItemName(e.target.value);
               }}
               onFocus={() => setFocused("name")}
@@ -974,7 +1009,10 @@ export function PurchaseCreatePage({
               ref={amountRef}
               value={itemAmount}
               inputMode="numeric"
-              onChange={(e) => setItemAmount(e.target.value.replace(/\D/g, ""))}
+              onChange={(e) => {
+                markUnsaved();
+                setItemAmount(e.target.value.replace(/\D/g, ""));
+              }}
               onFocus={() => setFocused("amount")}
               onBlur={() => window.setTimeout(() => setFocused(null), 160)}
               onKeyDown={onAmountKey}
@@ -992,7 +1030,10 @@ export function PurchaseCreatePage({
           <select
             aria-label="新しい品目のカテゴリ"
             value={categoryId}
-            onChange={(e) => updateCategory(e.target.value, "manual")}
+            onChange={(e) => {
+              markUnsaved();
+              updateCategory(e.target.value, "manual");
+            }}
           >
             <option value="">未分類</option>
             {enabledCategories.map((category) => (

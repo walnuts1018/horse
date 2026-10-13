@@ -3,8 +3,9 @@ import { graphql } from "react-relay";
 export const settlementQuery = graphql`
   query SettlementQuery($householdId: ID!, $period: YearMonth!) {
     settlement(householdId: $householdId, period: $period) {
+      __typename
+      id
       period
-      status
       revision
       lines {
         memberId
@@ -17,6 +18,9 @@ export const settlementQuery = graphql`
         advanceCreditYen
         amountDueYen
       }
+      ... on ClosedSettlement {
+        createdAt
+      }
     }
   }
 `;
@@ -27,9 +31,13 @@ export const closePeriodMutation = graphql`
       __typename
       ... on ClosePeriodSuccess {
         result {
+          __typename
+          id
           period
-          status
           revision
+          ... on ClosedSettlement {
+            createdAt
+          }
         }
       }
       ... on MutationError {

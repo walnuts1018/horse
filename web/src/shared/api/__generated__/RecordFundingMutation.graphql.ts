@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<33ab7d4b6f784d3e2adc62321fca27d7>>
+ * @generated SignedSource<<910fc4451d6f352964e22aa1a753034d>>
  * @lightSyntaxTransform
  */
 
@@ -110,6 +110,18 @@ v7 = [
     "args": null,
     "kind": "ScalarField",
     "name": "displayName",
+    "storageKey": null
+  }
+],
+v8 = [
+  {
+    "alias": null,
+    "args": null,
+    "concreteType": "LoanBalance",
+    "kind": "LinkedField",
+    "name": "loan",
+    "plural": false,
+    "selections": (v5/*:: as any*/),
     "storageKey": null
   }
 ];
@@ -292,26 +304,21 @@ return {
                         "plural": false,
                         "selections": (v7/*:: as any*/),
                         "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "transferKind",
-                        "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "concreteType": "LoanBalance",
-                        "kind": "LinkedField",
-                        "name": "loan",
-                        "plural": false,
-                        "selections": (v5/*:: as any*/),
-                        "storageKey": null
                       }
                     ],
                     "type": "TransferLedgerEntry",
+                    "abstractKey": "__isTransferLedgerEntry"
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": (v8/*:: as any*/),
+                    "type": "LoanTransferLedgerEntry",
+                    "abstractKey": null
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": (v8/*:: as any*/),
+                    "type": "RepaymentTransferLedgerEntry",
                     "abstractKey": null
                   },
                   {
@@ -334,12 +341,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "93f3f29a13f5cfa4ddfdfb05dd7be74d",
+    "cacheID": "cba61fab75203fa2a01a55e4caebb2be",
     "id": null,
     "metadata": {},
     "name": "RecordFundingMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordFundingMutation(\n  $input: RecordFundingInput!\n) {\n  recordFunding(input: $input) {\n    __typename\n    ... on RecordFundingSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      __typename\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      id\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
+    "text": "mutation RecordFundingMutation(\n  $input: RecordFundingInput!\n) {\n  recordFunding(input: $input) {\n    __typename\n    ... on RecordFundingSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      __typename\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    __isTransferLedgerEntry: __typename\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n  }\n  ... on LoanTransferLedgerEntry {\n    loan {\n      id\n    }\n  }\n  ... on RepaymentTransferLedgerEntry {\n    loan {\n      id\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
   }
 };
 })();

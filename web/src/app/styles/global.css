@@ -3146,6 +3146,10 @@ a {
 }
 
 @media (width <= 760px) {
+  html.mobile-drawer-open {
+    overscroll-behavior-y: none;
+  }
+
   body {
     background: #f7f8f5;
   }
@@ -3155,6 +3159,8 @@ a {
     transition: transform 0.2s;
     width: 265px;
     box-shadow: 12px 0 34px #1c312617;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
   }
 
   .sidebar-open {

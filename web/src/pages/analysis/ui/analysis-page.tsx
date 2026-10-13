@@ -93,13 +93,14 @@ function purchaseDimensions(purchases: Purchase[], household: Household) {
         purchase.occurredAt,
       );
       for (const allocation of item.allocations) {
-        const amount =
-          allocation.amountYen ??
-          Math.round(
-            (item.amountYen * allocation.weight) /
-              Math.max(1, sum(item.allocations.map((entry) => entry.weight))),
-          );
-        add("pool", allocation.poolId, allocation.poolName, amount, month, purchase.occurredAt);
+        add(
+          "pool",
+          allocation.poolId,
+          allocation.poolName,
+          allocation.amountYen,
+          month,
+          purchase.occurredAt,
+        );
       }
     }
     for (const payment of purchase.paymentAllocations) {

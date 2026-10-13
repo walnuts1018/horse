@@ -27,8 +27,11 @@ export const purchaseCorrectionsPaginationQuery = graphql`
       edges {
         cursor
         node {
+          __typename
           id
-          itemId
+          ... on PurchaseItemCorrection {
+            itemId
+          }
           amountDeltaYen
           reason
           occurredAt
@@ -102,8 +105,11 @@ export const purchaseListFragment = graphql`
             edges {
               cursor
               node {
+                __typename
                 id
-                itemId
+                ... on PurchaseItemCorrection {
+                  itemId
+                }
                 amountDeltaYen
                 reason
                 occurredAt

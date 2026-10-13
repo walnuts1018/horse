@@ -22,16 +22,22 @@ export const unmatchedObservationsQuery = graphql`
       edges {
         cursor
         node {
+          __typename
           documentId
           sourceReference
-          purchaseId
           sourceKind
-          state
           merchant
           occurredAt
           amountYen
           orderId
           transactionId
+          ... on ConfirmedObservation {
+            purchase {
+              id
+              merchant
+              occurredAt
+            }
+          }
         }
       }
       pageInfo {

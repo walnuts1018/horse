@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<fbb3a5396c3094d8e9ae571d2438f64a>>
+ * @generated SignedSource<<dec721a68b1abc108586b683afcc6e0e>>
  * @lightSyntaxTransform
  */
 
@@ -9,7 +9,6 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type SettlementStatus = "CLOSED" | "OPEN" | "%future added value";
 export type ClosePeriodInput = {
   expectedRevision: number;
   householdId: string;
@@ -24,9 +23,11 @@ export type ClosePeriodMutation$data = {
     readonly code?: MutationErrorCode;
     readonly message?: string;
     readonly result?: {
+      readonly __typename: string;
+      readonly createdAt?: string;
+      readonly id: string;
       readonly period: string;
       readonly revision: number;
-      readonly status: SettlementStatus;
     };
   };
 };
@@ -43,104 +44,115 @@ var v0 = [
     "name": "input"
   }
 ],
-v1 = [
-  {
-    "kind": "Variable",
-    "name": "input",
-    "variableName": "input"
-  }
-],
-v2 = {
+v1 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "__typename",
   "storageKey": null
 },
-v3 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "period",
-  "storageKey": null
-},
-v4 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "status",
-  "storageKey": null
-},
-v5 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "revision",
-  "storageKey": null
-},
-v6 = {
-  "kind": "InlineFragment",
-  "selections": [
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "code",
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "message",
-      "storageKey": null
-    }
-  ],
-  "type": "MutationError",
-  "abstractKey": "__isMutationError"
-};
+v2 = [
+  {
+    "alias": null,
+    "args": [
+      {
+        "kind": "Variable",
+        "name": "input",
+        "variableName": "input"
+      }
+    ],
+    "concreteType": null,
+    "kind": "LinkedField",
+    "name": "closePeriod",
+    "plural": false,
+    "selections": [
+      (v1/*:: as any*/),
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": null,
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": [
+              (v1/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "period",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              },
+              {
+                "kind": "InlineFragment",
+                "selections": [
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "createdAt",
+                    "storageKey": null
+                  }
+                ],
+                "type": "ClosedSettlement",
+                "abstractKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "type": "ClosePeriodSuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "code",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "message",
+            "storageKey": null
+          }
+        ],
+        "type": "MutationError",
+        "abstractKey": "__isMutationError"
+      }
+    ],
+    "storageKey": null
+  }
+];
 return {
   "fragment": {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
     "name": "ClosePeriodMutation",
-    "selections": [
-      {
-        "alias": null,
-        "args": (v1/*:: as any*/),
-        "concreteType": null,
-        "kind": "LinkedField",
-        "name": "closePeriod",
-        "plural": false,
-        "selections": [
-          (v2/*:: as any*/),
-          {
-            "kind": "InlineFragment",
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "concreteType": "Settlement",
-                "kind": "LinkedField",
-                "name": "result",
-                "plural": false,
-                "selections": [
-                  (v3/*:: as any*/),
-                  (v4/*:: as any*/),
-                  (v5/*:: as any*/)
-                ],
-                "storageKey": null
-              }
-            ],
-            "type": "ClosePeriodSuccess",
-            "abstractKey": null
-          },
-          (v6/*:: as any*/)
-        ],
-        "storageKey": null
-      }
-    ],
+    "selections": (v2/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
@@ -149,61 +161,19 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "ClosePeriodMutation",
-    "selections": [
-      {
-        "alias": null,
-        "args": (v1/*:: as any*/),
-        "concreteType": null,
-        "kind": "LinkedField",
-        "name": "closePeriod",
-        "plural": false,
-        "selections": [
-          (v2/*:: as any*/),
-          {
-            "kind": "InlineFragment",
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "concreteType": "Settlement",
-                "kind": "LinkedField",
-                "name": "result",
-                "plural": false,
-                "selections": [
-                  (v3/*:: as any*/),
-                  (v4/*:: as any*/),
-                  (v5/*:: as any*/),
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "id",
-                    "storageKey": null
-                  }
-                ],
-                "storageKey": null
-              }
-            ],
-            "type": "ClosePeriodSuccess",
-            "abstractKey": null
-          },
-          (v6/*:: as any*/)
-        ],
-        "storageKey": null
-      }
-    ]
+    "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "79845cd95cabc18ab73ad7a889f54488",
+    "cacheID": "824aefa1a4ad1b70c21f19dda5a8338c",
     "id": null,
     "metadata": {},
     "name": "ClosePeriodMutation",
     "operationKind": "mutation",
-    "text": "mutation ClosePeriodMutation(\n  $input: ClosePeriodInput!\n) {\n  closePeriod(input: $input) {\n    __typename\n    ... on ClosePeriodSuccess {\n      result {\n        period\n        status\n        revision\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation ClosePeriodMutation(\n  $input: ClosePeriodInput!\n) {\n  closePeriod(input: $input) {\n    __typename\n    ... on ClosePeriodSuccess {\n      result {\n        __typename\n        id\n        period\n        revision\n        ... on ClosedSettlement {\n          createdAt\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "96956fe1555f7d2424302347cd87865a";
+(node as any).hash = "5a172ff2b9fd95097983f7436ff37aab";
 
 export default node;

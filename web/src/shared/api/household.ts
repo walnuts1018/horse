@@ -60,7 +60,8 @@ export function isSharedPool(pool: Pool): pool is SharedPool | UnconfiguredShare
 }
 export type Account = { id: string; name: string; kind: string; poolId?: string | null };
 export type Category = { id: string; name: string; archived?: boolean };
-export type Allocation = { poolId: string; poolName: string; weight: number; amountYen?: number };
+export type Allocation = { poolId: string; poolName: string; weight: number };
+export type PurchaseItemAllocation = Allocation & { amountYen: number };
 export type Tag = {
   id: string;
   householdId: string;
@@ -115,11 +116,15 @@ export type AccountBalance = { accountId: string; balanceYen: number; currency: 
 export type AccountBalanceChangeSource =
   | { id: string; __typename: "AccountOpeningBalance"; account: { id: string; name: string } }
   | { id: string; __typename: "Purchase" }
-  | { id: string; __typename: "PurchaseCorrection" }
+  | { id: string; __typename: "PurchaseWideCorrection" }
+  | { id: string; __typename: "PurchaseItemCorrection" }
   | { id: string; __typename: "CorrectionLedgerEntry" }
   | { id: string; __typename: "FundingLedgerEntry" }
   | { id: string; __typename: "PurchaseLedgerEntry" }
-  | { id: string; __typename: "TransferLedgerEntry" }
+  | { id: string; __typename: "AdvanceTransferLedgerEntry" }
+  | { id: string; __typename: "LoanTransferLedgerEntry" }
+  | { id: string; __typename: "RepaymentTransferLedgerEntry" }
+  | { id: string; __typename: "GiftTransferLedgerEntry" }
   | { id: string; __typename: "AccountMovement" }
   | { id: string; __typename: "AccountIncome" };
 export type AccountBalanceChange = {
@@ -164,7 +169,7 @@ export type PurchaseItem = {
   effectiveUnitPriceDenominator?: string | null;
   categoryId?: string | null;
   productVariantId?: string | null;
-  allocations: Allocation[];
+  allocations: PurchaseItemAllocation[];
   tags: Tag[];
 };
 export type Purchase = {
@@ -215,27 +220,38 @@ export type PurchasePayment = PurchasePaymentInput & { account?: Account | null 
 export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN";
 export type SourceKind = "RECEIPT" | "ORDER" | "EMAIL" | "CARD" | "BANK";
 export type UnmatchedObservationState = "UNMATCHED" | "CONFIRMED";
-export type UnmatchedObservation = {
+type ObservationFields = {
   documentId: string;
   sourceReference: string;
-  purchaseId?: string | null;
   sourceKind: SourceKind;
-  state: UnmatchedObservationState;
   merchant: string;
   occurredAt?: string | null;
   amountYen: number;
   orderId: string;
   transactionId: string;
 };
-export type PurchaseCorrection = {
+export type UnmatchedObservation =
+  | (ObservationFields & { __typename: "UnmatchedObservation" })
+  | (ObservationFields & {
+      __typename: "ConfirmedObservation";
+      purchase: Pick<Purchase, "id" | "merchant" | "occurredAt">;
+    });
+type PurchaseCorrectionFields = {
   id: string;
-  itemId?: string | null;
   amountDeltaYen: number;
   reason: string;
   occurredAt: string;
   settlementMonth: string;
   paymentAllocations: PurchasePayment[];
 };
+export type PurchaseWideCorrection = PurchaseCorrectionFields & {
+  __typename: "PurchaseWideCorrection";
+};
+export type PurchaseItemCorrection = PurchaseCorrectionFields & {
+  __typename: "PurchaseItemCorrection";
+  itemId: string;
+};
+export type PurchaseCorrection = PurchaseWideCorrection | PurchaseItemCorrection;
 export type LoanBalance = {
   id: string;
   lenderMemberId: string;
@@ -255,22 +271,29 @@ export type Household = {
   categories: Category[];
   defaultAllocation: Allocation[];
 };
-export type Settlement = {
-  period: string;
-  status: "OPEN" | "CLOSED";
-  revision: number;
-  lines: Array<{
-    memberId: string;
-    memberName: string;
-    scheduledYen: number;
-    paidYen: number;
-    carryYen: number;
-    priorBalanceYen: number;
-    monthlyAdjustmentYen: number;
-    advanceCreditYen: number;
-    amountDueYen: number;
-  }>;
+type SettlementLine = {
+  memberId: string;
+  memberName: string;
+  scheduledYen: number;
+  paidYen: number;
+  carryYen: number;
+  priorBalanceYen: number;
+  monthlyAdjustmentYen: number;
+  advanceCreditYen: number;
+  amountDueYen: number;
 };
+type SettlementFields = {
+  id: string;
+  period: string;
+  revision: number;
+  lines: SettlementLine[];
+};
+export type OpenSettlement = SettlementFields & { __typename: "OpenSettlement" };
+export type ClosedSettlement = SettlementFields & {
+  __typename: "ClosedSettlement";
+  createdAt: string;
+};
+export type Settlement = OpenSettlement | ClosedSettlement;
 export type AllocationRule = {
   id: string;
   householdId: string;
@@ -311,15 +334,18 @@ export type ProductSuggestion = {
   matchedName: string;
   score: number;
 };
-export type HouseholdInvitation = {
+type HouseholdInvitationFields = {
   id: string;
   householdId: string;
-  status: "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED";
   expiresAt: string;
   createdAt: string;
-  revokedAt?: string | null;
-  acceptedAt?: string | null;
 };
+export type HouseholdInvitation = HouseholdInvitationFields & (
+  | { __typename: "PendingHouseholdInvitation" }
+  | { __typename: "AcceptedHouseholdInvitation" }
+  | { __typename: "RevokedHouseholdInvitation" }
+  | { __typename: "ExpiredHouseholdInvitation" }
+);
 export type LedgerEntry = {
   id: string;
   kind: string;
@@ -692,16 +718,25 @@ function normalizeGraphQLValue(value: unknown): unknown {
       const pool = item.pool as { id?: string } | undefined;
       return { ...base, kind: "FUNDING", fromMemberId: member?.id, poolId: pool?.id };
     }
-    if (typename === "TransferLedgerEntry") {
+    if (typename === "LoanTransferLedgerEntry" || typename === "RepaymentTransferLedgerEntry") {
       const from = item.fromMember as { id?: string } | undefined;
       const to = item.toMember as { id?: string } | undefined;
-      const loan = item.loan as { id?: string } | null;
       return {
         ...base,
-        kind: item.transferKind,
+        kind: typename === "LoanTransferLedgerEntry" ? "LOAN" : "REPAYMENT",
         fromMemberId: from?.id,
         toMemberId: to?.id,
-        loanId: loan?.id,
+        loanId: (item.loan as { id: string }).id,
+      };
+    }
+    if (typename === "AdvanceTransferLedgerEntry" || typename === "GiftTransferLedgerEntry") {
+      const from = item.fromMember as { id?: string } | undefined;
+      const to = item.toMember as { id?: string } | undefined;
+      return {
+        ...base,
+        kind: typename === "AdvanceTransferLedgerEntry" ? "ADVANCE" : "GIFT",
+        fromMemberId: from?.id,
+        toMemberId: to?.id,
       };
     }
     if (typename === "PurchaseLedgerEntry" || typename === "CorrectionLedgerEntry") {

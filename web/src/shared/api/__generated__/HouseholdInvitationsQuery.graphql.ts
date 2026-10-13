@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<26d065a6a43bf270e49f9436a83c7f74>>
+ * @generated SignedSource<<d1fcbb7d33f2a722f38718f76e98bbfa>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,6 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type HouseholdInvitationStatus = "ACCEPTED" | "EXPIRED" | "PENDING" | "REVOKED" | "%future added value";
 export type HouseholdInvitationsQuery$variables = {
   after?: string | null | undefined;
   first?: number | null | undefined;
@@ -19,13 +18,11 @@ export type HouseholdInvitationsQuery$data = {
     readonly edges: ReadonlyArray<{
       readonly cursor: string;
       readonly node: {
-        readonly acceptedAt: string | null | undefined;
+        readonly __typename: string;
         readonly createdAt: string;
         readonly expiresAt: string;
         readonly householdId: string;
         readonly id: string;
-        readonly revokedAt: string | null | undefined;
-        readonly status: HouseholdInvitationStatus;
       };
     }>;
     readonly pageInfo: {
@@ -99,11 +96,18 @@ v3 = [
           {
             "alias": null,
             "args": null,
-            "concreteType": "HouseholdInvitation",
+            "concreteType": null,
             "kind": "LinkedField",
             "name": "node",
             "plural": false,
             "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "__typename",
+                "storageKey": null
+              },
               {
                 "alias": null,
                 "args": null,
@@ -122,13 +126,6 @@ v3 = [
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
-                "name": "status",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
                 "name": "expiresAt",
                 "storageKey": null
               },
@@ -137,20 +134,6 @@ v3 = [
                 "args": null,
                 "kind": "ScalarField",
                 "name": "createdAt",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "revokedAt",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "acceptedAt",
                 "storageKey": null
               }
             ],
@@ -221,16 +204,16 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "97126121c11edf8a39d8498b012bc07a",
+    "cacheID": "d7412b5da01a8b390358deb9f338ec98",
     "id": null,
     "metadata": {},
     "name": "HouseholdInvitationsQuery",
     "operationKind": "query",
-    "text": "query HouseholdInvitationsQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  householdInvitations(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        status\n        expiresAt\n        createdAt\n        revokedAt\n        acceptedAt\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query HouseholdInvitationsQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  householdInvitations(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        __typename\n        id\n        householdId\n        expiresAt\n        createdAt\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "69276aa719710a5ceaa59de861f06276";
+(node as any).hash = "02664accafe8e7b69e43b78765eb689b";
 
 export default node;

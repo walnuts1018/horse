@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link2 } from "lucide-react";
 import { purchasesQuery } from "../../../entities/purchase";
 import {
@@ -22,11 +22,14 @@ export function ObservationLinker({
   household,
   observation,
   onConfirmed,
+  onDirtyChange,
 }: {
   household: Household;
   observation: UnmatchedObservation;
   onConfirmed: () => void;
+  onDirtyChange: (id: string, dirty: boolean) => void;
 }) {
+  const observationId = `${observation.documentId}\u0000${observation.sourceReference}`;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
@@ -36,9 +39,25 @@ export function ObservationLinker({
   const [selectedPurchaseId, setSelectedPurchaseId] = useState("");
   const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
 
+  useEffect(() => {
+    onDirtyChange(observationId, pending || selectedPurchaseId !== "" || selectedMatches.size > 0);
+  }, [observationId, onDirtyChange, pending, selectedMatches, selectedPurchaseId]);
+  useEffect(() => () => onDirtyChange(observationId, false), [observationId, onDirtyChange]);
+
+  const discard = () => {
+    setOpen(false);
+    setSelectedPurchaseId("");
+    setSelectedMatches(new Set());
+    onDirtyChange(observationId, false);
+  };
+
   const showLinker = async () => {
-    setOpen((current) => !current);
-    if (open || purchases.length || loading) return;
+    if (open) {
+      discard();
+      return;
+    }
+    setOpen(true);
+    if (purchases.length || loading) return;
     setLoading(true);
     setError("");
     try {
@@ -90,6 +109,9 @@ export function ObservationLinker({
       );
       if (!response.ok) throw new Error(`原本を購入に紐付けできませんでした (${response.status})`);
       setOpen(false);
+      setSelectedPurchaseId("");
+      setSelectedMatches(new Set());
+      onDirtyChange(observationId, false);
       onConfirmed();
     } catch (reason) {
       setError((reason as Error).message);
@@ -164,7 +186,7 @@ export function ObservationLinker({
               >
                 購入に紐付け
               </button>
-              <button className="text-button" type="button" onClick={() => setOpen(false)}>
+              <button className="text-button" type="button" disabled={pending} onClick={discard}>
                 閉じる
               </button>
             </>

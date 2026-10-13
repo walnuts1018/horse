@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<7adf556a942a1901a020290bb9881d02>>
+ * @generated SignedSource<<fd95254497437ec1c76384eda43a0576>>
  * @lightSyntaxTransform
  */
 
@@ -36,22 +36,34 @@ export type AccountBalanceAnalysisQuery$data = {
         };
         readonly id: string;
       } | {
+        readonly __typename: "AdvanceTransferLedgerEntry";
+        readonly id: string;
+      } | {
         readonly __typename: "CorrectionLedgerEntry";
         readonly id: string;
       } | {
         readonly __typename: "FundingLedgerEntry";
         readonly id: string;
       } | {
+        readonly __typename: "GiftTransferLedgerEntry";
+        readonly id: string;
+      } | {
+        readonly __typename: "LoanTransferLedgerEntry";
+        readonly id: string;
+      } | {
         readonly __typename: "Purchase";
         readonly id: string;
       } | {
-        readonly __typename: "PurchaseCorrection";
+        readonly __typename: "PurchaseItemCorrection";
         readonly id: string;
       } | {
         readonly __typename: "PurchaseLedgerEntry";
         readonly id: string;
       } | {
-        readonly __typename: "TransferLedgerEntry";
+        readonly __typename: "PurchaseWideCorrection";
+        readonly id: string;
+      } | {
+        readonly __typename: "RepaymentTransferLedgerEntry";
         readonly id: string;
       } | {
         // This will never be '%other', but we need some
@@ -216,60 +228,84 @@ v16 = {
 v17 = {
   "kind": "InlineFragment",
   "selections": (v15/*:: as any*/),
-  "type": "PurchaseCorrection",
+  "type": "PurchaseWideCorrection",
   "abstractKey": null
 },
 v18 = {
   "kind": "InlineFragment",
   "selections": (v15/*:: as any*/),
-  "type": "CorrectionLedgerEntry",
+  "type": "PurchaseItemCorrection",
   "abstractKey": null
 },
 v19 = {
   "kind": "InlineFragment",
   "selections": (v15/*:: as any*/),
-  "type": "FundingLedgerEntry",
+  "type": "CorrectionLedgerEntry",
   "abstractKey": null
 },
 v20 = {
   "kind": "InlineFragment",
   "selections": (v15/*:: as any*/),
-  "type": "PurchaseLedgerEntry",
+  "type": "FundingLedgerEntry",
   "abstractKey": null
 },
 v21 = {
   "kind": "InlineFragment",
   "selections": (v15/*:: as any*/),
-  "type": "TransferLedgerEntry",
+  "type": "PurchaseLedgerEntry",
   "abstractKey": null
 },
 v22 = {
   "kind": "InlineFragment",
   "selections": (v15/*:: as any*/),
-  "type": "AccountMovement",
+  "type": "AdvanceTransferLedgerEntry",
   "abstractKey": null
 },
 v23 = {
   "kind": "InlineFragment",
   "selections": (v15/*:: as any*/),
-  "type": "AccountIncome",
+  "type": "LoanTransferLedgerEntry",
   "abstractKey": null
 },
 v24 = {
+  "kind": "InlineFragment",
+  "selections": (v15/*:: as any*/),
+  "type": "RepaymentTransferLedgerEntry",
+  "abstractKey": null
+},
+v25 = {
+  "kind": "InlineFragment",
+  "selections": (v15/*:: as any*/),
+  "type": "GiftTransferLedgerEntry",
+  "abstractKey": null
+},
+v26 = {
+  "kind": "InlineFragment",
+  "selections": (v15/*:: as any*/),
+  "type": "AccountMovement",
+  "abstractKey": null
+},
+v27 = {
+  "kind": "InlineFragment",
+  "selections": (v15/*:: as any*/),
+  "type": "AccountIncome",
+  "abstractKey": null
+},
+v28 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "description",
   "storageKey": null
 },
-v25 = {
+v29 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "changeYen",
   "storageKey": null
 },
-v26 = {
+v30 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
@@ -328,13 +364,17 @@ return {
                   (v20/*:: as any*/),
                   (v21/*:: as any*/),
                   (v22/*:: as any*/),
-                  (v23/*:: as any*/)
+                  (v23/*:: as any*/),
+                  (v24/*:: as any*/),
+                  (v25/*:: as any*/),
+                  (v26/*:: as any*/),
+                  (v27/*:: as any*/)
                 ],
                 "storageKey": null
               },
-              (v24/*:: as any*/),
-              (v25/*:: as any*/),
-              (v26/*:: as any*/)
+              (v28/*:: as any*/),
+              (v29/*:: as any*/),
+              (v30/*:: as any*/)
             ],
             "storageKey": null
           }
@@ -397,6 +437,10 @@ return {
                   (v21/*:: as any*/),
                   (v22/*:: as any*/),
                   (v23/*:: as any*/),
+                  (v24/*:: as any*/),
+                  (v25/*:: as any*/),
+                  (v26/*:: as any*/),
+                  (v27/*:: as any*/),
                   {
                     "kind": "InlineFragment",
                     "selections": (v15/*:: as any*/),
@@ -406,9 +450,9 @@ return {
                 ],
                 "storageKey": null
               },
-              (v24/*:: as any*/),
-              (v25/*:: as any*/),
-              (v26/*:: as any*/)
+              (v28/*:: as any*/),
+              (v29/*:: as any*/),
+              (v30/*:: as any*/)
             ],
             "storageKey": null
           }
@@ -418,16 +462,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "3326ad8ea5ba569428b5c91ec05b6a46",
+    "cacheID": "be561f46887575f041a4ccec80e00b48",
     "id": null,
     "metadata": {},
     "name": "AccountBalanceAnalysisQuery",
     "operationKind": "query",
-    "text": "query AccountBalanceAnalysisQuery(\n  $householdId: ID!\n  $accountId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n) {\n  accountBalanceAnalysis(householdId: $householdId, accountId: $accountId, from: $from, to: $to) {\n    accountId\n    currency\n    from\n    to\n    openingBalanceYen\n    closingBalanceYen\n    changes {\n      occurredAt\n      source {\n        __typename\n        ... on AccountOpeningBalance {\n          id\n          account {\n            id\n            name\n          }\n        }\n        ... on Purchase {\n          id\n        }\n        ... on PurchaseCorrection {\n          id\n        }\n        ... on CorrectionLedgerEntry {\n          id\n        }\n        ... on FundingLedgerEntry {\n          id\n        }\n        ... on PurchaseLedgerEntry {\n          id\n        }\n        ... on TransferLedgerEntry {\n          id\n        }\n        ... on AccountMovement {\n          id\n        }\n        ... on AccountIncome {\n          id\n        }\n        ... on Node {\n          __isNode: __typename\n          id\n        }\n      }\n      description\n      changeYen\n      balanceYen\n    }\n  }\n}\n"
+    "text": "query AccountBalanceAnalysisQuery(\n  $householdId: ID!\n  $accountId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n) {\n  accountBalanceAnalysis(householdId: $householdId, accountId: $accountId, from: $from, to: $to) {\n    accountId\n    currency\n    from\n    to\n    openingBalanceYen\n    closingBalanceYen\n    changes {\n      occurredAt\n      source {\n        __typename\n        ... on AccountOpeningBalance {\n          id\n          account {\n            id\n            name\n          }\n        }\n        ... on Purchase {\n          id\n        }\n        ... on PurchaseWideCorrection {\n          id\n        }\n        ... on PurchaseItemCorrection {\n          id\n        }\n        ... on CorrectionLedgerEntry {\n          id\n        }\n        ... on FundingLedgerEntry {\n          id\n        }\n        ... on PurchaseLedgerEntry {\n          id\n        }\n        ... on AdvanceTransferLedgerEntry {\n          id\n        }\n        ... on LoanTransferLedgerEntry {\n          id\n        }\n        ... on RepaymentTransferLedgerEntry {\n          id\n        }\n        ... on GiftTransferLedgerEntry {\n          id\n        }\n        ... on AccountMovement {\n          id\n        }\n        ... on AccountIncome {\n          id\n        }\n        ... on Node {\n          __isNode: __typename\n          id\n        }\n      }\n      description\n      changeYen\n      balanceYen\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "0a01f3196aa43642d20b458938cd7465";
+(node as any).hash = "0976c967e564f104cf818990a3e2a98f";
 
 export default node;

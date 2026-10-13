@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<80d57db5ed7e49fba870997ea7e70062>>
+ * @generated SignedSource<<f012ac188702edfa23fca418827d64ba>>
  * @lightSyntaxTransform
  */
 
@@ -63,7 +63,7 @@ export type CreatePurchaseMutation$data = {
       readonly id: string;
       readonly items: ReadonlyArray<{
         readonly allocations: ReadonlyArray<{
-          readonly amountYen: any | null | undefined;
+          readonly amountYen: any;
           readonly poolId: string;
           readonly poolName: string;
           readonly weight: any;
@@ -331,7 +331,7 @@ v8 = [
                   {
                     "alias": null,
                     "args": null,
-                    "concreteType": "Allocation",
+                    "concreteType": "PurchaseItemAllocation",
                     "kind": "LinkedField",
                     "name": "allocations",
                     "plural": true,

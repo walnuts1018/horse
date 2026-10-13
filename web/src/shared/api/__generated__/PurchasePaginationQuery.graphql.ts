@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<cb47ce7210e14cbb864abfeed9a53d7e>>
+ * @generated SignedSource<<0e77ecdacea21d20ef2483d545da904d>>
  * @lightSyntaxTransform
  */
 
@@ -211,10 +211,17 @@ v12 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "endCursor",
+  "name": "__typename",
   "storageKey": null
 },
 v13 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "endCursor",
+  "storageKey": null
+},
+v14 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
@@ -387,7 +394,7 @@ return {
                       {
                         "alias": null,
                         "args": null,
-                        "concreteType": "Allocation",
+                        "concreteType": "PurchaseItemAllocation",
                         "kind": "LinkedField",
                         "name": "allocations",
                         "plural": true,
@@ -475,18 +482,26 @@ return {
                           {
                             "alias": null,
                             "args": null,
-                            "concreteType": "PurchaseCorrection",
+                            "concreteType": null,
                             "kind": "LinkedField",
                             "name": "node",
                             "plural": false,
                             "selections": [
+                              (v12/*:: as any*/),
                               (v3/*:: as any*/),
                               {
-                                "alias": null,
-                                "args": null,
-                                "kind": "ScalarField",
-                                "name": "itemId",
-                                "storageKey": null
+                                "kind": "InlineFragment",
+                                "selections": [
+                                  {
+                                    "alias": null,
+                                    "args": null,
+                                    "kind": "ScalarField",
+                                    "name": "itemId",
+                                    "storageKey": null
+                                  }
+                                ],
+                                "type": "PurchaseItemCorrection",
+                                "abstractKey": null
                               },
                               {
                                 "alias": null,
@@ -525,8 +540,8 @@ return {
                         "name": "pageInfo",
                         "plural": false,
                         "selections": [
-                          (v12/*:: as any*/),
-                          (v13/*:: as any*/)
+                          (v13/*:: as any*/),
+                          (v14/*:: as any*/)
                         ],
                         "storageKey": null
                       }
@@ -555,13 +570,7 @@ return {
                     "name": "updatedAt",
                     "storageKey": null
                   },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "__typename",
-                    "storageKey": null
-                  }
+                  (v12/*:: as any*/)
                 ],
                 "storageKey": null
               }
@@ -583,8 +592,8 @@ return {
                 "name": "startCursor",
                 "storageKey": null
               },
-              (v12/*:: as any*/),
               (v13/*:: as any*/),
+              (v14/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -630,16 +639,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "6c6a7ab4ce1290a2ce89d54578174ae7",
+    "cacheID": "a35c09ee1e192365c6d3aafcd56fcb7d",
     "id": null,
     "metadata": {},
     "name": "PurchasePaginationQuery",
     "operationKind": "query",
-    "text": "query PurchasePaginationQuery(\n  $after: String\n  $first: Int = 100\n  $from: DateTime\n  $hasEvidence: Boolean\n  $householdId: ID!\n  $origin: PurchaseOrigin\n  $to: DateTime\n) {\n  ...PurchaseListFragment_2WxCCW\n}\n\nfragment PurchaseListFragment_2WxCCW on Query {\n  purchases(householdId: $householdId, from: $from, to: $to, origin: $origin, hasEvidence: $hasEvidence, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections(first: 100) {\n          edges {\n            cursor\n            node {\n              id\n              itemId\n              amountDeltaYen\n              reason\n              occurredAt\n              settlementMonth\n              paymentAllocations {\n                paymentAccountId\n                amountYen\n                account {\n                  id\n                  name\n                }\n              }\n            }\n          }\n          pageInfo {\n            endCursor\n            hasNextPage\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n        __typename\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
+    "text": "query PurchasePaginationQuery(\n  $after: String\n  $first: Int = 100\n  $from: DateTime\n  $hasEvidence: Boolean\n  $householdId: ID!\n  $origin: PurchaseOrigin\n  $to: DateTime\n) {\n  ...PurchaseListFragment_2WxCCW\n}\n\nfragment PurchaseListFragment_2WxCCW on Query {\n  purchases(householdId: $householdId, from: $from, to: $to, origin: $origin, hasEvidence: $hasEvidence, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections(first: 100) {\n          edges {\n            cursor\n            node {\n              __typename\n              id\n              ... on PurchaseItemCorrection {\n                itemId\n              }\n              amountDeltaYen\n              reason\n              occurredAt\n              settlementMonth\n              paymentAllocations {\n                paymentAccountId\n                amountYen\n                account {\n                  id\n                  name\n                }\n              }\n            }\n          }\n          pageInfo {\n            endCursor\n            hasNextPage\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n        __typename\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "8bee253e4ad36ae080e659e904b90c30";
+(node as any).hash = "eda1e909b11ebc946a678683ab7f81d4";
 
 export default node;

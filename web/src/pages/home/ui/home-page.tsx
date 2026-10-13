@@ -141,7 +141,7 @@ export function HomePage({
           <div className="settle-line">
             <span className="status-dot" />
             {settlement
-              ? settlement.status === "CLOSED"
+              ? settlement.__typename === "ClosedSettlement"
                 ? "締め済み"
                 : "今月分の精算"
               : "精算情報を取得できません"}

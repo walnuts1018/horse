@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f678fbf6f43ee6d1b53460104472b434>>
+ * @generated SignedSource<<76ad24f193af3cc61e97d47746ba2c4c>>
  * @lightSyntaxTransform
  */
 
@@ -80,6 +80,18 @@ v7 = [
     "args": null,
     "kind": "ScalarField",
     "name": "displayName",
+    "storageKey": null
+  }
+],
+v8 = [
+  {
+    "alias": null,
+    "args": null,
+    "concreteType": "LoanBalance",
+    "kind": "LinkedField",
+    "name": "loan",
+    "plural": false,
+    "selections": (v5/*:: as any*/),
     "storageKey": null
   }
 ];
@@ -248,26 +260,21 @@ return {
                         "plural": false,
                         "selections": (v7/*:: as any*/),
                         "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "transferKind",
-                        "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "concreteType": "LoanBalance",
-                        "kind": "LinkedField",
-                        "name": "loan",
-                        "plural": false,
-                        "selections": (v5/*:: as any*/),
-                        "storageKey": null
                       }
                     ],
                     "type": "TransferLedgerEntry",
+                    "abstractKey": "__isTransferLedgerEntry"
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": (v8/*:: as any*/),
+                    "type": "LoanTransferLedgerEntry",
+                    "abstractKey": null
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": (v8/*:: as any*/),
+                    "type": "RepaymentTransferLedgerEntry",
                     "abstractKey": null
                   },
                   {
@@ -331,12 +338,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "2f8c4177e85b54d55f50328f2d08928d",
+    "cacheID": "13ffc6d3698b7e09d01caa5791e15436",
     "id": null,
     "metadata": {},
     "name": "HouseholdLedgerQuery",
     "operationKind": "query",
-    "text": "query HouseholdLedgerQuery(\n  $householdId: ID!\n  $first: Int\n) {\n  ...HouseholdLedgerFragment_47g58K\n}\n\nfragment HouseholdLedgerFragment_47g58K on Query {\n  ledger(householdId: $householdId, first: $first) {\n    edges {\n      cursor\n      node {\n        __typename\n        __isLedgerEntry: __typename\n        id\n        occurredAt\n        description\n        amountYen\n        currency\n        createdAt\n        ... on PurchaseLedgerEntry {\n          purchase {\n            id\n          }\n        }\n        ... on FundingLedgerEntry {\n          member {\n            id\n            displayName\n          }\n          pool {\n            __typename\n            id\n            name\n          }\n        }\n        ... on TransferLedgerEntry {\n          fromMember {\n            id\n            displayName\n          }\n          toMember {\n            id\n            displayName\n          }\n          transferKind\n          loan {\n            id\n          }\n        }\n        ... on CorrectionLedgerEntry {\n          purchase {\n            id\n          }\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query HouseholdLedgerQuery(\n  $householdId: ID!\n  $first: Int\n) {\n  ...HouseholdLedgerFragment_47g58K\n}\n\nfragment HouseholdLedgerFragment_47g58K on Query {\n  ledger(householdId: $householdId, first: $first) {\n    edges {\n      cursor\n      node {\n        __typename\n        __isLedgerEntry: __typename\n        id\n        occurredAt\n        description\n        amountYen\n        currency\n        createdAt\n        ... on PurchaseLedgerEntry {\n          purchase {\n            id\n          }\n        }\n        ... on FundingLedgerEntry {\n          member {\n            id\n            displayName\n          }\n          pool {\n            __typename\n            id\n            name\n          }\n        }\n        ... on TransferLedgerEntry {\n          __isTransferLedgerEntry: __typename\n          fromMember {\n            id\n            displayName\n          }\n          toMember {\n            id\n            displayName\n          }\n        }\n        ... on LoanTransferLedgerEntry {\n          loan {\n            id\n          }\n        }\n        ... on RepaymentTransferLedgerEntry {\n          loan {\n            id\n          }\n        }\n        ... on CorrectionLedgerEntry {\n          purchase {\n            id\n          }\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();

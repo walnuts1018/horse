@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bd10141b0561df8410f6461f6a93250b>>
+ * @generated SignedSource<<497c21207c3d3dea4d8f66ccc15ea085>>
  * @lightSyntaxTransform
  */
 
@@ -11,7 +11,7 @@ import type { ReaderFragment } from 'relay-runtime';
 import type { FragmentRefs } from "relay-runtime";
 export type PurchaseItemFields$data = {
   readonly allocations: ReadonlyArray<{
-    readonly amountYen: any | null | undefined;
+    readonly amountYen: any;
     readonly poolId: string;
     readonly poolName: string;
     readonly weight: any;
@@ -192,7 +192,7 @@ return {
     {
       "alias": null,
       "args": null,
-      "concreteType": "Allocation",
+      "concreteType": "PurchaseItemAllocation",
       "kind": "LinkedField",
       "name": "allocations",
       "plural": true,

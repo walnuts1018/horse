@@ -6,13 +6,11 @@ export const householdInvitationsQuery = graphql`
       edges {
         cursor
         node {
+          __typename
           id
           householdId
-          status
           expiresAt
           createdAt
-          revokedAt
-          acceptedAt
         }
       }
       pageInfo {
@@ -32,13 +30,11 @@ export const createHouseholdInvitationMutation = graphql`
         result {
           token
           invitation {
+            __typename
             id
             householdId
-            status
             expiresAt
             createdAt
-            revokedAt
-            acceptedAt
           }
         }
       }
@@ -56,9 +52,8 @@ export const revokeHouseholdInvitationMutation = graphql`
       __typename
       ... on RevokeHouseholdInvitationSuccess {
         result {
+          __typename
           id
-          status
-          revokedAt
         }
       }
       ... on MutationError {

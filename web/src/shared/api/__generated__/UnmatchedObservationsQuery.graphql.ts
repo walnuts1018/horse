@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ccc45fdea7cfd61fc514c4c4710739c5>>
+ * @generated SignedSource<<bfdd6431febbccea3ea01b407e892ce7>>
  * @lightSyntaxTransform
  */
 
@@ -24,15 +24,19 @@ export type UnmatchedObservationsQuery$data = {
     readonly edges: ReadonlyArray<{
       readonly cursor: string;
       readonly node: {
+        readonly __typename: string;
         readonly amountYen: any;
         readonly documentId: string;
         readonly merchant: string;
         readonly occurredAt: string | null | undefined;
         readonly orderId: string;
-        readonly purchaseId: string | null | undefined;
+        readonly purchase?: {
+          readonly id: string;
+          readonly merchant: string;
+          readonly occurredAt: string;
+        };
         readonly sourceKind: SourceKind;
         readonly sourceReference: string;
-        readonly state: UnmatchedObservationState;
         readonly transactionId: string;
       };
     }>;
@@ -132,21 +136,21 @@ v9 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "documentId",
+  "name": "__typename",
   "storageKey": null
 },
 v10 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "sourceReference",
+  "name": "documentId",
   "storageKey": null
 },
 v11 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "purchaseId",
+  "name": "sourceReference",
   "storageKey": null
 },
 v12 = {
@@ -160,45 +164,66 @@ v13 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "state",
+  "name": "merchant",
   "storageKey": null
 },
 v14 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "merchant",
+  "name": "occurredAt",
   "storageKey": null
 },
 v15 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "occurredAt",
+  "name": "amountYen",
   "storageKey": null
 },
 v16 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "amountYen",
+  "name": "orderId",
   "storageKey": null
 },
 v17 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "orderId",
+  "name": "transactionId",
   "storageKey": null
 },
 v18 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "transactionId",
+  "name": "id",
   "storageKey": null
 },
 v19 = {
+  "kind": "InlineFragment",
+  "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "concreteType": "Purchase",
+      "kind": "LinkedField",
+      "name": "purchase",
+      "plural": false,
+      "selections": [
+        (v18/*:: as any*/),
+        (v13/*:: as any*/),
+        (v14/*:: as any*/)
+      ],
+      "storageKey": null
+    }
+  ],
+  "type": "ConfirmedObservation",
+  "abstractKey": null
+},
+v20 = {
   "alias": null,
   "args": null,
   "concreteType": "PageInfo",
@@ -223,7 +248,7 @@ v19 = {
   ],
   "storageKey": null
 },
-v20 = {
+v21 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
@@ -265,7 +290,7 @@ return {
               {
                 "alias": null,
                 "args": null,
-                "concreteType": "UnmatchedObservation",
+                "concreteType": null,
                 "kind": "LinkedField",
                 "name": "node",
                 "plural": false,
@@ -279,15 +304,15 @@ return {
                   (v15/*:: as any*/),
                   (v16/*:: as any*/),
                   (v17/*:: as any*/),
-                  (v18/*:: as any*/)
+                  (v19/*:: as any*/)
                 ],
                 "storageKey": null
               }
             ],
             "storageKey": null
           },
-          (v19/*:: as any*/),
-          (v20/*:: as any*/)
+          (v20/*:: as any*/),
+          (v21/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -329,7 +354,7 @@ return {
               {
                 "alias": null,
                 "args": null,
-                "concreteType": "UnmatchedObservation",
+                "concreteType": null,
                 "kind": "LinkedField",
                 "name": "node",
                 "plural": false,
@@ -343,38 +368,32 @@ return {
                   (v15/*:: as any*/),
                   (v16/*:: as any*/),
                   (v17/*:: as any*/),
-                  (v18/*:: as any*/),
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "id",
-                    "storageKey": null
-                  }
+                  (v19/*:: as any*/),
+                  (v18/*:: as any*/)
                 ],
                 "storageKey": null
               }
             ],
             "storageKey": null
           },
-          (v19/*:: as any*/),
-          (v20/*:: as any*/)
+          (v20/*:: as any*/),
+          (v21/*:: as any*/)
         ],
         "storageKey": null
       }
     ]
   },
   "params": {
-    "cacheID": "f9745234b3e144e516c85d97777676ac",
+    "cacheID": "6db47fc7bf945b92d371775461398ba9",
     "id": null,
     "metadata": {},
     "name": "UnmatchedObservationsQuery",
     "operationKind": "query",
-    "text": "query UnmatchedObservationsQuery(\n  $householdId: ID!\n  $from: YearMonth\n  $to: YearMonth\n  $sourceKind: SourceKind\n  $state: UnmatchedObservationState\n  $after: String\n  $first: Int\n) {\n  unmatchedObservations(householdId: $householdId, from: $from, to: $to, sourceKind: $sourceKind, state: $state, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        documentId\n        sourceReference\n        purchaseId\n        sourceKind\n        state\n        merchant\n        occurredAt\n        amountYen\n        orderId\n        transactionId\n        id\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query UnmatchedObservationsQuery(\n  $householdId: ID!\n  $from: YearMonth\n  $to: YearMonth\n  $sourceKind: SourceKind\n  $state: UnmatchedObservationState\n  $after: String\n  $first: Int\n) {\n  unmatchedObservations(householdId: $householdId, from: $from, to: $to, sourceKind: $sourceKind, state: $state, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        __typename\n        documentId\n        sourceReference\n        sourceKind\n        merchant\n        occurredAt\n        amountYen\n        orderId\n        transactionId\n        ... on ConfirmedObservation {\n          purchase {\n            id\n            merchant\n            occurredAt\n          }\n        }\n        id\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "be9e1b684687be76af9d3287a59032ce";
+(node as any).hash = "7cf20a309a282bf10c7c5edb9d1aa2aa";
 
 export default node;

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8efa675f983a93dd9f81ecf24ef4e949>>
+ * @generated SignedSource<<c03e0ee12a4ca894356686610ebf1443>>
  * @lightSyntaxTransform
  */
 
@@ -11,12 +11,24 @@ import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL" | "%future added value";
 export type SetPoolFundingRuleInput = {
+  configuration: PoolFundingRuleConfigurationInput;
   expectedVersion: number;
-  fundingShares: ReadonlyArray<PoolFundingShareInput>;
   householdId: string;
-  ownerMemberId?: string | null | undefined;
   poolId: string;
-  settlementPolicy?: SharedPoolSettlementPolicy | null | undefined;
+};
+export type PoolFundingRuleConfigurationInput = {
+  personal: PersonalPoolFundingRuleInput;
+  shared?: never;
+} | {
+  personal?: never;
+  shared: SharedPoolFundingRuleInput;
+};
+export type PersonalPoolFundingRuleInput = {
+  ownerMemberId: string;
+};
+export type SharedPoolFundingRuleInput = {
+  fundingShares: ReadonlyArray<PoolFundingShareInput>;
+  settlementPolicy: SharedPoolSettlementPolicy;
 };
 export type PoolFundingShareInput = {
   memberId: string;

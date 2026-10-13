@@ -1,4 +1,13 @@
-import { Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { useBlocker, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
   AlertCircle,
@@ -41,8 +50,8 @@ import { LedgerPage } from "../pages/ledger";
 import { PurchaseCreatePage } from "../pages/purchase-create";
 import { SettingsPage } from "../pages/settings";
 import { SettlementPage } from "../pages/settlement";
+import type { AppPage } from "./app-page";
 
-type Page = "home" | "ledger" | "new" | "settlement" | "analysis" | "imports" | "settings";
 async function read<T>(
   operation: Parameters<typeof executeGraphql>[0],
   variables: Record<string, unknown> = {},
@@ -51,6 +60,9 @@ async function read<T>(
 }
 
 export function App() {
+  const navigate = useNavigate({ from: "/" });
+  const { page: selectedPage } = useSearch({ from: "/" });
+  const page: AppPage = selectedPage ?? "home";
   const outbox = usePurchaseOutbox();
   const createAndPostPurchase = useCreateAndPostPurchase();
   const [viewer, setViewer] = useState<{ id: string; displayName: string; email?: string } | null>(
@@ -58,7 +70,7 @@ export function App() {
   );
   const [households, setHouseholds] = useState<Array<{ id: string; name: string }>>([]);
   const [household, setHousehold] = useState<Household | null>(null);
-  const [page, setPage] = useState<Page>("home");
+  const hasUnsavedChangesRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -71,18 +83,40 @@ export function App() {
   const senderId = useRef("");
   const currentPage = useRef(page);
   currentPage.current = page;
-  const purchaseCreatePreviousPage = useRef<Page>("home");
+  const purchaseCreatePreviousPage = useRef<AppPage>("home");
   const currentHouseholdId = useRef(household?.id);
   currentHouseholdId.current = household?.id;
   const autoNavigateKey = useRef<string | null>(null);
 
-  const navigateToPage = (nextPage: Page) => {
+  useEffect(() => {
+    setMobileMenu(false);
+  }, [page]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!mobileMenu) return;
+    root.classList.add("mobile-drawer-open");
+    return () => root.classList.remove("mobile-drawer-open");
+  }, [mobileMenu]);
+
+  useBlocker({
+    shouldBlockFn: () =>
+      hasUnsavedChangesRef.current && !window.confirm("未保存の変更を破棄しますか？"),
+    enableBeforeUnload: () => hasUnsavedChangesRef.current,
+  });
+
+  const reportUnsavedChanges = useCallback((unsaved: boolean) => {
+    hasUnsavedChangesRef.current = unsaved;
+  }, []);
+
+  const navigateToPage = (nextPage: AppPage) => {
+    if (page === nextPage) return;
     if (nextPage === "new") {
       if (page !== "new") purchaseCreatePreviousPage.current = page;
-      setPage("new");
-      return;
     }
-    setPage(nextPage);
+    void navigate({
+      search: (previous) => ({ ...previous, page: nextPage === "home" ? undefined : nextPage }),
+    });
   };
 
   const refreshHousehold = async (id: string) => {
@@ -172,7 +206,7 @@ export function App() {
           }
           if (autoNavigateKey.current === key && currentPage.current === "new") {
             autoNavigateKey.current = null;
-            setPage("ledger");
+            navigateToPage("ledger");
           }
         } catch (reason) {
           if (claimed) {
@@ -214,6 +248,13 @@ export function App() {
           ? `送信待ち ${pendingOutboxCount}件`
           : "";
   const logout = async () => {
+    const hadUnsavedChanges = hasUnsavedChangesRef.current;
+    if (
+      hadUnsavedChanges &&
+      !window.confirm("未保存の変更を破棄してログアウトしますか？")
+    )
+      return;
+    if (hadUnsavedChanges) hasUnsavedChangesRef.current = false;
     setLoggingOut(true);
     try {
       const response = await fetch("/auth/logout", {
@@ -221,8 +262,10 @@ export function App() {
         credentials: "include",
       });
       if (!response.ok) throw new Error("ログアウトできませんでした");
+      hasUnsavedChangesRef.current = false;
       window.location.reload();
     } catch (reason) {
+      if (hadUnsavedChanges) hasUnsavedChangesRef.current = true;
       showNotice((reason as Error).message);
       setLoggingOut(false);
     }
@@ -254,6 +297,12 @@ export function App() {
     setPendingInvitation("");
   };
   const selectHousehold = async (id: string) => {
+    if (id === household?.id) return;
+    if (
+      hasUnsavedChangesRef.current &&
+      !window.confirm("未保存の変更を破棄して家計簿を切り替えますか？")
+    )
+      return;
     try {
       await refreshHousehold(id);
       setHouseholds((current) => {
@@ -296,7 +345,7 @@ export function App() {
             href="#home"
             onClick={(e) => {
               e.preventDefault();
-              setPage("home");
+              navigateToPage("home");
             }}
           >
             <span className="brand-mark">h</span>
@@ -348,8 +397,7 @@ export function App() {
             label="ホーム"
             active={page === "home"}
             onClick={() => {
-              setPage("home");
-              setMobileMenu(false);
+              navigateToPage("home");
             }}
           />
           <NavItem
@@ -357,8 +405,7 @@ export function App() {
             label="帳簿"
             active={page === "ledger"}
             onClick={() => {
-              setPage("ledger");
-              setMobileMenu(false);
+              navigateToPage("ledger");
             }}
           />
           <NavItem
@@ -366,8 +413,7 @@ export function App() {
             label="精算"
             active={page === "settlement"}
             onClick={() => {
-              setPage("settlement");
-              setMobileMenu(false);
+              navigateToPage("settlement");
             }}
           />
           <NavItem
@@ -375,8 +421,7 @@ export function App() {
             label="分析"
             active={page === "analysis"}
             onClick={() => {
-              setPage("analysis");
-              setMobileMenu(false);
+              navigateToPage("analysis");
             }}
           />
           <NavItem
@@ -384,8 +429,7 @@ export function App() {
             label="取り込み"
             active={page === "imports"}
             onClick={() => {
-              setPage("imports");
-              setMobileMenu(false);
+              navigateToPage("imports");
             }}
           />
         </nav>
@@ -403,8 +447,7 @@ export function App() {
             label="設定"
             active={page === "settings"}
             onClick={() => {
-              setPage("settings");
-              setMobileMenu(false);
+              navigateToPage("settings");
             }}
           />
           <div className="profile-row">
@@ -464,7 +507,7 @@ export function App() {
                 <span>{syncLabel}</span>
               </button>
             )}
-            <button className="search-pill" onClick={() => setPage("ledger")}>
+            <button className="search-pill" onClick={() => navigateToPage("ledger")}>
               <Search size={16} />
               <span>帳簿を開く</span>
             </button>
@@ -494,7 +537,7 @@ export function App() {
             </button>
           </section>
         )}
-        <div className="page-content">
+        <div className="page-content" key={household?.id ?? "no-household"}>
           <GraphQLErrorBoundary>
             <Suspense fallback={<div className="loading-screen">購入履歴を読み込んでいます</div>}>
               {page === "home" && household && (
@@ -503,7 +546,8 @@ export function App() {
               {page === "new" && household && (
                 <PurchaseCreatePage
                   household={household}
-                  onBack={() => setPage(purchaseCreatePreviousPage.current)}
+                  onBack={() => navigateToPage(purchaseCreatePreviousPage.current)}
+                  onUnsavedChanges={reportUnsavedChanges}
                   onQueued={(idempotencyKey) => {
                     autoNavigateKey.current = idempotencyKey;
                     showNotice("送信待ちに保存しました");
@@ -511,16 +555,23 @@ export function App() {
                 />
               )}
               {page === "ledger" && household && (
-                <LedgerPage household={household} onAdd={() => navigateToPage("new")} />
+                <LedgerPage
+                  household={household}
+                  onAdd={() => navigateToPage("new")}
+                  onUnsavedChanges={reportUnsavedChanges}
+                />
               )}
-              {page === "settlement" && household && <SettlementPage household={household} />}
+              {page === "settlement" && household && (
+                <SettlementPage household={household} onUnsavedChanges={reportUnsavedChanges} />
+              )}
               {page === "analysis" && household && <AnalysisPage household={household} />}
               {page === "imports" && household && (
                 <ImportsPage
                   household={household}
+                  onUnsavedChanges={reportUnsavedChanges}
                   onAdded={async (keepOpen) => {
                     await refreshHousehold(household.id);
-                    if (!keepOpen) setPage("ledger");
+                    if (!keepOpen) navigateToPage("ledger");
                     showNotice("買い物を帳簿に追加しました");
                   }}
                 />
@@ -531,6 +582,7 @@ export function App() {
                   isOwner={household.members.some(
                     (member) => member.id === viewer.id && member.role === "OWNER",
                   )}
+                  onUnsavedChanges={reportUnsavedChanges}
                   onRefresh={() => refreshHousehold(household.id)}
                   onNotice={showNotice}
                 />
@@ -556,13 +608,16 @@ export function App() {
         </div>
       )}
       <nav className="mobile-dock" aria-label="モバイルメニュー">
-        <button className={page === "home" ? "dock-active" : ""} onClick={() => setPage("home")}>
+        <button
+          className={page === "home" ? "dock-active" : ""}
+          onClick={() => navigateToPage("home")}
+        >
           <Home />
           <span>ホーム</span>
         </button>
         <button
           className={page === "ledger" ? "dock-active" : ""}
-          onClick={() => setPage("ledger")}
+          onClick={() => navigateToPage("ledger")}
         >
           <BookOpen />
           <span>帳簿</span>
@@ -573,14 +628,14 @@ export function App() {
         </button>
         <button
           className={page === "settlement" ? "dock-active" : ""}
-          onClick={() => setPage("settlement")}
+          onClick={() => navigateToPage("settlement")}
         >
           <ArrowLeftRight />
           <span>精算</span>
         </button>
         <button
           className={page === "analysis" ? "dock-active" : ""}
-          onClick={() => setPage("analysis")}
+          onClick={() => navigateToPage("analysis")}
         >
           <BarChart3 />
           <span>分析</span>
@@ -610,7 +665,7 @@ function NavItem({
   );
 }
 
-function pageTitle(page: Page) {
+function pageTitle(page: AppPage) {
   return (
     {
       home: "ホーム",
@@ -620,7 +675,7 @@ function pageTitle(page: Page) {
       analysis: "分析",
       imports: "取り込み",
       settings: "設定",
-    } as Record<Page, string>
+    } as Record<AppPage, string>
   )[page];
 }
 

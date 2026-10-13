@@ -42,7 +42,13 @@ const ledgerKindLabels: Record<string, string> = {
   GIFT: "贈与",
 };
 
-export function SettlementPage({ household }: { household: Household }) {
+export function SettlementPage({
+  household,
+  onUnsavedChanges,
+}: {
+  household: Household;
+  onUnsavedChanges: (unsaved: boolean) => void;
+}) {
   const [period, setPeriod] = useState(() => japanMonth(new Date()));
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const {
@@ -71,8 +77,14 @@ export function SettlementPage({ household }: { household: Household }) {
   const [transferLoanId, setTransferLoanId] = useState("");
   const [transferPaymentAccountId, setTransferPaymentAccountId] = useState("");
   const [transferDestinationAccountId, setTransferDestinationAccountId] = useState("");
+  const [hasUnsavedTransfer, setHasUnsavedTransfer] = useState(false);
   const [fundingSourceAccounts, setFundingSourceAccounts] = useState<Record<string, string>>({});
   const [fundingDestinationAccountId, setFundingDestinationAccountId] = useState("");
+  useEffect(() => {
+    onUnsavedChanges(hasUnsavedTransfer);
+    return () => onUnsavedChanges(false);
+  }, [hasUnsavedTransfer, onUnsavedChanges]);
+  const markTransferUnsaved = () => setHasUnsavedTransfer(true);
   const load = async () => {
     try {
       refreshLedger();
@@ -130,7 +142,10 @@ export function SettlementPage({ household }: { household: Household }) {
           householdId: household.id,
           memberId,
           poolId:
-            household.pools.find((pool) => pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool")?.id ?? household.pools[0]?.id,
+            household.pools.find(
+              (pool) =>
+                pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool",
+            )?.id ?? household.pools[0]?.id,
           amountYen,
           occurredAt: new Date().toISOString(),
           idempotencyKey: makeIdempotencyKey(),
@@ -209,6 +224,7 @@ export function SettlementPage({ household }: { household: Household }) {
       setTransferPaymentAccountId("");
       setTransferDestinationAccountId("");
       setTransferOpen(false);
+      setHasUnsavedTransfer(false);
       await load();
     } catch (reason) {
       setError((reason as Error).message);
@@ -226,6 +242,7 @@ export function SettlementPage({ household }: { household: Household }) {
     (transferKind === "REPAYMENT" &&
       (!selectedLoan || parsedTransferAmount > selectedLoan.balanceYen));
   const openTransferForLoan = (loan: LoanBalance) => {
+    markTransferUnsaved();
     setTransferKind("REPAYMENT");
     setTransferLoanId(loan.id);
     setTransferFrom(loan.borrowerMemberId);
@@ -266,7 +283,7 @@ export function SettlementPage({ household }: { household: Household }) {
           <span>次回の入金</span>
           <h2>{yen(totalDue)}</h2>
           <small>
-            {settlement?.status === "CLOSED"
+            {settlement?.__typename === "ClosedSettlement"
               ? "この期間は締め済み"
               : `${period.replace("-", "年")}月分`}
           </small>
@@ -282,7 +299,7 @@ export function SettlementPage({ household }: { household: Household }) {
             <h2>入金予定</h2>
           </div>
           <span className="period-chip">
-            {settlement?.status === "CLOSED" ? "締め済み" : "未締め"}
+            {settlement?.__typename === "ClosedSettlement" ? "締め済み" : "未締め"}
           </span>
         </div>
         {!settlement ? (
@@ -346,7 +363,10 @@ export function SettlementPage({ household }: { household: Household }) {
                         const pool = household.pools.find(
                           (candidate) => candidate.id === account.poolId,
                         );
-                        return pool?.__typename === "PersonalPool" && pool.ownerMemberId === line.memberId;
+                        return (
+                          pool?.__typename === "PersonalPool" &&
+                          pool.ownerMemberId === line.memberId
+                        );
                       })
                       .map((account) => (
                         <option key={account.id} value={account.id}>
@@ -364,7 +384,11 @@ export function SettlementPage({ household }: { household: Household }) {
                     <option value="">未指定</option>
                     {household.accounts
                       .filter((account) => {
-                        const sharedPool = household.pools.find((pool) => pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool");
+                        const sharedPool = household.pools.find(
+                          (pool) =>
+                            pool.__typename === "SharedPool" ||
+                            pool.__typename === "UnconfiguredSharedPool",
+                        );
                         return sharedPool?.id === account.poolId && account.kind !== "CARD";
                       })
                       .map((account) => (
@@ -388,7 +412,7 @@ export function SettlementPage({ household }: { household: Household }) {
         <div className="settlement-actions">
           <button
             className="button button-soft"
-            disabled={pending || settlement?.status === "CLOSED"}
+            disabled={pending || settlement?.__typename === "ClosedSettlement"}
             onClick={() => void close()}
           >
             <Check size={16} />
@@ -396,7 +420,11 @@ export function SettlementPage({ household }: { household: Household }) {
           </button>
           <button
             className="button button-primary"
-            onClick={() => setTransferOpen((open) => !open)}
+            onClick={() => {
+              if (transferOpen) setHasUnsavedTransfer(false);
+              else markTransferUnsaved();
+              setTransferOpen(!transferOpen);
+            }}
           >
             <Plus size={16} />
             送金を記録
@@ -410,6 +438,7 @@ export function SettlementPage({ household }: { household: Household }) {
                 value={transferKind}
                 onChange={(event) => {
                   const nextKind = event.target.value as typeof transferKind;
+                  markTransferUnsaved();
                   setTransferKind(nextKind);
                   setTransferLoanId("");
                   setTransferAmount("");
@@ -434,6 +463,7 @@ export function SettlementPage({ household }: { household: Household }) {
                     required
                     value={transferLoanId}
                     onChange={(event) => {
+                      markTransferUnsaved();
                       const loan = openLoans.find((row) => row.id === event.target.value);
                       setTransferLoanId(event.target.value);
                       if (loan) {
@@ -479,7 +509,10 @@ export function SettlementPage({ household }: { household: Household }) {
               <select
                 value={transferFrom}
                 disabled={transferKind === "REPAYMENT"}
-                onChange={(event) => setTransferFrom(event.target.value)}
+                onChange={(event) => {
+                  markTransferUnsaved();
+                  setTransferFrom(event.target.value);
+                }}
               >
                 {household.members.map((member) => (
                   <option value={member.id} key={member.id}>
@@ -499,7 +532,10 @@ export function SettlementPage({ household }: { household: Household }) {
               <select
                 value={transferTo}
                 disabled={transferKind === "REPAYMENT"}
-                onChange={(event) => setTransferTo(event.target.value)}
+                onChange={(event) => {
+                  markTransferUnsaved();
+                  setTransferTo(event.target.value);
+                }}
               >
                 {household.members.map((member) => (
                   <option value={member.id} key={member.id}>
@@ -512,7 +548,10 @@ export function SettlementPage({ household }: { household: Household }) {
               資金元口座
               <select
                 value={transferPaymentAccountId}
-                onChange={(event) => setTransferPaymentAccountId(event.target.value)}
+                onChange={(event) => {
+                  markTransferUnsaved();
+                  setTransferPaymentAccountId(event.target.value);
+                }}
               >
                 <option value="">現金など口座外</option>
                 {household.accounts.map((account) => (
@@ -526,7 +565,10 @@ export function SettlementPage({ household }: { household: Household }) {
               入金先口座
               <select
                 value={transferDestinationAccountId}
-                onChange={(event) => setTransferDestinationAccountId(event.target.value)}
+                onChange={(event) => {
+                  markTransferUnsaved();
+                  setTransferDestinationAccountId(event.target.value);
+                }}
               >
                 <option value="">口座外</option>
                 {household.accounts
@@ -549,7 +591,10 @@ export function SettlementPage({ household }: { household: Household }) {
                   selectedLoan !== undefined &&
                   parsedTransferAmount > selectedLoan.balanceYen
                 }
-                onChange={(event) => setTransferAmount(event.target.value.replace(/\D/g, ""))}
+                onChange={(event) => {
+                  markTransferUnsaved();
+                  setTransferAmount(event.target.value.replace(/\D/g, ""));
+                }}
                 required
               />
               {transferKind === "REPAYMENT" && selectedLoan && (
@@ -570,7 +615,10 @@ export function SettlementPage({ household }: { household: Household }) {
               摘要
               <input
                 value={transferDescription}
-                onChange={(event) => setTransferDescription(event.target.value)}
+                onChange={(event) => {
+                  markTransferUnsaved();
+                  setTransferDescription(event.target.value);
+                }}
               />
             </label>
             <button
@@ -599,6 +647,7 @@ export function SettlementPage({ household }: { household: Household }) {
           <button
             className="button button-soft"
             onClick={() => {
+              markTransferUnsaved();
               setTransferKind("LOAN");
               setTransferLoanId("");
               setTransferAmount("");

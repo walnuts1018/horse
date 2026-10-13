@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0b66ea941157422f4b2737ef2a2f5cc9>>
+ * @generated SignedSource<<338b22abe61810a87d4abcf58982d296>>
  * @lightSyntaxTransform
  */
 
@@ -9,7 +9,6 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type ProductLearningScope = "ITEM_ONLY" | "MERCHANT_ALIAS" | "VARIANT_NAME" | "%future added value";
 export type UpdatePurchaseItemInput = {
   allocations?: ReadonlyArray<UpdatePurchaseItemAllocationInput> | null | undefined;
   amountYen?: any | null | undefined;
@@ -18,10 +17,9 @@ export type UpdatePurchaseItemInput = {
   itemId: string;
   name?: string | null | undefined;
   printedUnitPrice?: UpdatePurchaseItemPrintedUnitPriceInput | null | undefined;
-  productLearning?: ProductLearningScope | null | undefined;
+  productLearning?: ProductLearningConfigurationInput | null | undefined;
   productVariantId?: string | null | undefined;
   quantity?: UpdatePurchaseItemQuantityInput | null | undefined;
-  variantName?: string | null | undefined;
 };
 export type UpdatePurchaseItemQuantityInput = {
   denominator: string;
@@ -31,6 +29,19 @@ export type UpdatePurchaseItemQuantityInput = {
 export type UpdatePurchaseItemPrintedUnitPriceInput = {
   amountYen: any;
   basis: UpdatePurchaseItemQuantityInput;
+};
+export type ProductLearningConfigurationInput = {
+  itemOnly: boolean;
+  merchantAlias?: never;
+  variantName?: never;
+} | {
+  itemOnly?: never;
+  merchantAlias?: never;
+  variantName: string;
+} | {
+  itemOnly?: never;
+  merchantAlias: boolean;
+  variantName?: never;
 };
 export type UpdatePurchaseItemAllocationInput = {
   poolId: string;
@@ -46,7 +57,7 @@ export type UpdatePurchaseItemMutation$data = {
     readonly message?: string;
     readonly result?: {
       readonly allocations: ReadonlyArray<{
-        readonly amountYen: any | null | undefined;
+        readonly amountYen: any;
         readonly poolId: string;
         readonly poolName: string;
         readonly weight: any;
@@ -262,7 +273,7 @@ v7 = [
               {
                 "alias": null,
                 "args": null,
-                "concreteType": "Allocation",
+                "concreteType": "PurchaseItemAllocation",
                 "kind": "LinkedField",
                 "name": "allocations",
                 "plural": true,

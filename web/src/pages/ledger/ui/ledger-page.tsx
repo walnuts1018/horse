@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, ChevronDown, ChevronRight, Plus, Search, X } from "lucide-react";
 import {
   ApiError,
@@ -61,7 +61,15 @@ const nextMonth = (month: string) => {
   return `${Math.floor(serial / 12)}-${String((serial % 12) + 1).padStart(2, "0")}`;
 };
 
-export function LedgerPage({ household, onAdd }: { household: Household; onAdd: () => void }) {
+export function LedgerPage({
+  household,
+  onAdd,
+  onUnsavedChanges,
+}: {
+  household: Household;
+  onAdd: () => void;
+  onUnsavedChanges: (unsaved: boolean) => void;
+}) {
   const { mutate: mutatePostPurchase } = useGraphqlMutation(postPurchaseMutation);
   const { mutate: mutateCorrectPurchase } = useGraphqlMutation(correctPurchaseMutation);
   const { mutate: mutateUpdatePurchaseItem } = useGraphqlMutation(updatePurchaseItemMutation);
@@ -120,6 +128,20 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   });
   const [selectedItems, setSelectedItems] = useState<Set<string>>(() => new Set());
   const [selectedPurchases, setSelectedPurchases] = useState<Set<string>>(() => new Set());
+  const [dirtyObservations, setDirtyObservations] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    onUnsavedChanges(dirtyObservations.size > 0);
+  }, [dirtyObservations, onUnsavedChanges]);
+  useEffect(() => () => onUnsavedChanges(false), [onUnsavedChanges]);
+  const reportObservationDirty = useCallback((id: string, dirty: boolean) => {
+    setDirtyObservations((current) => {
+      if (current.has(id) === dirty) return current;
+      const next = new Set(current);
+      if (dirty) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
   const selectionAnchors = useRef<{
     item: { context: string; id: string } | null;
     purchase: { context: string; id: string } | null;
@@ -363,7 +385,10 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
   const submitCorrection = async (purchase: Purchase, item: PurchaseItem) => {
     const amountYen = Number(refundAmount);
     const previousCorrections = (purchase.corrections ?? [])
-      .filter((correction) => correction.itemId === item.id)
+      .filter(
+        (correction) =>
+          correction.__typename === "PurchaseItemCorrection" && correction.itemId === item.id,
+      )
       .reduce((sum, correction) => sum + correction.amountDeltaYen, 0);
     const remaining = item.amountYen + previousCorrections;
     const refundTotal = refundPayments.reduce(
@@ -514,10 +539,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         : {}),
       ...(baseChangedFields.includes("productVariantId") && patch.productVariantId
         ? {
-            productLearning: draft.productLearning,
-            ...(draft.productLearning === "VARIANT_NAME"
-              ? { variantName: draft.variantName.trim() }
-              : {}),
+            productLearning:
+              draft.productLearning === "VARIANT_NAME"
+                ? { variantName: draft.variantName.trim() }
+                : draft.productLearning === "MERCHANT_ALIAS"
+                  ? { merchantAlias: true }
+                  : { itemOnly: true },
           }
         : {}),
     });
@@ -1461,7 +1488,15 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                 </div>
                 <div className="purchase-meta">
                   <b>{yen(observation.amountYen)}</b>
-                  <span>{observation.state === "CONFIRMED" ? "照合済み" : "未照合"}</span>
+                  <span>
+                    {observation.__typename === "ConfirmedObservation" ? "照合済み" : "未照合"}
+                  </span>
+                  {observation.__typename === "ConfirmedObservation" && (
+                    <small>
+                      {observation.purchase.merchant} ·{" "}
+                      {new Date(observation.purchase.occurredAt).toLocaleDateString("ja-JP")}
+                    </small>
+                  )}
                 </div>
                 <a
                   href={`/documents/${encodeURIComponent(observation.documentId)}/content`}
@@ -1470,11 +1505,12 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                 >
                   原本を開く
                 </a>
-                {observation.state === "UNMATCHED" && (
+                {observation.__typename === "UnmatchedObservation" && (
                   <ObservationLinker
                     household={household}
                     observation={observation}
                     onConfirmed={() => void unmatched.refresh()}
+                    onDirtyChange={reportObservationDirty}
                   />
                 )}
               </div>
@@ -1877,7 +1913,11 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                     )}
                     {(purchase.corrections ?? []).map((correction) => (
                       <div className="purchase-correction-entry" key={correction.id}>
-                        <span>{correction.itemId ? "品目返品" : "購入訂正"}</span>
+                        <span>
+                          {correction.__typename === "PurchaseItemCorrection"
+                            ? "品目返品"
+                            : "購入訂正"}
+                        </span>
                         <b
                           className={
                             correction.amountDeltaYen < 0 ? "settlement-credit" : undefined
@@ -2147,7 +2187,11 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                         {editing !== purchase.id &&
                           (() => {
                             const priorRefunds = (purchase.corrections ?? [])
-                              .filter((correction) => correction.itemId === item.id)
+                              .filter(
+                                (correction) =>
+                                  correction.__typename === "PurchaseItemCorrection" &&
+                                  correction.itemId === item.id,
+                              )
                               .reduce((total, correction) => total + correction.amountDeltaYen, 0);
                             const remaining = item.amountYen + priorRefunds;
                             const isTarget =

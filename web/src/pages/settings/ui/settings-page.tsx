@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Activity, ArrowLeftRight, Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import {
   readGraphql,
@@ -94,11 +94,15 @@ const balanceChangeSource = (sourceType: string) =>
   ({
     AccountOpeningBalance: "初期残高",
     Purchase: "購入",
-    PurchaseCorrection: "訂正",
+    PurchaseWideCorrection: "訂正",
+    PurchaseItemCorrection: "訂正",
     PurchaseLedgerEntry: "購入",
     CorrectionLedgerEntry: "訂正",
     FundingLedgerEntry: "資金拠出",
-    TransferLedgerEntry: "送金",
+    AdvanceTransferLedgerEntry: "立替",
+    LoanTransferLedgerEntry: "貸付",
+    RepaymentTransferLedgerEntry: "返済",
+    GiftTransferLedgerEntry: "贈与",
     AccountMovement: "口座振替",
     AccountIncome: "外部入金",
   })[sourceType] ?? "仕訳";
@@ -107,11 +111,13 @@ export function SettingsPage({
   household,
   onRefresh,
   onNotice,
+  onUnsavedChanges,
   isOwner,
 }: {
   household: Household;
   onRefresh: () => Promise<void>;
   onNotice: (message: string) => void;
+  onUnsavedChanges: (unsaved: boolean) => void;
   isOwner: boolean;
 }) {
   const [poolName, setPoolName] = useState("");
@@ -153,6 +159,7 @@ export function SettingsPage({
     >
   >({});
   const [pending, setPending] = useState(false);
+  const [dirtyForms, setDirtyForms] = useState<Set<string>>(() => new Set());
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
   const [invitations, setInvitations] = useState<HouseholdInvitation[]>([]);
   const [invitationsCursor, setInvitationsCursor] = useState<string | null>(null);
@@ -227,6 +234,31 @@ export function SettingsPage({
   const [movementAmount, setMovementAmount] = useState("");
   const [movementDescription, setMovementDescription] = useState("");
   const [movementDate, setMovementDate] = useState(localDateTime);
+  useEffect(() => {
+    onUnsavedChanges(pending || dirtyForms.size > 0);
+  }, [dirtyForms, onUnsavedChanges, pending]);
+  useEffect(() => () => onUnsavedChanges(false), [onUnsavedChanges]);
+  const markFormDirty = (formID: string) => {
+    setDirtyForms((current) => {
+      if (current.has(formID)) return current;
+      const next = new Set(current);
+      next.add(formID);
+      return next;
+    });
+  };
+  const markFormClean = (formID: string) => {
+    setDirtyForms((current) => {
+      if (!current.has(formID)) return current;
+      const next = new Set(current);
+      next.delete(formID);
+      return next;
+    });
+  };
+  const trackFormChange = (event: ChangeEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof Element)) return;
+    const form = event.target.closest<HTMLFormElement>("form[data-unsaved-id]");
+    if (form?.dataset.unsavedId) markFormDirty(form.dataset.unsavedId);
+  };
   const refreshRules = async () => {
     const result = await readGraphql<{ allocationRules: Connection<AllocationRule> }>(
       allocationRulesQuery,
@@ -395,7 +427,8 @@ export function SettingsPage({
           pool.id,
           {
             ownerMemberId: pool.__typename === "PersonalPool" ? pool.ownerMemberId : "",
-            policy: pool.__typename === "SharedPool" ? pool.settlementPolicy : "BALANCE_TO_STANDARD",
+            policy:
+              pool.__typename === "SharedPool" ? pool.settlementPolicy : "BALANCE_TO_STANDARD",
             weights: Object.fromEntries(
               household.members.map((member) => [
                 member.id,
@@ -499,14 +532,18 @@ export function SettingsPage({
   const saveMutation = async (
     mutation: Parameters<typeof readGraphql>[0],
     input: Record<string, unknown>,
-  ) => {
+    formID: string,
+  ): Promise<boolean> => {
     setPending(true);
     try {
       await readGraphql<Record<string, unknown>>(mutation, { input });
       await onRefresh();
+      markFormClean(formID);
       onNotice("設定を保存しました");
+      return true;
     } catch (reason) {
       onNotice((reason as Error).message);
+      return false;
     } finally {
       setPending(false);
     }
@@ -518,6 +555,7 @@ export function SettingsPage({
     setPending(true);
     try {
       await readGraphql(createTagMutation, { input: { householdId: household.id, name } });
+      markFormClean("create-tag");
       setTagName("");
       await refreshPlanning();
       onNotice("タグを追加しました");
@@ -535,6 +573,7 @@ export function SettingsPage({
       await readGraphql(updateTagMutation, {
         input: { tagId: tag.id, baseRevision: tag.revision, name },
       });
+      markFormClean(`tag:${tag.id}`);
       setTagDrafts((current) => ({ ...current, [tag.id]: name }));
       await refreshPlanning();
       onNotice("タグ名を保存しました");
@@ -588,6 +627,7 @@ export function SettingsPage({
       } else {
         await readGraphql(createBudgetMutation, { input });
       }
+      markFormClean("budget");
       setEditingBudget(null);
       setBudgetName("");
       setBudgetAmount("");
@@ -600,6 +640,7 @@ export function SettingsPage({
     }
   };
   const editBudget = (budget: Budget) => {
+    markFormDirty("budget");
     setEditingBudget(budget);
     setBudgetCategoryId(budget.categoryId ?? "");
     setBudgetName(budget.name);
@@ -652,6 +693,7 @@ export function SettingsPage({
       } else {
         await readGraphql(createRecurringExpenseMutation, { input });
       }
+      markFormClean("recurring-expense");
       setEditingRecurring(null);
       setRecurringName("");
       setRecurringMerchant("");
@@ -666,6 +708,7 @@ export function SettingsPage({
     }
   };
   const editRecurring = (expense: RecurringExpense) => {
+    markFormDirty("recurring-expense");
     setEditingRecurring(expense);
     setRecurringName(expense.name);
     setRecurringMerchant(expense.merchant);
@@ -713,6 +756,7 @@ export function SettingsPage({
           idempotencyKey: crypto.randomUUID(),
         },
       });
+      markFormClean("account-movement");
       setMovementAmount("");
       setMovementDescription("");
       setMovementDate(localDateTime());
@@ -742,6 +786,7 @@ export function SettingsPage({
           idempotencyKey: crypto.randomUUID(),
         },
       });
+      markFormClean("account-income");
       setIncomeAmount("");
       setIncomeDescription("");
       setIncomeDate(localDateTime());
@@ -756,11 +801,15 @@ export function SettingsPage({
   };
   const addPool = (event: FormEvent) => {
     event.preventDefault();
-    void saveMutation(createPoolMutation, {
-      householdId: household.id,
-      name: poolName.trim(),
-      kind: poolKind,
-    }).then(() => setPoolName(""));
+    void saveMutation(
+      createPoolMutation,
+      {
+        householdId: household.id,
+        name: poolName.trim(),
+        kind: poolKind,
+      },
+      "create-pool",
+    ).then((saved) => saved && setPoolName(""));
   };
   const addAccount = (event: FormEvent) => {
     event.preventDefault();
@@ -788,6 +837,7 @@ export function SettingsPage({
       },
     })
       .then(async () => {
+        markFormClean("create-account");
         setAccountName("");
         setOpeningBalanceYen("");
         await onRefresh();
@@ -799,22 +849,30 @@ export function SettingsPage({
   };
   const addCategory = (event: FormEvent) => {
     event.preventDefault();
-    void saveMutation(createCategoryMutation, {
-      householdId: household.id,
-      name: categoryName.trim(),
-    }).then(() => setCategoryName(""));
+    void saveMutation(
+      createCategoryMutation,
+      {
+        householdId: household.id,
+        name: categoryName.trim(),
+      },
+      "create-category",
+    ).then((saved) => saved && setCategoryName(""));
   };
   const saveAllocation = (event: FormEvent) => {
     event.preventDefault();
-    void saveMutation(setDefaultAllocationMutation, {
-      householdId: household.id,
-      allocations: household.pools
-        .map((pool) => ({
-          poolId: pool.id,
-          weight: Math.max(0, Number(shareWeights[pool.id]) || 0),
-        }))
-        .filter((item) => item.weight > 0),
-    });
+    void saveMutation(
+      setDefaultAllocationMutation,
+      {
+        householdId: household.id,
+        allocations: household.pools
+          .map((pool) => ({
+            poolId: pool.id,
+            weight: Math.max(0, Number(shareWeights[pool.id]) || 0),
+          }))
+          .filter((item) => item.weight > 0),
+      },
+      "default-allocation",
+    );
   };
   const saveFundingRule = async (event: FormEvent, poolId: string) => {
     event.preventDefault();
@@ -841,12 +899,13 @@ export function SettingsPage({
         input: {
           householdId: household.id,
           poolId,
-          ownerMemberId: isPersonalPool(pool) ? draft.ownerMemberId : null,
-          fundingShares: isSharedPool(pool) ? fundingShares : [],
-          settlementPolicy: isSharedPool(pool) ? draft.policy : null,
+          configuration: isPersonalPool(pool)
+            ? { personal: { ownerMemberId: draft.ownerMemberId } }
+            : { shared: { fundingShares, settlementPolicy: draft.policy } },
           expectedVersion: pool.fundingRuleVersion,
         },
       });
+      markFormClean(`pool-funding:${poolId}`);
       await onRefresh();
       onNotice("精算設定を保存しました");
     } catch (reason) {
@@ -897,6 +956,7 @@ export function SettingsPage({
           allocations,
         },
       });
+      markFormClean("allocation-rule");
       await refreshRules();
       onNotice("負担ルールを保存しました");
       setRuleMerchant("");
@@ -914,6 +974,7 @@ export function SettingsPage({
       const result = await readGraphql<{
         createHouseholdInvitation: { token: string; invitation: HouseholdInvitation };
       }>(createHouseholdInvitationMutation, { input: { householdId: household.id, expiresAt } });
+      markFormClean("create-invitation");
       setInvitationLink(
         `${window.location.origin}/#invite=${encodeURIComponent(result.createHouseholdInvitation.token)}`,
       );
@@ -958,6 +1019,7 @@ export function SettingsPage({
           categoryId: conceptCategoryId || null,
         },
       });
+      markFormClean("create-concept");
       setConceptName("");
       await refreshProducts();
       onNotice("商品を追加しました");
@@ -981,6 +1043,7 @@ export function SettingsPage({
           packageSize: variantPackageSize.trim() || null,
         },
       });
+      markFormClean("create-variant");
       setVariantName("");
       setVariantBrand("");
       setVariantPackageSize("");
@@ -1005,6 +1068,7 @@ export function SettingsPage({
           alias: aliasName.trim(),
         },
       });
+      markFormClean("create-alias");
       setAliasName("");
       await refreshProducts();
       onNotice("店名の別表記を登録しました");
@@ -1029,7 +1093,7 @@ export function SettingsPage({
           <p>{household.name}の口座、決済元、カテゴリ</p>
         </div>
       </div>
-      <div className="settings-layout">
+      <div className="settings-layout" onChangeCapture={trackFormChange}>
         <section className="panel settings-section">
           <div className="panel-heading">
             <div>
@@ -1058,6 +1122,7 @@ export function SettingsPage({
                 </div>
                 <form
                   className="pool-funding-form"
+                  data-unsaved-id={`pool-funding:${pool.id}`}
                   onSubmit={(event) => void saveFundingRule(event, pool.id)}
                 >
                   {isPersonalPool(pool) ? (
@@ -1137,7 +1202,7 @@ export function SettingsPage({
               </div>
             ))}
           </div>
-          <form className="inline-create" onSubmit={addPool}>
+          <form className="inline-create" data-unsaved-id="create-pool" onSubmit={addPool}>
             <input
               value={poolName}
               onChange={(e) => setPoolName(e.target.value)}
@@ -1296,7 +1361,7 @@ export function SettingsPage({
               </div>
             ))}
           </div>
-          <form className="inline-create" onSubmit={addAccount}>
+          <form className="inline-create" data-unsaved-id="create-account" onSubmit={addAccount}>
             <input
               value={accountName}
               onChange={(e) => setAccountName(e.target.value)}
@@ -1371,7 +1436,7 @@ export function SettingsPage({
               </div>
             ))}
           </div>
-          <form className="inline-create" onSubmit={addCategory}>
+          <form className="inline-create" data-unsaved-id="create-category" onSubmit={addCategory}>
             <input
               value={categoryName}
               onChange={(e) => setCategoryName(e.target.value)}
@@ -1394,7 +1459,7 @@ export function SettingsPage({
               <Activity size={14} />
             </span>
           </div>
-          <form onSubmit={saveAllocation}>
+          <form data-unsaved-id="default-allocation" onSubmit={saveAllocation}>
             <div className="allocation-settings">
               {household.pools.map((pool) => (
                 <label key={pool.id}>
@@ -1468,7 +1533,11 @@ export function SettingsPage({
               {allocationRulesPageLoading ? "読み込み中" : "さらに表示"}
             </button>
           )}
-          <form className="allocation-rule-form" onSubmit={saveRule}>
+          <form
+            className="allocation-rule-form"
+            data-unsaved-id="allocation-rule"
+            onSubmit={saveRule}
+          >
             <select
               value={ruleScope}
               onChange={(event) => setRuleScope(event.target.value as "CATEGORY" | "MERCHANT")}
@@ -1595,7 +1664,7 @@ export function SettingsPage({
               </div>
             ))}
           </div>
-          <form className="inline-create" onSubmit={createConcept}>
+          <form className="inline-create" data-unsaved-id="create-concept" onSubmit={createConcept}>
             <input
               value={conceptName}
               onChange={(event) => setConceptName(event.target.value)}
@@ -1620,7 +1689,11 @@ export function SettingsPage({
               追加
             </button>
           </form>
-          <form className="allocation-rule-form" onSubmit={createVariant}>
+          <form
+            className="allocation-rule-form"
+            data-unsaved-id="create-variant"
+            onSubmit={createVariant}
+          >
             <select
               value={variantConceptId}
               onChange={(event) => setVariantConceptId(event.target.value)}
@@ -1656,7 +1729,11 @@ export function SettingsPage({
               バリエーションを追加
             </button>
           </form>
-          <form className="allocation-rule-form" onSubmit={createAlias}>
+          <form
+            className="allocation-rule-form"
+            data-unsaved-id="create-alias"
+            onSubmit={createAlias}
+          >
             <select
               value={aliasVariantId}
               onChange={(event) => setAliasVariantId(event.target.value)}
@@ -1699,10 +1776,18 @@ export function SettingsPage({
                 <h2>招待</h2>
               </div>
               <span className="count-badge">
-                {invitations.filter((invitation) => invitation.status === "PENDING").length}
+                {
+                  invitations.filter(
+                    (invitation) => invitation.__typename === "PendingHouseholdInvitation",
+                  ).length
+                }
               </span>
             </div>
-            <form className="inline-create" onSubmit={issueInvitation}>
+            <form
+              className="inline-create"
+              data-unsaved-id="create-invitation"
+              onSubmit={issueInvitation}
+            >
               <label>
                 有効期間
                 <select
@@ -1743,16 +1828,18 @@ export function SettingsPage({
                   <div>
                     <b>{new Date(invitation.expiresAt).toLocaleDateString("ja-JP")}まで</b>
                     <small>
-                      {invitation.status === "ACCEPTED"
+                      {invitation.__typename === "AcceptedHouseholdInvitation"
                         ? "参加済み"
-                        : invitation.status === "REVOKED"
+                        : invitation.__typename === "RevokedHouseholdInvitation"
                           ? "失効"
-                          : invitation.status === "EXPIRED"
+                          : invitation.__typename === "ExpiredHouseholdInvitation"
                             ? "期限切れ"
-                            : "未使用"}
+                            : invitation.__typename === "PendingHouseholdInvitation"
+                              ? "未使用"
+                              : "状態不明"}
                     </small>
                   </div>
-                  {invitation.status === "PENDING" && (
+                  {invitation.__typename === "PendingHouseholdInvitation" && (
                     <button
                       className="text-button"
                       disabled={pending}
@@ -1791,9 +1878,11 @@ export function SettingsPage({
                   aria-label={`${tag.name}のタグ名`}
                   value={tagDrafts[tag.id] ?? tag.name}
                   disabled={tag.archived}
-                  onChange={(event) =>
-                    setTagDrafts((current) => ({ ...current, [tag.id]: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setTagDrafts((current) => ({ ...current, [tag.id]: event.target.value }));
+                    if (event.target.value === tag.name) markFormClean(`tag:${tag.id}`);
+                    else markFormDirty(`tag:${tag.id}`);
+                  }}
                 />
                 <button
                   className="text-button"
@@ -1804,6 +1893,18 @@ export function SettingsPage({
                 >
                   保存
                 </button>
+                {(tagDrafts[tag.id] ?? tag.name) !== tag.name && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      setTagDrafts((current) => ({ ...current, [tag.id]: tag.name }));
+                      markFormClean(`tag:${tag.id}`);
+                    }}
+                  >
+                    取消
+                  </button>
+                )}
                 <button
                   className="text-button"
                   disabled={pending}
@@ -1814,7 +1915,11 @@ export function SettingsPage({
               </div>
             ))}
           </div>
-          <form className="inline-create" onSubmit={(event) => void saveTag(event)}>
+          <form
+            className="inline-create"
+            data-unsaved-id="create-tag"
+            onSubmit={(event) => void saveTag(event)}
+          >
             <input
               value={tagName}
               onChange={(event) => setTagName(event.target.value)}
@@ -1877,7 +1982,11 @@ export function SettingsPage({
               );
             })}
           </div>
-          <form className="inline-create" onSubmit={(event) => void saveBudget(event)}>
+          <form
+            className="inline-create"
+            data-unsaved-id="budget"
+            onSubmit={(event) => void saveBudget(event)}
+          >
             <input
               value={budgetName}
               onChange={(event) => setBudgetName(event.target.value)}
@@ -1916,8 +2025,10 @@ export function SettingsPage({
                 className="text-button"
                 onClick={() => {
                   setEditingBudget(null);
+                  setBudgetCategoryId("");
                   setBudgetName("");
                   setBudgetAmount("");
+                  markFormClean("budget");
                 }}
               >
                 取消
@@ -1967,7 +2078,11 @@ export function SettingsPage({
               </div>
             ))}
           </div>
-          <form className="allocation-rule-form" onSubmit={(event) => void saveRecurring(event)}>
+          <form
+            className="allocation-rule-form"
+            data-unsaved-id="recurring-expense"
+            onSubmit={(event) => void saveRecurring(event)}
+          >
             <input
               value={recurringName}
               onChange={(event) => setRecurringName(event.target.value)}
@@ -2059,7 +2174,19 @@ export function SettingsPage({
               <button
                 type="button"
                 className="text-button"
-                onClick={() => setEditingRecurring(null)}
+                onClick={() => {
+                  setEditingRecurring(null);
+                  setRecurringName("");
+                  setRecurringMerchant("");
+                  setRecurringAmount("");
+                  setRecurringCategoryId("");
+                  setRecurringAccountId("");
+                  setRecurringCadence("MONTHLY");
+                  setRecurringStartsOn(new Date().toISOString().slice(0, 10));
+                  setRecurringNextDueOn(new Date().toISOString().slice(0, 10));
+                  setRecurringEndsOn("");
+                  markFormClean("recurring-expense");
+                }}
               >
                 取消
               </button>
@@ -2074,7 +2201,11 @@ export function SettingsPage({
             </div>
             <ArrowLeftRight size={18} />
           </div>
-          <form className="allocation-rule-form" onSubmit={(event) => void saveIncome(event)}>
+          <form
+            className="allocation-rule-form"
+            data-unsaved-id="account-income"
+            onSubmit={(event) => void saveIncome(event)}
+          >
             <label>
               入金先
               <select
@@ -2118,7 +2249,11 @@ export function SettingsPage({
               入金を記録
             </button>
           </form>
-          <form className="allocation-rule-form" onSubmit={(event) => void saveMovement(event)}>
+          <form
+            className="allocation-rule-form"
+            data-unsaved-id="account-movement"
+            onSubmit={(event) => void saveMovement(event)}
+          >
             <select
               value={movementKind}
               onChange={(event) =>

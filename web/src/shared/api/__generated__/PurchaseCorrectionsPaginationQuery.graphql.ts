@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5723f8738e40d4f5cfbde59a3c60d46c>>
+ * @generated SignedSource<<caf708340de4e16135ad81039c41be0c>>
  * @lightSyntaxTransform
  */
 
@@ -18,9 +18,10 @@ export type PurchaseCorrectionsPaginationQuery$data = {
     readonly edges: ReadonlyArray<{
       readonly cursor: string;
       readonly node: {
+        readonly __typename: string;
         readonly amountDeltaYen: any;
         readonly id: string;
-        readonly itemId: string | null | undefined;
+        readonly itemId?: string;
         readonly occurredAt: string;
         readonly paymentAllocations: ReadonlyArray<{
           readonly account: {
@@ -111,18 +112,32 @@ v4 = [
           {
             "alias": null,
             "args": null,
-            "concreteType": "PurchaseCorrection",
+            "concreteType": null,
             "kind": "LinkedField",
             "name": "node",
             "plural": false,
             "selections": [
-              (v3/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
-                "name": "itemId",
+                "name": "__typename",
                 "storageKey": null
+              },
+              (v3/*:: as any*/),
+              {
+                "kind": "InlineFragment",
+                "selections": [
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "itemId",
+                    "storageKey": null
+                  }
+                ],
+                "type": "PurchaseItemCorrection",
+                "abstractKey": null
               },
               {
                 "alias": null,
@@ -257,16 +272,16 @@ return {
     "selections": (v4/*:: as any*/)
   },
   "params": {
-    "cacheID": "1de9d28582f9f571e53801cd50422c51",
+    "cacheID": "74b63346aab64619bb7bbeaf48f24191",
     "id": null,
     "metadata": {},
     "name": "PurchaseCorrectionsPaginationQuery",
     "operationKind": "query",
-    "text": "query PurchaseCorrectionsPaginationQuery(\n  $purchaseId: ID!\n  $first: Int\n  $after: String\n) {\n  purchaseCorrections(purchaseId: $purchaseId, first: $first, after: $after) {\n    edges {\n      cursor\n      node {\n        id\n        itemId\n        amountDeltaYen\n        reason\n        occurredAt\n        settlementMonth\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
+    "text": "query PurchaseCorrectionsPaginationQuery(\n  $purchaseId: ID!\n  $first: Int\n  $after: String\n) {\n  purchaseCorrections(purchaseId: $purchaseId, first: $first, after: $after) {\n    edges {\n      cursor\n      node {\n        __typename\n        id\n        ... on PurchaseItemCorrection {\n          itemId\n        }\n        amountDeltaYen\n        reason\n        occurredAt\n        settlementMonth\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3c041e96707dc16f3e5097cc0891b2b5";
+(node as any).hash = "bf1daef31fff0a60950505c6b6daddc8";
 
 export default node;

@@ -171,13 +171,16 @@ const isProcessing = (status: string) => !terminalStatuses.has(status.toUpperCas
 export function ImportsPage({
   household,
   onAdded,
+  onUnsavedChanges,
 }: {
   household: Household;
   onAdded: (keepOpen?: boolean) => void;
+  onUnsavedChanges: (unsaved: boolean) => void;
 }) {
   const createAndPostPurchase = useCreateAndPostPurchase();
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [csvKinds, setCsvKinds] = useState<Record<string, "card" | "bank">>({});
   const [documents, setDocuments] = useState<DocumentReview[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -215,6 +218,11 @@ export function ImportsPage({
   );
   const selectedDocument = documents.find((document) => document.id === selected);
   const targetPurchase = recentPurchases.find((purchase) => purchase.id === targetPurchaseId);
+  const markUnsaved = () => setHasUnsavedChanges(true);
+  useEffect(() => {
+    onUnsavedChanges(hasUnsavedChanges);
+    return () => onUnsavedChanges(false);
+  }, [hasUnsavedChanges, onUnsavedChanges]);
   useEffect(() => {
     setPreviewPage(0);
     setPreviewPageDraft("1");
@@ -359,6 +367,7 @@ export function ImportsPage({
     const candidates = Array.from(selected);
     const supported = candidates.filter(isSupportedFile);
     const unsupported = candidates.filter((file) => !isSupportedFile(file));
+    if (supported.length) markUnsaved();
     setFiles((current) => [...current, ...supported]);
     setMessage(
       unsupported.length
@@ -418,6 +427,7 @@ export function ImportsPage({
       }
       setDocuments((current) => [...uploaded, ...current]);
       setFiles([]);
+      setHasUnsavedChanges(false);
       setSelected(uploaded.find((document) => document.result)?.id ?? uploaded[0]?.id ?? null);
       void refreshDocuments(true);
     } catch (reason) {
@@ -467,6 +477,7 @@ export function ImportsPage({
             : entry,
         ),
       );
+      setCropRegion(null);
       await refreshDocuments(true);
     } catch (reason) {
       setMessage((reason as Error).message);
@@ -475,6 +486,7 @@ export function ImportsPage({
     }
   };
   const selectCropRegion = (region: Region) => {
+    markUnsaved();
     setCropRegion(region);
     setPreviewPage(region.page);
     setPreviewPageDraft(String(region.page + 1));
@@ -532,6 +544,7 @@ export function ImportsPage({
       });
       if (!response.ok) throw new Error(`証拠を購入に紐付けできませんでした (${response.status})`);
       setSelectedMatches(new Set());
+      setHasUnsavedChanges(false);
       await refreshDocuments(true);
       onAdded(true);
     } catch (reason) {
@@ -540,7 +553,8 @@ export function ImportsPage({
       setPending(false);
     }
   };
-  const editItem = (documentId: string, index: number, patch: Partial<ExtractedItem>) =>
+  const editItem = (documentId: string, index: number, patch: Partial<ExtractedItem>) => {
+    markUnsaved();
     setDocuments((current) =>
       current.map((document) =>
         document.id !== documentId || !document.result?.receipt?.items
@@ -559,6 +573,7 @@ export function ImportsPage({
             },
       ),
     );
+  };
   const confirm = async (document: DocumentReview) => {
     const receipt = document.result?.receipt;
     const items = receipt?.items ?? [];
@@ -645,6 +660,7 @@ export function ImportsPage({
         setMessage("購入は登録済みです。証拠の紐付けを再試行してください");
         return;
       }
+      setHasUnsavedChanges(false);
       onAdded();
     } catch (reason) {
       setMessage((reason as Error).message);
@@ -694,6 +710,7 @@ export function ImportsPage({
         },
       );
       setConfirmedStatements((current) => new Set(current).add(key));
+      setHasUnsavedChanges(false);
       if (!evidenceResponse.ok) {
         setTargetPurchaseId(created.createPurchase.id);
         setMessage("購入は登録済みです。証拠の紐付けを再試行してください");
@@ -778,12 +795,13 @@ export function ImportsPage({
                 <select
                   aria-label={`${file.name}の明細種別`}
                   value={csvKinds[file.name] ?? "card"}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    markUnsaved();
                     setCsvKinds((current) => ({
                       ...current,
                       [file.name]: event.target.value as "card" | "bank",
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <option value="card">カード明細</option>
                   <option value="bank">銀行明細</option>
@@ -792,9 +810,10 @@ export function ImportsPage({
               <button
                 className="icon-button"
                 aria-label="削除"
-                onClick={() =>
-                  setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))
-                }
+                onClick={() => {
+                  markUnsaved();
+                  setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+                }}
               >
                 <X size={16} />
               </button>
@@ -976,11 +995,12 @@ export function ImportsPage({
                         max="1"
                         step="0.01"
                         value={cropRegion[key]}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          markUnsaved();
                           setCropRegion((current) =>
                             current ? { ...current, [key]: Number(event.target.value) } : current,
-                          )
-                        }
+                          );
+                        }}
                       />
                     </label>
                   ))}
@@ -992,6 +1012,7 @@ export function ImportsPage({
                       step="1"
                       value={cropRegion.page + 1}
                       onChange={(event) => {
+                        markUnsaved();
                         const page = Math.max(0, Math.trunc(Number(event.target.value) - 1));
                         setCropRegion((current) => (current ? { ...current, page } : current));
                         setPreviewPage(page);
@@ -1024,7 +1045,8 @@ export function ImportsPage({
                     店名
                     <input
                       value={selectedDocument.result.receipt.merchant ?? ""}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        markUnsaved();
                         setDocuments((current) =>
                           current.map((document) =>
                             document.id === selectedDocument.id && document.result
@@ -1040,15 +1062,18 @@ export function ImportsPage({
                                 }
                               : document,
                           ),
-                        )
-                      }
+                        );
+                      }}
                     />
                   </label>
                   <label>
                     決済元
                     <select
                       value={paymentAccountId}
-                      onChange={(event) => setPaymentAccountId(event.target.value)}
+                      onChange={(event) => {
+                        markUnsaved();
+                        setPaymentAccountId(event.target.value);
+                      }}
                     >
                       <option value="">未設定</option>
                       {household.accounts.map((account) => (
@@ -1079,6 +1104,7 @@ export function ImportsPage({
                         inputMode="numeric"
                         value={String(item.grossAmount ?? item.printedAmount)}
                         onChange={(event) => {
+                          markUnsaved();
                           setManualAmountOverrides((current) => ({
                             ...current,
                             [selectedDocument.id]: true,
@@ -1191,12 +1217,13 @@ export function ImportsPage({
                         type="button"
                         className={`candidate-option ${selectedCandidates[selectedDocument.id] === candidate.id ? "candidate-selected" : ""}`}
                         key={candidate.id}
-                        onClick={() =>
+                        onClick={() => {
+                          markUnsaved();
                           setSelectedCandidates((current) => ({
                             ...current,
                             [selectedDocument.id]: candidate.id,
-                          }))
-                        }
+                          }));
+                        }}
                       >
                         <span>
                           <b>{candidate.id || "候補"}</b>
@@ -1222,12 +1249,13 @@ export function ImportsPage({
                     <input
                       maxLength={500}
                       value={manualAmountOverrideReasons[selectedDocument.id] ?? ""}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        markUnsaved();
                         setManualAmountOverrideReasons((current) => ({
                           ...current,
                           [selectedDocument.id]: event.target.value,
-                        }))
-                      }
+                        }));
+                      }}
                     />
                   </label>
                 )}
@@ -1311,7 +1339,10 @@ export function ImportsPage({
                 <span>照合元</span>
                 <select
                   value={activeObservationRef}
-                  onChange={(event) => setActiveObservationRef(event.target.value)}
+                  onChange={(event) => {
+                    markUnsaved();
+                    setActiveObservationRef(event.target.value);
+                  }}
                 >
                   {selectedDocument.result.receipt?.items?.length ? (
                     <option value="">レシート全体</option>
@@ -1345,14 +1376,15 @@ export function ImportsPage({
                           <input
                             type="checkbox"
                             checked={selectedMatches.has(key)}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                              markUnsaved();
                               setSelectedMatches((current) => {
                                 const next = new Set(current);
                                 if (event.target.checked) next.add(key);
                                 else next.delete(key);
                                 return next;
-                              })
-                            }
+                              });
+                            }}
                           />
                           <span>
                             <b>
@@ -1376,6 +1408,7 @@ export function ImportsPage({
                 <select
                   value={targetPurchaseId}
                   onChange={(event) => {
+                    markUnsaved();
                     setTargetPurchaseId(event.target.value);
                     setTargetItemId("");
                   }}
@@ -1394,7 +1427,10 @@ export function ImportsPage({
                   <span>紐付ける品目</span>
                   <select
                     value={targetItemId}
-                    onChange={(event) => setTargetItemId(event.target.value)}
+                    onChange={(event) => {
+                      markUnsaved();
+                      setTargetItemId(event.target.value);
+                    }}
                   >
                     <option value="">購入全体</option>
                     {targetPurchase.items.map((item) => (
@@ -1410,7 +1446,10 @@ export function ImportsPage({
                   <span>照合するレシート品目</span>
                   <select
                     value={receiptEvidenceIndex}
-                    onChange={(event) => setReceiptEvidenceIndex(event.target.value)}
+                    onChange={(event) => {
+                      markUnsaved();
+                      setReceiptEvidenceIndex(event.target.value);
+                    }}
                   >
                     {selectedDocument.result.receipt.items.map((item, index) => (
                       <option key={index} value={index}>

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e29c8fd832664d5ccce72d9fca7de5e4>>
+ * @generated SignedSource<<288df1d830554e666d1455cdb66f8db3>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,6 @@
 // @ts-nocheck
 
 import type { ReaderFragment } from 'relay-runtime';
-export type TransferKind = "ADVANCE" | "GIFT" | "LOAN" | "REPAYMENT" | "%future added value";
 import type { FragmentRefs } from "relay-runtime";
 export type LedgerEntryFields$data = {
   readonly __typename: string;
@@ -23,7 +22,7 @@ export type LedgerEntryFields$data = {
   readonly id: string;
   readonly loan?: {
     readonly id: string;
-  } | null | undefined;
+  };
   readonly member?: {
     readonly displayName: string;
     readonly id: string;
@@ -40,7 +39,6 @@ export type LedgerEntryFields$data = {
     readonly displayName: string;
     readonly id: string;
   };
-  readonly transferKind?: TransferKind;
   readonly " $fragmentType": "LedgerEntryFields";
 };
 export type LedgerEntryFields$key = {
@@ -78,6 +76,18 @@ v3 = [
     "args": null,
     "kind": "ScalarField",
     "name": "displayName",
+    "storageKey": null
+  }
+],
+v4 = [
+  {
+    "alias": null,
+    "args": null,
+    "concreteType": "LoanBalance",
+    "kind": "LinkedField",
+    "name": "loan",
+    "plural": false,
+    "selections": (v1/*:: as any*/),
     "storageKey": null
   }
 ];
@@ -194,26 +204,21 @@ return {
           "plural": false,
           "selections": (v3/*:: as any*/),
           "storageKey": null
-        },
-        {
-          "alias": null,
-          "args": null,
-          "kind": "ScalarField",
-          "name": "transferKind",
-          "storageKey": null
-        },
-        {
-          "alias": null,
-          "args": null,
-          "concreteType": "LoanBalance",
-          "kind": "LinkedField",
-          "name": "loan",
-          "plural": false,
-          "selections": (v1/*:: as any*/),
-          "storageKey": null
         }
       ],
       "type": "TransferLedgerEntry",
+      "abstractKey": "__isTransferLedgerEntry"
+    },
+    {
+      "kind": "InlineFragment",
+      "selections": (v4/*:: as any*/),
+      "type": "LoanTransferLedgerEntry",
+      "abstractKey": null
+    },
+    {
+      "kind": "InlineFragment",
+      "selections": (v4/*:: as any*/),
+      "type": "RepaymentTransferLedgerEntry",
       "abstractKey": null
     },
     {
@@ -228,6 +233,6 @@ return {
 };
 })();
 
-(node as any).hash = "ba59a945c8a7b1bf94a54feec1c27ea3";
+(node as any).hash = "23c32b2fb1af7946beb0d1c26367ed73";
 
 export default node;

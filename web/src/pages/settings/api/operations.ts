@@ -17,7 +17,6 @@ export const allocationRulesQuery = graphql`
             poolId
             poolName
             weight
-            amountYen
           }
         }
       }

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<7fd5d4146abcdcfb467c186a1120fd15>>
+ * @generated SignedSource<<bcdf937d7cad8335c13a9b1ccdbee8c5>>
  * @lightSyntaxTransform
  */
 
@@ -36,7 +36,7 @@ export type BulkUpdatePurchaseItemsMutation$data = {
     readonly code?: MutationErrorCode;
     readonly items?: ReadonlyArray<{
       readonly allocations: ReadonlyArray<{
-        readonly amountYen: any | null | undefined;
+        readonly amountYen: any;
         readonly poolId: string;
         readonly poolName: string;
         readonly weight: any;
@@ -253,7 +253,7 @@ v7 = [
               {
                 "alias": null,
                 "args": null,
-                "concreteType": "Allocation",
+                "concreteType": "PurchaseItemAllocation",
                 "kind": "LinkedField",
                 "name": "allocations",
                 "plural": true,

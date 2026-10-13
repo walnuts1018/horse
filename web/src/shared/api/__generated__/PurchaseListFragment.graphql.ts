@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<2c15ff5e9a4c94972d6b7400b51e3116>>
+ * @generated SignedSource<<5347b8558d89ddbebde5b50bf7a76360>>
  * @lightSyntaxTransform
  */
 
@@ -21,9 +21,10 @@ export type PurchaseListFragment$data = {
           readonly edges: ReadonlyArray<{
             readonly cursor: string;
             readonly node: {
+              readonly __typename: string;
               readonly amountDeltaYen: any;
               readonly id: string;
-              readonly itemId: string | null | undefined;
+              readonly itemId?: string;
               readonly occurredAt: string;
               readonly paymentAllocations: ReadonlyArray<{
                 readonly account: {
@@ -48,7 +49,7 @@ export type PurchaseListFragment$data = {
         readonly id: string;
         readonly items: ReadonlyArray<{
           readonly allocations: ReadonlyArray<{
-            readonly amountYen: any | null | undefined;
+            readonly amountYen: any;
             readonly poolId: string;
             readonly poolName: string;
             readonly weight: any;
@@ -234,10 +235,17 @@ v11 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "endCursor",
+  "name": "__typename",
   "storageKey": null
 },
 v12 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "endCursor",
+  "storageKey": null
+},
+v13 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
@@ -477,7 +485,7 @@ return {
                     {
                       "alias": null,
                       "args": null,
-                      "concreteType": "Allocation",
+                      "concreteType": "PurchaseItemAllocation",
                       "kind": "LinkedField",
                       "name": "allocations",
                       "plural": true,
@@ -565,18 +573,26 @@ return {
                         {
                           "alias": null,
                           "args": null,
-                          "concreteType": "PurchaseCorrection",
+                          "concreteType": null,
                           "kind": "LinkedField",
                           "name": "node",
                           "plural": false,
                           "selections": [
+                            (v11/*:: as any*/),
                             (v2/*:: as any*/),
                             {
-                              "alias": null,
-                              "args": null,
-                              "kind": "ScalarField",
-                              "name": "itemId",
-                              "storageKey": null
+                              "kind": "InlineFragment",
+                              "selections": [
+                                {
+                                  "alias": null,
+                                  "args": null,
+                                  "kind": "ScalarField",
+                                  "name": "itemId",
+                                  "storageKey": null
+                                }
+                              ],
+                              "type": "PurchaseItemCorrection",
+                              "abstractKey": null
                             },
                             {
                               "alias": null,
@@ -615,8 +631,8 @@ return {
                       "name": "pageInfo",
                       "plural": false,
                       "selections": [
-                        (v11/*:: as any*/),
-                        (v12/*:: as any*/)
+                        (v12/*:: as any*/),
+                        (v13/*:: as any*/)
                       ],
                       "storageKey": null
                     }
@@ -645,13 +661,7 @@ return {
                   "name": "updatedAt",
                   "storageKey": null
                 },
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "__typename",
-                  "storageKey": null
-                }
+                (v11/*:: as any*/)
               ],
               "storageKey": null
             }
@@ -673,8 +683,8 @@ return {
               "name": "startCursor",
               "storageKey": null
             },
-            (v11/*:: as any*/),
             (v12/*:: as any*/),
+            (v13/*:: as any*/),
             {
               "alias": null,
               "args": null,
@@ -708,6 +718,6 @@ return {
 };
 })();
 
-(node as any).hash = "8bee253e4ad36ae080e659e904b90c30";
+(node as any).hash = "eda1e909b11ebc946a678683ab7f81d4";
 
 export default node;

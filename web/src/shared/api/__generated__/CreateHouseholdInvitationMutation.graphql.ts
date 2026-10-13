@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e7172bb7ce5cf4417b3dc4d3afab2251>>
+ * @generated SignedSource<<c5c7cd26656819cd38f07e44da2e8602>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,6 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type HouseholdInvitationStatus = "ACCEPTED" | "EXPIRED" | "PENDING" | "REVOKED" | "%future added value";
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type CreateHouseholdInvitationInput = {
   expiresAt: string;
@@ -24,13 +23,11 @@ export type CreateHouseholdInvitationMutation$data = {
     readonly message?: string;
     readonly result?: {
       readonly invitation: {
-        readonly acceptedAt: string | null | undefined;
+        readonly __typename: string;
         readonly createdAt: string;
         readonly expiresAt: string;
         readonly householdId: string;
         readonly id: string;
-        readonly revokedAt: string | null | undefined;
-        readonly status: HouseholdInvitationStatus;
       };
       readonly token: string;
     };
@@ -49,7 +46,14 @@ var v0 = [
     "name": "input"
   }
 ],
-v1 = [
+v1 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "__typename",
+  "storageKey": null
+},
+v2 = [
   {
     "alias": null,
     "args": [
@@ -64,13 +68,7 @@ v1 = [
     "name": "createHouseholdInvitation",
     "plural": false,
     "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "__typename",
-        "storageKey": null
-      },
+      (v1/*:: as any*/),
       {
         "kind": "InlineFragment",
         "selections": [
@@ -92,11 +90,12 @@ v1 = [
               {
                 "alias": null,
                 "args": null,
-                "concreteType": "HouseholdInvitation",
+                "concreteType": null,
                 "kind": "LinkedField",
                 "name": "invitation",
                 "plural": false,
                 "selections": [
+                  (v1/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -115,13 +114,6 @@ v1 = [
                     "alias": null,
                     "args": null,
                     "kind": "ScalarField",
-                    "name": "status",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
                     "name": "expiresAt",
                     "storageKey": null
                   },
@@ -130,20 +122,6 @@ v1 = [
                     "args": null,
                     "kind": "ScalarField",
                     "name": "createdAt",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "revokedAt",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "acceptedAt",
                     "storageKey": null
                   }
                 ],
@@ -187,7 +165,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "CreateHouseholdInvitationMutation",
-    "selections": (v1/*:: as any*/),
+    "selections": (v2/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
@@ -196,19 +174,19 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "CreateHouseholdInvitationMutation",
-    "selections": (v1/*:: as any*/)
+    "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "c25652f5c18428562907ae34d295bd4d",
+    "cacheID": "aa1abdd9347dd98a9ddc8e1b8c4b555f",
     "id": null,
     "metadata": {},
     "name": "CreateHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateHouseholdInvitationMutation(\n  $input: CreateHouseholdInvitationInput!\n) {\n  createHouseholdInvitation(input: $input) {\n    __typename\n    ... on CreateHouseholdInvitationSuccess {\n      result {\n        token\n        invitation {\n          id\n          householdId\n          status\n          expiresAt\n          createdAt\n          revokedAt\n          acceptedAt\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreateHouseholdInvitationMutation(\n  $input: CreateHouseholdInvitationInput!\n) {\n  createHouseholdInvitation(input: $input) {\n    __typename\n    ... on CreateHouseholdInvitationSuccess {\n      result {\n        token\n        invitation {\n          __typename\n          id\n          householdId\n          expiresAt\n          createdAt\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "840a2558d0698575d8204c1df85eed1a";
+(node as any).hash = "90b727beba76dc8fc32899e6042d6409";
 
 export default node;
