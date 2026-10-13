@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -17,6 +16,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
+	"github.com/walnuts1018/horse/internal/relayid"
 )
 
 func (r *queryResolver) node(ctx context.Context, id string) (model.Node, error) {
@@ -121,15 +121,10 @@ type decodedNodeID struct {
 }
 
 func decodeGlobalNodeID(globalID string) (string, string, error) {
-	decoded, err := base64.RawURLEncoding.DecodeString(globalID)
+	kind, payload, err := relayid.Decode(globalID)
 	if err != nil {
-		return "", "", fmt.Errorf("invalid node ID: %w", err)
+		return "", "", err
 	}
-	kindBytes, payload, ok := bytes.Cut(decoded, []byte{':'})
-	if !ok {
-		return "", "", errors.New("invalid node ID payload")
-	}
-	kind := string(kindBytes)
 	if _, ok := nodeTypes[kind]; !ok {
 		return "", "", fmt.Errorf("unknown node type %q", kind)
 	}

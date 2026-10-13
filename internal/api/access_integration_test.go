@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"uuid"
+
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
@@ -30,7 +32,7 @@ import (
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
-	"uuid"
+	"github.com/walnuts1018/horse/internal/relayid"
 )
 
 type previewTestStore struct {
@@ -185,11 +187,13 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if _, err := models.Purchases.Insert(&models.PurchaseSetter{ID: &purchaseUUID, HouseholdID: &householdUUID, OccurredAt: &occurredAt, AllocationRuleVersion: &ruleVersion, CreatedBy: &ownerUUID}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
+	purchaseNodeID := relayid.Encode("Purchase", purchaseUUID[:])
 	itemName := "test item"
 	itemAmount := int64(0)
 	if _, err := models.PurchaseItems.Insert(&models.PurchaseItemSetter{ID: &itemUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, Name: &itemName, AmountYen: &itemAmount}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
+	itemNodeID := relayid.Encode("PurchaseItem", itemUUID[:])
 	verification := ingestion.Verification{Receipt: ingestion.Receipt{Items: []ingestion.Item{{PrintedName: "printed item", Name: "test item", Region: &ingestion.Region{Top: 0.1, Left: 0.2, Bottom: 0.3, Right: 0.8}}}}, Transform: [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}}
 	payload, err := json.Marshal(verification)
 	if err != nil {
@@ -209,7 +213,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 			t.Fatalf("non-member source observation exposed: path=%s status=%d", path, response.Code)
 		}
 	}
-	evidenceRequest := httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseID+"/evidence", nil)
+	evidenceRequest := httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseNodeID+"/evidence", nil)
 	evidenceRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: cookieValue, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	evidenceResponse := httptest.NewRecorder()
 	server.ServeHTTP(evidenceResponse, evidenceRequest)
@@ -223,6 +227,13 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	ownerExpiry := time.Now().Add(10 * time.Minute)
 	if _, err := models.OidcSessions.Insert(&models.OidcSessionSetter{TokenHash: &ownerHashBytes, MemberID: &ownerUUID, Expiry: &ownerExpiry}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
+	}
+	evidenceRequest = httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseNodeID+"/evidence", nil)
+	evidenceRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	evidenceResponse = httptest.NewRecorder()
+	server.ServeHTTP(evidenceResponse, evidenceRequest)
+	if evidenceResponse.Code != http.StatusOK || strings.TrimSpace(evidenceResponse.Body.String()) != `{"evidence":[]}` {
+		t.Fatalf("purchase global ID did not return empty evidence: status=%d body=%s", evidenceResponse.Code, evidenceResponse.Body.String())
 	}
 	invalidPreviewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview?page=-1", nil)
 	invalidPreviewRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
@@ -240,7 +251,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 	confirm := func(index int) *httptest.ResponseRecorder {
 		t.Helper()
-		body, err := json.Marshal(map[string]any{"purchaseId": purchaseID, "itemId": itemID, "sourceItemIndex": index, "observationJobId": jobID})
+		body, err := json.Marshal(map[string]any{"purchaseId": purchaseNodeID, "itemId": itemNodeID, "sourceItemIndex": index, "observationJobId": jobID})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -271,13 +282,13 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	groupBody, err := json.Marshal(map[string]any{"sources": []any{
-		map[string]any{"documentId": documentID, "itemId": itemID, "sourceItemIndex": 0, "observationJobId": jobID},
-		map[string]any{"documentId": secondDocumentID, "itemId": itemID, "sourceItemIndex": 0, "observationJobId": secondJobID},
+		map[string]any{"documentId": documentID, "itemId": itemNodeID, "sourceItemIndex": 0, "observationJobId": jobID},
+		map[string]any{"documentId": secondDocumentID, "itemId": itemNodeID, "sourceItemIndex": 0, "observationJobId": secondJobID},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	groupRequest := httptest.NewRequest(http.MethodPost, "/purchases/"+purchaseID+"/evidence", strings.NewReader(string(groupBody)))
+	groupRequest := httptest.NewRequest(http.MethodPost, "/purchases/"+purchaseNodeID+"/evidence", strings.NewReader(string(groupBody)))
 	groupRequest.Header.Set("Origin", "http://horse.test")
 	groupRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	groupResponse := httptest.NewRecorder()
@@ -292,7 +303,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rollbackRequest := httptest.NewRequest(http.MethodPost, "/purchases/"+purchaseID+"/evidence", strings.NewReader(string(rollbackBody)))
+	rollbackRequest := httptest.NewRequest(http.MethodPost, "/purchases/"+purchaseNodeID+"/evidence", strings.NewReader(string(rollbackBody)))
 	rollbackRequest.Header.Set("Origin", "http://horse.test")
 	rollbackRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	rollbackResponse := httptest.NewRecorder()
@@ -309,7 +320,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if _, err := models.ExtractionJobs.Update((models.ExtractionJobSetter{Result: &emptyResult}).UpdateMod(), um.Where(models.ExtractionJobs.Columns.ID.EQ(psql.Arg(jobUUID)))).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
-	evidenceRequest = httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseID+"/evidence", nil)
+	evidenceRequest = httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseNodeID+"/evidence", nil)
 	evidenceRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	evidenceResponse = httptest.NewRecorder()
 	server.ServeHTTP(evidenceResponse, evidenceRequest)

@@ -50,7 +50,7 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
-	purchaseID, err := gofrsuuid.FromString(r.PathValue("id"))
+	purchaseID, err := parseNodeIDOrUUID(r.PathValue("id"), "Purchase")
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -144,7 +144,7 @@ func (s *Server) linkPurchaseEvidenceSource(ctx context.Context, executor bob.Ex
 		return err
 	}
 	if input.ItemID != nil {
-		itemID, err := gofrsuuid.FromString(*input.ItemID)
+		itemID, err := parseNodeIDOrUUID(*input.ItemID, "PurchaseItem")
 		if err != nil {
 			return errEvidenceInput
 		}
@@ -167,7 +167,7 @@ func (s *Server) linkPurchaseEvidenceSource(ctx context.Context, executor bob.Ex
 	}
 	var itemID sql.Null[gofrsuuid.UUID]
 	if input.ItemID != nil {
-		parsed, err := gofrsuuid.FromString(*input.ItemID)
+		parsed, err := parseNodeIDOrUUID(*input.ItemID, "PurchaseItem")
 		if err != nil {
 			return errEvidenceInput
 		}

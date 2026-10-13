@@ -1,11 +1,10 @@
 package graph
 
 import (
-	"bytes"
-	"encoding/base64"
 	"fmt"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/walnuts1018/horse/internal/relayid"
 )
 
 var nodeTypes = map[string]struct{}{
@@ -26,7 +25,7 @@ func encodeNodeID(kind, raw string) (string, error) {
 	if err != nil || id == uuid.Nil {
 		return "", fmt.Errorf("invalid %s node ID", kind)
 	}
-	return base64.RawURLEncoding.EncodeToString(append(append([]byte(kind), ':'), id[:]...)), nil
+	return relayid.Encode(kind, id[:]), nil
 }
 
 func encodeSettlementNodeID(householdID, period string) (string, error) {
@@ -36,8 +35,7 @@ func encodeSettlementNodeID(householdID, period string) (string, error) {
 	if _, err := parseAccountingPeriod(period); err != nil {
 		return "", fmt.Errorf("invalid Settlement period")
 	}
-	payload := "Settlement:" + householdID + ":" + period
-	return base64.RawURLEncoding.EncodeToString([]byte(payload)), nil
+	return relayid.Encode("Settlement", []byte(householdID+":"+period)), nil
 }
 
 func encodeNodeIDPtr(kind string, raw *string) (*string, error) {
@@ -52,27 +50,12 @@ func encodeNodeIDPtr(kind string, raw *string) (*string, error) {
 }
 
 func decodeNodeID(globalID, expected string) (string, error) {
-	decoded, err := base64.RawURLEncoding.DecodeString(globalID)
+	if _, ok := nodeTypes[expected]; !ok {
+		return "", fmt.Errorf("unknown node type %q", expected)
+	}
+	id, err := relayid.DecodeUUID(globalID, expected)
 	if err != nil {
-		return "", fmt.Errorf("invalid node ID: %w", err)
+		return "", err
 	}
-	kindBytes, raw, ok := bytes.Cut(decoded, []byte{':'})
-	kind := string(kindBytes)
-	if !ok {
-		return "", fmt.Errorf("invalid node ID payload")
-	}
-	if _, ok := nodeTypes[kind]; !ok {
-		return "", fmt.Errorf("unknown node type %q", kind)
-	}
-	if kind != expected {
-		return "", fmt.Errorf("expected %s node ID, got %s", expected, kind)
-	}
-	if len(raw) != 16 {
-		return "", fmt.Errorf("invalid %s node ID payload", expected)
-	}
-	id := uuid.UUID(raw)
-	if id == uuid.Nil {
-		return "", fmt.Errorf("invalid %s node ID", expected)
-	}
-	return id.String(), nil
+	return uuid.UUID(id).String(), nil
 }

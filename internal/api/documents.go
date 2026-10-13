@@ -594,7 +594,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
 		return
 	}
-	purchaseID, err := gofrsuuid.FromString(input.PurchaseID)
+	purchaseID, err := parseNodeIDOrUUID(input.PurchaseID, "Purchase")
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -611,7 +611,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if input.ItemID != nil {
-		itemID, err := gofrsuuid.FromString(*input.ItemID)
+		itemID, err := parseNodeIDOrUUID(*input.ItemID, "PurchaseItem")
 		if err != nil {
 			http.NotFound(w, r)
 			return
@@ -689,7 +689,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 	}
 	var itemID sql.Null[gofrsuuid.UUID]
 	if input.ItemID != nil {
-		itemIDUUID, err := gofrsuuid.FromString(*input.ItemID)
+		itemIDUUID, err := parseNodeIDOrUUID(*input.ItemID, "PurchaseItem")
 		if err != nil {
 			http.Error(w, "evidence link failed", http.StatusBadRequest)
 			return

@@ -10,6 +10,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
+	"github.com/walnuts1018/horse/internal/relayid"
 )
 
 func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
@@ -18,7 +19,7 @@ func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
 		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
 		return
 	}
-	purchaseID, err := uuid.FromString(r.PathValue("id"))
+	purchaseID, err := parseNodeIDOrUUID(r.PathValue("id"), "Purchase")
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -86,7 +87,8 @@ func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
 			entry.Transform = observation.Transform
 		}
 		if link.ItemID.Valid {
-			id := link.ItemID.V.String()
+			itemID := link.ItemID.V
+			id := relayid.Encode("PurchaseItem", itemID[:])
 			entry.ItemID = &id
 		}
 		if link.EvidenceRegion.Valid {
