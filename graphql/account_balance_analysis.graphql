@@ -16,7 +16,7 @@ type AccountBalanceChange {
   balanceYen: Long!
 }
 
-union AccountBalanceSource = AccountOpeningBalance | Purchase | PurchaseCorrection | CorrectionLedgerEntry | FundingLedgerEntry | PurchaseLedgerEntry | TransferLedgerEntry | AccountMovement | AccountIncome
+union AccountBalanceSource = AccountOpeningBalance | Purchase | PurchaseWideCorrection | PurchaseItemCorrection | CorrectionLedgerEntry | FundingLedgerEntry | PurchaseLedgerEntry | AdvanceTransferLedgerEntry | LoanTransferLedgerEntry | RepaymentTransferLedgerEntry | GiftTransferLedgerEntry | AccountMovement | AccountIncome
 
 type AccountOpeningBalance implements Node {
   id: ID!

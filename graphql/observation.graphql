@@ -1,15 +1,38 @@
-type UnmatchedObservation implements Node {
+interface Observation implements Node {
   id: ID! @goField(forceResolver: true)
   documentId: ID!
   sourceReference: String!
-  purchaseId: ID @goField(forceResolver: true)
   sourceKind: SourceKind!
-  state: UnmatchedObservationState!
   merchant: String!
   occurredAt: DateTime
   amountYen: Long!
   orderId: String!
   transactionId: String!
+}
+
+type UnmatchedObservation implements Node & Observation {
+  id: ID! @goField(forceResolver: true)
+  documentId: ID!
+  sourceReference: String!
+  sourceKind: SourceKind!
+  merchant: String!
+  occurredAt: DateTime
+  amountYen: Long!
+  orderId: String!
+  transactionId: String!
+}
+
+type ConfirmedObservation implements Node & Observation {
+  id: ID! @goField(forceResolver: true)
+  documentId: ID!
+  sourceReference: String!
+  sourceKind: SourceKind!
+  merchant: String!
+  occurredAt: DateTime
+  amountYen: Long!
+  orderId: String!
+  transactionId: String!
+  purchase: Purchase! @goField(forceResolver: true)
 }
 
 enum UnmatchedObservationState {
@@ -19,7 +42,7 @@ enum UnmatchedObservationState {
 
 type UnmatchedObservationEdge {
   cursor: String!
-  node: UnmatchedObservation!
+  node: Observation!
 }
 
 type UnmatchedObservationConnection {

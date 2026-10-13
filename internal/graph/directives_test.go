@@ -87,8 +87,9 @@ func TestNodeReferenceResolversReturnGlobalIDs(t *testing.T) {
 		t.Fatalf("LoanBalance member IDs = %q, %q; want %q, %q", lenderGlobalID, borrowerGlobalID, wantLenderGlobalID, wantBorrowerGlobalID)
 	}
 
-	settlement := &model.Settlement{HouseholdID: householdID, Period: "2026-10"}
-	settlementGlobalID, err := (&Resolver{}).Settlement().ID(t.Context(), settlement)
+	period := "2047-08"
+	settlement := &model.OpenSettlement{Settlement: &model.Settlement{HouseholdID: householdID, Period: model.YearMonth(period)}}
+	settlementGlobalID, err := (&Resolver{}).OpenSettlement().ID(t.Context(), settlement)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,5 +103,29 @@ func TestNodeReferenceResolversReturnGlobalIDs(t *testing.T) {
 	}
 	if decodedKind != "Settlement" || decodedHouseholdID != householdID || decodedPeriod != string(settlement.Period) {
 		t.Fatalf("Settlement node ID decoded to %q, %q, %q", decodedKind, decodedHouseholdID, decodedPeriod)
+	}
+	wideCorrection := &model.PurchaseWideCorrection{ID: lenderID}
+	wideCorrectionID, err := (&Resolver{}).PurchaseWideCorrection().ID(t.Context(), wideCorrection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	itemCorrection := &model.PurchaseItemCorrection{ID: borrowerID, ItemID: lenderID}
+	itemCorrectionID, err := (&Resolver{}).PurchaseItemCorrection().ID(t.Context(), itemCorrection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range []struct{ id, want string }{{wideCorrectionID, wideCorrection.ID}, {itemCorrectionID, itemCorrection.ID}} {
+		kind, payload, err := decodeGlobalNodeID(testCase.id)
+		if err != nil || kind != "PurchaseCorrection" || payload != testCase.want {
+			t.Fatalf("Purchase correction node ID decoded to %q, %q; want PurchaseCorrection, %q; error %v", kind, payload, testCase.want, err)
+		}
+	}
+	itemGlobalID, err := (&Resolver{}).PurchaseItemCorrection().ItemID(t.Context(), itemCorrection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	itemKind, itemPayload, err := decodeGlobalNodeID(itemGlobalID)
+	if err != nil || itemKind != "PurchaseItem" || itemPayload != lenderID {
+		t.Fatalf("PurchaseItemCorrection.itemId decoded to %q, %q, error %v", itemKind, itemPayload, err)
 	}
 }

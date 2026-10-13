@@ -100,7 +100,7 @@ func (r *queryResolver) unmatchedObservations(ctx context.Context, householdID s
 			latestJobs[job.SourceDocumentID] = job
 		}
 	}
-	items := make([]*model.UnmatchedObservation, 0)
+	items := make([]model.ObservationVariant, 0)
 	cursors := make([]string, 0)
 	for _, document := range documents {
 		job, exists := latestJobs[document.ID]
@@ -136,15 +136,16 @@ func (r *queryResolver) unmatchedObservations(ctx context.Context, householdID s
 				value := timeString(observation.OccurredAt)
 				occurredAt = &value
 			}
-			var confirmedPurchaseID *string
-			if isConfirmed {
-				confirmedPurchaseID = &purchaseID
-			}
-			items = append(items, &model.UnmatchedObservation{
-				DocumentID: document.ID.String(), SourceReference: observation.SourceReference, PurchaseID: confirmedPurchaseID, SourceKind: kind,
-				State: observationState, Merchant: observation.Merchant, OccurredAt: occurredAt,
+			fields := &model.ObservationFields{
+				DocumentID: document.ID.String(), SourceReference: observation.SourceReference, SourceKind: kind,
+				Merchant: observation.Merchant, OccurredAt: occurredAt,
 				AmountYen: graphLong(observation.Amount), OrderID: observation.OrderID, TransactionID: observation.TransactionID,
-			})
+			}
+			if isConfirmed {
+				items = append(items, &model.ConfirmedObservation{ObservationFields: fields, PurchaseID: purchaseID})
+			} else {
+				items = append(items, &model.UnmatchedObservation{ObservationFields: fields})
+			}
 			cursors = append(cursors, cursor)
 		}
 	}

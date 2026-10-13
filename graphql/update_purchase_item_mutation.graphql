@@ -17,9 +17,14 @@ input UpdatePurchaseItemInput {
   printedUnitPrice: UpdatePurchaseItemPrintedUnitPriceInput @goField(omittable: true)
   categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
   productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
-  productLearning: ProductLearningScope = ITEM_ONLY
-  variantName: String
+  productLearning: ProductLearningConfigurationInput @goField(omittable: true)
   allocations: [UpdatePurchaseItemAllocationInput!] @goField(omittable: true)
+}
+
+input ProductLearningConfigurationInput @oneOf {
+  itemOnly: Boolean
+  variantName: String
+  merchantAlias: Boolean
 }
 
 input UpdatePurchaseItemQuantityInput {
@@ -36,12 +41,6 @@ input UpdatePurchaseItemPrintedUnitPriceInput {
 input UpdatePurchaseItemAllocationInput {
   poolId: ID! @nodeID(of: "Pool")
   weight: Long!
-}
-
-enum ProductLearningScope {
-  ITEM_ONLY
-  VARIANT_NAME
-  MERCHANT_ALIAS
 }
 
 type UpdatePurchaseItemUserError implements MutationError {

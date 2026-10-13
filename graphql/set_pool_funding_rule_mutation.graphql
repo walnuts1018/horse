@@ -11,10 +11,22 @@ type SetPoolFundingRuleSuccess {
 input SetPoolFundingRuleInput {
   householdId: ID! @nodeID(of: "Household")
   poolId: ID! @nodeID(of: "Pool")
-  ownerMemberId: ID @nodeID(of: "Member")
-  fundingShares: [PoolFundingShareInput!]!
-  settlementPolicy: SharedPoolSettlementPolicy
+  configuration: PoolFundingRuleConfigurationInput!
   expectedVersion: Int!
+}
+
+input PoolFundingRuleConfigurationInput @oneOf {
+  personal: PersonalPoolFundingRuleInput
+  shared: SharedPoolFundingRuleInput
+}
+
+input PersonalPoolFundingRuleInput {
+  ownerMemberId: ID! @nodeID(of: "Member")
+}
+
+input SharedPoolFundingRuleInput {
+  fundingShares: [PoolFundingShareInput!]!
+  settlementPolicy: SharedPoolSettlementPolicy!
 }
 
 input PoolFundingShareInput {

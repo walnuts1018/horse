@@ -2,12 +2,13 @@ package graph
 
 import (
 	"context"
+	"fmt"
 
 	settlementapp "github.com/walnuts1018/horse/internal/application/settlement"
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
-func (r *queryResolver) settlement(ctx context.Context, householdID, period string) (*model.Settlement, error) {
+func (r *queryResolver) settlement(ctx context.Context, householdID, period string) (model.SettlementVariant, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
@@ -15,18 +16,18 @@ func (r *queryResolver) settlement(ctx context.Context, householdID, period stri
 	if err != nil {
 		return nil, mapSettlementError(err)
 	}
-	return settlementModel(result), nil
+	return settlementModel(result)
 }
 
-func settlementModel(value settlementapp.Settlement) *model.Settlement {
-	status := model.SettlementStatus(value.Status)
-	result := &model.Settlement{
-		HouseholdID: value.HouseholdID, Period: model.YearMonth(value.Period), Status: status,
-		Revision: int(value.Revision), Lines: make([]*model.SettlementLine, 0, len(value.Lines)),
+func settlementModel(value settlementapp.Settlement) (model.SettlementVariant, error) {
+	id, err := encodeSettlementNodeID(value.HouseholdID, value.Period)
+	if err != nil {
+		return nil, err
 	}
-	if value.CreatedAt != nil {
-		createdAt := timeString(*value.CreatedAt)
-		result.CreatedAt = &createdAt
+	result := &model.Settlement{
+		ID:          id,
+		HouseholdID: value.HouseholdID, Period: model.YearMonth(value.Period),
+		Revision: int(value.Revision), Lines: make([]*model.SettlementLine, 0, len(value.Lines)),
 	}
 	for _, line := range value.Lines {
 		result.Lines = append(result.Lines, &model.SettlementLine{
@@ -37,5 +38,17 @@ func settlementModel(value settlementapp.Settlement) *model.Settlement {
 			AmountDueYen: graphLong(line.AmountDueYen),
 		})
 	}
-	return result
+	switch value.Status {
+	case settlementStatusOpen:
+		return &model.OpenSettlement{Settlement: result}, nil
+	case settlementStatusClosed:
+		if value.CreatedAt == nil {
+			return nil, fmt.Errorf("closed settlement %q has no created time", value.Period)
+		}
+		createdAt := timeString(*value.CreatedAt)
+		result.CreatedAt = &createdAt
+		return &model.ClosedSettlement{Settlement: result}, nil
+	default:
+		return nil, fmt.Errorf("unknown settlement status %q", value.Status)
+	}
 }

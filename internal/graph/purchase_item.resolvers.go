@@ -26,7 +26,20 @@ func (r *purchaseItemResolver) ProductVariantID(ctx context.Context, obj *model.
 	return encodeNodeIDPtr("ProductVariant", obj.ProductVariantID)
 }
 
+// PoolID is the resolver for the poolId field.
+func (r *purchaseItemAllocationResolver) PoolID(ctx context.Context, obj *model.PurchaseItemAllocation) (string, error) {
+	return encodeNodeID("Pool", obj.PoolID)
+}
+
 // PurchaseItem returns PurchaseItemResolver implementation.
 func (r *Resolver) PurchaseItem() PurchaseItemResolver { return &purchaseItemResolver{r} }
 
-type purchaseItemResolver struct{ *Resolver }
+// PurchaseItemAllocation returns PurchaseItemAllocationResolver implementation.
+func (r *Resolver) PurchaseItemAllocation() PurchaseItemAllocationResolver {
+	return &purchaseItemAllocationResolver{r}
+}
+
+type (
+	purchaseItemResolver           struct{ *Resolver }
+	purchaseItemAllocationResolver struct{ *Resolver }
+)

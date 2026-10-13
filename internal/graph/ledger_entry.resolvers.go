@@ -12,6 +12,11 @@ import (
 )
 
 // ID is the resolver for the id field.
+func (r *advanceTransferLedgerEntryResolver) ID(ctx context.Context, obj *model.AdvanceTransferLedgerEntry) (string, error) {
+	return encodeNodeID("LedgerEntry", obj.ID)
+}
+
+// ID is the resolver for the id field.
 func (r *correctionLedgerEntryResolver) ID(ctx context.Context, obj *model.CorrectionLedgerEntry) (string, error) {
 	return encodeNodeID("LedgerEntry", obj.ID)
 }
@@ -27,6 +32,16 @@ func (r *fundingLedgerEntryResolver) Pool(ctx context.Context, obj *model.Fundin
 }
 
 // ID is the resolver for the id field.
+func (r *giftTransferLedgerEntryResolver) ID(ctx context.Context, obj *model.GiftTransferLedgerEntry) (string, error) {
+	return encodeNodeID("LedgerEntry", obj.ID)
+}
+
+// ID is the resolver for the id field.
+func (r *loanTransferLedgerEntryResolver) ID(ctx context.Context, obj *model.LoanTransferLedgerEntry) (string, error) {
+	return encodeNodeID("LedgerEntry", obj.ID)
+}
+
+// ID is the resolver for the id field.
 func (r *purchaseLedgerEntryResolver) ID(ctx context.Context, obj *model.PurchaseLedgerEntry) (string, error) {
 	return encodeNodeID("LedgerEntry", obj.ID)
 }
@@ -37,8 +52,13 @@ func (r *queryResolver) Ledger(ctx context.Context, householdID string, after *s
 }
 
 // ID is the resolver for the id field.
-func (r *transferLedgerEntryResolver) ID(ctx context.Context, obj *model.TransferLedgerEntry) (string, error) {
+func (r *repaymentTransferLedgerEntryResolver) ID(ctx context.Context, obj *model.RepaymentTransferLedgerEntry) (string, error) {
 	return encodeNodeID("LedgerEntry", obj.ID)
+}
+
+// AdvanceTransferLedgerEntry returns AdvanceTransferLedgerEntryResolver implementation.
+func (r *Resolver) AdvanceTransferLedgerEntry() AdvanceTransferLedgerEntryResolver {
+	return &advanceTransferLedgerEntryResolver{r}
 }
 
 // CorrectionLedgerEntry returns CorrectionLedgerEntryResolver implementation.
@@ -51,19 +71,32 @@ func (r *Resolver) FundingLedgerEntry() FundingLedgerEntryResolver {
 	return &fundingLedgerEntryResolver{r}
 }
 
+// GiftTransferLedgerEntry returns GiftTransferLedgerEntryResolver implementation.
+func (r *Resolver) GiftTransferLedgerEntry() GiftTransferLedgerEntryResolver {
+	return &giftTransferLedgerEntryResolver{r}
+}
+
+// LoanTransferLedgerEntry returns LoanTransferLedgerEntryResolver implementation.
+func (r *Resolver) LoanTransferLedgerEntry() LoanTransferLedgerEntryResolver {
+	return &loanTransferLedgerEntryResolver{r}
+}
+
 // PurchaseLedgerEntry returns PurchaseLedgerEntryResolver implementation.
 func (r *Resolver) PurchaseLedgerEntry() PurchaseLedgerEntryResolver {
 	return &purchaseLedgerEntryResolver{r}
 }
 
-// TransferLedgerEntry returns TransferLedgerEntryResolver implementation.
-func (r *Resolver) TransferLedgerEntry() TransferLedgerEntryResolver {
-	return &transferLedgerEntryResolver{r}
+// RepaymentTransferLedgerEntry returns RepaymentTransferLedgerEntryResolver implementation.
+func (r *Resolver) RepaymentTransferLedgerEntry() RepaymentTransferLedgerEntryResolver {
+	return &repaymentTransferLedgerEntryResolver{r}
 }
 
 type (
-	correctionLedgerEntryResolver struct{ *Resolver }
-	fundingLedgerEntryResolver    struct{ *Resolver }
-	purchaseLedgerEntryResolver   struct{ *Resolver }
-	transferLedgerEntryResolver   struct{ *Resolver }
+	advanceTransferLedgerEntryResolver   struct{ *Resolver }
+	correctionLedgerEntryResolver        struct{ *Resolver }
+	fundingLedgerEntryResolver           struct{ *Resolver }
+	giftTransferLedgerEntryResolver      struct{ *Resolver }
+	loanTransferLedgerEntryResolver      struct{ *Resolver }
+	purchaseLedgerEntryResolver          struct{ *Resolver }
+	repaymentTransferLedgerEntryResolver struct{ *Resolver }
 )

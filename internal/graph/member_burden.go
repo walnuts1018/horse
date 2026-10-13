@@ -166,7 +166,7 @@ func snapshotCorrectionMemberBurden(ctx context.Context, executor bob.Executor, 
 		}
 		memberWeightsByID := byPool[poolID]
 		if len(memberWeightsByID) == 0 {
-			continue
+			return fmt.Errorf("%w: purchase %s pool %s has no member burden snapshot", ErrMissingPurchaseFundingSnapshot, purchaseID, poolID)
 		}
 		weights := make([]domain.Weight, 0, len(memberWeightsByID))
 		for memberID, weight := range memberWeightsByID {

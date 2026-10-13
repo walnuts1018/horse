@@ -1,23 +1,38 @@
-enum HouseholdInvitationStatus {
-  PENDING
-  ACCEPTED
-  REVOKED
-  EXPIRED
-}
-
-type HouseholdInvitation implements Node {
+interface HouseholdInvitation implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
-  status: HouseholdInvitationStatus!
   expiresAt: DateTime!
   createdAt: DateTime!
-  revokedAt: DateTime
-  acceptedAt: DateTime
 }
 
-type CreatedHouseholdInvitation {
-  invitation: HouseholdInvitation!
-  token: String!
+type PendingHouseholdInvitation implements Node & HouseholdInvitation {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  expiresAt: DateTime!
+  createdAt: DateTime!
+}
+
+type AcceptedHouseholdInvitation implements Node & HouseholdInvitation {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  expiresAt: DateTime!
+  createdAt: DateTime!
+  acceptedAt: DateTime!
+}
+
+type RevokedHouseholdInvitation implements Node & HouseholdInvitation {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  expiresAt: DateTime!
+  createdAt: DateTime!
+  revokedAt: DateTime!
+}
+
+type ExpiredHouseholdInvitation implements Node & HouseholdInvitation {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  expiresAt: DateTime!
+  createdAt: DateTime!
 }
 
 type HouseholdInvitationEdge {

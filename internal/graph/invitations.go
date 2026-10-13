@@ -78,8 +78,11 @@ func (r *mutationResolver) createHouseholdInvitation(ctx context.Context, input 
 		return nil, err
 	}
 	return &model.CreatedHouseholdInvitation{
-		Invitation: &model.HouseholdInvitation{ID: id, HouseholdID: input.HouseholdID, Status: model.HouseholdInvitationStatusPending, ExpiresAt: timeString(storedExpiresAt), CreatedAt: timeString(createdAt)},
-		Token:      token,
+		Invitation: &model.PendingHouseholdInvitation{HouseholdInvitation: &model.HouseholdInvitation{
+			ID: id, HouseholdID: input.HouseholdID,
+			ExpiresAt: timeString(storedExpiresAt), CreatedAt: timeString(createdAt),
+		}},
+		Token: token,
 	}, nil
 }
 
@@ -186,17 +189,24 @@ func (r *queryResolver) householdInvitations(ctx context.Context, householdID st
 	return connection, nil
 }
 
-func householdInvitationModel(row *models.HouseholdInvitation, now time.Time) *model.HouseholdInvitation {
-	return &model.HouseholdInvitation{
+func householdInvitationModel(row *models.HouseholdInvitation, now time.Time) model.HouseholdInvitationVariant {
+	invitation := &model.HouseholdInvitation{
 		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(),
 		ExpiresAt: timeString(row.ExpiresAt), CreatedAt: timeString(row.CreatedAt),
-		RevokedAt:  optionalTimeString(invitationTimePointer(row.RevokedAt)),
-		AcceptedAt: optionalTimeString(invitationTimePointer(row.AcceptedAt)),
-		Status:     householdInvitationStatus(row.AcceptedAt, row.RevokedAt, row.ExpiresAt, now),
 	}
+	if row.AcceptedAt.Valid {
+		return &model.AcceptedHouseholdInvitation{HouseholdInvitation: invitation, AcceptedAt: timeString(row.AcceptedAt.V)}
+	}
+	if row.RevokedAt.Valid {
+		return &model.RevokedHouseholdInvitation{HouseholdInvitation: invitation, RevokedAt: timeString(row.RevokedAt.V)}
+	}
+	if !row.ExpiresAt.After(now) {
+		return &model.ExpiredHouseholdInvitation{HouseholdInvitation: invitation}
+	}
+	return &model.PendingHouseholdInvitation{HouseholdInvitation: invitation}
 }
 
-func (r *mutationResolver) revokeHouseholdInvitation(ctx context.Context, householdID, invitationID string) (*model.HouseholdInvitation, error) {
+func (r *mutationResolver) revokeHouseholdInvitation(ctx context.Context, householdID, invitationID string) (model.HouseholdInvitationVariant, error) {
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
@@ -249,24 +259,7 @@ func (r *mutationResolver) revokeHouseholdInvitation(ctx context.Context, househ
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	invitation := model.HouseholdInvitation{ID: invitationRow.ID.String(), HouseholdID: invitationRow.HouseholdID.String()}
-	invitation.ExpiresAt, invitation.CreatedAt = timeString(invitationRow.ExpiresAt), timeString(invitationRow.CreatedAt)
-	invitation.RevokedAt, invitation.AcceptedAt = optionalTimeString(invitationTimePointer(invitationRow.RevokedAt)), optionalTimeString(invitationTimePointer(invitationRow.AcceptedAt))
-	invitation.Status = householdInvitationStatus(invitationRow.AcceptedAt, invitationRow.RevokedAt, invitationRow.ExpiresAt, time.Now())
-	return &invitation, nil
-}
-
-func householdInvitationStatus(acceptedAt, revokedAt sql.Null[time.Time], expiresAt, now time.Time) model.HouseholdInvitationStatus {
-	if acceptedAt.Valid {
-		return model.HouseholdInvitationStatusAccepted
-	}
-	if revokedAt.Valid {
-		return model.HouseholdInvitationStatusRevoked
-	}
-	if !expiresAt.After(now) {
-		return model.HouseholdInvitationStatusExpired
-	}
-	return model.HouseholdInvitationStatusPending
+	return householdInvitationModel(invitationRow, time.Now()), nil
 }
 
 func (r *mutationResolver) acceptHouseholdInvitation(ctx context.Context, token string) (*model.Household, error) {
@@ -362,19 +355,4 @@ func requireHouseholdOwner(ctx context.Context, db bob.Executor, householdID, me
 		return ErrNotFound
 	}
 	return nil
-}
-
-func invitationTimePointer(value sql.Null[time.Time]) *time.Time {
-	if !value.Valid {
-		return nil
-	}
-	return &value.V
-}
-
-func optionalTimeString(value *time.Time) *model.DateTime {
-	if value == nil {
-		return nil
-	}
-	result := timeString(*value)
-	return &result
 }

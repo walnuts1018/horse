@@ -1,6 +1,24 @@
-type PurchaseCorrection implements Node {
+interface PurchaseCorrection implements Node {
   id: ID! @goField(forceResolver: true)
-  itemId: ID @goField(forceResolver: true)
+  amountDeltaYen: Long!
+  reason: String!
+  occurredAt: DateTime!
+  settlementMonth: YearMonth!
+  paymentAllocations: [PurchasePayment!]!
+}
+
+type PurchaseWideCorrection implements PurchaseCorrection & Node {
+  id: ID! @goField(forceResolver: true)
+  amountDeltaYen: Long!
+  reason: String!
+  occurredAt: DateTime!
+  settlementMonth: YearMonth!
+  paymentAllocations: [PurchasePayment!]!
+}
+
+type PurchaseItemCorrection implements PurchaseCorrection & Node {
+  id: ID! @goField(forceResolver: true)
+  itemId: ID! @goField(forceResolver: true)
   amountDeltaYen: Long!
   reason: String!
   occurredAt: DateTime!

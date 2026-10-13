@@ -112,15 +112,42 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Buildx
+        id: buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      - name: Cache BuildKit cache mounts
+        id: buildkit-mount-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .buildkit-cache
+          key: ${{ runner.os }}-buildkit-mounts-${{ hashFiles('Dockerfile', 'services/ocr/Dockerfile', 'go.sum', 'web/pnpm-lock.yaml', 'services/ocr/uv.lock') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildkit-mounts-${{ hashFiles('Dockerfile', 'services/ocr/Dockerfile', 'go.sum', 'web/pnpm-lock.yaml', 'services/ocr/uv.lock') }}-
+            ${{ runner.os }}-buildkit-mounts-
+
+      - name: Restore BuildKit cache mounts
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          skip-extraction: ${{ steps.buildkit-mount-cache.outputs.cache-hit }}
+          cache-map: |
+            {
+              ".buildkit-cache/pnpm": { "target": "/pnpm/store", "id": "horse-pnpm" },
+              ".buildkit-cache/go-mod": { "target": "/go/pkg/mod", "id": "horse-go-mod" },
+              ".buildkit-cache/go-build": { "target": "/root/.cache/go-build", "id": "horse-go-build" },
+              ".buildkit-cache/ocr-uv": { "target": "/root/.cache/uv", "id": "horse-ocr-uv" },
+              ".buildkit-cache/ocr-apt-cache": { "target": "/var/cache/apt", "id": "horse-ocr-apt-cache", "sharing": "locked" },
+              ".buildkit-cache/ocr-apt-lib": { "target": "/var/lib/apt", "id": "horse-ocr-apt-lib", "sharing": "locked" }
+            }
+
       - parallel:
-          - name: Build and publish image
+          - name: Build and publish Go image
             id: image
             uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
             with:
               context: .
               file: Dockerfile
+              target: go-runtime
               platforms: linux/amd64,linux/arm64
               push: true
               provenance: mode=max
@@ -128,8 +155,25 @@ jobs:
               tags: |
                 ghcr.io/${{ github.repository }}:latest
                 ghcr.io/${{ github.repository }}:v0.0.0-${{ github.sha }}-${{ github.run_number }}
-              cache-from: type=gha
-              cache-to: type=gha,mode=max
+              cache-from: type=gha,scope=horse-go
+              cache-to: type=gha,scope=horse-go,mode=max
+
+          - name: Build and publish Node web image
+            id: web-image
+            uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+            with:
+              context: .
+              file: Dockerfile
+              target: web-runtime
+              platforms: linux/amd64,linux/arm64
+              push: true
+              provenance: mode=max
+              sbom: true
+              tags: |
+                ghcr.io/${{ github.repository }}-web:latest
+                ghcr.io/${{ github.repository }}-web:v0.0.0-${{ github.sha }}-${{ github.run_number }}
+              cache-from: type=gha,scope=horse-web
+              cache-to: type=gha,scope=horse-web,mode=max
 
           - name: Build and publish OCR image
             id: ocr-image
@@ -149,11 +193,13 @@ jobs:
 
       - name: Report published images
         env:
-          APP_IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          GO_IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          WEB_IMAGE_DIGEST: ${{ steps.web-image.outputs.digest }}
           OCR_IMAGE_DIGEST: ${{ steps.ocr-image.outputs.digest }}
           IMAGE_TAG: v0.0.0-${{ github.sha }}-${{ github.run_number }}
         run: |
           {
-            printf 'Published ghcr.io/%s:%s@%s.\n' "$GITHUB_REPOSITORY" "$IMAGE_TAG" "$APP_IMAGE_DIGEST"
+            printf 'Published ghcr.io/%s:%s@%s (Go API, worker, and Atlas).\n' "$GITHUB_REPOSITORY" "$IMAGE_TAG" "$GO_IMAGE_DIGEST"
+            printf 'Published ghcr.io/%s-web:%s@%s (Node web).\n' "$GITHUB_REPOSITORY" "$IMAGE_TAG" "$WEB_IMAGE_DIGEST"
             printf 'Published ghcr.io/%s-ocr:%s@%s.\n' "$GITHUB_REPOSITORY" "$IMAGE_TAG" "$OCR_IMAGE_DIGEST"
           } >> "$GITHUB_STEP_SUMMARY"

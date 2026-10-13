@@ -9,7 +9,7 @@ import (
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
-func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePeriodInput) (*model.Settlement, error) {
+func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePeriodInput) (model.SettlementVariant, error) {
 	user, err := requireMember(ctx, r.DB, input.HouseholdID)
 	if err != nil {
 		return nil, err
@@ -20,7 +20,7 @@ func (r *mutationResolver) closePeriod(ctx context.Context, input model.ClosePer
 	if err != nil {
 		return nil, mapSettlementError(err)
 	}
-	return settlementModel(result), nil
+	return settlementModel(result)
 }
 
 func mapSettlementError(err error) error {

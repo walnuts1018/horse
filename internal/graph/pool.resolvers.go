@@ -14,15 +14,15 @@ import (
 
 // ID is the resolver for the id field.
 func (r *personalPoolResolver) ID(ctx context.Context, obj *model.PersonalPool) (string, error) {
-	return encodeNodeID("Pool", obj.Pool.ID)
+	return encodeNodeID("Pool", obj.ID)
 }
 
 // OwnerMemberID is the resolver for the ownerMemberId field.
 func (r *personalPoolResolver) OwnerMemberID(ctx context.Context, obj *model.PersonalPool) (string, error) {
-	if obj.Pool.OwnerMemberID == nil {
-		return "", fmt.Errorf("personal pool %q has no owner member", obj.Pool.ID)
+	if obj.OwnerMemberID == nil {
+		return "", fmt.Errorf("personal pool %q has no owner member", obj.ID)
 	}
-	return encodeNodeID("Member", *obj.Pool.OwnerMemberID)
+	return encodeNodeID("Member", *obj.OwnerMemberID)
 }
 
 // MemberID is the resolver for the memberId field.
@@ -32,25 +32,25 @@ func (r *poolFundingShareResolver) MemberID(ctx context.Context, obj *model.Pool
 
 // ID is the resolver for the id field.
 func (r *sharedPoolResolver) ID(ctx context.Context, obj *model.SharedPool) (string, error) {
-	return encodeNodeID("Pool", obj.Pool.ID)
+	return encodeNodeID("Pool", obj.ID)
 }
 
 // SettlementPolicy is the resolver for the settlementPolicy field.
 func (r *sharedPoolResolver) SettlementPolicy(ctx context.Context, obj *model.SharedPool) (model.SharedPoolSettlementPolicy, error) {
-	if obj.Pool.SettlementPolicy == nil {
-		return "", fmt.Errorf("shared pool %q has no settlement policy", obj.Pool.ID)
+	if obj.SettlementPolicy == nil {
+		return "", fmt.Errorf("shared pool %q has no settlement policy", obj.ID)
 	}
-	return *obj.Pool.SettlementPolicy, nil
+	return *obj.SettlementPolicy, nil
 }
 
 // ID is the resolver for the id field.
 func (r *unconfiguredPersonalPoolResolver) ID(ctx context.Context, obj *model.UnconfiguredPersonalPool) (string, error) {
-	return encodeNodeID("Pool", obj.Pool.ID)
+	return encodeNodeID("Pool", obj.ID)
 }
 
 // ID is the resolver for the id field.
 func (r *unconfiguredSharedPoolResolver) ID(ctx context.Context, obj *model.UnconfiguredSharedPool) (string, error) {
-	return encodeNodeID("Pool", obj.Pool.ID)
+	return encodeNodeID("Pool", obj.ID)
 }
 
 // PersonalPool returns PersonalPoolResolver implementation.

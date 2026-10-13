@@ -312,7 +312,7 @@ func (r *queryResolver) findNodeInHouseholds(ctx context.Context, households []*
 				if value := findValue(purchase.Items, func(value *model.PurchaseItem) bool { return value.ID == id }); value != nil {
 					return value, nil
 				}
-			} else if value := findValue(purchaseCorrectionNodes(purchase), func(value *model.PurchaseCorrection) bool { return value.ID == id }); value != nil {
+			} else if value := findValue(purchaseCorrectionNodes(purchase), func(value model.PurchaseCorrection) bool { return value.GetID() == id }); value != nil {
 				return value, nil
 			}
 		}
@@ -489,7 +489,7 @@ func (r *queryResolver) findUnmatchedObservation(ctx context.Context, documentID
 				return nil, err
 			}
 			if value := findValue(connection.Edges, func(edge *model.UnmatchedObservationEdge) bool {
-				return edge.Node.DocumentID == documentID && edge.Node.SourceReference == sourceReference
+				return edge.Node.GetDocumentID() == documentID && edge.Node.GetSourceReference() == sourceReference
 			}); value != nil {
 				return value.Node, nil
 			}

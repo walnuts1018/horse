@@ -8,9 +8,16 @@ type PurchaseItem implements Node {
   effectiveUnitPrice: EffectiveUnitPrice
   categoryId: ID @goField(forceResolver: true)
   productVariantId: ID @goField(forceResolver: true)
-  allocations: [Allocation!]!
+  allocations: [PurchaseItemAllocation!]!
   tags: [Tag!]!
   revision: Int!
+}
+
+type PurchaseItemAllocation {
+  poolId: ID! @goField(forceResolver: true)
+  poolName: String!
+  weight: Long!
+  amountYen: Long!
 }
 
 type PurchaseQuantity {

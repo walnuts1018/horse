@@ -21,6 +21,12 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+const (
+	productLearningItemOnly      = "ITEM_ONLY"
+	productLearningVariantName   = "VARIANT_NAME"
+	productLearningMerchantAlias = "MERCHANT_ALIAS"
+)
+
 func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.UpdatePurchaseItemInput) (*model.PurchaseItem, error) {
 	changedFields, err := purchaseItemChangedFieldKeys(input)
 	if err != nil {
@@ -114,7 +120,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if input.BaseRevision > int(item.Revision) {
 		return nil, ErrConflict
 	}
-	if input.ProductLearning != nil && !slices.Contains(changedFields, "productVariantId") {
+	if input.ProductLearning.IsSet() && !slices.Contains(changedFields, "productVariantId") {
 		return nil, fmt.Errorf("%w: product learning requires a product variant change", ErrBadInput)
 	}
 	conflict, err := valuesConflict(item.FieldRevisions.Val, input.BaseRevision, changedFields)
@@ -155,12 +161,36 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if updateProductVariantID {
 		newProductVariantID = input.ProductVariantID.Value()
 	}
-	learningScope := model.ProductLearningScopeItemOnly
-	if input.ProductLearning != nil {
-		learningScope = *input.ProductLearning
-	}
-	if !learningScope.IsValid() || input.VariantName != nil && learningScope != model.ProductLearningScopeVariantName {
-		return nil, fmt.Errorf("%w: invalid product learning scope", ErrBadInput)
+	learningScope := productLearningItemOnly
+	var learningVariantName *string
+	if input.ProductLearning.IsSet() {
+		configuration := input.ProductLearning.Value()
+		if configuration == nil {
+			return nil, fmt.Errorf("%w: product learning configuration must select a scope", ErrBadInput)
+		}
+		selected := 0
+		if configuration.ItemOnly != nil {
+			selected++
+		}
+		if configuration.VariantName != nil {
+			selected++
+		}
+		if configuration.MerchantAlias != nil {
+			selected++
+		}
+		if selected != 1 {
+			return nil, fmt.Errorf("%w: product learning configuration must select exactly one scope", ErrBadInput)
+		}
+		switch {
+		case configuration.ItemOnly != nil && *configuration.ItemOnly:
+		case configuration.VariantName != nil:
+			learningScope = productLearningVariantName
+			learningVariantName = configuration.VariantName
+		case configuration.MerchantAlias != nil && *configuration.MerchantAlias:
+			learningScope = productLearningMerchantAlias
+		default:
+			return nil, fmt.Errorf("%w: product learning marker must be true", ErrBadInput)
+		}
 	}
 	if updateProductVariantID && newProductVariantID != nil {
 		variantUUID, err := gofrsuuid.FromString(*newProductVariantID)
@@ -185,7 +215,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			return nil, ErrNotFound
 		}
 	}
-	if learningScope != model.ProductLearningScopeItemOnly && newProductVariantID == nil {
+	if learningScope != productLearningItemOnly && newProductVariantID == nil {
 		return nil, fmt.Errorf("%w: product learning requires a linked variant", ErrBadInput)
 	}
 	var weights []domain.Weight
@@ -286,8 +316,8 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if err != nil {
 		return nil, err
 	}
-	if learningScope == model.ProductLearningScopeVariantName {
-		variantName := strings.TrimSpace(trimOptional(input.VariantName))
+	if learningScope == productLearningVariantName {
+		variantName := strings.TrimSpace(trimOptional(learningVariantName))
 		variantKey := normalizeProductText(variantName)
 		if variantKey == "" || len(variantName) > 240 {
 			return nil, fmt.Errorf("%w: invalid normalized product name", ErrBadInput)
@@ -350,7 +380,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	}
 	if updateProductVariantID && newProductVariantID != nil {
 		merchantKey := normalizeMerchant(merchant)
-		if learningScope == model.ProductLearningScopeMerchantAlias {
+		if learningScope == productLearningMerchantAlias {
 			if merchantKey == "" {
 				return nil, fmt.Errorf("%w: merchant-specific learning requires a merchant", ErrBadInput)
 			}

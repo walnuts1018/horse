@@ -12,12 +12,32 @@ import (
 )
 
 // ID is the resolver for the id field.
-func (r *householdInvitationResolver) ID(ctx context.Context, obj *model.HouseholdInvitation) (string, error) {
+func (r *acceptedHouseholdInvitationResolver) ID(ctx context.Context, obj *model.AcceptedHouseholdInvitation) (string, error) {
 	return encodeNodeID("HouseholdInvitation", obj.ID)
 }
 
 // HouseholdID is the resolver for the householdId field.
-func (r *householdInvitationResolver) HouseholdID(ctx context.Context, obj *model.HouseholdInvitation) (string, error) {
+func (r *acceptedHouseholdInvitationResolver) HouseholdID(ctx context.Context, obj *model.AcceptedHouseholdInvitation) (string, error) {
+	return encodeNodeID("Household", obj.HouseholdID)
+}
+
+// ID is the resolver for the id field.
+func (r *expiredHouseholdInvitationResolver) ID(ctx context.Context, obj *model.ExpiredHouseholdInvitation) (string, error) {
+	return encodeNodeID("HouseholdInvitation", obj.ID)
+}
+
+// HouseholdID is the resolver for the householdId field.
+func (r *expiredHouseholdInvitationResolver) HouseholdID(ctx context.Context, obj *model.ExpiredHouseholdInvitation) (string, error) {
+	return encodeNodeID("Household", obj.HouseholdID)
+}
+
+// ID is the resolver for the id field.
+func (r *pendingHouseholdInvitationResolver) ID(ctx context.Context, obj *model.PendingHouseholdInvitation) (string, error) {
+	return encodeNodeID("HouseholdInvitation", obj.ID)
+}
+
+// HouseholdID is the resolver for the householdId field.
+func (r *pendingHouseholdInvitationResolver) HouseholdID(ctx context.Context, obj *model.PendingHouseholdInvitation) (string, error) {
 	return encodeNodeID("Household", obj.HouseholdID)
 }
 
@@ -26,9 +46,39 @@ func (r *queryResolver) HouseholdInvitations(ctx context.Context, householdID st
 	return r.householdInvitations(ctx, householdID, after, before, first, last)
 }
 
-// HouseholdInvitation returns HouseholdInvitationResolver implementation.
-func (r *Resolver) HouseholdInvitation() HouseholdInvitationResolver {
-	return &householdInvitationResolver{r}
+// ID is the resolver for the id field.
+func (r *revokedHouseholdInvitationResolver) ID(ctx context.Context, obj *model.RevokedHouseholdInvitation) (string, error) {
+	return encodeNodeID("HouseholdInvitation", obj.ID)
 }
 
-type householdInvitationResolver struct{ *Resolver }
+// HouseholdID is the resolver for the householdId field.
+func (r *revokedHouseholdInvitationResolver) HouseholdID(ctx context.Context, obj *model.RevokedHouseholdInvitation) (string, error) {
+	return encodeNodeID("Household", obj.HouseholdID)
+}
+
+// AcceptedHouseholdInvitation returns AcceptedHouseholdInvitationResolver implementation.
+func (r *Resolver) AcceptedHouseholdInvitation() AcceptedHouseholdInvitationResolver {
+	return &acceptedHouseholdInvitationResolver{r}
+}
+
+// ExpiredHouseholdInvitation returns ExpiredHouseholdInvitationResolver implementation.
+func (r *Resolver) ExpiredHouseholdInvitation() ExpiredHouseholdInvitationResolver {
+	return &expiredHouseholdInvitationResolver{r}
+}
+
+// PendingHouseholdInvitation returns PendingHouseholdInvitationResolver implementation.
+func (r *Resolver) PendingHouseholdInvitation() PendingHouseholdInvitationResolver {
+	return &pendingHouseholdInvitationResolver{r}
+}
+
+// RevokedHouseholdInvitation returns RevokedHouseholdInvitationResolver implementation.
+func (r *Resolver) RevokedHouseholdInvitation() RevokedHouseholdInvitationResolver {
+	return &revokedHouseholdInvitationResolver{r}
+}
+
+type (
+	acceptedHouseholdInvitationResolver struct{ *Resolver }
+	expiredHouseholdInvitationResolver  struct{ *Resolver }
+	pendingHouseholdInvitationResolver  struct{ *Resolver }
+	revokedHouseholdInvitationResolver  struct{ *Resolver }
+)

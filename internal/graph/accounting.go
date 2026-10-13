@@ -84,14 +84,18 @@ func (r *mutationResolver) setPoolFundingRule(ctx context.Context, input model.S
 	if int(pool.FundingRuleVersion) != input.ExpectedVersion {
 		return nil, ErrConflict
 	}
-	shares := make(map[gofrsuuid.UUID]int64, len(input.FundingShares))
+	configuration := input.Configuration
+	if configuration == nil || (configuration.Personal == nil) == (configuration.Shared == nil) {
+		return nil, fmt.Errorf("%w: pool funding configuration must select exactly one pool kind", ErrBadInput)
+	}
+	shares := make(map[gofrsuuid.UUID]int64)
 	var ownerID sql.Null[gofrsuuid.UUID]
 	var settlementPolicy sql.Null[string]
 	if pool.Kind == string(model.PoolKindPersonal) {
-		if input.OwnerMemberID == nil || *input.OwnerMemberID == "" || input.SettlementPolicy != nil || len(input.FundingShares) != 0 {
-			return nil, fmt.Errorf("%w: personal pools require one owner and no funding shares", ErrBadInput)
+		if configuration.Personal == nil {
+			return nil, fmt.Errorf("%w: personal pools require a personal funding configuration", ErrBadInput)
 		}
-		ownerUUID, err := gofrsuuid.FromString(*input.OwnerMemberID)
+		ownerUUID, err := gofrsuuid.FromString(configuration.Personal.OwnerMemberID)
 		if err != nil {
 			return nil, fmt.Errorf("%w: invalid owner member id", ErrBadInput)
 		}
@@ -107,12 +111,12 @@ func (r *mutationResolver) setPoolFundingRule(ctx context.Context, input model.S
 		}
 		ownerID = sql.Null[gofrsuuid.UUID]{V: ownerUUID, Valid: true}
 	} else if pool.Kind == string(model.PoolKindShared) {
-		if input.OwnerMemberID != nil || input.SettlementPolicy == nil || !input.SettlementPolicy.IsValid() || len(input.FundingShares) == 0 {
+		if configuration.Shared == nil || !configuration.Shared.SettlementPolicy.IsValid() || len(configuration.Shared.FundingShares) == 0 {
 			return nil, fmt.Errorf("%w: shared pools require funding shares and a settlement policy", ErrBadInput)
 		}
-		settlementPolicy = sql.Null[string]{V: string(*input.SettlementPolicy), Valid: true}
+		settlementPolicy = sql.Null[string]{V: string(configuration.Shared.SettlementPolicy), Valid: true}
 		var total int64
-		for _, share := range input.FundingShares {
+		for _, share := range configuration.Shared.FundingShares {
 			if share == nil || share.MemberID == "" || share.Weight <= 0 {
 				return nil, fmt.Errorf("%w: funding shares require positive weights", ErrBadInput)
 			}

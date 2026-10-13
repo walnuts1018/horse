@@ -191,14 +191,14 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: personalPool.ID, OwnerMemberID: &memberA, ExpectedVersion: 1}); err != nil {
+	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: personalPool.ID, Configuration: personalPoolFundingConfiguration(memberA), ExpectedVersion: 1}); err != nil {
 		t.Fatal(err)
 	}
 	policy := model.SharedPoolSettlementPolicyBalanceToStandard
 	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{
 		HouseholdID: household.ID, PoolID: sharedPool.ID,
-		FundingShares:    []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}},
-		SettlementPolicy: &policy, ExpectedVersion: 1,
+		Configuration:   sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, policy),
+		ExpectedVersion: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	if err != nil {
 		t.Fatal(err)
 	}
-	closedLines := settlementByMember(t, closed.Lines)
+	closedLines := settlementByMember(t, settlementData(t, closed).Lines)
 	if closedLines[memberA].AdvanceCreditYen != 400 || closedLines[memberA].AmountDueYen != -400 || closedLines[memberB].MonthlyAdjustmentYen != 400 || closedLines[memberB].AmountDueYen != 400 {
 		t.Fatalf("closed settlement did not capture the original purchase allocation: %#v", closedLines)
 	}
@@ -247,10 +247,12 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	if err != nil {
 		t.Fatal(err)
 	}
-	if closedAgain.Status != closed.Status || closedAgain.Revision != closed.Revision {
+	closedData := settlementData(t, closed)
+	closedAgainData := settlementData(t, closedAgain)
+	if _, ok := closedAgain.(*model.ClosedSettlement); !ok || closedAgainData.Revision != closedData.Revision {
 		t.Fatalf("correction changed the closed settlement revision: before=%#v after=%#v", closed, closedAgain)
 	}
-	closedAgainLines := settlementByMember(t, closedAgain.Lines)
+	closedAgainLines := settlementByMember(t, closedAgainData.Lines)
 	for memberID, before := range closedLines {
 		after := closedAgainLines[memberID]
 		if *before != *after {
@@ -285,7 +287,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	if err != nil {
 		t.Fatal(err)
 	}
-	nextLines := settlementByMember(t, nextSettlement.Lines)
+	nextLines := settlementByMember(t, settlementData(t, nextSettlement).Lines)
 	if nextLines[memberA].MonthlyAdjustmentYen != 40 || nextLines[memberA].PriorBalanceYen != -400 || nextLines[memberA].AmountDueYen != -360 ||
 		nextLines[memberB].MonthlyAdjustmentYen != -40 || nextLines[memberB].PriorBalanceYen != 400 || nextLines[memberB].AmountDueYen != 360 {
 		t.Fatalf("next settlement did not apply the correction while carrying the closed balance: %#v", nextLines)

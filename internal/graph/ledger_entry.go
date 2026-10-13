@@ -69,19 +69,59 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 		if err != nil {
 			return nil, err
 		}
-		var loan *model.LoanBalance
-		if transfer.LoanID.Valid {
-			loanRow, err := models.Transfers.Query(sm.Where(models.Transfers.Columns.ID.EQ(psql.Arg(transfer.LoanID.V)))).One(ctx, bobpgx.NewPool(db))
+		var loanRow *models.Transfer
+		switch transfer.Kind {
+		case transferKindLoan:
+			loanRow = transfer
+		case transferKindRepayment:
+			if !transfer.LoanID.Valid {
+				return nil, errors.New("repayment transfer has no loan")
+			}
+			loanRow, err = models.Transfers.Query(sm.Where(models.Transfers.Columns.ID.EQ(psql.Arg(transfer.LoanID.V)))).One(ctx, bobpgx.NewPool(db))
 			if err != nil {
 				return nil, err
 			}
+			if loanRow.Kind != transferKindLoan {
+				return nil, errors.New("repayment transfer references a non-loan transfer")
+			}
+		case transferKindAdvance, transferKindGift:
+			if transfer.LoanID.Valid {
+				return nil, fmt.Errorf("%s transfer unexpectedly references a loan", transfer.Kind)
+			}
+		default:
+			return nil, fmt.Errorf("unknown transfer kind %q", transfer.Kind)
+		}
+		var loan *model.LoanBalance
+		if loanRow != nil {
 			loan, err = loadLoanBalance(ctx, bobpgx.NewPool(db), loanRow)
 			if err != nil {
 				return nil, err
 			}
 		}
-		return &model.TransferLedgerEntry{ID: baseID, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: currency, CreatedAt: createdAt, FromMember: fromMember, ToMember: toMember, TransferKind: model.TransferKind(transfer.Kind), Loan: loan}, nil
+		return transferLedgerEntryVariant(transfer.Kind, baseID, occurredAt, description, amount, currency, createdAt, fromMember, toMember, loan)
 	default:
 		return nil, fmt.Errorf("unknown ledger entry kind %q", value.Kind)
+	}
+}
+
+func transferLedgerEntryVariant(kind, id string, occurredAt model.DateTime, description string, amount model.Long, currency string, createdAt model.DateTime, fromMember, toMember *model.Member, loan *model.LoanBalance) (model.TransferLedgerEntry, error) {
+	entry := model.AdvanceTransferLedgerEntry{ID: id, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: currency, CreatedAt: createdAt, FromMember: fromMember, ToMember: toMember}
+	switch kind {
+	case transferKindAdvance:
+		return &entry, nil
+	case transferKindLoan:
+		if loan == nil {
+			return nil, errors.New("loan transfer has no loan balance")
+		}
+		return &model.LoanTransferLedgerEntry{ID: entry.ID, OccurredAt: entry.OccurredAt, Description: entry.Description, AmountYen: entry.AmountYen, Currency: entry.Currency, CreatedAt: entry.CreatedAt, FromMember: entry.FromMember, ToMember: entry.ToMember, Loan: loan}, nil
+	case transferKindRepayment:
+		if loan == nil {
+			return nil, errors.New("repayment transfer has no loan balance")
+		}
+		return &model.RepaymentTransferLedgerEntry{ID: entry.ID, OccurredAt: entry.OccurredAt, Description: entry.Description, AmountYen: entry.AmountYen, Currency: entry.Currency, CreatedAt: entry.CreatedAt, FromMember: entry.FromMember, ToMember: entry.ToMember, Loan: loan}, nil
+	case "GIFT":
+		return &model.GiftTransferLedgerEntry{ID: entry.ID, OccurredAt: entry.OccurredAt, Description: entry.Description, AmountYen: entry.AmountYen, Currency: entry.Currency, CreatedAt: entry.CreatedAt, FromMember: entry.FromMember, ToMember: entry.ToMember}, nil
+	default:
+		return nil, fmt.Errorf("unknown transfer kind %q", kind)
 	}
 }

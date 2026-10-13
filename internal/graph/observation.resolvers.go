@@ -13,6 +13,22 @@ import (
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
+// ID is the resolver for the id field.
+func (r *confirmedObservationResolver) ID(ctx context.Context, obj *model.ConfirmedObservation) (string, error) {
+	payload := append([]byte("UnmatchedObservation:"), obj.DocumentID...)
+	payload = append(payload, 0)
+	var size [8]byte
+	binary.BigEndian.PutUint64(size[:], uint64(len(obj.SourceReference)))
+	payload = append(payload, size[:]...)
+	payload = append(payload, obj.SourceReference...)
+	return base64.RawURLEncoding.EncodeToString(payload), nil
+}
+
+// Purchase is the resolver for the purchase field.
+func (r *confirmedObservationResolver) Purchase(ctx context.Context, obj *model.ConfirmedObservation) (*model.Purchase, error) {
+	return loadPurchase(ctx, r.DB, obj.PurchaseID)
+}
+
 // UnmatchedObservations is the resolver for the unmatchedObservations field.
 func (r *queryResolver) UnmatchedObservations(ctx context.Context, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) (*model.UnmatchedObservationConnection, error) {
 	return r.unmatchedObservations(ctx, householdID, yearMonthPointer(from), yearMonthPointer(to), sourceKind, state, after, before, first, last)
@@ -29,9 +45,9 @@ func (r *unmatchedObservationResolver) ID(ctx context.Context, obj *model.Unmatc
 	return base64.RawURLEncoding.EncodeToString(payload), nil
 }
 
-// PurchaseID is the resolver for the purchaseId field.
-func (r *unmatchedObservationResolver) PurchaseID(ctx context.Context, obj *model.UnmatchedObservation) (*string, error) {
-	return encodeNodeIDPtr("Purchase", obj.PurchaseID)
+// ConfirmedObservation returns ConfirmedObservationResolver implementation.
+func (r *Resolver) ConfirmedObservation() ConfirmedObservationResolver {
+	return &confirmedObservationResolver{r}
 }
 
 // UnmatchedObservation returns UnmatchedObservationResolver implementation.
@@ -39,4 +55,7 @@ func (r *Resolver) UnmatchedObservation() UnmatchedObservationResolver {
 	return &unmatchedObservationResolver{r}
 }
 
-type unmatchedObservationResolver struct{ *Resolver }
+type (
+	confirmedObservationResolver struct{ *Resolver }
+	unmatchedObservationResolver struct{ *Resolver }
+)

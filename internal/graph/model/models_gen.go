@@ -117,6 +117,17 @@ type PostPurchaseResult interface {
 	IsPostPurchaseResult()
 }
 
+type PurchaseCorrection interface {
+	IsNode()
+	IsPurchaseCorrection()
+	GetID() string
+	GetAmountDeltaYen() Long
+	GetReason() string
+	GetOccurredAt() DateTime
+	GetSettlementMonth() YearMonth
+	GetPaymentAllocations() []*PurchasePayment
+}
+
 type RecordAccountMovementResult interface {
 	IsRecordAccountMovementResult()
 }
@@ -163,6 +174,20 @@ type SetPoolFundingRuleResult interface {
 
 type SetProductAliasResult interface {
 	IsSetProductAliasResult()
+}
+
+type TransferLedgerEntry interface {
+	IsLedgerEntry()
+	IsNode()
+	IsTransferLedgerEntry()
+	GetID() string
+	GetOccurredAt() DateTime
+	GetDescription() string
+	GetAmountYen() Long
+	GetCurrency() string
+	GetCreatedAt() DateTime
+	GetFromMember() *Member
+	GetToMember() *Member
 }
 
 type UpdateBudgetResult interface {
@@ -309,11 +334,38 @@ type AccountOpeningBalanceInput struct {
 	At        DateTime `json:"at"`
 }
 
+type AdvanceTransferLedgerEntry struct {
+	ID          string   `json:"id"`
+	OccurredAt  DateTime `json:"occurredAt"`
+	Description string   `json:"description"`
+	AmountYen   Long     `json:"amountYen"`
+	Currency    string   `json:"currency"`
+	CreatedAt   DateTime `json:"createdAt"`
+	FromMember  *Member  `json:"fromMember"`
+	ToMember    *Member  `json:"toMember"`
+}
+
+func (AdvanceTransferLedgerEntry) IsAccountBalanceSource() {}
+
+func (AdvanceTransferLedgerEntry) IsLedgerEntry()               {}
+func (this AdvanceTransferLedgerEntry) GetID() string           { return this.ID }
+func (this AdvanceTransferLedgerEntry) GetOccurredAt() DateTime { return this.OccurredAt }
+func (this AdvanceTransferLedgerEntry) GetDescription() string  { return this.Description }
+func (this AdvanceTransferLedgerEntry) GetAmountYen() Long      { return this.AmountYen }
+func (this AdvanceTransferLedgerEntry) GetCurrency() string     { return this.Currency }
+func (this AdvanceTransferLedgerEntry) GetCreatedAt() DateTime  { return this.CreatedAt }
+
+func (AdvanceTransferLedgerEntry) IsNode() {}
+
+func (AdvanceTransferLedgerEntry) IsTransferLedgerEntry() {}
+
+func (this AdvanceTransferLedgerEntry) GetFromMember() *Member { return this.FromMember }
+func (this AdvanceTransferLedgerEntry) GetToMember() *Member   { return this.ToMember }
+
 type Allocation struct {
-	PoolID    string `json:"poolId"`
-	PoolName  string `json:"poolName"`
-	Weight    Long   `json:"weight"`
-	AmountYen *Long  `json:"amountYen,omitempty"`
+	PoolID   string `json:"poolId"`
+	PoolName string `json:"poolName"`
+	Weight   Long   `json:"weight"`
 }
 
 type AllocationRule struct {
@@ -504,7 +556,7 @@ type ClosePeriodInput struct {
 }
 
 type ClosePeriodSuccess struct {
-	Result *Settlement `json:"result"`
+	Result SettlementVariant `json:"result"`
 }
 
 func (ClosePeriodSuccess) IsClosePeriodResult() {}
@@ -848,8 +900,8 @@ func (this CreateTagUserError) GetCode() MutationErrorCode { return this.Code }
 func (this CreateTagUserError) GetMessage() string         { return this.Message }
 
 type CreatedHouseholdInvitation struct {
-	Invitation *HouseholdInvitation `json:"invitation"`
-	Token      string               `json:"token"`
+	Invitation HouseholdInvitationVariant `json:"invitation"`
+	Token      string                     `json:"token"`
 }
 
 type EffectiveUnitPrice struct {
@@ -906,6 +958,34 @@ type FundingScheduleEdge struct {
 	Node   *FundingSchedule `json:"node"`
 }
 
+type GiftTransferLedgerEntry struct {
+	ID          string   `json:"id"`
+	OccurredAt  DateTime `json:"occurredAt"`
+	Description string   `json:"description"`
+	AmountYen   Long     `json:"amountYen"`
+	Currency    string   `json:"currency"`
+	CreatedAt   DateTime `json:"createdAt"`
+	FromMember  *Member  `json:"fromMember"`
+	ToMember    *Member  `json:"toMember"`
+}
+
+func (GiftTransferLedgerEntry) IsAccountBalanceSource() {}
+
+func (GiftTransferLedgerEntry) IsLedgerEntry()               {}
+func (this GiftTransferLedgerEntry) GetID() string           { return this.ID }
+func (this GiftTransferLedgerEntry) GetOccurredAt() DateTime { return this.OccurredAt }
+func (this GiftTransferLedgerEntry) GetDescription() string  { return this.Description }
+func (this GiftTransferLedgerEntry) GetAmountYen() Long      { return this.AmountYen }
+func (this GiftTransferLedgerEntry) GetCurrency() string     { return this.Currency }
+func (this GiftTransferLedgerEntry) GetCreatedAt() DateTime  { return this.CreatedAt }
+
+func (GiftTransferLedgerEntry) IsNode() {}
+
+func (GiftTransferLedgerEntry) IsTransferLedgerEntry() {}
+
+func (this GiftTransferLedgerEntry) GetFromMember() *Member { return this.FromMember }
+func (this GiftTransferLedgerEntry) GetToMember() *Member   { return this.ToMember }
+
 type Household struct {
 	ID                string        `json:"id"`
 	Name              string        `json:"name"`
@@ -921,18 +1001,6 @@ type Household struct {
 
 func (Household) IsNode() {}
 
-type HouseholdInvitation struct {
-	ID          string                    `json:"id"`
-	HouseholdID string                    `json:"householdId"`
-	Status      HouseholdInvitationStatus `json:"status"`
-	ExpiresAt   DateTime                  `json:"expiresAt"`
-	CreatedAt   DateTime                  `json:"createdAt"`
-	RevokedAt   *DateTime                 `json:"revokedAt,omitempty"`
-	AcceptedAt  *DateTime                 `json:"acceptedAt,omitempty"`
-}
-
-func (HouseholdInvitation) IsNode() {}
-
 type HouseholdInvitationConnection struct {
 	Edges      []*HouseholdInvitationEdge `json:"edges"`
 	PageInfo   *PageInfo                  `json:"pageInfo"`
@@ -940,8 +1008,8 @@ type HouseholdInvitationConnection struct {
 }
 
 type HouseholdInvitationEdge struct {
-	Cursor string               `json:"cursor"`
-	Node   *HouseholdInvitation `json:"node"`
+	Cursor string                     `json:"cursor"`
+	Node   HouseholdInvitationVariant `json:"node"`
 }
 
 type LedgerConnection struct {
@@ -977,6 +1045,35 @@ type LoanBalanceEdge struct {
 	Cursor string       `json:"cursor"`
 	Node   *LoanBalance `json:"node"`
 }
+
+type LoanTransferLedgerEntry struct {
+	ID          string       `json:"id"`
+	OccurredAt  DateTime     `json:"occurredAt"`
+	Description string       `json:"description"`
+	AmountYen   Long         `json:"amountYen"`
+	Currency    string       `json:"currency"`
+	CreatedAt   DateTime     `json:"createdAt"`
+	FromMember  *Member      `json:"fromMember"`
+	ToMember    *Member      `json:"toMember"`
+	Loan        *LoanBalance `json:"loan"`
+}
+
+func (LoanTransferLedgerEntry) IsAccountBalanceSource() {}
+
+func (LoanTransferLedgerEntry) IsLedgerEntry()               {}
+func (this LoanTransferLedgerEntry) GetID() string           { return this.ID }
+func (this LoanTransferLedgerEntry) GetOccurredAt() DateTime { return this.OccurredAt }
+func (this LoanTransferLedgerEntry) GetDescription() string  { return this.Description }
+func (this LoanTransferLedgerEntry) GetAmountYen() Long      { return this.AmountYen }
+func (this LoanTransferLedgerEntry) GetCurrency() string     { return this.Currency }
+func (this LoanTransferLedgerEntry) GetCreatedAt() DateTime  { return this.CreatedAt }
+
+func (LoanTransferLedgerEntry) IsNode() {}
+
+func (LoanTransferLedgerEntry) IsTransferLedgerEntry() {}
+
+func (this LoanTransferLedgerEntry) GetFromMember() *Member { return this.FromMember }
+func (this LoanTransferLedgerEntry) GetToMember() *Member   { return this.ToMember }
 
 type Member struct {
 	ID          string     `json:"id"`
@@ -1020,6 +1117,15 @@ type PageInfo struct {
 	HasPreviousPage bool    `json:"hasPreviousPage"`
 	StartCursor     *string `json:"startCursor,omitempty"`
 	EndCursor       *string `json:"endCursor,omitempty"`
+}
+
+type PersonalPoolFundingRuleInput struct {
+	OwnerMemberID string `json:"ownerMemberId"`
+}
+
+type PoolFundingRuleConfigurationInput struct {
+	Personal *PersonalPoolFundingRuleInput `json:"personal,omitempty"`
+	Shared   *SharedPoolFundingRuleInput   `json:"shared,omitempty"`
 }
 
 type PoolFundingShare struct {
@@ -1099,6 +1205,12 @@ type ProductConceptEdge struct {
 	Node   *ProductConcept `json:"node"`
 }
 
+type ProductLearningConfigurationInput struct {
+	ItemOnly      *bool   `json:"itemOnly,omitempty"`
+	VariantName   *string `json:"variantName,omitempty"`
+	MerchantAlias *bool   `json:"merchantAlias,omitempty"`
+}
+
 type ProductSuggestion struct {
 	Concept     *ProductConcept `json:"concept"`
 	Variant     *ProductVariant `json:"variant"`
@@ -1165,20 +1277,6 @@ type PurchaseConnection struct {
 	SyncCursor string          `json:"syncCursor"`
 }
 
-type PurchaseCorrection struct {
-	ID                 string             `json:"id"`
-	ItemID             *string            `json:"itemId,omitempty"`
-	AmountDeltaYen     Long               `json:"amountDeltaYen"`
-	Reason             string             `json:"reason"`
-	OccurredAt         DateTime           `json:"occurredAt"`
-	SettlementMonth    YearMonth          `json:"settlementMonth"`
-	PaymentAllocations []*PurchasePayment `json:"paymentAllocations"`
-}
-
-func (PurchaseCorrection) IsAccountBalanceSource() {}
-
-func (PurchaseCorrection) IsNode() {}
-
 type PurchaseCorrectionConnection struct {
 	Edges      []*PurchaseCorrectionEdge `json:"edges"`
 	PageInfo   *PageInfo                 `json:"pageInfo"`
@@ -1186,8 +1284,8 @@ type PurchaseCorrectionConnection struct {
 }
 
 type PurchaseCorrectionEdge struct {
-	Cursor string              `json:"cursor"`
-	Node   *PurchaseCorrection `json:"node"`
+	Cursor string             `json:"cursor"`
+	Node   PurchaseCorrection `json:"node"`
 }
 
 type PurchaseCorrectionItemTargetInput struct {
@@ -1205,21 +1303,59 @@ type PurchaseEdge struct {
 }
 
 type PurchaseItem struct {
-	ID                 string              `json:"id"`
-	Name               string              `json:"name"`
-	AmountYen          Long                `json:"amountYen"`
-	Currency           string              `json:"currency"`
-	Quantity           *PurchaseQuantity   `json:"quantity,omitempty"`
-	PrintedUnitPrice   *PrintedUnitPrice   `json:"printedUnitPrice,omitempty"`
-	EffectiveUnitPrice *EffectiveUnitPrice `json:"effectiveUnitPrice,omitempty"`
-	CategoryID         *string             `json:"categoryId,omitempty"`
-	ProductVariantID   *string             `json:"productVariantId,omitempty"`
-	Allocations        []*Allocation       `json:"allocations"`
-	Tags               []*Tag              `json:"tags"`
-	Revision           int                 `json:"revision"`
+	ID                 string                    `json:"id"`
+	Name               string                    `json:"name"`
+	AmountYen          Long                      `json:"amountYen"`
+	Currency           string                    `json:"currency"`
+	Quantity           *PurchaseQuantity         `json:"quantity,omitempty"`
+	PrintedUnitPrice   *PrintedUnitPrice         `json:"printedUnitPrice,omitempty"`
+	EffectiveUnitPrice *EffectiveUnitPrice       `json:"effectiveUnitPrice,omitempty"`
+	CategoryID         *string                   `json:"categoryId,omitempty"`
+	ProductVariantID   *string                   `json:"productVariantId,omitempty"`
+	Allocations        []*PurchaseItemAllocation `json:"allocations"`
+	Tags               []*Tag                    `json:"tags"`
+	Revision           int                       `json:"revision"`
 }
 
 func (PurchaseItem) IsNode() {}
+
+type PurchaseItemAllocation struct {
+	PoolID    string `json:"poolId"`
+	PoolName  string `json:"poolName"`
+	Weight    Long   `json:"weight"`
+	AmountYen Long   `json:"amountYen"`
+}
+
+type PurchaseItemCorrection struct {
+	ID                 string             `json:"id"`
+	ItemID             string             `json:"itemId"`
+	AmountDeltaYen     Long               `json:"amountDeltaYen"`
+	Reason             string             `json:"reason"`
+	OccurredAt         DateTime           `json:"occurredAt"`
+	SettlementMonth    YearMonth          `json:"settlementMonth"`
+	PaymentAllocations []*PurchasePayment `json:"paymentAllocations"`
+}
+
+func (PurchaseItemCorrection) IsAccountBalanceSource() {}
+
+func (PurchaseItemCorrection) IsPurchaseCorrection()              {}
+func (this PurchaseItemCorrection) GetID() string                 { return this.ID }
+func (this PurchaseItemCorrection) GetAmountDeltaYen() Long       { return this.AmountDeltaYen }
+func (this PurchaseItemCorrection) GetReason() string             { return this.Reason }
+func (this PurchaseItemCorrection) GetOccurredAt() DateTime       { return this.OccurredAt }
+func (this PurchaseItemCorrection) GetSettlementMonth() YearMonth { return this.SettlementMonth }
+func (this PurchaseItemCorrection) GetPaymentAllocations() []*PurchasePayment {
+	if this.PaymentAllocations == nil {
+		return nil
+	}
+	interfaceSlice := make([]*PurchasePayment, 0, len(this.PaymentAllocations))
+	for _, concrete := range this.PaymentAllocations {
+		interfaceSlice = append(interfaceSlice, concrete)
+	}
+	return interfaceSlice
+}
+
+func (PurchaseItemCorrection) IsNode() {}
 
 type PurchaseItemInput struct {
 	Name             string                 `json:"name"`
@@ -1281,6 +1417,36 @@ type PurchaseUpdateTargetInput struct {
 	BaseRevision int                `json:"baseRevision"`
 	Patch        *BulkPurchasePatch `json:"patch"`
 }
+
+type PurchaseWideCorrection struct {
+	ID                 string             `json:"id"`
+	AmountDeltaYen     Long               `json:"amountDeltaYen"`
+	Reason             string             `json:"reason"`
+	OccurredAt         DateTime           `json:"occurredAt"`
+	SettlementMonth    YearMonth          `json:"settlementMonth"`
+	PaymentAllocations []*PurchasePayment `json:"paymentAllocations"`
+}
+
+func (PurchaseWideCorrection) IsAccountBalanceSource() {}
+
+func (PurchaseWideCorrection) IsPurchaseCorrection()              {}
+func (this PurchaseWideCorrection) GetID() string                 { return this.ID }
+func (this PurchaseWideCorrection) GetAmountDeltaYen() Long       { return this.AmountDeltaYen }
+func (this PurchaseWideCorrection) GetReason() string             { return this.Reason }
+func (this PurchaseWideCorrection) GetOccurredAt() DateTime       { return this.OccurredAt }
+func (this PurchaseWideCorrection) GetSettlementMonth() YearMonth { return this.SettlementMonth }
+func (this PurchaseWideCorrection) GetPaymentAllocations() []*PurchasePayment {
+	if this.PaymentAllocations == nil {
+		return nil
+	}
+	interfaceSlice := make([]*PurchasePayment, 0, len(this.PaymentAllocations))
+	for _, concrete := range this.PaymentAllocations {
+		interfaceSlice = append(interfaceSlice, concrete)
+	}
+	return interfaceSlice
+}
+
+func (PurchaseWideCorrection) IsNode() {}
 
 type Query struct {
 }
@@ -1457,13 +1623,42 @@ type RecurringExpenseEdge struct {
 	Node   *RecurringExpense `json:"node"`
 }
 
+type RepaymentTransferLedgerEntry struct {
+	ID          string       `json:"id"`
+	OccurredAt  DateTime     `json:"occurredAt"`
+	Description string       `json:"description"`
+	AmountYen   Long         `json:"amountYen"`
+	Currency    string       `json:"currency"`
+	CreatedAt   DateTime     `json:"createdAt"`
+	FromMember  *Member      `json:"fromMember"`
+	ToMember    *Member      `json:"toMember"`
+	Loan        *LoanBalance `json:"loan"`
+}
+
+func (RepaymentTransferLedgerEntry) IsAccountBalanceSource() {}
+
+func (RepaymentTransferLedgerEntry) IsLedgerEntry()               {}
+func (this RepaymentTransferLedgerEntry) GetID() string           { return this.ID }
+func (this RepaymentTransferLedgerEntry) GetOccurredAt() DateTime { return this.OccurredAt }
+func (this RepaymentTransferLedgerEntry) GetDescription() string  { return this.Description }
+func (this RepaymentTransferLedgerEntry) GetAmountYen() Long      { return this.AmountYen }
+func (this RepaymentTransferLedgerEntry) GetCurrency() string     { return this.Currency }
+func (this RepaymentTransferLedgerEntry) GetCreatedAt() DateTime  { return this.CreatedAt }
+
+func (RepaymentTransferLedgerEntry) IsNode() {}
+
+func (RepaymentTransferLedgerEntry) IsTransferLedgerEntry() {}
+
+func (this RepaymentTransferLedgerEntry) GetFromMember() *Member { return this.FromMember }
+func (this RepaymentTransferLedgerEntry) GetToMember() *Member   { return this.ToMember }
+
 type RevokeHouseholdInvitationInput struct {
 	HouseholdID  string `json:"householdId"`
 	InvitationID string `json:"invitationId"`
 }
 
 type RevokeHouseholdInvitationSuccess struct {
-	Result *HouseholdInvitation `json:"result"`
+	Result HouseholdInvitationVariant `json:"result"`
 }
 
 func (RevokeHouseholdInvitationSuccess) IsRevokeHouseholdInvitationResult() {}
@@ -1574,12 +1769,10 @@ func (this SetFundingScheduleUserError) GetCode() MutationErrorCode { return thi
 func (this SetFundingScheduleUserError) GetMessage() string         { return this.Message }
 
 type SetPoolFundingRuleInput struct {
-	HouseholdID      string                      `json:"householdId"`
-	PoolID           string                      `json:"poolId"`
-	OwnerMemberID    *string                     `json:"ownerMemberId,omitempty"`
-	FundingShares    []*PoolFundingShareInput    `json:"fundingShares"`
-	SettlementPolicy *SharedPoolSettlementPolicy `json:"settlementPolicy,omitempty"`
-	ExpectedVersion  int                         `json:"expectedVersion"`
+	HouseholdID     string                             `json:"householdId"`
+	PoolID          string                             `json:"poolId"`
+	Configuration   *PoolFundingRuleConfigurationInput `json:"configuration"`
+	ExpectedVersion int                                `json:"expectedVersion"`
 }
 
 type SetPoolFundingRuleSuccess struct {
@@ -1623,18 +1816,6 @@ func (SetProductAliasUserError) IsMutationError()                {}
 func (this SetProductAliasUserError) GetCode() MutationErrorCode { return this.Code }
 func (this SetProductAliasUserError) GetMessage() string         { return this.Message }
 
-type Settlement struct {
-	ID          string            `json:"id"`
-	HouseholdID string            `json:"householdId"`
-	Period      YearMonth         `json:"period"`
-	Status      SettlementStatus  `json:"status"`
-	Revision    int               `json:"revision"`
-	Lines       []*SettlementLine `json:"lines"`
-	CreatedAt   *DateTime         `json:"createdAt,omitempty"`
-}
-
-func (Settlement) IsNode() {}
-
 type SettlementLine struct {
 	MemberID             string `json:"memberId"`
 	MemberName           string `json:"memberName"`
@@ -1645,6 +1826,11 @@ type SettlementLine struct {
 	MonthlyAdjustmentYen Long   `json:"monthlyAdjustmentYen"`
 	AdvanceCreditYen     Long   `json:"advanceCreditYen"`
 	AmountDueYen         Long   `json:"amountDueYen"`
+}
+
+type SharedPoolFundingRuleInput struct {
+	FundingShares    []*PoolFundingShareInput   `json:"fundingShares"`
+	SettlementPolicy SharedPoolSettlementPolicy `json:"settlementPolicy"`
 }
 
 type Subscription struct {
@@ -1660,47 +1846,6 @@ type Tag struct {
 
 func (Tag) IsNode() {}
 
-type TransferLedgerEntry struct {
-	ID           string       `json:"id"`
-	OccurredAt   DateTime     `json:"occurredAt"`
-	Description  string       `json:"description"`
-	AmountYen    Long         `json:"amountYen"`
-	Currency     string       `json:"currency"`
-	CreatedAt    DateTime     `json:"createdAt"`
-	FromMember   *Member      `json:"fromMember"`
-	ToMember     *Member      `json:"toMember"`
-	TransferKind TransferKind `json:"transferKind"`
-	Loan         *LoanBalance `json:"loan,omitempty"`
-}
-
-func (TransferLedgerEntry) IsAccountBalanceSource() {}
-
-func (TransferLedgerEntry) IsLedgerEntry()               {}
-func (this TransferLedgerEntry) GetID() string           { return this.ID }
-func (this TransferLedgerEntry) GetOccurredAt() DateTime { return this.OccurredAt }
-func (this TransferLedgerEntry) GetDescription() string  { return this.Description }
-func (this TransferLedgerEntry) GetAmountYen() Long      { return this.AmountYen }
-func (this TransferLedgerEntry) GetCurrency() string     { return this.Currency }
-func (this TransferLedgerEntry) GetCreatedAt() DateTime  { return this.CreatedAt }
-
-func (TransferLedgerEntry) IsNode() {}
-
-type UnmatchedObservation struct {
-	ID              string                    `json:"id"`
-	DocumentID      string                    `json:"documentId"`
-	SourceReference string                    `json:"sourceReference"`
-	PurchaseID      *string                   `json:"purchaseId,omitempty"`
-	SourceKind      SourceKind                `json:"sourceKind"`
-	State           UnmatchedObservationState `json:"state"`
-	Merchant        string                    `json:"merchant"`
-	OccurredAt      *DateTime                 `json:"occurredAt,omitempty"`
-	AmountYen       Long                      `json:"amountYen"`
-	OrderID         string                    `json:"orderId"`
-	TransactionID   string                    `json:"transactionId"`
-}
-
-func (UnmatchedObservation) IsNode() {}
-
 type UnmatchedObservationConnection struct {
 	Edges      []*UnmatchedObservationEdge `json:"edges"`
 	PageInfo   *PageInfo                   `json:"pageInfo"`
@@ -1708,8 +1853,8 @@ type UnmatchedObservationConnection struct {
 }
 
 type UnmatchedObservationEdge struct {
-	Cursor string                `json:"cursor"`
-	Node   *UnmatchedObservation `json:"node"`
+	Cursor string             `json:"cursor"`
+	Node   ObservationVariant `json:"node"`
 }
 
 type UpdateBudgetInput struct {
@@ -1747,17 +1892,16 @@ type UpdatePurchaseInput struct {
 }
 
 type UpdatePurchaseItemInput struct {
-	ItemID           string                                    `json:"itemId"`
-	BaseRevision     int                                       `json:"baseRevision"`
-	Name             graphql.Omittable[*string]                `json:"name,omitempty"`
-	AmountYen        graphql.Omittable[*Long]                  `json:"amountYen,omitempty"`
-	Quantity         graphql.Omittable[*PurchaseQuantityInput] `json:"quantity,omitempty"`
-	PrintedUnitPrice graphql.Omittable[*PrintedUnitPriceInput] `json:"printedUnitPrice,omitempty"`
-	CategoryID       graphql.Omittable[*string]                `json:"categoryId,omitempty"`
-	ProductVariantID graphql.Omittable[*string]                `json:"productVariantId,omitempty"`
-	ProductLearning  *ProductLearningScope                     `json:"productLearning,omitempty"`
-	VariantName      *string                                   `json:"variantName,omitempty"`
-	Allocations      graphql.Omittable[[]*AllocationInput]     `json:"allocations,omitempty"`
+	ItemID           string                                                `json:"itemId"`
+	BaseRevision     int                                                   `json:"baseRevision"`
+	Name             graphql.Omittable[*string]                            `json:"name,omitempty"`
+	AmountYen        graphql.Omittable[*Long]                              `json:"amountYen,omitempty"`
+	Quantity         graphql.Omittable[*PurchaseQuantityInput]             `json:"quantity,omitempty"`
+	PrintedUnitPrice graphql.Omittable[*PrintedUnitPriceInput]             `json:"printedUnitPrice,omitempty"`
+	CategoryID       graphql.Omittable[*string]                            `json:"categoryId,omitempty"`
+	ProductVariantID graphql.Omittable[*string]                            `json:"productVariantId,omitempty"`
+	ProductLearning  graphql.Omittable[*ProductLearningConfigurationInput] `json:"productLearning,omitempty"`
+	Allocations      graphql.Omittable[[]*AllocationInput]                 `json:"allocations,omitempty"`
 }
 
 type UpdatePurchaseItemSuccess struct {
@@ -2023,65 +2167,6 @@ func (e FundingScheduleCadence) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-type HouseholdInvitationStatus string
-
-const (
-	HouseholdInvitationStatusPending  HouseholdInvitationStatus = "PENDING"
-	HouseholdInvitationStatusAccepted HouseholdInvitationStatus = "ACCEPTED"
-	HouseholdInvitationStatusRevoked  HouseholdInvitationStatus = "REVOKED"
-	HouseholdInvitationStatusExpired  HouseholdInvitationStatus = "EXPIRED"
-)
-
-var AllHouseholdInvitationStatus = []HouseholdInvitationStatus{
-	HouseholdInvitationStatusPending,
-	HouseholdInvitationStatusAccepted,
-	HouseholdInvitationStatusRevoked,
-	HouseholdInvitationStatusExpired,
-}
-
-func (e HouseholdInvitationStatus) IsValid() bool {
-	switch e {
-	case HouseholdInvitationStatusPending, HouseholdInvitationStatusAccepted, HouseholdInvitationStatusRevoked, HouseholdInvitationStatusExpired:
-		return true
-	}
-	return false
-}
-
-func (e HouseholdInvitationStatus) String() string {
-	return string(e)
-}
-
-func (e *HouseholdInvitationStatus) UnmarshalGQL(v any) error {
-	str, ok := v.(string)
-	if !ok {
-		return fmt.Errorf("enums must be strings")
-	}
-
-	*e = HouseholdInvitationStatus(str)
-	if !e.IsValid() {
-		return fmt.Errorf("%s is not a valid HouseholdInvitationStatus", str)
-	}
-	return nil
-}
-
-func (e HouseholdInvitationStatus) MarshalGQL(w io.Writer) {
-	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
-}
-
-func (e *HouseholdInvitationStatus) UnmarshalJSON(b []byte) error {
-	s, err := strconv.Unquote(string(b))
-	if err != nil {
-		return err
-	}
-	return e.UnmarshalGQL(s)
-}
-
-func (e HouseholdInvitationStatus) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	e.MarshalGQL(&buf)
-	return buf.Bytes(), nil
-}
-
 type MemberRole string
 
 const (
@@ -2244,63 +2329,6 @@ func (e *PoolKind) UnmarshalJSON(b []byte) error {
 }
 
 func (e PoolKind) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	e.MarshalGQL(&buf)
-	return buf.Bytes(), nil
-}
-
-type ProductLearningScope string
-
-const (
-	ProductLearningScopeItemOnly      ProductLearningScope = "ITEM_ONLY"
-	ProductLearningScopeVariantName   ProductLearningScope = "VARIANT_NAME"
-	ProductLearningScopeMerchantAlias ProductLearningScope = "MERCHANT_ALIAS"
-)
-
-var AllProductLearningScope = []ProductLearningScope{
-	ProductLearningScopeItemOnly,
-	ProductLearningScopeVariantName,
-	ProductLearningScopeMerchantAlias,
-}
-
-func (e ProductLearningScope) IsValid() bool {
-	switch e {
-	case ProductLearningScopeItemOnly, ProductLearningScopeVariantName, ProductLearningScopeMerchantAlias:
-		return true
-	}
-	return false
-}
-
-func (e ProductLearningScope) String() string {
-	return string(e)
-}
-
-func (e *ProductLearningScope) UnmarshalGQL(v any) error {
-	str, ok := v.(string)
-	if !ok {
-		return fmt.Errorf("enums must be strings")
-	}
-
-	*e = ProductLearningScope(str)
-	if !e.IsValid() {
-		return fmt.Errorf("%s is not a valid ProductLearningScope", str)
-	}
-	return nil
-}
-
-func (e ProductLearningScope) MarshalGQL(w io.Writer) {
-	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
-}
-
-func (e *ProductLearningScope) UnmarshalJSON(b []byte) error {
-	s, err := strconv.Unquote(string(b))
-	if err != nil {
-		return err
-	}
-	return e.UnmarshalGQL(s)
-}
-
-func (e ProductLearningScope) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil
@@ -2670,61 +2698,6 @@ func (e RecurringExpenseCadence) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-type SettlementStatus string
-
-const (
-	SettlementStatusOpen   SettlementStatus = "OPEN"
-	SettlementStatusClosed SettlementStatus = "CLOSED"
-)
-
-var AllSettlementStatus = []SettlementStatus{
-	SettlementStatusOpen,
-	SettlementStatusClosed,
-}
-
-func (e SettlementStatus) IsValid() bool {
-	switch e {
-	case SettlementStatusOpen, SettlementStatusClosed:
-		return true
-	}
-	return false
-}
-
-func (e SettlementStatus) String() string {
-	return string(e)
-}
-
-func (e *SettlementStatus) UnmarshalGQL(v any) error {
-	str, ok := v.(string)
-	if !ok {
-		return fmt.Errorf("enums must be strings")
-	}
-
-	*e = SettlementStatus(str)
-	if !e.IsValid() {
-		return fmt.Errorf("%s is not a valid SettlementStatus", str)
-	}
-	return nil
-}
-
-func (e SettlementStatus) MarshalGQL(w io.Writer) {
-	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
-}
-
-func (e *SettlementStatus) UnmarshalJSON(b []byte) error {
-	s, err := strconv.Unquote(string(b))
-	if err != nil {
-		return err
-	}
-	return e.UnmarshalGQL(s)
-}
-
-func (e SettlementStatus) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	e.MarshalGQL(&buf)
-	return buf.Bytes(), nil
-}
-
 type SharedPoolSettlementPolicy string
 
 const (
@@ -2893,65 +2866,6 @@ func (e *TransferInputKind) UnmarshalJSON(b []byte) error {
 }
 
 func (e TransferInputKind) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	e.MarshalGQL(&buf)
-	return buf.Bytes(), nil
-}
-
-type TransferKind string
-
-const (
-	TransferKindAdvance   TransferKind = "ADVANCE"
-	TransferKindLoan      TransferKind = "LOAN"
-	TransferKindRepayment TransferKind = "REPAYMENT"
-	TransferKindGift      TransferKind = "GIFT"
-)
-
-var AllTransferKind = []TransferKind{
-	TransferKindAdvance,
-	TransferKindLoan,
-	TransferKindRepayment,
-	TransferKindGift,
-}
-
-func (e TransferKind) IsValid() bool {
-	switch e {
-	case TransferKindAdvance, TransferKindLoan, TransferKindRepayment, TransferKindGift:
-		return true
-	}
-	return false
-}
-
-func (e TransferKind) String() string {
-	return string(e)
-}
-
-func (e *TransferKind) UnmarshalGQL(v any) error {
-	str, ok := v.(string)
-	if !ok {
-		return fmt.Errorf("enums must be strings")
-	}
-
-	*e = TransferKind(str)
-	if !e.IsValid() {
-		return fmt.Errorf("%s is not a valid TransferKind", str)
-	}
-	return nil
-}
-
-func (e TransferKind) MarshalGQL(w io.Writer) {
-	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
-}
-
-func (e *TransferKind) UnmarshalJSON(b []byte) error {
-	s, err := strconv.Unquote(string(b))
-	if err != nil {
-		return err
-	}
-	return e.UnmarshalGQL(s)
-}
-
-func (e TransferKind) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

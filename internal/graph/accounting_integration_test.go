@@ -24,6 +24,11 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+const (
+	loanTransferLedgerEntryType      = "LoanTransferLedgerEntry"
+	repaymentTransferLedgerEntryType = "RepaymentTransferLedgerEntry"
+)
+
 func accountBalanceSourceType(source model.AccountBalanceSource) string {
 	switch source.(type) {
 	case *model.AccountIncome:
@@ -38,12 +43,20 @@ func accountBalanceSourceType(source model.AccountBalanceSource) string {
 		return "FundingLedgerEntry"
 	case *model.Purchase:
 		return "Purchase"
-	case *model.PurchaseCorrection:
-		return "PurchaseCorrection"
+	case *model.PurchaseWideCorrection:
+		return "PurchaseWideCorrection"
+	case *model.PurchaseItemCorrection:
+		return "PurchaseItemCorrection"
 	case *model.PurchaseLedgerEntry:
 		return "PurchaseLedgerEntry"
-	case *model.TransferLedgerEntry:
-		return "TransferLedgerEntry"
+	case *model.AdvanceTransferLedgerEntry:
+		return "AdvanceTransferLedgerEntry"
+	case *model.LoanTransferLedgerEntry:
+		return loanTransferLedgerEntryType
+	case *model.RepaymentTransferLedgerEntry:
+		return repaymentTransferLedgerEntryType
+	case *model.GiftTransferLedgerEntry:
+		return "GiftTransferLedgerEntry"
 	default:
 		return ""
 	}
@@ -115,8 +128,8 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, fundingRule := range []model.SetPoolFundingRuleInput{
-		{HouseholdID: householdID, PoolID: poolA.ID, OwnerMemberID: &memberA, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1},
-		{HouseholdID: householdID, PoolID: poolB.ID, OwnerMemberID: &memberB, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1},
+		{HouseholdID: householdID, PoolID: poolA.ID, Configuration: personalPoolFundingConfiguration(memberA), ExpectedVersion: 1},
+		{HouseholdID: householdID, PoolID: poolB.ID, Configuration: personalPoolFundingConfiguration(memberB), ExpectedVersion: 1},
 	} {
 		if _, err := resolver.setPoolFundingRule(ctx, fundingRule); err != nil {
 			t.Fatal(err)
@@ -167,7 +180,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("product concept rule was not saved: rule=%#v error=%v", productConceptRule, err)
 	}
 	conceptPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:59:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 500, ProductVariantID: &productVariant.ID}}})
-	if err != nil || conceptPurchase.Items[0].CategoryID == nil || *conceptPurchase.Items[0].CategoryID != category.ID || conceptPurchase.Items[0].Allocations[0].AmountYen == nil || *conceptPurchase.Items[0].Allocations[0].AmountYen != 100 {
+	if err != nil || conceptPurchase.Items[0].CategoryID == nil || *conceptPurchase.Items[0].CategoryID != category.ID || conceptPurchase.Items[0].Allocations[0].AmountYen != 100 {
 		t.Fatalf("linked product should inherit its category and concept rule: purchase=%#v error=%v", conceptPurchase, err)
 	}
 	productVariantRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, Target: &model.AllocationRuleTargetInput{ProductVariantID: &productVariant.ID}, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 4}, {PoolID: poolB.ID, Weight: 1}}})
@@ -175,18 +188,18 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("product variant rule was not saved: rule=%#v error=%v", productVariantRule, err)
 	}
 	variantPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:58:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 600, ProductVariantID: &productVariant.ID}}})
-	if err != nil || variantPurchase.Items[0].Allocations[0].AmountYen == nil || *variantPurchase.Items[0].Allocations[0].AmountYen != 480 {
+	if err != nil || variantPurchase.Items[0].Allocations[0].AmountYen != 480 {
 		t.Fatalf("product variant rule should precede concept/category/merchant rules: purchase=%#v error=%v", variantPurchase, err)
 	}
 	correctedPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:57:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 350}}})
 	if err != nil || correctedPurchase.Items[0].ProductVariantID != nil {
 		t.Fatalf("unmatched product should remain unnormalized until the user selects a candidate: purchase=%#v error=%v", correctedPurchase, err)
 	}
-	learnedItem, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: correctedPurchase.Items[0].ID, BaseRevision: correctedPurchase.Items[0].Revision, ProductVariantID: omittable(&productVariant.ID), ProductLearning: new(model.ProductLearningScopeMerchantAlias)})
+	learnedItem, err := resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: correctedPurchase.Items[0].ID, BaseRevision: correctedPurchase.Items[0].Revision, ProductVariantID: omittable(&productVariant.ID), ProductLearning: omittable(&model.ProductLearningConfigurationInput{MerchantAlias: new(true)})})
 	if err != nil || learnedItem.ProductVariantID == nil || *learnedItem.ProductVariantID != productVariant.ID {
 		t.Fatalf("merchant alias correction did not link the canonical variant: item=%#v error=%v", learnedItem, err)
 	}
-	if learnedItem.Allocations[0].AmountYen == nil || *learnedItem.Allocations[0].AmountYen != 280 {
+	if learnedItem.Allocations[0].AmountYen != 280 {
 		t.Fatalf("linking a product should apply its higher-priority rule: allocations=%#v", learnedItem.Allocations)
 	}
 	market := " MARKET "
@@ -195,7 +208,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("learned store alias was not suggested first: suggestions=%#v error=%v", suggestions, err)
 	}
 	canonicalName := "Plain yogurt 400g unsweetened"
-	learnedItem, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: learnedItem.ID, BaseRevision: learnedItem.Revision, ProductVariantID: omittable(&productVariant.ID), ProductLearning: new(model.ProductLearningScopeVariantName), VariantName: &canonicalName})
+	learnedItem, err = resolver.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{ItemID: learnedItem.ID, BaseRevision: learnedItem.Revision, ProductVariantID: omittable(&productVariant.ID), ProductLearning: omittable(&model.ProductLearningConfigurationInput{VariantName: &canonicalName})})
 	if err != nil {
 		t.Fatalf("normalized product name correction failed: %v", err)
 	}
@@ -250,7 +263,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if purchase.Items[0].Allocations[0].AmountYen == nil || *purchase.Items[0].Allocations[0].AmountYen != 125 || purchase.Items[0].Allocations[1].AmountYen == nil || *purchase.Items[0].Allocations[1].AmountYen != 375 {
+	if purchase.Items[0].Allocations[0].AmountYen != 125 || purchase.Items[0].Allocations[1].AmountYen != 375 {
 		t.Fatalf("category rule should precede merchant and household defaults: %#v", purchase.Items[0].Allocations)
 	}
 	purchaseItemUUID, _ := gofrsuuid.FromString(purchase.Items[0].ID)
@@ -280,13 +293,13 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("changing a rule rewrote the stored snapshot metadata: id=%v revision=%d error=%v", appliedRuleID, appliedRuleRevision, err)
 	}
 	merchantOnlyPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T12:01:00Z", Merchant: "Market", Items: []*model.PurchaseItemInput{{Name: "merchant rule item", AmountYen: 500}}})
-	if err != nil || merchantOnlyPurchase.Items[0].Allocations[0].AmountYen == nil || *merchantOnlyPurchase.Items[0].Allocations[0].AmountYen != 400 || merchantOnlyPurchase.Items[0].Allocations[1].AmountYen == nil || *merchantOnlyPurchase.Items[0].Allocations[1].AmountYen != 100 {
+	if err != nil || merchantOnlyPurchase.Items[0].Allocations[0].AmountYen != 400 || merchantOnlyPurchase.Items[0].Allocations[1].AmountYen != 100 {
 		t.Fatalf("merchant rule should apply when no category rule matches: purchase=%#v error=%v", merchantOnlyPurchase, err)
 	}
 	if _, err := models.Purchases.Delete(dm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(merchantOnlyPurchase.ID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	if purchase.Items[0].Allocations[0].AmountYen == nil || *purchase.Items[0].Allocations[0].AmountYen != 125 || purchase.Items[0].Allocations[1].AmountYen == nil || *purchase.Items[0].Allocations[1].AmountYen != 375 {
+	if purchase.Items[0].Allocations[0].AmountYen != 125 || purchase.Items[0].Allocations[1].AmountYen != 375 {
 		t.Fatalf("updating the category rule changed an existing purchase snapshot: %#v", purchase.Items[0].Allocations)
 	}
 	changedAmount := model.Long(500)
@@ -329,7 +342,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if _, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: purchase.ID, BaseRevision: 1, Patch: &model.PurchasePatch{Merchant: omittable(&merchant)}}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("same stale field should conflict, got %v", err)
 	}
-	if len(purchase.Items) != 1 || purchase.Items[0].Allocations[0].AmountYen == nil || *purchase.Items[0].Allocations[0].AmountYen != 300 || *purchase.Items[0].Allocations[1].AmountYen != 200 {
+	if len(purchase.Items) != 1 || purchase.Items[0].Allocations[0].AmountYen != 300 || purchase.Items[0].Allocations[1].AmountYen != 200 {
 		t.Fatalf("unexpected allocation snapshot: %#v", purchase.Items)
 	}
 	documentID := uuid.NewV7().String()
@@ -372,7 +385,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if confirmed.Items[0].Allocations[0].AmountYen == nil || *confirmed.Items[0].Allocations[0].AmountYen != 90 || confirmed.Items[0].Allocations[1].AmountYen == nil || *confirmed.Items[0].Allocations[1].AmountYen != 60 || confirmed.Items[1].Allocations[0].AmountYen == nil || *confirmed.Items[1].Allocations[0].AmountYen != 60 || confirmed.Items[1].Allocations[1].AmountYen == nil || *confirmed.Items[1].Allocations[1].AmountYen != 40 {
+	if confirmed.Items[0].Allocations[0].AmountYen != 90 || confirmed.Items[0].Allocations[1].AmountYen != 60 || confirmed.Items[1].Allocations[0].AmountYen != 60 || confirmed.Items[1].Allocations[1].AmountYen != 40 {
 		t.Fatalf("global default allocation was not snapshotted: %#v", confirmed.Items)
 	}
 	evidenceLinks, err := models.EvidenceLinks.Query(sm.Where(models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(generatedUUID(confirmed.ID))))).All(ctx, bobpgx.NewPool(db))
@@ -412,7 +425,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatal(err)
 	}
 	confirmed, err = loadPurchase(ctx, db, confirmed.ID)
-	if err != nil || confirmed.Items[0].Allocations[0].AmountYen == nil || *confirmed.Items[0].Allocations[0].AmountYen != 90 || confirmed.Items[0].Allocations[1].AmountYen == nil || *confirmed.Items[0].Allocations[1].AmountYen != 60 || confirmed.Items[1].Allocations[0].AmountYen == nil || *confirmed.Items[1].Allocations[0].AmountYen != 60 || confirmed.Items[1].Allocations[1].AmountYen == nil || *confirmed.Items[1].Allocations[1].AmountYen != 40 {
+	if err != nil || confirmed.Items[0].Allocations[0].AmountYen != 90 || confirmed.Items[0].Allocations[1].AmountYen != 60 || confirmed.Items[1].Allocations[0].AmountYen != 60 || confirmed.Items[1].Allocations[1].AmountYen != 40 {
 		t.Fatalf("changing the global rule changed a prior purchase snapshot: purchase=%#v error=%v", confirmed.Items, err)
 	}
 	fromSource.IdempotencyKey = uuid.NewV7().String()
@@ -578,8 +591,9 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(settlement.Lines) != 2 {
-		t.Fatalf("expected two settlement lines, got %#v", settlement.Lines)
+	settlementData := settlementData(t, settlement)
+	if len(settlementData.Lines) != 2 {
+		t.Fatalf("expected two settlement lines, got %#v", settlementData.Lines)
 	}
 	if _, err := resolver.updatePurchase(ctx, model.UpdatePurchaseInput{PurchaseID: postedPurchase.ID, BaseRevision: postedPurchase.Revision, Patch: &model.PurchasePatch{Merchant: omittable(&postedMerchant)}}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("closed purchase edits must require a correction: %v", err)
@@ -675,7 +689,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("posted purchase journal does not match the bulk allocation: credits=%v debits=%d totalCredits=%d error=%v", creditByAccount, allocationDebits, allocationCredits, err)
 	}
 	byMember := map[string]*model.SettlementLine{}
-	for _, line := range settlement.Lines {
+	for _, line := range settlementData.Lines {
 		byMember[line.MemberID] = line
 	}
 	if byMember[memberA].ScheduledYen != 6000 || byMember[memberA].PaidYen != 6000 || byMember[memberA].PriorBalanceYen != 18000 || byMember[memberA].AdvanceCreditYen != 380 || byMember[memberA].AmountDueYen != 17620 {
@@ -747,9 +761,9 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 		t.Fatal(err)
 	}
 	for _, configuration := range []model.SetPoolFundingRuleInput{
-		{HouseholdID: household.ID, PoolID: personalA.ID, OwnerMemberID: &memberA, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1},
-		{HouseholdID: household.ID, PoolID: personalB.ID, OwnerMemberID: &memberB, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1},
-		{HouseholdID: household.ID, PoolID: shared.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, SettlementPolicy: new(model.SharedPoolSettlementPolicyBalanceToStandard), ExpectedVersion: 1},
+		{HouseholdID: household.ID, PoolID: personalA.ID, Configuration: personalPoolFundingConfiguration(memberA), ExpectedVersion: 1},
+		{HouseholdID: household.ID, PoolID: personalB.ID, Configuration: personalPoolFundingConfiguration(memberB), ExpectedVersion: 1},
+		{HouseholdID: household.ID, PoolID: shared.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, model.SharedPoolSettlementPolicyBalanceToStandard), ExpectedVersion: 1},
 	} {
 		if _, err := mutation.setPoolFundingRule(ctx, configuration); err != nil {
 			t.Fatal(err)
@@ -770,26 +784,26 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 		t.Fatal(err)
 	}
 	sharedPolicy := model.SharedPoolSettlementPolicyReimbursePersonal
-	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: shared.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, SettlementPolicy: &sharedPolicy, ExpectedVersion: 2}); err != nil {
+	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: shared.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, sharedPolicy), ExpectedVersion: 2}); err != nil {
 		t.Fatal(err)
 	}
 	closed, err := mutation.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: "2026-04", ExpectedRevision: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
-	closedLines := settlementByMember(t, closed.Lines)
+	closedLines := settlementByMember(t, settlementData(t, closed).Lines)
 	if closedLines[memberA].MonthlyAdjustmentYen != 400 || closedLines[memberA].AmountDueYen != 400 || closedLines[memberB].MonthlyAdjustmentYen != -400 || closedLines[memberB].AmountDueYen != -400 {
 		t.Fatalf("shared-pool actual spending was not balanced against 60/40 funding shares: %#v", closedLines)
 	}
 	sharedPolicy = model.SharedPoolSettlementPolicyBalanceToStandard
-	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: shared.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, SettlementPolicy: &sharedPolicy, ExpectedVersion: 3}); err != nil {
+	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: shared.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, sharedPolicy), ExpectedVersion: 3}); err != nil {
 		t.Fatal(err)
 	}
 	reloadedClosed, err := apiResolver.Query().Settlement(ctx, household.ID, "2026-04")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reloadedLines := settlementByMember(t, reloadedClosed.Lines)
+	reloadedLines := settlementByMember(t, settlementData(t, reloadedClosed).Lines)
 	if reloadedLines[memberA].AmountDueYen != 400 || reloadedLines[memberA].MonthlyAdjustmentYen != 400 || reloadedLines[memberB].AmountDueYen != -400 || reloadedLines[memberB].MonthlyAdjustmentYen != -400 {
 		t.Fatalf("editing a pool rule rewrote the closed snapshot: %#v", reloadedLines)
 	}
@@ -797,7 +811,7 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	nextLines := settlementByMember(t, next.Lines)
+	nextLines := settlementByMember(t, settlementData(t, next).Lines)
 	if nextLines[memberA].PriorBalanceYen != 400 || nextLines[memberA].AmountDueYen != 400 || nextLines[memberB].PriorBalanceYen != -400 || nextLines[memberB].AmountDueYen != -400 {
 		t.Fatalf("closed balance did not become the sole next-month carry: %#v", nextLines)
 	}
@@ -849,8 +863,8 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	}
 	if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{
 		HouseholdID: household.ID, PoolID: sharedPool.ID,
-		FundingShares:    []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 50}, {MemberID: memberB, Weight: 50}},
-		SettlementPolicy: new(model.SharedPoolSettlementPolicyBalanceToStandard), ExpectedVersion: 1,
+		Configuration:   sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 50}, {MemberID: memberB, Weight: 50}}, model.SharedPoolSettlementPolicyBalanceToStandard),
+		ExpectedVersion: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -863,7 +877,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, personalPool := range []struct{ poolID, ownerID string }{{lenderPool.ID, memberA}, {borrowerPool.ID, memberB}} {
-		if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: personalPool.poolID, OwnerMemberID: &personalPool.ownerID, ExpectedVersion: 1}); err != nil {
+		if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: personalPool.poolID, Configuration: personalPoolFundingConfiguration(personalPool.ownerID), ExpectedVersion: 1}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -932,12 +946,27 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	loanNodeID, err := encodeNodeID("LoanBalance", *loan.TransferID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loanLedgerEntry, ok := ledgerNode.(*model.LoanTransferLedgerEntry)
+	if !ok || loanLedgerEntry.Loan == nil || loanLedgerEntry.Loan.ID != loanNodeID {
+		t.Fatalf("single ledger node did not resolve the loan transfer as a loan balance: %#v", ledgerNode)
+	}
+	ledgerNodes, err := (&Resolver{DB: db}).Query().Nodes(ctx, []string{ledgerNodeID})
+	if err != nil || len(ledgerNodes) != 1 {
+		t.Fatalf("batch ledger node lookup failed: nodes=%#v error=%v", ledgerNodes, err)
+	}
+	batchLoanLedgerEntry, ok := ledgerNodes[0].(*model.LoanTransferLedgerEntry)
+	if !ok || batchLoanLedgerEntry.Loan == nil || batchLoanLedgerEntry.Loan.ID != loanNodeID {
+		t.Fatalf("batch ledger node did not resolve the loan transfer as a loan balance: %#v", ledgerNodes)
+	}
 	if _, ok := ledgerNode.(model.LedgerEntry); !ok {
 		t.Fatalf("ledger node returned an unexpected value: %#v", ledgerNode)
 	}
 	loanBalances, err := (&Resolver{DB: db}).Query().LoanBalances(ctx, household.ID, nil, nil, nil, nil)
-	loanNodeID, nodeIDErr := encodeNodeID("LoanBalance", *loan.TransferID)
-	if err != nil || nodeIDErr != nil || len(loanBalances.Edges) != 1 || loanBalances.Edges[0].Node.ID != loanNodeID || loanBalances.Edges[0].Node.BalanceYen != 0 || loanBalances.Edges[0].Node.PrincipalYen != 5000 || loanBalances.Edges[0].Node.RepaidYen != 5000 {
+	if err != nil || len(loanBalances.Edges) != 1 || loanBalances.Edges[0].Node.ID != loanNodeID || loanBalances.Edges[0].Node.BalanceYen != 0 || loanBalances.Edges[0].Node.PrincipalYen != 5000 || loanBalances.Edges[0].Node.RepaidYen != 5000 {
 		t.Fatalf("loan balance was not settled: balances=%#v error=%v", loanBalances, err)
 	}
 	loanNode, err := (&Resolver{DB: db}).Query().Node(ctx, loanNodeID)
@@ -974,10 +1003,11 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(settlement.Lines) != 2 {
-		t.Fatalf("expected two member settlement lines: %#v", settlement.Lines)
+	settlementData := settlementData(t, settlement)
+	if len(settlementData.Lines) != 2 {
+		t.Fatalf("expected two member settlement lines: %#v", settlementData.Lines)
 	}
-	settlementNodeID, err := encodeSettlementNodeID(household.ID, string(settlement.Period))
+	settlementNodeID, err := encodeSettlementNodeID(household.ID, string(settlementData.Period))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -985,11 +1015,11 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loadedSettlement, ok := settlementNode.(*model.Settlement)
-	if !ok || loadedSettlement.HouseholdID != household.ID || loadedSettlement.Period != settlement.Period {
+	loadedSettlement, ok := settlementNode.(*model.OpenSettlement)
+	if !ok || loadedSettlement.HouseholdID != household.ID || loadedSettlement.Period != settlementData.Period {
 		t.Fatalf("settlement node did not resolve by household and period: %#v", settlementNode)
 	}
-	linesByMember := settlementByMember(t, settlement.Lines)
+	linesByMember := settlementByMember(t, settlementData.Lines)
 	borrowerLine := linesByMember[memberB]
 	if borrowerLine == nil || borrowerLine.MonthlyAdjustmentYen != 5000 || borrowerLine.PaidYen != 5000 || borrowerLine.AmountDueYen != 0 {
 		t.Fatalf("borrower funding should cover the shared repayment obligation: %#v", borrowerLine)
@@ -1063,7 +1093,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if analysis.OpeningBalanceYen != 5000 || analysis.ClosingBalanceYen != 4250 || len(analysis.Changes) != 4 {
 		t.Fatalf("shared account history did not include the prior-period baseline and every in-period movement: %#v", analysis)
 	}
-	wantTypes := []string{"FundingLedgerEntry", "TransferLedgerEntry", "AccountMovement", "AccountIncome"}
+	wantTypes := []string{"FundingLedgerEntry", "RepaymentTransferLedgerEntry", "AccountMovement", "AccountIncome"}
 	for index, wantType := range wantTypes {
 		if sourceType := accountBalanceSourceType(analysis.Changes[index].Source); sourceType != wantType {
 			t.Fatalf("account history is not chronological or omitted a source type: got %#v want source types %v", analysis.Changes, wantTypes)
@@ -1073,14 +1103,14 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if borrowerHistory.OpeningBalanceYen != 5000 || borrowerHistory.ClosingBalanceYen != 5000 || len(borrowerHistory.Changes) != 2 || accountBalanceSourceType(borrowerHistory.Changes[0].Source) != "TransferLedgerEntry" || borrowerHistory.Changes[0].ChangeYen != 5000 || accountBalanceSourceType(borrowerHistory.Changes[1].Source) != "FundingLedgerEntry" || borrowerHistory.Changes[1].ChangeYen != -5000 {
+	if borrowerHistory.OpeningBalanceYen != 5000 || borrowerHistory.ClosingBalanceYen != 5000 || len(borrowerHistory.Changes) != 2 || accountBalanceSourceType(borrowerHistory.Changes[0].Source) != "LoanTransferLedgerEntry" || borrowerHistory.Changes[0].ChangeYen != 5000 || accountBalanceSourceType(borrowerHistory.Changes[1].Source) != "FundingLedgerEntry" || borrowerHistory.Changes[1].ChangeYen != -5000 {
 		t.Fatalf("borrower account history did not track loan proceeds and attributed funding outflow: %#v", borrowerHistory)
 	}
 	lenderHistory, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, "2026-06", "2026-06")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lenderHistory.OpeningBalanceYen != 5000 || lenderHistory.ClosingBalanceYen != 5000 || len(lenderHistory.Changes) != 2 || accountBalanceSourceType(lenderHistory.Changes[0].Source) != "TransferLedgerEntry" || lenderHistory.Changes[0].ChangeYen != -5000 || accountBalanceSourceType(lenderHistory.Changes[1].Source) != "TransferLedgerEntry" || lenderHistory.Changes[1].ChangeYen != 5000 {
+	if lenderHistory.OpeningBalanceYen != 5000 || lenderHistory.ClosingBalanceYen != 5000 || len(lenderHistory.Changes) != 2 || accountBalanceSourceType(lenderHistory.Changes[0].Source) != "LoanTransferLedgerEntry" || lenderHistory.Changes[0].ChangeYen != -5000 || accountBalanceSourceType(lenderHistory.Changes[1].Source) != "RepaymentTransferLedgerEntry" || lenderHistory.Changes[1].ChangeYen != 5000 {
 		t.Fatalf("lender account history did not track outgoing loan and repayment receipt: %#v", lenderHistory)
 	}
 	beforeOpening, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, "2026-04", "2026-04")
@@ -1137,7 +1167,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if _, err := resolver.correctPurchase(ctx, correctionInput); err != nil {
 		t.Fatalf("retrying a full refund with the same request should succeed: %v", err)
 	}
-	correctionOccurredAt, err := time.Parse(time.RFC3339Nano, string(correctedPurchase.CorrectionsConnection.Edges[0].Node.OccurredAt))
+	correctionOccurredAt, err := time.Parse(time.RFC3339Nano, string(correctedPurchase.CorrectionsConnection.Edges[0].Node.GetOccurredAt()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1146,7 +1176,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(correctionAnalysis.Changes) != 1 || accountBalanceSourceType(correctionAnalysis.Changes[0].Source) != "PurchaseCorrection" || correctionAnalysis.Changes[0].Description != "Full return" || correctionAnalysis.Changes[0].ChangeYen != -1000 || correctionAnalysis.ClosingBalanceYen != -1000 {
+	if len(correctionAnalysis.Changes) != 1 || accountBalanceSourceType(correctionAnalysis.Changes[0].Source) != "PurchaseWideCorrection" || correctionAnalysis.Changes[0].Description != "Full return" || correctionAnalysis.Changes[0].ChangeYen != -1000 || correctionAnalysis.ClosingBalanceYen != -1000 {
 		t.Fatalf("account history omitted the card refund correction: %#v", correctionAnalysis)
 	}
 	correctionInput.AmountDeltaYen = -500
@@ -1189,6 +1219,19 @@ func settlementByMember(t *testing.T, lines []*model.SettlementLine) map[string]
 	return result
 }
 
+func settlementData(t *testing.T, settlement model.SettlementVariant) *model.Settlement {
+	t.Helper()
+	switch settlement := settlement.(type) {
+	case *model.OpenSettlement:
+		return settlement.Settlement
+	case *model.ClosedSettlement:
+		return settlement.Settlement
+	default:
+		t.Fatalf("unexpected settlement type %T", settlement)
+		return nil
+	}
+}
+
 func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -1226,7 +1269,7 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, OwnerMemberID: &memberID, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1}); err != nil {
+	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, Configuration: personalPoolFundingConfiguration(memberID), ExpectedVersion: 1}); err != nil {
 		t.Fatal(err)
 	}
 	account, err := mutation.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Card", Kind: model.AccountKindCard, PoolID: &pool.ID})
@@ -1260,15 +1303,17 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(closed.Lines) != 1 || closed.Lines[0].ScheduledYen != 0 {
-		t.Fatalf("October schedule leaked into September close: %#v", closed.Lines)
+	closedData := settlementData(t, closed)
+	if len(closedData.Lines) != 1 || closedData.Lines[0].ScheduledYen != 0 {
+		t.Fatalf("October schedule leaked into September close: %#v", closedData.Lines)
 	}
 	october, err := apiResolver.Query().Settlement(ctx, household.ID, "2026-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(october.Lines) != 1 || october.Lines[0].ScheduledYen != 700 {
-		t.Fatalf("October schedule was missing at its Japan-time start: %#v", october.Lines)
+	octoberData := settlementData(t, october)
+	if len(octoberData.Lines) != 1 || octoberData.Lines[0].ScheduledYen != 700 {
+		t.Fatalf("October schedule was missing at its Japan-time start: %#v", octoberData.Lines)
 	}
 	purchaseRows, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.HouseholdID.EQ(psql.Arg(household.ID))), sm.OrderBy(models.Purchases.Columns.OccurredAt)).All(ctx, bobpgx.NewPool(db))
 	if err != nil {

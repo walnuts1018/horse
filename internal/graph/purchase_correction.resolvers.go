@@ -12,13 +12,18 @@ import (
 )
 
 // ID is the resolver for the id field.
-func (r *purchaseCorrectionResolver) ID(ctx context.Context, obj *model.PurchaseCorrection) (string, error) {
+func (r *purchaseItemCorrectionResolver) ID(ctx context.Context, obj *model.PurchaseItemCorrection) (string, error) {
 	return encodeNodeID("PurchaseCorrection", obj.ID)
 }
 
 // ItemID is the resolver for the itemId field.
-func (r *purchaseCorrectionResolver) ItemID(ctx context.Context, obj *model.PurchaseCorrection) (*string, error) {
-	return encodeNodeIDPtr("PurchaseItem", obj.ItemID)
+func (r *purchaseItemCorrectionResolver) ItemID(ctx context.Context, obj *model.PurchaseItemCorrection) (string, error) {
+	return encodeNodeID("PurchaseItem", obj.ItemID)
+}
+
+// ID is the resolver for the id field.
+func (r *purchaseWideCorrectionResolver) ID(ctx context.Context, obj *model.PurchaseWideCorrection) (string, error) {
+	return encodeNodeID("PurchaseCorrection", obj.ID)
 }
 
 // PurchaseCorrections is the resolver for the purchaseCorrections field.
@@ -26,9 +31,17 @@ func (r *queryResolver) PurchaseCorrections(ctx context.Context, purchaseID stri
 	return r.purchaseCorrections(ctx, purchaseID, first, after)
 }
 
-// PurchaseCorrection returns PurchaseCorrectionResolver implementation.
-func (r *Resolver) PurchaseCorrection() PurchaseCorrectionResolver {
-	return &purchaseCorrectionResolver{r}
+// PurchaseItemCorrection returns PurchaseItemCorrectionResolver implementation.
+func (r *Resolver) PurchaseItemCorrection() PurchaseItemCorrectionResolver {
+	return &purchaseItemCorrectionResolver{r}
 }
 
-type purchaseCorrectionResolver struct{ *Resolver }
+// PurchaseWideCorrection returns PurchaseWideCorrectionResolver implementation.
+func (r *Resolver) PurchaseWideCorrection() PurchaseWideCorrectionResolver {
+	return &purchaseWideCorrectionResolver{r}
+}
+
+type (
+	purchaseItemCorrectionResolver struct{ *Resolver }
+	purchaseWideCorrectionResolver struct{ *Resolver }
+)

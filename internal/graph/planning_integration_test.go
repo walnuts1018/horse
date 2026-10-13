@@ -63,7 +63,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, pool := range []*model.Pool{poolA, poolB} {
-		if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, OwnerMemberID: &memberID, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1}); err != nil {
+		if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, Configuration: personalPoolFundingConfiguration(memberID), ExpectedVersion: 1}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -291,10 +291,10 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	}
 }
 
-func amountForPool(allocations []*model.Allocation, poolID string) model.Long {
+func amountForPool(allocations []*model.PurchaseItemAllocation, poolID string) model.Long {
 	for _, allocation := range allocations {
-		if allocation.PoolID == poolID && allocation.AmountYen != nil {
-			return *allocation.AmountYen
+		if allocation.PoolID == poolID {
+			return allocation.AmountYen
 		}
 	}
 	return 0

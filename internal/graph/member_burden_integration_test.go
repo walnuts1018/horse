@@ -73,7 +73,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		t.Fatal(err)
 	}
 	initialPolicy := model.SharedPoolSettlementPolicyBalanceToStandard
-	if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, SettlementPolicy: &initialPolicy, ExpectedVersion: 1}); err != nil {
+	if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, initialPolicy), ExpectedVersion: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolver.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
@@ -150,8 +150,11 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	queryTo := model.YearMonth(period)
 	kind, candidateState := model.SourceKindReceipt, model.UnmatchedObservationStateUnmatched
 	observations, err := query.UnmatchedObservations(ctx, household.ID, &queryFrom, &queryTo, &kind, &candidateState, nil, nil, nil, nil)
-	if err != nil || observations.TotalCount != 1 || len(observations.Edges) != 1 || observations.Edges[0].Node.State != model.UnmatchedObservationStateUnmatched {
+	if err != nil || observations.TotalCount != 1 || len(observations.Edges) != 1 {
 		t.Fatalf("unmatched receipt observation was not listed: connection=%#v error=%v", observations, err)
+	}
+	if _, ok := observations.Edges[0].Node.(*model.UnmatchedObservation); !ok {
+		t.Fatalf("unmatched observation variant was not returned: type=%T", observations.Edges[0].Node)
 	}
 	emptyReference := ""
 	if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{SourceDocumentID: &sourceDocumentID, HouseholdID: &householdID, PurchaseID: &purchaseUUID, CreatedBy: &memberAID, SourceReference: &emptyReference}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
@@ -159,14 +162,22 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	}
 	candidateState = model.UnmatchedObservationStateConfirmed
 	observations, err = query.UnmatchedObservations(ctx, household.ID, &queryFrom, &queryTo, &kind, &candidateState, nil, nil, nil, nil)
-	if err != nil || observations.TotalCount != 1 || observations.Edges[0].Node.PurchaseID == nil || *observations.Edges[0].Node.PurchaseID != purchase.ID {
-		t.Fatalf("confirmed observation did not retain its purchase link: connection=%#v error=%v", observations, err)
+	if err != nil || observations.TotalCount != 1 || len(observations.Edges) != 1 {
+		t.Fatalf("confirmed observation was not listed: connection=%#v error=%v", observations, err)
+	}
+	confirmedObservation, ok := observations.Edges[0].Node.(*model.ConfirmedObservation)
+	if !ok {
+		t.Fatalf("confirmed observation variant was not returned: type=%T", observations.Edges[0].Node)
+	}
+	confirmedPurchase, err := resolver.ConfirmedObservation().Purchase(ctx, confirmedObservation)
+	if err != nil || confirmedPurchase.ID != purchase.ID {
+		t.Fatalf("confirmed observation purchase was not returned: purchase=%#v error=%v", confirmedPurchase, err)
 	}
 	if _, err := resolver.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: model.YearMonth(period), ExpectedRevision: 0}); err != nil {
 		t.Fatal(err)
 	}
 	policy := model.SharedPoolSettlementPolicyBalanceToStandard
-	if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, SettlementPolicy: &policy, ExpectedVersion: 2}); err != nil {
+	if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, policy), ExpectedVersion: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolver.correctPurchase(ctx, model.CorrectPurchaseInput{HouseholdID: household.ID, Target: &model.CorrectPurchaseTargetInput{Item: &model.PurchaseCorrectionItemTargetInput{PurchaseID: purchase.ID, ItemID: purchase.Items[0].ID}}, AmountDeltaYen: -100, Reason: "refund", IdempotencyKey: uuid.NewV7().String()}); err != nil {
@@ -236,7 +247,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if len(listedPurchase.Items[0].Tags) != 1 || listedPurchase.Items[0].Tags[0].ID != tag.ID {
 		t.Fatalf("first purchase tag relation is incorrect: %#v", listedPurchase.Items[0].Tags)
 	}
-	if len(listedPurchase.Items[0].Allocations) != 1 || listedPurchase.Items[0].Allocations[0].PoolID != pool.ID || listedPurchase.Items[0].Allocations[0].AmountYen == nil || int64(*listedPurchase.Items[0].Allocations[0].AmountYen) != 1200 {
+	if len(listedPurchase.Items[0].Allocations) != 1 || listedPurchase.Items[0].Allocations[0].PoolID != pool.ID || int64(listedPurchase.Items[0].Allocations[0].AmountYen) != 1200 {
 		t.Fatalf("first purchase allocation relation is incorrect: %#v", listedPurchase.Items[0].Allocations)
 	}
 	if len(listedPurchase.PaymentAllocations) != 1 || listedPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedPurchase.PaymentAllocations[0].AmountYen) != 1200 || len(listedPurchase.CorrectionsConnection.Edges) != 1 {
@@ -252,7 +263,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if len(listedSecondPurchase.Items[0].Tags) != 0 {
 		t.Fatalf("second purchase inherited another purchase's tag: %#v", listedSecondPurchase.Items[0].Tags)
 	}
-	if len(listedSecondPurchase.Items[0].Allocations) != 1 || listedSecondPurchase.Items[0].Allocations[0].PoolID != pool.ID || listedSecondPurchase.Items[0].Allocations[0].AmountYen == nil || int64(*listedSecondPurchase.Items[0].Allocations[0].AmountYen) != 300 {
+	if len(listedSecondPurchase.Items[0].Allocations) != 1 || listedSecondPurchase.Items[0].Allocations[0].PoolID != pool.ID || int64(listedSecondPurchase.Items[0].Allocations[0].AmountYen) != 300 {
 		t.Fatalf("second purchase allocation relation crossed with another purchase: %#v", listedSecondPurchase.Items[0].Allocations)
 	}
 	if len(listedSecondPurchase.PaymentAllocations) != 1 || listedSecondPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedSecondPurchase.PaymentAllocations[0].AmountYen) != 300 || len(listedSecondPurchase.CorrectionsConnection.Edges) != 0 {
@@ -317,8 +328,8 @@ func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshots
 	policyOne := model.SharedPoolSettlementPolicyBalanceToStandard
 	policyTwo := model.SharedPoolSettlementPolicyBalanceToStandard
 	for _, input := range []model.SetPoolFundingRuleInput{
-		{HouseholdID: household.ID, PoolID: poolOne.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, SettlementPolicy: &policyOne, ExpectedVersion: 1},
-		{HouseholdID: household.ID, PoolID: poolTwo.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 25}, {MemberID: memberB, Weight: 75}}, SettlementPolicy: &policyTwo, ExpectedVersion: 1},
+		{HouseholdID: household.ID, PoolID: poolOne.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}}, policyOne), ExpectedVersion: 1},
+		{HouseholdID: household.ID, PoolID: poolTwo.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 25}, {MemberID: memberB, Weight: 75}}, policyTwo), ExpectedVersion: 1},
 	} {
 		if _, err := resolver.setPoolFundingRule(ctx, input); err != nil {
 			t.Fatal(err)
@@ -357,8 +368,8 @@ func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshots
 	policyOne = model.SharedPoolSettlementPolicyReimbursePersonal
 	policyTwo = model.SharedPoolSettlementPolicyReimbursePersonal
 	for _, input := range []model.SetPoolFundingRuleInput{
-		{HouseholdID: household.ID, PoolID: poolOne.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 10}, {MemberID: memberB, Weight: 90}}, SettlementPolicy: &policyOne, ExpectedVersion: 2},
-		{HouseholdID: household.ID, PoolID: poolTwo.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 80}, {MemberID: memberB, Weight: 20}}, SettlementPolicy: &policyTwo, ExpectedVersion: 2},
+		{HouseholdID: household.ID, PoolID: poolOne.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 10}, {MemberID: memberB, Weight: 90}}, policyOne), ExpectedVersion: 2},
+		{HouseholdID: household.ID, PoolID: poolTwo.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 80}, {MemberID: memberB, Weight: 20}}, policyTwo), ExpectedVersion: 2},
 	} {
 		if _, err := resolver.setPoolFundingRule(ctx, input); err != nil {
 			t.Fatal(err)

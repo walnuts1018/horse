@@ -1,16 +1,26 @@
-enum SettlementStatus {
-  OPEN
-  CLOSED
-}
-
-type Settlement implements Node {
+interface Settlement implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   period: YearMonth!
-  status: SettlementStatus!
   revision: Int!
   lines: [SettlementLine!]!
-  createdAt: DateTime
+}
+
+type OpenSettlement implements Node & Settlement {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  period: YearMonth!
+  revision: Int!
+  lines: [SettlementLine!]!
+}
+
+type ClosedSettlement implements Node & Settlement {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  period: YearMonth!
+  revision: Int!
+  lines: [SettlementLine!]!
+  createdAt: DateTime! @goField(forceResolver: true)
 }
 
 type SettlementLine {

@@ -9,6 +9,15 @@ import (
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
+const (
+	transferKindAdvance    = "ADVANCE"
+	transferKindGift       = "GIFT"
+	transferKindLoan       = "LOAN"
+	transferKindRepayment  = "REPAYMENT"
+	settlementStatusOpen   = "OPEN"
+	settlementStatusClosed = "CLOSED"
+)
+
 func (r *mutationResolver) recordFunding(ctx context.Context, input model.RecordFundingInput) (*model.LedgerEntryData, error) {
 	user, err := requireMember(ctx, r.DB, input.HouseholdID)
 	if err != nil {
@@ -48,17 +57,17 @@ func (r *mutationResolver) recordTransferCommand(ctx context.Context, input tran
 	if err := verifyHouseholdMember(ctx, r.DB, input.HouseholdID, input.ToMemberID); err != nil {
 		return nil, err
 	}
-	if input.AmountYen <= 0 || int64(input.AmountYen) > maxMoney || input.IdempotencyKey == "" || !input.Kind.IsValid() {
+	if input.AmountYen <= 0 || int64(input.AmountYen) > maxMoney || input.IdempotencyKey == "" || !validTransferKind(input.Kind) {
 		return nil, fmt.Errorf("%w: invalid transfer", ErrBadInput)
 	}
 	occurredAt, err := parseTime(input.OccurredAt)
 	if err != nil {
 		return nil, err
 	}
-	if input.Kind == model.TransferKindRepayment && input.LoanID == nil {
+	if input.Kind == transferKindRepayment && input.LoanID == nil {
 		return nil, fmt.Errorf("%w: repayment requires a loan", ErrBadInput)
 	}
-	if input.Kind != model.TransferKindRepayment && input.LoanID != nil {
+	if input.Kind != transferKindRepayment && input.LoanID != nil {
 		return nil, fmt.Errorf("%w: loanId is only valid for a repayment", ErrBadInput)
 	}
 	fingerprint, err := mutationRequestFingerprint(input)
@@ -76,4 +85,13 @@ func (r *mutationResolver) recordTransferCommand(ctx context.Context, input tran
 		return nil, err
 	}
 	return loadLedgerEntry(ctx, r.DB, result.LedgerEntryID)
+}
+
+func validTransferKind(kind string) bool {
+	switch kind {
+	case transferKindAdvance, transferKindLoan, transferKindRepayment, transferKindGift:
+		return true
+	default:
+		return false
+	}
 }

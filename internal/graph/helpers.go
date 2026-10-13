@@ -279,8 +279,8 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 	return loaded[0], nil
 }
 
-func purchaseCorrectionNodes(purchase *model.Purchase) []*model.PurchaseCorrection {
-	corrections := make([]*model.PurchaseCorrection, 0, len(purchase.CorrectionsConnection.Edges))
+func purchaseCorrectionNodes(purchase *model.Purchase) []model.PurchaseCorrection {
+	corrections := make([]model.PurchaseCorrection, 0, len(purchase.CorrectionsConnection.Edges))
 	for _, edge := range purchase.CorrectionsConnection.Edges {
 		corrections = append(corrections, edge.Node)
 	}
@@ -398,7 +398,7 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 		for _, storedItem := range purchase.R.PurchaseItems {
 			item := &model.PurchaseItem{
 				ID: storedItem.ID.String(), Name: storedItem.Name, AmountYen: graphLong(storedItem.AmountYen),
-				Revision: int(storedItem.Revision), Currency: "JPY", Allocations: make([]*model.Allocation, 0), Tags: make([]*model.Tag, 0),
+				Revision: int(storedItem.Revision), Currency: "JPY", Allocations: make([]*model.PurchaseItemAllocation, 0), Tags: make([]*model.Tag, 0),
 			}
 			measure := purchaseItemMeasure{
 				quantityNumerator: storedItem.QuantityNumerator, quantityDenominator: storedItem.QuantityDenominator,
@@ -438,10 +438,9 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 				if storedAllocation.R.Pool == nil {
 					return nil, fmt.Errorf("item allocation for item %s has no pool", storedItem.ID)
 				}
-				amount := graphLong(storedAllocation.AmountYen)
-				item.Allocations = append(item.Allocations, &model.Allocation{
+				item.Allocations = append(item.Allocations, &model.PurchaseItemAllocation{
 					PoolID: storedAllocation.PoolID.String(), PoolName: storedAllocation.R.Pool.Name,
-					Weight: graphLong(storedAllocation.Weight), AmountYen: &amount,
+					Weight: graphLong(storedAllocation.Weight), AmountYen: graphLong(storedAllocation.AmountYen),
 				})
 			}
 			for _, tagLink := range storedItem.R.PurchaseItemTags {
@@ -468,26 +467,39 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 			if storedCorrection.R.Journal == nil {
 				return nil, fmt.Errorf("correction %s has no journal", storedCorrection.ID)
 			}
-			correction := &model.PurchaseCorrection{
-				ID: storedCorrection.ID.String(), AmountDeltaYen: graphLong(storedCorrection.AmountDeltaYen),
-				Reason: storedCorrection.Reason, OccurredAt: timeString(storedCorrection.R.Journal.OccurredAt),
-				SettlementMonth: model.YearMonth(accountingPeriod(purchase.OccurredAt)), PaymentAllocations: make([]*model.PurchasePayment, 0),
-			}
+			correctionID := storedCorrection.ID.String()
+			settlementMonth := model.YearMonth(accountingPeriod(purchase.OccurredAt))
+			var itemID *string
 			if storedCorrection.ItemID.Valid {
-				itemID := storedCorrection.ItemID.V.String()
-				correction.ItemID = &itemID
+				value := storedCorrection.ItemID.V.String()
+				itemID = &value
 			}
 			if storedCorrection.EffectivePeriod.Valid {
-				correction.SettlementMonth = model.YearMonth(storedCorrection.EffectivePeriod.V)
+				settlementMonth = model.YearMonth(storedCorrection.EffectivePeriod.V)
 			}
+			paymentAllocations := make([]*model.PurchasePayment, 0, len(storedCorrection.R.CorrectionPayments))
 			for _, storedPayment := range storedCorrection.R.CorrectionPayments {
-				correction.PaymentAllocations = append(correction.PaymentAllocations, &model.PurchasePayment{
+				paymentAllocations = append(paymentAllocations, &model.PurchasePayment{
 					PaymentAccountID: storedPayment.AccountID.String(), AmountYen: graphLong(storedPayment.AmountYen),
 					Account: graphAccount(storedPayment.R.Account),
 				})
 			}
+			var correction model.PurchaseCorrection
+			if itemID == nil {
+				correction = &model.PurchaseWideCorrection{
+					ID: correctionID, AmountDeltaYen: graphLong(storedCorrection.AmountDeltaYen),
+					Reason: storedCorrection.Reason, OccurredAt: timeString(storedCorrection.R.Journal.OccurredAt),
+					SettlementMonth: settlementMonth, PaymentAllocations: paymentAllocations,
+				}
+			} else {
+				correction = &model.PurchaseItemCorrection{
+					ID: correctionID, ItemID: *itemID, AmountDeltaYen: graphLong(storedCorrection.AmountDeltaYen),
+					Reason: storedCorrection.Reason, OccurredAt: timeString(storedCorrection.R.Journal.OccurredAt),
+					SettlementMonth: settlementMonth, PaymentAllocations: paymentAllocations,
+				}
+			}
 			loaded.CorrectionsConnection.Edges = append(loaded.CorrectionsConnection.Edges, &model.PurchaseCorrectionEdge{
-				Cursor: encodeCursor("PurchaseCorrection", correction.ID), Node: correction,
+				Cursor: encodeCursor("PurchaseCorrection", correction.GetID()), Node: correction,
 			})
 		}
 		loaded.CorrectionsConnection.TotalCount = len(loaded.CorrectionsConnection.Edges)

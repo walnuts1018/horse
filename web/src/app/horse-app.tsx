@@ -272,6 +272,11 @@ export function App() {
   };
   const acceptInvitation = async () => {
     if (!pendingInvitation || acceptingInvitation) return;
+    if (
+      hasUnsavedChangesRef.current &&
+      !window.confirm("未保存の変更を破棄して招待を受け入れますか？")
+    )
+      return;
     setAcceptingInvitation(true);
     try {
       const result = await read<{ acceptHouseholdInvitation: { id: string; name: string } }>(

@@ -71,7 +71,7 @@ func (b *nodeBatch) loadPurchaseNodes() error {
 				set("PurchaseItem", item.ID, item)
 			}
 			for _, correction := range purchaseCorrectionNodes(purchase) {
-				set("PurchaseCorrection", correction.ID, correction)
+				set("PurchaseCorrection", correction.GetID(), correction)
 			}
 		}
 	}

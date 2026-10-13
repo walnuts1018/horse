@@ -4,6 +4,11 @@ extend type Mutation {
 
 union CreateHouseholdInvitationResult = CreateHouseholdInvitationSuccess | CreateHouseholdInvitationUserError
 
+type CreatedHouseholdInvitation {
+  invitation: HouseholdInvitation!
+  token: String!
+}
+
 type CreateHouseholdInvitationSuccess {
   result: CreatedHouseholdInvitation!
 }

@@ -171,7 +171,7 @@ func paginatePurchaseCorrections(edges []*model.PurchaseCorrectionEdge, first *i
 	} else if cursor != nil {
 		found := false
 		for index, edge := range edges {
-			if edge.Node.ID == *cursor {
+			if edge.Node.GetID() == *cursor {
 				startIndex = index + 1
 				found = true
 				break

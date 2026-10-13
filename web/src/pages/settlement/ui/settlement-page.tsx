@@ -80,10 +80,20 @@ export function SettlementPage({
   const [hasUnsavedTransfer, setHasUnsavedTransfer] = useState(false);
   const [fundingSourceAccounts, setFundingSourceAccounts] = useState<Record<string, string>>({});
   const [fundingDestinationAccountId, setFundingDestinationAccountId] = useState("");
+  const [savedFundingSourceAccounts, setSavedFundingSourceAccounts] = useState<
+    Record<string, string>
+  >({});
+  const [savedFundingDestinationAccountId, setSavedFundingDestinationAccountId] = useState("");
+  const hasUnsavedFunding =
+    household.members.some(
+      (member) =>
+        (fundingSourceAccounts[member.id] ?? "") !==
+        (savedFundingSourceAccounts[member.id] ?? ""),
+    ) || fundingDestinationAccountId !== savedFundingDestinationAccountId;
   useEffect(() => {
-    onUnsavedChanges(hasUnsavedTransfer);
+    onUnsavedChanges(hasUnsavedTransfer || hasUnsavedFunding);
     return () => onUnsavedChanges(false);
-  }, [hasUnsavedTransfer, onUnsavedChanges]);
+  }, [hasUnsavedFunding, hasUnsavedTransfer, onUnsavedChanges]);
   const markTransferUnsaved = () => setHasUnsavedTransfer(true);
   const load = async () => {
     try {
@@ -135,6 +145,8 @@ export function SettlementPage({
     const line = settlement?.lines.find((row) => row.memberId === memberId);
     const amountYen = line?.amountDueYen ?? 0;
     if (amountYen <= 0) return;
+    const sourceAccountId = fundingSourceAccounts[memberId] ?? "";
+    const destinationAccountId = fundingDestinationAccountId;
     setPending(true);
     try {
       await readGraphql(recordFundingMutation, {
@@ -149,14 +161,12 @@ export function SettlementPage({
           amountYen,
           occurredAt: new Date().toISOString(),
           idempotencyKey: makeIdempotencyKey(),
-          ...(fundingSourceAccounts[memberId]
-            ? { sourceAccountId: fundingSourceAccounts[memberId] }
-            : {}),
-          ...(fundingDestinationAccountId
-            ? { destinationAccountId: fundingDestinationAccountId }
-            : {}),
+          ...(sourceAccountId ? { sourceAccountId } : {}),
+          ...(destinationAccountId ? { destinationAccountId } : {}),
         },
       });
+      setSavedFundingSourceAccounts((current) => ({ ...current, [memberId]: sourceAccountId }));
+      setSavedFundingDestinationAccountId(destinationAccountId);
       await load();
     } catch (reason) {
       setError((reason as Error).message);
@@ -350,6 +360,7 @@ export function SettlementPage({
                   <span>拠出元</span>
                   <select
                     value={fundingSourceAccounts[line.memberId] ?? ""}
+                    disabled={pending}
                     onChange={(event) =>
                       setFundingSourceAccounts((current) => ({
                         ...current,
@@ -379,6 +390,7 @@ export function SettlementPage({
                   <span>入金先</span>
                   <select
                     value={fundingDestinationAccountId}
+                    disabled={pending}
                     onChange={(event) => setFundingDestinationAccountId(event.target.value)}
                   >
                     <option value="">未指定</option>
@@ -405,6 +417,24 @@ export function SettlementPage({
                 >
                   入金を記録
                 </button>
+                {((fundingSourceAccounts[line.memberId] ?? "") !==
+                  (savedFundingSourceAccounts[line.memberId] ?? "") ||
+                  fundingDestinationAccountId !== savedFundingDestinationAccountId) && (
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={pending}
+                    onClick={() => {
+                      setFundingSourceAccounts((current) => ({
+                        ...current,
+                        [line.memberId]: savedFundingSourceAccounts[line.memberId] ?? "",
+                      }));
+                      setFundingDestinationAccountId(savedFundingDestinationAccountId);
+                    }}
+                  >
+                    選択を戻す
+                  </button>
+                )}
               </div>
             </div>
           ))

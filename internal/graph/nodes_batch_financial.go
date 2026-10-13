@@ -368,12 +368,26 @@ func (b *nodeBatch) loadFinancialNodes() error {
 					return errors.New("transfer ledger entry is incomplete")
 				}
 				var loan *model.LoanBalance
-				if transfer.LoanID.Valid {
-					loan = loansByID[transfer.LoanID.V]
-				} else if transfer.Kind == "LOAN" {
+				switch transfer.Kind {
+				case "LOAN":
 					loan = loansByID[transfer.ID]
+				case transferKindRepayment:
+					if !transfer.LoanID.Valid {
+						return errors.New("repayment transfer has no loan")
+					}
+					loan = loansByID[transfer.LoanID.V]
+				case transferKindAdvance, transferKindGift:
+					if transfer.LoanID.Valid {
+						return fmt.Errorf("%s transfer unexpectedly references a loan", transfer.Kind)
+					}
+				default:
+					return fmt.Errorf("unknown transfer kind %q", transfer.Kind)
 				}
-				set("LedgerEntry", id, &model.TransferLedgerEntry{ID: id, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: "JPY", CreatedAt: createdAt, FromMember: membersByHousehold[householdID][entry.FromMemberID.V.String()], ToMember: membersByHousehold[householdID][entry.ToMemberID.V.String()], TransferKind: model.TransferKind(transfer.Kind), Loan: loan})
+				variant, err := transferLedgerEntryVariant(transfer.Kind, id, occurredAt, description, amount, "JPY", createdAt, membersByHousehold[householdID][entry.FromMemberID.V.String()], membersByHousehold[householdID][entry.ToMemberID.V.String()], loan)
+				if err != nil {
+					return err
+				}
+				set("LedgerEntry", id, variant)
 			default:
 				return fmt.Errorf("unknown ledger entry kind %q", entry.Kind)
 			}

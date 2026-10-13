@@ -27,6 +27,39 @@ models:
   UnconfiguredSharedPool:
     model:
       - github.com/walnuts1018/horse/internal/graph/model.UnconfiguredSharedPool
+  Settlement:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.SettlementVariant
+  HouseholdInvitation:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.HouseholdInvitationVariant
+  Observation:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.ObservationVariant
+  UnmatchedObservation:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.UnmatchedObservation
+  ConfirmedObservation:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.ConfirmedObservation
+  PendingHouseholdInvitation:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PendingHouseholdInvitation
+  AcceptedHouseholdInvitation:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.AcceptedHouseholdInvitation
+  RevokedHouseholdInvitation:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.RevokedHouseholdInvitation
+  ExpiredHouseholdInvitation:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.ExpiredHouseholdInvitation
+  OpenSettlement:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.OpenSettlement
+  ClosedSettlement:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.ClosedSettlement
   Date:
     model:
       - github.com/walnuts1018/horse/internal/graph/model.Date

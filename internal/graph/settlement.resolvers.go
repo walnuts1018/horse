@@ -7,23 +7,42 @@ package graph
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
-// Settlement is the resolver for the settlement field.
-func (r *queryResolver) Settlement(ctx context.Context, householdID string, period model.YearMonth) (*model.Settlement, error) {
-	return r.settlement(ctx, householdID, string(period))
-}
-
 // ID is the resolver for the id field.
-func (r *settlementResolver) ID(ctx context.Context, obj *model.Settlement) (string, error) {
+func (r *closedSettlementResolver) ID(ctx context.Context, obj *model.ClosedSettlement) (string, error) {
 	return encodeSettlementNodeID(obj.HouseholdID, string(obj.Period))
 }
 
 // HouseholdID is the resolver for the householdId field.
-func (r *settlementResolver) HouseholdID(ctx context.Context, obj *model.Settlement) (string, error) {
+func (r *closedSettlementResolver) HouseholdID(ctx context.Context, obj *model.ClosedSettlement) (string, error) {
 	return encodeNodeID("Household", obj.HouseholdID)
+}
+
+// CreatedAt is the resolver for the createdAt field.
+func (r *closedSettlementResolver) CreatedAt(ctx context.Context, obj *model.ClosedSettlement) (model.DateTime, error) {
+	if obj.CreatedAt == nil {
+		return "", fmt.Errorf("closed settlement %q has no created time", obj.Period)
+	}
+	return *obj.CreatedAt, nil
+}
+
+// ID is the resolver for the id field.
+func (r *openSettlementResolver) ID(ctx context.Context, obj *model.OpenSettlement) (string, error) {
+	return encodeSettlementNodeID(obj.HouseholdID, string(obj.Period))
+}
+
+// HouseholdID is the resolver for the householdId field.
+func (r *openSettlementResolver) HouseholdID(ctx context.Context, obj *model.OpenSettlement) (string, error) {
+	return encodeNodeID("Household", obj.HouseholdID)
+}
+
+// Settlement is the resolver for the settlement field.
+func (r *queryResolver) Settlement(ctx context.Context, householdID string, period model.YearMonth) (model.SettlementVariant, error) {
+	return r.settlement(ctx, householdID, string(period))
 }
 
 // MemberID is the resolver for the memberId field.
@@ -31,13 +50,17 @@ func (r *settlementLineResolver) MemberID(ctx context.Context, obj *model.Settle
 	return encodeNodeID("Member", obj.MemberID)
 }
 
-// Settlement returns SettlementResolver implementation.
-func (r *Resolver) Settlement() SettlementResolver { return &settlementResolver{r} }
+// ClosedSettlement returns ClosedSettlementResolver implementation.
+func (r *Resolver) ClosedSettlement() ClosedSettlementResolver { return &closedSettlementResolver{r} }
+
+// OpenSettlement returns OpenSettlementResolver implementation.
+func (r *Resolver) OpenSettlement() OpenSettlementResolver { return &openSettlementResolver{r} }
 
 // SettlementLine returns SettlementLineResolver implementation.
 func (r *Resolver) SettlementLine() SettlementLineResolver { return &settlementLineResolver{r} }
 
 type (
-	settlementResolver     struct{ *Resolver }
-	settlementLineResolver struct{ *Resolver }
+	closedSettlementResolver struct{ *Resolver }
+	openSettlementResolver   struct{ *Resolver }
+	settlementLineResolver   struct{ *Resolver }
 )
