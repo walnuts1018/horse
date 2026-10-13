@@ -5380,16 +5380,6 @@ type CorrectPurchaseUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/correction_ledger_entry.graphql", Input: `type CorrectionLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  purchase: Purchase!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/create_account_mutation.graphql", Input: `extend type Mutation {
   createAccount(input: CreateAccountInput!): CreateAccountResult!
 }
@@ -5661,17 +5651,6 @@ type CreateTagUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/funding_ledger_entry.graphql", Input: `type FundingLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  member: Member!
-  pool: Pool!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/funding_schedule.graphql", Input: `enum FundingScheduleCadence {
   MONTHLY
 }
@@ -5761,6 +5740,57 @@ extend type Query {
   amountYen: Long!
   currency: String!
   createdAt: DateTime!
+}
+
+type CorrectionLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  purchase: Purchase!
+}
+
+type FundingLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  member: Member!
+  pool: Pool!
+}
+
+type PurchaseLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  purchase: Purchase!
+}
+
+type TransferLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  fromMember: Member!
+  toMember: Member!
+  transferKind: TransferKind!
+  loan: LoanBalance
+}
+
+enum TransferKind {
+  ADVANCE
+  LOAN
+  REPAYMENT
+  GIFT
 }
 
 type LedgerEdge {
@@ -6061,16 +6091,6 @@ input PrintedUnitPriceInput {
 type EffectiveUnitPrice {
   numeratorYen: String!
   denominator: String!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/purchase_ledger_entry.graphql", Input: `type PurchaseLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  purchase: Purchase!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/purchase_subscription.graphql", Input: `type PurchaseChange {
@@ -6524,26 +6544,6 @@ extend type Query {
 
 extend type Query {
   tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/transfer_ledger_entry.graphql", Input: `type TransferLedgerEntry implements LedgerEntry & Node {
-  id: ID! @goField(forceResolver: true)
-  occurredAt: DateTime!
-  description: String!
-  amountYen: Long!
-  currency: String!
-  createdAt: DateTime!
-  fromMember: Member!
-  toMember: Member!
-  transferKind: TransferKind!
-  loan: LoanBalance
-}
-
-enum TransferKind {
-  ADVANCE
-  LOAN
-  REPAYMENT
-  GIFT
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/unmatched_observation.graphql", Input: `type UnmatchedObservation implements Node {
