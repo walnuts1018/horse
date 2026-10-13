@@ -2,6 +2,12 @@ module github.com/walnuts1018/horse
 
 go 1.27.2
 
+tool (
+	github.com/99designs/gqlgen
+	github.com/mazrean/kessoku/cmd/kessoku
+	github.com/stephenafamo/bob/gen/bobgen-sql
+)
+
 require (
 	github.com/99designs/gqlgen v0.17.95
 	github.com/aarondl/opt v0.0.0-20250607033636-982744e1bd65
@@ -43,6 +49,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
+	github.com/alecthomas/kong v1.15.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.0 // indirect
@@ -107,11 +114,13 @@ require (
 	github.com/knadh/koanf/providers/env v0.1.0 // indirect
 	github.com/knadh/koanf/providers/file v0.1.0 // indirect
 	github.com/knadh/koanf/v2 v2.1.0 // indirect
+	github.com/labstack/echo/v5 v5.3.1 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/mazrean/kessoku v1.1.1 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -205,9 +214,4 @@ require (
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 	mvdan.cc/gofumpt v0.9.2 // indirect
-)
-
-tool (
-	github.com/99designs/gqlgen
-	github.com/stephenafamo/bob/gen/bobgen-sql
 )
