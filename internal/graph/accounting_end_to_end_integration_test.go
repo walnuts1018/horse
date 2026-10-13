@@ -2,11 +2,14 @@ package graph
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"os"
 	"testing"
 
 	"uuid"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
@@ -134,5 +137,111 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 			len(analysis.Changes) != 1 || analysis.Changes[0].ChangeYen != model.Long(expected.change) || analysis.Changes[0].SourceKind != "ACCOUNT_MOVEMENT" {
 			t.Fatalf("account analysis did not reflect its side of the transfer: account=%s analysis=%#v", expected.accountID, analysis)
 		}
+	}
+}
+
+func TestConcurrentLoanRepaymentsCannotExceedPrincipal(t *testing.T) {
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := t.Context()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	lenderID, borrowerID := uuid.NewV7().String(), uuid.NewV7().String()
+	lenderUUID, borrowerUUID := generatedUUID(lenderID), generatedUUID(borrowerID)
+	lenderSubject, borrowerSubject := "loan-concurrency:"+lenderID, "loan-concurrency:"+borrowerID
+	lenderName, borrowerName := "Lender", "Borrower"
+	executor := bobpgx.NewPool(db)
+	for _, member := range []struct {
+		id      *gofrsuuid.UUID
+		subject *string
+		name    *string
+	}{{&lenderUUID, &lenderSubject, &lenderName}, {&borrowerUUID, &borrowerSubject, &borrowerName}} {
+		if _, err := models.Members.Insert(&models.MemberSetter{ID: member.id, OidcSubject: member.subject, DisplayName: member.name}).Exec(ctx, executor); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(lenderUUID)))).Exec(context.Background(), executor)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(borrowerUUID)))).Exec(context.Background(), executor)
+	}()
+
+	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: lenderID, Subject: lenderSubject, DisplayName: lenderName})
+	mutation := &mutationResolver{Resolver: &Resolver{DB: db}}
+	household, err := mutation.createHousehold(ctx, model.CreateHouseholdInput{Name: "Loan repayment concurrency"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	householdUUID := generatedUUID(household.ID)
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), executor)
+	}()
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &borrowerUUID}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	loan, err := mutation.recordTransfer(ctx, model.RecordTransferInput{
+		HouseholdID: household.ID, FromMemberID: lenderID, ToMemberID: borrowerID, Kind: model.TransferInputKindLoan,
+		AmountYen: 100, OccurredAt: "2026-08-01T12:00:00Z", Description: "Loan", IdempotencyKey: uuid.NewV7().String(),
+	})
+	if err != nil || loan.TransferID == nil {
+		t.Fatalf("loan creation failed: transfer=%#v error=%v", loan, err)
+	}
+
+	start := make(chan struct{})
+	ready := make(chan struct{}, 2)
+	results := make(chan error, 2)
+	for _, period := range []string{"2026-09", "2026-10"} {
+		go func() {
+			ready <- struct{}{}
+			<-start
+			_, err := mutation.recordRepayment(ctx, model.RecordRepaymentInput{
+				HouseholdID: household.ID, FromMemberID: borrowerID, ToMemberID: lenderID, LoanID: *loan.TransferID,
+				AmountYen: 60, OccurredAt: period + "-15T12:00:00Z", Description: "Repayment", IdempotencyKey: uuid.NewV7().String(),
+			})
+			results <- err
+		}()
+	}
+	for range 2 {
+		<-ready
+	}
+	close(start)
+	var succeeded, rejected int
+	for range 2 {
+		err := <-results
+		switch {
+		case err == nil:
+			succeeded++
+		case errors.Is(err, ErrBadInput):
+			rejected++
+		default:
+			t.Fatalf("unexpected concurrent repayment result: %v", err)
+		}
+	}
+	if succeeded != 1 || rejected != 1 {
+		t.Fatalf("expected one repayment to succeed and the other to exceed the remaining balance: succeeded=%d rejected=%d", succeeded, rejected)
+	}
+
+	loanUUID := generatedUUID(*loan.TransferID)
+	repayments, err := models.Transfers.Query(sm.Where(psql.And(
+		models.Transfers.Columns.LoanID.EQ(psql.Arg(sql.Null[gofrsuuid.UUID]{V: loanUUID, Valid: true})),
+		models.Transfers.Columns.Kind.EQ(psql.Arg("REPAYMENT")),
+	))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var repaid int64
+	for _, repayment := range repayments {
+		repaid += repayment.AmountYen
+	}
+	if len(repayments) != 1 || repaid != 60 || repaid > 100 {
+		t.Fatalf("repayment rows must remain within the loan principal: rows=%#v total=%d", repayments, repaid)
 	}
 }

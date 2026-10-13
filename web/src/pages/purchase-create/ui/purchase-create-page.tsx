@@ -98,6 +98,7 @@ export function PurchaseCreatePage({
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
+  const itemGridRef = useRef<HTMLDivElement>(null);
   const saving = useRef(false);
   const draftTimer = useRef<number | null>(null);
   const skipDraftSave = useRef(false);
@@ -370,6 +371,64 @@ export function PurchaseCreatePage({
       event.preventDefault();
       addItem();
     }
+  };
+  const onItemGridKey = (
+    event: KeyboardEvent<HTMLInputElement>,
+    row: number,
+    column: "name" | "amount",
+  ) => {
+    if (
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.nativeEvent.isComposing ||
+      composing.current
+    )
+      return;
+
+    let targetRow = row;
+    let targetColumn = column;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (column === "name") {
+        itemGridRef.current
+          ?.querySelector<HTMLInputElement>(`[data-grid-row="${row}"][data-grid-column="amount"]`)
+          ?.focus();
+      } else if (row + 1 < items.length) {
+        itemGridRef.current
+          ?.querySelector<HTMLInputElement>(`[data-grid-row="${row + 1}"][data-grid-column="name"]`)
+          ?.focus();
+      } else {
+        nameRef.current?.focus();
+      }
+      return;
+    }
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      targetRow += event.key === "ArrowUp" ? -1 : 1;
+    } else if (event.key === "ArrowLeft" && column === "amount") {
+      const input = event.currentTarget;
+      if (input.selectionStart !== 0 || input.selectionEnd !== 0) return;
+      targetColumn = "name";
+    } else if (event.key === "ArrowRight" && column === "name") {
+      const input = event.currentTarget;
+      if (input.selectionStart !== input.value.length || input.selectionEnd !== input.value.length)
+        return;
+      targetColumn = "amount";
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    if (targetRow === items.length && event.key === "ArrowDown") {
+      (targetColumn === "name" ? nameRef : amountRef).current?.focus();
+      return;
+    }
+    if (targetRow < 0 || targetRow >= items.length) return;
+    itemGridRef.current
+      ?.querySelector<HTMLInputElement>(
+        `[data-grid-row="${targetRow}"][data-grid-column="${targetColumn}"]`,
+      )
+      ?.focus();
   };
   const pasteRows = (event: ClipboardEvent<HTMLInputElement>) => {
     const text = event.clipboardData.getData("text");
@@ -699,25 +758,31 @@ export function PurchaseCreatePage({
           <span>負担</span>
           <span />
         </div>
-        <div className="item-list">
+        <div className="item-list" ref={itemGridRef}>
           {items.map((item, index) => (
             <div className="item-entry" key={item.key}>
               <div className="item-edit-row">
                 <span className="item-index">{String(index + 1).padStart(2, "0")}</span>
                 <input
                   aria-label="品名"
+                  data-grid-row={index}
+                  data-grid-column="name"
                   value={item.name}
                   onChange={(e) => patchItem(item.key, { name: e.target.value })}
+                  onKeyDown={(event) => onItemGridKey(event, index, "name")}
                 />
                 <div className="yen-input">
                   <span>¥</span>
                   <input
                     aria-label="金額"
+                    data-grid-row={index}
+                    data-grid-column="amount"
                     inputMode="numeric"
                     value={item.amount}
                     onChange={(e) =>
                       patchItem(item.key, { amount: e.target.value.replace(/\D/g, "") })
                     }
+                    onKeyDown={(event) => onItemGridKey(event, index, "amount")}
                   />
                 </div>
                 <select
