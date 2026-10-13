@@ -1,1 +1,0 @@
-Webの実行イメージをpiccaと同じNode 24のdistrolessに変更した。CIでのイメージ公開、infraへのdigest反映、公開Podの起動とHTTP応答を確認後、この項目を削除する。

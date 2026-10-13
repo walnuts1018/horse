@@ -172,17 +172,10 @@ export function App() {
       getViewer(),
       read<{ households: Array<{ id: string; name: string }> }>(householdsQuery),
     ])
-      .then(async ([session, result]) => {
+      .then(([session, result]) => {
         if (!active) return;
         setViewer(session);
         setHouseholds(result.households);
-        const requested = result.households.find((item) => item.id === householdId);
-        const target = requested ?? result.households[0];
-        if (target) {
-          resolvingHouseholdId.current = target.id;
-          const data = await read<{ household: Household }>(householdQuery, { id: target.id });
-          if (active) setHousehold(data.household);
-        }
       })
       .catch((reason: unknown) => {
         if (!active) return;
@@ -213,7 +206,10 @@ export function App() {
       .catch((reason: unknown) => {
         if (!active) return;
         resolvingHouseholdId.current = null;
-        setError((reason as Error).message || "家計簿を読み込めませんでした");
+        showNoticeRef.current((reason as Error).message || "家計簿を読み込めませんでした");
+        const currentId = currentHouseholdId.current;
+        if (currentId && currentId !== target.id)
+          navigateToHouseholdPage(currentId, page, true);
       });
     return () => {
       active = false;
