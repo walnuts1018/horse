@@ -62,10 +62,35 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 	})
 
 	mutation := &mutationResolver{Resolver: resolver.Resolver}
+	concepts := make(map[string]*model.ProductConcept, 3)
 	for _, name := range []string{"Apple", "Miso", "Tea"} {
-		if _, err := mutation.createProductConcept(ctx, model.CreateProductConceptInput{HouseholdID: household.ID, Name: name}); err != nil {
+		concept, err := mutation.createProductConcept(ctx, model.CreateProductConceptInput{HouseholdID: household.ID, Name: name})
+		if err != nil {
 			t.Fatal(err)
 		}
+		concepts[name] = concept
+	}
+	variants := make(map[string]*model.ProductVariant, 4)
+	for conceptName, variantName := range map[string]string{"Apple": "Apple Fuji", "Miso": "Miso Red", "Tea": "Tea Green"} {
+		variant, err := mutation.createProductVariant(ctx, model.CreateProductVariantInput{HouseholdID: household.ID, ConceptID: concepts[conceptName].ID, Name: variantName})
+		if err != nil {
+			t.Fatal(err)
+		}
+		variants[variantName] = variant
+	}
+	for _, variantName := range []string{"Apple Fuji", "Miso Red", "Tea Green"} {
+		aliasName := variantName + " alias"
+		merchant := "catalog-shop"
+		if _, err := mutation.setProductAlias(ctx, model.SetProductAliasInput{HouseholdID: household.ID, VariantID: variants[variantName].ID, Merchant: merchant, Alias: aliasName}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appleVariant, err := mutation.createProductVariant(ctx, model.CreateProductVariantInput{HouseholdID: household.ID, ConceptID: concepts["Apple"].ID, Name: "Apple Gala"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.setProductAlias(ctx, model.SetProductAliasInput{HouseholdID: household.ID, VariantID: appleVariant.ID, Merchant: "catalog-shop", Alias: "Apple Gala alias"}); err != nil {
+		t.Fatal(err)
 	}
 	pageSize := 2
 	firstPage, err := resolver.productCatalog(ctx, household.ID, nil, nil, &pageSize, nil)
@@ -78,6 +103,15 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 	if firstPage.Edges[0].Node.Name != "Apple" || firstPage.Edges[1].Node.Name != "Miso" {
 		t.Fatalf("first page is not in stable name order: %#v", firstPage.Edges)
 	}
+	if len(firstPage.Edges[0].Node.Variants) != 2 || len(firstPage.Edges[1].Node.Variants) != 1 {
+		t.Fatalf("variants crossed concept boundaries: Apple=%#v Miso=%#v", firstPage.Edges[0].Node.Variants, firstPage.Edges[1].Node.Variants)
+	}
+	if firstPage.Edges[0].Node.Variants[0].Name != "Apple Fuji" || firstPage.Edges[0].Node.Variants[1].Name != "Apple Gala" || firstPage.Edges[1].Node.Variants[0].Name != "Miso Red" {
+		t.Fatalf("variants are not associated and ordered by concept: Apple=%#v Miso=%#v", firstPage.Edges[0].Node.Variants, firstPage.Edges[1].Node.Variants)
+	}
+	if len(firstPage.Edges[0].Node.Variants[0].Aliases) != 1 || firstPage.Edges[0].Node.Variants[0].Aliases[0].Alias != "Apple Fuji alias" || len(firstPage.Edges[0].Node.Variants[1].Aliases) != 1 || firstPage.Edges[0].Node.Variants[1].Aliases[0].Alias != "Apple Gala alias" || len(firstPage.Edges[1].Node.Variants[0].Aliases) != 1 || firstPage.Edges[1].Node.Variants[0].Aliases[0].Alias != "Miso Red alias" {
+		t.Fatalf("aliases crossed variant boundaries: Apple=%#v Miso=%#v", firstPage.Edges[0].Node.Variants, firstPage.Edges[1].Node.Variants)
+	}
 
 	secondPage, err := resolver.productCatalog(ctx, household.ID, firstPage.PageInfo.EndCursor, nil, &pageSize, nil)
 	if err != nil {
@@ -85,6 +119,9 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 	}
 	if len(secondPage.Edges) != 1 || secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage || secondPage.Edges[0].Node.Name != "Tea" {
 		t.Fatalf("second page does not continue after the cursor: page=%#v info=%#v", secondPage.Edges, secondPage.PageInfo)
+	}
+	if len(secondPage.Edges[0].Node.Variants) != 1 || secondPage.Edges[0].Node.Variants[0].Name != "Tea Green" || len(secondPage.Edges[0].Node.Variants[0].Aliases) != 1 || secondPage.Edges[0].Node.Variants[0].Aliases[0].Alias != "Tea Green alias" {
+		t.Fatalf("second-page variant or alias was not associated with Tea: %#v", secondPage.Edges[0].Node.Variants)
 	}
 
 	lastPage, err := resolver.productCatalog(ctx, household.ID, nil, nil, nil, &pageSize)

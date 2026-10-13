@@ -358,10 +358,56 @@ func (r *queryResolver) productCatalog(ctx context.Context, householdID string, 
 		Edges:    make([]*model.ProductConceptEdge, 0, len(rows)),
 		PageInfo: pageInfo,
 	}
+	conceptIDs := make([]any, 0, len(rows))
 	for _, conceptRow := range rows {
-		concept, err := loadProductConcept(ctx, db, conceptRow.ID.String())
+		conceptIDs = append(conceptIDs, conceptRow.ID)
+	}
+	variantsByConcept := make(map[gofrsuuid.UUID][]*model.ProductVariant, len(rows))
+	if len(conceptIDs) > 0 {
+		variantRows, err := models.ProductVariants.Query(
+			sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductVariants.Columns.ConceptID.In(psql.Arg(conceptIDs...)))),
+			sm.OrderBy(models.ProductVariants.Columns.ConceptID),
+			sm.OrderBy(models.ProductVariants.Columns.NormalizedName),
+			sm.OrderBy(models.ProductVariants.Columns.ID),
+		).All(ctx, db)
 		if err != nil {
 			return nil, err
+		}
+		variantIDs := make([]any, 0, len(variantRows))
+		aliasesByVariant := make(map[gofrsuuid.UUID][]*model.ProductAlias, len(variantRows))
+		for _, variantRow := range variantRows {
+			variantIDs = append(variantIDs, variantRow.ID)
+			aliasesByVariant[variantRow.ID] = make([]*model.ProductAlias, 0)
+		}
+		if len(variantIDs) > 0 {
+			aliasRows, err := models.ProductAliases.Query(
+				sm.Where(psql.And(models.ProductAliases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.ProductAliases.Columns.VariantID.In(psql.Arg(variantIDs...)))),
+				sm.OrderBy(models.ProductAliases.Columns.VariantID),
+				sm.OrderBy(models.ProductAliases.Columns.MerchantKey),
+				sm.OrderBy(models.ProductAliases.Columns.NormalizedAlias),
+			).All(ctx, db)
+			if err != nil {
+				return nil, err
+			}
+			for _, aliasRow := range aliasRows {
+				aliasesByVariant[aliasRow.VariantID] = append(aliasesByVariant[aliasRow.VariantID], productAliasFromRow(aliasRow))
+			}
+		}
+		for _, variantRow := range variantRows {
+			variant := productVariantFromRow(variantRow)
+			variant.Aliases = aliasesByVariant[variantRow.ID]
+			if _, ok := variantsByConcept[variantRow.ConceptID]; !ok {
+				variantsByConcept[variantRow.ConceptID] = make([]*model.ProductVariant, 0)
+			}
+			variantsByConcept[variantRow.ConceptID] = append(variantsByConcept[variantRow.ConceptID], variant)
+		}
+	}
+	for _, conceptRow := range rows {
+		concept := productConceptFromRow(conceptRow)
+		if variants, ok := variantsByConcept[conceptRow.ID]; ok {
+			concept.Variants = variants
+		} else {
+			concept.Variants = make([]*model.ProductVariant, 0)
 		}
 		cursor := encodeCursor("ProductConcept", conceptRow.NormalizedName+"\x00"+conceptRow.ID.String())
 		connection.Edges = append(connection.Edges, &model.ProductConceptEdge{Cursor: cursor, Node: concept})
