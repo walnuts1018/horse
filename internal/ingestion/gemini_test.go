@@ -47,6 +47,45 @@ func TestGeminiExtractsSourceKindSpecificStatementRows(t *testing.T) {
 	}
 }
 
+func TestGeminiFailedRunsRetainUsageAndEstimatedCost(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		finish   string
+		text     string
+		wantCode string
+	}{
+		{name: "maximum tokens", finish: "MAX_TOKENS", text: `{"merchant":"partial`, wantCode: "incomplete_generation"},
+		{name: "invalid generated JSON", finish: "STOP", text: `{broken`, wantCode: "invalid_receipt_json"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"candidates":[{"content":{"parts":[{"text":`+mustJSONText(test.text)+`}]},"finishReason":"`+test.finish+`"}],"usageMetadata":{"promptTokenCount":1000,"candidatesTokenCount":250,"thoughtsTokenCount":25}}`)
+			}))
+			defer server.Close()
+
+			gemini := Gemini{APIKey: testPaidGeminiAPIKey, Model: ModelReceipt, ProjectRoute: ProjectPaid, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client(), USDJPYRate: 150}
+			_, run, err := gemini.ExtractRun(t.Context(), Document{MIMEType: mimeTypeJPEG, Data: []byte("synthetic image bytes")}, nil, GeminiRequestOptions{})
+			if err == nil {
+				t.Fatal("ExtractRun() error = nil, want generation failure")
+			}
+			if run.Status != extractionStatusFailed || run.ErrorCode != test.wantCode {
+				t.Fatalf("failed run status or error code changed: %#v", run)
+			}
+			if run.InputTokens != 1000 || run.OutputTokens != 275 {
+				t.Fatalf("failed run lost provider usage: input=%d output=%d", run.InputTokens, run.OutputTokens)
+			}
+			wantCost := estimateCostJPY(ProjectPaid, ModelReceipt, geminiServiceTierStandard, 1000, 275, gemini.USDJPYRate, run.PricedAt)
+			if run.PriceEstimateStatus != "estimated_paid" || run.EstimatedJPY != wantCost || run.PricedAt.IsZero() {
+				t.Fatalf("failed run lost its cost estimate: %#v", run)
+			}
+		})
+	}
+}
+
 func assertSchemaMatchesType(t *testing.T, typ reflect.Type, schema map[string]any, ignoredFields, optionalFields map[reflect.Type]map[string]bool) {
 	t.Helper()
 	if schema[schemaTypeKey] != "object" {

@@ -77,6 +77,7 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 	run.USDJPYRate = g.USDJPYRate
 	run.USDJPYRateSource = g.USDJPYRateSource
 	run.USDJPYRateAsOf = g.USDJPYRateAsOf
+	usageAvailable := false
 	if run.USDJPYRateSource == "" {
 		run.USDJPYRateSource = "unspecified"
 	}
@@ -92,19 +93,7 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 	if run.Reason == "" {
 		run.Reason = geminiReasonInitialExtraction
 	}
-	finish := func(receipt Receipt, err error) (Receipt, ExtractionRun, error) {
-		run.LatencyMillis = time.Since(started).Milliseconds()
-		if err != nil {
-			run.Status = extractionStatusFailed
-			run.PriceEstimateStatus = "unavailable_failed_run"
-			if apiErr, ok := errors.AsType[*GeminiAPIError](err); ok {
-				run.ErrorCode = apiErr.Code
-			}
-			return Receipt{}, run, err
-		}
-		run.Status = extractionStatusSucceeded
-		run.InputTokens = receipt.InputTokens
-		run.OutputTokens = receipt.OutputTokens
+	estimatePrice := func() {
 		run.PricingCurrency = "USD"
 		run.PricedAt = time.Now().UTC()
 		switch run.Route {
@@ -128,6 +117,25 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 				}
 			}
 		}
+	}
+	finish := func(receipt Receipt, err error) (Receipt, ExtractionRun, error) {
+		run.LatencyMillis = time.Since(started).Milliseconds()
+		if err != nil {
+			run.Status = extractionStatusFailed
+			if usageAvailable {
+				estimatePrice()
+			} else {
+				run.PriceEstimateStatus = "unavailable_failed_run"
+			}
+			if apiErr, ok := errors.AsType[*GeminiAPIError](err); ok {
+				run.ErrorCode = apiErr.Code
+			}
+			return Receipt{}, run, err
+		}
+		run.Status = extractionStatusSucceeded
+		run.InputTokens = receipt.InputTokens
+		run.OutputTokens = receipt.OutputTokens
+		estimatePrice()
 		return receipt, run, nil
 	}
 	if g.APIKey == "" || g.Model == "" {
@@ -231,6 +239,11 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 			return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "malformed_provider_json"})
 		}
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureTemporary, Code: "transport_error"})
+	}
+	if result != nil && result.UsageMetadata != nil {
+		run.InputTokens = int64(result.UsageMetadata.PromptTokenCount)
+		run.OutputTokens = int64(result.UsageMetadata.CandidatesTokenCount + result.UsageMetadata.ThoughtsTokenCount)
+		usageAvailable = true
 	}
 	if result == nil || len(result.Candidates) == 0 || result.Candidates[0] == nil || result.Candidates[0].FinishReason != genai.FinishReasonStop {
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "incomplete_generation"})
