@@ -103,6 +103,20 @@ export type DocumentReview = {
   id: string;
   jobId?: string;
   name?: string;
+  attachments?: Array<{
+    id: string;
+    name: string;
+    filename: string;
+    mimeType: string;
+    status?: string;
+    jobId?: string;
+  }>;
+  attachmentParent?: {
+    id: string;
+    name: string;
+    filename: string;
+    index: number;
+  };
   status: string;
   sourceKind?: string;
   mimeType?: string;

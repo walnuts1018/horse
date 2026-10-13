@@ -2,21 +2,22 @@
 
 :root {
   font-family: "Noto Sans JP Variable", "Noto Sans JP", sans-serif;
-  color: #23322f;
+  color: #24352f;
   background: #f6f7f4;
   font-synthesis: none;
   text-rendering: optimizelegibility;
   -webkit-font-smoothing: antialiased;
 
-  --ink: #23322f;
-  --muted: #5f6d65;
-  --line: #e8ece8;
-  --green: #23735f;
-  --green-dark: #174f43;
-  --green-wash: #e8f2ee;
-  --amber: #d09343;
+  --ink: #24352f;
+  --muted: #596a61;
+  --line: #e2e8e3;
+  --green: #286d58;
+  --green-dark: #1d5142;
+  --green-wash: #edf4ef;
+  --amber: #93601d;
   --paper: #fff;
-  --shadow: 0 3px 16px rgb(42, 63, 55, 0.045);
+  --shadow: none;
+  --mobile-font-dense: 12px;
 }
 
 * {
@@ -27,6 +28,11 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.55;
+  overscroll-behavior-x: none;
+  -webkit-tap-highlight-color: rgb(40 109 88 / 12%);
 }
 
 button,
@@ -124,16 +130,16 @@ a {
 
 .auth-card h1 {
   font-family: "Noto Sans JP Variable", "Noto Sans JP", sans-serif;
-  font-size: 39px;
+  font-size: 32px;
   line-height: 1.45;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.025em;
   margin: 13px 0 12px;
   color: #22352f;
 }
 
 .auth-copy {
-  font-size: 14px;
-  color: #82908a;
+  font-size: 15px;
+  color: var(--muted);
   margin: 0 0 35px;
 }
 
@@ -1211,6 +1217,12 @@ form.ledger-filters .select-filter input[type="number"] {
   padding: 0 8px;
 }
 
+.number-field:focus-within {
+  border-color: var(--green);
+  outline: 3px solid rgb(40 109 88 / 24%);
+  outline-offset: 2px;
+}
+
 .number-field input {
   min-width: 0;
   width: 100%;
@@ -1676,6 +1688,278 @@ form.ledger-filters .select-filter input[type="number"] {
   }
 }
 
+html {
+  scroll-padding-top: 76px;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex="-1"]:focus-visible {
+  outline: 3px solid #286d58;
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 1000;
+  top: 8px;
+  left: 8px;
+  padding: 10px 14px;
+  transform: translateY(-150%);
+  border-radius: 6px;
+  background: var(--green-dark);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.auth-screen.auth-screen {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.brand-mark.brand-mark {
+  background: var(--green);
+  box-shadow: none;
+}
+
+.app-shell .sidebar {
+  background: #fafbf9;
+  border-right-color: var(--line);
+}
+
+.app-shell .main-area {
+  min-width: 0;
+}
+
+.app-shell .topbar {
+  min-height: 64px;
+  background: rgb(250 251 249 / 96%);
+  border-bottom-color: var(--line);
+  padding-inline: clamp(20px, 3vw, 42px);
+}
+
+.app-shell .page-content {
+  width: min(100%, 1360px);
+  max-width: 1360px;
+  padding: 30px clamp(20px, 3vw, 42px) 72px;
+}
+
+.app-shell
+  .page-content
+  :is(
+    small,
+    label,
+    .period-chip,
+    .purchase-description span,
+    .purchase-meta span,
+    .record-count,
+    .ledger-item-row,
+    .item-table-head,
+    .item-index,
+    .entry-hint,
+    .entry-default,
+    .allocation-chip,
+    .selected-product-label,
+    .settle-line
+  ) {
+  font-size: max(12px, 1em);
+}
+
+.app-shell .page-content .allocation-chip {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.allocation-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-heading h1,
+.welcome-row h1,
+.heading h1 {
+  color: var(--ink);
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.app-shell .panel {
+  border-color: var(--line);
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.app-shell .panel-heading h2 {
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+
+.button.button {
+  min-height: 44px;
+  border-radius: 7px;
+  box-shadow: none;
+  font-size: 14px;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    border-color 140ms ease;
+}
+
+.button.button:hover {
+  transform: none;
+}
+
+.button.button-primary {
+  background: var(--green);
+}
+
+.button.button-primary:hover {
+  background: var(--green-dark);
+}
+
+.button.button-soft {
+  background: var(--green-wash);
+  color: var(--green-dark);
+}
+
+.text-button.text-button {
+  min-height: 40px;
+  padding-inline: 8px;
+  color: var(--green-dark);
+  font-size: 13px;
+}
+
+.icon-button.icon-button {
+  width: 44px;
+  height: 44px;
+}
+
+.nav-item.nav-item {
+  height: 44px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.nav-active.nav-active {
+  background: var(--green-wash);
+  color: var(--green-dark);
+}
+
+.mobile-dock.mobile-dock {
+  background: #fbfcfa;
+  border-top-color: var(--line);
+}
+
+.mobile-dock.mobile-dock :is(button, a) {
+  min-height: 52px;
+  color: #596a61;
+}
+
+.mobile-dock.mobile-dock .dock-active {
+  color: var(--green-dark);
+}
+
+.mobile-dock.mobile-dock .dock-add {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border-radius: 10px;
+  background: var(--green);
+  box-shadow: none;
+}
+
+.mobile-dock.mobile-dock :is(button, a) span {
+  font-size: 11px;
+}
+
+.empty-state.empty-state {
+  padding-inline: 16px;
+}
+
+.inline-error,
+.inline-warning,
+.inline-success {
+  line-height: 1.5;
+}
+
+@media (width <= 760px) {
+  body {
+    font-size: 16px;
+  }
+
+  .app-shell .topbar {
+    min-height: 56px;
+    padding-inline: 12px;
+  }
+
+  .app-shell .page-content {
+    padding: 20px 16px calc(92px + env(safe-area-inset-bottom));
+  }
+
+  .page-heading h1,
+  .welcome-row h1,
+  .heading h1 {
+    font-size: 22px;
+  }
+
+  .panel {
+    border-radius: 8px;
+  }
+
+  .mobile-dock {
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding-bottom: calc(4px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-dock.mobile-dock :is(button, a) {
+    height: 52px;
+    min-width: 44px;
+  }
+
+  .mobile-dock.mobile-dock :is(button, a) span {
+    font-size: 11px;
+  }
+
+  .mobile-dock.mobile-dock .dock-add span {
+    display: none;
+  }
+
+  .toast {
+    left: 12px;
+    right: 12px;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @media (width <= 380px) {
   .page-content {
     padding-left: 12px;
@@ -1926,7 +2210,7 @@ form.ledger-filters .select-filter input[type="number"] {
   :root {
     --mobile-font-input: 16px;
     --mobile-font-supporting: 12px;
-    --mobile-font-dense: 10px;
+    --mobile-font-dense: 12px;
   }
 
   .app-shell
@@ -1945,6 +2229,7 @@ form.ledger-filters .select-filter input[type="number"] {
   .app-shell textarea,
   .app-shell select {
     font-size: var(--mobile-font-input);
+    min-height: 44px;
   }
 
   :is(
@@ -1964,7 +2249,6 @@ form.ledger-filters .select-filter input[type="number"] {
 
   .household-name small,
   .nav-label,
-  .shared-avatars i,
   .profile-row small,
   .period-chip,
   .purchase-description span,
@@ -1975,6 +2259,6 @@ form.ledger-filters .select-filter input[type="number"] {
   .inline-create .button,
   .mobile-dock :is(button, a) span,
   .mobile-dock .dock-add span {
-    font-size: 10px;
+    font-size: 12px;
   }
 }

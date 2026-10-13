@@ -1,7 +1,7 @@
 import type { Household, Purchase } from "../../../shared/api";
 import type { useDocumentEvidence } from "../model/use-document-evidence";
 import type { useImportConfirmation } from "../model/use-import-confirmation";
-import type { DocumentReview, StatementEntry } from "../model/imports";
+import { statusLabel, type DocumentReview, type StatementEntry } from "../model/imports";
 import type { EvidencePreviewController } from "../model/evidence-preview";
 import { EvidenceMatching } from "./evidence-matching";
 import { EvidenceSourcePreview } from "./evidence-source-preview";
@@ -26,6 +26,7 @@ export function ImportDocumentReview({
   onConfirmStatement,
   onError,
   onLinked,
+  onSelectDocument,
 }: {
   document: DocumentReview;
   documents: DocumentReview[];
@@ -43,9 +44,44 @@ export function ImportDocumentReview({
   onConfirmStatement: (entry: StatementEntry) => void;
   onError: (message: string) => void;
   onLinked: () => Promise<void> | void;
+  onSelectDocument: (id: string) => void;
 }) {
   return (
     <>
+      {document.attachmentParent && (
+        <section className={styles.attachmentGroup}>
+          <span className="eyebrow">メール添付</span>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => onSelectDocument(document.attachmentParent!.id)}
+          >
+            {document.attachmentParent.name}
+          </button>
+          <small>{document.attachmentParent.filename}</small>
+        </section>
+      )}
+      {!!document.attachments?.length && (
+        <section className={styles.attachmentGroup}>
+          <span className="eyebrow">添付ファイル</span>
+          {document.attachments.map((attachment) => {
+            const child = documents.some((entry) => entry.id === attachment.id);
+            return (
+              <div className={styles.attachmentRow} key={attachment.id}>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={!child}
+                  onClick={() => onSelectDocument(attachment.id)}
+                >
+                  {attachment.filename}
+                </button>
+                <small>{attachment.status ? statusLabel(attachment.status) : "処理待ち"}</small>
+              </div>
+            );
+          })}
+        </section>
+      )}
       <div className={styles.evidenceReviewLayout}>
         <EvidenceSourcePreview
           document={document}

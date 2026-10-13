@@ -383,6 +383,7 @@ export function ImportsPage({
                 await refreshDocuments(true);
                 onAdded(true);
               }}
+              onSelectDocument={setSelected}
             />
           )}
           {message && <InlineError message={message} />}

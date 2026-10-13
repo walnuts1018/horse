@@ -31,18 +31,18 @@
   display: grid;
   gap: 5px;
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .poolFundingForm select {
   width: 100%;
-  min-height: 34px;
+  min-height: 44px;
   border: 1px solid #e9ede9;
   border-radius: 8px;
   padding: 0 9px;
   color: #53635a;
   background: #fff;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .poolFundingShares {
@@ -57,7 +57,7 @@
   justify-content: space-between;
   gap: 6px;
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .invitationIssued {
@@ -72,7 +72,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0 9px;
-  font-size: 10px;
+  font-size: 14px;
 }
 
 .settingsRows {
@@ -101,12 +101,12 @@
 }
 
 .settingRow b {
-  font-size: 10px;
+  font-size: 12px;
   color: #526259;
 }
 
 .settingRow small {
-  font-size: 8px;
+  font-size: 12px;
   color: #5f6d65;
   margin-top: 3px;
 }
@@ -118,7 +118,7 @@
 .settingRow > input {
   min-width: 0;
   max-width: 220px;
-  height: 34px;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 0 8px;
@@ -170,7 +170,7 @@
   align-items: center;
   justify-content: space-between;
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .settingsSave {
@@ -180,12 +180,12 @@
   border-top: 1px solid #eef1ee;
   padding-top: 12px;
   color: #5f6d65;
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .settingsSaveButton {
-  height: 33px;
-  font-size: 9px;
+  min-height: 44px;
+  font-size: 14px;
 }
 
 .memberSection {
@@ -223,7 +223,7 @@
 
   .settingRow small,
   .settingsSave .button {
-    font-size: 10px;
+    font-size: 12px;
   }
 }
 

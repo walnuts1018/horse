@@ -167,6 +167,9 @@ export function ImportDocumentList({
                 {statusLabel(document.status)}
                 {document.duplicateOf ? " · 重複候補" : ""}
               </small>
+              {document.attachmentParent && (
+                <small>メール添付 · {document.attachmentParent.name}</small>
+              )}
             </div>
             <ChevronRight size={15} />
           </button>

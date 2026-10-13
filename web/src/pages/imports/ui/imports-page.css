@@ -35,14 +35,14 @@
 }
 
 .dropzone p {
-  font-size: 10px;
+  font-size: 12px;
   color: #5f6d65;
   margin: 7px 0 17px;
 }
 
 .dropzone .button {
-  height: 36px;
-  font-size: 10px;
+  min-height: 44px;
+  font-size: 13px;
 }
 
 .import-actions {
@@ -62,7 +62,7 @@
 
 .drop-caption {
   color: #5f6d65;
-  font-size: 8px;
+  font-size: 12px;
   margin-top: 15px;
 }
 
@@ -143,12 +143,12 @@
 }
 
 .file-review-row b {
-  font-size: 9px;
+  font-size: 12px;
   color: #58675e;
 }
 
 .file-review-row small {
-  font-size: 8px;
+  font-size: 12px;
   color: #5f6d65;
   margin-top: 4px;
 }
@@ -163,7 +163,7 @@
   align-items: center;
   gap: 8px;
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .import-note svg {
@@ -238,6 +238,6 @@
   .file-review-row b,
   .file-review-row small,
   .import-note {
-    font-size: 10px;
+    font-size: 12px;
   }
 }

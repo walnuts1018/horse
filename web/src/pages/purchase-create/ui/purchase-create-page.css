@@ -247,6 +247,18 @@
   outline: none;
 }
 
+.entry-input-wrap:focus-within {
+  outline: 3px solid rgb(40 109 88 / 24%);
+  outline-offset: 2px;
+  border-radius: 5px;
+}
+
+.item-edit-row > input:focus-visible,
+.item-edit-row select:focus-visible {
+  outline: 2px solid #286d58;
+  outline-offset: 1px;
+}
+
 .entry-input-wrap input::placeholder {
   color: #aeb9b2;
 }
@@ -463,11 +475,13 @@
     grid-column: 1;
     grid-row: 1;
     font-size: 10px;
+    min-height: 44px;
   }
 
   .yen-input {
     grid-column: 2;
     grid-row: 1;
+    min-height: 44px;
   }
 
   .item-edit-row select {
@@ -481,7 +495,7 @@
   .allocation-chip {
     grid-column: 2;
     grid-row: 2;
-    height: 23px;
+    min-height: 44px;
     font-size: 8px;
   }
 
@@ -496,7 +510,7 @@
   }
 
   .entry-input-wrap {
-    height: 34px;
+    height: 44px;
   }
 
   .name-wrap {

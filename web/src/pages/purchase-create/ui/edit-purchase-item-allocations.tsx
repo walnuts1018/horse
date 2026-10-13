@@ -30,7 +30,7 @@ export function EditPurchaseItemAllocations({
   return (
     <Popover.Root>
       <Popover.Trigger className="allocation-chip">
-        {allocationName()}
+        <span className="allocation-label">{allocationName()}</span>
         <ChevronDown size={12} />
       </Popover.Trigger>
       <Popover.Portal>

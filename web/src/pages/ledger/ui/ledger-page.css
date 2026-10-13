@@ -1,5 +1,5 @@
 .input-with-icon {
-  height: 38px;
+  min-height: 44px;
   width: min(350px, 55%);
   display: flex;
   align-items: center;
@@ -18,7 +18,13 @@
   min-width: 0;
   flex: 1;
   color: #526158;
-  font-size: 10px;
+  font-size: 14px;
+}
+
+.input-with-icon:focus-within {
+  border-color: #286d58;
+  outline: 3px solid rgb(40 109 88 / 24%);
+  outline-offset: 2px;
 }
 
 .input-with-icon input::placeholder {
@@ -28,7 +34,7 @@
 .record-count {
   margin-left: auto;
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .ledger-bulk-actions {
@@ -42,13 +48,13 @@
 
 .ledger-bulk-actions > span {
   color: #526258;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 
 .ledger-bulk-actions .button,
 .ledger-bulk-actions .text-button {
-  min-height: 34px;
+  min-height: 44px;
 }
 
 .ledger-bulk-allocations {
@@ -66,7 +72,7 @@
 .ledger-bulk-allocations legend,
 .ledger-bulk-allocations label {
   color: #526258;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .ledger-bulk-allocations label {
@@ -123,7 +129,7 @@
   min-height: 36px;
   border-top: 1px solid #f2f4f1;
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .expanded-item > .item-measure-details {
@@ -139,7 +145,7 @@
   min-height: 54px;
   border-bottom: 1px solid #edf1ed;
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .ledger-item-row .item-select {
@@ -157,7 +163,7 @@
 .expanded-item b {
   text-align: right;
   color: #526258;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .purchase-correction-entry {
@@ -168,11 +174,11 @@
   border-top: 1px solid #f2f4f1;
   padding: 8px 0;
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .purchase-correction-entry b {
-  font-size: 10px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -200,7 +206,7 @@
   display: grid;
   gap: 5px;
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .purchase-correction-form > b,
@@ -214,21 +220,21 @@
 
 .purchase-correction-form > span {
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .purchase-correction-form > label input,
 .purchase-correction-form > label select,
 .refund-payment-row > input,
 .refund-payment-row > select {
-  height: 34px;
+  min-height: 44px;
   min-width: 0;
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #fff;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .refund-payment-list {
@@ -259,12 +265,12 @@
 .expanded-item input,
 .expanded-item select {
   min-width: 0;
-  height: 34px;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--paper);
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .purchase-edit-form .edit-actions {
@@ -337,7 +343,7 @@
   .input-with-icon {
     width: 100%;
     flex: 1;
-    height: 35px;
+    min-height: 44px;
   }
 
   .record-count {

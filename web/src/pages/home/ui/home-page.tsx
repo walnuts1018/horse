@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { BookOpen, ChevronRight, Plus, ReceiptJapaneseYen, Upload, Wallet } from "lucide-react";
+import { BookOpen, ChevronRight, Plus, Upload, Wallet } from "lucide-react";
 import { type Household, type Purchase } from "../../../shared/api";
 import { EmptyState } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../entities/purchase";
@@ -74,7 +74,7 @@ export function HomePage({
   }, [household.id, currentMonth]);
   const nextDue = sum(settlement?.lines?.map((line) => line.amountDueYen) ?? []);
   return (
-    <>
+    <div className="home-page">
       <div className="welcome-row">
         <div>
           <span className="eyebrow">
@@ -97,42 +97,6 @@ export function HomePage({
           <Plus size={17} /> 買い物を追加
         </Link>
       </div>
-      <div className="quick-actions">
-        <Link
-          className="quick-card quick-main"
-          to="/households/$householdId/new"
-          params={{ householdId: household.id }}
-          search
-          onClick={onNavigateToPurchase}
-        >
-          <span className="quick-icon">
-            <ReceiptJapaneseYen />
-          </span>
-          <span>
-            <b>買い物を記録</b>
-          </span>
-          <ChevronRight />
-        </Link>
-        <Link
-          className="quick-card"
-          to="/households/$householdId/imports"
-          params={{ householdId: household.id }}
-          search
-        >
-          <span className="quick-icon quick-amber">
-            <Upload />
-          </span>
-          <span>
-            <b>レシートを取り込む</b>
-          </span>
-          <ChevronRight />
-        </Link>
-      </div>
-      <SetupGuidance
-        household={household}
-        purchaseCount={totalCount}
-        onNavigateToPurchase={onNavigateToPurchase}
-      />
       <div className="overview-grid">
         <section className="panel spend-panel">
           <div className="panel-heading">
@@ -185,6 +149,27 @@ export function HomePage({
           </Link>
         </section>
       </div>
+      <div className="quick-actions">
+        <Link
+          className="quick-card import-card"
+          to="/households/$householdId/imports"
+          params={{ householdId: household.id }}
+          search
+        >
+          <span className="quick-icon" aria-hidden="true">
+            <Upload />
+          </span>
+          <span>
+            <b>レシートを取り込む</b>
+          </span>
+          <ChevronRight aria-hidden="true" />
+        </Link>
+      </div>
+      <SetupGuidance
+        household={household}
+        purchaseCount={totalCount}
+        onNavigateToPurchase={onNavigateToPurchase}
+      />
       <div className="section-heading">
         <div>
           <span className="eyebrow">最近の記録</span>
@@ -223,7 +208,7 @@ export function HomePage({
             .map((purchase) => <PurchaseRow key={purchase.id} purchase={purchase} />)
         )}
       </section>
-    </>
+    </div>
   );
 }
 

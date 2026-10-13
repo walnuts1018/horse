@@ -406,7 +406,11 @@ export function App() {
             ログイン <ChevronRight size={18} />
           </a>
           {pendingInvitation && <p>ログイン後に招待を確認できます</p>}
-          {error && error !== "ログインして家計簿を開く" && <p className="inline-error">{error}</p>}
+          {error && error !== "ログインして家計簿を開く" && (
+            <p className="inline-error" role="alert">
+              {error}
+            </p>
+          )}
         </div>
       </main>
     );
@@ -427,7 +431,14 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${mobileMenu ? "sidebar-open" : ""}`}>
+      <a className="skip-link" href="#main-content">
+        メインコンテンツへ移動
+      </a>
+      <aside
+        className={`sidebar ${mobileMenu ? "sidebar-open" : ""}`}
+        id="primary-navigation"
+        aria-label="メインメニュー"
+      >
         <div className="sidebar-top">
           <Link
             className="brand"
@@ -452,6 +463,8 @@ export function App() {
           className="household-switch"
           type="button"
           onClick={() => setHouseholdMenu((open) => !open)}
+          aria-expanded={householdMenu}
+          aria-controls="household-menu"
         >
           <span className="household-avatar">{activeHousehold?.name?.slice(0, 1) ?? "家"}</span>
           <div className="household-name">
@@ -461,7 +474,7 @@ export function App() {
           <ChevronDown size={15} />
         </button>
         {householdMenu && households.length > 1 && (
-          <div className="household-menu">
+          <div className="household-menu" id="household-menu">
             {households.map((item) => (
               <button
                 key={item.id}
@@ -556,11 +569,13 @@ export function App() {
           onClick={() => setMobileMenu(false)}
         />
       )}
-      <main className="main-area">
+      <main className="main-area" id="main-content" tabIndex={-1}>
         <header className="topbar">
           <button
             className="icon-button menu-toggle"
             aria-label="メニューを開く"
+            aria-expanded={mobileMenu}
+            aria-controls="primary-navigation"
             onClick={() => setMobileMenu(true)}
           >
             <Menu size={20} />

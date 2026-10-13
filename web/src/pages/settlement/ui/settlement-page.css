@@ -1,7 +1,7 @@
 .settlement-hero {
-  border-radius: 16px;
+  border-radius: 9px;
   min-height: 166px;
-  background: linear-gradient(112deg, #1e6955, #2d8169);
+  background: #245e4e;
   padding: 26px 29px;
   color: #fff;
   display: flex;
@@ -13,17 +13,7 @@
 }
 
 .settlement-hero::after {
-  content: "";
-  position: absolute;
-  width: 260px;
-  height: 260px;
-  border: 1px solid #ffffff20;
-  border-radius: 50%;
-  right: 90px;
-  top: -120px;
-  box-shadow:
-    0 0 0 32px #ffffff08,
-    0 0 0 70px #ffffff06;
+  display: none;
 }
 
 .settlement-hero > div:first-child {
@@ -34,7 +24,7 @@
 .settlement-hero span,
 .settlement-hero small {
   color: #d4e8df;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .settlement-hero h2 {
@@ -86,12 +76,12 @@
 }
 
 .settlement-person b {
-  font-size: 11px;
+  font-size: 12px;
   color: #4f6056;
 }
 
 .settlement-person span {
-  font-size: 9px;
+  font-size: 12px;
   color: #5f6d65;
   margin-top: 5px;
 }
@@ -102,7 +92,7 @@
   gap: 3px 12px;
   margin: 7px 0 8px;
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .settlement-breakdown > div {
@@ -140,13 +130,13 @@
 .settlement-amount > small {
   display: block;
   color: #5f6d65;
-  font-size: 8px;
+  font-size: 12px;
   margin-top: 2px;
 }
 
 .settlement-amount .text-button {
   padding-right: 0;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .settlement-actions {
@@ -157,8 +147,8 @@
 }
 
 .settlement-actions .button {
-  height: 35px;
-  font-size: 10px;
+  min-height: 44px;
+  font-size: 12px;
 }
 
 .settlement-close-confirmation {
@@ -172,7 +162,7 @@
   padding: 8px 0;
   border-bottom: 1px solid #eff2ef;
   color: #4f6056;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .settlement-close-accept {
@@ -181,7 +171,7 @@
   gap: 8px;
   margin-top: 14px;
   color: #42544a;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .settlement-load-error {
@@ -225,7 +215,7 @@
   .settlement-breakdown {
     grid-template-columns: 1fr;
     gap: 3px;
-    font-size: 8px;
+    font-size: 12px;
     line-height: 1.45;
   }
 
@@ -234,13 +224,13 @@
   }
 
   .settlement-amount > small {
-    max-width: 74px;
-    font-size: 7px;
+    max-width: 92px;
+    font-size: 12px;
   }
 
   .settlement-actions .button {
-    height: 34px;
-    font-size: 9px;
+    min-height: 44px;
+    font-size: 12px;
     padding: 0 10px;
   }
 }
@@ -258,7 +248,7 @@
   .settlement-person span,
   .settlement-amount > small,
   .settlement-amount .text-button {
-    font-size: 10px;
+    font-size: 12px;
   }
 }
 
@@ -298,18 +288,18 @@
 }
 
 .funding-entry b {
-  font-size: 10px;
+  font-size: 12px;
   color: #536259;
 }
 
 .funding-entry small {
-  font-size: 9px;
+  font-size: 12px;
   color: #5f6d65;
   margin-top: 4px;
 }
 
 .funding-entry strong {
-  font-size: 10px;
+  font-size: 12px;
   color: #506157;
 }
 
@@ -342,13 +332,13 @@
 
 .loan-balance-row b {
   color: #53675a;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .loan-balance-row small {
   margin-top: 4px;
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .loan-balance-row strong {
@@ -378,6 +368,6 @@
   }
 
   .funding-entry small {
-    font-size: 10px;
+    font-size: 12px;
   }
 }
