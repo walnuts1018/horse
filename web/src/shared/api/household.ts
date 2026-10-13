@@ -409,10 +409,7 @@ export function getRelayEnvironment() {
                     data?: { purchaseChanges?: { cursor?: string } };
                   };
                   if (result.errors?.length)
-                    throw new ApiError(
-                      result.errors[0].message,
-                      result.errors[0].extensions?.code,
-                    );
+                    throw new ApiError(result.errors[0].message, result.errors[0].extensions?.code);
                   if (result.data?.purchaseChanges?.cursor)
                     after = result.data.purchaseChanges.cursor;
                   sink.next(result);
