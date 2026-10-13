@@ -268,13 +268,15 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 
 ### 2026年10月14日の複数明細抽出とメール添付
 
-カード・銀行明細のPDF・画像をsourceKind別のGemini schemaで`transactions[]`として抽出します。Go側で符号付き金額、RFC3339日時、取引種別、各行の原本領域を検証し、独立OCRと利用先・金額・未抽出行候補が一致しない場合は未確定にします。メール添付のPDF・JPEG・PNG・WebPは親メールとは別のsource documentとjobにし、家庭境界付きの親子relationを親jobと同じDB transactionへ保存します。DB登録後にqueueへ通知し、同一jobの競合登録では保存済みjob IDを返します。添付のみのメール本文は親jobでGeminiを呼ばず、添付ごとの解析を継続します。TestcontainersのPostgreSQL 18によるAPI統合テスト、`go test ./internal/ingestion`、`git diff --check`が成功しました。sourceKind選択を含むFrontend操作と公開環境での確認は未完了のため、`docs/reviews/all2.md`から指摘はまだ削除しません。
+カード・銀行明細のPDF・画像をsourceKind別のGemini schemaで`transactions[]`として抽出します。Go側で符号付き金額、RFC3339日時、取引種別、各行の原本領域を検証し、独立OCRと利用先・金額・未抽出行候補が一致しない場合は未確定にします。メール添付のPDF・JPEG・PNG・WebPは親メールとは別のsource documentとjobにし、家庭境界付きの親子relationを親jobと同じDB transactionへ保存します。DB登録後にqueueへ通知し、同一jobの競合登録では保存済みjob IDを返します。添付のみのメール本文は親jobでGeminiを呼ばず、添付ごとの解析を継続します。添付文書の再解析画面からカード・銀行明細を選択でき、確認・証拠登録済み文書では再分類操作を表示しません。APIは文書一覧の`hasEvidence`をBob DSLでまとめて取得します。TestcontainersのPostgreSQL 18によるAPI統合テスト、`go test ./internal/ingestion`、Frontend対象テスト、型検査、FSD検査、`git diff --check`が成功しました。sourceKind選択UIの指摘を`docs/reviews/all2.md`から削除しました。
 
 ### 2026年10月14日のGemini無料枠再試行
 
 無料Projectで429が返った場合に有料Projectへ即時に切り替えず、Gemini APIの`Retry-After`をWorkerの既存job再試行へ渡します。429では有料Clientが呼ばれないこと、一時的な503では従来どおり有料へフォールバックすること、再試行遅延が保たれることを`go test ./internal/ingestion`で確認しました。関連する429の指摘を`docs/reviews/gemini.md`から削除しました。
 
-品質再検証は初回抽出の成功Projectを引き継がず、無料Projectだけを使います。初回抽出が有料へフォールバックした後に品質再検証の無料APIが429を返した場合、Workerは再検証結果を採用せず初回結果を維持し、有料APIを重ねて呼びません。税額や合計の重大な不整合に対する既存のPro昇格条件は維持します。Project routeが有料の前回結果から品質再検証を開始し、無料429後にPaid APIを呼ばないことをRouterテストで確認しました。解消した指摘を`docs/reviews/gemini.md`から削除しました。
+品質再検証は初回抽出の成功Projectを引き継がず、無料Projectだけを使います。初回抽出が有料へフォールバックした後に品質再検証の無料APIが429または一時的な5xxを返した場合、Workerは再検証結果を採用せず初回結果を維持し、品質再検証からPaidへのfallbackを行いません。税額や合計の重大な不整合に対する既存のPro昇格条件は維持します。Project routeが有料の前回結果から品質再検証を開始し、無料429・5xx後に品質再検証がPaid APIを呼ばないことをRouterテストで確認しました。解消した指摘を`docs/reviews/gemini.md`から削除しました。
+
+email/order_emailの無料Liteモデルが429を返した場合だけ、同一無料ProjectのFlashモデルを試します。無料Flashの429ではRetry-Afterを維持してPaidへ切り替えず、一時的な5xxでは既存のfallback方針に従い有料Flashを試します。レシートのFlashからLiteへのfallbackは行いません。Router統合テストで無料Flash成功、429後の再試行、有料Flash成功の各経路について、呼出し数、モデル、Project route、Reason、retry delay、費用記録を確認しました。残るモデル横断routingの制限を`docs/reviews/gemini.md`に記載しました。
 
 ### Gemini失敗呼び出しの利用量記録
 

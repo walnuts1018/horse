@@ -12,13 +12,19 @@ import (
 	"time"
 )
 
-const testFreeGeminiAPIKey = "free-test-key"
+const (
+	testFreeGeminiAPIKey = "free-test-key"
+	testRateLimitedCode  = "rate_limited"
+)
 
 func TestGeminiRouterRetriesQuotaOnFreeRouteBeforeUsingPaid(t *testing.T) {
 	t.Parallel()
 	freeCalls := 0
 	freeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		freeCalls++
+		if !strings.Contains(r.URL.Path, ModelReceipt+":generateContent") {
+			t.Errorf("receipt quota fallback must keep the receipt model: %s", r.URL.Path)
+		}
 		if r.Header.Get("x-goog-api-key") != testFreeGeminiAPIKey {
 			t.Errorf("free route used unexpected API key")
 		}
@@ -49,7 +55,7 @@ func TestGeminiRouterRetriesQuotaOnFreeRouteBeforeUsingPaid(t *testing.T) {
 	if freeCalls != 1 || paidCalls != 0 || len(runs) != 1 {
 		t.Fatalf("quota response must not immediately use paid route: free=%d paid=%d runs=%#v", freeCalls, paidCalls, runs)
 	}
-	if runs[0].Route != ProjectFree || runs[0].ErrorCode != "rate_limited" || runs[0].Status != extractionStatusFailed {
+	if runs[0].Route != ProjectFree || runs[0].ErrorCode != testRateLimitedCode || runs[0].Status != extractionStatusFailed {
 		t.Fatalf("run routing metadata is incomplete: %#v", runs)
 	}
 	if runs[0].PromptVersion != PromptVersion || runs[0].PriceTableVersion != GeminiPriceTableVersion || runs[0].PriceEstimateStatus != "unavailable_failed_run" {
@@ -57,6 +63,124 @@ func TestGeminiRouterRetriesQuotaOnFreeRouteBeforeUsingPaid(t *testing.T) {
 	}
 	if got := retryDelay(err, 1); got != 3*time.Second {
 		t.Fatalf("worker retry delay = %s, want Retry-After 3s", got)
+	}
+}
+
+func TestGeminiRouterEmailLiteQuotaUsesFreeFlashBeforePaid(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name            string
+		flashStatus     int
+		wantPaidCalls   int
+		wantRuns        int
+		wantErrorKind   GeminiFailureKind
+		wantRetryAfter  time.Duration
+		wantFinalRoute  string
+		wantFinalModel  string
+		wantFinalReason string
+	}{
+		{name: "free flash succeeds", flashStatus: http.StatusOK, wantRuns: 2, wantFinalRoute: ProjectFree, wantFinalModel: ModelReceipt, wantFinalReason: geminiReasonInitialExtraction},
+		{name: "free flash quota retries without paid", flashStatus: http.StatusTooManyRequests, wantRuns: 2, wantErrorKind: GeminiFailureQuota, wantRetryAfter: 11 * time.Second, wantFinalRoute: ProjectFree, wantFinalModel: ModelReceipt, wantFinalReason: "free_flash_quota_retry"},
+		{name: "free flash temporary failure falls back to paid flash", flashStatus: http.StatusServiceUnavailable, wantPaidCalls: 1, wantRuns: 3, wantFinalRoute: ProjectPaid, wantFinalModel: ModelReceipt, wantFinalReason: geminiReasonInitialExtraction},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			freeLiteCalls, freeFlashCalls, paidCalls := 0, 0, 0
+			free := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.Contains(r.URL.Path, ModelEmail+":generateContent"):
+					freeLiteCalls++
+					w.Header().Set("Retry-After", "2")
+					w.WriteHeader(http.StatusTooManyRequests)
+					_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"lite quota"}}`)
+				case strings.Contains(r.URL.Path, ModelReceipt+":generateContent"):
+					freeFlashCalls++
+					if test.flashStatus == http.StatusOK {
+						writeGeminiSuccess(w, `{"merchant":"Shop","purchasedAt":"","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
+						return
+					}
+					if test.flashStatus == http.StatusTooManyRequests {
+						w.Header().Set("Retry-After", "11")
+					}
+					w.WriteHeader(test.flashStatus)
+					_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"flash unavailable"}}`)
+				default:
+					t.Errorf("unexpected free model path: %s", r.URL.Path)
+					http.Error(w, "unexpected model", http.StatusBadRequest)
+				}
+			}))
+			defer free.Close()
+			paid := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				paidCalls++
+				if !strings.Contains(r.URL.Path, ModelReceipt+":generateContent") {
+					t.Errorf("paid fallback used unexpected model: %s", r.URL.Path)
+				}
+				writeGeminiSuccess(w, `{"merchant":"Shop","purchasedAt":"","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
+			}))
+			defer paid.Close()
+			router := GeminiRouter{
+				Free:       Gemini{APIKey: testFreeGeminiAPIKey, Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
+				Paid:       Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
+				USDJPYRate: 150,
+			}
+			receipt, runs, err := router.Generate(t.Context(), "order_email", Document{MIMEType: mimeTypePlainText, Data: []byte("Order confirmation")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive, Reason: geminiReasonInitialExtraction})
+			if freeLiteCalls != 1 || freeFlashCalls != 1 || paidCalls != test.wantPaidCalls || len(runs) != test.wantRuns {
+				t.Fatalf("unexpected route attempts: lite=%d free-flash=%d paid=%d runs=%#v", freeLiteCalls, freeFlashCalls, paidCalls, runs)
+			}
+			if runs[0].Route != ProjectFree || runs[0].Model != ModelEmail || runs[0].ErrorCode != testRateLimitedCode || runs[0].Reason != "free_quota_model_fallback" {
+				t.Fatalf("lite quota run metadata is wrong: %#v", runs[0])
+			}
+			last := runs[len(runs)-1]
+			if last.Route != test.wantFinalRoute || last.Model != test.wantFinalModel || last.Reason != test.wantFinalReason {
+				t.Fatalf("final run metadata is wrong: %#v", last)
+			}
+			if test.wantErrorKind != "" {
+				apiErr, ok := errors.AsType[*GeminiAPIError](err)
+				if !ok || apiErr.Kind != test.wantErrorKind || apiErr.RetryAfter != test.wantRetryAfter || last.ErrorCode != testRateLimitedCode {
+					t.Fatalf("flash quota error must preserve its retry delay: run=%#v error=%v", last, err)
+				}
+				return
+			}
+			if err != nil || receipt.Model != ModelReceipt || last.Status != extractionStatusSucceeded {
+				t.Fatalf("fallback extraction failed or used wrong model: receipt=%#v run=%#v error=%v", receipt, last, err)
+			}
+			if test.wantFinalRoute == ProjectFree {
+				if last.PriceEstimateStatus != "free_tier" || last.EstimatedJPY != 0 {
+					t.Fatalf("free fallback was recorded as paid: %#v", last)
+				}
+			} else if last.PriceEstimateStatus != "estimated_paid" || last.EstimatedJPY <= 0 {
+				t.Fatalf("paid fallback cost was not recorded: %#v", last)
+			}
+		})
+	}
+}
+
+func TestGeminiRouterDoesNotApplyEmailFallbackToOtherSourceKinds(t *testing.T) {
+	t.Parallel()
+	var calls int
+	free := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if !strings.Contains(r.URL.Path, ModelEmail+":generateContent") {
+			t.Errorf("explicit model override was not preserved: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"rate limit"}}`)
+	}))
+	defer free.Close()
+	var paidCalls int
+	paid := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		paidCalls++
+		writeGeminiSuccess(w, `{"merchant":"Shop","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
+	}))
+	defer paid.Close()
+	router := GeminiRouter{
+		Free: Gemini{APIKey: testFreeGeminiAPIKey, Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
+		Paid: Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
+	}
+	_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypePlainText, Data: []byte("synthetic text")}, nil, GeminiRouteOptions{Model: ModelEmail})
+	apiErr, ok := errors.AsType[*GeminiAPIError](err)
+	if !ok || apiErr.Kind != GeminiFailureQuota || calls != 1 || paidCalls != 0 || len(runs) != 1 || runs[0].Model != ModelEmail {
+		t.Fatalf("email model fallback escaped its source kind: calls=%d paid=%d runs=%#v error=%v", calls, paidCalls, runs, err)
 	}
 }
 
@@ -242,34 +366,49 @@ func TestGeminiQualityReviewAddsEvidenceAndChangesRequest(t *testing.T) {
 	}
 }
 
-func TestGeminiQualityReviewDoesNotRepeatPaidRouteAfterFreeQuota(t *testing.T) {
+func TestGeminiQualityReviewDoesNotRepeatPaidRouteAfterFreeFailure(t *testing.T) {
 	t.Parallel()
-	freeCalls := 0
-	free := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		freeCalls++
-		w.Header().Set("Retry-After", "5")
-		w.WriteHeader(http.StatusTooManyRequests)
-		_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"rate limit"}}`)
-	}))
-	defer free.Close()
-	paidCalls := 0
-	paid := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		paidCalls++
-		writeGeminiSuccess(w, `{"merchant":"Shop","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
-	}))
-	defer paid.Close()
-	router := GeminiRouter{
-		Free: Gemini{APIKey: testFreeGeminiAPIKey, Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
-		Paid: Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
-	}
-	options := router.QualityOptions("receipt", ExtractionRun{Model: ModelReceipt, Route: ProjectPaid}, []string{"tax total mismatch"})
-	_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("synthetic image")}, nil, options)
-	apiErr, ok := errors.AsType[*GeminiAPIError](err)
-	if !ok || apiErr.Kind != GeminiFailureQuota || apiErr.RetryAfter != 5*time.Second {
-		t.Fatalf("quality review must preserve the free quota error: error=%v", err)
-	}
-	if !options.FreeOnly || options.ProjectPreferred != ProjectFree || freeCalls != 1 || paidCalls != 0 || len(runs) != 1 || runs[0].Route != ProjectFree {
-		t.Fatalf("paid initial extraction must not cause a duplicate paid quality call: options=%#v free=%d paid=%d runs=%#v", options, freeCalls, paidCalls, runs)
+	for _, test := range []struct {
+		name      string
+		status    int
+		wantKind  GeminiFailureKind
+		wantDelay time.Duration
+	}{
+		{name: "quota", status: http.StatusTooManyRequests, wantKind: GeminiFailureQuota, wantDelay: 5 * time.Second},
+		{name: "temporary failure", status: http.StatusServiceUnavailable, wantKind: GeminiFailureTemporary},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			freeCalls := 0
+			free := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				freeCalls++
+				if test.status == http.StatusTooManyRequests {
+					w.Header().Set("Retry-After", "5")
+				}
+				w.WriteHeader(test.status)
+				_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"provider unavailable"}}`)
+			}))
+			defer free.Close()
+			paidCalls := 0
+			paid := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				paidCalls++
+				writeGeminiSuccess(w, `{"merchant":"Shop","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
+			}))
+			defer paid.Close()
+			router := GeminiRouter{
+				Free: Gemini{APIKey: testFreeGeminiAPIKey, Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
+				Paid: Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
+			}
+			options := router.QualityOptions("receipt", ExtractionRun{Model: ModelReceipt, Route: ProjectPaid}, []string{"tax total mismatch"})
+			_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("synthetic image")}, nil, options)
+			apiErr, ok := errors.AsType[*GeminiAPIError](err)
+			if !ok || apiErr.Kind != test.wantKind || apiErr.RetryAfter != test.wantDelay {
+				t.Fatalf("quality review must preserve the free error: error=%v", err)
+			}
+			if !options.FreeOnly || options.ProjectPreferred != ProjectFree || freeCalls != 1 || paidCalls != 0 || len(runs) != 1 || runs[0].Route != ProjectFree {
+				t.Fatalf("paid initial extraction must not cause a duplicate paid quality call: options=%#v free=%d paid=%d runs=%#v", options, freeCalls, paidCalls, runs)
+			}
+		})
 	}
 }
 

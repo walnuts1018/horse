@@ -110,10 +110,8 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	}
 	free := r.Free
 	free.ProjectRoute = ProjectFree
-	free.Model = model
 	paid := r.Paid
 	paid.ProjectRoute = ProjectPaid
-	paid.Model = model
 	clients := []Gemini{free, paid}
 	if options.FreeOnly {
 		clients = []Gemini{free}
@@ -123,29 +121,59 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	if options.PaidOnly {
 		clients = []Gemini{paid}
 	}
+	emailSource := r.modelForSource(sourceKind, document.MIMEType) == r.emailModel()
 	runs := make([]ExtractionRun, 0, 2)
 	for index, client := range clients {
 		if client.APIKey == "" {
 			continue
 		}
-		if client.ProjectRoute == ProjectPaid {
-			inputPrice, outputPrice := modelPrices(client.Model, 0, time.Now())
-			if inputPrice == 0 && outputPrice == 0 {
-				return Receipt{}, runs, &GeminiAPIError{Kind: GeminiFailureRejected, Code: geminiFailureUnknownModelPrice}
-			}
+		receipt, run, err := r.extractWithClient(ctx, client, model, thinking, tier, sourceKind, document, hints, options)
+		if run.Model != "" {
+			runs = append(runs, run)
 		}
-		client.USDJPYRate = r.USDJPYRate
-		client.USDJPYRateSource = r.USDJPYRateSource
-		client.USDJPYRateAsOf = r.USDJPYRateAsOf
-		routeTier := geminiServiceTierStandard
-		if client.ProjectRoute == ProjectPaid {
-			routeTier = tier
-		}
-		receipt, run, err := client.ExtractRun(ctx, document, hints, GeminiRequestOptions{ThinkingLevel: thinking, ServiceTier: routeTier, Guidance: options.Guidance, Reason: options.Reason, SourceKind: sourceKind})
-		runs = append(runs, run)
 		if err == nil {
 			runs[len(runs)-1].Receipt = &receipt
 			return receipt, runs, nil
+		}
+		if index == 0 && client.ProjectRoute == ProjectFree && emailSource && model == r.emailModel() && r.flashModel() != model {
+			apiErr, ok := errors.AsType[*GeminiAPIError](err)
+			if ok && apiErr.Kind == GeminiFailureQuota {
+				runs[len(runs)-1].Reason = "free_quota_model_fallback"
+				flashFree := free
+				flashReceipt, flashRun, flashErr := r.extractWithClient(ctx, flashFree, r.flashModel(), thinking, tier, sourceKind, document, hints, options)
+				if flashRun.Model != "" {
+					runs = append(runs, flashRun)
+				}
+				if flashErr == nil {
+					runs[len(runs)-1].Receipt = &flashReceipt
+					return flashReceipt, runs, nil
+				}
+				if flashErrAPI, ok := errors.AsType[*GeminiAPIError](flashErr); ok && flashErrAPI.Kind == GeminiFailureQuota {
+					runs[len(runs)-1].Reason = "free_flash_quota_retry"
+					return Receipt{}, runs, flashErr
+				}
+				if options.FreeOnly || !shouldFallbackToPaid(flashErr) {
+					return Receipt{}, runs, flashErr
+				}
+				if err := ctx.Err(); err != nil {
+					return Receipt{}, runs, err
+				}
+				if len(runs) > 1 {
+					runs[len(runs)-1].Reason = "free_transient_fallback"
+				}
+				if paid.APIKey == "" {
+					return Receipt{}, runs, flashErr
+				}
+				paidReceipt, paidRun, paidErr := r.extractWithClient(ctx, paid, r.flashModel(), thinking, tier, sourceKind, document, hints, options)
+				if paidRun.Model != "" {
+					runs = append(runs, paidRun)
+				}
+				if paidErr != nil {
+					return Receipt{}, runs, paidErr
+				}
+				runs[len(runs)-1].Receipt = &paidReceipt
+				return paidReceipt, runs, nil
+			}
 		}
 		if index != 0 || client.ProjectRoute != ProjectFree || options.FreeOnly || !shouldFallbackToPaid(err) {
 			return Receipt{}, runs, err
@@ -165,6 +193,24 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 		return Receipt{}, runs, errors.New("Gemini free route failed without paid fallback")
 	}
 	return Receipt{}, runs, errors.New("Gemini API key is not configured")
+}
+
+func (r GeminiRouter) extractWithClient(ctx context.Context, client Gemini, model, thinking, tier, sourceKind string, document Document, hints []HistoryHint, options GeminiRouteOptions) (Receipt, ExtractionRun, error) {
+	client.Model = model
+	if client.ProjectRoute == ProjectPaid {
+		inputPrice, outputPrice := modelPrices(client.Model, 0, time.Now())
+		if inputPrice == 0 && outputPrice == 0 {
+			return Receipt{}, ExtractionRun{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: geminiFailureUnknownModelPrice}
+		}
+	}
+	client.USDJPYRate = r.USDJPYRate
+	client.USDJPYRateSource = r.USDJPYRateSource
+	client.USDJPYRateAsOf = r.USDJPYRateAsOf
+	routeTier := geminiServiceTierStandard
+	if client.ProjectRoute == ProjectPaid {
+		routeTier = tier
+	}
+	return client.ExtractRun(ctx, document, hints, GeminiRequestOptions{ThinkingLevel: thinking, ServiceTier: routeTier, Guidance: options.Guidance, Reason: options.Reason, SourceKind: sourceKind})
 }
 
 func (r GeminiRouter) QualityOptions(sourceKind string, previous ExtractionRun, guidance []string) GeminiRouteOptions {

@@ -54,6 +54,7 @@ type documentResponse struct {
 	Result           any                       `json:"result,omitempty"`
 	CreatedAt        time.Time                 `json:"createdAt"`
 	Confirmations    []documentConfirmation    `json:"confirmations"`
+	HasEvidence      bool                      `json:"hasEvidence"`
 	Attachments      []documentAttachment      `json:"attachments,omitempty"`
 	AttachmentParent *documentAttachmentParent `json:"attachmentParent,omitempty"`
 }
@@ -521,6 +522,10 @@ func (s *Server) document(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document confirmation lookup failed", http.StatusInternalServerError)
 		return
 	}
+	if err := loadDocumentEvidence(r.Context(), bobpgx.NewPool(s.db), &result); err != nil {
+		http.Error(w, "document evidence lookup failed", http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -548,6 +553,35 @@ func (s *Server) loadDocumentConfirmations(ctx context.Context, document *docume
 		document.Confirmations = append(document.Confirmations, documentConfirmation{
 			SourceReference: confirmation.SourceReference, PurchaseID: confirmation.PurchaseID.String(),
 		})
+	}
+	return nil
+}
+
+func loadDocumentEvidence(ctx context.Context, exec bob.Executor, documents ...*documentResponse) error {
+	ids := make([]bob.Expression, 0, len(documents))
+	for _, document := range documents {
+		id, err := gofrsuuid.FromString(document.ID)
+		if err != nil {
+			return err
+		}
+		ids = append(ids, psql.Arg(id))
+		document.HasEvidence = false
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	links, err := models.EvidenceLinks.Query(sm.Where(models.EvidenceLinks.Columns.SourceDocumentID.In(ids...))).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+	evidenced := make(map[string]struct{}, len(links))
+	for _, link := range links {
+		evidenced[link.SourceDocumentID.String()] = struct{}{}
+	}
+	for _, document := range documents {
+		if _, ok := evidenced[document.ID]; ok {
+			document.HasEvidence = true
+		}
 	}
 	return nil
 }
@@ -656,6 +690,14 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "document confirmation lookup failed", http.StatusInternalServerError)
 			return
 		}
+	}
+	documentResults := make([]*documentResponse, len(result))
+	for i := range result {
+		documentResults[i] = &result[i]
+	}
+	if err := loadDocumentEvidence(r.Context(), bobpgx.NewPool(s.db), documentResults...); err != nil {
+		http.Error(w, "document evidence lookup failed", http.StatusInternalServerError)
+		return
 	}
 	hasMore := len(result) > limit
 	if hasMore {

@@ -468,6 +468,26 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if response := confirm(0); response.Code != http.StatusOK {
 		t.Fatalf("evidence link failed: %d %s", response.Code, response.Body.String())
 	}
+	documentsRequest = httptest.NewRequest(http.MethodGet, "/documents?householdId="+householdID, nil)
+	documentsRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	documentsResponse = httptest.NewRecorder()
+	server.ServeHTTP(documentsResponse, documentsRequest)
+	var listedDocuments struct {
+		Documents []documentResponse `json:"documents"`
+	}
+	if documentsResponse.Code != http.StatusOK || json.Unmarshal(documentsResponse.Body.Bytes(), &listedDocuments) != nil {
+		t.Fatalf("document evidence list failed: status=%d body=%s", documentsResponse.Code, documentsResponse.Body.String())
+	}
+	var foundEvidence bool
+	for _, listed := range listedDocuments.Documents {
+		if listed.ID == documentID {
+			foundEvidence = listed.HasEvidence
+			break
+		}
+	}
+	if !foundEvidence {
+		t.Fatalf("document list did not report confirmed evidence: %s", documentsResponse.Body.String())
+	}
 	secondDocumentID, secondJobID := uuid.NewV7().String(), uuid.NewV7().String()
 	secondDocumentUUID, secondJobUUID := mustIntegrationUUID(t, secondDocumentID), mustIntegrationUUID(t, secondJobID)
 	secondHash, secondObjectKey, cardSource := "access-test:"+secondDocumentID, householdID+"/originals/"+secondDocumentID, "card"
