@@ -288,7 +288,7 @@ MAX_TOKENSや不正生成JSONでGemini呼び出しに失敗した場合も、応
 
 ### メール添付の明細種別と予算一覧
 
-`POST /documents/{id}/retry`は同一householdの未確定メール添付に限り、sourceKindをカード・銀行明細へ変更して再解析できます。sourceKind変更とjob登録は同一transactionで処理し、queued jobでは既存IDを再通知します。running、親メール、非添付、確認・証拠登録済み文書の再分類は拒否します。予算一覧は対象月の購入、品目、訂正をBob DSLで一括取得し、全体額・カテゴリ別額を集計することで予算・購入ごとのN+1を解消しました。統合テストで処理結果とメンバー認可を確認しました。添付のsourceKind選択UIは未完了のためレビュー項目を残します。
+`POST /documents/{id}/retry`は同一householdの未確定メール添付に限り、sourceKindをカード・銀行明細へ変更して再解析できます。sourceKind変更とjob登録は同一transactionで処理し、queued jobでは既存IDを再通知します。running、親メール、非添付、確認・証拠登録済み文書の再分類は拒否します。予算一覧は対象月の購入、品目、訂正をBob DSLで一括取得し、全体額・カテゴリ別額を集計することで予算・購入ごとのN+1を解消しました。統合テストで処理結果とメンバー認可を確認しました。
 
 ### 2026年10月14日のUI再レビュー対応
 
