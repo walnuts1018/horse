@@ -73,7 +73,7 @@ func TestSettlementRejectsPostedPurchasePaidFromAccountWithoutPool(t *testing.T)
 	if _, err := mutation.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
-	account, err := mutation.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Unassigned card", Kind: model.AccountKindCard, PoolID: &pool.ID})
+	account, err := mutation.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Unassigned card", Kind: model.AccountKindCard})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,16 +102,25 @@ func TestSettlementRejectsPostedPurchasePaidFromAccountWithoutPool(t *testing.T)
 	}
 	firstLineNo, secondLineNo := int32(1), int32(2)
 	firstAmount, secondAmount := int64(50), int64(50)
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(context.Background())
+	executor := bobpgx.NewTx(tx, nil)
 	if _, err := models.PurchasePayments.Update((&models.PurchasePaymentSetter{AmountYen: &firstAmount}).UpdateMod(), um.Where(psql.And(
 		models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
 		models.PurchasePayments.Columns.LineNo.EQ(psql.Arg(firstLineNo)),
-	))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+	))).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := models.PurchasePayments.Insert(&models.PurchasePaymentSetter{
 		HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, LineNo: &secondLineNo, AccountID: &accountUUID, AmountYen: &secondAmount,
-	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+	}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
 
