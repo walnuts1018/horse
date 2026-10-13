@@ -4,7 +4,7 @@
 
 ## 画面固有CSSと重要な処理の境界
 
-[global.css](../../web/src/app/styles/global.css)は2,539行あり、画面固有規則が残ります。分析・購入登録・帳簿・取り込み・口座残高履歴の固有stylesheetへの移行は完了し、残りの規則も所有するpage sliceへ分離する必要があります。Vitestとfast-checkは導入済みで、Ledger検索条件のproperty testがあります。購入データ変換やOutboxなど重要な処理のテストはまだありません。
+[global.css](../../web/src/app/styles/global.css)は2,539行あり、画面固有規則が残ります。分析・購入登録・帳簿・取り込み・口座残高履歴の固有stylesheetへの移行は完了し、残りの規則も所有するpage sliceへ分離する必要があります。Vitestとfast-checkでLedger検索条件と購入品目変換のproperty testを実行します。送信待ち購入のOutbox復元・再送の主要な純粋処理にはテストがありません。
 
 ## GraphQLの購入読み込み範囲
 

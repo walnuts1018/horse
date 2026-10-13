@@ -1,7 +1,8 @@
 import { useRef, useState, type FormEvent } from "react";
 import { makeIdempotencyKey, type Household } from "../../../shared/api";
-import { enqueuePurchase, parseQuantity, type PurchaseDraftItem } from "../../../shared/lib";
+import { enqueuePurchase, type PurchaseDraftItem } from "../../../shared/lib";
 import type { PaymentDraft } from "./purchase-payments";
+import { convertPurchaseItems } from "./purchase-items";
 
 export function usePurchaseSubmission({
   household,
@@ -66,25 +67,7 @@ export function usePurchaseSubmission({
           paymentAccountId: payment.paymentAccountId,
           amountYen: paymentAmount(payment),
         })),
-        items: items.map((item) => {
-          const quantity = parseQuantity(item.quantity ?? "", item.quantityUnit ?? "");
-          return {
-            name: item.name,
-            amountYen: Number(item.amount),
-            categoryId: item.categoryId || null,
-            allocations: item.allocations.length
-              ? item.allocations.filter((allocation) => allocation.weight > 0)
-              : null,
-            productVariantId: item.productVariantId || null,
-            ...(quantity
-              ? {
-                  quantityNumerator: quantity.numerator,
-                  quantityDenominator: quantity.denominator,
-                  quantityUnit: quantity.unit,
-                }
-              : {}),
-          };
-        }),
+        items: convertPurchaseItems(items),
       });
       onSaved();
       onQueued(idempotencyKey);
