@@ -541,9 +541,11 @@ export function SettingsPage({
     setPending(true);
     try {
       await readGraphql(archiveTagMutation, {
-        tagId: tag.id,
-        baseRevision: tag.revision,
-        archived: !tag.archived,
+        input: {
+          tagId: tag.id,
+          baseRevision: tag.revision,
+          archived: !tag.archived,
+        },
       });
       await refreshPlanning();
       onNotice(tag.archived ? "タグを再表示しました" : "タグを非表示にしました");
@@ -597,9 +599,11 @@ export function SettingsPage({
     setPending(true);
     try {
       await readGraphql(archiveBudgetMutation, {
-        budgetId: budget.id,
-        baseRevision: budget.revision,
-        archived: !budget.archived,
+        input: {
+          budgetId: budget.id,
+          baseRevision: budget.revision,
+          archived: !budget.archived,
+        },
       });
       await refreshPlanning();
       onNotice(budget.archived ? "予算を再表示しました" : "予算を非表示にしました");
@@ -660,9 +664,11 @@ export function SettingsPage({
     setPending(true);
     try {
       await readGraphql(archiveRecurringExpenseMutation, {
-        expenseId: expense.id,
-        baseRevision: expense.revision,
-        archived: !expense.archived,
+        input: {
+          expenseId: expense.id,
+          baseRevision: expense.revision,
+          archived: !expense.archived,
+        },
       });
       await refreshPlanning();
       onNotice(expense.archived ? "定期支出を再表示しました" : "定期支出を終了しました");
@@ -835,7 +841,7 @@ export function SettingsPage({
   const archiveCategory = async (categoryId: string, archived: boolean) => {
     setPending(true);
     try {
-      await readGraphql(setCategoryArchivedMutation, { categoryId, archived });
+      await readGraphql(setCategoryArchivedMutation, { input: { categoryId, archived } });
       await onRefresh();
       onNotice(archived ? "カテゴリを非表示にしました" : "カテゴリを再表示しました");
     } catch (reason) {
@@ -905,8 +911,10 @@ export function SettingsPage({
     setPending(true);
     try {
       await readGraphql(revokeHouseholdInvitationMutation, {
-        householdId: household.id,
-        invitationId,
+        input: {
+          householdId: household.id,
+          invitationId,
+        },
       });
       if (invitationId === issuedInvitationId) {
         setInvitationLink("");

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<45fde8ac7a401f2c0df11f3ac9e06046>>
+ * @generated SignedSource<<32aa2d25bf02054763beb16f355bf489>>
  * @lightSyntaxTransform
  */
 
@@ -10,10 +10,13 @@
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type PurchaseStatus = "CLOSED" | "DRAFT" | "POSTED" | "%future added value";
-export type PostPurchaseMutation$variables = {
+export type PostPurchaseInput = {
   expectedRevision: number;
   idempotencyKey: string;
   purchaseId: string;
+};
+export type PostPurchaseMutation$variables = {
+  input: PostPurchaseInput;
 };
 export type PostPurchaseMutation$data = {
   readonly postPurchase: {
@@ -33,39 +36,21 @@ export type PostPurchaseMutation = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "expectedRevision"
-},
-v1 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "idempotencyKey"
-},
-v2 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "purchaseId"
-},
-v3 = [
+var v0 = [
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "input"
+  }
+],
+v1 = [
   {
     "alias": null,
     "args": [
       {
         "kind": "Variable",
-        "name": "expectedRevision",
-        "variableName": "expectedRevision"
-      },
-      {
-        "kind": "Variable",
-        "name": "idempotencyKey",
-        "variableName": "idempotencyKey"
-      },
-      {
-        "kind": "Variable",
-        "name": "purchaseId",
-        "variableName": "purchaseId"
+        "name": "input",
+        "variableName": "input"
       }
     ],
     "concreteType": null,
@@ -146,40 +131,32 @@ v3 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": [
-      (v0/*:: as any*/),
-      (v1/*:: as any*/),
-      (v2/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
     "name": "PostPurchaseMutation",
-    "selections": (v3/*:: as any*/),
+    "selections": (v1/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": [
-      (v2/*:: as any*/),
-      (v0/*:: as any*/),
-      (v1/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "PostPurchaseMutation",
-    "selections": (v3/*:: as any*/)
+    "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "c70c4b4c41ef05f8a22d62892c75326b",
+    "cacheID": "30cab2d3e3cbcc2d114d172cd75b58a2",
     "id": null,
     "metadata": {},
     "name": "PostPurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation PostPurchaseMutation(\n  $purchaseId: ID!\n  $expectedRevision: Int!\n  $idempotencyKey: String!\n) {\n  postPurchase(purchaseId: $purchaseId, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) {\n    __typename\n    ... on PostPurchaseSuccess {\n      result {\n        id\n        revision\n        status\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation PostPurchaseMutation(\n  $input: PostPurchaseInput!\n) {\n  postPurchase(input: $input) {\n    __typename\n    ... on PostPurchaseSuccess {\n      result {\n        id\n        revision\n        status\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "09de9834e8e652f8e2c82230fe1a906a";
+(node as any).hash = "f056766a4af085c1d79d6f954c186f5c";
 
 export default node;

@@ -168,6 +168,10 @@ type UpdateTagResult interface {
 	IsUpdateTagResult()
 }
 
+type AcceptHouseholdInvitationInput struct {
+	Token string `json:"token"`
+}
+
 type AcceptHouseholdInvitationSuccess struct {
 	Result *Household `json:"result"`
 }
@@ -310,6 +314,12 @@ type AllocationRuleEdge struct {
 	Node   *AllocationRule `json:"node"`
 }
 
+type ArchiveBudgetInput struct {
+	BudgetID     string `json:"budgetId"`
+	BaseRevision int    `json:"baseRevision"`
+	Archived     bool   `json:"archived"`
+}
+
 type ArchiveBudgetSuccess struct {
 	Result *Budget `json:"result"`
 }
@@ -327,6 +337,12 @@ func (ArchiveBudgetUserError) IsMutationError()                {}
 func (this ArchiveBudgetUserError) GetCode() MutationErrorCode { return this.Code }
 func (this ArchiveBudgetUserError) GetMessage() string         { return this.Message }
 
+type ArchiveRecurringExpenseInput struct {
+	ExpenseID    string `json:"expenseId"`
+	BaseRevision int    `json:"baseRevision"`
+	Archived     bool   `json:"archived"`
+}
+
 type ArchiveRecurringExpenseSuccess struct {
 	Result *RecurringExpense `json:"result"`
 }
@@ -343,6 +359,12 @@ func (ArchiveRecurringExpenseUserError) IsArchiveRecurringExpenseResult() {}
 func (ArchiveRecurringExpenseUserError) IsMutationError()                {}
 func (this ArchiveRecurringExpenseUserError) GetCode() MutationErrorCode { return this.Code }
 func (this ArchiveRecurringExpenseUserError) GetMessage() string         { return this.Message }
+
+type ArchiveTagInput struct {
+	TagID        string `json:"tagId"`
+	BaseRevision int    `json:"baseRevision"`
+	Archived     bool   `json:"archived"`
+}
 
 type ArchiveTagSuccess struct {
 	Result *Tag `json:"result"`
@@ -898,6 +920,12 @@ type PoolFundingShareInput struct {
 	Weight   Long   `json:"weight"`
 }
 
+type PostPurchaseInput struct {
+	PurchaseID       string `json:"purchaseId"`
+	ExpectedRevision int    `json:"expectedRevision"`
+	IdempotencyKey   string `json:"idempotencyKey"`
+}
+
 type PostPurchaseSuccess struct {
 	Result *Purchase `json:"result"`
 }
@@ -1289,6 +1317,11 @@ type RecurringExpenseEdge struct {
 	Node   *RecurringExpense `json:"node"`
 }
 
+type RevokeHouseholdInvitationInput struct {
+	HouseholdID  string `json:"householdId"`
+	InvitationID string `json:"invitationId"`
+}
+
 type RevokeHouseholdInvitationSuccess struct {
 	Result *HouseholdInvitation `json:"result"`
 }
@@ -1359,6 +1392,11 @@ func (SetBudgetUserError) IsSetBudgetResult() {}
 func (SetBudgetUserError) IsMutationError()                {}
 func (this SetBudgetUserError) GetCode() MutationErrorCode { return this.Code }
 func (this SetBudgetUserError) GetMessage() string         { return this.Message }
+
+type SetCategoryArchivedInput struct {
+	CategoryID string `json:"categoryId"`
+	Archived   bool   `json:"archived"`
+}
 
 type SetCategoryArchivedSuccess struct {
 	Result *Category `json:"result"`

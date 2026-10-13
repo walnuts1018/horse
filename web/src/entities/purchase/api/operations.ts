@@ -128,16 +128,8 @@ export const createPurchaseMutation = graphql`
 `;
 
 export const postPurchaseMutation = graphql`
-  mutation PostPurchaseMutation(
-    $purchaseId: ID!
-    $expectedRevision: Int!
-    $idempotencyKey: String!
-  ) {
-    postPurchase(
-      purchaseId: $purchaseId
-      expectedRevision: $expectedRevision
-      idempotencyKey: $idempotencyKey
-    ) {
+  mutation PostPurchaseMutation($input: PostPurchaseInput!) {
+    postPurchase(input: $input) {
       __typename
       ... on PostPurchaseSuccess {
         result {

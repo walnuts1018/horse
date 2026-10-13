@@ -12,8 +12,8 @@ import (
 )
 
 // RevokeHouseholdInvitation is the resolver for the revokeHouseholdInvitation field.
-func (r *mutationResolver) RevokeHouseholdInvitation(ctx context.Context, householdID string, invitationID string) (model.RevokeHouseholdInvitationResult, error) {
-	result, err := r.revokeHouseholdInvitation(ctx, householdID, invitationID)
+func (r *mutationResolver) RevokeHouseholdInvitation(ctx context.Context, input model.RevokeHouseholdInvitationInput) (model.RevokeHouseholdInvitationResult, error) {
+	result, err := r.revokeHouseholdInvitation(ctx, input.HouseholdID, input.InvitationID)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
 			return &model.RevokeHouseholdInvitationUserError{Code: result.Code, Message: result.Message}, nil

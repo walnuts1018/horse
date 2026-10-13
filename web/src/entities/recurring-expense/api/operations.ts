@@ -69,16 +69,8 @@ export const setRecurringExpenseMutation = graphql`
 `;
 
 export const archiveRecurringExpenseMutation = graphql`
-  mutation ArchiveRecurringExpenseMutation(
-    $expenseId: ID!
-    $baseRevision: Int!
-    $archived: Boolean!
-  ) {
-    archiveRecurringExpense(
-      expenseId: $expenseId
-      baseRevision: $baseRevision
-      archived: $archived
-    ) {
+  mutation ArchiveRecurringExpenseMutation($input: ArchiveRecurringExpenseInput!) {
+    archiveRecurringExpense(input: $input) {
       __typename
       ... on ArchiveRecurringExpenseSuccess {
         result {

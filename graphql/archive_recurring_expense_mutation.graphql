@@ -1,5 +1,11 @@
 extend type Mutation {
-  archiveRecurringExpense(expenseId: ID! @nodeID(of: "RecurringExpense"), baseRevision: Int!, archived: Boolean!): ArchiveRecurringExpenseResult!
+  archiveRecurringExpense(input: ArchiveRecurringExpenseInput!): ArchiveRecurringExpenseResult!
+}
+
+input ArchiveRecurringExpenseInput {
+  expenseId: ID! @nodeID(of: "RecurringExpense")
+  baseRevision: Int!
+  archived: Boolean!
 }
 
 union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | ArchiveRecurringExpenseUserError

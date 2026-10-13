@@ -12,8 +12,8 @@ import (
 )
 
 // SetCategoryArchived is the resolver for the setCategoryArchived field.
-func (r *mutationResolver) SetCategoryArchived(ctx context.Context, categoryID string, archived bool) (model.SetCategoryArchivedResult, error) {
-	result, err := r.setCategoryArchived(ctx, categoryID, archived)
+func (r *mutationResolver) SetCategoryArchived(ctx context.Context, input model.SetCategoryArchivedInput) (model.SetCategoryArchivedResult, error) {
+	result, err := r.setCategoryArchived(ctx, input.CategoryID, input.Archived)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
 			return &model.SetCategoryArchivedUserError{Code: result.Code, Message: result.Message}, nil

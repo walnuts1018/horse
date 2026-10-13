@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4eb347177a80706e12e24c398d633422>>
+ * @generated SignedSource<<fb734e3c7852fd37562c68319b1b3204>>
  * @lightSyntaxTransform
  */
 
@@ -10,9 +10,12 @@
 import type { ConcreteRequest } from 'relay-runtime';
 export type HouseholdInvitationStatus = "ACCEPTED" | "EXPIRED" | "PENDING" | "REVOKED" | "%future added value";
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type RevokeHouseholdInvitationMutation$variables = {
+export type RevokeHouseholdInvitationInput = {
   householdId: string;
   invitationId: string;
+};
+export type RevokeHouseholdInvitationMutation$variables = {
+  input: RevokeHouseholdInvitationInput;
 };
 export type RevokeHouseholdInvitationMutation$data = {
   readonly revokeHouseholdInvitation: {
@@ -36,12 +39,7 @@ var v0 = [
   {
     "defaultValue": null,
     "kind": "LocalArgument",
-    "name": "householdId"
-  },
-  {
-    "defaultValue": null,
-    "kind": "LocalArgument",
-    "name": "invitationId"
+    "name": "input"
   }
 ],
 v1 = [
@@ -50,13 +48,8 @@ v1 = [
     "args": [
       {
         "kind": "Variable",
-        "name": "householdId",
-        "variableName": "householdId"
-      },
-      {
-        "kind": "Variable",
-        "name": "invitationId",
-        "variableName": "invitationId"
+        "name": "input",
+        "variableName": "input"
       }
     ],
     "concreteType": null,
@@ -153,16 +146,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "d43651255a91f97a8cc06050596ffb79",
+    "cacheID": "2b3a149b990d1176634b8e5063b5b169",
     "id": null,
     "metadata": {},
     "name": "RevokeHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation RevokeHouseholdInvitationMutation(\n  $householdId: ID!\n  $invitationId: ID!\n) {\n  revokeHouseholdInvitation(householdId: $householdId, invitationId: $invitationId) {\n    __typename\n    ... on RevokeHouseholdInvitationSuccess {\n      result {\n        id\n        status\n        revokedAt\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation RevokeHouseholdInvitationMutation(\n  $input: RevokeHouseholdInvitationInput!\n) {\n  revokeHouseholdInvitation(input: $input) {\n    __typename\n    ... on RevokeHouseholdInvitationSuccess {\n      result {\n        id\n        status\n        revokedAt\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "aba3e2f49b1cd259d6acba163dfe99a0";
+(node as any).hash = "ecbbc1722d373f073206e9f856871501";
 
 export default node;

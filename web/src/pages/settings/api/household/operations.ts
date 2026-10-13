@@ -53,8 +53,8 @@ export const createHouseholdInvitationMutation = graphql`
 `;
 
 export const revokeHouseholdInvitationMutation = graphql`
-  mutation RevokeHouseholdInvitationMutation($householdId: ID!, $invitationId: ID!) {
-    revokeHouseholdInvitation(householdId: $householdId, invitationId: $invitationId) {
+  mutation RevokeHouseholdInvitationMutation($input: RevokeHouseholdInvitationInput!) {
+    revokeHouseholdInvitation(input: $input) {
       __typename
       ... on RevokeHouseholdInvitationSuccess {
         result {

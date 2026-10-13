@@ -1,5 +1,11 @@
 extend type Mutation {
-  postPurchase(purchaseId: ID! @nodeID(of: "Purchase"), expectedRevision: Int!, idempotencyKey: String!): PostPurchaseResult!
+  postPurchase(input: PostPurchaseInput!): PostPurchaseResult!
+}
+
+input PostPurchaseInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+  expectedRevision: Int!
+  idempotencyKey: String!
 }
 
 union PostPurchaseResult = PostPurchaseSuccess | PostPurchaseUserError

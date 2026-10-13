@@ -1,5 +1,11 @@
 extend type Mutation {
-  archiveBudget(budgetId: ID! @nodeID(of: "Budget"), baseRevision: Int!, archived: Boolean!): ArchiveBudgetResult!
+  archiveBudget(input: ArchiveBudgetInput!): ArchiveBudgetResult!
+}
+
+input ArchiveBudgetInput {
+  budgetId: ID! @nodeID(of: "Budget")
+  baseRevision: Int!
+  archived: Boolean!
 }
 
 union ArchiveBudgetResult = ArchiveBudgetSuccess | ArchiveBudgetUserError

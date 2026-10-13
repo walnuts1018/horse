@@ -12,8 +12,8 @@ import (
 )
 
 // ArchiveBudget is the resolver for the archiveBudget field.
-func (r *mutationResolver) ArchiveBudget(ctx context.Context, budgetID string, baseRevision int, archived bool) (model.ArchiveBudgetResult, error) {
-	result, err := r.archiveBudget(ctx, budgetID, baseRevision, archived)
+func (r *mutationResolver) ArchiveBudget(ctx context.Context, input model.ArchiveBudgetInput) (model.ArchiveBudgetResult, error) {
+	result, err := r.archiveBudget(ctx, input.BudgetID, input.BaseRevision, input.Archived)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
 			return &model.ArchiveBudgetUserError{Code: result.Code, Message: result.Message}, nil

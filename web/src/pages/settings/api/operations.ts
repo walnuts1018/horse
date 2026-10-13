@@ -32,8 +32,8 @@ export const allocationRulesQuery = graphql`
 `;
 
 export const setCategoryArchivedMutation = graphql`
-  mutation SetCategoryArchivedMutation($categoryId: ID!, $archived: Boolean!) {
-    setCategoryArchived(categoryId: $categoryId, archived: $archived) {
+  mutation SetCategoryArchivedMutation($input: SetCategoryArchivedInput!) {
+    setCategoryArchived(input: $input) {
       __typename
       ... on SetCategoryArchivedSuccess {
         result {

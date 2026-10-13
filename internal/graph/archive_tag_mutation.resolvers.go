@@ -12,8 +12,8 @@ import (
 )
 
 // ArchiveTag is the resolver for the archiveTag field.
-func (r *mutationResolver) ArchiveTag(ctx context.Context, tagID string, baseRevision int, archived bool) (model.ArchiveTagResult, error) {
-	result, err := r.archiveTag(ctx, tagID, baseRevision, archived)
+func (r *mutationResolver) ArchiveTag(ctx context.Context, input model.ArchiveTagInput) (model.ArchiveTagResult, error) {
+	result, err := r.archiveTag(ctx, input.TagID, input.BaseRevision, input.Archived)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
 			return &model.ArchiveTagUserError{Code: result.Code, Message: result.Message}, nil

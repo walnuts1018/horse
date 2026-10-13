@@ -12,8 +12,8 @@ import (
 )
 
 // PostPurchase is the resolver for the postPurchase field.
-func (r *mutationResolver) PostPurchase(ctx context.Context, purchaseID string, expectedRevision int, idempotencyKey string) (model.PostPurchaseResult, error) {
-	result, err := r.postPurchase(ctx, purchaseID, expectedRevision, idempotencyKey)
+func (r *mutationResolver) PostPurchase(ctx context.Context, input model.PostPurchaseInput) (model.PostPurchaseResult, error) {
+	result, err := r.postPurchase(ctx, input.PurchaseID, input.ExpectedRevision, input.IdempotencyKey)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
 			return &model.PostPurchaseUserError{Code: result.Code, Message: result.Message}, nil

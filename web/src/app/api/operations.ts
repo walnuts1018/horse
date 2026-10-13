@@ -72,8 +72,8 @@ export const createHouseholdMutation = graphql`
 `;
 
 export const acceptHouseholdInvitationMutation = graphql`
-  mutation AcceptHouseholdInvitationMutation($token: String!) {
-    acceptHouseholdInvitation(token: $token) {
+  mutation AcceptHouseholdInvitationMutation($input: AcceptHouseholdInvitationInput!) {
+    acceptHouseholdInvitation(input: $input) {
       __typename
       ... on AcceptHouseholdInvitationSuccess {
         result {

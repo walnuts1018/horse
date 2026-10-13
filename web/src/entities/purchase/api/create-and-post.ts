@@ -17,9 +17,11 @@ export function useCreateAndPostPurchase() {
       if (created.createPurchase.status !== "DRAFT") return created;
       try {
         const posted = await post.mutate({
-          purchaseId: created.createPurchase.id,
-          expectedRevision: created.createPurchase.revision,
-          idempotencyKey: input.idempotencyKey,
+          input: {
+            purchaseId: created.createPurchase.id,
+            expectedRevision: created.createPurchase.revision,
+            idempotencyKey: input.idempotencyKey,
+          },
         });
         return {
           createPurchase: {

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<204d3cc9b9d48b5f79c530c4a263ec94>>
+ * @generated SignedSource<<e8f11c5f4d96a558793338abe3819a36>>
  * @lightSyntaxTransform
  */
 
@@ -9,9 +9,12 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type SetCategoryArchivedMutation$variables = {
+export type SetCategoryArchivedInput = {
   archived: boolean;
   categoryId: string;
+};
+export type SetCategoryArchivedMutation$variables = {
+  input: SetCategoryArchivedInput;
 };
 export type SetCategoryArchivedMutation$data = {
   readonly setCategoryArchived: {
@@ -30,29 +33,21 @@ export type SetCategoryArchivedMutation = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "archived"
-},
-v1 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "categoryId"
-},
-v2 = [
+var v0 = [
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "input"
+  }
+],
+v1 = [
   {
     "alias": null,
     "args": [
       {
         "kind": "Variable",
-        "name": "archived",
-        "variableName": "archived"
-      },
-      {
-        "kind": "Variable",
-        "name": "categoryId",
-        "variableName": "categoryId"
+        "name": "input",
+        "variableName": "input"
       }
     ],
     "concreteType": null,
@@ -126,38 +121,32 @@ v2 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": [
-      (v0/*:: as any*/),
-      (v1/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
     "name": "SetCategoryArchivedMutation",
-    "selections": (v2/*:: as any*/),
+    "selections": (v1/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": [
-      (v1/*:: as any*/),
-      (v0/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "SetCategoryArchivedMutation",
-    "selections": (v2/*:: as any*/)
+    "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "25ae16af5a1a59dc9cde41c4ddecbdf6",
+    "cacheID": "23b0f783ec39bfa44994334b1e9e167d",
     "id": null,
     "metadata": {},
     "name": "SetCategoryArchivedMutation",
     "operationKind": "mutation",
-    "text": "mutation SetCategoryArchivedMutation(\n  $categoryId: ID!\n  $archived: Boolean!\n) {\n  setCategoryArchived(categoryId: $categoryId, archived: $archived) {\n    __typename\n    ... on SetCategoryArchivedSuccess {\n      result {\n        id\n        archived\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetCategoryArchivedMutation(\n  $input: SetCategoryArchivedInput!\n) {\n  setCategoryArchived(input: $input) {\n    __typename\n    ... on SetCategoryArchivedSuccess {\n      result {\n        id\n        archived\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c66701127da7408d2641152fa802ac48";
+(node as any).hash = "02647cb9d997d5acb10b3811391f9e97";
 
 export default node;

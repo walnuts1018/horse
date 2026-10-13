@@ -45,8 +45,8 @@ export const setBudgetMutation = graphql`
 `;
 
 export const archiveBudgetMutation = graphql`
-  mutation ArchiveBudgetMutation($budgetId: ID!, $baseRevision: Int!, $archived: Boolean!) {
-    archiveBudget(budgetId: $budgetId, baseRevision: $baseRevision, archived: $archived) {
+  mutation ArchiveBudgetMutation($input: ArchiveBudgetInput!) {
+    archiveBudget(input: $input) {
       __typename
       ... on ArchiveBudgetSuccess {
         result {

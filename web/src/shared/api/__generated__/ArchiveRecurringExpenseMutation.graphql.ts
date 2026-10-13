@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<42450391d4781e7f7757da11f9232278>>
+ * @generated SignedSource<<5c83fc1aca37b5e4b5de09116c73f93d>>
  * @lightSyntaxTransform
  */
 
@@ -9,10 +9,13 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type ArchiveRecurringExpenseMutation$variables = {
+export type ArchiveRecurringExpenseInput = {
   archived: boolean;
   baseRevision: number;
   expenseId: string;
+};
+export type ArchiveRecurringExpenseMutation$variables = {
+  input: ArchiveRecurringExpenseInput;
 };
 export type ArchiveRecurringExpenseMutation$data = {
   readonly archiveRecurringExpense: {
@@ -32,39 +35,21 @@ export type ArchiveRecurringExpenseMutation = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "archived"
-},
-v1 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "baseRevision"
-},
-v2 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "expenseId"
-},
-v3 = [
+var v0 = [
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "input"
+  }
+],
+v1 = [
   {
     "alias": null,
     "args": [
       {
         "kind": "Variable",
-        "name": "archived",
-        "variableName": "archived"
-      },
-      {
-        "kind": "Variable",
-        "name": "baseRevision",
-        "variableName": "baseRevision"
-      },
-      {
-        "kind": "Variable",
-        "name": "expenseId",
-        "variableName": "expenseId"
+        "name": "input",
+        "variableName": "input"
       }
     ],
     "concreteType": null,
@@ -145,40 +130,32 @@ v3 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": [
-      (v0/*:: as any*/),
-      (v1/*:: as any*/),
-      (v2/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
     "name": "ArchiveRecurringExpenseMutation",
-    "selections": (v3/*:: as any*/),
+    "selections": (v1/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": [
-      (v2/*:: as any*/),
-      (v1/*:: as any*/),
-      (v0/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "ArchiveRecurringExpenseMutation",
-    "selections": (v3/*:: as any*/)
+    "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "7bee09069b5671b12cdcf7240bd3d749",
+    "cacheID": "94a6b8f54ab6aae962139be56dad4217",
     "id": null,
     "metadata": {},
     "name": "ArchiveRecurringExpenseMutation",
     "operationKind": "mutation",
-    "text": "mutation ArchiveRecurringExpenseMutation(\n  $expenseId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveRecurringExpense(expenseId: $expenseId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveRecurringExpenseSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation ArchiveRecurringExpenseMutation(\n  $input: ArchiveRecurringExpenseInput!\n) {\n  archiveRecurringExpense(input: $input) {\n    __typename\n    ... on ArchiveRecurringExpenseSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "1889dcfdbaa4fdc29bb8912aa2919308";
+(node as any).hash = "9dc861efca130bd651453eb4e0e69f7f";
 
 export default node;

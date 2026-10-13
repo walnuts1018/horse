@@ -233,7 +233,7 @@ export function App() {
     try {
       const result = await read<{ acceptHouseholdInvitation: { id: string; name: string } }>(
         acceptHouseholdInvitationMutation,
-        { token: pendingInvitation },
+        { input: { token: pendingInvitation } },
       );
       window.sessionStorage.removeItem("horse:pending-household-invitation");
       setPendingInvitation("");

@@ -12,8 +12,8 @@ import (
 )
 
 // AcceptHouseholdInvitation is the resolver for the acceptHouseholdInvitation field.
-func (r *mutationResolver) AcceptHouseholdInvitation(ctx context.Context, token string) (model.AcceptHouseholdInvitationResult, error) {
-	result, err := r.acceptHouseholdInvitation(ctx, token)
+func (r *mutationResolver) AcceptHouseholdInvitation(ctx context.Context, input model.AcceptHouseholdInvitationInput) (model.AcceptHouseholdInvitationResult, error) {
+	result, err := r.acceptHouseholdInvitation(ctx, input.Token)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
 			return &model.AcceptHouseholdInvitationUserError{Code: result.Code, Message: result.Message}, nil

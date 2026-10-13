@@ -12,8 +12,8 @@ import (
 )
 
 // ArchiveRecurringExpense is the resolver for the archiveRecurringExpense field.
-func (r *mutationResolver) ArchiveRecurringExpense(ctx context.Context, expenseID string, baseRevision int, archived bool) (model.ArchiveRecurringExpenseResult, error) {
-	result, err := r.archiveRecurringExpense(ctx, expenseID, baseRevision, archived)
+func (r *mutationResolver) ArchiveRecurringExpense(ctx context.Context, input model.ArchiveRecurringExpenseInput) (model.ArchiveRecurringExpenseResult, error) {
+	result, err := r.archiveRecurringExpense(ctx, input.ExpenseID, input.BaseRevision, input.Archived)
 	if err != nil {
 		if result, ok := mutationErrorResult(err); ok {
 			return &model.ArchiveRecurringExpenseUserError{Code: result.Code, Message: result.Message}, nil

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8f484d8f2bebf993abc53db3dea9ee44>>
+ * @generated SignedSource<<f9f62d5620e656d1faf32d0277284f59>>
  * @lightSyntaxTransform
  */
 
@@ -9,8 +9,11 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type AcceptHouseholdInvitationMutation$variables = {
+export type AcceptHouseholdInvitationInput = {
   token: string;
+};
+export type AcceptHouseholdInvitationMutation$variables = {
+  input: AcceptHouseholdInvitationInput;
 };
 export type AcceptHouseholdInvitationMutation$data = {
   readonly acceptHouseholdInvitation: {
@@ -33,7 +36,7 @@ var v0 = [
   {
     "defaultValue": null,
     "kind": "LocalArgument",
-    "name": "token"
+    "name": "input"
   }
 ],
 v1 = [
@@ -42,8 +45,8 @@ v1 = [
     "args": [
       {
         "kind": "Variable",
-        "name": "token",
-        "variableName": "token"
+        "name": "input",
+        "variableName": "input"
       }
     ],
     "concreteType": null,
@@ -133,16 +136,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "7bc3c712b364635e1763a1dfa48bb1bb",
+    "cacheID": "a4eda093f8d1198a6ef942219a0f2772",
     "id": null,
     "metadata": {},
     "name": "AcceptHouseholdInvitationMutation",
     "operationKind": "mutation",
-    "text": "mutation AcceptHouseholdInvitationMutation(\n  $token: String!\n) {\n  acceptHouseholdInvitation(token: $token) {\n    __typename\n    ... on AcceptHouseholdInvitationSuccess {\n      result {\n        id\n        name\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation AcceptHouseholdInvitationMutation(\n  $input: AcceptHouseholdInvitationInput!\n) {\n  acceptHouseholdInvitation(input: $input) {\n    __typename\n    ... on AcceptHouseholdInvitationSuccess {\n      result {\n        id\n        name\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "585e8e92909024df0f2dd8fde08c33ab";
+(node as any).hash = "09f49ea3fe7810bc823d3b1d43f71a22";
 
 export default node;

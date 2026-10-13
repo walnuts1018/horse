@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<718c3b513b5608526af3e1e27046cbb9>>
+ * @generated SignedSource<<166cf644d204531e637adb0f765fef3e>>
  * @lightSyntaxTransform
  */
 
@@ -9,10 +9,13 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type ArchiveBudgetMutation$variables = {
+export type ArchiveBudgetInput = {
   archived: boolean;
   baseRevision: number;
   budgetId: string;
+};
+export type ArchiveBudgetMutation$variables = {
+  input: ArchiveBudgetInput;
 };
 export type ArchiveBudgetMutation$data = {
   readonly archiveBudget: {
@@ -32,39 +35,21 @@ export type ArchiveBudgetMutation = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "archived"
-},
-v1 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "baseRevision"
-},
-v2 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "budgetId"
-},
-v3 = [
+var v0 = [
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "input"
+  }
+],
+v1 = [
   {
     "alias": null,
     "args": [
       {
         "kind": "Variable",
-        "name": "archived",
-        "variableName": "archived"
-      },
-      {
-        "kind": "Variable",
-        "name": "baseRevision",
-        "variableName": "baseRevision"
-      },
-      {
-        "kind": "Variable",
-        "name": "budgetId",
-        "variableName": "budgetId"
+        "name": "input",
+        "variableName": "input"
       }
     ],
     "concreteType": null,
@@ -145,40 +130,32 @@ v3 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": [
-      (v0/*:: as any*/),
-      (v1/*:: as any*/),
-      (v2/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
     "name": "ArchiveBudgetMutation",
-    "selections": (v3/*:: as any*/),
+    "selections": (v1/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": [
-      (v2/*:: as any*/),
-      (v1/*:: as any*/),
-      (v0/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "ArchiveBudgetMutation",
-    "selections": (v3/*:: as any*/)
+    "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "afada52118a51f682336eb58f89aa62b",
+    "cacheID": "91ac3fcc4a453b56a59123328562afb3",
     "id": null,
     "metadata": {},
     "name": "ArchiveBudgetMutation",
     "operationKind": "mutation",
-    "text": "mutation ArchiveBudgetMutation(\n  $budgetId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveBudget(budgetId: $budgetId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveBudgetSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation ArchiveBudgetMutation(\n  $input: ArchiveBudgetInput!\n) {\n  archiveBudget(input: $input) {\n    __typename\n    ... on ArchiveBudgetSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "bfe5ce5245062026fb2d2e49fd9808b8";
+(node as any).hash = "acb03d7434fe1aa084f576ad4515703a";
 
 export default node;

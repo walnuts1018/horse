@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<881543ab4e8815c1637e174198a50930>>
+ * @generated SignedSource<<d7828885048ba852ba8061352225c40f>>
  * @lightSyntaxTransform
  */
 
@@ -9,10 +9,13 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
-export type ArchiveTagMutation$variables = {
+export type ArchiveTagInput = {
   archived: boolean;
   baseRevision: number;
   tagId: string;
+};
+export type ArchiveTagMutation$variables = {
+  input: ArchiveTagInput;
 };
 export type ArchiveTagMutation$data = {
   readonly archiveTag: {
@@ -32,39 +35,21 @@ export type ArchiveTagMutation = {
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "archived"
-},
-v1 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "baseRevision"
-},
-v2 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "tagId"
-},
-v3 = [
+var v0 = [
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "input"
+  }
+],
+v1 = [
   {
     "alias": null,
     "args": [
       {
         "kind": "Variable",
-        "name": "archived",
-        "variableName": "archived"
-      },
-      {
-        "kind": "Variable",
-        "name": "baseRevision",
-        "variableName": "baseRevision"
-      },
-      {
-        "kind": "Variable",
-        "name": "tagId",
-        "variableName": "tagId"
+        "name": "input",
+        "variableName": "input"
       }
     ],
     "concreteType": null,
@@ -145,40 +130,32 @@ v3 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": [
-      (v0/*:: as any*/),
-      (v1/*:: as any*/),
-      (v2/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
     "name": "ArchiveTagMutation",
-    "selections": (v3/*:: as any*/),
+    "selections": (v1/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": [
-      (v2/*:: as any*/),
-      (v1/*:: as any*/),
-      (v0/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "ArchiveTagMutation",
-    "selections": (v3/*:: as any*/)
+    "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "6d93dd3a56fabb357972dc8efd26d08e",
+    "cacheID": "e4fe1fb01efd3ad4dd8a18945120d521",
     "id": null,
     "metadata": {},
     "name": "ArchiveTagMutation",
     "operationKind": "mutation",
-    "text": "mutation ArchiveTagMutation(\n  $tagId: ID!\n  $baseRevision: Int!\n  $archived: Boolean!\n) {\n  archiveTag(tagId: $tagId, baseRevision: $baseRevision, archived: $archived) {\n    __typename\n    ... on ArchiveTagSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation ArchiveTagMutation(\n  $input: ArchiveTagInput!\n) {\n  archiveTag(input: $input) {\n    __typename\n    ... on ArchiveTagSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "656dd6670f26fb1de5cf7730a78ba5ba";
+(node as any).hash = "7ee453978844b935787dbc8efedce60c";
 
 export default node;

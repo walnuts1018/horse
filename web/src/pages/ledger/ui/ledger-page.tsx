@@ -187,9 +187,11 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
     setEditError("");
     try {
       await mutatePostPurchase({
-        purchaseId: purchase.id,
-        expectedRevision: purchase.revision,
-        idempotencyKey: makeIdempotencyKey(),
+        input: {
+          purchaseId: purchase.id,
+          expectedRevision: purchase.revision,
+          idempotencyKey: makeIdempotencyKey(),
+        },
       });
       await refresh();
     } catch (reason) {

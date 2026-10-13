@@ -55,8 +55,8 @@ export const updateTagMutation = graphql`
 `;
 
 export const archiveTagMutation = graphql`
-  mutation ArchiveTagMutation($tagId: ID!, $baseRevision: Int!, $archived: Boolean!) {
-    archiveTag(tagId: $tagId, baseRevision: $baseRevision, archived: $archived) {
+  mutation ArchiveTagMutation($input: ArchiveTagInput!) {
+    archiveTag(input: $input) {
       __typename
       ... on ArchiveTagSuccess {
         result {
