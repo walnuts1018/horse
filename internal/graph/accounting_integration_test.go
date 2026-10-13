@@ -81,6 +81,13 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fundingSourceAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{
+		HouseholdID: householdID, Name: "Funding source", Kind: model.AccountKindBank, PoolID: &poolA.ID,
+		OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: 5000, At: "2026-01-01T00:00:00Z"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, fundingRule := range []model.SetPoolFundingRuleInput{
 		{HouseholdID: householdID, PoolID: poolA.ID, OwnerMemberID: &memberA, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1},
 		{HouseholdID: householdID, PoolID: poolB.ID, OwnerMemberID: &memberB, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1},
@@ -412,6 +419,50 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	}
 	if _, err := resolver.recordFunding(ctx, model.RecordFundingInput{HouseholdID: householdID, MemberID: memberA, PoolID: poolA.ID, AmountYen: 6000, OccurredAt: "2026-04-15T10:00:00Z", IdempotencyKey: uuid.NewV7().String()}); err != nil {
 		t.Fatal(err)
+	}
+	fundingEntry, err := resolver.recordFunding(ctx, model.RecordFundingInput{
+		HouseholdID: householdID, MemberID: memberA, PoolID: poolA.ID, AmountYen: 1000,
+		SourceAccountID: &fundingSourceAccount.ID, OccurredAt: "2026-05-15T10:00:00Z", IdempotencyKey: uuid.NewV7().String(),
+	})
+	if err != nil {
+		t.Fatalf("funding from a source account without a destination account failed: %v", err)
+	}
+	fundingLedgerUUID, err := gofrsuuid.FromString(fundingEntry.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fundingJournal, err := models.Journals.Query(sm.Where(models.Journals.Columns.SourceID.EQ(psql.Arg(fundingLedgerUUID)))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fundingLines, err := models.JournalEntries.Query(sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(fundingJournal.ID)))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fundingDebits, fundingCredits int64
+	var sourceAccountCredit, unassignedCounterDebit int64
+	fundingSourceUUID, _ := gofrsuuid.FromString(fundingSourceAccount.ID)
+	for _, line := range fundingLines {
+		fundingDebits += line.DebitYen
+		fundingCredits += line.CreditYen
+		if line.AccountID.Valid && line.AccountID.V == fundingSourceUUID {
+			sourceAccountCredit += line.CreditYen
+		}
+		if !line.AccountID.Valid && !line.PoolID.Valid && !line.MemberID.Valid {
+			unassignedCounterDebit += line.DebitYen
+		}
+	}
+	if fundingDebits != fundingCredits || sourceAccountCredit != 1000 || unassignedCounterDebit != 1000 {
+		t.Fatalf("source-only funding journal is unbalanced or has incorrect account entries: debits=%d credits=%d sourceCredit=%d counterDebit=%d", fundingDebits, fundingCredits, sourceAccountCredit, unassignedCounterDebit)
+	}
+	fundingBalances, err := (&Resolver{DB: db}).Query().AccountBalances(ctx, householdID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, balance := range fundingBalances {
+		if balance.AccountID == fundingSourceAccount.ID && balance.BalanceYen != 4000 {
+			t.Fatalf("source account balance did not decrease by the funding amount: balance=%d", balance.BalanceYen)
+		}
 	}
 	postedAmount := model.Long(700)
 	postedAllocations := []*model.AllocationInput{{PoolID: poolA.ID, Weight: 3}, {PoolID: poolB.ID, Weight: 2}}

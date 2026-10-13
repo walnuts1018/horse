@@ -1841,10 +1841,6 @@ func (r *mutationResolver) recordFunding(ctx context.Context, input model.Record
 			sourceDebit = 0
 			sourceCredit = amount
 		}
-		if sourceAccountID != nil && destinationAccountID == nil {
-			destinationDebit = 0
-			destinationCredit = amount
-		}
 		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
 			JournalID: &journalUUID, LineNo: &lineThree, AccountID: &destinationAccount, PoolID: &noPool, MemberID: &noMember,
 			DebitYen: &destinationDebit, CreditYen: &destinationCredit, Memo: new("Funding destination"),
