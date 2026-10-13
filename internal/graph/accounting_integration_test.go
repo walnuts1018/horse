@@ -1129,7 +1129,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		t.Fatalf("account activity changed budget actuals: budgets=%#v error=%v", budgets, err)
 	}
 	correctionKey := uuid.NewV7().String()
-	correctionInput := model.CorrectPurchaseInput{HouseholdID: household.ID, PurchaseID: purchase.ID, AmountDeltaYen: -1000, Reason: "Full return", IdempotencyKey: correctionKey}
+	correctionInput := model.CorrectPurchaseInput{HouseholdID: household.ID, Target: &model.CorrectPurchaseTargetInput{Purchase: &model.PurchaseCorrectionPurchaseTargetInput{PurchaseID: purchase.ID}}, AmountDeltaYen: -1000, Reason: "Full return", IdempotencyKey: correctionKey}
 	correctedPurchase, err := resolver.correctPurchase(ctx, correctionInput)
 	if err != nil {
 		t.Fatal(err)
@@ -1137,7 +1137,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if _, err := resolver.correctPurchase(ctx, correctionInput); err != nil {
 		t.Fatalf("retrying a full refund with the same request should succeed: %v", err)
 	}
-	correctionOccurredAt, err := time.Parse(time.RFC3339Nano, string(correctedPurchase.Corrections[0].OccurredAt))
+	correctionOccurredAt, err := time.Parse(time.RFC3339Nano, string(correctedPurchase.CorrectionsConnection.Edges[0].Node.OccurredAt))
 	if err != nil {
 		t.Fatal(err)
 	}

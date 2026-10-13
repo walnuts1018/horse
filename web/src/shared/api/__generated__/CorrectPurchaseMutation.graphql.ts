@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a88735f0c6a7867a1092c7811395a1c3>>
+ * @generated SignedSource<<ad4d9fde2309f8ae9253b8a4a1466182>>
  * @lightSyntaxTransform
  */
 
@@ -14,10 +14,23 @@ export type CorrectPurchaseInput = {
   amountDeltaYen: any;
   householdId: string;
   idempotencyKey: string;
-  itemId?: string | null | undefined;
   paymentAllocations?: ReadonlyArray<CorrectPurchasePaymentInput> | null | undefined;
-  purchaseId: string;
   reason: string;
+  target: CorrectPurchaseTargetInput;
+};
+export type CorrectPurchaseTargetInput = {
+  item?: never;
+  purchase: PurchaseCorrectionPurchaseTargetInput;
+} | {
+  item: PurchaseCorrectionItemTargetInput;
+  purchase?: never;
+};
+export type PurchaseCorrectionPurchaseTargetInput = {
+  purchaseId: string;
+};
+export type PurchaseCorrectionItemTargetInput = {
+  itemId: string;
+  purchaseId: string;
 };
 export type CorrectPurchaseAllocationInput = {
   poolId: string;

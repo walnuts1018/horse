@@ -233,7 +233,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	}
 
 	if _, err := mutation.correctPurchase(ctx, model.CorrectPurchaseInput{
-		HouseholdID: household.ID, PurchaseID: purchase.ID, ItemID: &posted.Items[0].ID,
+		HouseholdID: household.ID, Target: &model.CorrectPurchaseTargetInput{Item: &model.PurchaseCorrectionItemTargetInput{PurchaseID: purchase.ID, ItemID: posted.Items[0].ID}},
 		AmountDeltaYen: -100, Reason: "Refund", IdempotencyKey: uuid.NewV7().String(),
 	}); err != nil {
 		t.Fatal(err)

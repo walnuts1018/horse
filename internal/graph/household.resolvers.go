@@ -16,6 +16,11 @@ func (r *householdResolver) ID(ctx context.Context, obj *model.Household) (strin
 	return encodeNodeID("Household", obj.ID)
 }
 
+// Pools is the resolver for the pools field.
+func (r *householdResolver) Pools(ctx context.Context, obj *model.Household) ([]model.PoolVariant, error) {
+	return obj.PoolVariants, nil
+}
+
 // Households is the resolver for the households field.
 func (r *queryResolver) Households(ctx context.Context) ([]*model.Household, error) {
 	return r.households(ctx)

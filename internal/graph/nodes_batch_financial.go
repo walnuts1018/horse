@@ -317,9 +317,11 @@ func (b *nodeBatch) loadFinancialNodes() error {
 			for _, member := range household.Members {
 				membersByHousehold[household.ID][member.ID] = member
 			}
-			poolsByHousehold[household.ID] = make(map[string]*model.Pool, len(household.Pools))
-			for _, pool := range household.Pools {
-				poolsByHousehold[household.ID][pool.ID] = pool
+			poolsByHousehold[household.ID] = make(map[string]*model.Pool, len(household.PoolVariants))
+			for _, pool := range household.PoolVariants {
+				if value := poolData(pool); value != nil {
+					poolsByHousehold[household.ID][value.ID] = value
+				}
 			}
 		}
 		loanRows := make(models.TransferSlice, 0)
@@ -358,7 +360,7 @@ func (b *nodeBatch) loadFinancialNodes() error {
 				if !entry.FromMemberID.Valid || !entry.PoolID.Valid || membersByHousehold[householdID][entry.FromMemberID.V.String()] == nil || poolsByHousehold[householdID][entry.PoolID.V.String()] == nil {
 					return errors.New("funding ledger entry is missing a member or pool")
 				}
-				set("LedgerEntry", id, &model.FundingLedgerEntry{ID: id, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: "JPY", CreatedAt: createdAt, Member: membersByHousehold[householdID][entry.FromMemberID.V.String()], Pool: poolsByHousehold[householdID][entry.PoolID.V.String()]})
+				set("LedgerEntry", id, &model.FundingLedgerEntry{ID: id, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: "JPY", CreatedAt: createdAt, Member: membersByHousehold[householdID][entry.FromMemberID.V.String()], Pool: poolVariant(poolsByHousehold[householdID][entry.PoolID.V.String()])})
 			case "TRANSFER":
 				transfer := transfersByLedger[entry.ID]
 				householdID := entry.HouseholdID.String()

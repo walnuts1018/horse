@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e1cb5b20e6beff000deb28365640ba66>>
+ * @generated SignedSource<<f678fbf6f43ee6d1b53460104472b434>>
  * @lightSyntaxTransform
  */
 
@@ -48,13 +48,20 @@ v3 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
+  "name": "__typename",
+  "storageKey": null
+},
+v4 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v4 = [
-  (v3/*:: as any*/)
-],
 v5 = [
+  (v4/*:: as any*/)
+],
+v6 = [
   {
     "alias": null,
     "args": null,
@@ -62,12 +69,12 @@ v5 = [
     "kind": "LinkedField",
     "name": "purchase",
     "plural": false,
-    "selections": (v4/*:: as any*/),
+    "selections": (v5/*:: as any*/),
     "storageKey": null
   }
 ],
-v6 = [
-  (v3/*:: as any*/),
+v7 = [
+  (v4/*:: as any*/),
   {
     "alias": null,
     "args": null,
@@ -135,18 +142,12 @@ return {
                 "name": "node",
                 "plural": false,
                 "selections": [
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "__typename",
-                    "storageKey": null
-                  },
+                  (v3/*:: as any*/),
                   {
                     "kind": "TypeDiscriminator",
                     "abstractKey": "__isLedgerEntry"
                   },
-                  (v3/*:: as any*/),
+                  (v4/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -184,7 +185,7 @@ return {
                   },
                   {
                     "kind": "InlineFragment",
-                    "selections": (v5/*:: as any*/),
+                    "selections": (v6/*:: as any*/),
                     "type": "PurchaseLedgerEntry",
                     "abstractKey": null
                   },
@@ -198,18 +199,19 @@ return {
                         "kind": "LinkedField",
                         "name": "member",
                         "plural": false,
-                        "selections": (v6/*:: as any*/),
+                        "selections": (v7/*:: as any*/),
                         "storageKey": null
                       },
                       {
                         "alias": null,
                         "args": null,
-                        "concreteType": "Pool",
+                        "concreteType": null,
                         "kind": "LinkedField",
                         "name": "pool",
                         "plural": false,
                         "selections": [
                           (v3/*:: as any*/),
+                          (v4/*:: as any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -234,7 +236,7 @@ return {
                         "kind": "LinkedField",
                         "name": "fromMember",
                         "plural": false,
-                        "selections": (v6/*:: as any*/),
+                        "selections": (v7/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -244,7 +246,7 @@ return {
                         "kind": "LinkedField",
                         "name": "toMember",
                         "plural": false,
-                        "selections": (v6/*:: as any*/),
+                        "selections": (v7/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -261,7 +263,7 @@ return {
                         "kind": "LinkedField",
                         "name": "loan",
                         "plural": false,
-                        "selections": (v4/*:: as any*/),
+                        "selections": (v5/*:: as any*/),
                         "storageKey": null
                       }
                     ],
@@ -270,7 +272,7 @@ return {
                   },
                   {
                     "kind": "InlineFragment",
-                    "selections": (v5/*:: as any*/),
+                    "selections": (v6/*:: as any*/),
                     "type": "CorrectionLedgerEntry",
                     "abstractKey": null
                   }
@@ -329,12 +331,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "987038d1be648d2af180ee764aa39703",
+    "cacheID": "2f8c4177e85b54d55f50328f2d08928d",
     "id": null,
     "metadata": {},
     "name": "HouseholdLedgerQuery",
     "operationKind": "query",
-    "text": "query HouseholdLedgerQuery(\n  $householdId: ID!\n  $first: Int\n) {\n  ...HouseholdLedgerFragment_47g58K\n}\n\nfragment HouseholdLedgerFragment_47g58K on Query {\n  ledger(householdId: $householdId, first: $first) {\n    edges {\n      cursor\n      node {\n        __typename\n        __isLedgerEntry: __typename\n        id\n        occurredAt\n        description\n        amountYen\n        currency\n        createdAt\n        ... on PurchaseLedgerEntry {\n          purchase {\n            id\n          }\n        }\n        ... on FundingLedgerEntry {\n          member {\n            id\n            displayName\n          }\n          pool {\n            id\n            name\n          }\n        }\n        ... on TransferLedgerEntry {\n          fromMember {\n            id\n            displayName\n          }\n          toMember {\n            id\n            displayName\n          }\n          transferKind\n          loan {\n            id\n          }\n        }\n        ... on CorrectionLedgerEntry {\n          purchase {\n            id\n          }\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query HouseholdLedgerQuery(\n  $householdId: ID!\n  $first: Int\n) {\n  ...HouseholdLedgerFragment_47g58K\n}\n\nfragment HouseholdLedgerFragment_47g58K on Query {\n  ledger(householdId: $householdId, first: $first) {\n    edges {\n      cursor\n      node {\n        __typename\n        __isLedgerEntry: __typename\n        id\n        occurredAt\n        description\n        amountYen\n        currency\n        createdAt\n        ... on PurchaseLedgerEntry {\n          purchase {\n            id\n          }\n        }\n        ... on FundingLedgerEntry {\n          member {\n            id\n            displayName\n          }\n          pool {\n            __typename\n            id\n            name\n          }\n        }\n        ... on TransferLedgerEntry {\n          fromMember {\n            id\n            displayName\n          }\n          toMember {\n            id\n            displayName\n          }\n          transferKind\n          loan {\n            id\n          }\n        }\n        ... on CorrectionLedgerEntry {\n          purchase {\n            id\n          }\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();

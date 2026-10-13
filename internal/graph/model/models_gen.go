@@ -521,14 +521,13 @@ func (this ClosePeriodUserError) GetCode() MutationErrorCode { return this.Code 
 func (this ClosePeriodUserError) GetMessage() string         { return this.Message }
 
 type CorrectPurchaseInput struct {
-	HouseholdID        string                  `json:"householdId"`
-	PurchaseID         string                  `json:"purchaseId"`
-	ItemID             *string                 `json:"itemId,omitempty"`
-	AmountDeltaYen     Long                    `json:"amountDeltaYen"`
-	Reason             string                  `json:"reason"`
-	Allocations        []*AllocationInput      `json:"allocations,omitempty"`
-	PaymentAllocations []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
-	IdempotencyKey     string                  `json:"idempotencyKey"`
+	HouseholdID        string                      `json:"householdId"`
+	Target             *CorrectPurchaseTargetInput `json:"target"`
+	AmountDeltaYen     Long                        `json:"amountDeltaYen"`
+	Reason             string                      `json:"reason"`
+	Allocations        []*AllocationInput          `json:"allocations,omitempty"`
+	PaymentAllocations []*PurchasePaymentInput     `json:"paymentAllocations,omitempty"`
+	IdempotencyKey     string                      `json:"idempotencyKey"`
 }
 
 type CorrectPurchaseSuccess struct {
@@ -536,6 +535,11 @@ type CorrectPurchaseSuccess struct {
 }
 
 func (CorrectPurchaseSuccess) IsCorrectPurchaseResult() {}
+
+type CorrectPurchaseTargetInput struct {
+	Purchase *PurchaseCorrectionPurchaseTargetInput `json:"purchase,omitempty"`
+	Item     *PurchaseCorrectionItemTargetInput     `json:"item,omitempty"`
+}
 
 type CorrectPurchaseUserError struct {
 	Code    MutationErrorCode `json:"code"`
@@ -695,7 +699,7 @@ type CreatePoolInput struct {
 }
 
 type CreatePoolSuccess struct {
-	Result *Pool `json:"result"`
+	Result PoolVariant `json:"result"`
 }
 
 func (CreatePoolSuccess) IsCreatePoolResult() {}
@@ -854,14 +858,14 @@ type EffectiveUnitPrice struct {
 }
 
 type FundingLedgerEntry struct {
-	ID          string   `json:"id"`
-	OccurredAt  DateTime `json:"occurredAt"`
-	Description string   `json:"description"`
-	AmountYen   Long     `json:"amountYen"`
-	Currency    string   `json:"currency"`
-	CreatedAt   DateTime `json:"createdAt"`
-	Member      *Member  `json:"member"`
-	Pool        *Pool    `json:"pool"`
+	ID          string      `json:"id"`
+	OccurredAt  DateTime    `json:"occurredAt"`
+	Description string      `json:"description"`
+	AmountYen   Long        `json:"amountYen"`
+	Currency    string      `json:"currency"`
+	CreatedAt   DateTime    `json:"createdAt"`
+	Member      *Member     `json:"member"`
+	Pool        PoolVariant `json:"pool"`
 }
 
 func (FundingLedgerEntry) IsAccountBalanceSource() {}
@@ -907,7 +911,7 @@ type Household struct {
 	Name              string        `json:"name"`
 	Revision          int           `json:"revision"`
 	Members           []*Member     `json:"members"`
-	Pools             []*Pool       `json:"pools"`
+	PoolVariants      []PoolVariant `json:"pools"`
 	Accounts          []*Account    `json:"accounts"`
 	Categories        []*Category   `json:"categories"`
 	DefaultAllocation []*Allocation `json:"defaultAllocation"`
@@ -1018,19 +1022,6 @@ type PageInfo struct {
 	EndCursor       *string `json:"endCursor,omitempty"`
 }
 
-type Pool struct {
-	ID                 string                      `json:"id"`
-	Name               string                      `json:"name"`
-	Kind               PoolKind                    `json:"kind"`
-	DefaultShareWeight Long                        `json:"defaultShareWeight"`
-	OwnerMemberID      *string                     `json:"ownerMemberId,omitempty"`
-	FundingShares      []*PoolFundingShare         `json:"fundingShares"`
-	SettlementPolicy   *SharedPoolSettlementPolicy `json:"settlementPolicy,omitempty"`
-	FundingRuleVersion int                         `json:"fundingRuleVersion"`
-}
-
-func (Pool) IsNode() {}
-
 type PoolFundingShare struct {
 	MemberID   string `json:"memberId"`
 	MemberName string `json:"memberName"`
@@ -1135,22 +1126,22 @@ func (ProductVariant) IsAllocationRuleTarget() {}
 func (this ProductVariant) GetName() string    { return this.Name }
 
 type Purchase struct {
-	ID                 string                `json:"id"`
-	HouseholdID        string                `json:"householdId"`
-	OccurredAt         DateTime              `json:"occurredAt"`
-	Merchant           string                `json:"merchant"`
-	Origin             PurchaseOrigin        `json:"origin"`
-	HasEvidence        bool                  `json:"hasEvidence"`
-	SourceKinds        []SourceKind          `json:"sourceKinds"`
-	PaymentAllocations []*PurchasePayment    `json:"paymentAllocations"`
-	Items              []*PurchaseItem       `json:"items"`
-	Corrections        []*PurchaseCorrection `json:"corrections"`
-	TotalYen           Long                  `json:"totalYen"`
-	Currency           string                `json:"currency"`
-	Revision           int                   `json:"revision"`
-	Status             PurchaseStatus        `json:"status"`
-	CreatedAt          DateTime              `json:"createdAt"`
-	UpdatedAt          DateTime              `json:"updatedAt"`
+	ID                    string                        `json:"id"`
+	HouseholdID           string                        `json:"householdId"`
+	OccurredAt            DateTime                      `json:"occurredAt"`
+	Merchant              string                        `json:"merchant"`
+	Origin                PurchaseOrigin                `json:"origin"`
+	HasEvidence           bool                          `json:"hasEvidence"`
+	SourceKinds           []SourceKind                  `json:"sourceKinds"`
+	PaymentAllocations    []*PurchasePayment            `json:"paymentAllocations"`
+	Items                 []*PurchaseItem               `json:"items"`
+	CorrectionsConnection *PurchaseCorrectionConnection `json:"corrections"`
+	TotalYen              Long                          `json:"totalYen"`
+	Currency              string                        `json:"currency"`
+	Revision              int                           `json:"revision"`
+	Status                PurchaseStatus                `json:"status"`
+	CreatedAt             DateTime                      `json:"createdAt"`
+	UpdatedAt             DateTime                      `json:"updatedAt"`
 }
 
 func (Purchase) IsAccountBalanceSource() {}
@@ -1187,6 +1178,26 @@ type PurchaseCorrection struct {
 func (PurchaseCorrection) IsAccountBalanceSource() {}
 
 func (PurchaseCorrection) IsNode() {}
+
+type PurchaseCorrectionConnection struct {
+	Edges      []*PurchaseCorrectionEdge `json:"edges"`
+	PageInfo   *PageInfo                 `json:"pageInfo"`
+	TotalCount int                       `json:"totalCount"`
+}
+
+type PurchaseCorrectionEdge struct {
+	Cursor string              `json:"cursor"`
+	Node   *PurchaseCorrection `json:"node"`
+}
+
+type PurchaseCorrectionItemTargetInput struct {
+	PurchaseID string `json:"purchaseId"`
+	ItemID     string `json:"itemId"`
+}
+
+type PurchaseCorrectionPurchaseTargetInput struct {
+	PurchaseID string `json:"purchaseId"`
+}
 
 type PurchaseEdge struct {
 	Cursor string    `json:"cursor"`
@@ -1572,7 +1583,7 @@ type SetPoolFundingRuleInput struct {
 }
 
 type SetPoolFundingRuleSuccess struct {
-	Result *Pool `json:"result"`
+	Result PoolVariant `json:"result"`
 }
 
 func (SetPoolFundingRuleSuccess) IsSetPoolFundingRuleResult() {}

@@ -15,6 +15,11 @@ type HouseholdInvitation implements Node {
   acceptedAt: DateTime
 }
 
+type CreatedHouseholdInvitation {
+  invitation: HouseholdInvitation!
+  token: String!
+}
+
 type HouseholdInvitationEdge {
   cursor: String!
   node: HouseholdInvitation!

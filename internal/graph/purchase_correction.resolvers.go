@@ -22,8 +22,8 @@ func (r *purchaseCorrectionResolver) ItemID(ctx context.Context, obj *model.Purc
 }
 
 // PurchaseCorrections is the resolver for the purchaseCorrections field.
-func (r *queryResolver) PurchaseCorrections(ctx context.Context, purchaseID string) ([]*model.PurchaseCorrection, error) {
-	return r.purchaseCorrections(ctx, purchaseID)
+func (r *queryResolver) PurchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error) {
+	return r.purchaseCorrections(ctx, purchaseID, first, after)
 }
 
 // PurchaseCorrection returns PurchaseCorrectionResolver implementation.

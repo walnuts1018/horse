@@ -91,6 +91,10 @@ func sameAllocationWeights(inputs []*model.AllocationInput, saved []domain.Weigh
 }
 
 func (r *mutationResolver) correctPurchase(ctx context.Context, input model.CorrectPurchaseInput) (*model.Purchase, error) {
+	purchaseID, itemID, err := correctionTarget(input.Target)
+	if err != nil {
+		return nil, err
+	}
 	user, err := requireMember(ctx, r.DB, input.HouseholdID)
 	if err != nil {
 		return nil, err
@@ -105,7 +109,7 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	executor := bobpgx.NewTx(tx, nil)
-	householdUUID, purchaseUUID := generatedUUID(input.HouseholdID), generatedUUID(input.PurchaseID)
+	householdUUID, purchaseUUID := generatedUUID(input.HouseholdID), generatedUUID(purchaseID)
 	purchaseRow, err := models.Purchases.Query(sm.Where(psql.And(
 		models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID)),
 		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
@@ -133,7 +137,7 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		if err := tx.Rollback(ctx); err != nil {
 			return nil, err
 		}
-		return loadPurchase(ctx, r.DB, input.PurchaseID)
+		return loadPurchase(ctx, r.DB, purchaseID)
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -174,8 +178,8 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		return nil, fmt.Errorf("%w: correction period is closed", ErrConflict)
 	}
 	var itemUUIDValue sql.Null[gofrsuuid.UUID]
-	if input.ItemID != nil {
-		itemUUID := generatedUUID(*input.ItemID)
+	if itemID != nil {
+		itemUUID := generatedUUID(*itemID)
 		if _, err := models.PurchaseItems.Query(sm.Where(psql.And(
 			models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)),
 			models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
@@ -186,7 +190,7 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		}
 		itemUUIDValue = sql.Null[gofrsuuid.UUID]{V: itemUUID, Valid: true}
 	}
-	weights, err := correctionAllocationWeights(ctx, tx, input.PurchaseID, input.ItemID)
+	weights, err := correctionAllocationWeights(ctx, tx, purchaseID, itemID)
 	if err != nil {
 		return nil, err
 	}
@@ -195,8 +199,8 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	}
 	if delta < 0 {
 		var refundable int64
-		if input.ItemID != nil {
-			itemUUID := generatedUUID(*input.ItemID)
+		if itemID != nil {
+			itemUUID := generatedUUID(*itemID)
 			item, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)))).One(ctx, executor)
 			if err != nil {
 				return nil, err
@@ -291,7 +295,7 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 			accountID := purchaseRow.PaymentAccountID.V.String()
 			originalAccountID = &accountID
 		}
-		payments, err = purchasePayments(ctx, tx, input.HouseholdID, input.PurchaseID, originalAccountID, originalTotal)
+		payments, err = purchasePayments(ctx, tx, input.HouseholdID, purchaseID, originalAccountID, originalTotal)
 		if err != nil {
 			return nil, err
 		}
@@ -430,13 +434,28 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "purchase.corrected", input.PurchaseID, 1, []string{"correction"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "purchase.corrected", purchaseID, 1, []string{"correction"}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return loadPurchase(ctx, r.DB, input.PurchaseID)
+	return loadPurchase(ctx, r.DB, purchaseID)
+}
+
+func correctionTarget(target *model.CorrectPurchaseTargetInput) (string, *string, error) {
+	if target == nil {
+		return "", nil, fmt.Errorf("%w: correction target is required", ErrBadInput)
+	}
+	switch {
+	case target.Purchase != nil && target.Item == nil:
+		return target.Purchase.PurchaseID, nil, nil
+	case target.Item != nil && target.Purchase == nil:
+		itemID := target.Item.ItemID
+		return target.Item.PurchaseID, &itemID, nil
+	default:
+		return "", nil, fmt.Errorf("%w: exactly one correction target is required", ErrBadInput)
+	}
 }
 
 func abs(value int64) int64 {

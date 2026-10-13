@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0a58b12c55a437cdb3414027e294e533>>
+ * @generated SignedSource<<238652e3f8a02509f162a67008008d70>>
  * @lightSyntaxTransform
  */
 
@@ -10,7 +10,6 @@
 import type { ConcreteRequest } from 'relay-runtime';
 export type AccountKind = "BANK" | "CARD" | "CASH" | "OTHER" | "%future added value";
 export type MemberRole = "MEMBER" | "OWNER" | "%future added value";
-export type PoolKind = "PERSONAL" | "SHARED" | "%future added value";
 export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL" | "%future added value";
 export type HouseholdQuery$variables = {
   id: string;
@@ -41,6 +40,7 @@ export type HouseholdQuery$data = {
     }>;
     readonly name: string;
     readonly pools: ReadonlyArray<{
+      readonly __typename: string;
       readonly defaultShareWeight: any;
       readonly fundingRuleVersion: number;
       readonly fundingShares: ReadonlyArray<{
@@ -49,10 +49,9 @@ export type HouseholdQuery$data = {
         readonly weight: any;
       }>;
       readonly id: string;
-      readonly kind: PoolKind;
       readonly name: string;
-      readonly ownerMemberId: string | null | undefined;
-      readonly settlementPolicy: SharedPoolSettlementPolicy | null | undefined;
+      readonly ownerMemberId?: string;
+      readonly settlementPolicy?: SharedPoolSettlementPolicy;
     }>;
     readonly revision: number;
   } | null | undefined;
@@ -88,24 +87,17 @@ v3 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "kind",
+  "name": "weight",
   "storageKey": null
 },
 v4 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "weight",
-  "storageKey": null
-},
-v5 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
   "name": "poolId",
   "storageKey": null
 },
-v6 = [
+v5 = [
   {
     "alias": null,
     "args": [
@@ -158,26 +150,18 @@ v6 = [
       {
         "alias": null,
         "args": null,
-        "concreteType": "Pool",
+        "concreteType": null,
         "kind": "LinkedField",
         "name": "pools",
         "plural": true,
         "selections": [
           (v1/*:: as any*/),
           (v2/*:: as any*/),
-          (v3/*:: as any*/),
           {
             "alias": null,
             "args": null,
             "kind": "ScalarField",
             "name": "defaultShareWeight",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "ownerMemberId",
             "storageKey": null
           },
           {
@@ -202,15 +186,8 @@ v6 = [
                 "name": "memberName",
                 "storageKey": null
               },
-              (v4/*:: as any*/)
+              (v3/*:: as any*/)
             ],
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "settlementPolicy",
             "storageKey": null
           },
           {
@@ -219,6 +196,41 @@ v6 = [
             "kind": "ScalarField",
             "name": "fundingRuleVersion",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "__typename",
+            "storageKey": null
+          },
+          {
+            "kind": "InlineFragment",
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "ownerMemberId",
+                "storageKey": null
+              }
+            ],
+            "type": "PersonalPool",
+            "abstractKey": null
+          },
+          {
+            "kind": "InlineFragment",
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "settlementPolicy",
+                "storageKey": null
+              }
+            ],
+            "type": "SharedPool",
+            "abstractKey": null
           }
         ],
         "storageKey": null
@@ -233,8 +245,14 @@ v6 = [
         "selections": [
           (v1/*:: as any*/),
           (v2/*:: as any*/),
-          (v3/*:: as any*/),
-          (v5/*:: as any*/)
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "kind",
+            "storageKey": null
+          },
+          (v4/*:: as any*/)
         ],
         "storageKey": null
       },
@@ -273,8 +291,8 @@ v6 = [
         "name": "defaultAllocation",
         "plural": true,
         "selections": [
-          (v5/*:: as any*/),
-          (v4/*:: as any*/)
+          (v4/*:: as any*/),
+          (v3/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -288,7 +306,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "HouseholdQuery",
-    "selections": (v6/*:: as any*/),
+    "selections": (v5/*:: as any*/),
     "type": "Query",
     "abstractKey": null
   },
@@ -297,19 +315,19 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "HouseholdQuery",
-    "selections": (v6/*:: as any*/)
+    "selections": (v5/*:: as any*/)
   },
   "params": {
-    "cacheID": "0166b4cebc33e0a8e2aa85e8866631cd",
+    "cacheID": "c0e285bff86d0489c37da0a9d25ebcf6",
     "id": null,
     "metadata": {},
     "name": "HouseholdQuery",
     "operationKind": "query",
-    "text": "query HouseholdQuery(\n  $id: ID!\n) {\n  household(id: $id) {\n    id\n    name\n    revision\n    members {\n      id\n      displayName\n      role\n    }\n    pools {\n      id\n      name\n      kind\n      defaultShareWeight\n      ownerMemberId\n      fundingShares {\n        memberId\n        memberName\n        weight\n      }\n      settlementPolicy\n      fundingRuleVersion\n    }\n    accounts {\n      id\n      name\n      kind\n      poolId\n    }\n    categories {\n      id\n      name\n      parentId\n      archived\n    }\n    defaultAllocation {\n      poolId\n      weight\n    }\n  }\n}\n"
+    "text": "query HouseholdQuery(\n  $id: ID!\n) {\n  household(id: $id) {\n    id\n    name\n    revision\n    members {\n      id\n      displayName\n      role\n    }\n    pools {\n      id\n      name\n      defaultShareWeight\n      fundingShares {\n        memberId\n        memberName\n        weight\n      }\n      fundingRuleVersion\n      __typename\n      ... on PersonalPool {\n        ownerMemberId\n      }\n      ... on SharedPool {\n        settlementPolicy\n      }\n    }\n    accounts {\n      id\n      name\n      kind\n      poolId\n    }\n    categories {\n      id\n      name\n      parentId\n      archived\n    }\n    defaultAllocation {\n      poolId\n      weight\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "28cff740524c0dc2933285a2ffb3bc5f";
+(node as any).hash = "041f4ee551253c07e8f2e47d9e537ab7";
 
 export default node;

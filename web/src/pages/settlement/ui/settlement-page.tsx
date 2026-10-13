@@ -130,7 +130,7 @@ export function SettlementPage({ household }: { household: Household }) {
           householdId: household.id,
           memberId,
           poolId:
-            household.pools.find((pool) => pool.kind === "SHARED")?.id ?? household.pools[0]?.id,
+            household.pools.find((pool) => pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool")?.id ?? household.pools[0]?.id,
           amountYen,
           occurredAt: new Date().toISOString(),
           idempotencyKey: makeIdempotencyKey(),
@@ -346,7 +346,7 @@ export function SettlementPage({ household }: { household: Household }) {
                         const pool = household.pools.find(
                           (candidate) => candidate.id === account.poolId,
                         );
-                        return pool?.kind === "PERSONAL" && pool.ownerMemberId === line.memberId;
+                        return pool?.__typename === "PersonalPool" && pool.ownerMemberId === line.memberId;
                       })
                       .map((account) => (
                         <option key={account.id} value={account.id}>
@@ -364,7 +364,7 @@ export function SettlementPage({ household }: { household: Household }) {
                     <option value="">未指定</option>
                     {household.accounts
                       .filter((account) => {
-                        const sharedPool = household.pools.find((pool) => pool.kind === "SHARED");
+                        const sharedPool = household.pools.find((pool) => pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool");
                         return sharedPool?.id === account.poolId && account.kind !== "CARD";
                       })
                       .map((account) => (

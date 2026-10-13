@@ -68,20 +68,27 @@ export const purchaseListFragment = graphql`
             ...PurchaseItemFields @relay(mask: false)
           }
           totalYen
-          corrections {
-            id
-            itemId
-            amountDeltaYen
-            reason
-            occurredAt
-            settlementMonth
-            paymentAllocations {
-              paymentAccountId
-              amountYen
-              account {
+          corrections(first: 100) {
+            edges {
+              node {
                 id
-                name
+                itemId
+                amountDeltaYen
+                reason
+                occurredAt
+                settlementMonth
+                paymentAllocations {
+                  paymentAccountId
+                  amountYen
+                  account {
+                    id
+                    name
+                  }
+                }
               }
+            }
+            pageInfo {
+              hasNextPage
             }
           }
           revision

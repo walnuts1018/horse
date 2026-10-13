@@ -11,6 +11,11 @@ import (
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
+// Result is the resolver for the result field.
+func (r *createPoolSuccessResolver) Result(ctx context.Context, obj *model.CreatePoolSuccess) (model.PoolVariant, error) {
+	return obj.Result, nil
+}
+
 // CreatePool is the resolver for the createPool field.
 func (r *mutationResolver) CreatePool(ctx context.Context, input model.CreatePoolInput) (model.CreatePoolResult, error) {
 	result, err := r.createPool(ctx, input)
@@ -20,5 +25,12 @@ func (r *mutationResolver) CreatePool(ctx context.Context, input model.CreatePoo
 		}
 		return nil, err
 	}
-	return &model.CreatePoolSuccess{Result: result}, nil
+	return &model.CreatePoolSuccess{Result: poolVariant(result)}, nil
 }
+
+// CreatePoolSuccess returns CreatePoolSuccessResolver implementation.
+func (r *Resolver) CreatePoolSuccess() CreatePoolSuccessResolver {
+	return &createPoolSuccessResolver{r}
+}
+
+type createPoolSuccessResolver struct{ *Resolver }

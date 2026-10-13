@@ -3,7 +3,7 @@ type Household implements Node {
   name: String!
   revision: Int!
   members: [Member!]!
-  pools: [Pool!]!
+  pools: [Pool!]! @goField(name: "PoolVariants", forceResolver: true)
   accounts: [Account!]!
   categories: [Category!]!
   defaultAllocation: [Allocation!]!

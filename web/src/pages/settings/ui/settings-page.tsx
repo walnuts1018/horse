@@ -16,6 +16,7 @@ import {
   type RecurringExpense,
   type Tag,
 } from "../../../shared/api";
+import { isPersonalPool, isSharedPool } from "../../../shared/api/household";
 import {
   allocationRulesQuery,
   createAccountMutation,
@@ -393,8 +394,8 @@ export function SettingsPage({
         household.pools.map((pool) => [
           pool.id,
           {
-            ownerMemberId: pool.ownerMemberId ?? "",
-            policy: pool.settlementPolicy ?? "BALANCE_TO_STANDARD",
+            ownerMemberId: pool.__typename === "PersonalPool" ? pool.ownerMemberId : "",
+            policy: pool.__typename === "SharedPool" ? pool.settlementPolicy : "BALANCE_TO_STANDARD",
             weights: Object.fromEntries(
               household.members.map((member) => [
                 member.id,
@@ -826,11 +827,11 @@ export function SettingsPage({
         weight: Math.max(0, Number(draft.weights[member.id]) || 0),
       }))
       .filter((share) => share.weight > 0);
-    if (pool.kind === "PERSONAL" && !draft.ownerMemberId) {
+    if (isPersonalPool(pool) && !draft.ownerMemberId) {
       onNotice("所有者を選択してください");
       return;
     }
-    if (pool.kind === "SHARED" && fundingShares.length === 0) {
+    if (isSharedPool(pool) && fundingShares.length === 0) {
       onNotice("拠出比率を入力してください");
       return;
     }
@@ -840,9 +841,9 @@ export function SettingsPage({
         input: {
           householdId: household.id,
           poolId,
-          ownerMemberId: pool.kind === "PERSONAL" ? draft.ownerMemberId : null,
-          fundingShares: pool.kind === "SHARED" ? fundingShares : [],
-          settlementPolicy: pool.kind === "SHARED" ? draft.policy : null,
+          ownerMemberId: isPersonalPool(pool) ? draft.ownerMemberId : null,
+          fundingShares: isSharedPool(pool) ? fundingShares : [],
+          settlementPolicy: isSharedPool(pool) ? draft.policy : null,
           expectedVersion: pool.fundingRuleVersion,
         },
       });
@@ -1045,13 +1046,12 @@ export function SettingsPage({
                   <div>
                     <b>{pool.name}</b>
                     <small>
-                      {pool.kind === "SHARED" ? "共用" : "個人"} · 品目負担の標準比{" "}
+                      {isSharedPool(pool) ? "共用" : "個人"} · 品目負担の標準比{" "}
                       {pool.defaultShareWeight}
                     </small>
                   </div>
-                  {(pool.kind === "PERSONAL" && !pool.ownerMemberId) ||
-                  (pool.kind === "SHARED" &&
-                    (!pool.fundingShares.length || !pool.settlementPolicy)) ? (
+                  {pool.__typename === "UnconfiguredPersonalPool" ||
+                  pool.__typename === "UnconfiguredSharedPool" ? (
                     <span className="period-chip">設定が必要</span>
                   ) : null}
                   <ChevronRight size={16} />
@@ -1060,7 +1060,7 @@ export function SettingsPage({
                   className="pool-funding-form"
                   onSubmit={(event) => void saveFundingRule(event, pool.id)}
                 >
-                  {pool.kind === "PERSONAL" ? (
+                  {isPersonalPool(pool) ? (
                     <label>
                       所有者
                       <select

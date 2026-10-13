@@ -12,6 +12,21 @@ resolver:
   package: graph
   filename_template: "{name}.resolvers.go"
 models:
+  Pool:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PoolVariant
+  PersonalPool:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.PersonalPool
+  UnconfiguredPersonalPool:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.UnconfiguredPersonalPool
+  SharedPool:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.SharedPool
+  UnconfiguredSharedPool:
+    model:
+      - github.com/walnuts1018/horse/internal/graph/model.UnconfiguredSharedPool
   Date:
     model:
       - github.com/walnuts1018/horse/internal/graph/model.Date

@@ -10,13 +10,26 @@ type CorrectPurchaseSuccess {
 
 input CorrectPurchaseInput {
   householdId: ID! @nodeID(of: "Household")
-  purchaseId: ID! @nodeID(of: "Purchase")
-  itemId: ID @nodeID(of: "PurchaseItem")
+  target: CorrectPurchaseTargetInput!
   amountDeltaYen: Long!
   reason: String!
   allocations: [CorrectPurchaseAllocationInput!]
   paymentAllocations: [CorrectPurchasePaymentInput!]
   idempotencyKey: String!
+}
+
+input CorrectPurchaseTargetInput @oneOf {
+  purchase: PurchaseCorrectionPurchaseTargetInput
+  item: PurchaseCorrectionItemTargetInput
+}
+
+input PurchaseCorrectionPurchaseTargetInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+}
+
+input PurchaseCorrectionItemTargetInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+  itemId: ID! @nodeID(of: "PurchaseItem")
 }
 
 input CorrectPurchaseAllocationInput {

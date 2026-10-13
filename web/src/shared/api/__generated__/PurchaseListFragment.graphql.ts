@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<d1945caa8c2b0d57f95017b786c3a59a>>
+ * @generated SignedSource<<9dad23ffed509b5243d75eeb7eddce14>>
  * @lightSyntaxTransform
  */
 
@@ -17,22 +17,29 @@ export type PurchaseListFragment$data = {
     readonly edges: ReadonlyArray<{
       readonly cursor: string;
       readonly node: {
-        readonly corrections: ReadonlyArray<{
-          readonly amountDeltaYen: any;
-          readonly id: string;
-          readonly itemId: string | null | undefined;
-          readonly occurredAt: string;
-          readonly paymentAllocations: ReadonlyArray<{
-            readonly account: {
+        readonly corrections: {
+          readonly edges: ReadonlyArray<{
+            readonly node: {
+              readonly amountDeltaYen: any;
               readonly id: string;
-              readonly name: string;
+              readonly itemId: string | null | undefined;
+              readonly occurredAt: string;
+              readonly paymentAllocations: ReadonlyArray<{
+                readonly account: {
+                  readonly id: string;
+                  readonly name: string;
+                };
+                readonly amountYen: any;
+                readonly paymentAccountId: string;
+              }>;
+              readonly reason: string;
+              readonly settlementMonth: string;
             };
-            readonly amountYen: any;
-            readonly paymentAccountId: string;
           }>;
-          readonly reason: string;
-          readonly settlementMonth: string;
-        }>;
+          readonly pageInfo: {
+            readonly hasNextPage: boolean;
+          };
+        };
         readonly createdAt: string;
         readonly hasEvidence: boolean;
         readonly householdId: string;
@@ -212,6 +219,13 @@ v9 = {
   "args": null,
   "kind": "ScalarField",
   "name": "revision",
+  "storageKey": null
+},
+v10 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "hasNextPage",
   "storageKey": null
 };
 return {
@@ -517,45 +531,85 @@ return {
                 },
                 {
                   "alias": null,
-                  "args": null,
-                  "concreteType": "PurchaseCorrection",
+                  "args": [
+                    {
+                      "kind": "Literal",
+                      "name": "first",
+                      "value": 100
+                    }
+                  ],
+                  "concreteType": "PurchaseCorrectionConnection",
                   "kind": "LinkedField",
                   "name": "corrections",
-                  "plural": true,
+                  "plural": false,
                   "selections": [
-                    (v1/*:: as any*/),
                     {
                       "alias": null,
                       "args": null,
-                      "kind": "ScalarField",
-                      "name": "itemId",
+                      "concreteType": "PurchaseCorrectionEdge",
+                      "kind": "LinkedField",
+                      "name": "edges",
+                      "plural": true,
+                      "selections": [
+                        {
+                          "alias": null,
+                          "args": null,
+                          "concreteType": "PurchaseCorrection",
+                          "kind": "LinkedField",
+                          "name": "node",
+                          "plural": false,
+                          "selections": [
+                            (v1/*:: as any*/),
+                            {
+                              "alias": null,
+                              "args": null,
+                              "kind": "ScalarField",
+                              "name": "itemId",
+                              "storageKey": null
+                            },
+                            {
+                              "alias": null,
+                              "args": null,
+                              "kind": "ScalarField",
+                              "name": "amountDeltaYen",
+                              "storageKey": null
+                            },
+                            {
+                              "alias": null,
+                              "args": null,
+                              "kind": "ScalarField",
+                              "name": "reason",
+                              "storageKey": null
+                            },
+                            (v3/*:: as any*/),
+                            {
+                              "alias": null,
+                              "args": null,
+                              "kind": "ScalarField",
+                              "name": "settlementMonth",
+                              "storageKey": null
+                            },
+                            (v6/*:: as any*/)
+                          ],
+                          "storageKey": null
+                        }
+                      ],
                       "storageKey": null
                     },
                     {
                       "alias": null,
                       "args": null,
-                      "kind": "ScalarField",
-                      "name": "amountDeltaYen",
+                      "concreteType": "PageInfo",
+                      "kind": "LinkedField",
+                      "name": "pageInfo",
+                      "plural": false,
+                      "selections": [
+                        (v10/*:: as any*/)
+                      ],
                       "storageKey": null
-                    },
-                    {
-                      "alias": null,
-                      "args": null,
-                      "kind": "ScalarField",
-                      "name": "reason",
-                      "storageKey": null
-                    },
-                    (v3/*:: as any*/),
-                    {
-                      "alias": null,
-                      "args": null,
-                      "kind": "ScalarField",
-                      "name": "settlementMonth",
-                      "storageKey": null
-                    },
-                    (v6/*:: as any*/)
+                    }
                   ],
-                  "storageKey": null
+                  "storageKey": "corrections(first:100)"
                 },
                 (v9/*:: as any*/),
                 {
@@ -614,13 +668,7 @@ return {
               "name": "endCursor",
               "storageKey": null
             },
-            {
-              "alias": null,
-              "args": null,
-              "kind": "ScalarField",
-              "name": "hasNextPage",
-              "storageKey": null
-            },
+            (v10/*:: as any*/),
             {
               "alias": null,
               "args": null,
@@ -654,6 +702,6 @@ return {
 };
 })();
 
-(node as any).hash = "d458a29b2f22c73b769002d23e9689de";
+(node as any).hash = "369a55796e8eae9cb1ee66afca2787af";
 
 export default node;

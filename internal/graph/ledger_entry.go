@@ -40,7 +40,7 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 			return nil, err
 		}
 		member := findValue(household.Members, func(member *model.Member) bool { return member.ID == *value.FromMemberID })
-		pool := findValue(household.Pools, func(pool *model.Pool) bool { return pool.ID == *value.PoolID })
+		pool := findValue(household.PoolVariants, func(pool model.PoolVariant) bool { return poolData(pool).ID == *value.PoolID })
 		if member == nil || pool == nil {
 			return nil, ErrNotFound
 		}

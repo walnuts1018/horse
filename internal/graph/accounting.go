@@ -191,9 +191,9 @@ func (r *mutationResolver) setPoolFundingRule(ctx context.Context, input model.S
 	if err != nil {
 		return nil, err
 	}
-	for _, resultPool := range householdResult.Pools {
-		if resultPool.ID == input.PoolID {
-			return resultPool, nil
+	for _, resultPool := range householdResult.PoolVariants {
+		if value := poolData(resultPool); value != nil && value.ID == input.PoolID {
+			return value, nil
 		}
 	}
 	return nil, ErrNotFound

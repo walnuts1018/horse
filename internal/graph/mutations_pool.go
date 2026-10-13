@@ -93,9 +93,9 @@ func (r *mutationResolver) createPool(ctx context.Context, input model.CreatePoo
 	if err != nil {
 		return nil, err
 	}
-	for _, pool := range household.Pools {
-		if pool.ID == poolID {
-			return pool, nil
+	for _, pool := range household.PoolVariants {
+		if value := poolData(pool); value != nil && value.ID == poolID {
+			return value, nil
 		}
 	}
 	return nil, ErrNotFound

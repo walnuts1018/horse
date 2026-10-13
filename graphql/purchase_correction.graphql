@@ -8,6 +8,17 @@ type PurchaseCorrection implements Node {
   paymentAllocations: [PurchasePayment!]!
 }
 
+type PurchaseCorrectionEdge {
+  cursor: String!
+  node: PurchaseCorrection!
+}
+
+type PurchaseCorrectionConnection {
+  edges: [PurchaseCorrectionEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  purchaseCorrections(purchaseId: ID! @nodeID(of: "Purchase")): [PurchaseCorrection!]!
+  purchaseCorrections(purchaseId: ID! @nodeID(of: "Purchase"), first: Int, after: String): PurchaseCorrectionConnection!
 }

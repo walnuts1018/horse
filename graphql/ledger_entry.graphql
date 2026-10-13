@@ -25,7 +25,7 @@ type FundingLedgerEntry implements LedgerEntry & Node {
   currency: String!
   createdAt: DateTime!
   member: Member!
-  pool: Pool!
+  pool: Pool! @goField(forceResolver: true)
 }
 
 type PurchaseLedgerEntry implements LedgerEntry & Node {

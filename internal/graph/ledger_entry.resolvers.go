@@ -21,6 +21,11 @@ func (r *fundingLedgerEntryResolver) ID(ctx context.Context, obj *model.FundingL
 	return encodeNodeID("LedgerEntry", obj.ID)
 }
 
+// Pool is the resolver for the pool field.
+func (r *fundingLedgerEntryResolver) Pool(ctx context.Context, obj *model.FundingLedgerEntry) (model.PoolVariant, error) {
+	return obj.Pool, nil
+}
+
 // ID is the resolver for the id field.
 func (r *purchaseLedgerEntryResolver) ID(ctx context.Context, obj *model.PurchaseLedgerEntry) (string, error) {
 	return encodeNodeID("LedgerEntry", obj.ID)

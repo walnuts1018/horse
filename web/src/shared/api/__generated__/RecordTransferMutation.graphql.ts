@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1d3525d7e91e77bbd983e248b5d4757d>>
+ * @generated SignedSource<<6a95ec82423d073e3e1db19f29b9cfbb>>
  * @lightSyntaxTransform
  */
 
@@ -252,11 +252,12 @@ return {
                       {
                         "alias": null,
                         "args": null,
-                        "concreteType": "Pool",
+                        "concreteType": null,
                         "kind": "LinkedField",
                         "name": "pool",
                         "plural": false,
                         "selections": [
+                          (v2/*:: as any*/),
                           (v4/*:: as any*/),
                           {
                             "alias": null,
@@ -336,12 +337,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "59177890fa38d08337e13b183a7ef2da",
+    "cacheID": "b0064976e01fcb2b228ea2815fa3e33b",
     "id": null,
     "metadata": {},
     "name": "RecordTransferMutation",
     "operationKind": "mutation",
-    "text": "mutation RecordTransferMutation(\n  $input: RecordTransferInput!\n) {\n  recordTransfer(input: $input) {\n    __typename\n    ... on RecordTransferSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      id\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
+    "text": "mutation RecordTransferMutation(\n  $input: RecordTransferInput!\n) {\n  recordTransfer(input: $input) {\n    __typename\n    ... on RecordTransferSuccess {\n      result {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      __typename\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      id\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
   }
 };
 })();

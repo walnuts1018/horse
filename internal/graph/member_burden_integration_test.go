@@ -169,7 +169,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, FundingShares: []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, SettlementPolicy: &policy, ExpectedVersion: 2}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.correctPurchase(ctx, model.CorrectPurchaseInput{HouseholdID: household.ID, PurchaseID: purchase.ID, ItemID: &purchase.Items[0].ID, AmountDeltaYen: -100, Reason: "refund", IdempotencyKey: uuid.NewV7().String()}); err != nil {
+	if _, err := resolver.correctPurchase(ctx, model.CorrectPurchaseInput{HouseholdID: household.ID, Target: &model.CorrectPurchaseTargetInput{Item: &model.PurchaseCorrectionItemTargetInput{PurchaseID: purchase.ID, ItemID: purchase.Items[0].ID}}, AmountDeltaYen: -100, Reason: "refund", IdempotencyKey: uuid.NewV7().String()}); err != nil {
 		t.Fatal(err)
 	}
 	purchaseUUID = generatedUUID(purchase.ID)
@@ -239,7 +239,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if len(listedPurchase.Items[0].Allocations) != 1 || listedPurchase.Items[0].Allocations[0].PoolID != pool.ID || listedPurchase.Items[0].Allocations[0].AmountYen == nil || int64(*listedPurchase.Items[0].Allocations[0].AmountYen) != 1200 {
 		t.Fatalf("first purchase allocation relation is incorrect: %#v", listedPurchase.Items[0].Allocations)
 	}
-	if len(listedPurchase.PaymentAllocations) != 1 || listedPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedPurchase.PaymentAllocations[0].AmountYen) != 1200 || len(listedPurchase.Corrections) != 1 {
+	if len(listedPurchase.PaymentAllocations) != 1 || listedPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedPurchase.PaymentAllocations[0].AmountYen) != 1200 || len(listedPurchase.CorrectionsConnection.Edges) != 1 {
 		t.Fatalf("first purchase relations were not loaded from their own records: %#v", listedPurchase)
 	}
 	listedSecondPurchase := listedByID[secondPurchase.ID]
@@ -255,7 +255,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if len(listedSecondPurchase.Items[0].Allocations) != 1 || listedSecondPurchase.Items[0].Allocations[0].PoolID != pool.ID || listedSecondPurchase.Items[0].Allocations[0].AmountYen == nil || int64(*listedSecondPurchase.Items[0].Allocations[0].AmountYen) != 300 {
 		t.Fatalf("second purchase allocation relation crossed with another purchase: %#v", listedSecondPurchase.Items[0].Allocations)
 	}
-	if len(listedSecondPurchase.PaymentAllocations) != 1 || listedSecondPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedSecondPurchase.PaymentAllocations[0].AmountYen) != 300 || len(listedSecondPurchase.Corrections) != 0 {
+	if len(listedSecondPurchase.PaymentAllocations) != 1 || listedSecondPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedSecondPurchase.PaymentAllocations[0].AmountYen) != 300 || len(listedSecondPurchase.CorrectionsConnection.Edges) != 0 {
 		t.Fatalf("second purchase relations crossed with another purchase: %#v", listedSecondPurchase)
 	}
 	outsiderContext := auth.WithPrincipal(t.Context(), auth.Principal{MemberID: outsider, Subject: "burden-integration:" + outsider, DisplayName: "Outsider"})

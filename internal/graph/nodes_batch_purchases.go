@@ -70,7 +70,7 @@ func (b *nodeBatch) loadPurchaseNodes() error {
 			for _, item := range purchase.Items {
 				set("PurchaseItem", item.ID, item)
 			}
-			for _, correction := range purchase.Corrections {
+			for _, correction := range purchaseCorrectionNodes(purchase) {
 				set("PurchaseCorrection", correction.ID, correction)
 			}
 		}

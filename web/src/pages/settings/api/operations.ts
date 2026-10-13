@@ -150,10 +150,14 @@ export const setPoolFundingRuleMutation = graphql`
       ... on SetPoolFundingRuleSuccess {
         result {
           id
-          kind
-          ownerMemberId
+          __typename
+          ... on PersonalPool {
+            ownerMemberId
+          }
           fundingRuleVersion
-          settlementPolicy
+          ... on SharedPool {
+            settlementPolicy
+          }
           fundingShares {
             memberId
             memberName

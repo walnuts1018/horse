@@ -13,16 +13,51 @@ import { useCallback, useRef, useState } from "react";
 
 export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL";
 export type PoolFundingShare = { memberId: string; memberName: string; weight: number };
-export type Pool = {
+export type PersonalPool = {
+  __typename: "PersonalPool";
   id: string;
   name: string;
-  kind: string;
   defaultShareWeight: number;
-  ownerMemberId?: string | null;
+  ownerMemberId: string;
   fundingShares: PoolFundingShare[];
-  settlementPolicy?: SharedPoolSettlementPolicy | null;
   fundingRuleVersion: number;
 };
+export type SharedPool = {
+  __typename: "SharedPool";
+  id: string;
+  name: string;
+  defaultShareWeight: number;
+  fundingShares: PoolFundingShare[];
+  settlementPolicy: SharedPoolSettlementPolicy;
+  fundingRuleVersion: number;
+};
+export type UnconfiguredPersonalPool = {
+  __typename: "UnconfiguredPersonalPool";
+  id: string;
+  name: string;
+  defaultShareWeight: number;
+  fundingShares: PoolFundingShare[];
+  fundingRuleVersion: number;
+};
+export type UnconfiguredSharedPool = {
+  __typename: "UnconfiguredSharedPool";
+  id: string;
+  name: string;
+  defaultShareWeight: number;
+  fundingShares: PoolFundingShare[];
+  fundingRuleVersion: number;
+};
+export type Pool = PersonalPool | SharedPool | UnconfiguredPersonalPool | UnconfiguredSharedPool;
+
+export function isPersonalPool(
+  pool: Pool,
+): pool is PersonalPool | UnconfiguredPersonalPool {
+  return pool.__typename === "PersonalPool" || pool.__typename === "UnconfiguredPersonalPool";
+}
+
+export function isSharedPool(pool: Pool): pool is SharedPool | UnconfiguredSharedPool {
+  return pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool";
+}
 export type Account = { id: string; name: string; kind: string; poolId?: string | null };
 export type Category = { id: string; name: string; archived?: boolean };
 export type Allocation = { poolId: string; poolName: string; weight: number; amountYen?: number };

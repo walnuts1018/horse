@@ -20,5 +20,17 @@ func (r *mutationResolver) SetPoolFundingRule(ctx context.Context, input model.S
 		}
 		return nil, err
 	}
-	return &model.SetPoolFundingRuleSuccess{Result: result}, nil
+	return &model.SetPoolFundingRuleSuccess{Result: poolVariant(result)}, nil
 }
+
+// Result is the resolver for the result field.
+func (r *setPoolFundingRuleSuccessResolver) Result(ctx context.Context, obj *model.SetPoolFundingRuleSuccess) (model.PoolVariant, error) {
+	return obj.Result, nil
+}
+
+// SetPoolFundingRuleSuccess returns SetPoolFundingRuleSuccessResolver implementation.
+func (r *Resolver) SetPoolFundingRuleSuccess() SetPoolFundingRuleSuccessResolver {
+	return &setPoolFundingRuleSuccessResolver{r}
+}
+
+type setPoolFundingRuleSuccessResolver struct{ *Resolver }

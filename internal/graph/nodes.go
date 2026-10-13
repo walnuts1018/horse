@@ -211,7 +211,7 @@ func (r *queryResolver) findNodeInHouseholds(ctx context.Context, households []*
 			}
 		}
 		if kind == "Pool" {
-			if value := findValue(household.Pools, func(value *model.Pool) bool { return value.ID == id }); value != nil {
+			if value := findValue(household.PoolVariants, func(value model.PoolVariant) bool { return poolData(value).ID == id }); value != nil {
 				return value, nil
 			}
 		}
@@ -312,7 +312,7 @@ func (r *queryResolver) findNodeInHouseholds(ctx context.Context, households []*
 				if value := findValue(purchase.Items, func(value *model.PurchaseItem) bool { return value.ID == id }); value != nil {
 					return value, nil
 				}
-			} else if value := findValue(purchase.Corrections, func(value *model.PurchaseCorrection) bool { return value.ID == id }); value != nil {
+			} else if value := findValue(purchaseCorrectionNodes(purchase), func(value *model.PurchaseCorrection) bool { return value.ID == id }); value != nil {
 				return value, nil
 			}
 		}

@@ -5,7 +5,7 @@ extend type Mutation {
 union CreatePoolResult = CreatePoolSuccess | CreatePoolUserError
 
 type CreatePoolSuccess {
-  result: Pool!
+  result: Pool! @goField(forceResolver: true)
 }
 
 input CreatePoolInput {

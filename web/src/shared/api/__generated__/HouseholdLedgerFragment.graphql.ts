@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b04dcadf08dd2103edc8320380dee598>>
+ * @generated SignedSource<<4bfcbc8b8f705e37eea25e90a757151d>>
  * @lightSyntaxTransform
  */
 
@@ -243,7 +243,7 @@ return {
                     {
                       "alias": null,
                       "args": null,
-                      "concreteType": "Pool",
+                      "concreteType": null,
                       "kind": "LinkedField",
                       "name": "pool",
                       "plural": false,

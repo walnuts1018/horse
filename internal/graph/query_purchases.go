@@ -138,7 +138,7 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 	return connection, nil
 }
 
-func (r *queryResolver) purchaseCorrections(ctx context.Context, purchaseID string) ([]*model.PurchaseCorrection, error) {
+func (r *queryResolver) purchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error) {
 	id, err := gofrsuuid.FromString(purchaseID)
 	if err != nil {
 		return nil, fmt.Errorf("parse purchase id: %w", err)
@@ -157,5 +157,44 @@ func (r *queryResolver) purchaseCorrections(ctx context.Context, purchaseID stri
 	if err != nil {
 		return nil, err
 	}
-	return loaded.Corrections, nil
+	return paginatePurchaseCorrections(loaded.CorrectionsConnection.Edges, first, after)
+}
+
+func paginatePurchaseCorrections(edges []*model.PurchaseCorrectionEdge, first *int, after *string) (*model.PurchaseCorrectionConnection, error) {
+	pageSize, _, err := pageDirection(after, nil, first, nil)
+	if err != nil {
+		return nil, err
+	}
+	startIndex := 0
+	if cursor, err := cursorID(after, "PurchaseCorrection"); err != nil {
+		return nil, err
+	} else if cursor != nil {
+		found := false
+		for index, edge := range edges {
+			if edge.Node.ID == *cursor {
+				startIndex = index + 1
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, ErrNotFound
+		}
+	}
+	remaining := edges[startIndex:]
+	hasNextPage := len(remaining) > pageSize
+	if hasNextPage {
+		remaining = remaining[:pageSize]
+	}
+	result := &model.PurchaseCorrectionConnection{
+		Edges:      remaining,
+		PageInfo:   &model.PageInfo{HasNextPage: hasNextPage, HasPreviousPage: startIndex > 0},
+		TotalCount: len(edges),
+	}
+	if len(remaining) > 0 {
+		startCursor, endCursor := remaining[0].Cursor, remaining[len(remaining)-1].Cursor
+		result.PageInfo.StartCursor = &startCursor
+		result.PageInfo.EndCursor = &endCursor
+	}
+	return result, nil
 }

@@ -146,7 +146,7 @@ func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*
 	if err != nil {
 		return nil, err
 	}
-	result.Pools = make([]*model.Pool, 0)
+	result.PoolVariants = make([]model.PoolVariant, 0)
 	defaults, err := models.AllocationDefaults.Query(sm.Where(psql.And(
 		models.AllocationDefaults.Columns.HouseholdID.EQ(psql.Arg(id)),
 		models.AllocationDefaults.Columns.Version.EQ(psql.Arg(allocationVersion)),
@@ -165,7 +165,7 @@ func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*
 			DefaultShareWeight: graphLong(defaultWeightByPool[pool.ID]),
 			FundingRuleVersion: int(pool.FundingRuleVersion), FundingShares: make([]*model.PoolFundingShare, 0),
 		}
-		result.Pools = append(result.Pools, value)
+		result.PoolVariants = append(result.PoolVariants, poolVariant(value))
 		poolByID[pool.ID] = value
 	}
 	fundingRules, err := models.PoolFundingRules.Query(sm.Where(models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(id)))).All(ctx, executor)
@@ -279,6 +279,14 @@ func loadPurchase(ctx context.Context, db *pgxpool.Pool, purchaseID string) (*mo
 	return loaded[0], nil
 }
 
+func purchaseCorrectionNodes(purchase *model.Purchase) []*model.PurchaseCorrection {
+	corrections := make([]*model.PurchaseCorrection, 0, len(purchase.CorrectionsConnection.Edges))
+	for _, edge := range purchase.CorrectionsConnection.Edges {
+		corrections = append(corrections, edge.Node)
+	}
+	return corrections
+}
+
 func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.PurchaseSlice) ([]*model.Purchase, error) {
 	if len(purchases) == 0 {
 		return []*model.Purchase{}, nil
@@ -365,7 +373,9 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 			Revision: int(purchase.Revision), Status: model.PurchaseStatus(purchase.Status), Currency: "JPY",
 			CreatedAt: timeString(purchase.CreatedAt), UpdatedAt: timeString(purchase.UpdatedAt),
 			Items: make([]*model.PurchaseItem, 0), PaymentAllocations: make([]*model.PurchasePayment, 0),
-			Corrections: make([]*model.PurchaseCorrection, 0),
+			CorrectionsConnection: &model.PurchaseCorrectionConnection{
+				Edges: make([]*model.PurchaseCorrectionEdge, 0), PageInfo: &model.PageInfo{},
+			},
 		}
 		sourceKinds := make(map[model.SourceKind]struct{}, len(purchase.R.EvidenceLinks)+len(purchase.R.DocumentConfirmations))
 		for _, link := range purchase.R.EvidenceLinks {
@@ -476,8 +486,11 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 					Account: graphAccount(storedPayment.R.Account),
 				})
 			}
-			loaded.Corrections = append(loaded.Corrections, correction)
+			loaded.CorrectionsConnection.Edges = append(loaded.CorrectionsConnection.Edges, &model.PurchaseCorrectionEdge{
+				Cursor: encodeCursor("PurchaseCorrection", correction.ID), Node: correction,
+			})
 		}
+		loaded.CorrectionsConnection.TotalCount = len(loaded.CorrectionsConnection.Edges)
 		result = append(result, loaded)
 	}
 	return result, nil

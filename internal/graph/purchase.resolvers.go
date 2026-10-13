@@ -21,6 +21,11 @@ func (r *purchaseResolver) HouseholdID(ctx context.Context, obj *model.Purchase)
 	return encodeNodeID("Household", obj.HouseholdID)
 }
 
+// Corrections is the resolver for the corrections field.
+func (r *purchaseResolver) Corrections(ctx context.Context, obj *model.Purchase, first *int, after *string) (*model.PurchaseCorrectionConnection, error) {
+	return paginatePurchaseCorrections(obj.CorrectionsConnection.Edges, first, after)
+}
+
 // PaymentAccountID is the resolver for the paymentAccountId field.
 func (r *purchasePaymentResolver) PaymentAccountID(ctx context.Context, obj *model.PurchasePayment) (string, error) {
 	return encodeNodeID("Account", obj.PaymentAccountID)

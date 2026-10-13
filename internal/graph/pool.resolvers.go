@@ -7,18 +7,22 @@ package graph
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
 // ID is the resolver for the id field.
-func (r *poolResolver) ID(ctx context.Context, obj *model.Pool) (string, error) {
-	return encodeNodeID("Pool", obj.ID)
+func (r *personalPoolResolver) ID(ctx context.Context, obj *model.PersonalPool) (string, error) {
+	return encodeNodeID("Pool", obj.Pool.ID)
 }
 
 // OwnerMemberID is the resolver for the ownerMemberId field.
-func (r *poolResolver) OwnerMemberID(ctx context.Context, obj *model.Pool) (*string, error) {
-	return encodeNodeIDPtr("Member", obj.OwnerMemberID)
+func (r *personalPoolResolver) OwnerMemberID(ctx context.Context, obj *model.PersonalPool) (string, error) {
+	if obj.Pool.OwnerMemberID == nil {
+		return "", fmt.Errorf("personal pool %q has no owner member", obj.Pool.ID)
+	}
+	return encodeNodeID("Member", *obj.Pool.OwnerMemberID)
 }
 
 // MemberID is the resolver for the memberId field.
@@ -26,13 +30,52 @@ func (r *poolFundingShareResolver) MemberID(ctx context.Context, obj *model.Pool
 	return encodeNodeID("Member", obj.MemberID)
 }
 
-// Pool returns PoolResolver implementation.
-func (r *Resolver) Pool() PoolResolver { return &poolResolver{r} }
+// ID is the resolver for the id field.
+func (r *sharedPoolResolver) ID(ctx context.Context, obj *model.SharedPool) (string, error) {
+	return encodeNodeID("Pool", obj.Pool.ID)
+}
+
+// SettlementPolicy is the resolver for the settlementPolicy field.
+func (r *sharedPoolResolver) SettlementPolicy(ctx context.Context, obj *model.SharedPool) (model.SharedPoolSettlementPolicy, error) {
+	if obj.Pool.SettlementPolicy == nil {
+		return "", fmt.Errorf("shared pool %q has no settlement policy", obj.Pool.ID)
+	}
+	return *obj.Pool.SettlementPolicy, nil
+}
+
+// ID is the resolver for the id field.
+func (r *unconfiguredPersonalPoolResolver) ID(ctx context.Context, obj *model.UnconfiguredPersonalPool) (string, error) {
+	return encodeNodeID("Pool", obj.Pool.ID)
+}
+
+// ID is the resolver for the id field.
+func (r *unconfiguredSharedPoolResolver) ID(ctx context.Context, obj *model.UnconfiguredSharedPool) (string, error) {
+	return encodeNodeID("Pool", obj.Pool.ID)
+}
+
+// PersonalPool returns PersonalPoolResolver implementation.
+func (r *Resolver) PersonalPool() PersonalPoolResolver { return &personalPoolResolver{r} }
 
 // PoolFundingShare returns PoolFundingShareResolver implementation.
 func (r *Resolver) PoolFundingShare() PoolFundingShareResolver { return &poolFundingShareResolver{r} }
 
+// SharedPool returns SharedPoolResolver implementation.
+func (r *Resolver) SharedPool() SharedPoolResolver { return &sharedPoolResolver{r} }
+
+// UnconfiguredPersonalPool returns UnconfiguredPersonalPoolResolver implementation.
+func (r *Resolver) UnconfiguredPersonalPool() UnconfiguredPersonalPoolResolver {
+	return &unconfiguredPersonalPoolResolver{r}
+}
+
+// UnconfiguredSharedPool returns UnconfiguredSharedPoolResolver implementation.
+func (r *Resolver) UnconfiguredSharedPool() UnconfiguredSharedPoolResolver {
+	return &unconfiguredSharedPoolResolver{r}
+}
+
 type (
-	poolResolver             struct{ *Resolver }
-	poolFundingShareResolver struct{ *Resolver }
+	personalPoolResolver             struct{ *Resolver }
+	poolFundingShareResolver         struct{ *Resolver }
+	sharedPoolResolver               struct{ *Resolver }
+	unconfiguredPersonalPoolResolver struct{ *Resolver }
+	unconfiguredSharedPoolResolver   struct{ *Resolver }
 )

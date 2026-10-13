@@ -411,8 +411,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
       await mutateCorrectPurchase({
         input: {
           householdId: household.id,
-          purchaseId: purchase.id,
-          itemId: item.id,
+          target: { item: { purchaseId: purchase.id, itemId: item.id } },
           amountDeltaYen: -amountYen,
           reason: refundReason.trim(),
           allocations,

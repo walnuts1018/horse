@@ -1,11 +1,42 @@
-type Pool implements Node {
+interface Pool implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
-  kind: PoolKind!
   defaultShareWeight: Long!
-  ownerMemberId: ID @goField(forceResolver: true)
   fundingShares: [PoolFundingShare!]!
-  settlementPolicy: SharedPoolSettlementPolicy
+  fundingRuleVersion: Int!
+}
+
+type PersonalPool implements Node & Pool {
+  id: ID! @goField(forceResolver: true)
+  name: String!
+  defaultShareWeight: Long!
+  fundingShares: [PoolFundingShare!]!
+  fundingRuleVersion: Int!
+  ownerMemberId: ID! @goField(forceResolver: true)
+}
+
+type UnconfiguredPersonalPool implements Node & Pool {
+  id: ID! @goField(forceResolver: true)
+  name: String!
+  defaultShareWeight: Long!
+  fundingShares: [PoolFundingShare!]!
+  fundingRuleVersion: Int!
+}
+
+type SharedPool implements Node & Pool {
+  id: ID! @goField(forceResolver: true)
+  name: String!
+  defaultShareWeight: Long!
+  fundingShares: [PoolFundingShare!]!
+  fundingRuleVersion: Int!
+  settlementPolicy: SharedPoolSettlementPolicy! @goField(forceResolver: true)
+}
+
+type UnconfiguredSharedPool implements Node & Pool {
+  id: ID! @goField(forceResolver: true)
+  name: String!
+  defaultShareWeight: Long!
+  fundingShares: [PoolFundingShare!]!
   fundingRuleVersion: Int!
 }
 

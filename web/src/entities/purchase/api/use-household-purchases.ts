@@ -39,6 +39,7 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
         ...node,
         origin: node.origin as PurchaseOrigin,
         status: node.status,
+        corrections: node.corrections.edges.map(({ node: correction }) => correction),
         items: node.items.map((item) => ({
           ...item,
           quantityNumerator: item.quantity?.numerator ?? null,

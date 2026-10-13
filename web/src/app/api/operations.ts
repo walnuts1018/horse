@@ -14,16 +14,20 @@ export const householdQuery = graphql`
       pools {
         id
         name
-        kind
         defaultShareWeight
-        ownerMemberId
         fundingShares {
           memberId
           memberName
           weight
         }
-        settlementPolicy
         fundingRuleVersion
+        __typename
+        ... on PersonalPool {
+          ownerMemberId
+        }
+        ... on SharedPool {
+          settlementPolicy
+        }
       }
       accounts {
         id
