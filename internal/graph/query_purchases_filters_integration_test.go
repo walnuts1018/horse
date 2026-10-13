@@ -73,7 +73,8 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mutation.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
+	otherPool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Shared", Kind: model.PoolKindShared})
+	if err != nil {
 		t.Fatal(err)
 	}
 	tag, err := mutation.createTag(ctx, model.CreateTagInput{HouseholdID: household.ID, Name: "weekly"})
@@ -100,8 +101,8 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 		return purchase
 	}
 	matched := makePurchase("Market", "Apple", "2026-04-10T12:00:00Z", &category.ID, &account.ID, &pool.ID)
-	matchedLater := makePurchase("Market", "Apple Juice", "2026-04-20T12:00:00Z", &category.ID, nil, nil)
-	unmatched := makePurchase("Hardware", "Hammer", "2026-05-10T12:00:00Z", nil, nil, nil)
+	matchedLater := makePurchase("Market", "Apple Juice", "2026-04-20T12:00:00Z", &category.ID, nil, &otherPool.ID)
+	unmatched := makePurchase("Hardware", "Hammer", "2026-05-10T12:00:00Z", nil, nil, &otherPool.ID)
 	matchedUUID, err := gofrsuuid.FromString(matched.ID)
 	if err != nil {
 		t.Fatal(err)

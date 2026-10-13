@@ -342,6 +342,9 @@ export function ImportsPage({
   const createAndPostPurchase = useCreateAndPostPurchase();
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const cameraTriggerRef = useRef<HTMLButtonElement>(null);
+  const cameraDialogRef = useRef<HTMLElement>(null);
+  const cameraCloseRef = useRef<HTMLButtonElement>(null);
   const cameraImageRef = useRef<HTMLImageElement>(null);
   const cameraCropStart = useRef<{ x: number; y: number } | null>(null);
   const [files, setFiles] = useState<PendingUpload[]>([]);
@@ -405,6 +408,44 @@ export function ImportsPage({
     if (!cameraDraft) return;
     return () => URL.revokeObjectURL(cameraDraft.src);
   }, [cameraDraft?.src]);
+  useEffect(() => {
+    if (!cameraDraft) return;
+    cameraCloseRef.current?.focus();
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setCameraDraft(null);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = cameraDialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (
+        event.shiftKey &&
+        (document.activeElement === first ||
+          !cameraDialogRef.current?.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        last.focus();
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last ||
+          !cameraDialogRef.current?.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleDialogKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleDialogKeyDown);
+      cameraTriggerRef.current?.focus();
+    };
+  }, [cameraDraft === null]);
   const normalizeName = (name: string) =>
     name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ja-JP");
   const suggestedCategoryId = (item: ExtractedItem) => {
@@ -1254,6 +1295,7 @@ export function ImportsPage({
         </div>
         <div className="import-actions page-import-actions">
           <button
+            ref={cameraTriggerRef}
             type="button"
             className="button button-soft"
             onClick={() => cameraInputRef.current?.click()}
@@ -1310,6 +1352,7 @@ export function ImportsPage({
           }}
         >
           <section
+            ref={cameraDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="camera-review-title"
@@ -1322,6 +1365,7 @@ export function ImportsPage({
                 <h2 id="camera-review-title">内容を確認</h2>
               </div>
               <button
+                ref={cameraCloseRef}
                 type="button"
                 className="icon-button"
                 aria-label="撮影画像を破棄"
@@ -1391,6 +1435,23 @@ export function ImportsPage({
               <button
                 type="button"
                 className="button button-soft"
+                aria-expanded={cameraDraft.crop !== null}
+                onClick={() =>
+                  setCameraDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          crop: current.crop ?? { left: 0, top: 0, right: 1, bottom: 1 },
+                        }
+                      : current,
+                  )
+                }
+              >
+                範囲を選択
+              </button>
+              <button
+                type="button"
+                className="button button-soft"
                 onClick={() => void rotateCameraDraft()}
               >
                 回転
@@ -1414,6 +1475,47 @@ export function ImportsPage({
                 画像を追加
               </button>
             </div>
+            {cameraDraft.crop && (
+              <fieldset className="allocation-rule-form">
+                <legend>切り抜き範囲</legend>
+                {(
+                  [
+                    ["左端", "left", 0, cameraDraft.crop.right * 100 - 2, cameraDraft.crop.left],
+                    ["上端", "top", 0, cameraDraft.crop.bottom * 100 - 2, cameraDraft.crop.top],
+                    ["右端", "right", cameraDraft.crop.left * 100 + 2, 100, cameraDraft.crop.right],
+                    [
+                      "下端",
+                      "bottom",
+                      cameraDraft.crop.top * 100 + 2,
+                      100,
+                      cameraDraft.crop.bottom,
+                    ],
+                  ] as const
+                ).map(([label, edge, min, max, value]) => (
+                  <label key={edge}>
+                    {label}
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step="1"
+                      value={value * 100}
+                      onChange={(event) => {
+                        const value = Number(event.target.value) / 100;
+                        setCameraDraft((current) =>
+                          current?.crop
+                            ? {
+                                ...current,
+                                crop: { ...current.crop, [edge]: value },
+                              }
+                            : current,
+                        );
+                      }}
+                    />
+                  </label>
+                ))}
+              </fieldset>
+            )}
           </section>
         </div>
       )}

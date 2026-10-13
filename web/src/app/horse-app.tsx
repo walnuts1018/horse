@@ -120,6 +120,16 @@ export function App() {
     enableBeforeUnload: () => hasUnsavedChangesRef.current,
   });
 
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChangesRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
   const reportUnsavedChanges = useCallback((unsaved: boolean) => {
     hasUnsavedChangesRef.current = unsaved;
   }, []);
