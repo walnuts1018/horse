@@ -6,9 +6,116 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestReceiptSchemaMatchesJSONTypesAndRequiredFields(t *testing.T) {
+	ignoredFields := map[reflect.Type]map[string]bool{
+		reflect.TypeFor[Receipt](): {"Model": true, "PromptVersion": true, "InputTokens": true, "OutputTokens": true},
+		reflect.TypeFor[Item]():    {"GrossAmount": true, "Verification": true},
+	}
+	optionalFields := map[reflect.Type]map[string]bool{
+		reflect.TypeFor[Receipt](): {"OrderID": true, "TransactionID": true},
+		reflect.TypeFor[Item]():    {"CategoryHint": true},
+	}
+	assertSchemaMatchesType(t, reflect.TypeFor[Receipt](), receiptSchema(), ignoredFields, optionalFields)
+}
+
+func assertSchemaMatchesType(t *testing.T, typ reflect.Type, schema map[string]any, ignoredFields, optionalFields map[reflect.Type]map[string]bool) {
+	t.Helper()
+	if schema["type"] != "object" {
+		t.Fatalf("schema for %s has type %v, want object", typ, schema["type"])
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema for %s has no properties", typ)
+	}
+	requiredValues, ok := schema["required"].([]string)
+	if !ok {
+		t.Fatalf("schema for %s has invalid required fields: %T", typ, schema["required"])
+	}
+	required := make(map[string]bool, len(requiredValues))
+	for _, name := range requiredValues {
+		required[name] = true
+	}
+	wantProperties := make(map[string]bool, typ.NumField())
+	wantRequired := make(map[string]bool, len(requiredValues))
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+		if ignoredFields[typ][field.Name] {
+			continue
+		}
+		name, options, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		wantProperties[name] = true
+		if !strings.Contains(","+options+",", ",omitempty,") && !optionalFields[typ][field.Name] {
+			wantRequired[name] = true
+		}
+		property, exists := properties[name]
+		if !exists {
+			t.Errorf("schema for %s is missing property %q", typ, name)
+			continue
+		}
+		assertSchemaFieldType(t, field.Type, property, ignoredFields, optionalFields)
+	}
+	for name := range properties {
+		if !wantProperties[name] {
+			t.Errorf("schema for %s has unexpected property %q", typ, name)
+		}
+	}
+	for name := range wantRequired {
+		if !required[name] {
+			t.Errorf("schema for %s does not require %q", typ, name)
+		}
+	}
+	for name := range required {
+		if !wantRequired[name] {
+			t.Errorf("schema for %s unexpectedly requires %q", typ, name)
+		}
+	}
+}
+
+func assertSchemaFieldType(t *testing.T, typ reflect.Type, schemaValue any, ignoredFields, optionalFields map[reflect.Type]map[string]bool) {
+	t.Helper()
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	schema, ok := schemaValue.(map[string]any)
+	if !ok {
+		t.Fatalf("schema for %s is not an object", typ)
+	}
+	wantType := ""
+	switch typ.Kind() {
+	case reflect.String:
+		wantType = "string"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		wantType = "integer"
+	case reflect.Float32, reflect.Float64:
+		wantType = "number"
+	case reflect.Struct:
+		assertSchemaMatchesType(t, typ, schema, ignoredFields, optionalFields)
+		return
+	case reflect.Slice, reflect.Array:
+		wantType = "array"
+		items, ok := schema["items"]
+		if !ok {
+			t.Fatalf("schema for %s has no array items", typ)
+		}
+		assertSchemaFieldType(t, typ.Elem(), items, ignoredFields, optionalFields)
+	default:
+		t.Fatalf("unsupported JSON schema type %s", typ)
+	}
+	if got := schema["type"]; got != wantType {
+		t.Errorf("schema for %s has type %v, want %s", typ, got, wantType)
+	}
+}
 
 func TestGeminiExtractPreservesExactQuantityAndPrintedUnitPrice(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
