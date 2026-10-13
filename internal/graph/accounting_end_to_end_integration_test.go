@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"os"
 	"testing"
 	"time"
@@ -350,16 +349,20 @@ func TestConcurrentLoanRepaymentsCannotExceedPrincipal(t *testing.T) {
 
 	start := make(chan struct{})
 	ready := make(chan struct{}, 2)
-	results := make(chan error, 2)
+	type repaymentResult struct {
+		result model.RecordRepaymentResult
+		err    error
+	}
+	results := make(chan repaymentResult, 2)
 	for _, period := range []string{"2026-09", "2026-10"} {
 		go func() {
 			ready <- struct{}{}
 			<-start
-			_, err := mutation.recordRepayment(ctx, model.RecordRepaymentInput{
+			result, err := mutation.RecordRepayment(ctx, model.RecordRepaymentInput{
 				HouseholdID: household.ID, FromMemberID: borrowerID, ToMemberID: lenderID, LoanID: *loan.TransferID,
 				AmountYen: 60, OccurredAt: model.DateTime(period + "-15T12:00:00Z"), Description: "Repayment", IdempotencyKey: uuid.NewV7().String(),
 			})
-			results <- err
+			results <- repaymentResult{result: result, err: err}
 		}()
 	}
 	for range 2 {
@@ -368,14 +371,20 @@ func TestConcurrentLoanRepaymentsCannotExceedPrincipal(t *testing.T) {
 	close(start)
 	var succeeded, rejected int
 	for range 2 {
-		err := <-results
-		switch {
-		case err == nil:
+		outcome := <-results
+		if outcome.err != nil {
+			t.Fatalf("repayment resolver returned an unexpected error: %v", outcome.err)
+		}
+		switch result := outcome.result.(type) {
+		case *model.RecordRepaymentSuccess:
 			succeeded++
-		case errors.Is(err, ErrBadInput):
+		case *model.RecordRepaymentUserError:
+			if result.Code != model.MutationErrorCodeBadInput {
+				t.Fatalf("unexpected repayment error result: %#v", result)
+			}
 			rejected++
 		default:
-			t.Fatalf("unexpected concurrent repayment result: %v", err)
+			t.Fatalf("unexpected concurrent repayment result: %#v", outcome.result)
 		}
 	}
 	if succeeded != 1 || rejected != 1 {
