@@ -2,26 +2,11 @@
 
 対象はHorseの`main`です。以前の指摘を現行コードと照合し、実装済みの内容を除いて残る課題を記録します。
 
-## 1. 高優先：画面コンポーネントが大きい
+## 画面固有CSSと重要な処理の境界
 
-主な画面ファイルは今も大きく、複数の業務機能と状態を一つのコンポーネントが所有しています。
+[global.css](../../web/src/app/styles/global.css)は2,539行あり、画面固有規則が残ります。分析・購入登録・帳簿・取り込み・口座残高履歴の固有stylesheetへの移行は完了し、残りの規則も所有するpage sliceへ分離する必要があります。購入データ変換やOutboxなどの重要な純粋処理には、フロントエンドのテストランナーがありません。
 
-| ファイル | 行数 | `useState`の呼び出し数 |
-| --- | ---: | ---: |
-| [settings-page.tsx](../../web/src/pages/settings/ui/settings-page.tsx) | 149 | 0 |
-| [ledger-page.tsx](../../web/src/pages/ledger/ui/ledger-page.tsx) | 1,148 | 3 |
-| [imports-page.tsx](../../web/src/pages/imports/ui/imports-page.tsx) | 756 | 7 |
-| [purchase-create-page.tsx](../../web/src/pages/purchase-create/ui/purchase-create-page.tsx) | 498 | 9 |
-| [settlement-page.tsx](../../web/src/pages/settlement/ui/settlement-page.tsx) | 287 | 8 |
-| [analysis-page.tsx](../../web/src/pages/analysis/ui/analysis-page.tsx) | 647 | 10 |
-
-親画面には画面遷移、検索条件、読込結果の調整が残っています。特に`LedgerPage`、`ImportsPage`、`SettlementPage`は一覧と複数の操作状態を持つため、次の分割では機能単位で変更できる範囲を基準にします。
-
-## 2. 中優先：画面固有CSSと重要な処理の境界
-
-[global.css](../../web/src/app/styles/global.css)は4,194行あり、画面固有規則が残っています。既存の画面別CSS moduleへ移せる規則を引き続き確認します。`web/src`にはフロントエンドのテストランナーがなく、購入データ変換やOutboxなどの重要な純粋処理を安定して検証する手段がありません。
-
-## 3. 低優先：GraphQLの購入読み込みが広い関連データを組み立てる
+## GraphQLの購入読み込み範囲
 
 [loadPurchases](../../internal/graph/helpers.go)は購入に対し、口座、証拠、確認、品目、支払、訂正、品目配賦、タグなどをまとめて読み込み、GraphQLモデルを構築します。Bobのバッチローダーを利用してN+1は避けていますが、一覧で一部のフィールドしか使わない場合にも広い関連データを読み込みます。
 
@@ -31,7 +16,6 @@
 
 | 優先 | 対象 |
 | --- | --- |
-| P1 | 大きなReact画面の機能・状態分割 |
 | P2 | 画面固有CSSと重要な処理の境界 |
 | P3 | 必要性を測定した後の購入読み取りモデル分割 |
 

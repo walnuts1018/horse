@@ -1,169 +1,36 @@
-# Horseのバックエンドを外部ライブラリ中心に再設計する方針
+# バックエンドライブラリの選定
 
-依存パッケージを増やしてよいので、現在のHorseではさらに多くの自前実装を外部ライブラリに置き換えられます。
+ライブラリは`picca`の実装を参照し、現在のコードへの適用状況と判断理由を記録します。実装済みの項目はこの一覧から削除し、採用を保留する項目と未解決の課題を残します。
 
-## 1. 積極的に採用したいライブラリ
+## 採用済み・実装中
 
-ここからが保守性の改善として、かなり効果の大きい部分です。
+| ライブラリ | 用途と状況 |
+| --- | --- |
+| `github.com/labstack/echo/v5` | `picca`と同じv5.3.1を導入し、APIとWorker health serverをEchoへ移行中です。既存の`http.Server`のtimeout、SSE、net/http handlerとの互換性を維持します。 |
+| `github.com/mazrean/kessoku` | `picca`と同じv1.1.1を導入し、APIとWorkerの起動時依存をcompile-time injectorで組み立てます。 |
+| `github.com/testcontainers/testcontainers-go/modules/postgres` | PostgreSQL 18のGraphQL統合テストで、外部DB URLがない場合のローカル起動に使います。CIで既存PostgreSQL serviceが指定される場合は再利用します。 |
+| `github.com/gabriel-vasile/mimetype` | 既存依存を文書アップロードの内容ベースMIME判定へ使う変更中です。 |
+| `github.com/go-playground/validator/v10` | Worker設定の構造検証に使用済みです。GraphQL入力へ一括適用する変更は、金額や会計期間などの業務検証と重複しない境界を確認してから判断します。 |
 
-| ライブラリ | 置き換え対象・メリット |
-| -------------------------------------------------------------------------------- | --------------------------------------- |
-| [Bob Factory](https://bob.stephenafamo.com/docs/code-generation/factories/) | 統合テストのDBレコード生成、Fixtureの簡素化 |
-| [Bob Query Generation](https://bob.stephenafamo.com/docs/code-generation/intro/) | 複雑なSQLの型付きGoコード生成 |
-| [validator/v10](https://github.com/go-playground/validator) | API入力の構造的な検証 |
-| [go-message](https://github.com/emersion/go-message) | RFC対応のメールヘッダー、MIME、添付ファイル、文字コード解析 |
-| [html-to-markdown/v2](https://github.com/JohannesKaufmann/html-to-markdown) | HTML注文メールを構造を保ったMarkdownへ変換 |
-| [mimetype](https://github.com/gabriel-vasile/mimetype) | アップロードファイルの内容に基づくMIME判定 |
-| [chi/v5](https://github.com/go-chi/chi) | RESTルートのグループ化、認証Middleware、共通Middleware |
-| [testify](https://github.com/stretchr/testify) | テストアサーション、失敗時の差分表示、テスト構造の改善 |
-| [testcontainers-go](https://golang.testcontainers.org/) | PostgreSQL / RabbitMQを使った自動統合テスト |
+## 未解決の候補
 
-### 特におすすめの項目
+| ライブラリ | 候補と現在の判断 |
+| --- | --- |
+| `github.com/emersion/go-message` | 注文メールのMIME、転送encoding、文字コード処理を標準ライブラリの自前再帰解析から移行する候補です。既存のサイズ・深さ・part数制限、添付通知、alternative選択を維持できるAPIを確認し、移行を進めます。 |
+| `github.com/JohannesKaufmann/html-to-markdown/v2` | HTML注文メールの表・リスト構造をモデル入力に残す候補です。現在のHTML walkerはブロック間の改行を作るだけで、table cellの境界は保持しません。MIME移行と合わせて合成表メールの抽出結果を確認します。 |
+| Bob Factory | 複数の統合テストにfixture構築の重複があります。Factory導入で必須値や会計条件が隠れないよう、DB fixtureの重複を見てから限定利用します。 |
+| `testify` | 既存のテストは標準`testing`で期待値と失敗理由を直接示しています。複雑な値の差分を短くできる箇所で採用し、単純な比較の一括置換はしません。 |
+| gqlgen DataLoader | 現在はBobの関連ロードで主要な一覧N+1を避けています。loader追加で重複取得が消える未対応経路が見つかった場合に追加します。 |
+| Watermill | PostgreSQL jobがsource document登録、claim、retry、停止後の回復を担い、RabbitMQは起床通知として使われています。既存のDB job回復を残したままWatermillを加える効果が確認できないため、現時点では導入しません。通知配送方式の変更時に再評価します。 |
 
-Bob Factory + Query Generation
+## 採用しない候補
 
-現在の`bobgen.yaml`では両方無効になっています。これらを有効にすれば、テスト用の複雑な家庭・口座・購入データ生成と、手書きSQLの型付きアクセスコードの作成を生成器に任せられます。
+| ライブラリ | 判断 |
+| --- | --- |
+| `github.com/go-chi/chi/v5` | HTTP serverを`echo/v5`へ統一するため導入しません。 |
+| Bob Query Generation | DBアクセスをBob DSLに統一し、生SQL文字列を直接書かない方針を維持するため、SQL文字列を入力にするQuery Generationは使いません。 |
+| 別ORM | Bobの型付きDSL、生成model、relation loaderを利用しているため、ORMの二重化はしません。 |
 
-すでにBobに統一している以上、最初に着手する価値があります。
+## 現在の実装境界
 
-[image](https://www.google.com/s2/favicons?domain=https://bob.stephenafamo.com\&sz=32)
-
-Bob
-
-+1
-
-go-message + html-to-markdown
-
-現在の`internal/ingestion/email.go`は、自前でMIMEツリーを辿り、転送エンコーディングをデコードし、HTMLからテキストを作成しています。
-
-これは外部ライブラリに最も置き換えやすい部分の1つです。
-
-`go-message`にはMIMEと各種文字コードの読み取り機能があり、`html-to-markdown`は表やリストなどを残したテキスト化ができます。
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-+1
-
-Amazonなどの注文メールではHTMLテーブルの構造が重要なので、単純にタグを削除するより有利です。
-
-もちろん、注文番号や金額の意味解釈はアプリ固有の仕事なので残します。
-
-## 2. さらに改善するなら
-
-### GraphQL周辺
-
-gqlgenはそのまま使い、`nodes(ids:)`や購入・商品・口座の関連データ取得にはバッチロードを導入します。
-
-gqlgenが紹介しているDataLoader方式を採用し、既存のBobによるリレーションロードと使い分ける方針です。
-
-GraphQLの入力検証も、共通の構造体検証へ寄せられる部分は寄せます。ただし金額整合性・負担割合・締め済み期間の判定は、単純なタグベースのValidatorでは代替できません。
-
-### HTTP API周辺
-
-現在は標準の`http.ServeMux`でAPIを組み立てています。
-
-これも十分な機能を持ちますが、`chi/v5`なら認証済みAPIと公開APIのグルーピング、共通Middlewareの適用、ルート構造の明確化が容易になります。
-
-[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
-
-GitHub
-
-例えばDocument APIを認証済みルーターにまとめることで、各HTTP Handler内で同じ認証処理を呼ぶコードを減らせます。
-
-ただし、認証Middlewareが認可まで自動的に保証するわけではありません。 家庭ごとのリソース所属確認はApplication側で維持します。
-
-### テスト環境
-
-PostgreSQL 18を使用したCI統合テストはすでに存在するので、これは維持します。
-
-加えて`testcontainers-go/modules/postgres`と`testcontainers-go/modules/rabbitmq`を利用すれば、開発環境でも同じ系統の統合テストを自動的に起動できます。
-
-[image](https://www.google.com/s2/favicons?domain=https://golang.testcontainers.org\&sz=32)
-
-Testcontainers for Go
-
-+1
-
-## 3. 目指すべき最終構成
-
-私なら、Horseのバックエンドを次のように整理します。
-
-```
-internal/
-├── api/
-│   ├── server.go
-│   ├── documents.go
-│   └── middleware/
-│
-├── graph/
-│   ├── *.resolvers.go
-│   └── model/
-│
-├── application/
-│   ├── purchase/
-│   ├── accounting/
-│   ├── settlement/
-│   ├── funding/
-│   ├── transfer/
-│   └── catalog/
-│
-├── domain/
-│   ├── allocation/
-│   ├── money/
-│   └── settlement/
-│
-├── postgres/
-│   ├── generated/
-│   └── queries/
-│
-├── messaging/
-│   ├── rabbitmq.go
-│   ├── outbox.go
-│   └── handlers/
-│
-├── ingestion/
-│   ├── extraction.go
-│   ├── gemini.go
-│   ├── receipt.go
-│   ├── email.go
-│   └── reconciliation.go
-│
-├── config/
-├── auth/
-└── observability/
-```
-
-設計上の境界は次のようにします。
-
-| レイヤー | 使用する主なライブラリ | 自前で維持するもの |
-| ----------- | -------------------------------------- | -------------------------- |
-| GraphQL | gqlgen + DataLoader | GraphQL入力とApplicationの対応付け |
-| HTTP | chi + net/http | API固有の処理 |
-| Application | Bob + pgx | 購入・訂正・精算などの業務操作 |
-| Domain | 必要に応じてDecimal等 | 会計の不変条件と負担計算 |
-| DB | Bob Factory / Query Gen + Atlas | アプリ固有のSQL |
-| AI | google.golang.org/genai | 抽出スキーマと検証・モデル選択 |
-| メール | go-message + html-to-markdown | 注文情報の抽出 |
-| Config | caarlos0/env + validator | 設定間の整合性 |
-| Test | testify + Testcontainers + Bob Factory | 業務シナリオと期待結果 |
-
-ポイントは、外部ライブラリに任せる範囲を広くする一方で、家計簿固有の会計ロジックだけは明確なドメインコードとして残すことです。
-
-会計上の不変条件まで汎用ライブラリに置き換えようとすると、むしろ重要なルールが隠れてしまいます。
-
-## 4. 実装する順番
-
-1. 購入・会計処理の統一 — `application/purchase`への移行を完成させ、会計仕訳と負担スナップショットの更新処理を一元化。
-2. Bobの活用強化 — Factory・Query Generationを有効にし、精算処理のN+1を解消。
-3. メール・HTTPの自前コード削減 — go-message、html-to-markdown、chiを導入。
-4. テスト基盤を共通化 — Bob FactoryとTestcontainersで、複雑なセットアップコードを削減。
-
-### 最終的なおすすめ
-
-Bob、gqlgen、pgxは入れ替えず、Factory・Query Generation・DataLoaderなどの周辺機能を積極的に活用する。
-
-メール、HTTP、テストについては新しいライブラリを導入して自前実装を減らす。
-
-特にHorseはまだ未リリースなので、これらの変更を今行うメリットが大きいです。
+DB読み書きはBob DSLを使い、GraphQLはgqlgen、HTTPはEcho v5、PostgreSQL migrationはAtlasを使います。設定ファイルやCIの存在だけを検査するテスト、mock call順だけを確認するテストは追加しません。ライブラリの採用では、実際の業務経路で責務が減ることと、既存の入力上限・認可・会計不変条件を維持することを確認します。

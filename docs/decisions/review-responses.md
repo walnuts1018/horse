@@ -213,3 +213,13 @@ HouseholdEventのJSON化とBob insertを`accounting.RecordEvent`へ集約し、�
 `CreatePool`のトランザクション、プールと初期資金拠出ルールの作成、既定配賦versionの複製と更新、イベント記録を`internal/application/pool`へ移しました。Resolverは認証とGraphQL結果用のhousehold再読込を行います。プール追加時に既存配賦を複製して新しいプールへweight 1を加える動作を維持しました。
 
 `CreateAccount`の認可後処理、口座作成、開始残高の仕訳とイベント記録を`internal/application/account`へ移し、口座と仕訳を同じtransactionで保存します。`CreateCategory`の認可後処理、カテゴリ作成とイベント記録も`internal/application/category`へ移しました。DBアクセスはBob DSLを使用します。
+
+### 2026年10月14日の画面責務分割とCSS
+
+分析・帳簿・取り込み・購入登録・精算画面の取得状態、入力、送信、集計、締め処理を、それぞれの`pages`slice内のhookとUIへ分割しました。単一画面のためだけに使う処理は共有`features`へ移しません。`AnalysisPage`は647行から247行、`LedgerPage`は1,148行から660行、`ImportsPage`は756行から398行、`PurchaseCreatePage`は498行から359行、`SettlementPage`は287行から226行になりました。精算画面の`useState`は8件から3件になりました。分析・購入登録・帳簿・取り込み・口座残高履歴だけで使うCSSを各page stylesheetへ移し、共有規則は`global.css`に残しました。`global.css`は2,539行です。Web型検査、FSD検査、lint、format、production buildが成功しています。
+
+### 2026年10月14日のMutation Service移行
+
+Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール、プール資金拠出ルール、招待の発行・取消・受諾、商品概念・バリアント・別名、一括購入・品目更新をApplication Serviceへ移しました。カテゴリとタグの作成・更新・archiveもService経由です。DB書き込みはBob DSLを使い、認可、revision競合、会計期間lock、会計状態の更新、event記録を各ユースケースのtransactionに含めています。ResolverにはGraphQL値の変換、認可後のService呼び出し、結果の再読込を残しました。
+
+`TestSetDefaultAndRulePersistVersionsWeightsAndEvents`、`TestSetFundingRuleValidatesAndVersionsHouseholdRule`、`TestPlanningMutationsAreAtomicAndHouseholdScoped`、`TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts`、`TestHouseholdInvitationLifecycle`、`TestProductCatalogAndSuggestionsPreserveExpectedOrdering`、カテゴリ・タグの統合テストを、最新migrationを適用した一時DBで確認しました。一時DBはテスト後に削除し、既存の`horse`DBを変更していません。実行時Goコードを調べ、Bob DSLを経由しないSQL文字列のDB呼び出しがないことも確認しました。
