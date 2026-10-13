@@ -108,10 +108,3 @@ type accountBalanceAggregate struct {
 	OpeningBalance  string         `db:"opening_balance"`
 	MovementBalance string         `db:"movement_balance"`
 }
-
-func accountEntryBalance(kind string, debitYen, creditYen int64) int64 {
-	if kind == string(model.AccountKindCard) {
-		return creditYen - debitYen
-	}
-	return debitYen - creditYen
-}

@@ -6,15 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
-	"github.com/stephenafamo/bob/dialect/psql/um"
-	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/walnuts1018/horse/internal/application/planning"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -39,81 +37,31 @@ func (r *mutationResolver) setRecurringExpense(ctx context.Context, input recurr
 	if err != nil {
 		return nil, err
 	}
-	name, merchant := strings.TrimSpace(input.Name), strings.TrimSpace(input.Merchant)
-	if name == "" || len(name) > 160 || len(merchant) > 240 || input.AmountYen <= 0 || input.AmountYen > maxMoney || !slices.Contains([]string{"WEEKLY", "MONTHLY", "YEARLY"}, input.Cadence) {
-		return nil, fmt.Errorf("%w: invalid recurring expense", ErrBadInput)
-	}
 	starts, err := parseDate(input.StartsOn)
 	if err != nil {
 		return nil, err
 	}
 	due, err := parseDate(input.NextDueOn)
-	if err != nil || due.Before(starts) {
-		return nil, fmt.Errorf("%w: next due date precedes start date", ErrBadInput)
+	if err != nil {
+		return nil, err
 	}
-	ends := sql.Null[time.Time]{}
+	var ends *time.Time
 	if input.EndsOn != nil {
 		end, err := parseDate(*input.EndsOn)
-		if err != nil || end.Before(starts) {
-			return nil, fmt.Errorf("%w: invalid recurring expense end date", ErrBadInput)
+		if err != nil {
+			return nil, err
 		}
-		ends = sql.Null[time.Time]{V: end, Valid: true}
+		ends = &end
 	}
-	hhID, err := gofrsuuid.FromString(input.HouseholdID)
+	result, err := planning.NewService(r.DB).SetRecurringExpense(ctx, planning.RecurringExpenseCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, ExpenseID: input.ExpenseID, Revision: input.BaseRevision,
+		Name: input.Name, Merchant: input.Merchant, AmountYen: input.AmountYen, CategoryID: input.CategoryID,
+		PaymentAccountID: input.PaymentAccountID, Cadence: input.Cadence, StartsOn: starts, NextDueOn: due, EndsOn: ends,
+	})
 	if err != nil {
-		return nil, ErrNotFound
-	}
-	tx, err := r.DB.Begin(ctx)
-	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	executor := bobpgx.NewTx(tx, nil)
-	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(hhID))), sm.ForUpdate()).One(ctx, executor); err != nil {
-		return nil, err
-	}
-	var row *models.RecurringExpense
-	var category, account sql.Null[gofrsuuid.UUID]
-	if input.CategoryID != nil {
-		category = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.CategoryID), Valid: true}
-	}
-	if input.PaymentAccountID != nil {
-		account = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.PaymentAccountID), Valid: true}
-	}
-	amount := input.AmountYen
-	if input.ExpenseID == nil {
-		id := generatedUUID(newID())
-		row, err = models.RecurringExpenses.Insert(&models.RecurringExpenseSetter{ID: &id, HouseholdID: &hhID, Name: &name, Merchant: &merchant, AmountYen: &amount, CategoryID: &category, PaymentAccountID: &account, Cadence: &input.Cadence, StartsOn: &starts, NextDueOn: &due, EndsOn: &ends}).One(ctx, executor)
-	} else {
-		id, parseErr := gofrsuuid.FromString(*input.ExpenseID)
-		if parseErr != nil || input.BaseRevision == nil {
-			return nil, fmt.Errorf("%w: recurring expense update requires id and revision", ErrBadInput)
-		}
-		row, err = models.RecurringExpenses.Query(sm.Where(psql.And(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id)), models.RecurringExpenses.Columns.HouseholdID.EQ(psql.Arg(hhID)))), sm.ForUpdate()).One(ctx, executor)
-		if err == nil && int(row.Revision) != *input.BaseRevision {
-			return nil, ErrConflict
-		}
-		if err == nil {
-			revision := row.Revision + 1
-			_, err = models.RecurringExpenses.Update((&models.RecurringExpenseSetter{Name: &name, Merchant: &merchant, AmountYen: &amount, CategoryID: &category, PaymentAccountID: &account, Cadence: &input.Cadence, StartsOn: &starts, NextDueOn: &due, EndsOn: &ends, Revision: &revision}).UpdateMod(), um.Where(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor)
-			if err == nil {
-				row, err = models.RecurringExpenses.Query(sm.Where(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id)))).One(ctx, executor)
-			}
-		}
-	}
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "recurring_expense.updated", row.ID.String(), row.Revision, []string{fieldName, fieldMerchant, fieldAmountYen, fieldCategoryID, fieldPaymentAccountID, fieldCadence, fieldStartsOn, fieldNextDueOn, fieldEndsOn}, user.MemberID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return recurringExpenseModel(row), nil
+	return recurringExpenseResultModel(result), nil
 }
 
 func (r *mutationResolver) archiveRecurringExpense(ctx context.Context, expenseID string, baseRevision int, archived bool) (*model.RecurringExpense, error) {
@@ -125,13 +73,7 @@ func (r *mutationResolver) archiveRecurringExpense(ctx context.Context, expenseI
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	tx, err := r.DB.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	executor := bobpgx.NewTx(tx, nil)
-	row, err := models.RecurringExpenses.Query(sm.Where(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id))), sm.ForUpdate()).One(ctx, executor)
+	row, err := models.RecurringExpenses.Query(sm.Where(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id)))).One(ctx, queryExecutor(r.DB))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -141,21 +83,20 @@ func (r *mutationResolver) archiveRecurringExpense(ctx context.Context, expenseI
 	if _, err := requireMember(ctx, r.DB, row.HouseholdID.String()); err != nil {
 		return nil, err
 	}
-	if int(row.Revision) != baseRevision {
-		return nil, ErrConflict
-	}
-	revision := row.Revision + 1
-	if _, err := models.RecurringExpenses.Update((&models.RecurringExpenseSetter{Archived: &archived, Revision: &revision}).UpdateMod(), um.Where(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
+	result, err := planning.NewService(r.DB).ArchiveRecurringExpense(ctx, user.MemberID, row.HouseholdID.String(), expenseID, baseRevision, archived)
+	if err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, row.HouseholdID.String(), "recurring_expense.archived", expenseID, revision, []string{fieldArchived}, user.MemberID); err != nil {
-		return nil, err
+	return recurringExpenseResultModel(result), nil
+}
+
+func recurringExpenseResultModel(result planning.RecurringExpenseResult) *model.RecurringExpense {
+	expense := &model.RecurringExpense{ID: result.ID, HouseholdID: result.HouseholdID, Name: result.Name, Merchant: result.Merchant, AmountYen: graphLong(result.AmountYen), Currency: result.Currency, Cadence: model.RecurringExpenseCadence(result.Cadence), StartsOn: model.Date(result.StartsOn.Format(time.DateOnly)), NextDueOn: model.Date(result.NextDueOn.Format(time.DateOnly)), Archived: result.Archived, Revision: int(result.Revision), CategoryID: result.CategoryID, PaymentAccountID: result.PaymentAccountID}
+	if result.EndsOn != nil {
+		end := result.EndsOn.Format(time.DateOnly)
+		expense.EndsOn = datePointer(&end)
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	row.Archived, row.Revision = archived, revision
-	return recurringExpenseModel(row), nil
+	return expense
 }
 
 func recurringExpenseModel(row *models.RecurringExpense) *model.RecurringExpense {

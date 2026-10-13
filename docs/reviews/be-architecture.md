@@ -6,7 +6,7 @@
 
 GraphQL SDLの機能別分割、BobによるDBアクセス、購入・入金・送金・精算のApplication層への移行、PostgreSQLのOpenTelemetry計測が実装されています。購入更新時の会計同期と複数月精算の一括読込も実装済みです。
 
-現行コードで残っている主な課題は、口座間移動・外部入金・予算など一部Mutationの業務処理がGraphQL層に残ることと、Gemini SchemaをGo型と別々に管理することです。口座残高分析、購入訂正、品目更新は専用QueryまたはApplication Serviceへ移行済みです。残件は既存のBob・pgx・gqlgenを使った責務分離で対応できます。
+現行コードで残っている主な課題はGemini Schemaの二重管理です。購入、入金、送金、口座間移動、外部入金、予算、定期支出、精算のMutation処理はApplication Serviceへ移行し、口座残高分析は専用Queryへ移しました。Workerの処理も責務ごとのファイルへ分割しました。GraphQLパッケージの通常テストは成功していますが、DB統合テストはCIでの実行待ちです。
 
 | 領域 | 現在の選択 | 判断 |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ GraphQL SDLの機能別分割、BobによるDBアクセス、購入・入金・�
 
 ## 1. Mutationの責務分離
 
-購入作成・確定・更新・訂正、品目更新、入金、送金、精算にはApplication Serviceがあります。一方、口座間移動と外部入金は[account_movements.go](../../internal/graph/account_movements.go)、予算は[budget.go](../../internal/graph/budget.go)、定期支出は[recurring_expense.go](../../internal/graph/recurring_expense.go)にトランザクションと永続化処理が残っています。
+購入作成・確定・更新・訂正、品目更新、入金、送金、口座間移動、外部入金、予算、定期支出、精算にはApplication Serviceがあります。GraphQL Resolverは認可、入力変換、結果変換を行います。ApplicationとGraphQLパッケージのテストは成功していますが、`HORSE_TEST_DATABASE_URL`が未設定のためDB統合テストは実行されていません。
 
 GraphQL層には認可、入力検証、Application層への変換、結果のGraphQL型変換を置き、ユースケースのトランザクションと会計処理は既存のApplicationパッケージへ移すのが妥当です。移行時は既存の会計不変条件と冪等性を維持し、GraphQL生成型をApplication層へ持ち込まないでください。
 

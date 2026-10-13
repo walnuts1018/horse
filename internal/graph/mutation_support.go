@@ -7,7 +7,6 @@ import (
 	stdjson "encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
@@ -28,16 +27,6 @@ func mutationRequestFingerprint(input any) ([sha256.Size]byte, error) {
 		return [sha256.Size]byte{}, err
 	}
 	return sha256.Sum256(encoded), nil
-}
-
-func validateIdempotencyFingerprint(existing *models.IdempotencyKey, fingerprint [sha256.Size]byte) error {
-	if !existing.RequestFingerprint.Valid {
-		return fmt.Errorf("%w: idempotency key has no request fingerprint", ErrConflict)
-	}
-	if !slices.Equal(existing.RequestFingerprint.V, fingerprint[:]) {
-		return fmt.Errorf("%w: idempotency key was used with a different request", ErrConflict)
-	}
-	return nil
 }
 
 func writeEvent(ctx context.Context, tx pgx.Tx, householdID, eventType, entityID string, revision int64, fields []string, actorID string) error {

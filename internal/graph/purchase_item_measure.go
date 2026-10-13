@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"math/big"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -22,60 +21,6 @@ type purchaseItemMeasure struct {
 	printedUnitPriceQuantityNumerator   sql.Null[int64]
 	printedUnitPriceQuantityDenominator sql.Null[int64]
 	printedUnitPriceUnit                sql.Null[string]
-}
-
-func measureFromUpdate(input model.UpdatePurchaseItemInput, current purchaseItemMeasure, changedFields []string) (purchaseItemMeasure, error) {
-	updated := current
-	if containsChangedField(changedFields, fieldQuantity) {
-		if !input.Quantity.IsSet() {
-			return purchaseItemMeasure{}, errors.New("changed quantity has no value")
-		}
-		quantity := input.Quantity.Value()
-		var numeratorValue, denominatorValue, unitValue *string
-		if quantity != nil {
-			numeratorValue, denominatorValue, unitValue = &quantity.Numerator, &quantity.Denominator, &quantity.Unit
-		}
-		numerator, denominator, err := parseMeasureRational(numeratorValue, denominatorValue)
-		if err != nil {
-			return purchaseItemMeasure{}, err
-		}
-		updated.quantityNumerator, updated.quantityDenominator = numerator, denominator
-		updated.quantityUnit = nullString(unitValue)
-	} else if input.Quantity.IsSet() {
-		return purchaseItemMeasure{}, errors.New("quantity is missing from changedFields")
-	}
-	if containsChangedField(changedFields, fieldPrintedUnitPrice) {
-		if !input.PrintedUnitPrice.IsSet() {
-			return purchaseItemMeasure{}, errors.New("changed printed unit price has no value")
-		}
-		printedUnitPrice := input.PrintedUnitPrice.Value()
-		var price *model.Long
-		var numeratorInput, denominatorInput, unitInput *string
-		if printedUnitPrice != nil {
-			if printedUnitPrice.Basis == nil {
-				return purchaseItemMeasure{}, errors.New("printed unit price basis is required")
-			}
-			price = &printedUnitPrice.AmountYen
-			numeratorInput = &printedUnitPrice.Basis.Numerator
-			denominatorInput = &printedUnitPrice.Basis.Denominator
-			unitInput = &printedUnitPrice.Basis.Unit
-		}
-		updated.printedUnitPriceYen = nullLong(price)
-		numerator, denominator, err := parseMeasureRational(numeratorInput, denominatorInput)
-		if err != nil {
-			return purchaseItemMeasure{}, err
-		}
-		updated.printedUnitPriceQuantityNumerator, updated.printedUnitPriceQuantityDenominator = numerator, denominator
-		updated.printedUnitPriceUnit = nullString(unitInput)
-	} else if input.PrintedUnitPrice.IsSet() {
-		return purchaseItemMeasure{}, errors.New("printed unit price is missing from changedFields")
-	}
-	if _, err := newPurchaseItemMeasure(measureIntegerString(updated.quantityNumerator), measureIntegerString(updated.quantityDenominator), measureString(updated.quantityUnit),
-		measureLong(updated.printedUnitPriceYen), measureIntegerString(updated.printedUnitPriceQuantityNumerator),
-		measureIntegerString(updated.printedUnitPriceQuantityDenominator), measureString(updated.printedUnitPriceUnit)); err != nil {
-		return purchaseItemMeasure{}, err
-	}
-	return updated, nil
 }
 
 func newPurchaseItemMeasure(quantityNumerator, quantityDenominator, quantityUnit *string,
@@ -176,31 +121,4 @@ func nullString(value *string) sql.Null[string] {
 	}
 	trimmed := strings.TrimSpace(*value)
 	return sql.Null[string]{V: trimmed, Valid: true}
-}
-
-func measureLong(value sql.Null[int64]) *model.Long {
-	if !value.Valid {
-		return nil
-	}
-	result := model.Long(value.V)
-	return &result
-}
-
-func measureString(value sql.Null[string]) *string {
-	if !value.Valid {
-		return nil
-	}
-	return &value.V
-}
-
-func measureIntegerString(value sql.Null[int64]) *string {
-	if !value.Valid {
-		return nil
-	}
-	result := strconv.FormatInt(value.V, 10)
-	return &result
-}
-
-func containsChangedField(fields []string, changed string) bool {
-	return slices.Contains(fields, changed)
 }

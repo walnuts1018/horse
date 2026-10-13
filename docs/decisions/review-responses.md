@@ -128,9 +128,15 @@ UXレビュー#14では、撮影後の画像確認、90度回転、矩形トリ�
 
 精算の期間範囲は`calculatePeriodsAccounting`がまとめて読み込み、複数月プレビューで同じ基礎データを月ごとに再取得しません。`TestSettlementPreviewMatchesMonthlyCalculationsAfterClosedCarry`で締め済み期間からの繰越結果を検証しています。N+1とResolver配下に精算処理が残るという旧指摘を削除しました。
 
-月次支出と商品候補は`internal/postgres/query`へ移動し、PostgreSQL Poolには`otelpgx.NewTracer()`を設定しました。GraphQL Resolverには口座間移動・外部入金・予算などの永続化処理が残るため、未解決項目として`docs/reviews/be-architecture.md`と`docs/reviews/be-architecture2.md`に記載しています。
+月次支出と商品候補は`internal/postgres/query`へ移動し、PostgreSQL Poolには`otelpgx.NewTracer()`を設定しました。予算・定期支出の作成、更新、アーカイブ処理を`internal/application/planning`へ移し、Resolverには認可とGraphQL変換を残しました。既存の`TestPlanningMutationsAreAtomicAndHouseholdScoped`を含むApplicationパッケージのテストとGraphQLパッケージの通常テストが成功しました。DB統合テストは`HORSE_TEST_DATABASE_URL`未設定でskipされており、PostgreSQLを使うCIの成功後に統合経路を確認します。
 
 購入訂正と品目更新を`internal/application/purchase`へ移し、Resolverには認可・入力変換・結果変換を残しました。口座残高分析の残高計算とBob DSL読取も`internal/postgres/query`へ移しました。`go test ./internal/application/purchase ./internal/postgres/query ./internal/graph`が成功しました。Queryパッケージに専用テストはありません。GraphQLパッケージの既存`TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis`は残高分析の利用経路を確認します。これら3項目は実装済みとしてレビュー本文から削除しました。Query層は引き続き口座の全仕訳を読み、読込量や応答時間の計測はしていないため、性能改善を達成したとは記録しません。
+
+口座間移動と外部入金のトランザクション、Bob DSLによる永続化、冪等性処理を`internal/application/accountmovement`へ移し、GraphQL Resolverには認可と入出力変換を残しました。`go test ./internal/application/accountmovement`と、Worker分割の修正後に実行した`go test ./internal/graph`は成功しました。Applicationパッケージには専用テストがありません。GraphQLの`TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis`などDB統合テストは`HORSE_TEST_DATABASE_URL`未設定でskipされており、GraphQLからDBまでの統合確認はCIのPostgreSQL統合テスト成功後に完了扱いとします。
+
+処理が混在していた取り込みWorkerを、`worker.go`の進行制御、`worker_claim.go`のジョブ取得、`worker_extract.go`の抽出、`worker_history.go`の履歴参照、`worker_results.go`の成功・失敗保存、`worker_recovery.go`の期限切れジョブ回収へ分割しました。DB管理と抽出処理を分けるためにRepositoryやPipelineの抽象層を増やすのではなく、責務ごとに同じ`Worker`実装内のファイルを整理しました。新しいテストは追加していません。`mise exec -- go test ./internal/ingestion`と`git diff --check`は成功しました。
+
+Workerの挙動は従来のPostgreSQLジョブ管理を維持します。Claim対象は`QUEUED`、`failure_count < 5`、`available_at <= now`を満たすジョブで、`FOR UPDATE SKIP LOCKED`と`available_at`・ID順を使います。再試行可能な失敗は既存の`retryDelay`を適用して再登録し、Gemini Spend Capは失敗回数を増やさず再試行します。35分以上更新されていない`RUNNING`ジョブは回収し、失敗回数を加算して再登録または`retry_exhausted`にします。完了・失敗更新は実行中状態と`attempt`を照合し、古いWorkerによる結果上書きを防ぎます。Watermillなど新たなジョブ基盤を追加せず、DB claim・再試行・回復の既存条件を保つ判断は過去の記録どおりです。
 
 DBアクセスはBob DSLを使う方針を維持します。Bob Query Code Generationの提案は生SQL文字列を導入するため採用せず、複雑な読取もBob DSLで表現します。Bob Factoryは無効のままです。会計値の暗黙化を避け、重複削減の具体的な必要が確認できたFixtureだけ検討します。
 
