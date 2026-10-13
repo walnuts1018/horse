@@ -4,14 +4,15 @@
 
 ## 総評
 
-現状のバックエンドは、技術スタックの選定は適切ですが、ライブラリが提供している機能を十分活用しきれておらず、アプリケーション固有の処理がGraphQL Resolverに集中しています。
+現状のバックエンドでは、ResolverからApplication Serviceへの移行やBobの活用が進んでいます。一方で、会計ユースケース以外のResolverには業務処理とトランザクション管理が残り、読み取り処理もGraphQL層に配置されています。
 
-特に改善したいのは次の5点です。
+現時点で残っている主な課題は次のとおりです。
 
-1. GraphQL Resolverに業務ロジック・DB操作・トランザクション管理・レスポンス変換が混在している。
-2. Bobのリレーションロード機能を十分使わず、N+1クエリを発生させている。
-3. Gemini APIのHTTPクライアントを独自実装しており、公式SDKに任せられる処理を多数抱えている。
-4. 会計処理に似たコードが複数存在し、今後の修正時に整合性を崩しやすい。
+1. 一部のMutationに業務ロジック・DB操作・トランザクション管理が残っている。
+2. Gemini SchemaとReceipt型は手作業で管理されている。
+3. pgxのトランザクション管理とApplication Serviceへの移行が一部にとどまっている。
+4. 読み取り処理の配置とDBトレーシングが未整理である。
+5. SSEが1秒間隔でDBをポーリングしている。
 
 ただし、何でも新しいライブラリに置き換えればよいわけではありません。
 
@@ -24,36 +25,18 @@
 | S3            | AWS SDK for Go v2  | 維持           |
 | メッセージング       | amqp091-go         | 維持           |
 | 監視            | OpenTelemetry      | 維持           |
-| Gemini        | 独自REST実装           | 公式SDKへの移行を推奨 |
+| Gemini        | Go公式SDK              | 維持           |
 | トランザクション・業務処理 | Resolver内への直接実装    | Service層へ移動  |
 
 重要なのは、今のGoバックエンドを別のフレームワークへ移行することではなく、すでに採用しているライブラリを活かし、責務を正しく分離することです。
 
-## 1. GraphQL Resolverが巨大すぎる
+## 1. Mutationの責務分離
 
 優先度：高 / 保守性
 
-該当：[internal/graph/mutations.go](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/graph/mutations.go)
+現状確認では、以前の`mutations.go`は機能別ファイルへ分割され、購入作成・確定、入金、送金、精算のApplication Serviceが追加されています。購入作成・確定は`internal/application/purchase`、入金は`internal/application/funding`、送金は`internal/application/transfer`、精算は`internal/application/settlement`が処理します。
 
-現在の`mutations.go`は約3,570行あります。自動生成ファイルではなく、手書きの実装です。
-
-特に長い関数には以下があります。
-
-| 関数 | おおよその行数 |
-| -------------------- | ------- |
-| `createPurchase` | 298行 |
-| `recordFunding` | 244行 |
-| `recordTransfer` | 386行 |
-| `correctPurchase` | 378行 |
-| `updatePurchaseItem` | 390行 |
-
-問題は単純に行数が多いことではありません。
-
-例えば`createPurchase`では、入力検証、認可、冪等性確認、会計期間ロック、負担ルール検索、商品情報検証、データ保存など、異なる責務が1つの関数に存在しています。
-
-`recordTransfer`や`correctPurchase`も同様です。
-
-この状態では、会計ロジックを修正するときにGraphQLの実装詳細まで理解する必要があり、API以外から同じ処理を再利用することも難しくなります。
+一方、購入訂正は[mutations_purchase_correction.go](../../internal/graph/mutations_purchase_correction.go)でDBトランザクションと業務処理を実行し、品目更新も[update_purchase_item.go](../../internal/graph/update_purchase_item.go)で同様に処理します。Resolverの分割とService移行は進んでいますが、ユースケース全体の責務分離は未完了です。
 
 ### 推奨する構造
 
@@ -118,107 +101,19 @@ Service層ではGraphQLの生成モデルを使わず、アプリケーション
 
 なお、Repositoryインターフェースをテーブルごとに大量生産する必要はありません。 Goでは不要な抽象化も保守性を悪化させます。まずはユースケース単位のServiceと、必要な場所だけの小さなインターフェースで十分です。
 
-## 2. 購入一覧・月次・口座集計のN+1
-
-優先度：高 / 性能・保守性
-
-購入一覧は`loadPurchases`で購入、品目、配賦、タグ、決済、訂正、証拠をBobの関連ロード機能でまとめて取得するよう変更しました。複数購入の関連データが混ざらないことをDB統合テストで確認しています。
-
-### 月次分析
-
-`monthlyCategorySpending`と`monthlyMemberSpending`は専用の`monthly_spending.go`へ分割し、品目・訂正・負担スナップショットをBob DSLで集約します。`accountBalances`もBob DSLの単一集計クエリで計算します。集計結果と元購入月に対する補正、開始残高より前の仕訳を除外する境界をDB統合テストで確認しています。
-
-## 3. Bob DSLで集計と検索を型安全に実装する
+## 2. Gemini Schema定義とGo型の同期
 
 優先度：高 / ライブラリ活用
 
-該当：[bobgen.yaml](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/bobgen.yaml)
+Geminiとの通信は`google.golang.org/genai`へ移行済みです。また、`TestReceiptSchemaMatchesJSONTypesAndRequiredFields`がReceipt型と手作りSchemaのプロパティ・型・必須項目を照合します。
 
-現在は以下の設定になっています。
+一方、[gemini.go](../../internal/ingestion/gemini.go)の`receiptSchema()`は引き続き`map[string]any`で定義されており、Go型との二重管理は残っています。Contract Testは型とSchemaのずれを検出しますが、Schemaの生成やGemini固有制約の検証までは行いません。
 
-```
-queries:
-  disabled: true
-```
-
-このプロジェクトでは、文字列としてSQLを書く方法を採用せず、Bob DSLで型安全な検索・集計を組み立てます。
-
-| 用途 | 推奨 |
-| --------- | ------------------------- |
-| 単純なCRUD | Bob生成Model |
-| 動的な検索条件 | Bob Query Builder |
-| リレーション取得 | Bob ThenLoad / Preload |
-| 購入一覧の集約取得 | Bob Query BuilderとThenLoad |
-| 月次支出分析 | Bob DSLによる集計 |
-| 口座残高集計 | Bob DSLによる集計 |
-| 複雑な会計計算 | Goのdomain関数 |
-
-月次集計と口座残高集計は会計仕様を反映したBob DSLへ移行しました。追加の集計も同じ型安全な構成にそろえます。DB固有の実行計画を確認するときは、Bobが生成するクエリと引数を使って検証します。
-
-## 4. 会計仕訳の構築ロジックが重複している
-
-優先度：高 / 会計の正確性
-
-次の2つは、かなり似た処理を別々に実装しています。
-
-- [syncPostedPurchaseAccounting](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/graph/mutations.go#L1193-L1328)
-- [postPurchase](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/graph/mutations.go#L1921-L2132)
-
-どちらも、
-
-- 品目金額の合計
-- プール別負担金額の集約
-- 仕訳行番号の採番
-- 借方・貸方の設定
-- 決済口座の仕訳作成
-
-といった処理を行います。
-
-問題は、将来片方の実装だけを修正してしまうことです。
-
-例えば決済に新しい種類を追加した際、購入確定では正しく処理できるのに、購入編集後の仕訳再生成では反映されない、といったバグを生みやすくなります。
-
-### 修正案：仕訳生成を純粋関数にする
-
-```
-type JournalLine struct {
-    AccountID *uuid.UUID
-    PoolID    *uuid.UUID
-    DebitYen  int64
-    CreditYen int64
-    Memo      string
-}
-
-func BuildPurchaseJournal(
-    purchase PurchaseAccountingSnapshot,
-) ([]JournalLine, error)
-```
-
-このような関数を`domain`または会計のapplication層に実装します。
-
-購入の確定も編集も、同じ関数で仕訳内容を作成し、DBへの保存方法だけを分けます。
-
-このロジックは家計簿の中核なので、あえてライブラリに依存させる必要はありません。
-
-配賦・金額の保存則・仕訳構築は自前の純粋関数、DBアクセスとトランザクションはBob/pgxという役割分担が最適だと思います。
-
-## 5. Gemini Schema定義とGo型の同期
-
-優先度：高 / ライブラリ活用
-
-該当：[internal/ingestion/gemini.go](https://github.com/walnuts1018/horse/blob/2f3b983e6327e1781400175fd1f31893b373307c/internal/ingestion/gemini.go)
-
-また、`receiptSchema()`は現在、`map[string]any`による手作りJSON Schemaです。これは`Receipt`構造体と二重管理になっています。
-
-現時点でもフィールドが多く、今後の変更でスキーマとGoの構造体がずれるリスクがあります。
-
-JSON Schema生成ライブラリの使用を検討し、Geminiが受け付けるSchemaの制約に合わせて変換するか、少なくともGoの型とSchemaの整合性を検証するContract Testを設けるべきです。
-
-## 6. pgxのトランザクションAPIをもっと活用する
+## 3. pgxのトランザクション管理とService層への移行
 
 優先度：中〜高 / 保守性
 
-`mutations.go`では、ほぼすべてのMutationが以下のパターンを使用しています。
+GraphQL層には現在も、次の手動トランザクション管理を使うMutationが複数残っています。例えば購入訂正は`internal/graph/mutations_purchase_correction.go`、品目更新は`internal/graph/update_purchase_item.go`でこの形を使います。
 
 ```
 tx, err := r.DB.Begin(ctx)
@@ -238,11 +133,7 @@ if err := tx.Commit(ctx); err != nil {
 
 これは誤った実装ではありません。
 
-ただし、pgxにはすでに`pgx.BeginFunc`と`pgx.BeginTxFunc`があり、コールバックの返り値に応じてCommit/Rollbackを管理できます。
-
-[image](https://www.google.com/s2/favicons?domain=https://pkg.go.dev\&sz=32)
-
-Go Packages
+リポジトリ内では`pgx.BeginFunc`と`pgx.BeginTxFunc`を使用しておらず、GraphQL・Application Serviceの双方で`Begin`、`Commit`、`Rollback`を手動管理しています。pgxのコールバックAPIを使えば成功・失敗時の完了処理をまとめられますが、`context.WithoutCancel`によるRollbackの挙動を保つ必要があります。
 
 例えば、
 
@@ -270,11 +161,7 @@ err := pgx.BeginFunc(ctx, db, func(tx pgx.Tx) error {
 
 さらに重要なのは、Transactionをどの層が所有するかです。
 
-おすすめは、
-
-Application Serviceがトランザクションを開始し、複数のRepository操作を同じTxで実行する
-
-方式です。
+購入・入金・送金・精算のServiceは自らTxを開始しますが、前述の購入訂正や品目更新などはGraphQL ResolverがTxを開始します。Service層がトランザクション境界を所有する設計は一部のみ適用されています。
 
 例えば購入確定は、購入情報の保存、配賦、仕訳、EvidenceLink、イベントまで同じトランザクションで処理します。
 
@@ -282,17 +169,17 @@ Application Serviceがトランザクションを開始し、複数のRepository
 
 DBロックを保持したまま外部APIを待つ構成にはしないでください。
 
-## 7. 読み取り専用APIを専用Query層に分離する
+## 4. 読み取り専用APIを専用Query層に分離する
 
 優先度：中〜高 / 設計・性能
 
-現在はGraphQLのQuery Resolverに、データ検索と集計が直接実装されています。
+現在も読み取り処理はGraphQLパッケージに配置されています。例えば`monthly_spending.go`と`account_balances.go`はBob DSLを使いますが、`internal/postgres`のQuery層には分離されていません。
 
 具体的には以下です。
 
 | 処理 | 現状の問題 | 推奨 |
 | ------------------------- | ---------------------- | ------------ |
-| `productSuggestions` | 全商品の取得・Go側検索 | DB側絞り込み |
+| `productSuggestions` | Bob DSLで候補検索するが、上位候補の採点・並び替えはGraphQLパッケージ内のGoコード | 専用Query層に検索条件・順位付けをまとめる |
 
 これらの処理には、CQRSのような大掛かりなフレームワークは不要です。
 
@@ -310,19 +197,15 @@ postgres/
 
 これによってGraphQLの変更とBob DSLの最適化を独立して進められます。
 
-## 8. OpenTelemetryとテスト基盤
+## 5. OpenTelemetryとテスト基盤
 
 ### PostgreSQLのトレースを取得する
 
-現在は`otelhttp`を使ったHTTP計測とOpenTelemetry SDKが導入されています。
-
-一方、`cmd/api/main.go`や`cmd/worker/main.go`では`pgxpool.New`で直接DBプールを作成しており、pgxへのトレーシングを設定していません。
+`cmd/api/main.go`と`cmd/worker/main.go`はOpenTelemetry SDKを初期化し、APIは`otelhttp`でHTTP計測を行います。一方、両方のDBプールは`pgxpool.New`で作成され、pgxのトレーサーは設定されていません。`go.mod`にも`otelpgx`はありません。
 
 ここには otelpgx が適しています。
 
 `otelpgx.NewTracer()`をpgxに設定すれば、SQLの実行時間やコネクション取得をTraceへ追加できます。DBプールの統計も収集可能です。
-
-[image](https://www.google.com/s2/favicons?domain=https://pkg.go.dev\&sz=32)
 
 Go Packages
 
@@ -332,20 +215,12 @@ SQL全文やパラメータを不用意に収集しないよう、計測属性�
 
 ### テスト用Factoryを検討する
 
-`bobgen.yaml`では、Factory生成も無効になっています。
+`bobgen.yaml`ではFactory生成が無効のままです。統合テストでは家庭・口座・会計条件などをテストごとに明示的に作成しています。Factoryで重複を減らす余地はありますが、会計条件を暗黙化しないよう、共通準備とテスト固有データの境界を決める必要があります。
 
 ```
 factory:
   disabled: true
 ```
-
-一方、`accounting_integration_test.go`などでは、大量の事前データ作成がテストコード内に記述されています。
-
-BobにはFactory生成機能があるので、これを使ってテストデータ生成の重複を減らせる可能性があります。
-
-[image](https://www.google.com/s2/favicons?domain=https://bob.stephenafamo.com\&sz=32)
-
-Bob
 
 ただし、会計テストでは正確な金額や負担関係が重要です。
 
@@ -353,11 +228,11 @@ Factoryであらゆる値を暗黙に補完するより、家庭・メンバー�
 
 現状のCIではPostgreSQL 18を起動してDBマイグレーションと統合テストを実行しているので、テストのために別のデータベースやTestcontainersへ切り替える必要はありません。
 
-## 9. 追加ライブラリなしで改善できるところ
+## 6. 追加ライブラリなしで改善できるところ
 
 すべてをライブラリで解決する必要はありません。
 
-例えば、`/events`のSSEハンドラは、接続ごとに1秒間隔でPostgreSQLをポーリングしています。
+現在の`internal/api/server.go`の`events`ハンドラは、接続ごとに1秒間隔で`household_events`を問い合わせています。カーソルを使った再取得は実装されていますが、待機中の接続数に応じて定期的なDB問い合わせが増えます。
 
 複数ユーザーでの同時編集を前提にすると、将来的に無駄なDBアクセスが増える構造です。
 
@@ -373,13 +248,13 @@ Factoryであらゆる値を暗黙に補完するより、家庭・メンバー�
 
 | ライブラリ・機能 | 判断・理由 |
 | ------------------------- | ------------------ |
-| Bob ThenLoad / Preload | 積極活用 — N+1削減 |
-| Bob Query Builder | 採用 — 型安全なDB検索・集計 |
-| `google.golang.org/genai` | 採用 — 独自REST実装の削減 |
+| Bob ThenLoad / Preload | 購入一覧などで採用済み |
+| Bob Query Builder | 検索・集計で採用済み |
+| `google.golang.org/genai` | 採用済み — Gemini APIの通信に使用 |
 | `pgx.BeginFunc` | 積極活用 — Tx管理の簡素化 |
 | `otelpgx` | 採用 — DBトレーシング |
 | Bob Factory | 採用検討 — テストデータ生成 |
-| gqlgen DataLoader | 積極的に活用。dataloader/v7を使う |
+| gqlgen DataLoader | Node参照には独自のバッチ処理を実装済み。追加導入は必要性を個別に判断 |
 | 別のORM（GORM・Ent） | 不要 — Bobで十分 |
 | 別のHTTPフレームワーク | echo/v5を用いる |
 | DIコンテナ | kessokuを用いる |
@@ -388,24 +263,16 @@ Factoryであらゆる値を暗黙に補完するより、家庭・メンバー�
 
 | 順位 | 変更 | 効果 |
 | -- | --------------------------------- | -------------- |
-| 1 | Bobのバッチロードと型安全DSLを活用 | N+1解消、読み取り性能改善 |
-| 2 | 購入・入金・精算などをApplication Serviceへ分離 | 保守性・再利用性 |
-| 3 | 仕訳生成ロジックを純粋関数へ集約 | 重複削減、会計バグ防止 |
-| 4 | Gemini通信を公式Go SDKへ移行 | API変更への追従性 |
-| 5 | pgxのTransaction管理を統一 | 実装の簡潔さと一貫性 |
-| 6 | otelpgxによるSQL計測 | 性能問題の発見 |
-| 7 | テストデータ生成の共通化 | テストの読みやすさ |
+| 1 | 購入訂正・品目更新などをApplication Serviceへ移行 | GraphQLから業務処理を分離 |
+| 2 | DBトランザクションの境界をService層へ統一 | Tx管理の一貫性 |
+| 3 | 読み取り処理をQuery層へ分離 | API変更と検索最適化の独立性 |
+| 4 | otelpgxによるSQL計測 | DB処理の性能問題の発見 |
+| 5 | Gemini Schemaの生成または契約検証を強化 | 型定義との同期維持 |
+| 6 | SSEの通知をLISTEN/NOTIFYへ変更 | 接続数に応じた定期クエリの削減 |
+| 7 | 共通テスト準備のFactory化を評価 | テストデータ作成の重複削減 |
 
 ### 最終的な評価
 
-Horseのバックエンドで最も問題なのは、特定のライブラリが古いことでも、Goのコードが非効率なことでもありません。
+GraphQLパッケージには、購入訂正・品目更新などの業務処理と読み取り処理が残っています。すでに導入されたApplication Serviceと会計ロジックの共通化を、残りのユースケースにも適用し、GraphQLを入出力変換に集中させることが今後の課題です。
 
-現在はGraphQL Resolverがアプリケーションの本体になりすぎています。
-
-この状態から、GraphQLを薄い入出力層にし、Application Serviceに業務処理を集約し、Bob/pgxを活用したDBアクセス層を明確に分けるだけで、かなり改善すると思います。
-
-特に今回のアプリでは、同じ購入や精算ロジックが手入力、レシートAI取り込み、カード明細取り込み、締め後訂正から呼ばれます。
-
-そのため、業務ロジックの再利用性は単なるコードの綺麗さではなく、すべての入力経路で同一の会計ルールを保証するための重要な設計要件です。
-
-以上は確認したコミットに対する静的レビューです。性能改善の実測やリファクタリング後の動作確認は未実施ですが、まず着手する価値が高いのは、Bobのバッチ取得、Service層への責務分離、仕訳生成ロジックの集約です。
+この監査では現行コードを静的に確認しました。DB性能の実測は行っていません。N+1と購入仕訳生成の重複は解消されているため、今後は残存ResolverのService移行、DBトレーシング、読み取り層の整理を優先します。

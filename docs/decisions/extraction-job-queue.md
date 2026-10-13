@@ -22,6 +22,10 @@ RabbitMQ通知が失われた場合、次のDB pollまで処理開始が最大10
 
 DB pollが実測でボトルネックになった場合、または複数種類の非同期処理で通知・middlewareの共通化が明確な保守効果を持つ場合に再評価します。再評価では、重複通知、publish失敗、RabbitMQ停止、Worker停止、長時間retry、Spend Cap、期限切れclaim回復を含む障害試験を行い、状態の正本と処理保証を先に定義します。
 
+## レビュー対応
+
+[`docs/reviews/be-library.md`](../reviews/be-library.md)には、PostgreSQLのジョブ管理を廃止し、RabbitMQとWatermillへ配送・再試行・DLQを移す案がありました。2026年10月13日に現行コードと障害経路を確認し、この移行案を採用しない判断をしました。現在のDB管理は文書登録との原子性、APIから参照するジョブ状態、長時間再試行、停止後の回復を担い、RabbitMQ通知は処理開始を早めます。Watermillを追加してもDBのclaimと回復処理は残り、RabbitMQを正本にするとDB更新との二重書込みやSpend Capを含む再設計が必要です。レビュー文書からこの移行提案を除き、判断理由と再検討条件をこのファイルに残します。
+
 ## 主な実装箇所
 
 - [`internal/api/documents.go`](../../internal/api/documents.go)で文書とジョブを同じDBトランザクションに登録し、commit後にRabbitMQへ通知します。

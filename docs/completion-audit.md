@@ -15,7 +15,7 @@
 | 過去のスナップショット | デフォルト更新後の確定済み品目・締め済み精算が不変である統合テスト | 品目の負担ルールと締め済み精算の資金拠出設定のスナップショット保持をDB統合テストで確認 |
 | 予定入金と実入金 | 未入金、一部入金、過払い、イレギュラー入金、繰越しの統合テスト | 予定と実入金の分離、未入金額の精算反映、締め後の拠出設定スナップショットと繰越しをDB統合テストで確認。過払い・イレギュラー入金の実操作は未検証 |
 | 精算 | 入金控除、共用資金の個人利用、直接送金、負額の繰越し、内訳への遷移 | 共有費調整、個人口座による立替控除、締め残高の翌月繰越しをテストで確認。ローカル画面では精算内訳を確認。全シナリオの公開操作は未検証 |
-| 貸付・返済・贈与 | 支出に含まれないこと、返済の債務対応、共用口座経由の返済 | UI・APIの全シナリオを通した検証は未完了 |
+| 貸付・返済・贈与 | 支出に含まれないこと、返済の債務対応、共用口座経由の返済 | DB統合テストで貸付・贈与の記録、共用口座経由の返済による貸付残高の解消、口座残高・仕訳・支出集計への反映を確認。公開環境でのUI登録・再表示を含む操作は未検証 |
 | 締めと訂正 | 締め後編集の拒否、元履歴保持、訂正仕訳、次回精算と購買日分析への反映 | 締め済み精算の拠出設定スナップショットと購入訂正APIは実装済み。締め後編集拒否、訂正仕訳、次回精算への反映を通した検証は未完了 |
 | 台帳不変条件 | DBでの貸借一致、品目配賦合計一致、二重精算の防止、トランザクションの統合テスト | 会計統合テストで配賦・更新の原子性、購入登録の冪等性を確認。別会計月の返済2件が同時に到着しても元本を超えないことを専用DBで20回確認。口座移動の検索・貸借仕訳・残高分析への統合テストはCIで再検証中。全仕訳経路の貸借一致と二重精算防止の網羅検証は未完了 |
 | スマホの連続入力 | 実ブラウザで商品名・金額・次への連続入力、IME、キーボードとスクロールの操作 | ローカル390×844で3品目の保存・再表示を確認。IME、連続入力の全操作、公開環境は未検証 |
@@ -37,9 +37,9 @@
 | 認証と秘密管理 | ZITADEL Code+PKCE、state・nonce、HttpOnly/Secure Cookie、CSRF、基盤の保存方針に従った非公開原本保存 | 公開環境のOIDCログイン成功を確認。Cookie/CSRFの全要件は未検証。アプリのSSE指定は撤去し、保存基盤の管理に従う |
 | フロントエンドの構造 | FSDのレイヤー・スライス公開API、Steiger検証、piccaとのライブラリ選定対応 | app・pages・sharedの構成と公開APIを実装、Steiger検証通過 |
 | GraphQL API | PiccaのSDL分割、Relay Node/双方向Connection、Mutation Result、nullability、Global ID | SDLをPicca ADR 0002に合わせ、ドメインモデルとMutationごとに分割。口座残高分析の発生元をGlobal ID付きNodeにし、Settlementを家計と会計月で識別できるNodeにした。全Connection Queryへ`before`/`last`を追加し、Relayのcanonical edge順で返す双方向ページネーションを実装。逆方向ページングのDB統合テストを追加したが、ローカルのDB URLが未設定のため未実行。公開環境への反映は未確認 |
-| コンテナとGitOps | 再現可能なCIビルド、GHCRイメージdigest、infra生成とArgoCD同期 | `756f448`のCIでBuildxによるHorse 20系API・OCR・Web・Workerイメージ公開、provenance、SBOMを確認。CIの初期Go検査・DB migration・OCR lint・Frontend依存導入と、後段のGoテスト・Frontend検証を並列化した。Argo CDをHard Refresh後、infra commit `a08b75919`で`Synced`・`Healthy`を確認。確認できたHorse image参照は2f3b983まで。NetBirdがNeedsLoginのためArgo CLIとkurumi APIから最新Pod状態を取得できていない |
+| コンテナとGitOps | 再現可能なCIビルド、GHCRイメージdigest、infra生成とArgoCD同期 | `756f448`のCIでBuildxによるHorse 20系API・OCR・Web・Workerイメージ公開、provenance、SBOMを確認。2026年10月13日09:39 UTCに`kubectl`でArgo CD Application `horse`の状態が`Synced`・`Healthy`、同期revisionが`7ccede4b797b9b420aaa5f79bc35f1914d6eab3b`であることを確認し、API・OCR・Web・Workerの各Podが1/1 Readyであることを確認した。API・Web・Workerは`ghcr.io/walnuts1018/horse:v0.0.0-4e119145357fe4b6b7c662f4d7791d0e4eba93d6-117@sha256:bc6ebd60595437bf1fafae985a3ff9e27f6c5628dd918f7940052d668a2d215c`、OCRは`ghcr.io/walnuts1018/horse-ocr:v0.0.0-2890b8c8e72e60134cf037c1d06567e30c8072dd-102@sha256:59faf266fb9d832e3e96c6c78b7b94966f0a015db5ca1d9961a17839fbd4dae6`で稼働している。これらは現在のソースより前のイメージであり、最新コードの公開・配備は未確認 |
 | セキュリティと運用 | NetworkPolicy、非公開原本、監視・ログ・トレース、基盤によるSeaweedFSとDBのバックアップ | NetworkPolicy・非公開原本の実装あり。Googleの月500円Spend CapがCONFIGUREDで、50%・80%・100%の通知設定を確認。警告メールの実配送は未検証。Horse専用バックアップは設けず、基盤の全体バックアップに従う |
-| 公開サービス | kurumiの各Pod Ready、正しいTLS、公開URL、OIDCログイン後の主要操作と永続化 | 公開URLでOIDCログインし、「公開環境の動作検証」家庭を作成・再表示できることを確認。6cb5359のWebイメージ公開・配備後、失敗済み送信待ち購入を同じ冪等キーで再送し、帳簿に1件だけ登録され、再読み込み後も残ることを確認。口座分析画面で外部入金を記録すると、口座残高と仕訳履歴が即時に更新されることを確認。銀行50円・現金51円の購入も再読み込み後に両決済、品目101円、負担先が維持されることを確認。現在`https://horse.walnuts.dev/healthz`とトップページはHTTP200。Horse image参照は2f3b983で、最新コードの配備は未確認。NetBirdのSSOログイン待ちのため、kurumi APIへの接続は再開できていない。PDF操作、別ユーザー招待、精算などの公開シナリオは未検証 |
+| 公開サービス | kurumiの各Pod Ready、正しいTLS、公開URL、OIDCログイン後の主要操作と永続化 | 公開URLでOIDCログインし、「公開環境の動作検証」家庭を作成・再表示できることを確認。6cb5359のWebイメージ公開・配備後、失敗済み送信待ち購入を同じ冪等キーで再送し、帳簿に1件だけ登録され、再読み込み後も残ることを確認。口座分析画面で外部入金を記録すると、口座残高と仕訳履歴が即時に更新されることを確認。銀行50円・現金51円の購入も再読み込み後に両決済、品目101円、負担先が維持されることを確認。2026年10月13日09:39 UTCに`https://horse.walnuts.dev/healthz`とトップページのHTTP 200、Argo CDの`Synced`・`Healthy`、4 Podすべての1/1 Readyを確認した。稼働中のAPI・Webイメージは`v0.0.0-4e119145357fe4b6b7c662f4d7791d0e4eba93d6-117`で、最新コードの配備は未確認。PDF操作、別ユーザー招待、精算などの公開シナリオは未検証 |
 
 2026年10月12日14:38 UTC頃の公開監視確認で、VictoriaMetricsの`probe_success{target="horse"}`は1を返した。Tempoの直近1時間を対象に`{resource.service.name="horse-api"}`を検索し、`horse-api`をroot serviceとするトレースを3件確認した。Workerトレースは0件だったが、その時間帯はGeminiが無効でCSV原本も未アップロードだったため、抽出ジョブがclaimされていなかった。Workerの処理成功・失敗はこの結果から判定していない。
 
