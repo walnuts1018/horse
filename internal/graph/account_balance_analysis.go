@@ -85,10 +85,10 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 		if left.journal.OccurredAt.After(right.journal.OccurredAt) {
 			return 1
 		}
-		if left.journal.SourceKind == "ACCOUNT_OPENING_BALANCE" && right.journal.SourceKind != "ACCOUNT_OPENING_BALANCE" {
+		if left.journal.SourceKind == sourceKindAccountOpeningBalance && right.journal.SourceKind != sourceKindAccountOpeningBalance {
 			return -1
 		}
-		if right.journal.SourceKind == "ACCOUNT_OPENING_BALANCE" && left.journal.SourceKind != "ACCOUNT_OPENING_BALANCE" {
+		if right.journal.SourceKind == sourceKindAccountOpeningBalance && left.journal.SourceKind != sourceKindAccountOpeningBalance {
 			return 1
 		}
 		return cmp.Compare(left.journal.ID.String(), right.journal.ID.String())
@@ -97,7 +97,7 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 	var visible []*accountBalanceJournalChange
 	var openingAt *time.Time
 	for _, change := range ordered {
-		if change.journal.SourceKind == "ACCOUNT_OPENING_BALANCE" && change.journal.SourceID == accountUUID {
+		if change.journal.SourceKind == sourceKindAccountOpeningBalance && change.journal.SourceID == accountUUID {
 			occurredAt := change.journal.OccurredAt
 			openingAt = &occurredAt
 			break
@@ -147,7 +147,7 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 		})
 	}
 	return &model.AccountBalanceAnalysis{
-		AccountID: accountUUID.String(), Currency: "JPY", From: model.YearMonth(from), To: model.YearMonth(to),
+		AccountID: accountUUID.String(), Currency: currencyJPY, From: model.YearMonth(from), To: model.YearMonth(to),
 		OpeningBalanceYen: graphLong(openingBalance), ClosingBalanceYen: graphLong(balance), Changes: result,
 	}, nil
 }
@@ -155,8 +155,8 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 func (r *queryResolver) accountBalanceSource(ctx context.Context, householdID string, account *models.Account, journal *models.Journal) (model.AccountBalanceSource, error) {
 	kind, id := "", journal.SourceID.String()
 	switch journal.SourceKind {
-	case "ACCOUNT_OPENING_BALANCE":
-		globalID, err := encodeNodeID("AccountOpeningBalance", account.ID.String())
+	case sourceKindAccountOpeningBalance:
+		globalID, err := encodeNodeID(nodeTypeAccountOpeningBalance, account.ID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -164,13 +164,13 @@ func (r *queryResolver) accountBalanceSource(ctx context.Context, householdID st
 			ID:      globalID,
 			Account: &model.Account{ID: account.ID.String(), Name: account.Name, Kind: model.AccountKind(account.Kind)},
 		}, nil
-	case "PURCHASE":
-		kind = "Purchase"
-	case "CORRECTION":
-		kind = "PurchaseCorrection"
-	case "FUNDING":
-		kind = "LedgerEntry"
-	case "TRANSFER":
+	case sourceKindPurchase:
+		kind = nodeTypePurchase
+	case sourceKindCorrection:
+		kind = nodeTypePurchaseCorrection
+	case sourceKindFunding:
+		kind = nodeTypeLedgerEntry
+	case sourceKindTransfer:
 		transferID := journal.SourceID
 		householdUUID, err := gofrsuuid.FromString(householdID)
 		if err != nil {
@@ -186,11 +186,11 @@ func (r *queryResolver) accountBalanceSource(ctx context.Context, householdID st
 		if err != nil {
 			return nil, err
 		}
-		kind, id = "LedgerEntry", transfer.LedgerEntryID.String()
-	case "ACCOUNT_MOVEMENT":
-		kind = "AccountMovement"
-	case "ACCOUNT_INCOME":
-		kind = "AccountIncome"
+		kind, id = nodeTypeLedgerEntry, transfer.LedgerEntryID.String()
+	case sourceKindAccountMovement:
+		kind = nodeTypeAccountMovement
+	case sourceKindAccountIncome:
+		kind = nodeTypeAccountIncome
 	default:
 		return nil, fmt.Errorf("unknown account balance source kind %q", journal.SourceKind)
 	}
@@ -211,19 +211,19 @@ func (r *queryResolver) accountBalanceSource(ctx context.Context, householdID st
 
 func accountSourceDescription(kind string) string {
 	switch kind {
-	case "ACCOUNT_OPENING_BALANCE":
+	case sourceKindAccountOpeningBalance:
 		return "初期残高"
-	case "PURCHASE":
+	case sourceKindPurchase:
 		return "購入"
-	case "CORRECTION":
+	case sourceKindCorrection:
 		return "訂正"
-	case "FUNDING":
+	case sourceKindFunding:
 		return "資金拠出"
-	case "TRANSFER":
+	case sourceKindTransfer:
 		return "送金"
-	case "ACCOUNT_MOVEMENT":
+	case sourceKindAccountMovement:
 		return "口座振替"
-	case "ACCOUNT_INCOME":
+	case sourceKindAccountIncome:
 		return "外部入金"
 	default:
 		return "仕訳"
@@ -239,7 +239,7 @@ func accountChangeDescriptions(ctx context.Context, executor bob.Executor, house
 	idsByKind := make(map[string]map[gofrsuuid.UUID]struct{})
 	for _, change := range changes {
 		kind := change.journal.SourceKind
-		if kind == "ACCOUNT_OPENING_BALANCE" {
+		if kind == sourceKindAccountOpeningBalance {
 			continue
 		}
 		if idsByKind[kind] == nil {
@@ -249,7 +249,7 @@ func accountChangeDescriptions(ctx context.Context, executor bob.Executor, house
 	}
 	result := make(map[string]string)
 	if account.Name != "" {
-		result[accountSourceKey("ACCOUNT_OPENING_BALANCE", account.ID)] = "期首残高: " + account.Name
+		result[accountSourceKey(sourceKindAccountOpeningBalance, account.ID)] = "期首残高: " + account.Name
 	}
 	for kind, ids := range idsByKind {
 		args := make([]bob.Expression, 0, len(ids))
@@ -257,7 +257,7 @@ func accountChangeDescriptions(ctx context.Context, executor bob.Executor, house
 			args = append(args, psql.Arg(id))
 		}
 		switch kind {
-		case "PURCHASE":
+		case sourceKindPurchase:
 			rows, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.Purchases.Columns.ID.In(args...)))).All(ctx, executor)
 			if err != nil {
 				return nil, err
@@ -265,7 +265,7 @@ func accountChangeDescriptions(ctx context.Context, executor bob.Executor, house
 			for _, row := range rows {
 				result[accountSourceKey(kind, row.ID)] = row.Merchant
 			}
-		case "CORRECTION":
+		case sourceKindCorrection:
 			rows, err := models.Corrections.Query(sm.Where(psql.And(models.Corrections.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.Corrections.Columns.ID.In(args...)))).All(ctx, executor)
 			if err != nil {
 				return nil, err
@@ -273,7 +273,7 @@ func accountChangeDescriptions(ctx context.Context, executor bob.Executor, house
 			for _, row := range rows {
 				result[accountSourceKey(kind, row.ID)] = row.Reason
 			}
-		case "FUNDING":
+		case sourceKindFunding:
 			rows, err := models.LedgerEntries.Query(sm.Where(psql.And(models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.LedgerEntries.Columns.ID.In(args...)))).All(ctx, executor)
 			if err != nil {
 				return nil, err
@@ -281,7 +281,7 @@ func accountChangeDescriptions(ctx context.Context, executor bob.Executor, house
 			for _, row := range rows {
 				result[accountSourceKey(kind, row.ID)] = row.Description
 			}
-		case "TRANSFER":
+		case sourceKindTransfer:
 			rows, err := models.Transfers.Query(sm.Where(psql.And(models.Transfers.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.Transfers.Columns.ID.In(args...)))).All(ctx, executor)
 			if err != nil {
 				return nil, err
@@ -289,7 +289,7 @@ func accountChangeDescriptions(ctx context.Context, executor bob.Executor, house
 			for _, row := range rows {
 				result[accountSourceKey(kind, row.ID)] = row.Description
 			}
-		case "ACCOUNT_MOVEMENT":
+		case sourceKindAccountMovement:
 			rows, err := models.AccountMovements.Query(sm.Where(psql.And(models.AccountMovements.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.AccountMovements.Columns.ID.In(args...)))).All(ctx, executor)
 			if err != nil {
 				return nil, err
@@ -297,7 +297,7 @@ func accountChangeDescriptions(ctx context.Context, executor bob.Executor, house
 			for _, row := range rows {
 				result[accountSourceKey(kind, row.ID)] = row.Description
 			}
-		case "ACCOUNT_INCOME":
+		case sourceKindAccountIncome:
 			rows, err := models.AccountIncomes.Query(sm.Where(psql.And(models.AccountIncomes.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.AccountIncomes.Columns.ID.In(args...)))).All(ctx, executor)
 			if err != nil {
 				return nil, err

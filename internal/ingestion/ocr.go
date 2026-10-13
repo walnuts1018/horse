@@ -154,7 +154,7 @@ func (o OCR) Crop(ctx context.Context, document Document, region Region) (Docume
 			return Document{}, transform, ErrInvalidCropPage
 		}
 	}
-	if response.StatusCode != http.StatusOK || len(data) == 0 || len(data) > MaxDocumentBytes || response.Header.Get("Content-Type") != "image/png" {
+	if response.StatusCode != http.StatusOK || len(data) == 0 || len(data) > MaxDocumentBytes || response.Header.Get("Content-Type") != mimeTypePNG {
 		return Document{}, transform, fmt.Errorf("image crop service returned HTTP %d", response.StatusCode)
 	}
 	config, _, err := image.DecodeConfig(bytes.NewReader(data))
@@ -173,7 +173,7 @@ func (o OCR) Crop(ctx context.Context, document Document, region Region) (Docume
 	if values[8] == 0 {
 		return Document{}, transform, errors.New("invalid image crop transform")
 	}
-	return Document{MIMEType: "image/png", Data: data}, values, nil
+	return Document{MIMEType: mimeTypePNG, Data: data}, values, nil
 }
 
 // CompareOCRは独立した読取を照合し、不一致を人間の確認事項に残す。

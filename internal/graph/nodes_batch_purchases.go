@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"context"
+
 	"github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
@@ -8,14 +10,14 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func (b *nodeBatch) loadPurchaseNodes() error {
-	ctx, executor := b.ctx, b.executor
+func (b *nodeBatch) loadPurchaseNodes(ctx context.Context) error {
+	executor := b.executor
 	idsByKind := b.idsByKind
 	householdArgs, args, set := b.householdArgs, b.ids, b.set
 	r := b.resolver
-	if values := idsByKind["Purchase"]; len(values) > 0 {
+	if values := idsByKind[nodeTypePurchase]; len(values) > 0 {
 		rows, err := models.Purchases.Query(sm.Where(psql.And(
-			models.Purchases.Columns.HouseholdID.In(householdArgs...), models.Purchases.Columns.ID.In(args("Purchase")...),
+			models.Purchases.Columns.HouseholdID.In(householdArgs...), models.Purchases.Columns.ID.In(args(nodeTypePurchase)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
@@ -25,13 +27,13 @@ func (b *nodeBatch) loadPurchaseNodes() error {
 			return err
 		}
 		for _, purchase := range purchases {
-			set("Purchase", purchase.ID, purchase)
+			set(nodeTypePurchase, purchase.ID, purchase)
 		}
 	}
 	childPurchaseIDs := make(map[uuid.UUID]struct{})
-	if values := idsByKind["PurchaseItem"]; len(values) > 0 {
+	if values := idsByKind[nodeTypePurchaseItem]; len(values) > 0 {
 		rows, err := models.PurchaseItems.Query(sm.Where(psql.And(
-			models.PurchaseItems.Columns.HouseholdID.In(householdArgs...), models.PurchaseItems.Columns.ID.In(args("PurchaseItem")...),
+			models.PurchaseItems.Columns.HouseholdID.In(householdArgs...), models.PurchaseItems.Columns.ID.In(args(nodeTypePurchaseItem)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
@@ -40,9 +42,9 @@ func (b *nodeBatch) loadPurchaseNodes() error {
 			childPurchaseIDs[row.PurchaseID] = struct{}{}
 		}
 	}
-	if values := idsByKind["PurchaseCorrection"]; len(values) > 0 {
+	if values := idsByKind[nodeTypePurchaseCorrection]; len(values) > 0 {
 		rows, err := models.Corrections.Query(sm.Where(psql.And(
-			models.Corrections.Columns.HouseholdID.In(householdArgs...), models.Corrections.Columns.ID.In(args("PurchaseCorrection")...),
+			models.Corrections.Columns.HouseholdID.In(householdArgs...), models.Corrections.Columns.ID.In(args(nodeTypePurchaseCorrection)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
@@ -68,10 +70,10 @@ func (b *nodeBatch) loadPurchaseNodes() error {
 		}
 		for _, purchase := range purchases {
 			for _, item := range purchase.Items {
-				set("PurchaseItem", item.ID, item)
+				set(nodeTypePurchaseItem, item.ID, item)
 			}
 			for _, correction := range purchaseCorrectionNodes(purchase) {
-				set("PurchaseCorrection", correction.GetID(), correction)
+				set(nodeTypePurchaseCorrection, correction.GetID(), correction)
 			}
 		}
 	}

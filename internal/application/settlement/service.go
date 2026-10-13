@@ -24,6 +24,8 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+const closedStatus = "CLOSED"
+
 var (
 	ErrBadInput                       = errors.New("invalid input")
 	ErrConflict                       = errors.New("resource conflict")
@@ -72,7 +74,7 @@ func (w *Workflow) Get(ctx context.Context, householdID, period string) (Settlem
 	runs, err := models.SettlementRuns.Query(sm.Where(psql.And(
 		models.SettlementRuns.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.SettlementRuns.Columns.Period.EQ(psql.Arg(period)),
-		models.SettlementRuns.Columns.Status.EQ(psql.Arg("CLOSED")),
+		models.SettlementRuns.Columns.Status.EQ(psql.Arg(closedStatus)),
 	)), sm.OrderBy(models.SettlementRuns.Columns.Revision).Desc(), sm.Limit(1)).All(ctx, db)
 	if err != nil {
 		return Settlement{}, err
@@ -103,7 +105,7 @@ func (w *Workflow) Get(ctx context.Context, householdID, period string) (Settlem
 	slices.SortFunc(lines, func(left, right *models.SettlementLine) int {
 		return cmp.Compare(names[left.MemberID], names[right.MemberID])
 	})
-	result := Settlement{HouseholdID: householdID, Period: period, Status: "CLOSED", Revision: run.Revision, Lines: make([]domain.SettlementAmount, 0, len(lines))}
+	result := Settlement{HouseholdID: householdID, Period: period, Status: closedStatus, Revision: run.Revision, Lines: make([]domain.SettlementAmount, 0, len(lines))}
 	createdAt := run.CreatedAt
 	result.CreatedAt = &createdAt
 	for _, line := range lines {
@@ -154,7 +156,7 @@ func (w *Workflow) Close(ctx context.Context, command CloseCommand) (Settlement,
 	if err != nil {
 		return Settlement{}, err
 	}
-	if periodRow.Status == "CLOSED" || periodRow.Revision != command.ExpectedRevision {
+	if periodRow.Status == closedStatus || periodRow.Revision != command.ExpectedRevision {
 		return Settlement{}, ErrConflict
 	}
 	drafts, err := models.Purchases.Query(sm.Where(psql.And(
@@ -190,10 +192,10 @@ func (w *Workflow) Close(ctx context.Context, command CloseCommand) (Settlement,
 		return Settlement{}, err
 	}
 	fundingSnapshot := types.JSON[stdjson.RawMessage]{Val: fundingSnapshotBytes}
-	closedStatus := "CLOSED"
+	status := closedStatus
 	if _, err := models.SettlementRuns.Insert(&models.SettlementRunSetter{
 		ID: &settlementID, HouseholdID: &householdUUID, Period: &command.Period, Revision: &newRevision,
-		Status: &closedStatus, CreatedBy: &actorUUID, FundingSnapshot: &fundingSnapshot,
+		Status: &status, CreatedBy: &actorUUID, FundingSnapshot: &fundingSnapshot,
 	}).Exec(ctx, executor); err != nil {
 		return Settlement{}, err
 	}
@@ -202,9 +204,9 @@ func (w *Workflow) Close(ctx context.Context, command CloseCommand) (Settlement,
 		if err != nil {
 			return Settlement{}, err
 		}
-		scheduled, paid := int64(line.ScheduledYen), int64(line.PaidYen)
-		carry, adjustment := int64(line.CarryYen), int64(line.MonthlyAdjustmentYen)
-		advanceCredit, amountDue := int64(line.AdvanceCreditYen), int64(line.AmountDueYen)
+		scheduled, paid := line.ScheduledYen, line.PaidYen
+		carry, adjustment := line.CarryYen, line.MonthlyAdjustmentYen
+		advanceCredit, amountDue := line.AdvanceCreditYen, line.AmountDueYen
 		if _, err := models.SettlementLines.Insert(&models.SettlementLineSetter{
 			SettlementRunID: &settlementID, MemberID: &memberUUID, ScheduledYen: &scheduled, PaidYen: &paid,
 			CarryYen: &carry, MonthlyAdjustmentYen: &adjustment, AdvanceCreditYen: &advanceCredit, AmountDueYen: &amountDue,
@@ -212,7 +214,7 @@ func (w *Workflow) Close(ctx context.Context, command CloseCommand) (Settlement,
 			return Settlement{}, err
 		}
 	}
-	postedStatus, closedPurchaseStatus := "POSTED", "CLOSED"
+	postedStatus, closedPurchaseStatus := "POSTED", closedStatus
 	updatedAt := time.Now()
 	postedPurchases, err := models.Purchases.Query(sm.Where(psql.And(
 		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
@@ -232,7 +234,7 @@ func (w *Workflow) Close(ctx context.Context, command CloseCommand) (Settlement,
 	closedBy := sql.Null[gofrsuuid.UUID]{V: actorUUID, Valid: true}
 	closedAt := sql.Null[time.Time]{V: updatedAt, Valid: true}
 	if _, err := models.AccountingPeriods.Update((&models.AccountingPeriodSetter{
-		Status: &closedStatus, Revision: &newRevision, ClosedBy: &closedBy, ClosedAt: &closedAt,
+		Status: &status, Revision: &newRevision, ClosedBy: &closedBy, ClosedAt: &closedAt,
 	}).UpdateMod(), um.Where(psql.And(
 		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(command.Period)),

@@ -178,7 +178,7 @@ func replacePurchasePaymentRows(ctx context.Context, tx pgx.Tx, householdID, pur
 				return fmt.Errorf("parse funding member id: %w", err)
 			}
 			paymentLineNo, poolID := lineNo, account.PoolID.V
-			weight, version, source := fundingWeight.Value, fundingRule.version, "POSTED"
+			weight, version, source := fundingWeight.Value, fundingRule.version, statusPosted
 			if _, err := models.PurchasePaymentFundingSnapshots.Insert(&models.PurchasePaymentFundingSnapshotSetter{
 				HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, PaymentLineNo: &paymentLineNo,
 				PoolID: &poolID, MemberID: &memberID, FundingRuleVersion: &version, FundingWeight: &weight,

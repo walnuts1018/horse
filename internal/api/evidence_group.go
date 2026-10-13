@@ -34,7 +34,7 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	var input struct {
@@ -65,7 +65,7 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "evidence confirmation failed", http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(r.Context())) }()
+	defer func(ctx context.Context) { _ = tx.Rollback(ctx) }(context.WithoutCancel(r.Context()))
 	executor := bobpgx.NewTx(tx, nil)
 	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID))), sm.ForUpdate()).One(r.Context(), executor)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -195,7 +195,7 @@ func (s *Server) linkPurchaseEvidenceSource(ctx context.Context, executor bob.Ex
 		}
 		item := verified.Receipt.Items[*input.SourceItemIndex]
 		observation, err = json.Marshal(map[string]any{
-			"jobId": input.ObservationJobID, "itemIndex": *input.SourceItemIndex,
+			jobIDJSONKey: input.ObservationJobID, "itemIndex": *input.SourceItemIndex,
 			"item": item, "transform": verified.Transform, "transformPage": verified.TransformPage,
 		})
 		if err != nil {

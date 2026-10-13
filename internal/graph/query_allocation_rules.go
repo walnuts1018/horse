@@ -20,7 +20,7 @@ func (r *queryResolver) allocationRules(ctx context.Context, householdID string,
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize, backward, err := pageDirection(after, before, first, last)
+	pageSize, backward, err := pageDirection(first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func (r *queryResolver) allocationRules(ctx context.Context, householdID string,
 		cursor   *string
 		isBefore bool
 	}{{cursor: after}, {cursor: before, isBefore: true}} {
-		id, err := cursorID(boundary.cursor, "AllocationRule")
+		id, err := cursorID(boundary.cursor, nodeTypeAllocationRule)
 		if err != nil {
 			return nil, err
 		}
@@ -95,10 +95,10 @@ func (r *queryResolver) allocationRules(ctx context.Context, householdID string,
 		if err != nil {
 			return nil, err
 		}
-		connection.Edges = append(connection.Edges, &model.AllocationRuleEdge{Cursor: encodeCursor("AllocationRule", rule.ID.String()), Node: loaded})
+		connection.Edges = append(connection.Edges, &model.AllocationRuleEdge{Cursor: encodeCursor(nodeTypeAllocationRule, rule.ID.String()), Node: loaded})
 	}
 	if len(rules) > 0 {
-		start, end := encodeCursor("AllocationRule", rules[0].ID.String()), encodeCursor("AllocationRule", rules[len(rules)-1].ID.String())
+		start, end := encodeCursor(nodeTypeAllocationRule, rules[0].ID.String()), encodeCursor(nodeTypeAllocationRule, rules[len(rules)-1].ID.String())
 		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &start, &end
 	}
 	return connection, nil

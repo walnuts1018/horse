@@ -23,7 +23,7 @@ func startHealthServer(db *pgxpool.Pool) (*http.Server, error) {
 		}
 		w.WriteHeader(http.StatusOK)
 	})
-	listener, err := net.Listen("tcp", ":8081") // #nosec G102 -- kubeletからPodのヘルスチェックを受け付けるため、全インターフェースで待ち受ける。
+	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", ":8081") // #nosec G102 -- kubeletからPodのヘルスチェックを受け付けるため、全インターフェースで待ち受ける。
 	if err != nil {
 		return nil, errors.New("listen worker health server failed")
 	}

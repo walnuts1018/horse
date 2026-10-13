@@ -18,6 +18,7 @@ import (
 )
 
 func TestTopLevelCategoryNamesAreUniquePerHousehold(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -43,7 +44,7 @@ func TestTopLevelCategoryNamesAreUniquePerHousehold(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
 
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: displayName})
@@ -57,13 +58,13 @@ func TestTopLevelCategoryNamesAreUniquePerHousehold(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
 
-	if _, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: "Food"}); err != nil {
+	if _, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: testFoodCategoryName}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: "Food"}); err == nil {
+	if _, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: testFoodCategoryName}); err == nil {
 		t.Fatal("database must reject duplicate top-level category names within a household")
 	}
 }

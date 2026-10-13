@@ -2,7 +2,6 @@ package graph
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
@@ -24,6 +23,7 @@ import (
 )
 
 func TestHouseholdInvitationLifecycle(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -49,7 +49,7 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	defer func() {
 		_, _ = models.Members.Delete(dm.Where(psql.Or(
 			models.Members.Columns.ID.EQ(psql.Arg(ownerID)), models.Members.Columns.ID.EQ(psql.Arg(memberID)), models.Members.Columns.ID.EQ(psql.Arg(otherID)),
-		))).Exec(context.Background(), bobpgx.NewPool(db))
+		))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 
 	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
@@ -62,7 +62,7 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	}
 	defer func() {
 		householdUUID, _ := gofrsuuid.FromString(household.ID)
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	otherHousehold, err := resolver.createHousehold(otherCtx, model.CreateHouseholdInput{Name: "other-invitation-test"})
 	if err != nil {
@@ -70,7 +70,7 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	}
 	defer func() {
 		householdUUID, _ := gofrsuuid.FromString(otherHousehold.ID)
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	var placeholderID string
 	for _, member := range household.Members {

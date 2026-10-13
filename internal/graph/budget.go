@@ -35,7 +35,7 @@ func (r *mutationResolver) setBudget(ctx context.Context, input budgetWriteInput
 		return nil, err
 	}
 	name := strings.TrimSpace(input.Name)
-	if name == "" || len(name) > 120 || input.AmountYen <= 0 || int64(input.AmountYen) > maxMoney {
+	if name == "" || len(name) > 120 || input.AmountYen <= 0 || input.AmountYen > maxMoney {
 		return nil, fmt.Errorf("%w: invalid budget", ErrBadInput)
 	}
 	starts, err := parseDate(input.StartsOn)
@@ -66,7 +66,7 @@ func (r *mutationResolver) setBudget(ctx context.Context, input budgetWriteInput
 	var row *models.Budget
 	if input.BudgetID == nil {
 		id := generatedUUID(newID())
-		amount := int64(input.AmountYen)
+		amount := input.AmountYen
 		var category sql.Null[gofrsuuid.UUID]
 		if input.CategoryID != nil {
 			category = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.CategoryID), Valid: true}
@@ -82,7 +82,7 @@ func (r *mutationResolver) setBudget(ctx context.Context, input budgetWriteInput
 			return nil, ErrConflict
 		}
 		if err == nil {
-			amount, revision := int64(input.AmountYen), row.Revision+1
+			amount, revision := input.AmountYen, row.Revision+1
 			var category sql.Null[gofrsuuid.UUID]
 			if input.CategoryID != nil {
 				category = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.CategoryID), Valid: true}
@@ -99,7 +99,7 @@ func (r *mutationResolver) setBudget(ctx context.Context, input budgetWriteInput
 		}
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "budget.updated", row.ID.String(), row.Revision, []string{"name", "amountYen", "categoryId", "startsOn", "endsOn"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "budget.updated", row.ID.String(), row.Revision, []string{fieldName, fieldAmountYen, fieldCategoryID, fieldStartsOn, fieldEndsOn}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -140,7 +140,7 @@ func (r *mutationResolver) archiveBudget(ctx context.Context, budgetID string, b
 	if _, err := models.Budgets.Update((&models.BudgetSetter{Archived: &archived, Revision: &revision}).UpdateMod(), um.Where(models.Budgets.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, row.HouseholdID.String(), "budget.archived", budgetID, revision, []string{"archived"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, row.HouseholdID.String(), "budget.archived", budgetID, revision, []string{fieldArchived}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -191,7 +191,7 @@ func budgetModel(ctx context.Context, db *pgxpool.Pool, row *models.Budget, mont
 		return result, nil
 	}
 	start, end := month.UTC(), month.AddDate(0, 1, 0).UTC()
-	purchases, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.HouseholdID.EQ(psql.Arg(row.HouseholdID)), models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)), models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)), psql.Or(models.Purchases.Columns.Status.EQ(psql.Arg("POSTED")), models.Purchases.Columns.Status.EQ(psql.Arg("CLOSED")))))).All(ctx, queryExecutor(db))
+	purchases, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.HouseholdID.EQ(psql.Arg(row.HouseholdID)), models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)), models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)), psql.Or(models.Purchases.Columns.Status.EQ(psql.Arg(statusPosted)), models.Purchases.Columns.Status.EQ(psql.Arg(statusClosed)))))).All(ctx, queryExecutor(db))
 	if err != nil {
 		return nil, err
 	}

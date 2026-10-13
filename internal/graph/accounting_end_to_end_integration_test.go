@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"context"
 	"database/sql"
 	"os"
 	"testing"
@@ -21,6 +20,7 @@ import (
 )
 
 func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -42,7 +42,7 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: memberName})
@@ -53,7 +53,7 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 
 	openingAt := model.DateTime("2026-05-01T00:00:00Z")
@@ -134,13 +134,14 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 			t.Fatal(err)
 		}
 		if analysis.OpeningBalanceYen != model.Long(expected.opening) || analysis.ClosingBalanceYen != model.Long(expected.closing) ||
-			len(analysis.Changes) != 1 || analysis.Changes[0].ChangeYen != model.Long(expected.change) || accountBalanceSourceType(analysis.Changes[0].Source) != "AccountMovement" {
+			len(analysis.Changes) != 1 || analysis.Changes[0].ChangeYen != model.Long(expected.change) || accountBalanceSourceType(analysis.Changes[0].Source) != graphQLAccountMovementType {
 			t.Fatalf("account analysis did not reflect its side of the transfer: account=%s analysis=%#v", expected.accountID, analysis)
 		}
 	}
 }
 
 func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeriod(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -164,8 +165,8 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 		}
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(generatedUUID(memberA))))).Exec(context.Background(), bobpgx.NewPool(db))
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(generatedUUID(memberB))))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(generatedUUID(memberA))))).Exec(t.Context(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(generatedUUID(memberB))))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "purchase-correction-e2e:" + memberA, DisplayName: "A"})
@@ -176,7 +177,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	householdUUID, memberBUUID := generatedUUID(household.ID), generatedUUID(memberB)
 	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberBUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
@@ -187,7 +188,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	if err != nil {
 		t.Fatal(err)
 	}
-	sharedPool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Shared", Kind: model.PoolKindShared})
+	sharedPool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testSharedPoolName, Kind: model.PoolKindShared})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,6 +296,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 }
 
 func TestConcurrentLoanRepaymentsCannotExceedPrincipal(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -312,7 +314,7 @@ func TestConcurrentLoanRepaymentsCannotExceedPrincipal(t *testing.T) {
 	lenderID, borrowerID := uuid.NewV7().String(), uuid.NewV7().String()
 	lenderUUID, borrowerUUID := generatedUUID(lenderID), generatedUUID(borrowerID)
 	lenderSubject, borrowerSubject := "loan-concurrency:"+lenderID, "loan-concurrency:"+borrowerID
-	lenderName, borrowerName := "Lender", "Borrower"
+	lenderName, borrowerName := testLenderName, testBorrowerName
 	executor := bobpgx.NewPool(db)
 	for _, member := range []struct {
 		id      *gofrsuuid.UUID
@@ -324,8 +326,8 @@ func TestConcurrentLoanRepaymentsCannotExceedPrincipal(t *testing.T) {
 		}
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(lenderUUID)))).Exec(context.Background(), executor)
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(borrowerUUID)))).Exec(context.Background(), executor)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(lenderUUID)))).Exec(t.Context(), executor)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(borrowerUUID)))).Exec(t.Context(), executor)
 	}()
 
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: lenderID, Subject: lenderSubject, DisplayName: lenderName})
@@ -336,7 +338,7 @@ func TestConcurrentLoanRepaymentsCannotExceedPrincipal(t *testing.T) {
 	}
 	householdUUID := generatedUUID(household.ID)
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), executor)
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(t.Context(), executor)
 	}()
 	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &borrowerUUID}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
@@ -356,7 +358,7 @@ func TestConcurrentLoanRepaymentsCannotExceedPrincipal(t *testing.T) {
 		err    error
 	}
 	results := make(chan repaymentResult, 2)
-	for _, period := range []string{"2026-09", "2026-10"} {
+	for _, period := range []string{"2026-09", testOctober2026} {
 		go func() {
 			ready <- struct{}{}
 			<-start

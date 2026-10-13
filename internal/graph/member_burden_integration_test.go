@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"context"
 	"database/sql"
 	stdjson "encoding/json"
 	"errors"
@@ -25,6 +24,7 @@ import (
 )
 
 func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -50,9 +50,9 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		}
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(outsider)))).Exec(context.Background(), bobpgx.NewPool(db))
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(context.Background(), bobpgx.NewPool(db))
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(outsider)))).Exec(t.Context(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(t.Context(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "burden-integration:" + memberA, DisplayName: "A"})
 	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
@@ -61,14 +61,14 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	householdID := generatedUUID(household.ID)
 	memberBID := generatedUUID(memberB)
 	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdID, MemberID: &memberBID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	pool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Shared", Kind: model.PoolKindShared})
+	pool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testSharedPoolName, Kind: model.PoolKindShared})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	period := accountingPeriod(purchaseDate)
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(occurredAt), Merchant: "Shop", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 1000}},
-		Items: []*model.PurchaseItemInput{{Name: "item", AmountYen: 1000}},
+		Items: []*model.PurchaseItemInput{{Name: testItemName, AmountYen: 1000}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -241,7 +241,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if !listedPurchase.HasEvidence || len(listedPurchase.SourceKinds) != 1 || listedPurchase.SourceKinds[0] != model.SourceKindReceipt {
 		t.Fatalf("first purchase evidence relations are incorrect: %#v", listedPurchase)
 	}
-	if len(listedPurchase.Items) != 1 || listedPurchase.Items[0].Name != "item" || int64(listedPurchase.Items[0].AmountYen) != 1200 {
+	if len(listedPurchase.Items) != 1 || listedPurchase.Items[0].Name != testItemName || int64(listedPurchase.Items[0].AmountYen) != 1200 {
 		t.Fatalf("first purchase item relation is incorrect: %#v", listedPurchase.Items)
 	}
 	if len(listedPurchase.Items[0].Tags) != 1 || listedPurchase.Items[0].Tags[0].ID != tag.ID {
@@ -276,6 +276,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 }
 
 func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshotsForNewAllocations(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -301,8 +302,8 @@ func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshots
 		}
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(context.Background(), bobpgx.NewPool(db))
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(t.Context(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "purchase-snapshot-integration:" + memberA, DisplayName: "A"})
 	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
@@ -311,7 +312,7 @@ func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshots
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	householdID, memberBID := generatedUUID(household.ID), generatedUUID(memberB)
 	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdID, MemberID: &memberBID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
@@ -356,7 +357,7 @@ func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshots
 		PaymentAllocations: []*model.PurchasePaymentInput{
 			{PaymentAccountID: accountOne.ID, AmountYen: 500}, {PaymentAccountID: accountOneAlternate.ID, AmountYen: 500},
 		},
-		Items: []*model.PurchaseItemInput{{Name: "item", AmountYen: 1000, Allocations: []*model.AllocationInput{{PoolID: poolOne.ID, Weight: 1}}}},
+		Items: []*model.PurchaseItemInput{{Name: testItemName, AmountYen: 1000, Allocations: []*model.AllocationInput{{PoolID: poolOne.ID, Weight: 1}}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -408,7 +409,7 @@ func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshots
 			if snapshot.PaymentLineNo != lineNo || snapshot.PoolID.String() != poolID {
 				continue
 			}
-			if snapshot.FundingRuleVersion != version || snapshot.SnapshotSource != "POSTED" || !snapshot.SettlementPolicy.Valid || snapshot.SettlementPolicy.V != settlement {
+			if snapshot.FundingRuleVersion != version || snapshot.SnapshotSource != testPostedStatus || !snapshot.SettlementPolicy.Valid || snapshot.SettlementPolicy.V != settlement {
 				t.Fatalf("payment snapshot metadata changed: %#v", snapshot)
 			}
 			members[snapshot.MemberID.String()] = snapshot.FundingWeight
@@ -443,7 +444,7 @@ func TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshots
 		}
 		weightsByPool[burden.PoolID.String()][burden.MemberID.String()] = burden.FundingWeight
 		versionsByPool[burden.PoolID.String()] = burden.FundingRuleVersion
-		if burden.SnapshotSource != "POSTED" {
+		if burden.SnapshotSource != testPostedStatus {
 			t.Fatalf("posted burden source changed: %#v", burden)
 		}
 	}

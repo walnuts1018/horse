@@ -70,7 +70,7 @@ func (r *queryResolver) batchLoanBalances(ctx context.Context, households []*mod
 		if ledger == nil {
 			return nil, fmt.Errorf("loan %s has no ledger entry", loan.ID)
 		}
-		globalID, err := encodeNodeID("LoanBalance", loan.ID.String())
+		globalID, err := encodeNodeID(nodeTypeLoanBalance, loan.ID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -80,26 +80,26 @@ func (r *queryResolver) batchLoanBalances(ctx context.Context, households []*mod
 	return result, nil
 }
 
-func (b *nodeBatch) loadFinancialNodes() error {
-	ctx, executor := b.ctx, b.executor
+func (b *nodeBatch) loadFinancialNodes(ctx context.Context) error {
+	executor := b.executor
 	households, idsByKind := b.households, b.idsByKind
 	householdArgs, args, set := b.householdArgs, b.ids, b.set
 	r := b.resolver
-	if values := idsByKind["FundingSchedule"]; len(values) > 0 {
+	if values := idsByKind[nodeTypeFundingSchedule]; len(values) > 0 {
 		rows, err := models.FundingSchedules.Query(sm.Where(psql.And(
-			models.FundingSchedules.Columns.HouseholdID.In(householdArgs...), models.FundingSchedules.Columns.ID.In(args("FundingSchedule")...),
+			models.FundingSchedules.Columns.HouseholdID.In(householdArgs...), models.FundingSchedules.Columns.ID.In(args(nodeTypeFundingSchedule)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			set("FundingSchedule", row.ID.String(), fundingScheduleModel(row))
+			set(nodeTypeFundingSchedule, row.ID.String(), fundingScheduleModel(row))
 		}
 	}
-	if values := idsByKind["LoanBalance"]; len(values) > 0 {
+	if values := idsByKind[nodeTypeLoanBalance]; len(values) > 0 {
 		loans, err := models.Transfers.Query(sm.Where(psql.And(
-			models.Transfers.Columns.HouseholdID.In(householdArgs...), models.Transfers.Columns.ID.In(args("LoanBalance")...),
-			models.Transfers.Columns.Kind.EQ(psql.Arg("LOAN")),
+			models.Transfers.Columns.HouseholdID.In(householdArgs...), models.Transfers.Columns.ID.In(args(nodeTypeLoanBalance)...),
+			models.Transfers.Columns.Kind.EQ(psql.Arg(transferKindLoan)),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
@@ -147,21 +147,21 @@ func (b *nodeBatch) loadFinancialNodes() error {
 			if ledger == nil {
 				return fmt.Errorf("loan %s has no ledger entry", id)
 			}
-			globalID, err := encodeNodeID("LoanBalance", id.String())
+			globalID, err := encodeNodeID(nodeTypeLoanBalance, id.String())
 			if err != nil {
 				return err
 			}
 			repaid := repaidByID[id]
-			set("LoanBalance", id.String(), &model.LoanBalance{
+			set(nodeTypeLoanBalance, id.String(), &model.LoanBalance{
 				ID: globalID, LenderMemberID: loan.FromMemberID.String(), BorrowerMemberID: loan.ToMemberID.String(),
 				PrincipalYen: graphLong(loan.AmountYen), RepaidYen: graphLong(repaid),
 				BalanceYen: graphLong(loan.AmountYen - repaid), CreatedAt: timeString(ledger.CreatedAt),
 			})
 		}
 	}
-	if values := idsByKind["Budget"]; len(values) > 0 {
+	if values := idsByKind[nodeTypeBudget]; len(values) > 0 {
 		budgets, err := models.Budgets.Query(sm.Where(psql.And(
-			models.Budgets.Columns.HouseholdID.In(householdArgs...), models.Budgets.Columns.ID.In(args("Budget")...),
+			models.Budgets.Columns.HouseholdID.In(householdArgs...), models.Budgets.Columns.ID.In(args(nodeTypeBudget)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
@@ -170,7 +170,7 @@ func (b *nodeBatch) loadFinancialNodes() error {
 		start, end := month, month.AddDate(0, 1, 0)
 		purchases, err := models.Purchases.Query(sm.Where(psql.And(
 			models.Purchases.Columns.HouseholdID.In(householdArgs...), models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)), models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)),
-			psql.Or(models.Purchases.Columns.Status.EQ(psql.Arg("POSTED")), models.Purchases.Columns.Status.EQ(psql.Arg("CLOSED"))),
+			psql.Or(models.Purchases.Columns.Status.EQ(psql.Arg(statusPosted)), models.Purchases.Columns.Status.EQ(psql.Arg(statusClosed))),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
@@ -240,34 +240,34 @@ func (b *nodeBatch) loadFinancialNodes() error {
 			actual := actualByScope[budgetActualScope(row.HouseholdID, row.CategoryID)]
 			value.ActualYen = graphLong(actual)
 			value.RemainingYen = graphLong(row.AmountYen - actual)
-			set("Budget", value.ID, value)
+			set(nodeTypeBudget, value.ID, value)
 		}
 	}
-	if values := idsByKind["AccountMovement"]; len(values) > 0 {
+	if values := idsByKind[nodeTypeAccountMovement]; len(values) > 0 {
 		rows, err := models.AccountMovements.Query(sm.Where(psql.And(
-			models.AccountMovements.Columns.HouseholdID.In(householdArgs...), models.AccountMovements.Columns.ID.In(args("AccountMovement")...),
+			models.AccountMovements.Columns.HouseholdID.In(householdArgs...), models.AccountMovements.Columns.ID.In(args(nodeTypeAccountMovement)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			set("AccountMovement", row.ID.String(), accountMovementModel(row))
+			set(nodeTypeAccountMovement, row.ID.String(), accountMovementModel(row))
 		}
 	}
-	if values := idsByKind["AccountIncome"]; len(values) > 0 {
+	if values := idsByKind[nodeTypeAccountIncome]; len(values) > 0 {
 		rows, err := models.AccountIncomes.Query(sm.Where(psql.And(
-			models.AccountIncomes.Columns.HouseholdID.In(householdArgs...), models.AccountIncomes.Columns.ID.In(args("AccountIncome")...),
+			models.AccountIncomes.Columns.HouseholdID.In(householdArgs...), models.AccountIncomes.Columns.ID.In(args(nodeTypeAccountIncome)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			set("AccountIncome", row.ID.String(), accountIncomeModel(row))
+			set(nodeTypeAccountIncome, row.ID.String(), accountIncomeModel(row))
 		}
 	}
-	if values := idsByKind["LedgerEntry"]; len(values) > 0 {
+	if values := idsByKind[nodeTypeLedgerEntry]; len(values) > 0 {
 		entries, err := models.LedgerEntries.Query(sm.Where(psql.And(
-			models.LedgerEntries.Columns.HouseholdID.In(householdArgs...), models.LedgerEntries.Columns.ID.In(args("LedgerEntry")...),
+			models.LedgerEntries.Columns.HouseholdID.In(householdArgs...), models.LedgerEntries.Columns.ID.In(args(nodeTypeLedgerEntry)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
@@ -329,12 +329,12 @@ func (b *nodeBatch) loadFinancialNodes() error {
 		for _, transfer := range transfers {
 			if transfer.LoanID.Valid {
 				loanIDs = append(loanIDs, psql.Arg(transfer.LoanID))
-			} else if transfer.Kind == "LOAN" {
+			} else if transfer.Kind == transferKindLoan {
 				loanIDs = append(loanIDs, psql.Arg(transfer.ID))
 			}
 		}
 		if len(loanIDs) > 0 {
-			loanRows, err = models.Transfers.Query(sm.Where(psql.And(models.Transfers.Columns.HouseholdID.In(householdArgs...), models.Transfers.Columns.ID.In(loanIDs...), models.Transfers.Columns.Kind.EQ(psql.Arg("LOAN"))))).All(ctx, executor)
+			loanRows, err = models.Transfers.Query(sm.Where(psql.And(models.Transfers.Columns.HouseholdID.In(householdArgs...), models.Transfers.Columns.ID.In(loanIDs...), models.Transfers.Columns.Kind.EQ(psql.Arg(transferKindLoan))))).All(ctx, executor)
 			if err != nil {
 				return err
 			}
@@ -346,22 +346,22 @@ func (b *nodeBatch) loadFinancialNodes() error {
 		for _, entry := range entries {
 			id, occurredAt, description, amount, createdAt := entry.ID.String(), timeString(entry.OccurredAt), entry.Description, graphLong(entry.AmountYen), timeString(entry.CreatedAt)
 			switch entry.Kind {
-			case "PURCHASE", "CORRECTION":
+			case sourceKindPurchase, sourceKindCorrection:
 				if !entry.SourcePurchaseID.Valid || purchasesByID[entry.SourcePurchaseID.V] == nil {
 					return fmt.Errorf("ledger entry %s has no source purchase", entry.ID)
 				}
-				if entry.Kind == "PURCHASE" {
-					set("LedgerEntry", id, &model.PurchaseLedgerEntry{ID: id, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: "JPY", CreatedAt: createdAt, Purchase: purchasesByID[entry.SourcePurchaseID.V]})
+				if entry.Kind == sourceKindPurchase {
+					set(nodeTypeLedgerEntry, id, &model.PurchaseLedgerEntry{ID: id, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: currencyJPY, CreatedAt: createdAt, Purchase: purchasesByID[entry.SourcePurchaseID.V]})
 				} else {
-					set("LedgerEntry", id, &model.CorrectionLedgerEntry{ID: id, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: "JPY", CreatedAt: createdAt, Purchase: purchasesByID[entry.SourcePurchaseID.V]})
+					set(nodeTypeLedgerEntry, id, &model.CorrectionLedgerEntry{ID: id, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: currencyJPY, CreatedAt: createdAt, Purchase: purchasesByID[entry.SourcePurchaseID.V]})
 				}
-			case "FUNDING":
+			case sourceKindFunding:
 				householdID := entry.HouseholdID.String()
 				if !entry.FromMemberID.Valid || !entry.PoolID.Valid || membersByHousehold[householdID][entry.FromMemberID.V.String()] == nil || poolsByHousehold[householdID][entry.PoolID.V.String()] == nil {
 					return errors.New("funding ledger entry is missing a member or pool")
 				}
-				set("LedgerEntry", id, &model.FundingLedgerEntry{ID: id, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: "JPY", CreatedAt: createdAt, Member: membersByHousehold[householdID][entry.FromMemberID.V.String()], Pool: poolVariant(poolsByHousehold[householdID][entry.PoolID.V.String()])})
-			case "TRANSFER":
+				set(nodeTypeLedgerEntry, id, &model.FundingLedgerEntry{ID: id, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: currencyJPY, CreatedAt: createdAt, Member: membersByHousehold[householdID][entry.FromMemberID.V.String()], Pool: poolVariant(poolsByHousehold[householdID][entry.PoolID.V.String()])})
+			case sourceKindTransfer:
 				transfer := transfersByLedger[entry.ID]
 				householdID := entry.HouseholdID.String()
 				if transfer == nil || !entry.FromMemberID.Valid || !entry.ToMemberID.Valid || membersByHousehold[householdID][entry.FromMemberID.V.String()] == nil || membersByHousehold[householdID][entry.ToMemberID.V.String()] == nil {
@@ -369,7 +369,7 @@ func (b *nodeBatch) loadFinancialNodes() error {
 				}
 				var loan *model.LoanBalance
 				switch transfer.Kind {
-				case "LOAN":
+				case transferKindLoan:
 					loan = loansByID[transfer.ID]
 				case transferKindRepayment:
 					if !transfer.LoanID.Valid {
@@ -383,11 +383,11 @@ func (b *nodeBatch) loadFinancialNodes() error {
 				default:
 					return fmt.Errorf("unknown transfer kind %q", transfer.Kind)
 				}
-				variant, err := transferLedgerEntryVariant(transfer.Kind, id, occurredAt, description, amount, "JPY", createdAt, membersByHousehold[householdID][entry.FromMemberID.V.String()], membersByHousehold[householdID][entry.ToMemberID.V.String()], loan)
+				variant, err := transferLedgerEntryVariant(transfer.Kind, id, occurredAt, description, amount, currencyJPY, createdAt, membersByHousehold[householdID][entry.FromMemberID.V.String()], membersByHousehold[householdID][entry.ToMemberID.V.String()], loan)
 				if err != nil {
 					return err
 				}
-				set("LedgerEntry", id, variant)
+				set(nodeTypeLedgerEntry, id, variant)
 			default:
 				return fmt.Errorf("unknown ledger entry kind %q", entry.Kind)
 			}

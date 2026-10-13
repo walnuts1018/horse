@@ -50,7 +50,7 @@ type HistoryHint struct {
 
 // Extractは画像を直接解析し、履歴による補完と原本に印字された事実を分離する。
 func (g Gemini) Extract(ctx context.Context, document Document, hints []HistoryHint) (Receipt, error) {
-	receipt, _, err := g.ExtractRun(ctx, document, hints, GeminiRequestOptions{ThinkingLevel: "low", ServiceTier: "standard", Reason: "initial_extraction"})
+	receipt, _, err := g.ExtractRun(ctx, document, hints, GeminiRequestOptions{ThinkingLevel: geminiThinkingLevelLow, ServiceTier: geminiServiceTierStandard, Reason: geminiReasonInitialExtraction})
 	return receipt, err
 }
 
@@ -69,25 +69,25 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		run.USDJPYRateAsOf = "unspecified"
 	}
 	if run.ThinkingLevel == "" {
-		run.ThinkingLevel = "low"
+		run.ThinkingLevel = geminiThinkingLevelLow
 	}
 	if run.ServiceTier == "" {
-		run.ServiceTier = "standard"
+		run.ServiceTier = geminiServiceTierStandard
 	}
 	if run.Reason == "" {
-		run.Reason = "initial_extraction"
+		run.Reason = geminiReasonInitialExtraction
 	}
 	finish := func(receipt Receipt, err error) (Receipt, ExtractionRun, error) {
 		run.LatencyMillis = time.Since(started).Milliseconds()
 		if err != nil {
-			run.Status = "failed"
+			run.Status = extractionStatusFailed
 			run.PriceEstimateStatus = "unavailable_failed_run"
 			if apiErr, ok := errors.AsType[*GeminiAPIError](err); ok {
 				run.ErrorCode = apiErr.Code
 			}
 			return Receipt{}, run, err
 		}
-		run.Status = "succeeded"
+		run.Status = extractionStatusSucceeded
 		run.InputTokens = receipt.InputTokens
 		run.OutputTokens = receipt.OutputTokens
 		run.PricingCurrency = "USD"
@@ -100,7 +100,7 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 			if inputPrice == 0 && outputPrice == 0 {
 				run.PriceEstimateStatus = "unknown_model_price"
 			} else {
-				if run.ServiceTier == "flex" {
+				if run.ServiceTier == geminiServiceTierFlex {
 					inputPrice, outputPrice = inputPrice/2, outputPrice/2
 				}
 				run.InputUSDPerMillion = inputPrice
@@ -122,12 +122,12 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "invalid_document_size"})
 	}
 	switch document.MIMEType {
-	case "image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain", "text/csv", "message/rfc822":
+	case mimeTypeJPEG, mimeTypePNG, "image/webp", mimeTypePDF, mimeTypePlainText, mimeTypeCSV, mimeTypeEmail:
 	default:
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "unsupported_document_type"})
 	}
 	timeout := 90 * time.Second
-	if run.ServiceTier == "flex" {
+	if run.ServiceTier == geminiServiceTierFlex {
 		timeout = 10 * time.Minute
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -144,12 +144,12 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "invalid_model"})
 	}
 	emailHasUnparsedAttachments := false
-	if document.MIMEType == "message/rfc822" {
+	if document.MIMEType == mimeTypeEmail {
 		email, err := parseEmail(document.Data)
 		if err != nil {
 			return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "invalid_email_message"})
 		}
-		document = Document{MIMEType: "text/plain", Data: []byte(email.text())}
+		document = Document{MIMEType: mimeTypePlainText, Data: []byte(email.text())}
 		emailHasUnparsedAttachments = email.HasUnparsedAttachments
 	}
 	if len(hints) > 30 {
@@ -173,7 +173,7 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		prompt += ` This is a quality review with additional verification evidence. Re-read the original source and independently assess the following observations. Do not repeat the previous interpretation unless the source supports it. Resolve conflicts only from source evidence; preserve uncertainty otherwise. Additional evidence and review goals:\n` + strings.Join(options.Guidance, "\n\n")
 	}
 	parts := []*genai.Part{genai.NewPartFromText(prompt)}
-	if strings.HasPrefix(document.MIMEType, "text/") || document.MIMEType == "message/rfc822" {
+	if strings.HasPrefix(document.MIMEType, "text/") || document.MIMEType == mimeTypeEmail {
 		parts = append(parts, genai.NewPartFromText(string(document.Data)))
 	} else {
 		parts = append(parts, genai.NewPartFromBytes(document.Data, document.MIMEType))
@@ -264,7 +264,7 @@ func providerError(response genai.APIError, capture *geminiResponseCapture) *Gem
 	}
 	classificationText = strings.NewReplacer("_", " ", "-", " ").Replace(classificationText)
 	if strings.Contains(classificationText, "spend cap") || strings.Contains(classificationText, "spending cap") || strings.Contains(classificationText, "spending limit") || strings.Contains(classificationText, "billing limit") || strings.Contains(classificationText, "budget exceeded") {
-		apiErr.Kind, apiErr.Code = GeminiFailureSpendCap, "spend_cap_reached"
+		apiErr.Kind, apiErr.Code = GeminiFailureSpendCap, geminiFailureSpendCap
 		return apiErr
 	}
 	switch statusCode {
@@ -329,21 +329,21 @@ func geminiBaseURL(endpoint string) (string, error) {
 }
 
 func receiptSchema() map[string]any {
-	str := map[string]any{"type": "string"}
-	integer := map[string]any{"type": "integer"}
-	quantityNumerator := map[string]any{"type": "integer", "minimum": int64(1), "maximum": MaxAmount}
-	quantityDenominator := map[string]any{"type": "integer", "minimum": int64(1), "maximum": maxQuantityDenominator}
-	printedUnitPrice := map[string]any{"type": "integer", "minimum": int64(0), "maximum": MaxAmount}
+	str := map[string]any{schemaTypeKey: "string"}
+	integer := map[string]any{schemaTypeKey: schemaTypeInteger}
+	quantityNumerator := map[string]any{schemaTypeKey: schemaTypeInteger, schemaMinimumKey: int64(1), schemaMaximumKey: MaxAmount}
+	quantityDenominator := map[string]any{schemaTypeKey: schemaTypeInteger, schemaMinimumKey: int64(1), schemaMaximumKey: maxQuantityDenominator}
+	printedUnitPrice := map[string]any{schemaTypeKey: schemaTypeInteger, "minimum": int64(0), schemaMaximumKey: MaxAmount}
 	object := func(properties map[string]any, required ...string) map[string]any {
-		return map[string]any{"type": "object", "properties": properties, "required": required}
+		return map[string]any{schemaTypeKey: "object", "properties": properties, "required": required}
 	}
-	array := func(items any) map[string]any { return map[string]any{"type": "array", "items": items} }
-	region := object(map[string]any{"page": integer, "top": map[string]any{"type": "number"}, "left": map[string]any{"type": "number"}, "bottom": map[string]any{"type": "number"}, "right": map[string]any{"type": "number"}}, "page", "top", "left", "bottom", "right")
-	item := object(map[string]any{"printedName": str, "name": str, "printedAmount": integer, "discount": integer, "priceBasis": str, "taxGroup": str, "quantityNumerator": quantityNumerator, "quantityDenominator": quantityDenominator, "quantityUnit": str, "printedUnitPriceYen": printedUnitPrice, "printedUnitPriceQuantityNumerator": quantityNumerator, "printedUnitPriceQuantityDenominator": quantityDenominator, "printedUnitPriceUnit": str, "categoryHint": str, "confidence": map[string]any{"type": "number"}, "region": region}, "printedName", "name", "printedAmount", "discount", "priceBasis", "taxGroup", "confidence")
+	array := func(items any) map[string]any { return map[string]any{schemaTypeKey: "array", schemaItemsKey: items} }
+	region := object(map[string]any{"page": integer, "top": map[string]any{schemaTypeKey: schemaTypeNumber}, "left": map[string]any{schemaTypeKey: schemaTypeNumber}, "bottom": map[string]any{schemaTypeKey: schemaTypeNumber}, "right": map[string]any{schemaTypeKey: schemaTypeNumber}}, "page", "top", "left", "bottom", "right")
+	item := object(map[string]any{"printedName": str, "name": str, "printedAmount": integer, "discount": integer, "priceBasis": str, "taxGroup": str, "quantityNumerator": quantityNumerator, "quantityDenominator": quantityDenominator, "quantityUnit": str, "printedUnitPriceYen": printedUnitPrice, "printedUnitPriceQuantityNumerator": quantityNumerator, "printedUnitPriceQuantityDenominator": quantityDenominator, "printedUnitPriceUnit": str, "categoryHint": str, "confidence": map[string]any{schemaTypeKey: schemaTypeNumber}, "region": region}, "printedName", "name", "printedAmount", "discount", "priceBasis", "taxGroup", "confidence")
 	group := object(map[string]any{"id": str, "numerator": integer, "denominator": integer, "basis": str, "rounding": str, "printedTax": integer, "printedSubtotal": integer}, "id", "numerator", "denominator", "basis", "rounding")
 	itemInterpretation := object(map[string]any{"index": integer, "priceBasis": str, "taxGroup": str}, "index", "priceBasis", "taxGroup")
 	groupInterpretation := object(map[string]any{"id": str, "basis": str, "rounding": str}, "id", "basis", "rounding")
-	interpretation := object(map[string]any{"id": str, "items": array(itemInterpretation), "groups": array(groupInterpretation)}, "id", "items", "groups")
-	payment := object(map[string]any{"method": str, "cardLast4": str, "amount": integer}, "method", "cardLast4", "amount")
-	return object(map[string]any{"merchant": str, "purchasedAt": str, "orderId": str, "transactionId": str, "currency": str, "items": array(item), "taxGroups": array(group), "discount": integer, "total": integer, "payments": array(payment), "warnings": array(str), "interpretations": array(interpretation)}, "merchant", "purchasedAt", "currency", "items", "taxGroups", "discount", "total", "payments", "warnings")
+	interpretation := object(map[string]any{"id": str, schemaItemsKey: array(itemInterpretation), "groups": array(groupInterpretation)}, "id", schemaItemsKey, "groups")
+	payment := object(map[string]any{"method": str, "cardLast4": str, schemaAmountKey: integer}, "method", "cardLast4", schemaAmountKey)
+	return object(map[string]any{schemaMerchantKey: str, "purchasedAt": str, "orderId": str, "transactionId": str, "currency": str, schemaItemsKey: array(item), "taxGroups": array(group), "discount": integer, "total": integer, "payments": array(payment), "warnings": array(str), "interpretations": array(interpretation)}, schemaMerchantKey, "purchasedAt", "currency", schemaItemsKey, "taxGroups", "discount", "total", "payments", "warnings")
 }

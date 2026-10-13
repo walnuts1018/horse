@@ -47,7 +47,7 @@ func (r *mutationResolver) createTag(ctx context.Context, input model.CreateTagI
 	if err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "tag.created", id.String(), revision, []string{"name"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "tag.created", id.String(), revision, []string{fieldName}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -92,7 +92,7 @@ func (r *mutationResolver) updateTag(ctx context.Context, input model.UpdateTagI
 	if _, err := models.Tags.Update((&models.TagSetter{Name: &name, Revision: &revision}).UpdateMod(), um.Where(models.Tags.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, tag.HouseholdID.String(), "tag.updated", input.TagID, revision, []string{"name"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, tag.HouseholdID.String(), "tag.updated", input.TagID, revision, []string{fieldName}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -134,7 +134,7 @@ func (r *mutationResolver) archiveTag(ctx context.Context, tagID string, baseRev
 	if _, err := models.Tags.Update((&models.TagSetter{Archived: &archived, Revision: &revision}).UpdateMod(), um.Where(models.Tags.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, tag.HouseholdID.String(), "tag.archived", tagID, revision, []string{"archived"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, tag.HouseholdID.String(), "tag.archived", tagID, revision, []string{fieldArchived}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

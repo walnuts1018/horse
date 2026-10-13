@@ -29,7 +29,7 @@ func loadLedgerEntry(ctx context.Context, db *pgxpool.Pool, entryID string) (*mo
 	}
 	result := &model.LedgerEntryData{
 		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, OccurredAt: string(timeString(row.OccurredAt)),
-		Description: row.Description, AmountYen: graphLong(row.AmountYen), Currency: "JPY", CreatedAt: string(timeString(row.CreatedAt)),
+		Description: row.Description, AmountYen: graphLong(row.AmountYen), Currency: currencyJPY, CreatedAt: string(timeString(row.CreatedAt)),
 	}
 	if row.FromMemberID.Valid {
 		value := row.FromMemberID.V.String()
@@ -58,7 +58,7 @@ func loadLedgerEntry(ctx context.Context, db *pgxpool.Pool, entryID string) (*mo
 	} else if !errors.Is(transferErr, sql.ErrNoRows) {
 		return nil, transferErr
 	}
-	if result.LoanID == nil && result.Kind == "TRANSFER" && result.TransferID != nil {
+	if result.LoanID == nil && result.Kind == sourceKindTransfer && result.TransferID != nil {
 		if transferErr != nil {
 			return nil, transferErr
 		}

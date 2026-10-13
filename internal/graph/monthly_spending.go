@@ -244,16 +244,16 @@ func hasUnattributedMonthlySpending(ctx context.Context, executor bob.Executor, 
 		sm.GroupBy(models.PurchaseMemberBurdens.Columns.ItemID),
 		sm.GroupBy(models.PurchaseMemberBurdens.Columns.PoolID),
 	)
-	allocatedAmount := psql.Quote("allocations", "amount_yen")
+	allocatedAmount := psql.Quote(fieldAllocations, "amount_yen")
 	burdenAmount := psql.F("coalesce", psql.Quote("burdens", "amount_yen"), psql.Arg(int64(0)))()
 	allocationMismatch, err := bob.All(ctx, executor, psql.Select(
-		sm.With("allocations", "purchase_id", "item_id", "pool_id", "amount_yen").As(allocations),
+		sm.With(fieldAllocations, "purchase_id", "item_id", "pool_id", "amount_yen").As(allocations),
 		sm.With("burdens", "purchase_id", "item_id", "pool_id", "amount_yen").As(burdens),
 		sm.Columns(monthlySpendingMismatchExpression()),
-		sm.From("allocations", sm.LeftJoin("burdens").On(psql.And(
-			psql.Quote("allocations", "purchase_id").EQ(psql.Quote("burdens", "purchase_id")),
-			psql.Quote("allocations", "item_id").EQ(psql.Quote("burdens", "item_id")),
-			psql.Quote("allocations", "pool_id").EQ(psql.Quote("burdens", "pool_id")),
+		sm.From(fieldAllocations, sm.LeftJoin("burdens").On(psql.And(
+			psql.Quote(fieldAllocations, "purchase_id").EQ(psql.Quote("burdens", "purchase_id")),
+			psql.Quote(fieldAllocations, "item_id").EQ(psql.Quote("burdens", "item_id")),
+			psql.Quote(fieldAllocations, "pool_id").EQ(psql.Quote("burdens", "pool_id")),
 		))),
 		sm.Where(psql.And(allocatedAmount.NE(psql.Arg(int64(0))), allocatedAmount.NE(burdenAmount))),
 		sm.Limit(1),

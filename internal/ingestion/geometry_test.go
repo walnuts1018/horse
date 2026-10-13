@@ -6,6 +6,7 @@ import (
 )
 
 func TestTransformRegionMapsCropCoordinatesToOriginalPage(t *testing.T) {
+	t.Parallel()
 	transform := [9]float64{0.6, 0, 0.2, 0, 0.6, 0.1, 0, 0, 1}
 	verification := Verification{Receipt: Receipt{Items: []Item{{Region: &Region{Page: 0, Top: 0.25, Left: 0.25, Bottom: 0.75, Right: 0.75}}}}}
 	err := transformReceiptRegions(&verification, transform, 3)
@@ -27,6 +28,7 @@ func TestTransformRegionMapsCropCoordinatesToOriginalPage(t *testing.T) {
 }
 
 func TestTransformRegionRejectsInvalidInputAndOutOfBoundsResult(t *testing.T) {
+	t.Parallel()
 	if _, err := transformRegion(Region{Top: 0.8, Left: 0.2, Bottom: 0.4, Right: 0.8}, identityTransform()); err == nil {
 		t.Fatal("invalid source region was accepted")
 	}

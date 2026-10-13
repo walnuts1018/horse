@@ -122,7 +122,7 @@ func Verify(receipt Receipt) (Verification, error) {
 	r := receipt
 	r.Items = slices.Clone(receipt.Items)
 	v := Verification{Receipt: r, Transform: identityTransform(), Issues: slices.Clone(r.Warnings)}
-	if r.Currency != "JPY" || len(r.Items) == 0 || len(r.Items) > 1000 || len(r.TaxGroups) > 1000 || len(r.Payments) > 100 || !validAmount(r.Total) || !validAmount(r.Discount) || r.Discount > 0 {
+	if r.Currency != currencyJPY || len(r.Items) == 0 || len(r.Items) > 1000 || len(r.TaxGroups) > 1000 || len(r.Payments) > 100 || !validAmount(r.Total) || !validAmount(r.Discount) || r.Discount > 0 {
 		return v, errors.New("invalid receipt currency, items or amounts")
 	}
 	groups := map[string]TaxGroup{}
@@ -153,7 +153,7 @@ func Verify(receipt Receipt) (Verification, error) {
 		v.Receipt.Items[i].GrossAmount = item.PrintedAmount + item.Discount
 		v.Receipt.Items[i].Verification = "DERIVED"
 		switch item.PriceBasis {
-		case "TAX_INCLUDED":
+		case priceBasisTaxIncluded:
 			if item.TaxGroup != "" {
 				if _, exists := groups[item.TaxGroup]; !exists {
 					v.Issues = append(v.Issues, fmt.Sprintf("品目%dの税率が未確定です。", i+1))
@@ -162,7 +162,7 @@ func Verify(receipt Receipt) (Verification, error) {
 				}
 			}
 		case "EXEMPT", "NON_TAXABLE":
-		case "TAX_EXCLUDED":
+		case priceBasisTaxExcluded:
 			if _, exists := groups[item.TaxGroup]; !exists {
 				v.Issues = append(v.Issues, fmt.Sprintf("品目%dの税率が未確定です。", i+1))
 				v.Receipt.Items[i].Verification = "UNRESOLVED"
@@ -183,7 +183,7 @@ func Verify(receipt Receipt) (Verification, error) {
 		group := groups[id]
 		positions := indices[id]
 		if len(included[id]) > 0 {
-			if len(positions) > 0 || group.Basis != "" && group.Basis != "TAX_INCLUDED" {
+			if len(positions) > 0 || group.Basis != "" && group.Basis != priceBasisTaxIncluded {
 				v.Issues = append(v.Issues, "税率グループの税込・税抜区分が一致しません。")
 			}
 			var subtotal int64
@@ -214,7 +214,7 @@ func Verify(receipt Receipt) (Verification, error) {
 			}
 			continue
 		}
-		if group.Basis != "" && group.Basis != "TAX_EXCLUDED" {
+		if group.Basis != "" && group.Basis != priceBasisTaxExcluded {
 			v.Issues = append(v.Issues, "税率グループの税込・税抜区分が一致しません。")
 		}
 		var subtotal int64
@@ -344,7 +344,7 @@ func roundedTax(subtotal int64, g TaxGroup) (int64, bool) {
 	q, rem := new(big.Int), new(big.Int)
 	q.QuoRem(n, big.NewInt(g.Denominator), rem)
 	switch g.Rounding {
-	case "FLOOR":
+	case taxRoundingFloor:
 	case "CEIL":
 		if rem.Sign() > 0 {
 			q.Add(q, big.NewInt(1))
@@ -397,7 +397,7 @@ func Distribute(amount int64, weights []int64) ([]int64, error) {
 		remainders[i] = remainder{i, rem.Int64()}
 	}
 	slices.SortFunc(remainders, func(a, b remainder) int { return cmp.Or(cmp.Compare(b.value, a.value), cmp.Compare(a.index, b.index)) })
-	for i := int64(0); i < abs(amount)-allocated; i++ {
+	for i := range abs(amount) - allocated {
 		result[remainders[i].index]++
 	}
 	if amount < 0 {

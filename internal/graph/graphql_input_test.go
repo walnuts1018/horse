@@ -13,6 +13,7 @@ func omittable[T any](value T) graphql.Omittable[T] {
 }
 
 func TestPurchasePatchChangedFieldKeysUsesPresence(t *testing.T) {
+	t.Parallel()
 	date := model.DateTime("2026-10-13T12:00:00Z")
 	merchant := "Store"
 	fields, err := purchasePatchChangedFieldKeys(&model.PurchasePatch{
@@ -28,6 +29,7 @@ func TestPurchasePatchChangedFieldKeysUsesPresence(t *testing.T) {
 }
 
 func TestPurchaseItemPatchChangedFieldKeysUsesPresence(t *testing.T) {
+	t.Parallel()
 	fields, err := purchaseItemChangedFieldKeys(model.UpdatePurchaseItemInput{
 		CategoryID: omittable[*string](nil), Quantity: omittable[*model.PurchaseQuantityInput](nil),
 		PrintedUnitPrice: omittable[*model.PrintedUnitPriceInput](nil),
@@ -44,6 +46,7 @@ func TestPurchaseItemPatchChangedFieldKeysUsesPresence(t *testing.T) {
 }
 
 func TestBulkPurchaseItemPatchChangedFieldKeysUsesPresence(t *testing.T) {
+	t.Parallel()
 	fields, err := bulkPurchaseItemChangedFieldKeys(&model.BulkPurchaseItemPatch{
 		CategoryID: omittable[*string](nil), ProductVariantID: omittable[*string](nil),
 		Allocations: omittable([]*model.AllocationInput{}), TagIds: omittable([]string{}),

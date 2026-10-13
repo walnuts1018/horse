@@ -34,7 +34,7 @@ func Reconcile(incoming Observation, existing []Observation) []Match {
 		if incoming.DocumentID != "" && incoming.DocumentID == old.DocumentID {
 			continue
 		}
-		match := Match{DocumentID: old.DocumentID, SourceReference: old.SourceReference, State: "POSSIBLE"}
+		match := Match{DocumentID: old.DocumentID, SourceReference: old.SourceReference, State: statementMatchPossible}
 		if incoming.Hash != "" && incoming.Hash == old.Hash {
 			match.State = "DUPLICATE"
 			match.Reasons = []string{"同じ原本"}
@@ -111,19 +111,19 @@ func SourceObservations(documentID, hash, sourceKind string, result Verification
 			}
 			card = payment.CardLast4
 		}
-		observations = append(observations, Observation{DocumentID: documentID, Hash: hash, SourceKind: sourceKind, TransactionKind: "RECEIPT_PURCHASE", OrderID: receipt.OrderID, TransactionID: receipt.TransactionID, Merchant: receipt.Merchant, OccurredAt: occurredAt, Amount: receipt.Total, CardLast4: card})
+		observations = append(observations, Observation{DocumentID: documentID, Hash: hash, SourceKind: sourceKind, TransactionKind: statementKindReceipt, OrderID: receipt.OrderID, TransactionID: receipt.TransactionID, Merchant: receipt.Merchant, OccurredAt: occurredAt, Amount: receipt.Total, CardLast4: card})
 	}
 	return observations
 }
 
 func reconcilablePair(left, right Observation) bool {
-	if left.SourceKind != "bank" && right.SourceKind != "bank" {
+	if left.SourceKind != statementSourceBank && right.SourceKind != statementSourceBank {
 		return true
 	}
-	if left.SourceKind == "bank" {
-		return left.TransactionKind == "PURCHASE_PAYMENT" && right.TransactionKind == "RECEIPT_PURCHASE"
+	if left.SourceKind == statementSourceBank {
+		return left.TransactionKind == statementKindPayment && right.TransactionKind == statementKindReceipt
 	}
-	return right.TransactionKind == "PURCHASE_PAYMENT" && left.TransactionKind == "RECEIPT_PURCHASE"
+	return right.TransactionKind == statementKindPayment && left.TransactionKind == statementKindReceipt
 }
 
 func normalize(value string) string { return strings.ToLower(strings.Join(strings.Fields(value), "")) }

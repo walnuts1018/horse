@@ -6,6 +6,7 @@ import (
 )
 
 func TestSelectHistoryHintsUsesOnlyOCRMatchesAndCapsCandidates(t *testing.T) {
+	t.Parallel()
 	lines := []OCRLine{{Text: "Walnuts Market 商品001 商品002 商品003 商品004 商品005 商品006 商品007 商品008 商品009 商品010 商品011"}}
 	candidates := []historyCandidate{{printedName: "未一致商品", normalizedName: "別の商品"}, {printedName: "商品", normalizedName: "商品"}}
 	for i := 1; i <= 11; i++ {

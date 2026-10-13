@@ -22,6 +22,8 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+const postedStatus = "POSTED"
+
 func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha256.Size]byte) (PostResult, error) {
 	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 {
 		return PostResult{}, fmt.Errorf("%w: idempotency key is required", ErrBadInput)
@@ -145,7 +147,7 @@ func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha2
 	if err := accounting.InsertEntries(ctx, executor, journalID, entries); err != nil {
 		return PostResult{}, err
 	}
-	ledgerKind, description, status := "PURCHASE", purchase.Merchant, "POSTED"
+	ledgerKind, description, status := "PURCHASE", purchase.Merchant, postedStatus
 	noPool := sql.Null[gofrsuuid.UUID]{}
 	if _, err := models.LedgerEntries.Insert(&models.LedgerEntrySetter{ID: &ledgerID, HouseholdID: &householdID, JournalID: &journalID, Kind: &ledgerKind, OccurredAt: &occurredAt, Description: &description, AmountYen: &total, PoolID: &noPool, SourcePurchaseID: &sql.Null[gofrsuuid.UUID]{V: purchaseID, Valid: true}}).Exec(ctx, executor); err != nil {
 		return PostResult{}, err
@@ -231,7 +233,7 @@ func snapshotMemberBurden(ctx context.Context, executor bob.Executor, householdI
 				return err
 			}
 			poolID, itemID := allocation.PoolID, allocation.ItemID
-			version, source := int32(rule.version), "POSTED"
+			version, source := rule.version, postedStatus
 			if _, err := models.PurchaseMemberBurdens.Insert(&models.PurchaseMemberBurdenSetter{HouseholdID: &householdID, PurchaseID: &purchaseID, ItemID: &itemID, PoolID: &poolID, MemberID: &memberID, AmountYen: &part.Amount, FundingRuleVersion: &version, FundingWeight: &part.Weight, SnapshotSource: &source}).Exec(ctx, executor); err != nil {
 				return err
 			}
@@ -372,7 +374,7 @@ func snapshotPaymentFunding(ctx context.Context, executor bob.Executor, househol
 		if rule.kind == domain.FundingPoolShared {
 			settlement = sql.Null[string]{V: rule.settlement, Valid: true}
 		}
-		version, lineNo, source := int32(rule.version), int32(index+1), "POSTED"
+		version, lineNo, source := rule.version, int32(index+1), postedStatus
 		poolID := account.PoolID.V
 		for _, weight := range weights {
 			memberID, err := gofrsuuid.FromString(weight.PoolID)

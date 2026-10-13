@@ -19,6 +19,7 @@ import (
 )
 
 func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -44,7 +45,7 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
 
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: displayName})
@@ -58,9 +59,9 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
-	pool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Personal", Kind: model.PoolKindPersonal})
+	pool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testPersonalPoolName, Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +71,7 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 	if _, err := resolver.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
-	account, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Card", Kind: model.AccountKindCard, PoolID: &pool.ID})
+	account, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: testCardAccountName, Kind: model.AccountKindCard, PoolID: &pool.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,10 +80,10 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey:     key,
 		HouseholdID:        household.ID,
-		OccurredAt:         "2026-10-13T10:00:00+09:00",
+		OccurredAt:         testPurchaseTime,
 		Merchant:           "Idempotency test",
 		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 100}},
-		Items:              []*model.PurchaseItemInput{{Name: "test item", AmountYen: 100}},
+		Items:              []*model.PurchaseItemInput{{Name: testPurchaseItemName, AmountYen: 100}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -90,9 +91,9 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 	_, err = resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: key,
 		HouseholdID:    household.ID,
-		OccurredAt:     "2026-10-13T10:00:00+09:00",
+		OccurredAt:     testPurchaseTime,
 		Merchant:       "Idempotency test",
-		Items:          []*model.PurchaseItemInput{{Name: "test item", AmountYen: 101}},
+		Items:          []*model.PurchaseItemInput{{Name: testPurchaseItemName, AmountYen: 101}},
 	})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("createPurchase with a reused key and different payload should conflict: %v", err)

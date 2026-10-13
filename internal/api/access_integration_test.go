@@ -9,7 +9,6 @@ import (
 	"encoding/json/v2"
 	"image"
 	"image/png"
-	"io"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
@@ -33,6 +32,14 @@ import (
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 	"github.com/walnuts1018/horse/internal/relayid"
+)
+
+const (
+	sessionCookieName       = "horse_session"
+	itemIDJSONKey           = "itemId"
+	documentIDJSONKey       = "documentId"
+	observationJobIDJSONKey = "observationJobId"
+	sourceItemIndexJSONKey  = "sourceItemIndex"
 )
 
 type previewTestStore struct {
@@ -63,11 +70,12 @@ func mustIntegrationUUID(t *testing.T, value string) gofrsuuid.UUID {
 }
 
 func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	db, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
@@ -110,9 +118,9 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), executor)
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(nonMemberUUID)))).Exec(context.Background(), executor)
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(ownerUUID)))).Exec(context.Background(), executor)
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(t.Context(), executor)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(nonMemberUUID)))).Exec(t.Context(), executor)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(ownerUUID)))).Exec(t.Context(), executor)
 	}()
 
 	var issuerURL string
@@ -153,13 +161,13 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		_, _ = w.Write(previewPNG.Bytes())
 	}))
 	defer ocrServer.Close()
-	server := New(db, authService, slog.New(slog.NewTextHandler(io.Discard, nil)), Config{PublicOrigin: "http://horse.test", Store: store, OCR: ingestion.OCR{Endpoint: ocrServer.URL}}).Handler()
+	server := New(db, authService, slog.New(slog.DiscardHandler), Config{PublicOrigin: "http://horse.test", Store: store, OCR: ingestion.OCR{Endpoint: ocrServer.URL}}).Handler()
 
 	householdNodeID := relayid.Encode("Household", householdUUID[:])
 	graphqlRequest := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader(`{"query":"query($id: ID!) { household(id: $id) { id name } }","variables":{"id":"`+householdNodeID+`"}}`))
 	graphqlRequest.Header.Set("Origin", "http://horse.test")
 	graphqlRequest.Header.Set("Content-Type", "application/json")
-	graphqlRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: cookieValue, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	graphqlRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookieValue, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	graphqlResponse := httptest.NewRecorder()
 	server.ServeHTTP(graphqlResponse, graphqlRequest)
 	if graphqlResponse.Code != http.StatusOK || !strings.Contains(graphqlResponse.Body.String(), `"household":null`) {
@@ -167,14 +175,14 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 
 	contentRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/content", nil)
-	contentRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: cookieValue, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	contentRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookieValue, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	contentResponse := httptest.NewRecorder()
 	server.ServeHTTP(contentResponse, contentRequest)
 	if contentResponse.Code != http.StatusNotFound {
 		t.Fatalf("non-member original document request was not hidden: status=%d body=%s", contentResponse.Code, contentResponse.Body.String())
 	}
 	previewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview", nil)
-	previewRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: cookieValue, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	previewRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookieValue, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	previewResponse := httptest.NewRecorder()
 	server.ServeHTTP(previewResponse, previewRequest)
 	if previewResponse.Code != http.StatusNotFound || ocrCalls != 0 || store.gets != 0 {
@@ -209,7 +217,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 	for _, path := range []string{"/documents/" + documentID + "/matches", "/documents?householdId=" + householdID} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
-		request.AddCookie(&http.Cookie{Name: "horse_session", Value: cookieValue, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookieValue, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, request)
 		if response.Code != http.StatusNotFound {
@@ -217,7 +225,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		}
 	}
 	evidenceRequest := httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseNodeID+"/evidence", nil)
-	evidenceRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: cookieValue, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	evidenceRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookieValue, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	evidenceResponse := httptest.NewRecorder()
 	server.ServeHTTP(evidenceResponse, evidenceRequest)
 	if evidenceResponse.Code != http.StatusNotFound {
@@ -232,14 +240,14 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	evidenceRequest = httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseNodeID+"/evidence", nil)
-	evidenceRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	evidenceRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	evidenceResponse = httptest.NewRecorder()
 	server.ServeHTTP(evidenceResponse, evidenceRequest)
 	if evidenceResponse.Code != http.StatusOK || strings.TrimSpace(evidenceResponse.Body.String()) != `{"evidence":[]}` {
 		t.Fatalf("purchase global ID did not return empty evidence: status=%d body=%s", evidenceResponse.Code, evidenceResponse.Body.String())
 	}
 	documentsRequest := httptest.NewRequest(http.MethodGet, "/documents?householdId="+householdNodeID, nil)
-	documentsRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	documentsRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	documentsResponse := httptest.NewRecorder()
 	server.ServeHTTP(documentsResponse, documentsRequest)
 	if documentsResponse.Code != http.StatusOK || !strings.Contains(documentsResponse.Body.String(), documentID) {
@@ -266,7 +274,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	uploadRequest := httptest.NewRequest(http.MethodPost, "/documents", &uploadBody)
 	uploadRequest.Header.Set("Origin", "http://horse.test")
 	uploadRequest.Header.Set("Content-Type", uploadForm.FormDataContentType())
-	uploadRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	uploadRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	uploadResponse := httptest.NewRecorder()
 	server.ServeHTTP(uploadResponse, uploadRequest)
 	if uploadResponse.Code != http.StatusAccepted || !strings.Contains(uploadResponse.Body.String(), `"householdId":"`+householdID+`"`) {
@@ -284,21 +292,21 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		t.Fatalf("uploaded document ID missing: %s", uploadResponse.Body.String())
 	}
 	documentsRequest = httptest.NewRequest(http.MethodGet, "/documents?householdId="+householdID, nil)
-	documentsRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	documentsRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	documentsResponse = httptest.NewRecorder()
 	server.ServeHTTP(documentsResponse, documentsRequest)
 	if documentsResponse.Code != http.StatusOK || !strings.Contains(documentsResponse.Body.String(), uploadedID) {
 		t.Fatalf("raw household UUID compatibility failed: status=%d body=%s", documentsResponse.Code, documentsResponse.Body.String())
 	}
 	invalidPreviewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview?page=-1", nil)
-	invalidPreviewRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	invalidPreviewRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	invalidPreviewResponse := httptest.NewRecorder()
 	server.ServeHTTP(invalidPreviewResponse, invalidPreviewRequest)
 	if invalidPreviewResponse.Code != http.StatusBadRequest || ocrCalls != 0 {
 		t.Fatalf("invalid preview page was not rejected: status=%d OCR calls=%d", invalidPreviewResponse.Code, ocrCalls)
 	}
 	validPreviewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview?page=0", nil)
-	validPreviewRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	validPreviewRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	validPreviewResponse := httptest.NewRecorder()
 	server.ServeHTTP(validPreviewResponse, validPreviewRequest)
 	if validPreviewResponse.Code != http.StatusOK || validPreviewResponse.Header().Get("Content-Type") != "image/png" || validPreviewResponse.Header().Get("Cache-Control") != "private, no-store" || validPreviewResponse.Header().Get("X-Original-Content-Type") != mimeType || validPreviewResponse.Header().Get("X-Source-Page") != "0" || validPreviewResponse.Header().Get("X-Coordinate-Transform") != `[1,0,0,0,1,0,0,0,1]` || !bytes.Equal(validPreviewResponse.Body.Bytes(), previewPNG.Bytes()) || ocrCalls != 1 || store.gets != 1 {
@@ -306,13 +314,13 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 	confirm := func(index int) *httptest.ResponseRecorder {
 		t.Helper()
-		body, err := json.Marshal(map[string]any{"purchaseId": purchaseNodeID, "itemId": itemNodeID, "sourceItemIndex": index, "observationJobId": jobID})
+		body, err := json.Marshal(map[string]any{"purchaseId": purchaseNodeID, itemIDJSONKey: itemNodeID, sourceItemIndexJSONKey: index, observationJobIDJSONKey: jobID})
 		if err != nil {
 			t.Fatal(err)
 		}
 		request := httptest.NewRequest(http.MethodPost, "/documents/"+documentID+"/confirm", strings.NewReader(string(body)))
 		request.Header.Set("Origin", "http://horse.test")
-		request.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, request)
 		return response
@@ -337,30 +345,30 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	groupBody, err := json.Marshal(map[string]any{"sources": []any{
-		map[string]any{"documentId": documentID, "itemId": itemNodeID, "sourceItemIndex": 0, "observationJobId": jobID},
-		map[string]any{"documentId": secondDocumentID, "itemId": itemNodeID, "sourceItemIndex": 0, "observationJobId": secondJobID},
+		map[string]any{documentIDJSONKey: documentID, itemIDJSONKey: itemNodeID, sourceItemIndexJSONKey: 0, observationJobIDJSONKey: jobID},
+		map[string]any{documentIDJSONKey: secondDocumentID, itemIDJSONKey: itemNodeID, sourceItemIndexJSONKey: 0, observationJobIDJSONKey: secondJobID},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	groupRequest := httptest.NewRequest(http.MethodPost, "/purchases/"+purchaseNodeID+"/evidence", strings.NewReader(string(groupBody)))
 	groupRequest.Header.Set("Origin", "http://horse.test")
-	groupRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	groupRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	groupResponse := httptest.NewRecorder()
 	server.ServeHTTP(groupResponse, groupRequest)
 	if groupResponse.Code != http.StatusOK || !strings.Contains(groupResponse.Body.String(), `"sourceCount":2`) {
 		t.Fatalf("multi-source evidence confirmation failed: %d %s", groupResponse.Code, groupResponse.Body.String())
 	}
 	rollbackBody, err := json.Marshal(map[string]any{"sources": []any{
-		map[string]any{"documentId": secondDocumentID, "sourceReference": "rollback"},
-		map[string]any{"documentId": "invalid-document-id"},
+		map[string]any{documentIDJSONKey: secondDocumentID, "sourceReference": "rollback"},
+		map[string]any{documentIDJSONKey: "invalid-document-id"},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	rollbackRequest := httptest.NewRequest(http.MethodPost, "/purchases/"+purchaseNodeID+"/evidence", strings.NewReader(string(rollbackBody)))
 	rollbackRequest.Header.Set("Origin", "http://horse.test")
-	rollbackRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	rollbackRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	rollbackResponse := httptest.NewRecorder()
 	server.ServeHTTP(rollbackResponse, rollbackRequest)
 	if rollbackResponse.Code != http.StatusBadRequest {
@@ -376,14 +384,14 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	evidenceRequest = httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseNodeID+"/evidence", nil)
-	evidenceRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	evidenceRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	evidenceResponse = httptest.NewRecorder()
 	server.ServeHTTP(evidenceResponse, evidenceRequest)
 	if evidenceResponse.Code != http.StatusOK || !strings.Contains(evidenceResponse.Body.String(), `"printedName":"printed item"`) || !strings.Contains(evidenceResponse.Body.String(), `"top":0.1`) {
 		t.Fatalf("observation snapshot missing: %d %s", evidenceResponse.Code, evidenceResponse.Body.String())
 	}
 	documentRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID, nil)
-	documentRequest.AddCookie(&http.Cookie{Name: "horse_session", Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	documentRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	documentResponse := httptest.NewRecorder()
 	server.ServeHTTP(documentResponse, documentRequest)
 	if documentResponse.Code != http.StatusOK || !strings.Contains(documentResponse.Body.String(), `"purchaseId":"`+purchaseID+`"`) {

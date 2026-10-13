@@ -123,7 +123,7 @@ func parseEmailMIME(header textproto.MIMEHeader, body io.Reader, depth int, part
 	mediaType := strings.TrimSpace(header.Get("Content-Type"))
 	var params map[string]string
 	if mediaType == "" {
-		mediaType = "text/plain"
+		mediaType = mimeTypePlainText
 	} else {
 		var err error
 		mediaType, params, err = mime.ParseMediaType(mediaType)
@@ -158,7 +158,7 @@ func parseEmailMIME(header textproto.MIMEHeader, body io.Reader, depth int, part
 			if *parts > maxEmailMIMEParts {
 				return emailMIMEContent{}, errors.New("email has too many MIME parts")
 			}
-			child, childErr := parseEmailMIME(textproto.MIMEHeader(part.Header), part, depth+1, parts)
+			child, childErr := parseEmailMIME(part.Header, part, depth+1, parts)
 			if childErr != nil {
 				return emailMIMEContent{}, childErr
 			}
@@ -175,7 +175,7 @@ func parseEmailMIME(header textproto.MIMEHeader, body io.Reader, depth int, part
 		}
 		return combined, nil
 	}
-	if mediaType != "text/plain" && mediaType != "text/html" {
+	if mediaType != mimeTypePlainText && mediaType != "text/html" {
 		return emailMIMEContent{HasAttachment: true}, nil
 	}
 	decoded, err := decodeEmailTransfer(body, header.Get("Content-Transfer-Encoding"))

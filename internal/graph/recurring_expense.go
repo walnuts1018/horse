@@ -40,7 +40,7 @@ func (r *mutationResolver) setRecurringExpense(ctx context.Context, input recurr
 		return nil, err
 	}
 	name, merchant := strings.TrimSpace(input.Name), strings.TrimSpace(input.Merchant)
-	if name == "" || len(name) > 160 || len(merchant) > 240 || input.AmountYen <= 0 || int64(input.AmountYen) > maxMoney || !slices.Contains([]string{"WEEKLY", "MONTHLY", "YEARLY"}, input.Cadence) {
+	if name == "" || len(name) > 160 || len(merchant) > 240 || input.AmountYen <= 0 || input.AmountYen > maxMoney || !slices.Contains([]string{"WEEKLY", "MONTHLY", "YEARLY"}, input.Cadence) {
 		return nil, fmt.Errorf("%w: invalid recurring expense", ErrBadInput)
 	}
 	starts, err := parseDate(input.StartsOn)
@@ -80,7 +80,7 @@ func (r *mutationResolver) setRecurringExpense(ctx context.Context, input recurr
 	if input.PaymentAccountID != nil {
 		account = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.PaymentAccountID), Valid: true}
 	}
-	amount := int64(input.AmountYen)
+	amount := input.AmountYen
 	if input.ExpenseID == nil {
 		id := generatedUUID(newID())
 		row, err = models.RecurringExpenses.Insert(&models.RecurringExpenseSetter{ID: &id, HouseholdID: &hhID, Name: &name, Merchant: &merchant, AmountYen: &amount, CategoryID: &category, PaymentAccountID: &account, Cadence: &input.Cadence, StartsOn: &starts, NextDueOn: &due, EndsOn: &ends}).One(ctx, executor)
@@ -107,7 +107,7 @@ func (r *mutationResolver) setRecurringExpense(ctx context.Context, input recurr
 		}
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "recurring_expense.updated", row.ID.String(), row.Revision, []string{"name", "merchant", "amountYen", "categoryId", "paymentAccountId", "cadence", "startsOn", "nextDueOn", "endsOn"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "recurring_expense.updated", row.ID.String(), row.Revision, []string{fieldName, fieldMerchant, fieldAmountYen, fieldCategoryID, fieldPaymentAccountID, fieldCadence, fieldStartsOn, fieldNextDueOn, fieldEndsOn}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -148,7 +148,7 @@ func (r *mutationResolver) archiveRecurringExpense(ctx context.Context, expenseI
 	if _, err := models.RecurringExpenses.Update((&models.RecurringExpenseSetter{Archived: &archived, Revision: &revision}).UpdateMod(), um.Where(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, row.HouseholdID.String(), "recurring_expense.archived", expenseID, revision, []string{"archived"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, row.HouseholdID.String(), "recurring_expense.archived", expenseID, revision, []string{fieldArchived}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -203,7 +203,7 @@ func (r *queryResolver) recurringExpenseConnection(ctx context.Context, househol
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize, backward, err := pageDirection(after, before, first, last)
+	pageSize, backward, err := pageDirection(first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func (r *queryResolver) recurringExpenseConnection(ctx context.Context, househol
 		cursor   *string
 		isBefore bool
 	}{{cursor: after}, {cursor: before, isBefore: true}} {
-		afterID, err := cursorID(boundary.cursor, "RecurringExpense")
+		afterID, err := cursorID(boundary.cursor, nodeTypeRecurringExpense)
 		if err != nil {
 			return nil, err
 		}
@@ -281,12 +281,12 @@ func (r *queryResolver) recurringExpenseConnection(ctx context.Context, househol
 	}
 	for _, row := range rows {
 		connection.Edges = append(connection.Edges, &model.RecurringExpenseEdge{
-			Cursor: encodeCursor("RecurringExpense", row.ID.String()),
+			Cursor: encodeCursor(nodeTypeRecurringExpense, row.ID.String()),
 			Node:   recurringExpenseModel(row),
 		})
 	}
 	if len(rows) > 0 {
-		start, end := encodeCursor("RecurringExpense", rows[0].ID.String()), encodeCursor("RecurringExpense", rows[len(rows)-1].ID.String())
+		start, end := encodeCursor(nodeTypeRecurringExpense, rows[0].ID.String()), encodeCursor(nodeTypeRecurringExpense, rows[len(rows)-1].ID.String())
 		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &start, &end
 	}
 	return connection, nil

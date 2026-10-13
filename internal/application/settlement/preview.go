@@ -109,7 +109,7 @@ func calculateSettlementPreviewWithRules(ctx context.Context, db bob.Executor, h
 			return nil, err
 		}
 		for _, line := range monthInputs {
-			value, ok := checkedAdd(carry[line.MemberID], int64(line.AmountDueYen))
+			value, ok := checkedAdd(carry[line.MemberID], line.AmountDueYen)
 			if !ok {
 				return nil, domain.ErrInvalidSettlement
 			}

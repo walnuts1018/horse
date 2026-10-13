@@ -17,7 +17,7 @@ func (r *queryResolver) loanBalances(ctx context.Context, householdID string, af
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize, backward, err := pageDirection(after, before, first, last)
+	pageSize, backward, err := pageDirection(first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (r *queryResolver) loanBalances(ctx context.Context, householdID string, af
 			}
 			repaidByLoan[transfer.LoanID.V] = total
 		}
-		if transfer.Kind == "LOAN" {
+		if transfer.Kind == transferKindLoan {
 			loans = append(loans, transfer)
 		}
 	}
@@ -63,7 +63,7 @@ func (r *queryResolver) loanBalances(ctx context.Context, householdID string, af
 	})
 	loanCount := len(loans)
 	start, end := 0, len(loans)
-	if id, err := cursorID(after, "LoanBalance"); err != nil {
+	if id, err := cursorID(after, nodeTypeLoanBalance); err != nil {
 		return nil, err
 	} else if id != nil {
 		cursorIndex := slices.IndexFunc(loans, func(loan *models.Transfer) bool { return loan.ID.String() == *id })
@@ -72,7 +72,7 @@ func (r *queryResolver) loanBalances(ctx context.Context, householdID string, af
 		}
 		start = cursorIndex + 1
 	}
-	if id, err := cursorID(before, "LoanBalance"); err != nil {
+	if id, err := cursorID(before, nodeTypeLoanBalance); err != nil {
 		return nil, err
 	} else if id != nil {
 		cursorIndex := slices.IndexFunc(loans, func(loan *models.Transfer) bool { return loan.ID.String() == *id })
@@ -97,15 +97,15 @@ func (r *queryResolver) loanBalances(ctx context.Context, householdID string, af
 		if ledger == nil {
 			return nil, fmt.Errorf("loan transfer %s has no ledger entry", loan.ID)
 		}
-		globalID, err := encodeNodeID("LoanBalance", loan.ID.String())
+		globalID, err := encodeNodeID(nodeTypeLoanBalance, loan.ID.String())
 		if err != nil {
 			return nil, err
 		}
 		balance := &model.LoanBalance{ID: globalID, LenderMemberID: loan.FromMemberID.String(), BorrowerMemberID: loan.ToMemberID.String(), PrincipalYen: graphLong(loan.AmountYen), RepaidYen: graphLong(repaidByLoan[loan.ID]), BalanceYen: graphLong(loan.AmountYen - repaidByLoan[loan.ID]), CreatedAt: timeString(ledger.CreatedAt)}
-		connection.Edges = append(connection.Edges, &model.LoanBalanceEdge{Cursor: encodeCursor("LoanBalance", loan.ID.String()), Node: balance})
+		connection.Edges = append(connection.Edges, &model.LoanBalanceEdge{Cursor: encodeCursor(nodeTypeLoanBalance, loan.ID.String()), Node: balance})
 	}
 	if len(pageLoans) > 0 {
-		startCursor, endCursor := encodeCursor("LoanBalance", pageLoans[0].ID.String()), encodeCursor("LoanBalance", pageLoans[len(pageLoans)-1].ID.String())
+		startCursor, endCursor := encodeCursor(nodeTypeLoanBalance, pageLoans[0].ID.String()), encodeCursor(nodeTypeLoanBalance, pageLoans[len(pageLoans)-1].ID.String())
 		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &startCursor, &endCursor
 	}
 	return connection, nil

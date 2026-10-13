@@ -47,7 +47,7 @@ func (r *mutationResolver) createCategory(ctx context.Context, input model.Creat
 	if _, err := models.Categories.Insert(&models.CategorySetter{ID: &idUUID, HouseholdID: &householdUUID, ParentID: &parentValue, Name: &name}).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "category.created", id, 1, []string{"name", "parentId"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "category.created", id, 1, []string{fieldName, fieldParentID}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -101,7 +101,7 @@ func (r *mutationResolver) setCategoryArchived(ctx context.Context, categoryID s
 		if archived {
 			eventType = "category.archived"
 		}
-		if err := writeEvent(ctx, tx, householdID, eventType, categoryID, 1, []string{"archived"}, user.MemberID); err != nil {
+		if err := writeEvent(ctx, tx, householdID, eventType, categoryID, 1, []string{fieldArchived}, user.MemberID); err != nil {
 			return nil, err
 		}
 	}

@@ -94,7 +94,7 @@ func (r *mutationResolver) bulkUpdatePurchaseItems(ctx context.Context, input mo
 			if purchaseErr != nil {
 				return nil, purchaseErr
 			}
-			if purchase.Status == "CLOSED" {
+			if purchase.Status == statusClosed {
 				return nil, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 			}
 			if err := lockAccountingPeriods(ctx, tx, householdID.String(), accountingPeriod(purchase.OccurredAt)); err != nil {
@@ -126,7 +126,7 @@ func (r *mutationResolver) bulkUpdatePurchaseItems(ctx context.Context, input mo
 		if _, err := models.Purchases.Update(um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchase.ID))), um.SetCol("revision").To(models.Purchases.Columns.Revision.Plus(psql.Arg(int64(1)))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
-		if purchase.Status == "POSTED" {
+		if purchase.Status == statusPosted {
 			if err := syncPostedPurchaseAccounting(ctx, tx, purchase.ID.String()); err != nil {
 				return nil, err
 			}
@@ -162,7 +162,7 @@ func updateBulkItem(ctx context.Context, tx pgx.Tx, executor bob.Executor, item 
 		return 0, err
 	}
 	categoryValue := item.CategoryID
-	if slices.Contains(changed, "categoryId") {
+	if slices.Contains(changed, fieldCategoryID) {
 		categoryValue = sql.Null[gofrsuuid.UUID]{}
 		if input.Patch.CategoryID.Value() != nil {
 			id, err := gofrsuuid.FromString(*input.Patch.CategoryID.Value())
@@ -173,7 +173,7 @@ func updateBulkItem(ctx context.Context, tx pgx.Tx, executor bob.Executor, item 
 		}
 	}
 	variantValue := item.ProductVariantID
-	if slices.Contains(changed, "productVariantId") {
+	if slices.Contains(changed, fieldProductVariantID) {
 		variantValue = sql.Null[gofrsuuid.UUID]{}
 		if input.Patch.ProductVariantID.Value() != nil {
 			id, err := gofrsuuid.FromString(*input.Patch.ProductVariantID.Value())
@@ -191,14 +191,14 @@ func updateBulkItem(ctx context.Context, tx pgx.Tx, executor bob.Executor, item 
 		}
 	}
 	fieldValue := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(fieldRevisions)}
-	allocationOverride := item.AllocationOverride || slices.Contains(changed, "allocations")
-	allocationChanged := slices.Contains(changed, "allocations") || !item.AllocationOverride && (slices.Contains(changed, "categoryId") || slices.Contains(changed, "productVariantId"))
+	allocationOverride := item.AllocationOverride || slices.Contains(changed, fieldAllocations)
+	allocationChanged := slices.Contains(changed, fieldAllocations) || !item.AllocationOverride && (slices.Contains(changed, fieldCategoryID) || slices.Contains(changed, fieldProductVariantID))
 	var allocated []domain.AllocationAmount
 	var weights []domain.Weight
 	var appliedRuleID *string
 	var appliedRuleVersion = ruleVersion
 	if allocationChanged {
-		if slices.Contains(changed, "allocations") {
+		if slices.Contains(changed, fieldAllocations) {
 			weights, err = allocationWeights(input.Patch.Allocations.Value())
 		} else {
 			var categoryID, variantID *string
@@ -239,7 +239,7 @@ func updateBulkItem(ctx context.Context, tx pgx.Tx, executor bob.Executor, item 
 			}
 		}
 	}
-	if slices.Contains(changed, "tags") {
+	if slices.Contains(changed, fieldTags) {
 		if _, err := models.PurchaseItemTags.Delete(dm.Where(models.PurchaseItemTags.Columns.ItemID.EQ(psql.Arg(item.ID)))).Exec(ctx, executor); err != nil {
 			return 0, err
 		}

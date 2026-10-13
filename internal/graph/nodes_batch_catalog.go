@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -13,13 +14,13 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func (b *nodeBatch) loadCatalogPlanningNodes() error {
-	ctx, executor := b.ctx, b.executor
+func (b *nodeBatch) loadCatalogPlanningNodes(ctx context.Context) error {
+	executor := b.executor
 	households, idsByKind, indexesByKind := b.households, b.idsByKind, b.indexesByKind
 	householdArgs, args, set := b.householdArgs, b.ids, b.set
-	if values := idsByKind["AllocationRule"]; len(values) > 0 {
+	if values := idsByKind[nodeTypeAllocationRule]; len(values) > 0 {
 		rules, err := models.AllocationRules.Query(sm.Where(psql.And(
-			models.AllocationRules.Columns.HouseholdID.In(householdArgs...), models.AllocationRules.Columns.ID.In(args("AllocationRule")...),
+			models.AllocationRules.Columns.HouseholdID.In(householdArgs...), models.AllocationRules.Columns.ID.In(args(nodeTypeAllocationRule)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
@@ -126,21 +127,21 @@ func (b *nodeBatch) loadCatalogPlanningNodes() error {
 				}
 				value.Allocations = append(value.Allocations, &model.Allocation{PoolID: weight.PoolID.String(), PoolName: weight.R.Pool.Name, Weight: graphLong(weight.Weight)})
 			}
-			set("AllocationRule", value.ID, value)
+			set(nodeTypeAllocationRule, value.ID, value)
 		}
 	}
-	if len(idsByKind["ProductConcept"])+len(idsByKind["ProductVariant"])+len(idsByKind["ProductAlias"]) > 0 {
+	if len(idsByKind[nodeTypeProductConcept])+len(idsByKind[nodeTypeProductVariant])+len(idsByKind[nodeTypeProductAlias]) > 0 {
 		conceptRows := models.ProductConceptSlice{}
-		if len(idsByKind["ProductConcept"]) > 0 {
-			rows, err := models.ProductConcepts.Query(sm.Where(psql.And(models.ProductConcepts.Columns.HouseholdID.In(householdArgs...), models.ProductConcepts.Columns.ID.In(args("ProductConcept")...)))).All(ctx, executor)
+		if len(idsByKind[nodeTypeProductConcept]) > 0 {
+			rows, err := models.ProductConcepts.Query(sm.Where(psql.And(models.ProductConcepts.Columns.HouseholdID.In(householdArgs...), models.ProductConcepts.Columns.ID.In(args(nodeTypeProductConcept)...)))).All(ctx, executor)
 			if err != nil {
 				return err
 			}
 			conceptRows = rows
 		}
 		variantFilters := make([]bob.Expression, 0, 2)
-		if len(idsByKind["ProductVariant"]) > 0 {
-			variantFilters = append(variantFilters, models.ProductVariants.Columns.ID.In(args("ProductVariant")...))
+		if len(idsByKind[nodeTypeProductVariant]) > 0 {
+			variantFilters = append(variantFilters, models.ProductVariants.Columns.ID.In(args(nodeTypeProductVariant)...))
 		}
 		conceptIDs := make([]bob.Expression, 0, len(conceptRows))
 		for _, concept := range conceptRows {
@@ -158,8 +159,8 @@ func (b *nodeBatch) loadCatalogPlanningNodes() error {
 			variantRows = rows
 		}
 		aliasFilters := make([]bob.Expression, 0, 2)
-		if len(idsByKind["ProductAlias"]) > 0 {
-			aliasFilters = append(aliasFilters, models.ProductAliases.Columns.ID.In(args("ProductAlias")...))
+		if len(idsByKind[nodeTypeProductAlias]) > 0 {
+			aliasFilters = append(aliasFilters, models.ProductAliases.Columns.ID.In(args(nodeTypeProductAlias)...))
 		}
 		variantIDs := make([]bob.Expression, 0, len(variantRows))
 		for _, variant := range variantRows {
@@ -202,42 +203,42 @@ func (b *nodeBatch) loadCatalogPlanningNodes() error {
 			if row.CategoryID.Valid {
 				value.CategoryID = new(row.CategoryID.V.String())
 			}
-			set("ProductConcept", value.ID, value)
+			set(nodeTypeProductConcept, value.ID, value)
 		}
 		for _, row := range variantRows {
-			if _, requested := indexesByKind["ProductVariant"][row.ID]; requested {
-				set("ProductVariant", row.ID.String(), variantsByID[row.ID])
+			if _, requested := indexesByKind[nodeTypeProductVariant][row.ID]; requested {
+				set(nodeTypeProductVariant, row.ID.String(), variantsByID[row.ID])
 			}
 		}
 		for _, row := range aliasRows {
-			if _, requested := indexesByKind["ProductAlias"][row.ID]; requested {
-				set("ProductAlias", row.ID.String(), aliasesByID[row.ID])
+			if _, requested := indexesByKind[nodeTypeProductAlias][row.ID]; requested {
+				set(nodeTypeProductAlias, row.ID.String(), aliasesByID[row.ID])
 			}
 		}
 	}
-	if values := idsByKind["Tag"]; len(values) > 0 {
+	if values := idsByKind[nodeTypeTag]; len(values) > 0 {
 		rows, err := models.Tags.Query(sm.Where(psql.And(
-			models.Tags.Columns.HouseholdID.In(householdArgs...), models.Tags.Columns.ID.In(args("Tag")...),
+			models.Tags.Columns.HouseholdID.In(householdArgs...), models.Tags.Columns.ID.In(args(nodeTypeTag)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			set("Tag", row.ID.String(), tagModel(row))
+			set(nodeTypeTag, row.ID.String(), tagModel(row))
 		}
 	}
-	if values := idsByKind["RecurringExpense"]; len(values) > 0 {
+	if values := idsByKind[nodeTypeRecurringExpense]; len(values) > 0 {
 		rows, err := models.RecurringExpenses.Query(sm.Where(psql.And(
-			models.RecurringExpenses.Columns.HouseholdID.In(householdArgs...), models.RecurringExpenses.Columns.ID.In(args("RecurringExpense")...),
+			models.RecurringExpenses.Columns.HouseholdID.In(householdArgs...), models.RecurringExpenses.Columns.ID.In(args(nodeTypeRecurringExpense)...),
 		))).All(ctx, executor)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			set("RecurringExpense", row.ID.String(), recurringExpenseModel(row))
+			set(nodeTypeRecurringExpense, row.ID.String(), recurringExpenseModel(row))
 		}
 	}
-	if values := idsByKind["HouseholdInvitation"]; len(values) > 0 {
+	if values := idsByKind[nodeTypeHouseholdInvitation]; len(values) > 0 {
 		user, err := principal(ctx)
 		if err != nil {
 			return err
@@ -254,14 +255,14 @@ func (b *nodeBatch) loadCatalogPlanningNodes() error {
 		}
 		if len(ownerHouseholdArgs) > 0 {
 			rows, err := models.HouseholdInvitations.Query(sm.Where(psql.And(
-				models.HouseholdInvitations.Columns.HouseholdID.In(ownerHouseholdArgs...), models.HouseholdInvitations.Columns.ID.In(args("HouseholdInvitation")...),
+				models.HouseholdInvitations.Columns.HouseholdID.In(ownerHouseholdArgs...), models.HouseholdInvitations.Columns.ID.In(args(nodeTypeHouseholdInvitation)...),
 			))).All(ctx, executor)
 			if err != nil {
 				return err
 			}
 			now := time.Now()
 			for _, row := range rows {
-				set("HouseholdInvitation", row.ID.String(), householdInvitationModel(row, now))
+				set(nodeTypeHouseholdInvitation, row.ID.String(), householdInvitationModel(row, now))
 			}
 		}
 	}

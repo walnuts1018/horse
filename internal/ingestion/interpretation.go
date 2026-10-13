@@ -55,7 +55,7 @@ func evaluateInterpretations(observed Receipt) []InterpretationResult {
 			}
 			seenItems[item.Index] = true
 			original := r.Items[item.Index]
-			if !canInterpret(original.PriceBasis, item.PriceBasis) || original.TaxGroup != "" && original.TaxGroup != item.TaxGroup || item.PriceBasis != "TAX_INCLUDED" && item.PriceBasis != "TAX_EXCLUDED" && item.PriceBasis != "EXEMPT" && item.PriceBasis != "NON_TAXABLE" {
+			if !canInterpret(original.PriceBasis, item.PriceBasis) || original.TaxGroup != "" && original.TaxGroup != item.TaxGroup || item.PriceBasis != priceBasisTaxIncluded && item.PriceBasis != priceBasisTaxExcluded && item.PriceBasis != "EXEMPT" && item.PriceBasis != "NON_TAXABLE" {
 				valid = false
 				break
 			}
@@ -65,7 +65,7 @@ func evaluateInterpretations(observed Receipt) []InterpretationResult {
 		seenGroups := map[string]bool{}
 		for _, group := range candidate.Groups {
 			index := slices.IndexFunc(r.TaxGroups, func(g TaxGroup) bool { return g.ID == group.ID })
-			if index < 0 || seenGroups[group.ID] || group.Basis != "TAX_INCLUDED" && group.Basis != "TAX_EXCLUDED" || group.Rounding != "FLOOR" && group.Rounding != "CEIL" && group.Rounding != "NEAREST" {
+			if index < 0 || seenGroups[group.ID] || group.Basis != priceBasisTaxIncluded && group.Basis != priceBasisTaxExcluded || group.Rounding != taxRoundingFloor && group.Rounding != "CEIL" && group.Rounding != "NEAREST" {
 				valid = false
 				break
 			}
@@ -95,5 +95,5 @@ func evaluateInterpretations(observed Receipt) []InterpretationResult {
 }
 
 func canInterpret(observed, proposed string) bool {
-	return observed == "" || observed == "UNKNOWN" || observed == proposed
+	return observed == "" || observed == priceBasisUnknown || observed == proposed
 }

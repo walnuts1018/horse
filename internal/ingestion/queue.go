@@ -32,7 +32,7 @@ func NewQueue(endpoint string) (*Queue, error) {
 }
 
 func (q *Queue) Publish(ctx context.Context, jobID string) error {
-	return q.channel.PublishWithContext(ctx, "", ExtractionQueue, false, false, amqp.Publishing{ContentType: "text/plain", DeliveryMode: amqp.Persistent, Body: []byte(jobID)})
+	return q.channel.PublishWithContext(ctx, "", ExtractionQueue, false, false, amqp.Publishing{ContentType: mimeTypePlainText, DeliveryMode: amqp.Persistent, Body: []byte(jobID)})
 }
 
 func (q *Queue) Consume() (<-chan amqp.Delivery, error) {

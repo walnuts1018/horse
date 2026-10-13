@@ -26,7 +26,7 @@ type purchaseItemMeasure struct {
 
 func measureFromUpdate(input model.UpdatePurchaseItemInput, current purchaseItemMeasure, changedFields []string) (purchaseItemMeasure, error) {
 	updated := current
-	if containsChangedField(changedFields, "quantity") {
+	if containsChangedField(changedFields, fieldQuantity) {
 		if !input.Quantity.IsSet() {
 			return purchaseItemMeasure{}, errors.New("changed quantity has no value")
 		}
@@ -44,7 +44,7 @@ func measureFromUpdate(input model.UpdatePurchaseItemInput, current purchaseItem
 	} else if input.Quantity.IsSet() {
 		return purchaseItemMeasure{}, errors.New("quantity is missing from changedFields")
 	}
-	if containsChangedField(changedFields, "printedUnitPrice") {
+	if containsChangedField(changedFields, fieldPrintedUnitPrice) {
 		if !input.PrintedUnitPrice.IsSet() {
 			return purchaseItemMeasure{}, errors.New("changed printed unit price has no value")
 		}
@@ -114,9 +114,9 @@ func newPurchaseItemMeasure(quantityNumerator, quantityDenominator, quantityUnit
 	return measure, nil
 }
 
-func effectiveUnitPrice(amount int64, measure purchaseItemMeasure) (*string, *string, bool) {
+func effectiveUnitPrice(amount int64, measure purchaseItemMeasure) (*string, *string) {
 	if !measure.quantityNumerator.Valid || amount < 0 {
-		return nil, nil, true
+		return nil, nil
 	}
 	numerator := new(big.Int).Mul(big.NewInt(amount), big.NewInt(measure.quantityDenominator.V))
 	denominator := big.NewInt(measure.quantityNumerator.V)
@@ -124,7 +124,7 @@ func effectiveUnitPrice(amount int64, measure purchaseItemMeasure) (*string, *st
 	numerator.Quo(numerator, gcd)
 	denominator.Quo(denominator, gcd)
 	unitPriceNumerator, unitPriceDenominator := numerator.String(), denominator.String()
-	return &unitPriceNumerator, &unitPriceDenominator, true
+	return &unitPriceNumerator, &unitPriceDenominator
 }
 
 func parseMeasureRational(numerator, denominator *string) (sql.Null[int64], sql.Null[int64], error) {

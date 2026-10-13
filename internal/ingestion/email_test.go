@@ -15,6 +15,7 @@ import (
 )
 
 func TestGeminiExtractParsesEmailBodyAndWarnsAboutUnparsedAttachments(t *testing.T) {
+	t.Parallel()
 	message := syntheticEmail(t, true)
 	var requestText string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,8 +36,8 @@ func TestGeminiExtractParsesEmailBodyAndWarnsAboutUnparsedAttachments(t *testing
 	}))
 	t.Cleanup(server.Close)
 
-	gemini := Gemini{APIKey: "test-key", Model: "test-model", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
-	receipt, _, err := gemini.ExtractRun(t.Context(), Document{MIMEType: "message/rfc822", Data: message}, nil, GeminiRequestOptions{})
+	gemini := Gemini{APIKey: testGeminiAPIKey, Model: "test-model", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
+	receipt, _, err := gemini.ExtractRun(t.Context(), Document{MIMEType: mimeTypeEmail, Data: message}, nil, GeminiRequestOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,6 +57,7 @@ func TestGeminiExtractParsesEmailBodyAndWarnsAboutUnparsedAttachments(t *testing
 }
 
 func TestParseEmailUsesHTMLWhenPlainTextIsUnavailable(t *testing.T) {
+	t.Parallel()
 	body := base64.StdEncoding.EncodeToString([]byte(`<html><head><title>ignored title</title></head><body><p>注文内容</p><script>ignored script</script><p>合計&nbsp;1,234円</p></body></html>`))
 	message := fmt.Sprintf("MIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n%s\r\n", body)
 	parsed, err := parseEmail([]byte(message))
@@ -75,6 +77,7 @@ func TestParseEmailUsesHTMLWhenPlainTextIsUnavailable(t *testing.T) {
 }
 
 func TestParseEmailOmitsSenderAddressWithoutDisplayName(t *testing.T) {
+	t.Parallel()
 	parsed, err := parseEmail([]byte("From: privacy@example.test\r\nSubject: 注文\r\n\r\n注文内容"))
 	if err != nil {
 		t.Fatal(err)

@@ -12,6 +12,7 @@ import (
 )
 
 func TestReceiptSchemaMatchesJSONTypesAndRequiredFields(t *testing.T) {
+	t.Parallel()
 	ignoredFields := map[reflect.Type]map[string]bool{
 		reflect.TypeFor[Receipt](): {"Model": true, "PromptVersion": true, "InputTokens": true, "OutputTokens": true},
 		reflect.TypeFor[Item]():    {"GrossAmount": true, "Verification": true},
@@ -25,8 +26,8 @@ func TestReceiptSchemaMatchesJSONTypesAndRequiredFields(t *testing.T) {
 
 func assertSchemaMatchesType(t *testing.T, typ reflect.Type, schema map[string]any, ignoredFields, optionalFields map[reflect.Type]map[string]bool) {
 	t.Helper()
-	if schema["type"] != "object" {
-		t.Fatalf("schema for %s has type %v, want object", typ, schema["type"])
+	if schema[schemaTypeKey] != "object" {
+		t.Fatalf("schema for %s has type %v, want object", typ, schema[schemaTypeKey])
 	}
 	properties, ok := schema["properties"].(map[string]any)
 	if !ok {
@@ -42,8 +43,7 @@ func assertSchemaMatchesType(t *testing.T, typ reflect.Type, schema map[string]a
 	}
 	wantProperties := make(map[string]bool, typ.NumField())
 	wantRequired := make(map[string]bool, len(requiredValues))
-	for i := range typ.NumField() {
-		field := typ.Field(i)
+	for field := range typ.Fields() {
 		if ignoredFields[typ][field.Name] {
 			continue
 		}
@@ -96,33 +96,35 @@ func assertSchemaFieldType(t *testing.T, typ reflect.Type, schemaValue any, igno
 	case reflect.String:
 		wantType = "string"
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		wantType = "integer"
+		wantType = schemaTypeInteger
 	case reflect.Float32, reflect.Float64:
-		wantType = "number"
+		wantType = schemaTypeNumber
 	case reflect.Struct:
 		assertSchemaMatchesType(t, typ, schema, ignoredFields, optionalFields)
 		return
 	case reflect.Slice, reflect.Array:
 		wantType = "array"
-		items, ok := schema["items"]
+		items, ok := schema[schemaItemsKey]
 		if !ok {
 			t.Fatalf("schema for %s has no array items", typ)
 		}
 		assertSchemaFieldType(t, typ.Elem(), items, ignoredFields, optionalFields)
-	default:
+	case reflect.Invalid, reflect.Bool, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Complex64, reflect.Complex128, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.UnsafePointer:
 		t.Fatalf("unsupported JSON schema type %s", typ)
 	}
-	if got := schema["type"]; got != wantType {
+	if got := schema[schemaTypeKey]; got != wantType {
 		t.Errorf("schema for %s has type %v, want %s", typ, got, wantType)
 	}
 }
 
 func TestGeminiExtractPreservesExactQuantityAndPrintedUnitPrice(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1beta/models/test-model:generateContent" {
 			t.Errorf("unexpected SDK request target: %s %s", r.Method, r.URL.Path)
 		}
-		if r.Header.Get("x-goog-api-key") != "test-key" {
+		if r.Header.Get("x-goog-api-key") != testGeminiAPIKey {
 			t.Errorf("SDK request did not use the configured API key")
 		}
 		requestBody, err := io.ReadAll(r.Body)
@@ -150,10 +152,10 @@ func TestGeminiExtractPreservesExactQuantityAndPrintedUnitPrice(t *testing.T) {
 		if err := json.Unmarshal(requestBody, &request); err != nil {
 			t.Errorf("decode SDK request: %v", err)
 		}
-		if request.ServiceTier != "standard" || request.GenerationConfig.ResponseMIMEType != "application/json" || request.GenerationConfig.MaxOutputTokens != MaxOutputTokens || request.GenerationConfig.ThinkingConfig.ThinkingLevel != "LOW" {
+		if request.ServiceTier != geminiServiceTierStandard || request.GenerationConfig.ResponseMIMEType != "application/json" || request.GenerationConfig.MaxOutputTokens != MaxOutputTokens || request.GenerationConfig.ThinkingConfig.ThinkingLevel != geminiThinkingLevelLOW {
 			t.Errorf("SDK request omitted generation settings: %#v", request)
 		}
-		if len(request.Contents) != 1 || len(request.Contents[0].Parts) != 2 || request.Contents[0].Parts[1].InlineData.MIMEType != "image/jpeg" || request.Contents[0].Parts[1].InlineData.Data != base64.StdEncoding.EncodeToString([]byte("synthetic image bytes")) {
+		if len(request.Contents) != 1 || len(request.Contents[0].Parts) != 2 || request.Contents[0].Parts[1].InlineData.MIMEType != mimeTypeJPEG || request.Contents[0].Parts[1].InlineData.Data != base64.StdEncoding.EncodeToString([]byte("synthetic image bytes")) {
 			t.Errorf("SDK request changed inline image content: %#v", request.Contents)
 		}
 		for _, required := range []string{"quantityNumerator", "printedUnitPriceQuantityDenominator", "Never derive printed unit price from line total"} {
@@ -165,8 +167,8 @@ func TestGeminiExtractPreservesExactQuantityAndPrintedUnitPrice(t *testing.T) {
 	}))
 	defer server.Close()
 
-	gemini := Gemini{APIKey: "test-key", Model: "test-model", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
-	receipt, _, err := gemini.ExtractRun(t.Context(), Document{MIMEType: "image/jpeg", Data: []byte("synthetic image bytes")}, nil, GeminiRequestOptions{})
+	gemini := Gemini{APIKey: testGeminiAPIKey, Model: "test-model", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
+	receipt, _, err := gemini.ExtractRun(t.Context(), Document{MIMEType: mimeTypeJPEG, Data: []byte("synthetic image bytes")}, nil, GeminiRequestOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

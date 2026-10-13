@@ -19,6 +19,7 @@ import (
 )
 
 func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -44,7 +45,7 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
 
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: displayName})
@@ -58,12 +59,12 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
 
 	mutation := &mutationResolver{Resolver: resolver.Resolver}
 	concepts := make(map[string]*model.ProductConcept, 3)
-	for _, name := range []string{"Apple", "Miso", "Tea"} {
+	for _, name := range []string{testAppleProductName, testMisoProductName, testTeaProductName} {
 		concept, err := mutation.createProductConcept(ctx, model.CreateProductConceptInput{HouseholdID: household.ID, Name: name})
 		if err != nil {
 			t.Fatal(err)
@@ -71,21 +72,21 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 		concepts[name] = concept
 	}
 	variants := make(map[string]*model.ProductVariant, 4)
-	for conceptName, variantName := range map[string]string{"Apple": "Apple Fuji", "Miso": "Miso Red", "Tea": "Tea Green"} {
+	for conceptName, variantName := range map[string]string{testAppleProductName: testAppleFujiVariantName, testMisoProductName: testMisoRedVariantName, testTeaProductName: testTeaGreenVariantName} {
 		variant, err := mutation.createProductVariant(ctx, model.CreateProductVariantInput{HouseholdID: household.ID, ConceptID: concepts[conceptName].ID, Name: variantName})
 		if err != nil {
 			t.Fatal(err)
 		}
 		variants[variantName] = variant
 	}
-	for _, variantName := range []string{"Apple Fuji", "Miso Red", "Tea Green"} {
+	for _, variantName := range []string{testAppleFujiVariantName, testMisoRedVariantName, testTeaGreenVariantName} {
 		aliasName := variantName + " alias"
 		merchant := "catalog-shop"
 		if _, err := mutation.setProductAlias(ctx, model.SetProductAliasInput{HouseholdID: household.ID, VariantID: variants[variantName].ID, Merchant: merchant, Alias: aliasName}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	appleVariant, err := mutation.createProductVariant(ctx, model.CreateProductVariantInput{HouseholdID: household.ID, ConceptID: concepts["Apple"].ID, Name: "Apple Gala"})
+	appleVariant, err := mutation.createProductVariant(ctx, model.CreateProductVariantInput{HouseholdID: household.ID, ConceptID: concepts[testAppleProductName].ID, Name: "Apple Gala"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,13 +101,13 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 	if len(firstPage.Edges) != 2 || !firstPage.PageInfo.HasNextPage || firstPage.PageInfo.HasPreviousPage || firstPage.PageInfo.EndCursor == nil {
 		t.Fatalf("first page has invalid pagination metadata: %#v", firstPage.PageInfo)
 	}
-	if firstPage.Edges[0].Node.Name != "Apple" || firstPage.Edges[1].Node.Name != "Miso" {
+	if firstPage.Edges[0].Node.Name != testAppleProductName || firstPage.Edges[1].Node.Name != testMisoProductName {
 		t.Fatalf("first page is not in stable name order: %#v", firstPage.Edges)
 	}
 	if len(firstPage.Edges[0].Node.Variants) != 2 || len(firstPage.Edges[1].Node.Variants) != 1 {
 		t.Fatalf("variants crossed concept boundaries: Apple=%#v Miso=%#v", firstPage.Edges[0].Node.Variants, firstPage.Edges[1].Node.Variants)
 	}
-	if firstPage.Edges[0].Node.Variants[0].Name != "Apple Fuji" || firstPage.Edges[0].Node.Variants[1].Name != "Apple Gala" || firstPage.Edges[1].Node.Variants[0].Name != "Miso Red" {
+	if firstPage.Edges[0].Node.Variants[0].Name != testAppleFujiVariantName || firstPage.Edges[0].Node.Variants[1].Name != "Apple Gala" || firstPage.Edges[1].Node.Variants[0].Name != testMisoRedVariantName {
 		t.Fatalf("variants are not associated and ordered by concept: Apple=%#v Miso=%#v", firstPage.Edges[0].Node.Variants, firstPage.Edges[1].Node.Variants)
 	}
 	if len(firstPage.Edges[0].Node.Variants[0].Aliases) != 1 || firstPage.Edges[0].Node.Variants[0].Aliases[0].Alias != "Apple Fuji alias" || len(firstPage.Edges[0].Node.Variants[1].Aliases) != 1 || firstPage.Edges[0].Node.Variants[1].Aliases[0].Alias != "Apple Gala alias" || len(firstPage.Edges[1].Node.Variants[0].Aliases) != 1 || firstPage.Edges[1].Node.Variants[0].Aliases[0].Alias != "Miso Red alias" {
@@ -117,10 +118,10 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(secondPage.Edges) != 1 || secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage || secondPage.Edges[0].Node.Name != "Tea" {
+	if len(secondPage.Edges) != 1 || secondPage.PageInfo.HasNextPage || !secondPage.PageInfo.HasPreviousPage || secondPage.Edges[0].Node.Name != testTeaProductName {
 		t.Fatalf("second page does not continue after the cursor: page=%#v info=%#v", secondPage.Edges, secondPage.PageInfo)
 	}
-	if len(secondPage.Edges[0].Node.Variants) != 1 || secondPage.Edges[0].Node.Variants[0].Name != "Tea Green" || len(secondPage.Edges[0].Node.Variants[0].Aliases) != 1 || secondPage.Edges[0].Node.Variants[0].Aliases[0].Alias != "Tea Green alias" {
+	if len(secondPage.Edges[0].Node.Variants) != 1 || secondPage.Edges[0].Node.Variants[0].Name != testTeaGreenVariantName || len(secondPage.Edges[0].Node.Variants[0].Aliases) != 1 || secondPage.Edges[0].Node.Variants[0].Aliases[0].Alias != "Tea Green alias" {
 		t.Fatalf("second-page variant or alias was not associated with Tea: %#v", secondPage.Edges[0].Node.Variants)
 	}
 
@@ -128,7 +129,7 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lastPage.Edges) != 2 || lastPage.Edges[0].Node.Name != "Miso" || lastPage.Edges[1].Node.Name != "Tea" || !lastPage.PageInfo.HasPreviousPage || lastPage.PageInfo.HasNextPage {
+	if len(lastPage.Edges) != 2 || lastPage.Edges[0].Node.Name != testMisoProductName || lastPage.Edges[1].Node.Name != testTeaProductName || !lastPage.PageInfo.HasPreviousPage || lastPage.PageInfo.HasNextPage {
 		t.Fatalf("last page has invalid ordering or pagination metadata: page=%#v info=%#v", lastPage.Edges, lastPage.PageInfo)
 	}
 
@@ -136,7 +137,7 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(beforeSecondPage.Edges) != 2 || beforeSecondPage.Edges[0].Node.Name != "Apple" || beforeSecondPage.Edges[1].Node.Name != "Miso" || beforeSecondPage.PageInfo.HasPreviousPage || !beforeSecondPage.PageInfo.HasNextPage {
+	if len(beforeSecondPage.Edges) != 2 || beforeSecondPage.Edges[0].Node.Name != testAppleProductName || beforeSecondPage.Edges[1].Node.Name != testMisoProductName || beforeSecondPage.PageInfo.HasPreviousPage || !beforeSecondPage.PageInfo.HasNextPage {
 		t.Fatalf("page before cursor has invalid ordering or pagination metadata: page=%#v info=%#v", beforeSecondPage.Edges, beforeSecondPage.PageInfo)
 	}
 
@@ -162,16 +163,16 @@ func TestProductCatalogAndSuggestionsPreserveExpectedOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	exactName := "milk"
+	exactName := testMilkName
 	variantSetters = append(variantSetters, &models.ProductVariantSetter{ID: &exactID, Name: &exactName, NormalizedName: &exactName})
 	if err := suggestionConceptRow.InsertProductVariants(ctx, bobpgx.NewPool(db), variantSetters...); err != nil {
 		t.Fatal(err)
 	}
-	suggestions, err := resolver.productSuggestions(ctx, household.ID, "milk", nil, nil)
+	suggestions, err := resolver.productSuggestions(ctx, household.ID, testMilkName, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(suggestions) == 0 || suggestions[0].Variant.Name != "milk" || suggestions[0].Score != 95 {
+	if len(suggestions) == 0 || suggestions[0].Variant.Name != testMilkName || suggestions[0].Score != 95 {
 		t.Fatalf("exact product match was omitted behind partial matches: %#v", suggestions)
 	}
 }

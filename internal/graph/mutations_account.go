@@ -65,7 +65,7 @@ func (r *mutationResolver) createAccount(ctx context.Context, input model.Create
 	}
 	if openingBalance > 0 {
 		journalID := generatedUUID(newID())
-		sourceKind, idempotencyKey := "ACCOUNT_OPENING_BALANCE", "account-opening:"+idUUID.String()
+		sourceKind, idempotencyKey := sourceKindAccountOpeningBalance, "account-opening:"+idUUID.String()
 		createdBy := generatedUUID(user.MemberID)
 		if _, err := models.Journals.Insert(&models.JournalSetter{
 			ID: &journalID, HouseholdID: &householdUUID, SourceKind: &sourceKind, SourceID: &idUUID,
@@ -96,7 +96,7 @@ func (r *mutationResolver) createAccount(ctx context.Context, input model.Create
 			return nil, err
 		}
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "account.created", id, 1, []string{"name", "kind", "poolId"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "account.created", id, 1, []string{fieldName, fieldKind, fieldPoolID}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

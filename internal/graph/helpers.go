@@ -370,7 +370,7 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 			ID: purchase.ID.String(), HouseholdID: purchase.HouseholdID.String(),
 			OccurredAt: timeString(purchase.OccurredAt), Merchant: purchase.Merchant,
 			Origin: model.PurchaseOrigin(purchase.Origin), SourceKinds: make([]model.SourceKind, 0),
-			Revision: int(purchase.Revision), Status: model.PurchaseStatus(purchase.Status), Currency: "JPY",
+			Revision: int(purchase.Revision), Status: model.PurchaseStatus(purchase.Status), Currency: currencyJPY,
 			CreatedAt: timeString(purchase.CreatedAt), UpdatedAt: timeString(purchase.UpdatedAt),
 			Items: make([]*model.PurchaseItem, 0), PaymentAllocations: make([]*model.PurchasePayment, 0),
 			CorrectionsConnection: &model.PurchaseCorrectionConnection{
@@ -398,7 +398,7 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 		for _, storedItem := range purchase.R.PurchaseItems {
 			item := &model.PurchaseItem{
 				ID: storedItem.ID.String(), Name: storedItem.Name, AmountYen: graphLong(storedItem.AmountYen),
-				Revision: int(storedItem.Revision), Currency: "JPY", Allocations: make([]*model.PurchaseItemAllocation, 0), Tags: make([]*model.Tag, 0),
+				Revision: int(storedItem.Revision), Currency: currencyJPY, Allocations: make([]*model.PurchaseItemAllocation, 0), Tags: make([]*model.Tag, 0),
 			}
 			measure := purchaseItemMeasure{
 				quantityNumerator: storedItem.QuantityNumerator, quantityDenominator: storedItem.QuantityDenominator,
@@ -415,10 +415,7 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 					Basis:     &model.PurchaseQuantity{Numerator: strconv.FormatInt(measure.printedUnitPriceQuantityNumerator.V, 10), Denominator: strconv.FormatInt(measure.printedUnitPriceQuantityDenominator.V, 10), Unit: measure.printedUnitPriceUnit.V},
 				}
 			}
-			effectiveNumerator, effectiveDenominator, ok := effectiveUnitPrice(storedItem.AmountYen, measure)
-			if !ok {
-				return nil, fmt.Errorf("purchase item %s effective unit price exceeds int64", storedItem.ID)
-			}
+			effectiveNumerator, effectiveDenominator := effectiveUnitPrice(storedItem.AmountYen, measure)
 			if effectiveNumerator != nil && effectiveDenominator != nil {
 				item.EffectiveUnitPrice = &model.EffectiveUnitPrice{NumeratorYen: *effectiveNumerator, Denominator: *effectiveDenominator}
 			}
@@ -430,10 +427,11 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 				variantID := storedItem.ProductVariantID.V.String()
 				item.ProductVariantID = &variantID
 			}
-			total, ok = checkedAdd(total, storedItem.AmountYen)
+			nextTotal, ok := checkedAdd(total, storedItem.AmountYen)
 			if !ok {
 				return nil, fmt.Errorf("purchase %s total exceeds int64", purchase.ID)
 			}
+			total = nextTotal
 			for _, storedAllocation := range storedItem.R.ItemAllocations {
 				if storedAllocation.R.Pool == nil {
 					return nil, fmt.Errorf("item allocation for item %s has no pool", storedItem.ID)
@@ -499,7 +497,7 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 				}
 			}
 			loaded.CorrectionsConnection.Edges = append(loaded.CorrectionsConnection.Edges, &model.PurchaseCorrectionEdge{
-				Cursor: encodeCursor("PurchaseCorrection", correction.GetID()), Node: correction,
+				Cursor: encodeCursor(nodeTypePurchaseCorrection, correction.GetID()), Node: correction,
 			})
 		}
 		loaded.CorrectionsConnection.TotalCount = len(loaded.CorrectionsConnection.Edges)

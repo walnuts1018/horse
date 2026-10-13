@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"context"
 	"database/sql"
 	stdjson "encoding/json"
 	"errors"
@@ -34,13 +33,13 @@ func accountBalanceSourceType(source model.AccountBalanceSource) string {
 	case *model.AccountIncome:
 		return "AccountIncome"
 	case *model.AccountMovement:
-		return "AccountMovement"
+		return graphQLAccountMovementType
 	case *model.AccountOpeningBalance:
 		return "AccountOpeningBalance"
 	case *model.CorrectionLedgerEntry:
 		return "CorrectionLedgerEntry"
 	case *model.FundingLedgerEntry:
-		return "FundingLedgerEntry"
+		return graphQLFundingLedgerEntryType
 	case *model.Purchase:
 		return "Purchase"
 	case *model.PurchaseWideCorrection:
@@ -63,6 +62,7 @@ func accountBalanceSourceType(source model.AccountBalanceSource) string {
 }
 
 func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -85,8 +85,8 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		}
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(context.Background(), bobpgx.NewPool(db))
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(t.Context(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "integration:" + memberA, DisplayName: "A"})
 	apiResolver := &Resolver{DB: db}
@@ -97,7 +97,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	}
 	householdID := household.ID
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	householdUUID, _ := gofrsuuid.FromString(householdID)
 	memberBUUID, _ := gofrsuuid.FromString(memberB)
@@ -112,7 +112,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	paymentAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: householdID, Name: "Card", Kind: model.AccountKindCard, PoolID: &poolA.ID})
+	paymentAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: householdID, Name: testCardAccountName, Kind: model.AccountKindCard, PoolID: &poolA.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,14 +139,14 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, schedule := range []model.SetFundingScheduleInput{
-		{HouseholdID: householdID, MemberID: memberA, PoolID: poolA.ID, AmountYen: 6000, Cadence: "MONTHLY", StartsOn: "2026-01-01"},
-		{HouseholdID: householdID, MemberID: memberB, PoolID: poolB.ID, AmountYen: 4000, Cadence: "MONTHLY", StartsOn: "2026-01-01"},
+		{HouseholdID: householdID, MemberID: memberA, PoolID: poolA.ID, AmountYen: 6000, Cadence: testMonthlyCadence, StartsOn: "2026-01-01"},
+		{HouseholdID: householdID, MemberID: memberB, PoolID: poolB.ID, AmountYen: 4000, Cadence: testMonthlyCadence, StartsOn: "2026-01-01"},
 	} {
 		if _, err := resolver.setFundingSchedule(ctx, schedule); err != nil {
 			t.Fatal(err)
 		}
 	}
-	category, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: householdID, Name: "groceries"})
+	category, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: householdID, Name: testGroceriesCategoryName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("category allocation rule was not saved: rule=%#v error=%v", categoryRule, err)
 	}
 	storeRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, Target: &model.AllocationRuleTargetInput{Merchant: &storeRuleMerchant}, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 4}, {PoolID: poolB.ID, Weight: 1}}})
-	if err != nil || storeRule.Target.GetName() != "market" {
+	if err != nil || storeRule.Target.GetName() != testMarketName {
 		t.Fatalf("merchant allocation rule was not normalized: rule=%#v error=%v", storeRule, err)
 	}
 	productConcept, err := resolver.createProductConcept(ctx, model.CreateProductConceptInput{HouseholdID: householdID, Name: "Yogurt", CategoryID: &category.ID})
@@ -179,7 +179,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || productConceptRule.Target.GetName() != productConcept.Name {
 		t.Fatalf("product concept rule was not saved: rule=%#v error=%v", productConceptRule, err)
 	}
-	conceptPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:59:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 500, ProductVariantID: &productVariant.ID}}})
+	conceptPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:59:00Z", Merchant: testMarketName, Items: []*model.PurchaseItemInput{{Name: testYogurtProductName, AmountYen: 500, ProductVariantID: &productVariant.ID}}})
 	if err != nil || conceptPurchase.Items[0].CategoryID == nil || *conceptPurchase.Items[0].CategoryID != category.ID || conceptPurchase.Items[0].Allocations[0].AmountYen != 100 {
 		t.Fatalf("linked product should inherit its category and concept rule: purchase=%#v error=%v", conceptPurchase, err)
 	}
@@ -187,11 +187,11 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || productVariantRule.Target.GetName() != productVariant.Name {
 		t.Fatalf("product variant rule was not saved: rule=%#v error=%v", productVariantRule, err)
 	}
-	variantPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:58:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 600, ProductVariantID: &productVariant.ID}}})
+	variantPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:58:00Z", Merchant: testMarketName, Items: []*model.PurchaseItemInput{{Name: testYogurtProductName, AmountYen: 600, ProductVariantID: &productVariant.ID}}})
 	if err != nil || variantPurchase.Items[0].Allocations[0].AmountYen != 480 {
 		t.Fatalf("product variant rule should precede concept/category/merchant rules: purchase=%#v error=%v", variantPurchase, err)
 	}
-	correctedPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:57:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 350}}})
+	correctedPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:57:00Z", Merchant: testMarketName, Items: []*model.PurchaseItemInput{{Name: testYogurtProductName, AmountYen: 350}}})
 	if err != nil || correctedPurchase.Items[0].ProductVariantID != nil {
 		t.Fatalf("unmatched product should remain unnormalized until the user selects a candidate: purchase=%#v error=%v", correctedPurchase, err)
 	}
@@ -204,7 +204,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	}
 	market := " MARKET "
 	suggestions, err := apiResolver.Query().ProductSuggestions(ctx, householdID, "YOG-PB", &market, nil)
-	if err != nil || len(suggestions) == 0 || suggestions[0].Variant.ID != productVariant.ID || suggestions[0].MatchedName != "YOG-PB 400" {
+	if err != nil || len(suggestions) == 0 || suggestions[0].Variant.ID != productVariant.ID || suggestions[0].MatchedName != testYogurtProductName {
 		t.Fatalf("learned store alias was not suggested first: suggestions=%#v error=%v", suggestions, err)
 	}
 	canonicalName := "Plain yogurt 400g unsweetened"
@@ -257,7 +257,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("allocation rule backward pagination failed: rules=%#v error=%v", lastRules, err)
 	}
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
-		IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T12:00:00Z", Merchant: "market", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: paymentAccount.ID, AmountYen: 500}},
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T12:00:00Z", Merchant: testMarketName, PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: paymentAccount.ID, AmountYen: 500}},
 		Items: []*model.PurchaseItemInput{{Name: "yogurt", AmountYen: 500, CategoryID: &category.ID}},
 	})
 	if err != nil {
@@ -357,8 +357,8 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	jobVersion, jobStatus := int32(1), "succeeded"
 	verified := ingestion.Verification{
 		Receipt: ingestion.Receipt{Total: 250, Items: []ingestion.Item{
-			{Name: "milk", PrintedName: "milk original", PrintedAmount: 150, GrossAmount: 150, Region: &ingestion.Region{Page: 1, Top: 0.1, Left: 0.2, Bottom: 0.3, Right: 0.4}},
-			{Name: "bread", PrintedName: "bread original", PrintedAmount: 100, GrossAmount: 100},
+			{Name: testMilkName, PrintedName: "milk original", PrintedAmount: 150, GrossAmount: 150, Region: &ingestion.Region{Page: 1, Top: 0.1, Left: 0.2, Bottom: 0.3, Right: 0.4}},
+			{Name: testBreadName, PrintedName: "bread original", PrintedAmount: 100, GrossAmount: 100},
 		}},
 		Transform: [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}, TransformPage: 1, Balanced: true,
 	}
@@ -370,14 +370,14 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &jobUUID, HouseholdID: &householdUUID, SourceDocumentID: &documentUUID, Version: &jobVersion, Status: &jobStatus, Result: &jobResultValue}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	fromSource := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &documentID, OccurredAt: "2026-04-20T12:00:00Z", Merchant: "source", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: paymentAccount.ID, AmountYen: 250}}, Items: []*model.PurchaseItemInput{{Name: "milk", AmountYen: 150}, {Name: "bread", AmountYen: 100}}}
+	fromSource := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &documentID, OccurredAt: "2026-04-20T12:00:00Z", Merchant: "source", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: paymentAccount.ID, AmountYen: 250}}, Items: []*model.PurchaseItemInput{{Name: testMilkName, AmountYen: 150}, {Name: testBreadName, AmountYen: 100}}}
 	mismatchedSource := fromSource
 	mismatchedSource.Items = fromSource.Items[:1]
 	if _, err := resolver.createPurchase(ctx, mismatchedSource); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("receipt import should reject an unmatched item count, got %v", err)
 	}
 	wrongAmountSource := fromSource
-	wrongAmountSource.Items = []*model.PurchaseItemInput{{Name: "milk", AmountYen: 151}, {Name: "bread", AmountYen: 99}}
+	wrongAmountSource.Items = []*model.PurchaseItemInput{{Name: testMilkName, AmountYen: 151}, {Name: testBreadName, AmountYen: 99}}
 	if _, err := resolver.createPurchase(ctx, wrongAmountSource); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("receipt import should reject unverified item amounts, got %v", err)
 	}
@@ -587,7 +587,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || journalAccountID != paymentAccount.ID {
 		t.Fatalf("posted purchase payment account mismatch: account=%q error=%v", journalAccountID, err)
 	}
-	settlement, err := resolver.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: householdID, Period: "2026-04", ExpectedRevision: 0})
+	settlement, err := resolver.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: householdID, Period: testApril2026, ExpectedRevision: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -698,7 +698,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if byMember[memberB].ScheduledYen != 4000 || byMember[memberB].PaidYen != 0 || byMember[memberB].PriorBalanceYen != 12000 || byMember[memberB].MonthlyAdjustmentYen != 380 || byMember[memberB].AmountDueYen != 16380 {
 		t.Fatalf("member B missed payments were not carried through the prior open months: %#v", byMember[memberB])
 	}
-	spending, err := apiResolver.Query().MonthlyCategorySpending(ctx, householdID, "2026-04", "2026-04")
+	spending, err := apiResolver.Query().MonthlyCategorySpending(ctx, householdID, testApril2026, testApril2026)
 	if err != nil || len(spending) != 2 {
 		t.Fatalf("monthly category spending query failed: rows=%#v error=%v", spending, err)
 	}
@@ -708,11 +708,12 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 }
 
 func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	db, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
@@ -730,8 +731,8 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 		}
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(context.Background(), bobpgx.NewPool(db))
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(t.Context(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "settlement-integration:" + memberA, DisplayName: "A"})
 	apiResolver := &Resolver{DB: db}
@@ -741,7 +742,7 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	householdUUID, _ := gofrsuuid.FromString(household.ID)
 	memberBUUID, _ := gofrsuuid.FromString(memberB)
@@ -756,7 +757,7 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	shared, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Shared", Kind: model.PoolKindShared})
+	shared, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testSharedPoolName, Kind: model.PoolKindShared})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,7 +775,7 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 		t.Fatal(err)
 	}
 	purchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
-		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-04-10T12:00:00Z", Merchant: "market", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: sharedAccount.ID, AmountYen: 1000}},
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-04-10T12:00:00Z", Merchant: testMarketName, PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: sharedAccount.ID, AmountYen: 1000}},
 		Items: []*model.PurchaseItemInput{{Name: "shared-paid personal item", AmountYen: 1000, Allocations: []*model.AllocationInput{{PoolID: personalA.ID, Weight: 1}}}},
 	})
 	if err != nil {
@@ -787,7 +788,7 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: shared.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, sharedPolicy), ExpectedVersion: 2}); err != nil {
 		t.Fatal(err)
 	}
-	closed, err := mutation.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: "2026-04", ExpectedRevision: 0})
+	closed, err := mutation.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: testApril2026, ExpectedRevision: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -799,7 +800,7 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: shared.ID, Configuration: sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberA, Weight: 40}, {MemberID: memberB, Weight: 60}}, sharedPolicy), ExpectedVersion: 3}); err != nil {
 		t.Fatal(err)
 	}
-	reloadedClosed, err := apiResolver.Query().Settlement(ctx, household.ID, "2026-04")
+	reloadedClosed, err := apiResolver.Query().Settlement(ctx, household.ID, testApril2026)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -818,6 +819,7 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 }
 
 func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -832,7 +834,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	memberA, memberB := uuid.NewV7().String(), uuid.NewV7().String()
-	for id, name := range map[string]string{memberA: "Lender", memberB: "Borrower"} {
+	for id, name := range map[string]string{memberA: testLenderName, memberB: testBorrowerName} {
 		memberUUID, _ := gofrsuuid.FromString(id)
 		subject := "shared-repayment:" + id
 		if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &subject, DisplayName: &name}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
@@ -840,24 +842,24 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		}
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(context.Background(), bobpgx.NewPool(db))
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberA)))).Exec(t.Context(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberB)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
-	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "shared-repayment:" + memberA, DisplayName: "Lender"})
+	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "shared-repayment:" + memberA, DisplayName: testLenderName})
 	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
 	household, err := resolver.createHousehold(ctx, model.CreateHouseholdInput{Name: "shared repayment"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	householdUUID, _ := gofrsuuid.FromString(household.ID)
 	memberBUUID, _ := gofrsuuid.FromString(memberB)
 	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberBUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	sharedPool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Shared", Kind: model.PoolKindShared})
+	sharedPool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testSharedPoolName, Kind: model.PoolKindShared})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -868,11 +870,11 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	lenderPool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Lender", Kind: model.PoolKindPersonal})
+	lenderPool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testLenderName, Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
 	}
-	borrowerPool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Borrower", Kind: model.PoolKindPersonal})
+	borrowerPool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testBorrowerName, Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -984,7 +986,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(foreignMemberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(foreignMemberUUID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	foreignCtx := auth.WithPrincipal(ctx, auth.Principal{MemberID: foreignMemberID, Subject: foreignSubject})
 	foreignResolver := &mutationResolver{Resolver: &Resolver{DB: db}}
@@ -993,7 +995,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(foreignHousehold.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(foreignHousehold.ID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	loanNode, err = (&Resolver{DB: db}).Query().Node(foreignCtx, loanNodeID)
 	if err != nil || loanNode != nil {
@@ -1039,7 +1041,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if balancesByAccount[sharedAccount.ID] != 5000 || balancesByAccount[lenderAccount.ID] != 5000 || balancesByAccount[borrowerAccount.ID] != 5000 {
 		t.Fatalf("bank balances do not reflect opening balances, loan, funding, and repayment: %#v", balancesByAccount)
 	}
-	category, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: "groceries"})
+	category, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: testGroceriesCategoryName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1055,8 +1057,8 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
-		HouseholdID: household.ID, IdempotencyKey: uuid.NewV7().String(), OccurredAt: "2026-06-15T12:00:00Z", Merchant: "market", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: cardAccount.ID, AmountYen: 1000}},
-		Items: []*model.PurchaseItemInput{{Name: "groceries", AmountYen: 1000, CategoryID: &category.ID}},
+		HouseholdID: household.ID, IdempotencyKey: uuid.NewV7().String(), OccurredAt: "2026-06-15T12:00:00Z", Merchant: testMarketName, PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: cardAccount.ID, AmountYen: 1000}},
+		Items: []*model.PurchaseItemInput{{Name: testGroceriesCategoryName, AmountYen: 1000, CategoryID: &category.ID}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1093,7 +1095,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if analysis.OpeningBalanceYen != 5000 || analysis.ClosingBalanceYen != 4250 || len(analysis.Changes) != 4 {
 		t.Fatalf("shared account history did not include the prior-period baseline and every in-period movement: %#v", analysis)
 	}
-	wantTypes := []string{"FundingLedgerEntry", "RepaymentTransferLedgerEntry", "AccountMovement", "AccountIncome"}
+	wantTypes := []string{graphQLFundingLedgerEntryType, "RepaymentTransferLedgerEntry", graphQLAccountMovementType, "AccountIncome"}
 	for index, wantType := range wantTypes {
 		if sourceType := accountBalanceSourceType(analysis.Changes[index].Source); sourceType != wantType {
 			t.Fatalf("account history is not chronological or omitted a source type: got %#v want source types %v", analysis.Changes, wantTypes)
@@ -1103,7 +1105,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if borrowerHistory.OpeningBalanceYen != 5000 || borrowerHistory.ClosingBalanceYen != 5000 || len(borrowerHistory.Changes) != 2 || accountBalanceSourceType(borrowerHistory.Changes[0].Source) != "LoanTransferLedgerEntry" || borrowerHistory.Changes[0].ChangeYen != 5000 || accountBalanceSourceType(borrowerHistory.Changes[1].Source) != "FundingLedgerEntry" || borrowerHistory.Changes[1].ChangeYen != -5000 {
+	if borrowerHistory.OpeningBalanceYen != 5000 || borrowerHistory.ClosingBalanceYen != 5000 || len(borrowerHistory.Changes) != 2 || accountBalanceSourceType(borrowerHistory.Changes[0].Source) != "LoanTransferLedgerEntry" || borrowerHistory.Changes[0].ChangeYen != 5000 || accountBalanceSourceType(borrowerHistory.Changes[1].Source) != graphQLFundingLedgerEntryType || borrowerHistory.Changes[1].ChangeYen != -5000 {
 		t.Fatalf("borrower account history did not track loan proceeds and attributed funding outflow: %#v", borrowerHistory)
 	}
 	lenderHistory, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, "2026-06", "2026-06")
@@ -1113,7 +1115,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if lenderHistory.OpeningBalanceYen != 5000 || lenderHistory.ClosingBalanceYen != 5000 || len(lenderHistory.Changes) != 2 || accountBalanceSourceType(lenderHistory.Changes[0].Source) != "LoanTransferLedgerEntry" || lenderHistory.Changes[0].ChangeYen != -5000 || accountBalanceSourceType(lenderHistory.Changes[1].Source) != "RepaymentTransferLedgerEntry" || lenderHistory.Changes[1].ChangeYen != 5000 {
 		t.Fatalf("lender account history did not track outgoing loan and repayment receipt: %#v", lenderHistory)
 	}
-	beforeOpening, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, "2026-04", "2026-04")
+	beforeOpening, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, testApril2026, testApril2026)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1233,11 +1235,12 @@ func settlementData(t *testing.T, settlement model.SettlementVariant) *model.Set
 }
 
 func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	db, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
@@ -1253,7 +1256,7 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: "period-boundary:" + memberID, DisplayName: "JST"})
 	apiResolver := &Resolver{DB: db}
@@ -1263,20 +1266,20 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
-	pool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Personal", Kind: model.PoolKindPersonal})
+	pool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testPersonalPoolName, Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, Configuration: personalPoolFundingConfiguration(memberID), ExpectedVersion: 1}); err != nil {
 		t.Fatal(err)
 	}
-	account, err := mutation.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Card", Kind: model.AccountKindCard, PoolID: &pool.ID})
+	account, err := mutation.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: testCardAccountName, Kind: model.AccountKindCard, PoolID: &pool.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mutation.setFundingSchedule(ctx, model.SetFundingScheduleInput{HouseholdID: household.ID, MemberID: memberID, PoolID: pool.ID, AmountYen: 700, Cadence: "MONTHLY", StartsOn: "2026-10-01"}); err != nil {
+	if _, err := mutation.setFundingSchedule(ctx, model.SetFundingScheduleInput{HouseholdID: household.ID, MemberID: memberID, PoolID: pool.ID, AmountYen: 700, Cadence: testMonthlyCadence, StartsOn: "2026-10-01"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, occurredAt := range []string{"2026-09-30T23:59:59+09:00", "2026-10-01T00:00:00+09:00"} {
@@ -1288,7 +1291,7 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	spending, err := apiResolver.Query().MonthlyCategorySpending(ctx, household.ID, model.YearMonth("2026-09"), model.YearMonth("2026-10"))
+	spending, err := apiResolver.Query().MonthlyCategorySpending(ctx, household.ID, model.YearMonth("2026-09"), model.YearMonth(testOctober2026))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1296,7 +1299,7 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 	for _, item := range spending {
 		spendingByPeriod[string(item.Period)] += int64(item.AmountYen)
 	}
-	if spendingByPeriod["2026-09"] != 100 || spendingByPeriod["2026-10"] != 100 {
+	if spendingByPeriod["2026-09"] != 100 || spendingByPeriod[testOctober2026] != 100 {
 		t.Fatalf("monthly spending did not follow Japan time boundaries: %#v", spendingByPeriod)
 	}
 	closed, err := mutation.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: "2026-09", ExpectedRevision: 0})
@@ -1307,7 +1310,7 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 	if len(closedData.Lines) != 1 || closedData.Lines[0].ScheduledYen != 0 {
 		t.Fatalf("October schedule leaked into September close: %#v", closedData.Lines)
 	}
-	october, err := apiResolver.Query().Settlement(ctx, household.ID, "2026-10")
+	october, err := apiResolver.Query().Settlement(ctx, household.ID, testOctober2026)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1323,7 +1326,7 @@ func TestAccountingPeriodsUseJapanTimeBoundaries(t *testing.T) {
 	for _, row := range purchaseRows {
 		statuses = append(statuses, row.Status)
 	}
-	if len(statuses) != 2 || statuses[0] != "CLOSED" || statuses[1] != "POSTED" {
+	if len(statuses) != 2 || statuses[0] != "CLOSED" || statuses[1] != testPostedStatus {
 		t.Fatalf("period close crossed the Japan-time boundary: %#v", statuses)
 	}
 }

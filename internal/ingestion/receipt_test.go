@@ -6,6 +6,7 @@ import (
 )
 
 func TestDistribute(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		amount  int64
@@ -18,6 +19,7 @@ func TestDistribute(t *testing.T) {
 		{"乗算オーバーフロー防止", MaxAmount, []int64{MaxAmount, MaxAmount}, []int64{MaxAmount / 2, MaxAmount / 2}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := Distribute(tc.amount, tc.weights)
 			if err != nil || !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("got %v, %v; want %v", got, err, tc.want)
@@ -27,6 +29,7 @@ func TestDistribute(t *testing.T) {
 }
 
 func TestVerifyReceipt(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		receipt  Receipt
@@ -34,17 +37,18 @@ func TestVerifyReceipt(t *testing.T) {
 		balanced bool
 		amounts  []int64
 	}{
-		{"税率混在", Receipt{Currency: "JPY", Total: 328, Items: []Item{{PrintedName: "A", PrintedAmount: 100, PriceBasis: "TAX_EXCLUDED", TaxGroup: "reduced"}, {PrintedName: "B", PrintedAmount: 200, PriceBasis: "TAX_EXCLUDED", TaxGroup: "standard"}}, TaxGroups: []TaxGroup{{ID: "reduced", Numerator: 8, Denominator: 100, Rounding: "FLOOR"}, {ID: "standard", Numerator: 10, Denominator: 100, Rounding: "FLOOR"}}}, 328, true, []int64{108, 220}},
-		{"税額をグループで丸めて配賦", Receipt{Currency: "JPY", Total: 111, Items: []Item{{PrintedName: "A", PrintedAmount: 51, PriceBasis: "TAX_EXCLUDED", TaxGroup: "tax"}, {PrintedName: "B", PrintedAmount: 50, PriceBasis: "TAX_EXCLUDED", TaxGroup: "tax"}}, TaxGroups: []TaxGroup{{ID: "tax", Numerator: 10, Denominator: 100, Rounding: "FLOOR"}}}, 111, true, []int64{56, 55}},
-		{"ポイント払いは値引きではない", Receipt{Currency: "JPY", Total: 300, Items: []Item{{PrintedName: "A", PrintedAmount: 300, PriceBasis: "TAX_INCLUDED"}}, Payments: []Payment{{Method: "points", Amount: 100}, {Method: "card", Amount: 200}}}, 300, true, []int64{300}},
-		{"税込区分不明は合計一致でも要確認", Receipt{Currency: "JPY", Total: 100, Items: []Item{{PrintedName: "A", PrintedAmount: 100, PriceBasis: "UNKNOWN"}}}, 100, false, []int64{100}},
-		{"全体値引き", Receipt{Currency: "JPY", Total: 199, Discount: -1, Items: []Item{{PrintedName: "A", PrintedAmount: 100, PriceBasis: "TAX_INCLUDED"}, {PrintedName: "B", PrintedAmount: 100, PriceBasis: "TAX_INCLUDED"}}}, 199, true, []int64{99, 100}},
-		{"返金", Receipt{Currency: "JPY", Total: -108, Items: []Item{{PrintedName: "A", PrintedAmount: -100, PriceBasis: "TAX_EXCLUDED", TaxGroup: "tax"}}, TaxGroups: []TaxGroup{{ID: "tax", Numerator: 8, Denominator: 100, Rounding: "FLOOR"}}}, -108, true, []int64{-108}},
-		{"内税額の整合", Receipt{Currency: "JPY", Total: 108, Items: []Item{{PrintedName: "A", PrintedAmount: 108, PriceBasis: "TAX_INCLUDED", TaxGroup: "tax"}}, TaxGroups: []TaxGroup{{ID: "tax", Numerator: 8, Denominator: 100, Basis: "TAX_INCLUDED", Rounding: "FLOOR", PrintedTax: new(int64(8)), PrintedSubtotal: new(int64(108))}}}, 108, true, []int64{108}},
-		{"合計が一致しても内税額の矛盾を検出", Receipt{Currency: "JPY", Total: 108, Items: []Item{{PrintedName: "A", PrintedAmount: 108, PriceBasis: "TAX_INCLUDED", TaxGroup: "tax"}}, TaxGroups: []TaxGroup{{ID: "tax", Numerator: 8, Denominator: 100, Basis: "TAX_INCLUDED", Rounding: "FLOOR", PrintedTax: new(int64(10))}}}, 108, false, []int64{108}},
-		{"税率グループの区分矛盾", Receipt{Currency: "JPY", Total: 108, Items: []Item{{PrintedName: "A", PrintedAmount: 100, PriceBasis: "TAX_EXCLUDED", TaxGroup: "tax"}}, TaxGroups: []TaxGroup{{ID: "tax", Numerator: 8, Denominator: 100, Basis: "TAX_INCLUDED", Rounding: "FLOOR"}}}, 108, false, []int64{108}},
+		{"税率混在", Receipt{Currency: currencyJPY, Total: 328, Items: []Item{{PrintedName: "A", PrintedAmount: 100, PriceBasis: priceBasisTaxExcluded, TaxGroup: "reduced"}, {PrintedName: "B", PrintedAmount: 200, PriceBasis: priceBasisTaxExcluded, TaxGroup: geminiServiceTierStandard}}, TaxGroups: []TaxGroup{{ID: "reduced", Numerator: 8, Denominator: 100, Rounding: taxRoundingFloor}, {ID: geminiServiceTierStandard, Numerator: 10, Denominator: 100, Rounding: taxRoundingFloor}}}, 328, true, []int64{108, 220}},
+		{"税額をグループで丸めて配賦", Receipt{Currency: currencyJPY, Total: 111, Items: []Item{{PrintedName: "A", PrintedAmount: 51, PriceBasis: priceBasisTaxExcluded, TaxGroup: testTaxGroupID}, {PrintedName: "B", PrintedAmount: 50, PriceBasis: priceBasisTaxExcluded, TaxGroup: testTaxGroupID}}, TaxGroups: []TaxGroup{{ID: testTaxGroupID, Numerator: 10, Denominator: 100, Rounding: taxRoundingFloor}}}, 111, true, []int64{56, 55}},
+		{"ポイント払いは値引きではない", Receipt{Currency: currencyJPY, Total: 300, Items: []Item{{PrintedName: "A", PrintedAmount: 300, PriceBasis: priceBasisTaxIncluded}}, Payments: []Payment{{Method: "points", Amount: 100}, {Method: paymentMethodCard, Amount: 200}}}, 300, true, []int64{300}},
+		{"税込区分不明は合計一致でも要確認", Receipt{Currency: currencyJPY, Total: 100, Items: []Item{{PrintedName: "A", PrintedAmount: 100, PriceBasis: priceBasisUnknown}}}, 100, false, []int64{100}},
+		{"全体値引き", Receipt{Currency: currencyJPY, Total: 199, Discount: -1, Items: []Item{{PrintedName: "A", PrintedAmount: 100, PriceBasis: priceBasisTaxIncluded}, {PrintedName: "B", PrintedAmount: 100, PriceBasis: priceBasisTaxIncluded}}}, 199, true, []int64{99, 100}},
+		{"返金", Receipt{Currency: currencyJPY, Total: -108, Items: []Item{{PrintedName: "A", PrintedAmount: -100, PriceBasis: priceBasisTaxExcluded, TaxGroup: testTaxGroupID}}, TaxGroups: []TaxGroup{{ID: testTaxGroupID, Numerator: 8, Denominator: 100, Rounding: taxRoundingFloor}}}, -108, true, []int64{-108}},
+		{"内税額の整合", Receipt{Currency: currencyJPY, Total: 108, Items: []Item{{PrintedName: "A", PrintedAmount: 108, PriceBasis: priceBasisTaxIncluded, TaxGroup: testTaxGroupID}}, TaxGroups: []TaxGroup{{ID: testTaxGroupID, Numerator: 8, Denominator: 100, Basis: priceBasisTaxIncluded, Rounding: taxRoundingFloor, PrintedTax: new(int64(8)), PrintedSubtotal: new(int64(108))}}}, 108, true, []int64{108}},
+		{"合計が一致しても内税額の矛盾を検出", Receipt{Currency: currencyJPY, Total: 108, Items: []Item{{PrintedName: "A", PrintedAmount: 108, PriceBasis: priceBasisTaxIncluded, TaxGroup: testTaxGroupID}}, TaxGroups: []TaxGroup{{ID: testTaxGroupID, Numerator: 8, Denominator: 100, Basis: priceBasisTaxIncluded, Rounding: taxRoundingFloor, PrintedTax: new(int64(10))}}}, 108, false, []int64{108}},
+		{"税率グループの区分矛盾", Receipt{Currency: currencyJPY, Total: 108, Items: []Item{{PrintedName: "A", PrintedAmount: 100, PriceBasis: priceBasisTaxExcluded, TaxGroup: testTaxGroupID}}, TaxGroups: []TaxGroup{{ID: testTaxGroupID, Numerator: 8, Denominator: 100, Basis: priceBasisTaxIncluded, Rounding: taxRoundingFloor}}}, 108, false, []int64{108}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := Verify(tc.receipt)
 			if err != nil {
 				t.Fatal(err)
@@ -62,10 +66,11 @@ func TestVerifyReceipt(t *testing.T) {
 }
 
 func TestVerifyKeepsQuantityAndPrintedUnitPriceSeparate(t *testing.T) {
+	t.Parallel()
 	quantityNumerator, quantityDenominator := int64(2), int64(1)
 	printedPrice, printedBasisNumerator, printedBasisDenominator := int64(130), int64(1), int64(1)
-	verification, err := Verify(Receipt{Currency: "JPY", Total: 240, Items: []Item{{
-		PrintedName: "小麦粉", PrintedAmount: 240, PriceBasis: "TAX_INCLUDED",
+	verification, err := Verify(Receipt{Currency: currencyJPY, Total: 240, Items: []Item{{
+		PrintedName: testFlourName, PrintedAmount: 240, PriceBasis: priceBasisTaxIncluded,
 		QuantityNumerator: &quantityNumerator, QuantityDenominator: &quantityDenominator, QuantityUnit: "kg",
 		PrintedUnitPriceYen: &printedPrice, PrintedUnitPriceQuantityNumerator: &printedBasisNumerator,
 		PrintedUnitPriceQuantityDenominator: &printedBasisDenominator, PrintedUnitPriceUnit: "kg",
@@ -77,14 +82,14 @@ func TestVerifyKeepsQuantityAndPrintedUnitPriceSeparate(t *testing.T) {
 	if item.QuantityNumerator == nil || *item.QuantityNumerator != 2 || item.QuantityUnit != "kg" || item.GrossAmount != 240 || item.PrintedUnitPriceYen == nil || *item.PrintedUnitPriceYen != 130 {
 		t.Fatalf("verification changed or conflated observed quantity and printed price: %#v", item)
 	}
-	if _, err := Verify(Receipt{Currency: "JPY", Total: 240, Items: []Item{{
-		PrintedName: "小麦粉", PrintedAmount: 240, PriceBasis: "TAX_INCLUDED", QuantityNumerator: &quantityNumerator, QuantityUnit: "kg",
+	if _, err := Verify(Receipt{Currency: currencyJPY, Total: 240, Items: []Item{{
+		PrintedName: testFlourName, PrintedAmount: 240, PriceBasis: priceBasisTaxIncluded, QuantityNumerator: &quantityNumerator, QuantityUnit: "kg",
 	}}}); err == nil {
 		t.Fatal("partial quantity observation was accepted")
 	}
 	unreducedNumerator, unreducedDenominator := int64(2), int64(2)
-	if _, err := Verify(Receipt{Currency: "JPY", Total: 240, Items: []Item{{
-		PrintedName: "小麦粉", PrintedAmount: 240, PriceBasis: "TAX_INCLUDED", QuantityNumerator: &unreducedNumerator,
+	if _, err := Verify(Receipt{Currency: currencyJPY, Total: 240, Items: []Item{{
+		PrintedName: testFlourName, PrintedAmount: 240, PriceBasis: priceBasisTaxIncluded, QuantityNumerator: &unreducedNumerator,
 		QuantityDenominator: &unreducedDenominator, QuantityUnit: "kg",
 	}}}); err == nil {
 		t.Fatal("unreduced quantity rational was accepted")

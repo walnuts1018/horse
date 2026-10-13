@@ -37,6 +37,12 @@ type Config struct {
 	Queue          *ingestion.Queue
 }
 
+const (
+	graphErrorCodeJSONKey         = "code"
+	graphErrorCodeUnauthenticated = "UNAUTHENTICATED"
+	graphUnauthenticatedMessage   = "authentication required"
+)
+
 type DocumentStore interface {
 	Put(context.Context, string, string, []byte) (string, string, error)
 	Get(context.Context, string, string) (ingestion.Document, error)
@@ -85,7 +91,7 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	request := http.MaxBytesReader(w, r.Body, 2<<20)
@@ -108,20 +114,20 @@ func (s *Server) newGraphQLHandler() *handler.Server {
 	executor.SetErrorPresenter(func(ctx context.Context, err error) *gqlerror.Error {
 		presented := graphql.DefaultErrorPresenter(ctx, err)
 		if errors.Is(err, graph.ErrConflict) {
-			presented.Extensions = map[string]any{"code": "CONFLICT"}
+			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "CONFLICT"}
 			presented.Message = "the resource changed since it was loaded"
 		} else if errors.Is(err, graph.ErrNotFound) {
-			presented.Extensions = map[string]any{"code": "NOT_FOUND"}
+			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "NOT_FOUND"}
 			presented.Message = "resource not found"
 		} else if errors.Is(err, auth.ErrUnauthenticated) {
-			presented.Extensions = map[string]any{"code": "UNAUTHENTICATED"}
+			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "UNAUTHENTICATED"}
 			presented.Message = "authentication required"
 		} else if errors.Is(err, graph.ErrBadInput) {
-			presented.Extensions = map[string]any{"code": "BAD_USER_INPUT"}
+			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "BAD_USER_INPUT"}
 			presented.Message = "invalid input"
 		} else {
 			s.logGraphQLResolverFailure(ctx, err)
-			presented.Extensions = map[string]any{"code": "INTERNAL_SERVER_ERROR"}
+			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "INTERNAL_SERVER_ERROR"}
 			presented.Message = "internal server error"
 		}
 		return presented
@@ -340,12 +346,12 @@ func (s *Server) sameOrigin(w http.ResponseWriter, r *http.Request) bool {
 
 func (s *Server) recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
+		defer func(ctx context.Context) {
 			if recovered := recover(); recovered != nil {
-				s.logger.ErrorContext(r.Context(), "HTTP handler panic", "panic", fmt.Sprint(recovered))
+				s.logger.ErrorContext(ctx, "HTTP handler panic", "panic", fmt.Sprint(recovered))
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 			}
-		}()
+		}(r.Context())
 		next.ServeHTTP(w, r)
 	})
 }
@@ -358,8 +364,8 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 	})
 }
 
-func writeGraphError(w http.ResponseWriter, status int, code, message string) {
+func writeUnauthenticatedGraphError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.MarshalWrite(w, map[string]any{"errors": []map[string]any{{"message": message, "extensions": map[string]string{"code": code}}}})
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.MarshalWrite(w, map[string]any{"errors": []map[string]any{{"message": graphUnauthenticatedMessage, "extensions": map[string]string{graphErrorCodeJSONKey: graphErrorCodeUnauthenticated}}}})
 }

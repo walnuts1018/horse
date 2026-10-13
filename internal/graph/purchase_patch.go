@@ -29,21 +29,21 @@ func purchasePatchChangedFieldKeys(patch *model.PurchasePatch) ([]string, error)
 		if patch.OccurredAt.Value() == nil {
 			return nil, fmt.Errorf("%w: occurredAt cannot be null", ErrBadInput)
 		}
-		fields = append(fields, "occurredAt")
+		fields = append(fields, fieldOccurredAt)
 	}
 	if patch.Merchant.IsSet() {
 		if patch.Merchant.Value() == nil {
 			return nil, fmt.Errorf("%w: merchant cannot be null", ErrBadInput)
 		}
-		fields = append(fields, "merchant")
+		fields = append(fields, fieldMerchant)
 	}
 	if patch.PaymentAllocations.IsSet() {
 		if patch.PaymentAllocations.Value() == nil {
 			return nil, fmt.Errorf("%w: paymentAllocations cannot be null", ErrBadInput)
 		}
-		fields = append(fields, "paymentAllocations")
+		fields = append(fields, fieldPaymentAllocations)
 	}
-	if err := validateChangedFields(fields, "occurredAt", "merchant", "paymentAllocations"); err != nil {
+	if err := validateChangedFields(fields, fieldOccurredAt, fieldMerchant, fieldPaymentAllocations); err != nil {
 		return nil, err
 	}
 	return fields, nil
@@ -62,33 +62,33 @@ func purchaseItemChangedFieldKeys(input model.UpdatePurchaseItemInput) ([]string
 		if input.Name.Value() == nil {
 			return nil, fmt.Errorf("%w: name cannot be null", ErrBadInput)
 		}
-		fields = append(fields, "name")
+		fields = append(fields, fieldName)
 	}
 	if input.AmountYen.IsSet() {
 		if input.AmountYen.Value() == nil {
 			return nil, fmt.Errorf("%w: amountYen cannot be null", ErrBadInput)
 		}
-		fields = append(fields, "amountYen")
+		fields = append(fields, fieldAmountYen)
 	}
 	if input.Quantity.IsSet() {
-		fields = append(fields, "quantity")
+		fields = append(fields, fieldQuantity)
 	}
 	if input.PrintedUnitPrice.IsSet() {
-		fields = append(fields, "printedUnitPrice")
+		fields = append(fields, fieldPrintedUnitPrice)
 	}
 	if input.CategoryID.IsSet() {
-		fields = append(fields, "categoryId")
+		fields = append(fields, fieldCategoryID)
 	}
 	if input.ProductVariantID.IsSet() {
-		fields = append(fields, "productVariantId")
+		fields = append(fields, fieldProductVariantID)
 	}
 	if input.Allocations.IsSet() {
 		if input.Allocations.Value() == nil {
 			return nil, fmt.Errorf("%w: allocations cannot be null", ErrBadInput)
 		}
-		fields = append(fields, "allocations")
+		fields = append(fields, fieldAllocations)
 	}
-	if err := validateChangedFields(fields, "name", "amountYen", "quantity", "printedUnitPrice", "categoryId", "productVariantId", "allocations"); err != nil {
+	if err := validateChangedFields(fields, fieldName, fieldAmountYen, fieldQuantity, fieldPrintedUnitPrice, fieldCategoryID, fieldProductVariantID, fieldAllocations); err != nil {
 		return nil, err
 	}
 	return fields, nil
@@ -99,24 +99,24 @@ func bulkPurchaseItemChangedFieldKeys(patch *model.BulkPurchaseItemPatch) ([]str
 	}
 	var fields []string
 	if patch.CategoryID.IsSet() {
-		fields = append(fields, "categoryId")
+		fields = append(fields, fieldCategoryID)
 	}
 	if patch.ProductVariantID.IsSet() {
-		fields = append(fields, "productVariantId")
+		fields = append(fields, fieldProductVariantID)
 	}
 	if patch.Allocations.IsSet() {
 		if patch.Allocations.Value() == nil {
 			return nil, fmt.Errorf("%w: allocations cannot be null", ErrBadInput)
 		}
-		fields = append(fields, "allocations")
+		fields = append(fields, fieldAllocations)
 	}
 	if patch.TagIds.IsSet() {
 		if patch.TagIds.Value() == nil {
 			return nil, fmt.Errorf("%w: tagIds cannot be null", ErrBadInput)
 		}
-		fields = append(fields, "tags")
+		fields = append(fields, fieldTags)
 	}
-	if err := validateChangedFields(fields, "categoryId", "productVariantId", "allocations", "tags"); err != nil {
+	if err := validateChangedFields(fields, fieldCategoryID, fieldProductVariantID, fieldAllocations, fieldTags); err != nil {
 		return nil, err
 	}
 	return fields, nil

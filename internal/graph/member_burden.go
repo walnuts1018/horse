@@ -55,7 +55,7 @@ func refreshPurchaseMemberBurden(ctx context.Context, executor bob.Executor, hou
 			}
 			weights = rule.weights
 			versionsByAllocation[key] = rule.version
-			sourcesByAllocation[key] = "POSTED"
+			sourcesByAllocation[key] = statusPosted
 		}
 		parts, err := domain.Allocate(allocation.AmountYen, weights)
 		if err != nil {

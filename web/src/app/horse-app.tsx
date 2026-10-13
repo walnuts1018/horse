@@ -95,8 +95,14 @@ export function App() {
   useEffect(() => {
     const root = document.documentElement;
     if (!mobileMenu) return;
+    const scrollY = window.scrollY;
+    root.style.setProperty("--mobile-drawer-scroll-top", `${-scrollY}px`);
     root.classList.add("mobile-drawer-open");
-    return () => root.classList.remove("mobile-drawer-open");
+    return () => {
+      root.classList.remove("mobile-drawer-open");
+      root.style.removeProperty("--mobile-drawer-scroll-top");
+      window.scrollTo(0, scrollY);
+    };
   }, [mobileMenu]);
 
   useBlocker({

@@ -84,7 +84,7 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 	if input.BaseRevision > int(purchase.Revision) {
 		return nil, ErrConflict
 	}
-	if err := validateChangedFields(changedFields, "occurredAt", "merchant", "paymentAllocations"); err != nil {
+	if err := validateChangedFields(changedFields, fieldOccurredAt, fieldMerchant, fieldPaymentAllocations); err != nil {
 		return nil, err
 	}
 	conflict, err := valuesConflict(purchase.FieldRevisions.Val, input.BaseRevision, changedFields)
@@ -99,20 +99,20 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 	if err != nil {
 		return nil, err
 	}
-	updatePayments := slices.Contains(changedFields, "paymentAllocations")
+	updatePayments := slices.Contains(changedFields, fieldPaymentAllocations)
 	paymentAccountID := purchase.PaymentAccountID
 	if updatePayments {
 		paymentAccountID = sql.Null[gofrsuuid.UUID]{}
 	}
 	if input.Patch != nil {
-		if slices.Contains(changedFields, "occurredAt") {
+		if slices.Contains(changedFields, fieldOccurredAt) {
 			occurredAt, err := parseTime(*input.Patch.OccurredAt.Value())
 			if err != nil {
 				return nil, err
 			}
 			purchase.OccurredAt = occurredAt
 		}
-		if slices.Contains(changedFields, "merchant") {
+		if slices.Contains(changedFields, fieldMerchant) {
 			value := strings.TrimSpace(*input.Patch.Merchant.Value())
 			if len(value) > 240 {
 				return nil, fmt.Errorf("%w: merchant name is too long", ErrBadInput)

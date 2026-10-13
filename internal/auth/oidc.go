@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"uuid"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,7 +25,6 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 	"golang.org/x/oauth2"
-	"uuid"
 )
 
 var ErrUnauthenticated = errors.New("unauthenticated")

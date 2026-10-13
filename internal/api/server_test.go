@@ -14,6 +14,7 @@ import (
 )
 
 func TestLogGraphQLResolverFailureIncludesSafePostgresMetadata(t *testing.T) {
+	t.Parallel()
 	var output bytes.Buffer
 	server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
 	field := &graphql.FieldContext{Field: graphql.CollectedField{Field: &ast.Field{Name: "postPurchase", Alias: "clientChosenAlias"}}}
@@ -60,6 +61,7 @@ func TestLogGraphQLResolverFailureIncludesSafePostgresMetadata(t *testing.T) {
 }
 
 func TestLogGraphQLResolverFailureSkipsErrorsWithoutFieldPath(t *testing.T) {
+	t.Parallel()
 	var output bytes.Buffer
 	server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
 	server.logGraphQLResolverFailure(t.Context(), errors.New("private resolver error"))

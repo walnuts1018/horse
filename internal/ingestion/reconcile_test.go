@@ -6,6 +6,7 @@ import (
 )
 
 func TestStatementObservationsKeepIndependentReferences(t *testing.T) {
+	t.Parallel()
 	result := Verification{Statements: []StatementEntry{
 		{Row: 2, TransactionID: "card-1", Merchant: "店舗", Amount: 100, OccurredAt: "2026-10-12T00:00:00+09:00"},
 		{Row: 3, Merchant: "店舗", Amount: 100, OccurredAt: "2026-10-12T00:00:00+09:00"},
@@ -24,6 +25,7 @@ func TestStatementObservationsKeepIndependentReferences(t *testing.T) {
 }
 
 func TestReconcile(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {
 		name          string
@@ -31,12 +33,13 @@ func TestReconcile(t *testing.T) {
 		state         string
 	}{
 		{"同原本", Observation{Hash: "abc"}, Observation{Hash: "abc"}, "DUPLICATE"},
-		{"分割発送", Observation{OrderID: "order", Amount: 100}, Observation{OrderID: "order", Amount: 200}, "POSSIBLE"},
-		{"同額でも別購入を確定統合しない", Observation{Merchant: "店", Amount: 100, OccurredAt: now}, Observation{Merchant: "店", Amount: 100, OccurredAt: now}, "POSSIBLE"},
-		{"銀行明細とカード利用を直接照合しない", Observation{Merchant: "店", Amount: 100, OccurredAt: now, SourceKind: "bank", TransactionKind: "PURCHASE_PAYMENT"}, Observation{Merchant: "店", Amount: 100, OccurredAt: now, SourceKind: "card", TransactionKind: "CARD_PURCHASE"}, ""},
+		{"分割発送", Observation{OrderID: "order", Amount: 100}, Observation{OrderID: "order", Amount: 200}, statementMatchPossible},
+		{"同額でも別購入を確定統合しない", Observation{Merchant: "店", Amount: 100, OccurredAt: now}, Observation{Merchant: "店", Amount: 100, OccurredAt: now}, statementMatchPossible},
+		{"銀行明細とカード利用を直接照合しない", Observation{Merchant: "店", Amount: 100, OccurredAt: now, SourceKind: statementSourceBank, TransactionKind: statementKindPayment}, Observation{Merchant: "店", Amount: 100, OccurredAt: now, SourceKind: statementSourceCard, TransactionKind: statementKindCardPurchase}, ""},
 		{"取引番号の金額相違", Observation{Merchant: "店", TransactionID: "tx", Amount: 100}, Observation{Merchant: "店", TransactionID: "tx", Amount: 200}, "CONFLICT"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := Reconcile(tc.incoming, []Observation{tc.old})
 			if tc.state == "" {
 				if len(got) != 0 {
@@ -52,14 +55,16 @@ func TestReconcile(t *testing.T) {
 }
 
 func TestReconcileBankTransactionsOnlyAgainstReceipts(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
-	receipt := Observation{DocumentID: "receipt", SourceKind: "receipt", TransactionKind: "RECEIPT_PURCHASE", Merchant: "スーパー", Amount: 1000, OccurredAt: now}
-	for _, kind := range []string{"PURCHASE_PAYMENT", "CARD_BILL_PAYMENT", "ACCOUNT_TRANSFER", "REFUND", "UNCLASSIFIED"} {
+	receipt := Observation{DocumentID: "receipt", SourceKind: "receipt", TransactionKind: statementKindReceipt, Merchant: "スーパー", Amount: 1000, OccurredAt: now}
+	for _, kind := range []string{statementKindPayment, "CARD_BILL_PAYMENT", "ACCOUNT_TRANSFER", "REFUND", "UNCLASSIFIED"} {
 		t.Run(kind, func(t *testing.T) {
-			bank := Observation{DocumentID: "statement", SourceKind: "bank", TransactionKind: kind, Merchant: "スーパー", Amount: 1000, OccurredAt: now}
+			t.Parallel()
+			bank := Observation{DocumentID: "statement", SourceKind: statementSourceBank, TransactionKind: kind, Merchant: "スーパー", Amount: 1000, OccurredAt: now}
 			got := Reconcile(bank, []Observation{receipt})
-			if kind == "PURCHASE_PAYMENT" {
-				if len(got) != 1 || got[0].State != "POSSIBLE" {
+			if kind == statementKindPayment {
+				if len(got) != 1 || got[0].State != statementMatchPossible {
 					t.Fatalf("purchase payment was not retained as a receipt candidate: %#v", got)
 				}
 				return

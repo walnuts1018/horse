@@ -33,6 +33,7 @@ func (s testDocumentStore) Get(_ context.Context, key, _ string) (Document, erro
 }
 
 func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeepsJobsQueued(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -63,8 +64,8 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), executor)
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), executor)
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(t.Context(), executor)
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(t.Context(), executor)
 	}()
 
 	store := testDocumentStore{}
@@ -79,7 +80,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		}).Exec(ctx, executor); err != nil {
 			t.Fatal(err)
 		}
-		status := "queued"
+		status := extractionStatusQueued
 		attemptValue, err := postgresInt32(attempt, "extraction attempt")
 		if err != nil {
 			t.Fatal(err)
@@ -108,8 +109,8 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	}))
 	defer paid.Close()
 
-	spendCapJob := insertJob("receipt", "application/pdf", "spend-cap-document", 9, 4)
-	store["spend-cap-document"] = Document{MIMEType: "application/pdf", Data: []byte("test source")}
+	spendCapJob := insertJob("receipt", mimeTypePDF, "spend-cap-document", 9, 4)
+	store["spend-cap-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("test source")}
 	worker := Worker{
 		DB: db, Store: store, GeminiEnabled: true,
 		Router: GeminiRouter{
@@ -129,7 +130,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		status, errorCode := spendCap.Status, spendCap.ErrorCode.V
 		attempt, failureCount := int(spendCap.Attempt), int(spendCap.FailureCount)
 		availableInSeconds := time.Until(spendCap.AvailableAt).Seconds()
-		if status != "queued" || errorCode != "spend_cap_reached" || attempt != expectedAttempt || failureCount != 4 || availableInSeconds < 30*60 {
+		if status != extractionStatusQueued || errorCode != geminiFailureSpendCap || attempt != expectedAttempt || failureCount != 4 || availableInSeconds < 30*60 {
 			t.Fatalf("spend cap must keep the source queued without consuming ordinary failures: status=%q error=%q attempt=%d failures=%d availableIn=%.0fs", status, errorCode, attempt, failureCount, availableInSeconds)
 		}
 		if expectedAttempt < 11 {
@@ -142,7 +143,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		t.Fatal(err)
 	}
 	held, err := loadTestJob(ctx, executor, spendCapJob)
-	if err != nil || held.Status != "queued" {
+	if err != nil || held.Status != extractionStatusQueued {
 		t.Fatalf("exhaustion recovery must not fail a queued spend-cap job: status=%q error=%v", held.Status, err)
 	}
 
@@ -151,8 +152,8 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		_, _ = io.WriteString(w, `{"error":{"status":"UNAVAILABLE"}}`)
 	}))
 	defer temporary.Close()
-	ordinaryFailureJob := insertJob("receipt", "application/pdf", "temporary-error-document", 0, 0)
-	store["temporary-error-document"] = Document{MIMEType: "application/pdf", Data: []byte("test source")}
+	ordinaryFailureJob := insertJob("receipt", mimeTypePDF, "temporary-error-document", 0, 0)
+	store["temporary-error-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("test source")}
 	ordinaryFailureWorker := Worker{DB: db, Store: store, GeminiEnabled: true, Router: GeminiRouter{
 		Free: Gemini{APIKey: "test-free", Endpoint: temporary.URL + "/v1beta/", HTTPClient: temporary.Client()},
 		Paid: Gemini{APIKey: "test-paid", Endpoint: temporary.URL + "/v1beta/", HTTPClient: temporary.Client()},
@@ -167,9 +168,9 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 			t.Fatal(err)
 		}
 		status, gotAttempt, failureCount := failedJob.Status, int(failedJob.Attempt), int(failedJob.FailureCount)
-		wantStatus := "queued"
+		wantStatus := extractionStatusQueued
 		if attempt == 5 {
-			wantStatus = "failed"
+			wantStatus = extractionStatusFailed
 		}
 		if status != wantStatus || gotAttempt != attempt || failureCount != attempt {
 			t.Fatalf("ordinary failures must consume the separate retry budget: status=%q attempt=%d failures=%d want=%q/%d", status, gotAttempt, failureCount, wantStatus, attempt)
@@ -181,8 +182,8 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		}
 	}
 
-	pausedJob := insertJob("receipt", "application/pdf", "paused-document", 0, 0)
-	store["paused-document"] = Document{MIMEType: "application/pdf", Data: []byte("test source")}
+	pausedJob := insertJob("receipt", mimeTypePDF, "paused-document", 0, 0)
+	store["paused-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("test source")}
 	disabledWorker := Worker{DB: db, Store: store}
 	processed, err := disabledWorker.RunOne(ctx, pausedJob)
 	if err != nil || processed {
@@ -193,7 +194,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		t.Fatal(err)
 	}
 	pausedStatus, pausedAttempt, pausedFailures := paused.Status, int(paused.Attempt), int(paused.FailureCount)
-	if pausedStatus != "queued" || pausedAttempt != 0 || pausedFailures != 0 {
+	if pausedStatus != extractionStatusQueued || pausedAttempt != 0 || pausedFailures != 0 {
 		t.Fatalf("disabled job state changed: status=%q attempt=%d failures=%d", pausedStatus, pausedAttempt, pausedFailures)
 	}
 
@@ -211,7 +212,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	if err != nil {
 		t.Fatal(err)
 	}
-	if csv.Status != "succeeded" || csv.Attempt != 1 || !bytes.Contains(csvResult, []byte(`"transactionId":"tx-1"`)) {
+	if csv.Status != extractionStatusSucceeded || csv.Attempt != 1 || !bytes.Contains(csvResult, []byte(`"transactionId":"tx-1"`)) {
 		t.Fatalf("CSV import did not complete deterministically while Gemini was disabled: status=%q attempt=%d result=%s", csv.Status, csv.Attempt, csvResult)
 	}
 }

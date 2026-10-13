@@ -19,7 +19,7 @@ import (
 func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	documentID, err := gofrsuuid.FromString(r.PathValue("id"))

@@ -11,7 +11,6 @@ import (
 
 type nodeBatch struct {
 	resolver      *queryResolver
-	ctx           context.Context
 	households    []*model.Household
 	idsByKind     map[string][]uuid.UUID
 	indexesByKind map[string]map[uuid.UUID][]int
@@ -22,7 +21,7 @@ type nodeBatch struct {
 
 func (r *queryResolver) loadBatchNodesByDomain(ctx context.Context, households []*model.Household, idsByKind map[string][]uuid.UUID, indexesByKind map[string]map[uuid.UUID][]int) (map[int]model.Node, error) {
 	batch := &nodeBatch{
-		resolver: r, ctx: ctx, households: households, idsByKind: idsByKind, indexesByKind: indexesByKind,
+		resolver: r, households: households, idsByKind: idsByKind, indexesByKind: indexesByKind,
 		result: make(map[int]model.Node), executor: queryExecutor(r.DB), householdArgs: make([]bob.Expression, 0, len(households)),
 	}
 	for _, household := range households {
@@ -31,8 +30,8 @@ func (r *queryResolver) loadBatchNodesByDomain(ctx context.Context, households [
 	if len(batch.householdArgs) == 0 {
 		return batch.result, nil
 	}
-	for _, load := range []func() error{batch.loadPurchaseNodes, batch.loadFinancialNodes, batch.loadCatalogPlanningNodes} {
-		if err := load(); err != nil {
+	for _, load := range []func(context.Context) error{batch.loadPurchaseNodes, batch.loadFinancialNodes, batch.loadCatalogPlanningNodes} {
+		if err := load(ctx); err != nil {
 			return nil, err
 		}
 	}

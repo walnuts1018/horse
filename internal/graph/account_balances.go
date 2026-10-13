@@ -46,13 +46,13 @@ func accountBalances(ctx context.Context, db *pgxpool.Pool, householdID gofrsuui
 		),
 		sm.Where(psql.And(
 			models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-			models.Journals.Columns.SourceKind.EQ(psql.Arg("ACCOUNT_OPENING_BALANCE")),
+			models.Journals.Columns.SourceKind.EQ(psql.Arg(sourceKindAccountOpeningBalance)),
 			models.Journals.Columns.SourceID.EQ(models.Accounts.Columns.ID),
 		)),
 		sm.GroupBy(models.Journals.Columns.SourceID),
 	)
 	isOpeningEntry := psql.And(
-		models.Journals.Columns.SourceKind.EQ(psql.Arg("ACCOUNT_OPENING_BALANCE")),
+		models.Journals.Columns.SourceKind.EQ(psql.Arg(sourceKindAccountOpeningBalance)),
 		models.Journals.Columns.SourceID.EQ(models.Accounts.Columns.ID),
 	)
 	afterOpening := psql.Or(
@@ -98,7 +98,7 @@ func accountBalances(ctx context.Context, db *pgxpool.Pool, householdID gofrsuui
 		if !ok {
 			return nil, fmt.Errorf("%w: account balance exceeds int64", ErrBadInput)
 		}
-		result = append(result, &model.AccountBalance{AccountID: row.AccountID.String(), BalanceYen: graphLong(balance), Currency: "JPY"})
+		result = append(result, &model.AccountBalance{AccountID: row.AccountID.String(), BalanceYen: graphLong(balance), Currency: currencyJPY})
 	}
 	return result, nil
 }

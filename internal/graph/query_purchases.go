@@ -20,7 +20,7 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize, backward, err := pageDirection(after, before, first, last)
+	pageSize, backward, err := pageDirection(first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 	if err != nil {
 		return nil, err
 	}
-	if cursorID, err := cursorID(after, "Purchase"); err != nil {
+	if cursorID, err := cursorID(after, nodeTypePurchase); err != nil {
 		return nil, err
 	} else if cursorID != nil {
 		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
@@ -80,7 +80,7 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		}
 		filters = append(filters, psql.Or(models.Purchases.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.Purchases.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.Purchases.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
-	if cursorID, err := cursorID(before, "Purchase"); err != nil {
+	if cursorID, err := cursorID(before, nodeTypePurchase); err != nil {
 		return nil, err
 	} else if cursorID != nil {
 		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
@@ -127,11 +127,11 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 	}
 	for index, purchase := range loadedPurchases {
 		row := purchases[index]
-		connection.Edges = append(connection.Edges, &model.PurchaseEdge{Cursor: encodeCursor("Purchase", row.ID.String()), Node: purchase})
+		connection.Edges = append(connection.Edges, &model.PurchaseEdge{Cursor: encodeCursor(nodeTypePurchase, row.ID.String()), Node: purchase})
 	}
 	if len(purchases) > 0 {
-		start := encodeCursor("Purchase", purchases[0].ID.String())
-		end := encodeCursor("Purchase", purchases[len(purchases)-1].ID.String())
+		start := encodeCursor(nodeTypePurchase, purchases[0].ID.String())
+		end := encodeCursor(nodeTypePurchase, purchases[len(purchases)-1].ID.String())
 		connection.PageInfo.StartCursor = &start
 		connection.PageInfo.EndCursor = &end
 	}
@@ -161,12 +161,12 @@ func (r *queryResolver) purchaseCorrections(ctx context.Context, purchaseID stri
 }
 
 func paginatePurchaseCorrections(edges []*model.PurchaseCorrectionEdge, first *int, after *string) (*model.PurchaseCorrectionConnection, error) {
-	pageSize, _, err := pageDirection(after, nil, first, nil)
+	pageSize, _, err := pageDirection(first, nil)
 	if err != nil {
 		return nil, err
 	}
 	startIndex := 0
-	if cursor, err := cursorID(after, "PurchaseCorrection"); err != nil {
+	if cursor, err := cursorID(after, nodeTypePurchaseCorrection); err != nil {
 		return nil, err
 	} else if cursor != nil {
 		found := false

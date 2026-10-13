@@ -20,7 +20,7 @@ const maxPreviewPixels = 40_000_000
 func (s *Server) documentPreview(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	if s.cfg.Store == nil {
@@ -62,7 +62,7 @@ func (s *Server) documentPreview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
 	}
-	if !supportedPreviewType(document.MimeType) || (document.MimeType != "application/pdf" && page != 0) {
+	if !supportedPreviewType(document.MimeType) || (document.MimeType != documentMIMEPDF && page != 0) {
 		http.Error(w, "invalid page or document type", http.StatusBadRequest)
 		return
 	}
@@ -109,7 +109,7 @@ func (s *Server) documentPreview(w http.ResponseWriter, r *http.Request) {
 
 func supportedPreviewType(mimeType string) bool {
 	switch mimeType {
-	case "image/jpeg", "image/png", "image/webp", "application/pdf":
+	case documentMIMEJPEG, documentMIMEPNG, documentMIMEWebP, documentMIMEPDF:
 		return true
 	default:
 		return false

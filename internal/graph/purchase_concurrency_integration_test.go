@@ -21,6 +21,7 @@ import (
 )
 
 func TestPurchaseConcurrentUpdatesMergeDisjointFieldsAndConflictOnSameField(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -46,7 +47,7 @@ func TestPurchaseConcurrentUpdatesMergeDisjointFieldsAndConflictOnSameField(t *t
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
 
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: displayName})
@@ -61,15 +62,15 @@ func TestPurchaseConcurrentUpdatesMergeDisjointFieldsAndConflictOnSameField(t *t
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
 
 	purchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(),
 		HouseholdID:    household.ID,
-		OccurredAt:     "2026-10-13T10:00:00+09:00",
+		OccurredAt:     testPurchaseTime,
 		Merchant:       "Initial merchant",
-		Items:          []*model.PurchaseItemInput{{Name: "test item", AmountYen: 100}},
+		Items:          []*model.PurchaseItemInput{{Name: testPurchaseItemName, AmountYen: 100}},
 	})
 	if err != nil {
 		t.Fatal(err)

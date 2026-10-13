@@ -120,7 +120,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 	if input.BaseRevision > int(item.Revision) {
 		return nil, ErrConflict
 	}
-	if input.ProductLearning.IsSet() && !slices.Contains(changedFields, "productVariantId") {
+	if input.ProductLearning.IsSet() && !slices.Contains(changedFields, fieldProductVariantID) {
 		return nil, fmt.Errorf("%w: product learning requires a product variant change", ErrBadInput)
 	}
 	conflict, err := valuesConflict(item.FieldRevisions.Val, input.BaseRevision, changedFields)
@@ -152,11 +152,11 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			return nil, fmt.Errorf("%w: invalid item amount", ErrBadInput)
 		}
 	}
-	updateCategoryID := slices.Contains(changedFields, "categoryId")
+	updateCategoryID := slices.Contains(changedFields, fieldCategoryID)
 	if updateCategoryID {
 		newCategory = input.CategoryID.Value()
 	}
-	updateProductVariantID := slices.Contains(changedFields, "productVariantId")
+	updateProductVariantID := slices.Contains(changedFields, fieldProductVariantID)
 	newProductVariantID := productVariantID
 	if updateProductVariantID {
 		newProductVariantID = input.ProductVariantID.Value()
@@ -343,7 +343,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 		if err != nil {
 			return nil, err
 		}
-		if err := writeEvent(ctx, tx, householdID, "product.variant.renamed", *newProductVariantID, variant.Revision, []string{"name"}, user.MemberID); err != nil {
+		if err := writeEvent(ctx, tx, householdID, "product.variant.renamed", *newProductVariantID, variant.Revision, []string{fieldName}, user.MemberID); err != nil {
 			return nil, err
 		}
 	}
@@ -396,7 +396,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			if err != nil {
 				return nil, err
 			}
-			if err := writeEvent(ctx, tx, householdID, "product.alias.learned", aliasID, alias.Revision, []string{"alias", "variantId", "merchant"}, user.MemberID); err != nil {
+			if err := writeEvent(ctx, tx, householdID, "product.alias.learned", aliasID, alias.Revision, []string{fieldAlias, fieldVariantID, fieldMerchant}, user.MemberID); err != nil {
 				return nil, err
 			}
 		}
@@ -417,7 +417,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			}
 			previousVariant = sql.Null[gofrsuuid.UUID]{V: previousUUID, Valid: true}
 		}
-		correctionScope := string(learningScope)
+		correctionScope := learningScope
 		if _, err := models.ProductCorrections.Insert(&models.ProductCorrectionSetter{
 			ID: &correctionUUID, HouseholdID: &observedItem.HouseholdID, PurchaseID: &purchaseUUID,
 			ItemID: &itemUUID, RawName: &name, PreviousProductVariantID: &previousVariant,

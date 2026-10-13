@@ -37,7 +37,7 @@ func lockAccountingPeriods(ctx context.Context, tx pgx.Tx, householdID string, p
 		if err != nil {
 			return err
 		}
-		if row.Status == "CLOSED" {
+		if row.Status == statusClosed {
 			return fmt.Errorf("%w: accounting period is closed", ErrConflict)
 		}
 	}
@@ -70,7 +70,7 @@ func syncPostedPurchaseAccounting(ctx context.Context, tx pgx.Tx, purchaseID str
 	}
 	journal, err := models.Journals.Query(sm.Where(psql.And(
 		models.Journals.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
-		models.Journals.Columns.SourceKind.EQ(psql.Arg("PURCHASE")),
+		models.Journals.Columns.SourceKind.EQ(psql.Arg(sourceKindPurchase)),
 		models.Journals.Columns.SourceID.EQ(psql.Arg(purchaseUUID)),
 	))).One(ctx, executor)
 	if err != nil {

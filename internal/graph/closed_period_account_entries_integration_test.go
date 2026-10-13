@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"context"
 	"errors"
 	"os"
 	"testing"
@@ -20,6 +19,7 @@ import (
 )
 
 func TestClosedPeriodRejectsAccountMovementsAndOpeningBalances(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -40,7 +40,7 @@ func TestClosedPeriodRejectsAccountMovementsAndOpeningBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: memberName})
 	mutation := &mutationResolver{Resolver: (&Resolver{DB: db})}
@@ -49,7 +49,7 @@ func TestClosedPeriodRejectsAccountMovementsAndOpeningBalances(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	from, err := mutation.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Source", Kind: model.AccountKindBank})
 	if err != nil {
@@ -59,7 +59,7 @@ func TestClosedPeriodRejectsAccountMovementsAndOpeningBalances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mutation.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: "2026-04", ExpectedRevision: 0}); err != nil {
+	if _, err := mutation.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: testApril2026, ExpectedRevision: 0}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := mutation.recordAccountMovement(ctx, model.RecordAccountMovementInput{

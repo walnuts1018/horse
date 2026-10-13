@@ -8,6 +8,7 @@ import (
 )
 
 func TestBuildEntriesPreservesSidesAndRejectsUnbalancedPostings(t *testing.T) {
+	t.Parallel()
 	poolID, err := gofrsuuid.NewV7()
 	if err != nil {
 		t.Fatal(err)
@@ -51,6 +52,7 @@ func TestBuildEntriesPreservesSidesAndRejectsUnbalancedPostings(t *testing.T) {
 }
 
 func TestBuildPurchaseEntries(t *testing.T) {
+	t.Parallel()
 	poolA, err := gofrsuuid.FromString("00000000-0000-7000-8000-000000000001")
 	if err != nil {
 		t.Fatal(err)
@@ -69,6 +71,7 @@ func TestBuildPurchaseEntries(t *testing.T) {
 	}
 
 	t.Run("pool allocations are grouped and payments stay in input order", func(t *testing.T) {
+		t.Parallel()
 		entries, err := BuildPurchaseEntries(
 			[]PurchaseAllocation{
 				{PoolID: poolB, AmountYen: 30},
@@ -93,6 +96,7 @@ func TestBuildPurchaseEntries(t *testing.T) {
 	})
 
 	t.Run("purchase without payment accounts uses an unattributed credit", func(t *testing.T) {
+		t.Parallel()
 		entries, err := BuildPurchaseEntries([]PurchaseAllocation{{PoolID: poolA, AmountYen: 100}}, nil, 100)
 		if err != nil {
 			t.Fatal(err)
@@ -103,6 +107,7 @@ func TestBuildPurchaseEntries(t *testing.T) {
 	})
 
 	t.Run("invalid totals are rejected", func(t *testing.T) {
+		t.Parallel()
 		for _, input := range []struct {
 			name        string
 			allocations []PurchaseAllocation
@@ -115,6 +120,7 @@ func TestBuildPurchaseEntries(t *testing.T) {
 			{name: "allocation overflow", allocations: []PurchaseAllocation{{PoolID: poolA, AmountYen: math.MaxInt64}, {PoolID: poolA, AmountYen: 1}}, totalYen: 100},
 		} {
 			t.Run(input.name, func(t *testing.T) {
+				t.Parallel()
 				if _, err := BuildPurchaseEntries(input.allocations, input.payments, input.totalYen); err == nil {
 					t.Fatal("BuildPurchaseEntries accepted invalid purchase entries")
 				}

@@ -79,7 +79,7 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	}
 	thinking := options.ThinkingLevel
 	if thinking == "" {
-		thinking = "low"
+		thinking = geminiThinkingLevelLow
 	}
 	tier := options.ServiceTier
 	if tier == "" {
@@ -123,7 +123,7 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 		client.USDJPYRate = r.USDJPYRate
 		client.USDJPYRateSource = r.USDJPYRateSource
 		client.USDJPYRateAsOf = r.USDJPYRateAsOf
-		routeTier := "standard"
+		routeTier := geminiServiceTierStandard
 		if client.ProjectRoute == ProjectPaid {
 			routeTier = tier
 		}
@@ -189,16 +189,16 @@ func (r GeminiRouter) ProOptions(purpose string, guidance []string) GeminiRouteO
 func defaultServiceTier(purpose string) (string, error) {
 	switch purpose {
 	case JobPurposeBackground:
-		return "flex", nil
+		return geminiServiceTierFlex, nil
 	case "", JobPurposeInteractive:
-		return "standard", nil
+		return geminiServiceTierStandard, nil
 	default:
 		return "", errors.New("invalid Gemini job purpose")
 	}
 }
 
 func (r GeminiRouter) modelForSource(sourceKind, mimeType string) string {
-	if strings.EqualFold(sourceKind, "email") || strings.EqualFold(sourceKind, "order_email") || mimeType == "message/rfc822" {
+	if strings.EqualFold(sourceKind, "email") || strings.EqualFold(sourceKind, "order_email") || mimeType == mimeTypeEmail {
 		return r.emailModel()
 	}
 	return r.flashModel()
@@ -222,10 +222,10 @@ func validateRouteOptions(model, thinking, tier string) error {
 	if strings.ContainsAny(model, "/?#") || model == "" {
 		return errors.New("invalid Gemini model")
 	}
-	if thinking != "low" && thinking != "medium" && thinking != "high" {
+	if thinking != geminiThinkingLevelLow && thinking != "medium" && thinking != "high" {
 		return errors.New("invalid Gemini thinking level")
 	}
-	if tier != "standard" && tier != "flex" {
+	if tier != geminiServiceTierStandard && tier != geminiServiceTierFlex {
 		return errors.New("invalid Gemini service tier")
 	}
 	return nil
@@ -250,7 +250,7 @@ func workerErrorCode(err error) string {
 		return "extraction_failed"
 	}
 	if apiErr.Kind == GeminiFailureSpendCap {
-		return "spend_cap_reached"
+		return geminiFailureSpendCap
 	}
 	return apiErr.Code
 }
@@ -313,7 +313,7 @@ func estimateCostJPY(project, model, serviceTier string, inputTokens, outputToke
 		return 0
 	}
 	inputPrice, outputPrice := modelPrices(model, inputTokens, at)
-	if serviceTier == "flex" {
+	if serviceTier == geminiServiceTierFlex {
 		inputPrice, outputPrice = inputPrice/2, outputPrice/2
 	}
 	return (float64(inputTokens)*inputPrice + float64(outputTokens)*outputPrice) * usdJPY / 1_000_000

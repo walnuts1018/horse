@@ -6,6 +6,7 @@ import (
 )
 
 func TestAllocateLargestRemainder(t *testing.T) {
+	t.Parallel()
 	result, err := Allocate(1, []Weight{{PoolID: "b", Value: 1}, {PoolID: "a", Value: 1}, {PoolID: "c", Value: 1}})
 	if err != nil {
 		t.Fatal(err)
@@ -27,6 +28,7 @@ func TestAllocateLargestRemainder(t *testing.T) {
 }
 
 func TestAllocateRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
 	_, err := Allocate(-1, []Weight{{PoolID: "a", Value: 1}})
 	if !errors.Is(err, ErrNegativeAmount) {
 		t.Fatalf("expected negative amount error, got %v", err)

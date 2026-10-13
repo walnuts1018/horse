@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"context"
 	"errors"
 	"os"
 	"testing"
@@ -22,6 +21,7 @@ import (
 )
 
 func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -43,7 +43,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: memberName})
 	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
@@ -52,7 +52,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	poolA, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "A", Kind: model.PoolKindPersonal})
 	if err != nil {
@@ -67,7 +67,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	category, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: "Food"})
+	category, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: testFoodCategoryName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,22 +173,22 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if _, err := resolver.postPurchase(ctx, purchase.ID, reloaded.Revision, uuid.NewV7().String()); err != nil {
 		t.Fatal(err)
 	}
-	budget, err := resolver.setBudget(ctx, budgetWriteInput{HouseholdID: household.ID, CategoryID: &category.ID, Name: "Food", AmountYen: 1000, StartsOn: "2026-04-01"})
+	budget, err := resolver.setBudget(ctx, budgetWriteInput{HouseholdID: household.ID, CategoryID: &category.ID, Name: testFoodCategoryName, AmountYen: 1000, StartsOn: testAprilFirst2026})
 	if err != nil {
 		t.Fatal(err)
 	}
-	budgets, err := (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, "2026-04")
+	budgets, err := (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, testApril2026)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(budgets) != 1 || budgets[0].ID != budget.ID || budgets[0].ActualYen != 800 || budgets[0].RemainingYen != 200 {
 		t.Fatalf("budget should compare posted category actuals to the cap: %#v", budgets)
 	}
-	allBudget, err := resolver.setBudget(ctx, budgetWriteInput{HouseholdID: household.ID, Name: "All spending", AmountYen: 2000, StartsOn: "2026-04-01"})
+	allBudget, err := resolver.setBudget(ctx, budgetWriteInput{HouseholdID: household.ID, Name: "All spending", AmountYen: 2000, StartsOn: testAprilFirst2026})
 	if err != nil {
 		t.Fatal(err)
 	}
-	budgets, err = (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, "2026-04")
+	budgets, err = (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, testApril2026)
 	if err != nil || len(budgets) != 2 {
 		t.Fatalf("household and category budgets should both be listed: rows=%#v error=%v", budgets, err)
 	}
@@ -197,11 +197,11 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 			t.Fatalf("uncategorized budget should include all posted spending: %#v", entry)
 		}
 	}
-	recurring, err := resolver.setRecurringExpense(ctx, recurringExpenseWriteInput{HouseholdID: household.ID, Name: "Internet", Merchant: "ISP", AmountYen: 4500, CategoryID: &category.ID, Cadence: "MONTHLY", StartsOn: "2026-04-01", NextDueOn: "2026-05-01"})
+	recurring, err := resolver.setRecurringExpense(ctx, recurringExpenseWriteInput{HouseholdID: household.ID, Name: "Internet", Merchant: "ISP", AmountYen: 4500, CategoryID: &category.ID, Cadence: testMonthlyCadence, StartsOn: testAprilFirst2026, NextDueOn: "2026-05-01"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	nextRecurring, err := resolver.setRecurringExpense(ctx, recurringExpenseWriteInput{HouseholdID: household.ID, Name: "Phone", Merchant: "Telco", AmountYen: 2000, CategoryID: &category.ID, Cadence: "MONTHLY", StartsOn: "2026-04-01", NextDueOn: "2026-06-01"})
+	nextRecurring, err := resolver.setRecurringExpense(ctx, recurringExpenseWriteInput{HouseholdID: household.ID, Name: "Phone", Merchant: "Telco", AmountYen: 2000, CategoryID: &category.ID, Cadence: testMonthlyCadence, StartsOn: testAprilFirst2026, NextDueOn: "2026-06-01"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	card, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Card", Kind: model.AccountKindCard})
+	card, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: testCardAccountName, Kind: model.AccountKindCard})
 	if err != nil {
 		t.Fatal(err)
 	}

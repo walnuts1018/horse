@@ -16,7 +16,7 @@ import (
 func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	purchaseID, err := parseNodeIDOrUUID(r.PathValue("id"), "Purchase")

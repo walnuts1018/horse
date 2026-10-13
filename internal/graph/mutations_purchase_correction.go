@@ -158,13 +158,13 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	}
 	effectivePeriod := originalPeriod
 	correctionAt := time.Now()
-	if originalPeriodRow.Status == "CLOSED" {
+	if originalPeriodRow.Status == statusClosed {
 		effectivePeriod = accountingPeriod(correctionAt)
 		if err := lockAccountingPeriods(ctx, tx, input.HouseholdID, effectivePeriod); err != nil {
 			return nil, err
 		}
 	}
-	if originalPeriodRow.Status != "OPEN" && originalPeriodRow.Status != "CLOSED" {
+	if originalPeriodRow.Status != "OPEN" && originalPeriodRow.Status != statusClosed {
 		return nil, fmt.Errorf("%w: invalid accounting period state", ErrConflict)
 	}
 	effectivePeriodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
@@ -174,7 +174,7 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	if err != nil {
 		return nil, err
 	}
-	if effectivePeriodRow.Status == "CLOSED" {
+	if effectivePeriodRow.Status == statusClosed {
 		return nil, fmt.Errorf("%w: correction period is closed", ErrConflict)
 	}
 	var itemUUIDValue sql.Null[gofrsuuid.UUID]
@@ -243,7 +243,7 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	correctionID, journalID, ledgerID := newID(), newID(), newID()
 	correctionUUID, journalUUID, ledgerUUID := generatedUUID(correctionID), generatedUUID(journalID), generatedUUID(ledgerID)
 	userUUID := generatedUUID(user.MemberID)
-	sourceKind := "CORRECTION"
+	sourceKind := sourceKindCorrection
 	if _, err := models.Journals.Insert(&models.JournalSetter{
 		ID: &journalUUID, HouseholdID: &householdUUID, SourceKind: &sourceKind, SourceID: &correctionUUID,
 		IdempotencyKey: &input.IdempotencyKey, OccurredAt: &correctionAt, CreatedBy: &userUUID,
@@ -343,7 +343,7 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	if err := accounting.InsertEntries(ctx, executor, journalUUID, entries); err != nil {
 		return nil, err
 	}
-	correctionLedgerKind := "CORRECTION"
+	correctionLedgerKind := sourceKindCorrection
 	noMemberValue := sql.Null[gofrsuuid.UUID]{}
 	purchaseValue := sql.Null[gofrsuuid.UUID]{V: purchaseUUID, Valid: true}
 	amount := abs(delta)

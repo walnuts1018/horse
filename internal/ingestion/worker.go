@@ -88,7 +88,7 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 	for {
 		conditions := []bob.Expression{
 			models.ExtractionJobs.Columns.FailureCount.LT(psql.Arg(5)),
-			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("queued")),
+			models.ExtractionJobs.Columns.Status.EQ(psql.Arg(extractionStatusQueued)),
 			models.ExtractionJobs.Columns.AvailableAt.LTE(psql.Arg(time.Now())),
 		}
 		if jobID != "" {
@@ -120,7 +120,7 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("load extraction document: %w", err)
 		}
-		if w.GeminiEnabled || document.MimeType == "text/csv" && (document.SourceKind == "card" || document.SourceKind == "bank") {
+		if w.GeminiEnabled || document.MimeType == mimeTypeCSV && (document.SourceKind == statementSourceCard || document.SourceKind == statementSourceBank) {
 			break
 		}
 		skipped = append(skipped, psql.Arg(candidate.ID))
@@ -161,9 +161,9 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 		if !spendCap {
 			failureCount++
 		}
-		status := "failed"
+		status := extractionStatusFailed
 		if spendCap || retryWorkerError(extractErr) && failureCount < 5 {
-			status = "queued"
+			status = extractionStatusQueued
 		}
 		payload, marshalErr := json.Marshal(result.Runs)
 		if marshalErr != nil {
@@ -191,17 +191,19 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 		}
 		if len(result.Runs) > 0 {
 			previous := make(map[string]stdjson.RawMessage)
+			var newRuns []stdjson.RawMessage
+			if err := stdjson.Unmarshal(payload, &newRuns); err != nil {
+				return true, fmt.Errorf("decode failed extraction runs: %w", err)
+			}
 			if len(j.Previous) > 0 {
 				if err := stdjson.Unmarshal(j.Previous, &previous); err != nil {
 					previous = make(map[string]stdjson.RawMessage)
 				}
 			}
-			var existingRuns []stdjson.RawMessage
-			_ = stdjson.Unmarshal(previous["runs"], &existingRuns)
-			var newRuns []stdjson.RawMessage
-			if err := stdjson.Unmarshal(payload, &newRuns); err != nil {
-				return true, fmt.Errorf("decode failed extraction runs: %w", err)
-			}
+			var previousRuns []stdjson.RawMessage
+			_ = stdjson.Unmarshal(previous["runs"], &previousRuns)
+			existingRuns := make([]stdjson.RawMessage, len(previousRuns), len(previousRuns)+len(newRuns))
+			copy(existingRuns, previousRuns)
 			existingRuns = append(existingRuns, newRuns...)
 			encodedRuns, err := stdjson.Marshal(existingRuns)
 			if err != nil {
@@ -249,7 +251,7 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	status := "succeeded"
+	status := extractionStatusSucceeded
 	completionAt := time.Now().UTC()
 	completionErrorCode := sql.Null[string]{}
 	resultValue := sql.Null[types.JSON[stdjson.RawMessage]]{
@@ -268,7 +270,7 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 	if updated == 0 {
 		return true, nil
 	}
-	event, err := json.Marshal(map[string]any{"jobId": j.ID, "sourceDocumentId": j.SourceID, "status": "succeeded", "balanced": result.Balanced})
+	event, err := json.Marshal(map[string]any{"jobId": j.ID, "sourceDocumentId": j.SourceID, "status": extractionStatusSucceeded, "balanced": result.Balanced})
 	if err != nil {
 		return true, fmt.Errorf("encode extraction event: %w", err)
 	}
@@ -281,7 +283,7 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 		return true, fmt.Errorf("record extraction event: %w", err)
 	}
 	eventType := "receipt.extraction.updated"
-	jVersion := int64(j.Version)
+	jVersion := j.Version
 	changedFields := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`["status","result"]`)}
 	eventPayload := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(event)}
 	if _, err := models.HouseholdEvents.Insert(&models.HouseholdEventSetter{
@@ -302,7 +304,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if err != nil {
 		return Verification{}, err
 	}
-	if document.MIMEType == "text/csv" && (j.SourceKind == "card" || j.SourceKind == "bank") {
+	if document.MIMEType == mimeTypeCSV && (j.SourceKind == statementSourceCard || j.SourceKind == statementSourceBank) {
 		entries, err := ParseStatementCSV(document.Data, j.SourceKind)
 		if err != nil {
 			return Verification{}, err
@@ -334,7 +336,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if err != nil {
 		return Verification{}, fmt.Errorf("load receipt history hints: %w", err)
 	}
-	receipt, runs, err := w.Router.Generate(ctx, j.SourceKind, document, hints, GeminiRouteOptions{Purpose: request.Purpose, Reason: "initial_extraction"})
+	receipt, runs, err := w.Router.Generate(ctx, j.SourceKind, document, hints, GeminiRouteOptions{Purpose: request.Purpose, Reason: geminiReasonInitialExtraction})
 	if err != nil {
 		return Verification{Runs: runs}, err
 	}
@@ -530,7 +532,7 @@ func appendPreviousRuns(runs []ExtractionRun, previous []byte) []ExtractionRun {
 
 func annotateRuns(runs []ExtractionRun, receipt Receipt, issues []string) []ExtractionRun {
 	for i := len(runs) - 1; i >= 0; i-- {
-		if runs[i].Status == "succeeded" && runs[i].Model == receipt.Model && runs[i].Receipt != nil {
+		if runs[i].Status == extractionStatusSucceeded && runs[i].Model == receipt.Model && runs[i].Receipt != nil {
 			runs[i].Issues = append([]string(nil), issues...)
 			break
 		}
@@ -540,7 +542,7 @@ func annotateRuns(runs []ExtractionRun, receipt Receipt, issues []string) []Extr
 
 func latestSuccessfulRun(runs []ExtractionRun) *ExtractionRun {
 	for i := len(runs) - 1; i >= 0; i-- {
-		if runs[i].Status == "succeeded" && runs[i].Receipt != nil {
+		if runs[i].Status == extractionStatusSucceeded && runs[i].Receipt != nil {
 			return &runs[i]
 		}
 	}
@@ -576,10 +578,10 @@ func (w *Worker) RecoverExhausted(ctx context.Context) error {
 	now := time.Now().UTC()
 	for _, staleJob := range staleJobs {
 		failureCount := staleJob.FailureCount + 1
-		status, errorCode := "queued", "worker_interrupted"
+		status, errorCode := extractionStatusQueued, "worker_interrupted"
 		availableAt := now
 		if failureCount >= 5 {
-			status, errorCode, availableAt = "failed", "retry_exhausted", staleJob.AvailableAt
+			status, errorCode, availableAt = extractionStatusFailed, "retry_exhausted", staleJob.AvailableAt
 		}
 		failureCode := sql.Null[string]{V: errorCode, Valid: true}
 		if err := staleJob.Update(ctx, executor, &models.ExtractionJobSetter{
@@ -596,5 +598,5 @@ func (w *Worker) RecoverExhausted(ctx context.Context) error {
 }
 
 func supportsProReview(mimeType string) bool {
-	return strings.HasPrefix(mimeType, "image/") || mimeType == "application/pdf"
+	return strings.HasPrefix(mimeType, "image/") || mimeType == mimeTypePDF
 }

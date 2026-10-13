@@ -121,7 +121,7 @@ func (r *mutationResolver) recordAccountMovement(ctx context.Context, input mode
 	amount := int64(input.AmountYen)
 	movementID, journalID := generatedUUID(newID()), generatedUUID(newID())
 	memberID := generatedUUID(user.MemberID)
-	kind, sourceKind := string(input.Kind), "ACCOUNT_MOVEMENT"
+	kind, sourceKind := string(input.Kind), sourceKindAccountMovement
 	if _, err := models.Journals.Insert(&models.JournalSetter{
 		ID: &journalID, HouseholdID: &householdID, SourceKind: &sourceKind, SourceID: &movementID,
 		IdempotencyKey: &input.IdempotencyKey, OccurredAt: &occurredAt, CreatedBy: &memberID,
@@ -153,7 +153,7 @@ func (r *mutationResolver) recordAccountMovement(ctx context.Context, input mode
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "account.movement.recorded", movementID.String(), 1, []string{"kind", "fromAccountId", "toAccountId", "amountYen", "occurredAt"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "account.movement.recorded", movementID.String(), 1, []string{fieldKind, fieldFromAccountID, fieldToAccountID, fieldAmountYen, fieldOccurredAt}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -242,7 +242,7 @@ func (r *mutationResolver) recordExternalIncome(ctx context.Context, input model
 	}
 	incomeID, journalID := generatedUUID(newID()), generatedUUID(newID())
 	actorID := generatedUUID(user.MemberID)
-	sourceKind := "ACCOUNT_INCOME"
+	sourceKind := sourceKindAccountIncome
 	if _, err := models.Journals.Insert(&models.JournalSetter{
 		ID: &journalID, HouseholdID: &householdID, SourceKind: &sourceKind, SourceID: &incomeID,
 		IdempotencyKey: &input.IdempotencyKey, OccurredAt: &occurredAt, CreatedBy: &actorID,
@@ -281,7 +281,7 @@ func (r *mutationResolver) recordExternalIncome(ctx context.Context, input model
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "account.income.recorded", incomeID.String(), 1, []string{"amountYen", "accountId", "occurredAt"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "account.income.recorded", incomeID.String(), 1, []string{fieldAmountYen, fieldAccountID, fieldOccurredAt}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -293,7 +293,7 @@ func (r *mutationResolver) recordExternalIncome(ctx context.Context, input model
 func accountIncomeModel(row *models.AccountIncome) *model.AccountIncome {
 	return &model.AccountIncome{
 		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), AccountID: row.AccountID.String(),
-		AmountYen: graphLong(row.AmountYen), Currency: "JPY", OccurredAt: timeString(row.OccurredAt),
+		AmountYen: graphLong(row.AmountYen), Currency: currencyJPY, OccurredAt: timeString(row.OccurredAt),
 		Description: row.Description, CreatedAt: timeString(row.CreatedAt),
 	}
 }
@@ -302,7 +302,7 @@ func accountMovementModel(row *models.AccountMovement) *model.AccountMovement {
 	return &model.AccountMovement{
 		ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: model.AccountMovementKind(row.Kind),
 		OccurredAt: timeString(row.OccurredAt), FromAccountID: row.FromAccountID.String(), ToAccountID: row.ToAccountID.String(),
-		AmountYen: graphLong(row.AmountYen), Currency: "JPY", Description: row.Description, CreatedAt: timeString(row.CreatedAt),
+		AmountYen: graphLong(row.AmountYen), Currency: currencyJPY, Description: row.Description, CreatedAt: timeString(row.CreatedAt),
 	}
 }
 
@@ -361,7 +361,7 @@ func (r *queryResolver) accountMovements(ctx context.Context, householdID string
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	limit, backward, err := pageDirection(after, before, first, last)
+	limit, backward, err := pageDirection(first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -376,7 +376,7 @@ func (r *queryResolver) accountMovements(ctx context.Context, householdID string
 		return nil, err
 	}
 	filters := []bob.Expression{baseFilter}
-	if id, err := cursorID(after, "AccountMovement"); err != nil {
+	if id, err := cursorID(after, nodeTypeAccountMovement); err != nil {
 		return nil, err
 	} else if id != nil {
 		parsedID, err := gofrsuuid.FromString(*id)
@@ -392,7 +392,7 @@ func (r *queryResolver) accountMovements(ctx context.Context, householdID string
 		}
 		filters = append(filters, psql.Or(models.AccountMovements.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.AccountMovements.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.AccountMovements.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
-	if id, err := cursorID(before, "AccountMovement"); err != nil {
+	if id, err := cursorID(before, nodeTypeAccountMovement); err != nil {
 		return nil, err
 	} else if id != nil {
 		parsedID, err := gofrsuuid.FromString(*id)
@@ -450,11 +450,11 @@ func (r *queryResolver) accountMovements(ctx context.Context, householdID string
 		movement := accountMovementModel(row)
 		movement.FromAccount = accountsByID[row.FromAccountID]
 		movement.ToAccount = accountsByID[row.ToAccountID]
-		connection.Edges = append(connection.Edges, &model.AccountMovementEdge{Cursor: encodeCursor("AccountMovement", row.ID.String()), Node: movement})
+		connection.Edges = append(connection.Edges, &model.AccountMovementEdge{Cursor: encodeCursor(nodeTypeAccountMovement, row.ID.String()), Node: movement})
 	}
 	if len(rows) > 0 {
-		start := encodeCursor("AccountMovement", rows[0].ID.String())
-		end := encodeCursor("AccountMovement", rows[len(rows)-1].ID.String())
+		start := encodeCursor(nodeTypeAccountMovement, rows[0].ID.String())
+		end := encodeCursor(nodeTypeAccountMovement, rows[len(rows)-1].ID.String())
 		connection.PageInfo.StartCursor = &start
 		connection.PageInfo.EndCursor = &end
 	}
@@ -465,7 +465,7 @@ func (r *queryResolver) accountIncomes(ctx context.Context, householdID string, 
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	limit, backward, err := pageDirection(after, before, first, last)
+	limit, backward, err := pageDirection(first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +480,7 @@ func (r *queryResolver) accountIncomes(ctx context.Context, householdID string, 
 		return nil, err
 	}
 	filters := []bob.Expression{baseFilter}
-	if id, err := cursorID(after, "AccountIncome"); err != nil {
+	if id, err := cursorID(after, nodeTypeAccountIncome); err != nil {
 		return nil, err
 	} else if id != nil {
 		parsedID, err := gofrsuuid.FromString(*id)
@@ -496,7 +496,7 @@ func (r *queryResolver) accountIncomes(ctx context.Context, householdID string, 
 		}
 		filters = append(filters, psql.Or(models.AccountIncomes.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.AccountIncomes.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.AccountIncomes.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
-	if id, err := cursorID(before, "AccountIncome"); err != nil {
+	if id, err := cursorID(before, nodeTypeAccountIncome); err != nil {
 		return nil, err
 	} else if id != nil {
 		parsedID, err := gofrsuuid.FromString(*id)
@@ -547,11 +547,11 @@ func (r *queryResolver) accountIncomes(ctx context.Context, householdID string, 
 		TotalCount: int(totalCount),
 	}
 	for _, row := range rows {
-		connection.Edges = append(connection.Edges, &model.AccountIncomeEdge{Cursor: encodeCursor("AccountIncome", row.ID.String()), Node: accountIncomeModel(row)})
+		connection.Edges = append(connection.Edges, &model.AccountIncomeEdge{Cursor: encodeCursor(nodeTypeAccountIncome, row.ID.String()), Node: accountIncomeModel(row)})
 	}
 	if len(rows) > 0 {
-		start := encodeCursor("AccountIncome", rows[0].ID.String())
-		end := encodeCursor("AccountIncome", rows[len(rows)-1].ID.String())
+		start := encodeCursor(nodeTypeAccountIncome, rows[0].ID.String())
+		end := encodeCursor(nodeTypeAccountIncome, rows[len(rows)-1].ID.String())
 		connection.PageInfo.StartCursor = &start
 		connection.PageInfo.EndCursor = &end
 	}

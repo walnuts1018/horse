@@ -46,7 +46,7 @@ func (r *mutationResolver) setDefaultAllocation(ctx context.Context, input model
 	if err != nil {
 		return nil, err
 	}
-	version := int64(householdRow.DefaultAllocationVersion)
+	version := householdRow.DefaultAllocationVersion
 	for _, weight := range weights {
 		poolUUID, parseErr := gofrsuuid.FromString(weight.PoolID)
 		if parseErr != nil {
@@ -80,7 +80,7 @@ func (r *mutationResolver) setDefaultAllocation(ctx context.Context, input model
 	}).UpdateMod(), um.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "allocation.default.updated", input.HouseholdID, newVersion, []string{"defaultAllocation"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "allocation.default.updated", input.HouseholdID, newVersion, []string{fieldDefaultAllocation}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -244,15 +244,15 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 			return nil, err
 		}
 	}
-	changedFields := []string{"allocations"}
+	changedFields := []string{fieldAllocations}
 	if target.ProductVariantID != nil {
-		changedFields = append(changedFields, "productVariantId")
+		changedFields = append(changedFields, fieldProductVariantID)
 	} else if target.ProductConceptID != nil {
 		changedFields = append(changedFields, "productConceptId")
 	} else if target.CategoryID != nil {
-		changedFields = append(changedFields, "categoryId")
+		changedFields = append(changedFields, fieldCategoryID)
 	} else {
-		changedFields = append(changedFields, "merchant")
+		changedFields = append(changedFields, fieldMerchant)
 	}
 	if err := writeEvent(ctx, tx, input.HouseholdID, "allocation.rule.updated", ruleID, revision, changedFields, user.MemberID); err != nil {
 		return nil, err

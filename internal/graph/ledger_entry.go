@@ -19,7 +19,7 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 	baseID, description, amount, currency := value.ID, value.Description, value.AmountYen, value.Currency
 	occurredAt, createdAt := model.DateTime(value.OccurredAt), model.DateTime(value.CreatedAt)
 	switch value.Kind {
-	case "PURCHASE", "CORRECTION":
+	case sourceKindPurchase, sourceKindCorrection:
 		if value.SourcePurchaseID == nil {
 			return nil, errors.New("ledger entry has no source purchase")
 		}
@@ -27,11 +27,11 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 		if err != nil {
 			return nil, err
 		}
-		if value.Kind == "PURCHASE" {
+		if value.Kind == sourceKindPurchase {
 			return &model.PurchaseLedgerEntry{ID: baseID, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: currency, CreatedAt: createdAt, Purchase: purchase}, nil
 		}
 		return &model.CorrectionLedgerEntry{ID: baseID, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: currency, CreatedAt: createdAt, Purchase: purchase}, nil
-	case "FUNDING":
+	case sourceKindFunding:
 		if value.FromMemberID == nil || value.PoolID == nil {
 			return nil, errors.New("funding ledger entry is missing a member or pool")
 		}
@@ -45,7 +45,7 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 			return nil, ErrNotFound
 		}
 		return &model.FundingLedgerEntry{ID: baseID, OccurredAt: occurredAt, Description: description, AmountYen: amount, Currency: currency, CreatedAt: createdAt, Member: member, Pool: pool}, nil
-	case "TRANSFER":
+	case sourceKindTransfer:
 		if value.FromMemberID == nil || value.ToMemberID == nil || value.TransferID == nil {
 			return nil, errors.New("transfer ledger entry is incomplete")
 		}

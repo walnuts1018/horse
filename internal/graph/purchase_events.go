@@ -56,31 +56,31 @@ func purchaseChange(event *models.HouseholdEvent) (*model.PurchaseChange, bool) 
 	changedFields := make([]model.PurchaseChangeField, len(fieldKeys))
 	for i, field := range fieldKeys {
 		switch field {
-		case "occurredAt":
+		case fieldOccurredAt:
 			changedFields[i] = model.PurchaseChangeFieldOccurredAt
-		case "merchant":
+		case fieldMerchant:
 			changedFields[i] = model.PurchaseChangeFieldMerchant
-		case "paymentAllocations":
+		case fieldPaymentAllocations:
 			changedFields[i] = model.PurchaseChangeFieldPaymentAllocations
-		case "status":
+		case fieldStatus:
 			changedFields[i] = model.PurchaseChangeFieldStatus
 		case "correction":
 			changedFields[i] = model.PurchaseChangeFieldCorrection
-		case "name":
+		case fieldName:
 			changedFields[i] = model.PurchaseChangeFieldName
-		case "amountYen":
+		case fieldAmountYen:
 			changedFields[i] = model.PurchaseChangeFieldAmountYen
-		case "quantity":
+		case fieldQuantity:
 			changedFields[i] = model.PurchaseChangeFieldQuantity
-		case "printedUnitPrice":
+		case fieldPrintedUnitPrice:
 			changedFields[i] = model.PurchaseChangeFieldPrintedUnitPrice
-		case "categoryId":
+		case fieldCategoryID:
 			changedFields[i] = model.PurchaseChangeFieldCategoryID
-		case "productVariantId":
+		case fieldProductVariantID:
 			changedFields[i] = model.PurchaseChangeFieldProductVariantID
-		case "allocations":
+		case fieldAllocations:
 			changedFields[i] = model.PurchaseChangeFieldAllocations
-		case "tags":
+		case fieldTags:
 			changedFields[i] = model.PurchaseChangeFieldTags
 		default:
 			return nil, false

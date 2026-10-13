@@ -2,7 +2,6 @@ package ingestion
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"image"
 	"image/png"
@@ -14,6 +13,7 @@ import (
 )
 
 func TestOCRCorroboration(t *testing.T) {
+	t.Parallel()
 	region := Region{Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
 	receipt := Receipt{Items: []Item{{PrintedName: "ヨーグルト", PrintedAmount: 198, Region: &region}}}
 	if issues := CompareOCR(receipt, []OCRLine{{Text: "ヨーグルト 198", Region: region}}); len(issues) != 0 {
@@ -29,6 +29,7 @@ func TestOCRCorroboration(t *testing.T) {
 }
 
 func TestOCRCropUsesRequestedPageAndValidatesPreview(t *testing.T) {
+	t.Parallel()
 	var pngData bytes.Buffer
 	if err := png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 1))); err != nil {
 		t.Fatal(err)
@@ -58,41 +59,44 @@ func TestOCRCropUsesRequestedPageAndValidatesPreview(t *testing.T) {
 		if fields["page"] != "2" || fields["top"] != "0" || fields["left"] != "0" || fields["bottom"] != "1" || fields["right"] != "1" {
 			t.Errorf("unexpected preview crop fields: %v", fields)
 		}
-		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Type", mimeTypePNG)
 		w.Header().Set("X-Coordinate-Transform", `[1,0,0,0,1,0,0,0,1]`)
 		_, _ = w.Write(pngData.Bytes())
 	}))
 	defer server.Close()
 
-	preview, transform, err := (OCR{Endpoint: server.URL}).Crop(context.Background(), Document{MIMEType: "application/pdf", Data: []byte("immutable pdf")}, Region{Page: 2, Top: 0, Left: 0, Bottom: 1, Right: 1})
+	preview, transform, err := (OCR{Endpoint: server.URL}).Crop(t.Context(), Document{MIMEType: mimeTypePDF, Data: []byte("immutable pdf")}, Region{Page: 2, Top: 0, Left: 0, Bottom: 1, Right: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.MIMEType != "image/png" || !bytes.Equal(preview.Data, pngData.Bytes()) || transform != identityTransform() {
+	if preview.MIMEType != mimeTypePNG || !bytes.Equal(preview.Data, pngData.Bytes()) || transform != identityTransform() {
 		t.Fatalf("unexpected full-page preview: type=%q transform=%v", preview.MIMEType, transform)
 	}
 }
 
 func TestOCRCropReportsInvalidPageAndRejectsInvalidPreview(t *testing.T) {
+	t.Parallel()
 	t.Run("invalid page", func(t *testing.T) {
+		t.Parallel()
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"detail":"PDF page is out of range"}`))
 		}))
 		defer server.Close()
-		_, _, err := (OCR{Endpoint: server.URL}).Crop(context.Background(), Document{Data: []byte("pdf")}, Region{Page: 3, Top: 0, Left: 0, Bottom: 1, Right: 1})
+		_, _, err := (OCR{Endpoint: server.URL}).Crop(t.Context(), Document{Data: []byte("pdf")}, Region{Page: 3, Top: 0, Left: 0, Bottom: 1, Right: 1})
 		if !errors.Is(err, ErrInvalidCropPage) {
 			t.Fatalf("expected invalid page error, got %v", err)
 		}
 	})
 	t.Run("invalid image response", func(t *testing.T) {
+		t.Parallel()
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "image/png")
+			w.Header().Set("Content-Type", mimeTypePNG)
 			w.Header().Set("X-Coordinate-Transform", `[1,0,0,0,1,0,0,0,1]`)
 			_, _ = w.Write([]byte("not an image"))
 		}))
 		defer server.Close()
-		_, _, err := (OCR{Endpoint: server.URL}).Crop(context.Background(), Document{Data: []byte("image")}, Region{Top: 0, Left: 0, Bottom: 1, Right: 1})
+		_, _, err := (OCR{Endpoint: server.URL}).Crop(t.Context(), Document{Data: []byte("image")}, Region{Top: 0, Left: 0, Bottom: 1, Right: 1})
 		if err == nil {
 			t.Fatal("invalid PNG response was accepted")
 		}

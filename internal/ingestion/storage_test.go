@@ -15,6 +15,7 @@ import (
 )
 
 func TestObjectStorePutPreservesOriginalAndRejectsConflictingContent(t *testing.T) {
+	t.Parallel()
 	original := []byte("receipt bytes")
 	hash := DocumentHash(original)
 	var putCalls, headCalls, getCalls int
@@ -42,12 +43,12 @@ func TestObjectStorePutPreservesOriginalAndRejectsConflictingContent(t *testing.
 		case http.MethodHead:
 			headCalls++
 			w.Header().Set("Content-Length", fmt.Sprint(len(storedData)))
-			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Content-Type", mimeTypeJPEG)
 			w.Header().Set("X-Amz-Meta-Sha256", hash)
 		case http.MethodGet:
 			getCalls++
 			w.Header().Set("Content-Length", fmt.Sprint(len(storedData)))
-			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Content-Type", mimeTypeJPEG)
 			_, _ = w.Write(storedData)
 		default:
 			t.Errorf("unexpected S3 method: %s", r.Method)
@@ -57,40 +58,41 @@ func TestObjectStorePutPreservesOriginalAndRejectsConflictingContent(t *testing.
 	defer server.Close()
 	store := newTestObjectStore(t, server)
 
-	key, returnedHash, err := store.Put(t.Context(), "household", "image/jpeg", original)
+	key, returnedHash, err := store.Put(t.Context(), "household", mimeTypeJPEG, original)
 	if err != nil || returnedHash != hash || !strings.HasSuffix(key, "/originals/"+hash) {
 		t.Fatalf("first upload failed: key=%q hash=%q err=%v", key, returnedHash, err)
 	}
-	if repeatedKey, repeatedHash, err := store.Put(t.Context(), "household", "image/jpeg", original); err != nil || repeatedKey != key || repeatedHash != hash {
+	if repeatedKey, repeatedHash, err := store.Put(t.Context(), "household", mimeTypeJPEG, original); err != nil || repeatedKey != key || repeatedHash != hash {
 		t.Fatalf("idempotent upload failed: key=%q hash=%q err=%v", repeatedKey, repeatedHash, err)
 	}
 	if putCalls != 2 || headCalls != 1 || getCalls != 1 {
 		t.Fatalf("unexpected idempotency requests: put=%d head=%d get=%d", putCalls, headCalls, getCalls)
 	}
 	storedData = []byte("receipt bytez")
-	if _, _, err := store.Put(t.Context(), "household", "image/jpeg", original); err == nil {
+	if _, _, err := store.Put(t.Context(), "household", mimeTypeJPEG, original); err == nil {
 		t.Fatal("existing object with different bytes was accepted")
 	}
 }
 
 func TestObjectStoreGetReadsExistingSSEVersionThroughS3(t *testing.T) {
+	t.Parallel()
 	data := []byte("legacy encrypted receipt")
 	storedData := bytes.Clone(data)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprint(len(storedData)))
-		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Type", mimeTypeJPEG)
 		_, _ = w.Write(storedData)
 	}))
 	defer server.Close()
 	store := newTestObjectStore(t, server)
 
 	key := "household/originals/sse-v1/" + DocumentHash(data)
-	document, err := store.Get(t.Context(), key, "image/jpeg")
+	document, err := store.Get(t.Context(), key, mimeTypeJPEG)
 	if err != nil || !bytes.Equal(document.Data, data) {
 		t.Fatalf("S3-decrypted existing original was rejected: document=%q err=%v", document.Data, err)
 	}
 	storedData = []byte("tampered encrypted receipt")
-	if _, err := store.Get(t.Context(), key, "image/jpeg"); err == nil {
+	if _, err := store.Get(t.Context(), key, mimeTypeJPEG); err == nil {
 		t.Fatal("existing SSE original whose bytes do not match its key was accepted")
 	}
 }

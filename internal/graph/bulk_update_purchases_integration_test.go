@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"context"
 	"errors"
 	"os"
 	"testing"
@@ -18,6 +17,7 @@ import (
 )
 
 func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -39,7 +39,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: name})
 	resolver := &mutationResolver{Resolver: &Resolver{DB: db}}
@@ -48,9 +48,9 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
-	pool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Personal", Kind: model.PoolKindPersonal})
+	pool, err := resolver.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testPersonalPoolName, Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
 	}

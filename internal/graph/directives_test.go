@@ -9,6 +9,7 @@ import (
 )
 
 func TestNodeIDDirectiveDecodesList(t *testing.T) {
+	t.Parallel()
 	globalIDs := make([]string, 2)
 	want := []string{"123e4567-e89b-42d3-a456-426614174000", "123e4567-e89b-42d3-a456-426614174001"}
 	for i := range want {
@@ -32,6 +33,7 @@ func TestNodeIDDirectiveDecodesList(t *testing.T) {
 }
 
 func TestNodeIDDirectiveDecodesLoanBalance(t *testing.T) {
+	t.Parallel()
 	const rawID = "123e4567-e89b-42d3-a456-426614174000"
 	globalID, err := encodeNodeID("LoanBalance", rawID)
 	if err != nil {
@@ -50,6 +52,7 @@ func TestNodeIDDirectiveDecodesLoanBalance(t *testing.T) {
 }
 
 func TestNodeReferenceResolversReturnGlobalIDs(t *testing.T) {
+	t.Parallel()
 	const householdID = "123e4567-e89b-42d3-a456-426614174000"
 	const lenderID = "123e4567-e89b-42d3-a456-426614174001"
 	const borrowerID = "123e4567-e89b-42d3-a456-426614174002"

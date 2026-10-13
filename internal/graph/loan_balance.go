@@ -35,7 +35,7 @@ func loadLoanBalance(ctx context.Context, db bob.Executor, loan *models.Transfer
 			return nil, fmt.Errorf("loan %s repayment total overflow", loan.ID)
 		}
 	}
-	globalID, err := encodeNodeID("LoanBalance", loan.ID.String())
+	globalID, err := encodeNodeID(nodeTypeLoanBalance, loan.ID.String())
 	if err != nil {
 		return nil, err
 	}

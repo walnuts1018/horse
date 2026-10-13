@@ -26,6 +26,15 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+const (
+	documentStatusQueued = "queued"
+	documentMIMEPDF      = "application/pdf"
+	documentMIMEJPEG     = "image/jpeg"
+	documentMIMEPNG      = "image/png"
+	documentMIMEWebP     = "image/webp"
+	jobIDJSONKey         = "jobId"
+)
+
 type documentResponse struct {
 	ID            string                 `json:"id"`
 	HouseholdID   string                 `json:"householdId"`
@@ -51,7 +60,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	if s.cfg.Store == nil {
@@ -116,7 +125,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(r.Context())) }()
+	defer func(ctx context.Context) { _ = tx.Rollback(ctx) }(context.WithoutCancel(r.Context()))
 	id, err := gofrsuuid.FromString(uuid.NewV7().String())
 	if err != nil {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
@@ -162,7 +171,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	requestJSON := types.JSON[stdjson.RawMessage]{Val: request}
 	version := int32(1)
-	status := "queued"
+	status := documentStatusQueued
 	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
 		ID: &jobID, HouseholdID: &householdUUID, SourceDocumentID: &document.ID, Version: &version, Status: &status, Request: &requestJSON,
 	}).Exec(r.Context(), executor); err != nil {
@@ -178,14 +187,14 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 			s.logger.WarnContext(r.Context(), "extraction job notification failed", "job_id", jobID.String(), "error", err)
 		}
 	}
-	writeJSON(w, http.StatusAccepted, documentResponse{ID: document.ID.String(), HouseholdID: householdID, SHA256: hash, MIMEType: mimeType, SourceKind: sourceKind, Status: "queued", JobID: jobID.String(), CreatedAt: document.CreatedAt})
+	writeJSON(w, http.StatusAccepted, documentResponse{ID: document.ID.String(), HouseholdID: householdID, SHA256: hash, MIMEType: mimeType, SourceKind: sourceKind, Status: documentStatusQueued, JobID: jobID.String(), CreatedAt: document.CreatedAt})
 }
 
 func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, document *models.SourceDocument) (documentResponse, error) {
 	result := documentResponse{
 		ID: document.ID.String(), HouseholdID: document.HouseholdID.String(),
 		SHA256: document.Sha256, MIMEType: document.MimeType, SourceKind: document.SourceKind,
-		Status: "queued", CreatedAt: document.CreatedAt,
+		Status: documentStatusQueued, CreatedAt: document.CreatedAt,
 	}
 	job, err := models.ExtractionJobs.Query(
 		sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID))),
@@ -239,7 +248,7 @@ func documentForMember(ctx context.Context, exec bob.Executor, documentID, membe
 func (s *Server) document(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	documentID, err := gofrsuuid.FromString(r.PathValue("id"))
@@ -304,7 +313,7 @@ func (s *Server) loadDocumentConfirmations(ctx context.Context, document *docume
 func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	householdID := r.URL.Query().Get("householdId")
@@ -414,7 +423,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	if s.cfg.Store == nil {
@@ -433,7 +442,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(r.Context())) }()
+	defer func(ctx context.Context) { _ = tx.Rollback(ctx) }(context.WithoutCancel(r.Context()))
 	documentID, err := gofrsuuid.FromString(r.PathValue("id"))
 	if err != nil {
 		http.NotFound(w, r)
@@ -454,11 +463,11 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
 	}
-	if input.Crop != nil && document.MimeType != "image/jpeg" && document.MimeType != "image/png" && document.MimeType != "image/webp" && document.MimeType != "application/pdf" {
+	if input.Crop != nil && document.MimeType != documentMIMEJPEG && document.MimeType != documentMIMEPNG && document.MimeType != documentMIMEWebP && document.MimeType != documentMIMEPDF {
 		http.Error(w, "image crop requires an image or PDF document", http.StatusBadRequest)
 		return
 	}
-	if input.Crop != nil && document.MimeType != "application/pdf" && input.Crop.Page != 0 {
+	if input.Crop != nil && document.MimeType != documentMIMEPDF && input.Crop.Page != 0 {
 		http.Error(w, "image page is out of range", http.StatusBadRequest)
 		return
 	}
@@ -471,7 +480,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "extraction status lookup failed", http.StatusInternalServerError)
 		return
 	}
-	if latestJob != nil && (latestJob.Status == "queued" || latestJob.Status == "running") {
+	if latestJob != nil && (latestJob.Status == documentStatusQueued || latestJob.Status == "running") {
 		http.Error(w, "extraction is already running", http.StatusConflict)
 		return
 	}
@@ -489,7 +498,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 	if latestJob != nil {
 		version = latestJob.Version + 1
 	}
-	status := "queued"
+	status := documentStatusQueued
 	requestJSON := types.JSON[stdjson.RawMessage]{Val: request}
 	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
 		ID: &jobID, HouseholdID: &document.HouseholdID, SourceDocumentID: &document.ID, Version: &version, Status: &status, Request: &requestJSON,
@@ -506,13 +515,13 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 			s.logger.WarnContext(r.Context(), "extraction job notification failed", "job_id", jobID.String(), "error", err)
 		}
 	}
-	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": jobID.String(), "status": "queued"})
+	writeJSON(w, http.StatusAccepted, map[string]string{jobIDJSONKey: jobID.String(), "status": documentStatusQueued})
 }
 
 func (s *Server) documentContent(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	if s.cfg.Store == nil {
@@ -555,7 +564,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeGraphError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "authentication required")
+		writeUnauthenticatedGraphError(w)
 		return
 	}
 	var input struct {
@@ -574,7 +583,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "evidence confirmation failed", http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(r.Context())) }()
+	defer func(ctx context.Context) { _ = tx.Rollback(ctx) }(context.WithoutCancel(r.Context()))
 	documentID, err := gofrsuuid.FromString(r.PathValue("id"))
 	if err != nil {
 		http.NotFound(w, r)
@@ -674,7 +683,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		}
 		item := verified.Receipt.Items[*input.SourceItemIndex]
 		transform := verified.Transform
-		observation, err = json.Marshal(map[string]any{"jobId": *input.ObservationJobID, "itemIndex": *input.SourceItemIndex, "item": item, "transform": transform, "transformPage": verified.TransformPage})
+		observation, err = json.Marshal(map[string]any{jobIDJSONKey: *input.ObservationJobID, "itemIndex": *input.SourceItemIndex, "item": item, "transform": transform, "transformPage": verified.TransformPage})
 		if err != nil {
 			http.Error(w, "evidence encoding failed", http.StatusInternalServerError)
 			return

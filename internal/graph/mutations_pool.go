@@ -38,7 +38,7 @@ func (r *mutationResolver) createPool(ctx context.Context, input model.CreatePoo
 	if err != nil {
 		return nil, err
 	}
-	version := int64(householdRow.DefaultAllocationVersion)
+	version := householdRow.DefaultAllocationVersion
 	poolID := newID()
 	poolUUID := generatedUUID(poolID)
 	poolKind := string(input.Kind)
@@ -83,7 +83,7 @@ func (r *mutationResolver) createPool(ctx context.Context, input model.CreatePoo
 	}).UpdateMod(), um.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "pool.created", poolID, newVersion, []string{"name", "kind"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "pool.created", poolID, newVersion, []string{fieldName, fieldKind}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

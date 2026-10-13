@@ -23,7 +23,7 @@ type StatementEntry struct {
 
 // ParseStatementCSVはカード利用と銀行資金移動を区別し、複数行を独立した観測として保持する。
 func ParseStatementCSV(data []byte, sourceKind string) ([]StatementEntry, error) {
-	if len(data) == 0 || len(data) > MaxDocumentBytes || (sourceKind != "card" && sourceKind != "bank") {
+	if len(data) == 0 || len(data) > MaxDocumentBytes || (sourceKind != statementSourceCard && sourceKind != statementSourceBank) {
 		return nil, errors.New("invalid statement source")
 	}
 	reader := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(data), "\ufeff")))
@@ -41,7 +41,7 @@ func ParseStatementCSV(data []byte, sourceKind string) ([]StatementEntry, error)
 			columns[key] = i
 		}
 	}
-	for _, key := range []string{"date", "merchant", "amount"} {
+	for _, key := range []string{statementDateField, schemaMerchantKey, schemaAmountKey} {
 		if _, exists := columns[key]; !exists {
 			return nil, fmt.Errorf("missing statement column: %s", key)
 		}
@@ -68,16 +68,16 @@ func ParseStatementCSV(data []byte, sourceKind string) ([]StatementEntry, error)
 		if err != nil {
 			return nil, fmt.Errorf("invalid date at row %d", rowNumber)
 		}
-		amount, err := statementAmount(value(row, "amount"))
+		amount, err := statementAmount(value(row, schemaAmountKey))
 		if err != nil {
 			return nil, fmt.Errorf("invalid amount at row %d", rowNumber)
 		}
-		merchant := value(row, "merchant")
+		merchant := value(row, schemaMerchantKey)
 		if merchant == "" || len(merchant) > 1024 {
 			return nil, fmt.Errorf("invalid merchant at row %d", rowNumber)
 		}
-		kind := "CARD_PURCHASE"
-		if sourceKind == "bank" {
+		kind := statementKindCardPurchase
+		if sourceKind == statementSourceBank {
 			kind = bankTransactionKind(value(row, "transactionKind"))
 		}
 		result = append(result, StatementEntry{Row: rowNumber, Kind: kind, OccurredAt: date.Format(time.RFC3339), Merchant: merchant, Amount: amount, TransactionID: value(row, "transactionId"), OrderID: value(row, "orderId"), CardLast4: value(row, "cardLast4")})
@@ -92,17 +92,17 @@ func headerKey(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "date", "日時", "日付", "利用日", "ご利用日", "取引日":
 		return "date"
-	case "merchant", "店名", "店舗", "利用店名", "ご利用店名", "摘要":
-		return "merchant"
-	case "amount", "金額", "利用金額", "ご利用金額", "取引金額":
-		return "amount"
+	case schemaMerchantKey, "店名", "店舗", "利用店名", "ご利用店名", "摘要":
+		return schemaMerchantKey
+	case schemaAmountKey, "金額", "利用金額", "ご利用金額", "取引金額":
+		return schemaAmountKey
 	case "transactionid", "transaction_id", "取引id", "取引番号":
 		return "transactionId"
 	case "orderid", "order_id", "注文番号":
 		return "orderId"
 	case "cardlast4", "card_last4", "カード末尾":
 		return "cardLast4"
-	case "kind", "type", "transactionkind", "transaction_kind", "取引種別", "取引区分", "種別":
+	case "kind", schemaTypeKey, "transactionkind", "transaction_kind", "取引種別", "取引区分", "種別":
 		return "transactionKind"
 	default:
 		return ""
@@ -111,8 +111,8 @@ func headerKey(value string) string {
 
 func bankTransactionKind(value string) string {
 	switch strings.ToUpper(strings.TrimSpace(value)) {
-	case "PURCHASE_PAYMENT", "商品購入", "デビット購入":
-		return "PURCHASE_PAYMENT"
+	case statementKindPayment, "商品購入", "デビット購入":
+		return statementKindPayment
 	case "CARD_BILL_PAYMENT", "CARD_PAYMENT", "クレジットカード引落", "カード利用代金":
 		return "CARD_BILL_PAYMENT"
 	case "ACCOUNT_TRANSFER", "TRANSFER", "振込", "振替":

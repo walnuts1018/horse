@@ -65,7 +65,7 @@ func (r *mutationResolver) createProductConcept(ctx context.Context, input model
 	if _, err := models.ProductConcepts.Insert(conceptFields).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "product.concept.created", id, 1, []string{"name", "categoryId"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "product.concept.created", id, 1, []string{fieldName, fieldCategoryID}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -113,7 +113,7 @@ func (r *mutationResolver) createProductVariant(ctx context.Context, input model
 	if _, err := models.ProductVariants.Insert(conceptVariant).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "product.variant.created", id, 1, []string{"name", "conceptId"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "product.variant.created", id, 1, []string{fieldName, fieldConceptID}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -158,7 +158,7 @@ func (r *mutationResolver) setProductAlias(ctx context.Context, input model.SetP
 	if err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "product.alias.learned", aliasID, aliasRow.Revision, []string{"alias", "variantId", "merchant"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "product.alias.learned", aliasID, aliasRow.Revision, []string{fieldAlias, fieldVariantID, fieldMerchant}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -282,7 +282,7 @@ func (r *queryResolver) productCatalog(ctx context.Context, householdID string, 
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize, backward, err := pageDirection(after, before, first, last)
+	pageSize, backward, err := pageDirection(first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +290,7 @@ func (r *queryResolver) productCatalog(ctx context.Context, householdID string, 
 	filters := []bob.Expression{models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID))}
 	db := bobpgx.NewPool(r.DB)
 	if after != nil && *after != "" {
-		value, err := decodeCursor(*after, "ProductConcept")
+		value, err := decodeCursor(*after, nodeTypeProductConcept)
 		if err != nil {
 			return nil, err
 		}
@@ -308,7 +308,7 @@ func (r *queryResolver) productCatalog(ctx context.Context, householdID string, 
 		))
 	}
 	if before != nil && *before != "" {
-		value, err := decodeCursor(*before, "ProductConcept")
+		value, err := decodeCursor(*before, nodeTypeProductConcept)
 		if err != nil {
 			return nil, err
 		}
@@ -409,7 +409,7 @@ func (r *queryResolver) productCatalog(ctx context.Context, householdID string, 
 		} else {
 			concept.Variants = make([]*model.ProductVariant, 0)
 		}
-		cursor := encodeCursor("ProductConcept", conceptRow.NormalizedName+"\x00"+conceptRow.ID.String())
+		cursor := encodeCursor(nodeTypeProductConcept, conceptRow.NormalizedName+"\x00"+conceptRow.ID.String())
 		connection.Edges = append(connection.Edges, &model.ProductConceptEdge{Cursor: cursor, Node: concept})
 	}
 	if len(connection.Edges) > 0 {

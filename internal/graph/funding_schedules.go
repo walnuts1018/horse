@@ -33,7 +33,7 @@ func (r *queryResolver) fundingSchedules(ctx context.Context, householdID string
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize, backward, err := pageDirection(after, before, first, last)
+	pageSize, backward, err := pageDirection(first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (r *queryResolver) fundingSchedules(ctx context.Context, householdID string
 		cursor   *string
 		isBefore bool
 	}{{cursor: after}, {cursor: before, isBefore: true}} {
-		id, err := cursorID(boundary.cursor, "FundingSchedule")
+		id, err := cursorID(boundary.cursor, nodeTypeFundingSchedule)
 		if err != nil {
 			return nil, err
 		}
@@ -117,11 +117,11 @@ func (r *queryResolver) fundingSchedules(ctx context.Context, householdID string
 	}
 	for _, row := range rows {
 		connection.Edges = append(connection.Edges, &model.FundingScheduleEdge{
-			Cursor: encodeCursor("FundingSchedule", row.ID.String()), Node: fundingScheduleModel(row),
+			Cursor: encodeCursor(nodeTypeFundingSchedule, row.ID.String()), Node: fundingScheduleModel(row),
 		})
 	}
 	if len(rows) > 0 {
-		start, end := encodeCursor("FundingSchedule", rows[0].ID.String()), encodeCursor("FundingSchedule", rows[len(rows)-1].ID.String())
+		start, end := encodeCursor(nodeTypeFundingSchedule, rows[0].ID.String()), encodeCursor(nodeTypeFundingSchedule, rows[len(rows)-1].ID.String())
 		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &start, &end
 	}
 	return connection, nil

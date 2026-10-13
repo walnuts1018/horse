@@ -19,7 +19,7 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
-	pageSize, backward, err := pageDirection(after, before, first, last)
+	pageSize, backward, err := pageDirection(first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 	if err != nil {
 		return nil, err
 	}
-	if cursorID, err := cursorID(after, "LedgerEntry"); err != nil {
+	if cursorID, err := cursorID(after, nodeTypeLedgerEntry); err != nil {
 		return nil, err
 	} else if cursorID != nil {
 		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
@@ -49,7 +49,7 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 		}
 		filters = append(filters, psql.Or(models.LedgerEntries.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.LedgerEntries.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.LedgerEntries.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
-	if cursorID, err := cursorID(before, "LedgerEntry"); err != nil {
+	if cursorID, err := cursorID(before, nodeTypeLedgerEntry); err != nil {
 		return nil, err
 	} else if cursorID != nil {
 		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
@@ -91,7 +91,7 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 	}
 	connection := &model.LedgerConnection{Edges: make([]*model.LedgerEdge, 0, len(entries)), TotalCount: int(count), PageInfo: pageInfo}
 	for _, row := range entries {
-		entry := &model.LedgerEntryData{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, Currency: "JPY", OccurredAt: string(timeString(row.OccurredAt)), Description: row.Description, AmountYen: graphLong(row.AmountYen), CreatedAt: string(timeString(row.CreatedAt))}
+		entry := &model.LedgerEntryData{ID: row.ID.String(), HouseholdID: row.HouseholdID.String(), Kind: row.Kind, Currency: currencyJPY, OccurredAt: string(timeString(row.OccurredAt)), Description: row.Description, AmountYen: graphLong(row.AmountYen), CreatedAt: string(timeString(row.CreatedAt))}
 		if row.FromMemberID.Valid {
 			v := row.FromMemberID.V.String()
 			entry.FromMemberID = &v
@@ -112,11 +112,11 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 		if err != nil {
 			return nil, err
 		}
-		connection.Edges = append(connection.Edges, &model.LedgerEdge{Cursor: encodeCursor("LedgerEntry", entry.ID), Node: variant})
+		connection.Edges = append(connection.Edges, &model.LedgerEdge{Cursor: encodeCursor(nodeTypeLedgerEntry, entry.ID), Node: variant})
 	}
 	if len(entries) > 0 {
-		start := encodeCursor("LedgerEntry", entries[0].ID.String())
-		end := encodeCursor("LedgerEntry", entries[len(entries)-1].ID.String())
+		start := encodeCursor(nodeTypeLedgerEntry, entries[0].ID.String())
+		end := encodeCursor(nodeTypeLedgerEntry, entries[len(entries)-1].ID.String())
 		connection.PageInfo.StartCursor = &start
 		connection.PageInfo.EndCursor = &end
 	}

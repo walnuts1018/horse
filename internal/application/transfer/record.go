@@ -30,6 +30,8 @@ var (
 	ErrNotFound = errors.New("resource not found")
 )
 
+const repaymentKind = "REPAYMENT"
+
 const maxMoney int64 = 1_000_000_000_000
 
 type Command struct {
@@ -70,10 +72,10 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 	if command.OccurredAt.IsZero() {
 		return Result{}, fmt.Errorf("%w: occurred at is required", ErrBadInput)
 	}
-	if command.Kind == "REPAYMENT" && command.LoanID == nil {
+	if command.Kind == repaymentKind && command.LoanID == nil {
 		return Result{}, fmt.Errorf("%w: repayment requires a loan", ErrBadInput)
 	}
-	if command.Kind != "REPAYMENT" && command.LoanID != nil {
+	if command.Kind != repaymentKind && command.LoanID != nil {
 		return Result{}, fmt.Errorf("%w: loan id is only valid for a repayment", ErrBadInput)
 	}
 
@@ -238,7 +240,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 	}
 
 	var loanID *gofrsuuid.UUID
-	if command.Kind == "REPAYMENT" {
+	if command.Kind == repaymentKind {
 		id, parseErr := parseID(*command.LoanID, "loan")
 		if parseErr != nil {
 			return Result{}, parseErr
@@ -256,7 +258,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		}
 		repayments, repaymentErr := models.Transfers.Query(sm.Where(psql.And(
 			models.Transfers.Columns.LoanID.EQ(psql.Arg(id)),
-			models.Transfers.Columns.Kind.EQ(psql.Arg("REPAYMENT")),
+			models.Transfers.Columns.Kind.EQ(psql.Arg(repaymentKind)),
 		))).All(ctx, executor)
 		if repaymentErr != nil {
 			return Result{}, repaymentErr
@@ -384,12 +386,12 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 	}).Exec(ctx, executor); err != nil {
 		return Result{}, err
 	}
-	if command.Kind == "ADVANCE" || command.Kind == "LOAN" || command.Kind == "REPAYMENT" {
+	if command.Kind == "ADVANCE" || command.Kind == "LOAN" || command.Kind == repaymentKind {
 		adjustments := []struct {
 			memberID gofrsuuid.UUID
 			amount   int64
 		}{{memberID: fromMemberID, amount: -amount}, {memberID: toMemberID, amount: amount}}
-		if command.Kind == "REPAYMENT" && paymentPoolKind == "SHARED" {
+		if command.Kind == repaymentKind && paymentPoolKind == "SHARED" {
 			adjustments = []struct {
 				memberID gofrsuuid.UUID
 				amount   int64
@@ -424,7 +426,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 
 func validKind(kind string) bool {
 	switch kind {
-	case "ADVANCE", "LOAN", "REPAYMENT", "GIFT":
+	case "ADVANCE", "LOAN", repaymentKind, "GIFT":
 		return true
 	default:
 		return false

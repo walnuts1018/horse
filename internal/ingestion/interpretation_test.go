@@ -3,39 +3,41 @@ package ingestion
 import "testing"
 
 func TestInterpretationsKeepAmbiguousObservations(t *testing.T) {
+	t.Parallel()
 	r := Receipt{
-		Currency: "JPY", Total: 108,
-		Items:     []Item{{PrintedName: "A", PrintedAmount: 108, PriceBasis: "UNKNOWN", TaxGroup: "tax"}},
-		TaxGroups: []TaxGroup{{ID: "tax", Numerator: 8, Denominator: 100, Basis: "UNKNOWN", Rounding: "UNKNOWN", PrintedTax: new(int64(8))}},
+		Currency: currencyJPY, Total: 108,
+		Items:     []Item{{PrintedName: "A", PrintedAmount: 108, PriceBasis: priceBasisUnknown, TaxGroup: testTaxGroupID}},
+		TaxGroups: []TaxGroup{{ID: testTaxGroupID, Numerator: 8, Denominator: 100, Basis: priceBasisUnknown, Rounding: priceBasisUnknown, PrintedTax: new(int64(8))}},
 	}
-	for _, rounding := range []string{"FLOOR", "CEIL"} {
+	for _, rounding := range []string{taxRoundingFloor, "CEIL"} {
 		r.Interpretations = append(r.Interpretations, TaxInterpretation{ID: rounding,
-			Items:  []ItemInterpretation{{Index: 0, PriceBasis: "TAX_INCLUDED", TaxGroup: "tax"}},
-			Groups: []GroupInterpretation{{ID: "tax", Basis: "TAX_INCLUDED", Rounding: rounding}},
+			Items:  []ItemInterpretation{{Index: 0, PriceBasis: priceBasisTaxIncluded, TaxGroup: testTaxGroupID}},
+			Groups: []GroupInterpretation{{ID: testTaxGroupID, Basis: priceBasisTaxIncluded, Rounding: rounding}},
 		})
 	}
 	r.Interpretations = append(r.Interpretations, TaxInterpretation{ID: "excluded",
-		Items:  []ItemInterpretation{{Index: 0, PriceBasis: "TAX_EXCLUDED", TaxGroup: "tax"}},
-		Groups: []GroupInterpretation{{ID: "tax", Basis: "TAX_EXCLUDED", Rounding: "FLOOR"}},
+		Items:  []ItemInterpretation{{Index: 0, PriceBasis: priceBasisTaxExcluded, TaxGroup: testTaxGroupID}},
+		Groups: []GroupInterpretation{{ID: testTaxGroupID, Basis: priceBasisTaxExcluded, Rounding: taxRoundingFloor}},
 	})
 	got, err := Verify(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Balanced || got.Receipt.Items[0].PriceBasis != "UNKNOWN" || len(got.Candidates) != 3 {
+	if got.Balanced || got.Receipt.Items[0].PriceBasis != priceBasisUnknown || len(got.Candidates) != 3 {
 		t.Fatalf("observation was finalized: %+v", got)
 	}
 	if !got.Candidates[0].Consistent || !got.Candidates[1].Consistent || got.Candidates[2].Consistent {
 		t.Fatalf("candidate constraints not preserved: %+v", got.Candidates)
 	}
-	if r.Items[0].PriceBasis != "UNKNOWN" || r.TaxGroups[0].Rounding != "UNKNOWN" {
+	if r.Items[0].PriceBasis != priceBasisUnknown || r.TaxGroups[0].Rounding != priceBasisUnknown {
 		t.Fatal("input observations changed")
 	}
 }
 
 func TestInterpretationRejectsChangingExplicitFacts(t *testing.T) {
-	r := Receipt{Currency: "JPY", Total: 100,
-		Items:           []Item{{PrintedName: "A", PrintedAmount: 100, PriceBasis: "TAX_INCLUDED"}},
+	t.Parallel()
+	r := Receipt{Currency: currencyJPY, Total: 100,
+		Items:           []Item{{PrintedName: "A", PrintedAmount: 100, PriceBasis: priceBasisTaxIncluded}},
 		Interpretations: []TaxInterpretation{{ID: "changed", Items: []ItemInterpretation{{Index: 0, PriceBasis: "EXEMPT"}}}},
 	}
 	got, err := Verify(r)

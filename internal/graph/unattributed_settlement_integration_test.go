@@ -21,6 +21,7 @@ import (
 )
 
 func TestSettlementRejectsPostedPurchasePaidFromAccountWithoutPool(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -45,7 +46,7 @@ func TestSettlementRejectsPostedPurchasePaidFromAccountWithoutPool(t *testing.T)
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
 
 	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: displayName})
@@ -59,11 +60,11 @@ func TestSettlementRejectsPostedPurchasePaidFromAccountWithoutPool(t *testing.T)
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
 
 	mutation := &mutationResolver{Resolver: resolver}
-	pool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Personal", Kind: model.PoolKindPersonal})
+	pool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: testPersonalPoolName, Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,9 +83,9 @@ func TestSettlementRejectsPostedPurchasePaidFromAccountWithoutPool(t *testing.T)
 		t.Fatal(err)
 	}
 	purchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
-		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-10-13T10:00:00+09:00",
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: testPurchaseTime,
 		Merchant: "Unassigned payment", PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: assignedAccount.ID, AmountYen: 100}},
-		Items: []*model.PurchaseItemInput{{Name: "item", AmountYen: 100}},
+		Items: []*model.PurchaseItemInput{{Name: testItemName, AmountYen: 100}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +107,7 @@ func TestSettlementRejectsPostedPurchasePaidFromAccountWithoutPool(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	defer func() { _ = tx.Rollback(t.Context()) }()
 	executor := bobpgx.NewTx(tx, nil)
 	if _, err := models.PurchasePayments.Update((&models.PurchasePaymentSetter{AmountYen: &firstAmount}).UpdateMod(), um.Where(psql.And(
 		models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
@@ -124,11 +125,11 @@ func TestSettlementRejectsPostedPurchasePaidFromAccountWithoutPool(t *testing.T)
 		t.Fatal(err)
 	}
 
-	_, err = resolver.Query().Settlement(ctx, household.ID, "2026-10")
+	_, err = resolver.Query().Settlement(ctx, household.ID, testOctober2026)
 	if !errors.Is(err, ErrUnattributedPurchasePayment) || !strings.Contains(err.Error(), "no funding pool") || !strings.Contains(err.Error(), purchase.ID) || !strings.Contains(err.Error(), account.ID) {
 		t.Fatalf("settlement preview should report the unattributed payment and its source, got %v", err)
 	}
-	_, err = mutation.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: "2026-10", ExpectedRevision: 0})
+	_, err = mutation.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: testOctober2026, ExpectedRevision: 0})
 	if !errors.Is(err, ErrUnattributedPurchasePayment) || !strings.Contains(err.Error(), "no funding pool") || !strings.Contains(err.Error(), purchase.ID) || !strings.Contains(err.Error(), account.ID) {
 		t.Fatalf("settlement close should report the unattributed payment and its source, got %v", err)
 	}

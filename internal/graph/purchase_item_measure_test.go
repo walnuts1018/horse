@@ -7,32 +7,34 @@ import (
 )
 
 func TestPurchaseItemMeasureKeepsUnknownAndExactUnitPrices(t *testing.T) {
+	t.Parallel()
 	three, two := "3", "2"
 	unit := "個"
 	measure, err := newPurchaseItemMeasure(&three, &two, &unit, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	numerator, denominator, ok := effectiveUnitPrice(100, measure)
-	if !ok || numerator == nil || denominator == nil || *numerator != "200" || *denominator != "3" {
-		t.Fatalf("effective unit price must remain an exact rational: %v/%v ok=%v", numerator, denominator, ok)
+	numerator, denominator := effectiveUnitPrice(100, measure)
+	if numerator == nil || denominator == nil || *numerator != "200" || *denominator != "3" {
+		t.Fatalf("effective unit price must remain an exact rational: %v/%v", numerator, denominator)
 	}
 
 	unknown, err := newPurchaseItemMeasure(nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	numerator, denominator, ok = effectiveUnitPrice(500, unknown)
-	if !ok || numerator != nil || denominator != nil {
-		t.Fatalf("unknown quantity must not produce a unit price: %v/%v ok=%v", numerator, denominator, ok)
+	numerator, denominator = effectiveUnitPrice(500, unknown)
+	if numerator != nil || denominator != nil {
+		t.Fatalf("unknown quantity must not produce a unit price: %v/%v", numerator, denominator)
 	}
-	numerator, denominator, ok = effectiveUnitPrice(-100, measure)
-	if !ok || numerator != nil || denominator != nil {
-		t.Fatalf("refund amounts must not produce a negative market unit price: %v/%v ok=%v", numerator, denominator, ok)
+	numerator, denominator = effectiveUnitPrice(-100, measure)
+	if numerator != nil || denominator != nil {
+		t.Fatalf("refund amounts must not produce a negative market unit price: %v/%v", numerator, denominator)
 	}
 }
 
 func TestPurchaseItemMeasureRejectsPartialAndNoncanonicalRationals(t *testing.T) {
+	t.Parallel()
 	three, zero, two := "3", "0", "2"
 	unit := "kg"
 	price := model.Long(240)
@@ -60,6 +62,7 @@ func TestPurchaseItemMeasureRejectsPartialAndNoncanonicalRationals(t *testing.T)
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := newPurchaseItemMeasure(test.quantityNumerator, test.quantityDenominator, test.quantityUnit,
 				test.printedPrice, test.printedBasisNumerator, test.printedBasisDenominator, test.printedUnit)
 			if err == nil {

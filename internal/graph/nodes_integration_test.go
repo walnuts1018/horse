@@ -16,6 +16,7 @@ import (
 )
 
 func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.T) {
+	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
@@ -37,7 +38,7 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		subject, name := "nodes-integration:"+id, "nodes integration"
+		subject, name := "nodes-integration:"+id, testNodesIntegrationName
 		if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &subject, DisplayName: &name}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 			t.Fatal(err)
 		}
@@ -45,11 +46,11 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	insertMember(memberID)
 	insertMember(outsiderID)
 	t.Cleanup(func() {
-		_, _ = models.Members.Delete(dm.Where(psql.Or(models.Members.Columns.ID.EQ(psql.Arg(memberID)), models.Members.Columns.ID.EQ(psql.Arg(outsiderID))))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(psql.Or(models.Members.Columns.ID.EQ(psql.Arg(memberID)), models.Members.Columns.ID.EQ(psql.Arg(outsiderID))))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 	})
 
-	ownerContext := auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: "nodes-integration:" + memberID, DisplayName: "nodes integration"})
-	outsiderContext := auth.WithPrincipal(ctx, auth.Principal{MemberID: outsiderID, Subject: "nodes-integration:" + outsiderID, DisplayName: "nodes integration"})
+	ownerContext := auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: "nodes-integration:" + memberID, DisplayName: testNodesIntegrationName})
+	outsiderContext := auth.WithPrincipal(ctx, auth.Principal{MemberID: outsiderID, Subject: "nodes-integration:" + outsiderID, DisplayName: testNodesIntegrationName})
 	mutation := &mutationResolver{Resolver: &Resolver{DB: db}}
 	ownedHousehold, err := mutation.createHousehold(ownerContext, model.CreateHouseholdInput{Name: "nodes integration owned"})
 	if err != nil {
@@ -65,7 +66,7 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 			t.Fatal(err)
 		}
 		t.Cleanup(func() {
-			_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.Background(), bobpgx.NewPool(db))
+			_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
 		})
 	}
 	ownedAccount, err := mutation.createAccount(ownerContext, model.CreateAccountInput{HouseholdID: ownedHousehold.ID, Name: "owned", Kind: model.AccountKindBank})

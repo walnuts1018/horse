@@ -5,13 +5,21 @@ import (
 	"testing"
 )
 
+const (
+	sharedPoolID    = "shared"
+	personalAPoolID = "personal-a"
+	personalBPoolID = "personal-b"
+	personalPoolID  = "personal"
+)
+
 func TestCalculateExpenseAdjustmentsBalancesSharedPoolToFundingShares(t *testing.T) {
+	t.Parallel()
 	rules := map[string]PoolFundingRule{
-		"shared":     {PoolID: "shared", Kind: FundingPoolShared, SettlementPolicy: SettlementBalanceToStandard, FundingShares: []MemberWeight{{MemberID: "A", Weight: 60}, {MemberID: "B", Weight: 40}}},
-		"personal-a": {PoolID: "personal-a", Kind: FundingPoolPersonal, OwnerMemberID: "A"},
-		"personal-b": {PoolID: "personal-b", Kind: FundingPoolPersonal, OwnerMemberID: "B"},
+		sharedPoolID:    {PoolID: sharedPoolID, Kind: FundingPoolShared, SettlementPolicy: SettlementBalanceToStandard, FundingShares: []MemberWeight{{MemberID: "A", Weight: 60}, {MemberID: "B", Weight: 40}}},
+		personalAPoolID: {PoolID: personalAPoolID, Kind: FundingPoolPersonal, OwnerMemberID: "A"},
+		personalBPoolID: {PoolID: personalBPoolID, Kind: FundingPoolPersonal, OwnerMemberID: "B"},
 	}
-	got, err := CalculateExpenseAdjustments([]FundingExpense{{PaymentPoolID: "shared", Items: []FundingExpenseItem{{Amount: 1000, Allocations: []PoolAmount{{PoolID: "personal-a", Amount: 1000}}}}}}, rules)
+	got, err := CalculateExpenseAdjustments([]FundingExpense{{PaymentPoolID: sharedPoolID, Items: []FundingExpenseItem{{Amount: 1000, Allocations: []PoolAmount{{PoolID: personalAPoolID, Amount: 1000}}}}}}, rules)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,12 +28,13 @@ func TestCalculateExpenseAdjustmentsBalancesSharedPoolToFundingShares(t *testing
 }
 
 func TestCalculateExpenseAdjustmentsReimbursesPersonalSpendingFromSharedPool(t *testing.T) {
+	t.Parallel()
 	rules := map[string]PoolFundingRule{
-		"shared":     {PoolID: "shared", Kind: FundingPoolShared, SettlementPolicy: SettlementReimbursePersonal, FundingShares: []MemberWeight{{MemberID: "A", Weight: 3}, {MemberID: "B", Weight: 2}}},
-		"personal-a": {PoolID: "personal-a", Kind: FundingPoolPersonal, OwnerMemberID: "A"},
-		"personal-b": {PoolID: "personal-b", Kind: FundingPoolPersonal, OwnerMemberID: "B"},
+		sharedPoolID:    {PoolID: sharedPoolID, Kind: FundingPoolShared, SettlementPolicy: SettlementReimbursePersonal, FundingShares: []MemberWeight{{MemberID: "A", Weight: 3}, {MemberID: "B", Weight: 2}}},
+		personalAPoolID: {PoolID: personalAPoolID, Kind: FundingPoolPersonal, OwnerMemberID: "A"},
+		personalBPoolID: {PoolID: personalBPoolID, Kind: FundingPoolPersonal, OwnerMemberID: "B"},
 	}
-	got, err := CalculateExpenseAdjustments([]FundingExpense{{PaymentPoolID: "shared", Items: []FundingExpenseItem{{Amount: 1000, Allocations: []PoolAmount{{PoolID: "personal-a", Amount: 1000}}}}}}, rules)
+	got, err := CalculateExpenseAdjustments([]FundingExpense{{PaymentPoolID: sharedPoolID, Items: []FundingExpenseItem{{Amount: 1000, Allocations: []PoolAmount{{PoolID: personalAPoolID, Amount: 1000}}}}}}, rules)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,11 +42,12 @@ func TestCalculateExpenseAdjustmentsReimbursesPersonalSpendingFromSharedPool(t *
 }
 
 func TestCalculateExpenseAdjustmentsCreditsPersonalAdvance(t *testing.T) {
+	t.Parallel()
 	rules := map[string]PoolFundingRule{
-		"personal-a": {PoolID: "personal-a", Kind: FundingPoolPersonal, OwnerMemberID: "A"},
-		"personal-b": {PoolID: "personal-b", Kind: FundingPoolPersonal, OwnerMemberID: "B"},
+		personalAPoolID: {PoolID: personalAPoolID, Kind: FundingPoolPersonal, OwnerMemberID: "A"},
+		personalBPoolID: {PoolID: personalBPoolID, Kind: FundingPoolPersonal, OwnerMemberID: "B"},
 	}
-	got, err := CalculateExpenseAdjustments([]FundingExpense{{PaymentPoolID: "personal-a", Items: []FundingExpenseItem{{Amount: 500, Allocations: []PoolAmount{{PoolID: "personal-a", Amount: 300}, {PoolID: "personal-b", Amount: 200}}}}}}, rules)
+	got, err := CalculateExpenseAdjustments([]FundingExpense{{PaymentPoolID: personalAPoolID, Items: []FundingExpenseItem{{Amount: 500, Allocations: []PoolAmount{{PoolID: personalAPoolID, Amount: 300}, {PoolID: personalBPoolID, Amount: 200}}}}}}, rules)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,16 +55,18 @@ func TestCalculateExpenseAdjustmentsCreditsPersonalAdvance(t *testing.T) {
 }
 
 func TestCalculateExpenseAdjustmentsRejectsUnconfiguredOwnership(t *testing.T) {
-	rules := map[string]PoolFundingRule{"personal": {PoolID: "personal", Kind: FundingPoolPersonal}}
-	_, err := CalculateExpenseAdjustments([]FundingExpense{{PaymentPoolID: "personal", Items: []FundingExpenseItem{{Amount: 10, Allocations: []PoolAmount{{PoolID: "personal", Amount: 10}}}}}}, rules)
+	t.Parallel()
+	rules := map[string]PoolFundingRule{personalPoolID: {PoolID: personalPoolID, Kind: FundingPoolPersonal}}
+	_, err := CalculateExpenseAdjustments([]FundingExpense{{PaymentPoolID: personalPoolID, Items: []FundingExpenseItem{{Amount: 10, Allocations: []PoolAmount{{PoolID: personalPoolID, Amount: 10}}}}}}, rules)
 	if !errors.Is(err, ErrIncompleteFundingRule) {
 		t.Fatalf("expected missing owner error, got %v", err)
 	}
 }
 
 func TestSplitFundingExpenseKeepsResponsibilityAcrossMultiplePayments(t *testing.T) {
-	items := []FundingExpenseItem{{Amount: 101, Allocations: []PoolAmount{{PoolID: "shared", Amount: 101}}}}
-	payments := []FundingPayment{{ID: "account-a", PoolID: "personal-a", Amount: 60}, {ID: "account-b", PoolID: "personal-b", Amount: 41}}
+	t.Parallel()
+	items := []FundingExpenseItem{{Amount: 101, Allocations: []PoolAmount{{PoolID: sharedPoolID, Amount: 101}}}}
+	payments := []FundingPayment{{ID: "account-a", PoolID: personalAPoolID, Amount: 60}, {ID: "account-b", PoolID: personalBPoolID, Amount: 41}}
 
 	got, err := SplitFundingExpense(items, payments)
 	if err != nil {

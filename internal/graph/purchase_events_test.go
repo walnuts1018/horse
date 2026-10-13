@@ -12,6 +12,7 @@ import (
 )
 
 func TestPurchaseChangeUsesKnownFieldEnumValues(t *testing.T) {
+	t.Parallel()
 	event := &models.HouseholdEvent{
 		Cursor: 1, Type: "purchase.item.updated", EntityID: uuid.Must(uuid.NewV7()), Revision: 2,
 		ChangedFields: types.JSON[json.RawMessage]{Val: json.RawMessage(`["name","quantity"]`)},
@@ -27,6 +28,7 @@ func TestPurchaseChangeUsesKnownFieldEnumValues(t *testing.T) {
 }
 
 func TestPurchaseChangeRejectsUnknownFieldKeys(t *testing.T) {
+	t.Parallel()
 	event := &models.HouseholdEvent{
 		Type:          "purchase.updated",
 		ChangedFields: types.JSON[json.RawMessage]{Val: json.RawMessage(`["unknown"]`)},

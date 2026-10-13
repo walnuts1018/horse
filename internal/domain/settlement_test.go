@@ -7,6 +7,7 @@ import (
 )
 
 func TestCalculateSettlementCarriesUnpaidAndKeepsOverpayment(t *testing.T) {
+	t.Parallel()
 	result, err := CalculateSettlement([]SettlementInput{
 		{MemberID: "a", ScheduledYen: 6000, PaidYen: 6000},
 		{MemberID: "b", ScheduledYen: 4000, PaidYen: 0, PreviousOwedYen: 4000},
@@ -21,6 +22,7 @@ func TestCalculateSettlementCarriesUnpaidAndKeepsOverpayment(t *testing.T) {
 }
 
 func TestCalculateSettlementRejectsOverflow(t *testing.T) {
+	t.Parallel()
 	_, err := CalculateSettlement([]SettlementInput{{MemberID: "a", ScheduledYen: math.MaxInt64, PreviousOwedYen: 1}})
 	if !errors.Is(err, ErrInvalidSettlement) {
 		t.Fatalf("expected overflow error, got %v", err)

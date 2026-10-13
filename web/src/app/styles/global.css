@@ -3147,7 +3147,16 @@ a {
 
 @media (width <= 760px) {
   html.mobile-drawer-open {
+    overflow: hidden;
     overscroll-behavior-y: none;
+  }
+
+  html.mobile-drawer-open body {
+    position: fixed;
+    top: var(--mobile-drawer-scroll-top, 0);
+    right: 0;
+    left: 0;
+    overflow: hidden;
   }
 
   body {

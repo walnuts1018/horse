@@ -111,7 +111,7 @@ func (r *mutationResolver) setFundingSchedule(ctx context.Context, input model.S
 	if err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "funding.schedule.updated", scheduleID, 1, []string{"amountYen", "startsOn", "endsOn"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "funding.schedule.updated", scheduleID, 1, []string{fieldAmountYen, fieldStartsOn, fieldEndsOn}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

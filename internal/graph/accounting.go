@@ -185,7 +185,7 @@ func (r *mutationResolver) setPoolFundingRule(ctx context.Context, input model.S
 	if _, err := models.Households.Update((&models.HouseholdSetter{Revision: &householdRevision, UpdatedAt: &updatedAt}).UpdateMod(), um.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID)))).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, input.HouseholdID, "pool.funding_rule.updated", input.PoolID, int64(newVersion), []string{"ownerMemberId", "fundingShares", "settlementPolicy"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, input.HouseholdID, "pool.funding_rule.updated", input.PoolID, int64(newVersion), []string{fieldOwnerMemberID, fieldFundingShares, fieldSettlementPolicy}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

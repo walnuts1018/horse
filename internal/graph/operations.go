@@ -12,10 +12,9 @@ import (
 const (
 	transferKindAdvance    = "ADVANCE"
 	transferKindGift       = "GIFT"
-	transferKindLoan       = "LOAN"
 	transferKindRepayment  = "REPAYMENT"
 	settlementStatusOpen   = "OPEN"
-	settlementStatusClosed = "CLOSED"
+	settlementStatusClosed = statusClosed
 )
 
 func (r *mutationResolver) recordFunding(ctx context.Context, input model.RecordFundingInput) (*model.LedgerEntryData, error) {
@@ -76,7 +75,7 @@ func (r *mutationResolver) recordTransferCommand(ctx context.Context, input tran
 	}
 	result, err := transferapp.New(r.DB).Do(ctx, transferapp.Command{
 		ActorID: user.MemberID, HouseholdID: input.HouseholdID, FromMemberID: input.FromMemberID,
-		ToMemberID: input.ToMemberID, Kind: string(input.Kind), LoanID: input.LoanID,
+		ToMemberID: input.ToMemberID, Kind: input.Kind, LoanID: input.LoanID,
 		PaymentAccountID: input.PaymentAccountID, DestinationAccountID: input.DestinationAccountID,
 		AmountYen: int64(input.AmountYen), OccurredAt: occurredAt, Description: input.Description,
 		IdempotencyKey: input.IdempotencyKey, RequestFingerprint: fingerprint,

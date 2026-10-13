@@ -95,7 +95,7 @@ func (r *queryResolver) householdInvitations(ctx context.Context, householdID st
 	if err := requireHouseholdOwner(ctx, executor, householdID, user.MemberID); err != nil {
 		return nil, err
 	}
-	pageSize, backward, err := pageDirection(after, before, first, last)
+	pageSize, backward, err := pageDirection(first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (r *queryResolver) householdInvitations(ctx context.Context, householdID st
 	if err != nil {
 		return nil, err
 	}
-	if id, err := cursorID(after, "HouseholdInvitation"); err != nil {
+	if id, err := cursorID(after, nodeTypeHouseholdInvitation); err != nil {
 		return nil, err
 	} else if id != nil {
 		parsedCursorID, err := gofrsuuid.FromString(*id)
@@ -126,7 +126,7 @@ func (r *queryResolver) householdInvitations(ctx context.Context, householdID st
 			psql.And(models.HouseholdInvitations.Columns.CreatedAt.EQ(psql.Arg(cursor.CreatedAt)), models.HouseholdInvitations.Columns.ID.GT(psql.Arg(cursor.ID))),
 		))
 	}
-	if id, err := cursorID(before, "HouseholdInvitation"); err != nil {
+	if id, err := cursorID(before, nodeTypeHouseholdInvitation); err != nil {
 		return nil, err
 	} else if id != nil {
 		parsedCursorID, err := gofrsuuid.FromString(*id)
@@ -180,10 +180,10 @@ func (r *queryResolver) householdInvitations(ctx context.Context, householdID st
 	connection := &model.HouseholdInvitationConnection{Edges: make([]*model.HouseholdInvitationEdge, 0, len(rows)), TotalCount: int(count), PageInfo: pageInfo}
 	for _, row := range rows {
 		invitation := householdInvitationModel(row, time.Now())
-		connection.Edges = append(connection.Edges, &model.HouseholdInvitationEdge{Cursor: encodeCursor("HouseholdInvitation", row.ID.String()), Node: invitation})
+		connection.Edges = append(connection.Edges, &model.HouseholdInvitationEdge{Cursor: encodeCursor(nodeTypeHouseholdInvitation, row.ID.String()), Node: invitation})
 	}
 	if len(rows) > 0 {
-		start, end := encodeCursor("HouseholdInvitation", rows[0].ID.String()), encodeCursor("HouseholdInvitation", rows[len(rows)-1].ID.String())
+		start, end := encodeCursor(nodeTypeHouseholdInvitation, rows[0].ID.String()), encodeCursor(nodeTypeHouseholdInvitation, rows[len(rows)-1].ID.String())
 		connection.PageInfo.StartCursor, connection.PageInfo.EndCursor = &start, &end
 	}
 	return connection, nil
@@ -331,7 +331,7 @@ func (r *mutationResolver) acceptHouseholdInvitation(ctx context.Context, token 
 	if err != nil {
 		return nil, err
 	}
-	if err := writeEvent(ctx, tx, householdID, "household.member.joined", user.MemberID, household.Revision, []string{"members"}, user.MemberID); err != nil {
+	if err := writeEvent(ctx, tx, householdID, "household.member.joined", user.MemberID, household.Revision, []string{fieldMembers}, user.MemberID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

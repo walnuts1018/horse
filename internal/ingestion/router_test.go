@@ -1,7 +1,6 @@
 package ingestion
 
 import (
-	"context"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -14,6 +13,7 @@ import (
 )
 
 func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
+	t.Parallel()
 	freeCalls := 0
 	freeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		freeCalls++
@@ -29,7 +29,7 @@ func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 	var paidBody map[string]any
 	paidServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paidCalls++
-		if r.Header.Get("x-goog-api-key") != "paid-test-key" {
+		if r.Header.Get("x-goog-api-key") != testPaidGeminiAPIKey {
 			t.Errorf("paid route used unexpected API key")
 		}
 		if err := json.Unmarshal(mustReadBody(t, r), &paidBody); err != nil {
@@ -40,17 +40,17 @@ func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 	defer paidServer.Close()
 	router := GeminiRouter{
 		Free:       Gemini{APIKey: "free-test-key", Project: "free-id", Endpoint: freeServer.URL + "/v1beta/", HTTPClient: freeServer.Client()},
-		Paid:       Gemini{APIKey: "paid-test-key", Project: "paid-id", Endpoint: paidServer.URL + "/v1beta/", HTTPClient: paidServer.Client()},
+		Paid:       Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: paidServer.URL + "/v1beta/", HTTPClient: paidServer.Client()},
 		USDJPYRate: 158.535,
 	}
-	receipt, runs, err := router.Generate(context.Background(), "receipt", Document{MIMEType: "image/jpeg", Data: []byte("not a real image; test transport only")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive, Reason: "initial_extraction"})
+	receipt, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("not a real image; test transport only")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive, Reason: geminiReasonInitialExtraction})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if receipt.Model != ModelReceipt || freeCalls != 1 || paidCalls != 1 || len(runs) != 2 {
 		t.Fatalf("unexpected route result: model=%q free=%d paid=%d runs=%#v", receipt.Model, freeCalls, paidCalls, runs)
 	}
-	if runs[0].Route != ProjectFree || runs[0].ErrorCode != "rate_limited" || runs[1].Route != ProjectPaid || runs[1].Status != "succeeded" {
+	if runs[0].Route != ProjectFree || runs[0].ErrorCode != "rate_limited" || runs[1].Route != ProjectPaid || runs[1].Status != extractionStatusSucceeded {
 		t.Fatalf("run routing metadata is incomplete: %#v", runs)
 	}
 	if runs[1].InputTokens != 1000 || runs[1].OutputTokens != 275 || runs[1].EstimatedJPY <= 0 || runs[1].LatencyMillis < 0 {
@@ -59,7 +59,7 @@ func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 	if runs[0].PromptVersion != PromptVersion || runs[0].PriceTableVersion != GeminiPriceTableVersion || runs[0].PriceEstimateStatus != "unavailable_failed_run" || runs[1].PromptVersion != PromptVersion || runs[1].PriceTableVersion != GeminiPriceTableVersion || runs[1].PriceEstimateStatus != "estimated_paid" || runs[1].USDJPYRate != 158.535 || runs[1].USDJPYRateSource != "unspecified" || runs[1].PricedAt.IsZero() {
 		t.Fatalf("run audit metadata is incomplete: %#v", runs)
 	}
-	if paidBody["serviceTier"] != "standard" {
+	if paidBody["serviceTier"] != geminiServiceTierStandard {
 		t.Fatalf("interactive paid fallback must use Standard: request=%#v", paidBody)
 	}
 	generationConfig, ok := paidBody["generationConfig"].(map[string]any)
@@ -67,19 +67,20 @@ func TestGeminiRouterUsesFreeThenPaidStandardOnInteractiveQuota(t *testing.T) {
 		t.Fatalf("REST service tier or output token configuration is invalid: %#v", paidBody)
 	}
 	thinkingConfig, ok := generationConfig["thinkingConfig"].(map[string]any)
-	if !ok || thinkingConfig["thinkingLevel"] != "LOW" {
+	if !ok || thinkingConfig["thinkingLevel"] != geminiThinkingLevelLOW {
 		t.Fatalf("initial image request must use low thinking: %#v", generationConfig)
 	}
 }
 
 func TestGeminiServiceTierFollowsJobPurpose(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		purpose string
 		want    string
 	}{
-		{purpose: JobPurposeInteractive, want: "standard"},
-		{purpose: JobPurposeBackground, want: "flex"},
-		{want: "standard"},
+		{purpose: JobPurposeInteractive, want: geminiServiceTierStandard},
+		{purpose: JobPurposeBackground, want: geminiServiceTierFlex},
+		{want: geminiServiceTierStandard},
 	} {
 		got, err := defaultServiceTier(test.purpose)
 		if err != nil || got != test.want {
@@ -89,6 +90,7 @@ func TestGeminiServiceTierFollowsJobPurpose(t *testing.T) {
 }
 
 func TestGeminiRouterSelectsEmailLiteAndOnlyRetriesTemporaryErrors(t *testing.T) {
+	t.Parallel()
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -109,19 +111,20 @@ func TestGeminiRouterSelectsEmailLiteAndOnlyRetriesTemporaryErrors(t *testing.T)
 		Free: Gemini{APIKey: "free", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()},
 		Paid: Gemini{APIKey: "paid", Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
 	}
-	_, runs, err := router.Generate(context.Background(), "email", Document{MIMEType: "message/rfc822", Data: []byte("example")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive})
+	_, runs, err := router.Generate(t.Context(), "email", Document{MIMEType: mimeTypeEmail, Data: []byte("example")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || paidCalls != 1 || len(runs) != 2 || runs[1].ServiceTier != "standard" {
+	if calls != 1 || paidCalls != 1 || len(runs) != 2 || runs[1].ServiceTier != geminiServiceTierStandard {
 		t.Fatalf("temporary free failure should use same-model paid Standard: free=%d paid=%d runs=%#v", calls, paidCalls, runs)
 	}
-	if _, _, err := router.Generate(context.Background(), "email", Document{MIMEType: "message/rfc822", Data: []byte("example")}, nil, GeminiRouteOptions{Model: "bad/model"}); err == nil || calls != 1 || paidCalls != 1 {
+	if _, _, err := router.Generate(t.Context(), "email", Document{MIMEType: mimeTypeEmail, Data: []byte("example")}, nil, GeminiRouteOptions{Model: "bad/model"}); err == nil || calls != 1 || paidCalls != 1 {
 		t.Fatalf("invalid request should not call providers: free=%d paid=%d error=%v", calls, paidCalls, err)
 	}
 }
 
 func TestGeminiSpendCapAndMalformedOutputAreTypedAndSanitized(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		status         int
@@ -132,15 +135,16 @@ func TestGeminiSpendCapAndMalformedOutputAreTypedAndSanitized(t *testing.T) {
 		wantCode       string
 		wantSpend      bool
 	}{
-		{name: "spend cap", status: http.StatusTooManyRequests, body: `{"error":{"status":"RESOURCE_EXHAUSTED","message":"project spend cap reached"}}`, wantKind: GeminiFailureSpendCap, wantCode: "spend_cap_reached", wantSpend: true},
-		{name: "monthly spending cap", status: http.StatusTooManyRequests, body: `{"error":{"status":"RESOURCE_EXHAUSTED","message":"Your billing account has exceeded its monthly spending cap."}}`, wantKind: GeminiFailureSpendCap, wantCode: "spend_cap_reached", wantSpend: true},
-		{name: "structured spend cap reason", status: http.StatusForbidden, body: `{"error":{"status":"PERMISSION_DENIED","details":[{"reason":"SPEND_CAP_ENFORCED"}]}}`, wantKind: GeminiFailureSpendCap, wantCode: "spend_cap_reached", wantSpend: true},
+		{name: "spend cap", status: http.StatusTooManyRequests, body: `{"error":{"status":"RESOURCE_EXHAUSTED","message":"project spend cap reached"}}`, wantKind: GeminiFailureSpendCap, wantCode: geminiFailureSpendCap, wantSpend: true},
+		{name: "monthly spending cap", status: http.StatusTooManyRequests, body: `{"error":{"status":"RESOURCE_EXHAUSTED","message":"Your billing account has exceeded its monthly spending cap."}}`, wantKind: GeminiFailureSpendCap, wantCode: geminiFailureSpendCap, wantSpend: true},
+		{name: "structured spend cap reason", status: http.StatusForbidden, body: `{"error":{"status":"PERMISSION_DENIED","details":[{"reason":"SPEND_CAP_ENFORCED"}]}}`, wantKind: GeminiFailureSpendCap, wantCode: geminiFailureSpendCap, wantSpend: true},
 		{name: "rate limit retry delay", status: http.StatusTooManyRequests, body: `{"error":{"status":"RESOURCE_EXHAUSTED"}}`, retryAfter: "3", wantRetryAfter: 3 * time.Second, wantKind: GeminiFailureQuota, wantCode: "rate_limited"},
 		{name: "malformed provider JSON", status: http.StatusOK, body: `not json`, wantKind: GeminiFailureBadResponse, wantCode: "malformed_provider_json"},
 		{name: "broken receipt JSON", status: http.StatusOK, body: `{"candidates":[{"content":{"parts":[{"text":"{broken"}]},"finishReason":"STOP"}]}`, wantKind: GeminiFailureBadResponse, wantCode: "invalid_receipt_json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				if tt.retryAfter != "" {
 					w.Header().Set("Retry-After", tt.retryAfter)
@@ -150,7 +154,7 @@ func TestGeminiSpendCapAndMalformedOutputAreTypedAndSanitized(t *testing.T) {
 			}))
 			defer server.Close()
 			router := GeminiRouter{Paid: Gemini{APIKey: "paid", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}}
-			_, runs, err := router.Generate(context.Background(), "receipt", Document{MIMEType: "application/pdf", Data: []byte("test")}, nil, GeminiRouteOptions{PaidOnly: true})
+			_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypePDF, Data: []byte("test")}, nil, GeminiRouteOptions{PaidOnly: true})
 			if err == nil || len(runs) != 1 {
 				t.Fatalf("expected one failed run, got runs=%#v error=%v", runs, err)
 			}
@@ -161,7 +165,7 @@ func TestGeminiSpendCapAndMalformedOutputAreTypedAndSanitized(t *testing.T) {
 			if apiErr.RetryAfter != tt.wantRetryAfter {
 				t.Fatalf("unexpected retry delay: got %s, want %s", apiErr.RetryAfter, tt.wantRetryAfter)
 			}
-			if runs[0].Status != "failed" || runs[0].ErrorCode != tt.wantCode {
+			if runs[0].Status != extractionStatusFailed || runs[0].ErrorCode != tt.wantCode {
 				t.Fatalf("failed run metadata missing: %#v", runs[0])
 			}
 		})
@@ -169,6 +173,7 @@ func TestGeminiSpendCapAndMalformedOutputAreTypedAndSanitized(t *testing.T) {
 }
 
 func TestSpendCapRetryUsesBillingMonthAndAllowsResetPropagation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		now  time.Time
@@ -192,6 +197,7 @@ func TestSpendCapRetryUsesBillingMonthAndAllowsResetPropagation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.now.Add(spendCapRetryDelay(tt.now)); !got.Equal(tt.want) {
 				t.Fatalf("retry at %s, want %s", got, tt.want)
 			}
@@ -200,6 +206,7 @@ func TestSpendCapRetryUsesBillingMonthAndAllowsResetPropagation(t *testing.T) {
 }
 
 func TestGeminiQualityReviewAddsEvidenceAndChangesRequest(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	var prompts []string
 	var levels []string
@@ -228,18 +235,18 @@ func TestGeminiQualityReviewAddsEvidenceAndChangesRequest(t *testing.T) {
 	}))
 	defer server.Close()
 	router := GeminiRouter{Free: Gemini{APIKey: "free", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}}
-	document := Document{MIMEType: "image/png", Data: []byte("test")}
-	first, runs, err := router.Generate(context.Background(), "receipt", document, nil, GeminiRouteOptions{Reason: "initial_extraction"})
+	document := Document{MIMEType: mimeTypePNG, Data: []byte("test")}
+	first, runs, err := router.Generate(t.Context(), "receipt", document, nil, GeminiRouteOptions{Reason: geminiReasonInitialExtraction})
 	if err != nil || len(runs) != 1 {
 		t.Fatalf("initial generation failed: %#v error=%v", runs, err)
 	}
-	_, _, err = router.Generate(context.Background(), "receipt", document, nil, router.QualityOptions("receipt", runs[0], evidenceGuidance([]string{"税率別小計が一致しません。"}, []OCRLine{{Text: "TOTAL 980", Region: Region{Page: 0, Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}}})))
+	_, _, err = router.Generate(t.Context(), "receipt", document, nil, router.QualityOptions("receipt", runs[0], evidenceGuidance([]string{"税率別小計が一致しません。"}, []OCRLine{{Text: "TOTAL 980", Region: Region{Page: 0, Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}}})))
 	if err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(prompts) != 2 || prompts[0] == prompts[1] || levels[0] != "LOW" || levels[1] != "MEDIUM" {
+	if len(prompts) != 2 || prompts[0] == prompts[1] || levels[0] != geminiThinkingLevelLOW || levels[1] != "MEDIUM" {
 		t.Fatalf("quality review must use evidence and medium thinking: prompts=%#v levels=%#v first=%#v", prompts, levels, first)
 	}
 	if !strings.Contains(prompts[1], "税率別小計が一致しません") || !strings.Contains(prompts[1], "TOTAL 980") {
@@ -248,44 +255,47 @@ func TestGeminiQualityReviewAddsEvidenceAndChangesRequest(t *testing.T) {
 }
 
 func TestGeminiRouterModelOverridesAndEmailQualityUpgrade(t *testing.T) {
-	router := GeminiRouter{FlashModel: "configured-flash", LiteModel: "configured-lite"}
-	if got := router.modelForSource("receipt", "image/jpeg"); got != "configured-flash" {
+	t.Parallel()
+	router := GeminiRouter{FlashModel: testConfiguredFlash, LiteModel: testConfiguredLite}
+	if got := router.modelForSource("receipt", mimeTypeJPEG); got != testConfiguredFlash {
 		t.Fatalf("configured flash model was ignored: %q", got)
 	}
-	if got := router.modelForSource("email", "message/rfc822"); got != "configured-lite" {
+	if got := router.modelForSource("email", mimeTypeEmail); got != testConfiguredLite {
 		t.Fatalf("configured lite model was ignored: %q", got)
 	}
 	quality := router.QualityOptions("email", ExtractionRun{Model: "configured-lite", Route: ProjectFree}, []string{"transaction total conflicts with printed subtotal"})
-	if quality.Model != "configured-flash" || quality.ThinkingLevel != "medium" || quality.Reason != "evidence_guided_quality_review" || len(quality.Guidance) != 1 {
+	if quality.Model != testConfiguredFlash || quality.ThinkingLevel != "medium" || quality.Reason != "evidence_guided_quality_review" || len(quality.Guidance) != 1 {
 		t.Fatalf("email quality review must use a more capable model with evidence: %#v", quality)
 	}
-	if !supportsProReview("image/jpeg") || !supportsProReview("application/pdf") || supportsProReview("message/rfc822") {
+	if !supportsProReview(mimeTypeJPEG) || !supportsProReview(mimeTypePDF) || supportsProReview(mimeTypeEmail) {
 		t.Fatal("Pro review should target scanned purchase documents and skip email")
 	}
 }
 
 func TestEstimatedGeminiCostUsesProjectTierAndPriceChange(t *testing.T) {
+	t.Parallel()
 	cutover := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-	before := estimateCostJPY(ProjectPaid, ModelReceipt, "standard", 1_000_000, 1_000_000, 100, cutover.Add(-time.Second))
-	flex := estimateCostJPY(ProjectPaid, ModelReceipt, "flex", 1_000_000, 1_000_000, 100, cutover.Add(-time.Second))
-	after := estimateCostJPY(ProjectPaid, ModelReceipt, "standard", 1_000_000, 1_000_000, 100, cutover)
-	proUnderLimit := estimateCostJPY(ProjectPaid, ModelPro, "standard", 200_000, 1_000_000, 100, cutover)
-	proOverLimit := estimateCostJPY(ProjectPaid, ModelPro, "standard", 200_001, 1_000_000, 100, cutover)
-	if before != 450 || flex != 225 || after != 900 || proUnderLimit != 1240 || proOverLimit != 1880.0004 || estimateCostJPY(ProjectFree, ModelReceipt, "standard", 1_000_000, 1_000_000, 100, cutover) != 0 {
+	before := estimateCostJPY(ProjectPaid, ModelReceipt, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover.Add(-time.Second))
+	flex := estimateCostJPY(ProjectPaid, ModelReceipt, geminiServiceTierFlex, 1_000_000, 1_000_000, 100, cutover.Add(-time.Second))
+	after := estimateCostJPY(ProjectPaid, ModelReceipt, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover)
+	proUnderLimit := estimateCostJPY(ProjectPaid, ModelPro, geminiServiceTierStandard, 200_000, 1_000_000, 100, cutover)
+	proOverLimit := estimateCostJPY(ProjectPaid, ModelPro, geminiServiceTierStandard, 200_001, 1_000_000, 100, cutover)
+	if before != 450 || flex != 225 || after != 900 || proUnderLimit != 1240 || proOverLimit != 1880.0004 || estimateCostJPY(ProjectFree, ModelReceipt, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover) != 0 {
 		t.Fatalf("unexpected estimated prices: before=%f flex=%f after=%f", before, flex, after)
 	}
 }
 
 func TestGeminiRunDoesNotLabelUnknownModelPriceAsFree(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeGeminiSuccess(w, `{"merchant":"Market","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
 	}))
 	defer server.Close()
 	router := GeminiRouter{
-		Paid:       Gemini{APIKey: "paid-test-key", Project: "paid-id", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()},
+		Paid:       Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()},
 		USDJPYRate: 150,
 	}
-	_, runs, err := router.Generate(context.Background(), "receipt", Document{MIMEType: "image/jpeg", Data: []byte("test input")}, nil, GeminiRouteOptions{Model: "future-model", PaidOnly: true})
+	_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("test input")}, nil, GeminiRouteOptions{Model: "future-model", PaidOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,14 +305,15 @@ func TestGeminiRunDoesNotLabelUnknownModelPriceAsFree(t *testing.T) {
 }
 
 func TestGeminiRunKeepsPriceSnapshotWhenExchangeRateIsMissing(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeGeminiSuccess(w, `{"merchant":"Market","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
 	}))
 	defer server.Close()
 	router := GeminiRouter{
-		Paid: Gemini{APIKey: "paid-test-key", Project: "paid-id", Endpoint: server.URL + "/v1beta/"},
+		Paid: Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: server.URL + "/v1beta/"},
 	}
-	_, runs, err := router.Generate(context.Background(), "receipt", Document{MIMEType: "image/jpeg", Data: []byte("test input")}, nil, GeminiRouteOptions{PaidOnly: true, ServiceTier: "flex"})
+	_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("test input")}, nil, GeminiRouteOptions{PaidOnly: true, ServiceTier: geminiServiceTierFlex})
 	if err != nil {
 		t.Fatal(err)
 	}

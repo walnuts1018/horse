@@ -53,7 +53,7 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 		if err != nil {
 			return nil, err
 		}
-		if err := validateChangedFields(changedFields, "occurredAt", "merchant", "paymentAllocations"); err != nil {
+		if err := validateChangedFields(changedFields, fieldOccurredAt, fieldMerchant, fieldPaymentAllocations); err != nil {
 			return nil, err
 		}
 	}
@@ -92,7 +92,7 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 			return nil, err
 		}
 		targetAt := purchase.OccurredAt
-		if slices.Contains(changedFields, "occurredAt") {
+		if slices.Contains(changedFields, fieldOccurredAt) {
 			targetAt, err = parseTime(*target.Patch.OccurredAt.Value())
 			if err != nil {
 				return nil, err
@@ -140,16 +140,16 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 		if conflict {
 			return nil, ErrConflict
 		}
-		if slices.Contains(target.changedFields, "occurredAt") {
+		if slices.Contains(target.changedFields, fieldOccurredAt) {
 			target.targetAt, err = parseTime(*target.input.Patch.OccurredAt.Value())
 			if err != nil {
 				return nil, err
 			}
 		}
-		if slices.Contains(target.changedFields, "merchant") && len(strings.TrimSpace(*target.input.Patch.Merchant.Value())) > 240 {
+		if slices.Contains(target.changedFields, fieldMerchant) && len(strings.TrimSpace(*target.input.Patch.Merchant.Value())) > 240 {
 			return nil, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
 		}
-		target.updatePayments = slices.Contains(target.changedFields, "paymentAllocations")
+		target.updatePayments = slices.Contains(target.changedFields, fieldPaymentAllocations)
 		if target.updatePayments {
 			target.payments, err = validatePurchasePaymentInputs(ctx, tx, householdID.String(), target.input.Patch.PaymentAllocations.Value())
 			if err != nil {
@@ -198,11 +198,11 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 			return nil, err
 		}
 		occurredAt := purchase.OccurredAt
-		if slices.Contains(target.changedFields, "occurredAt") {
+		if slices.Contains(target.changedFields, fieldOccurredAt) {
 			occurredAt = target.targetAt
 		}
 		merchant := purchase.Merchant
-		if slices.Contains(target.changedFields, "merchant") {
+		if slices.Contains(target.changedFields, fieldMerchant) {
 			merchant = strings.TrimSpace(*patch.Merchant.Value())
 		}
 		paymentAccountID := purchase.PaymentAccountID
