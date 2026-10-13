@@ -243,6 +243,13 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	if err != nil || itemSearchResult.TotalCount != 1 || len(itemSearchResult.Edges) != 1 || itemSearchResult.Edges[0].Node.ID != alignedPurchase.ID || len(itemSearchResult.Edges[0].Node.Items) != 1 || itemSearchResult.Edges[0].Node.Items[0].Name != alignedItemName {
 		t.Fatalf("combined item search, amount, and attributes returned %#v, error %v", itemSearchResult, err)
 	}
+	trimmedItemSearchResult, err := query.Purchases(ctx, model.PurchaseFilter{
+		HouseholdID: household.ID, Search: new(" Wanted "), CategoryID: &category.ID,
+		TagID: &tag.ID, PoolID: &pool.ID, MinimumAmount: &minimumAmount, AmountTarget: &itemAmountTarget,
+	}, nil, nil, new(10), nil)
+	if err != nil || trimmedItemSearchResult.TotalCount != 1 || len(trimmedItemSearchResult.Edges) != 1 || trimmedItemSearchResult.Edges[0].Node.ID != alignedPurchase.ID || len(trimmedItemSearchResult.Edges[0].Node.Items) != 1 || trimmedItemSearchResult.Edges[0].Node.Items[0].Name != alignedItemName {
+		t.Fatalf("trimmed item search returned %#v, error %v", trimmedItemSearchResult, err)
+	}
 	if _, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, &category.ID, new(true), nil, nil, nil, nil, nil, new(10), nil); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("simultaneous category and uncategorized filters returned %v; want bad input", err)
 	}

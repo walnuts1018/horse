@@ -42,6 +42,23 @@ enum PurchaseAmountTarget {
   ITEM
 }
 
+input PurchaseFilter {
+  householdId: ID! @nodeID(of: "Household")
+  from: DateTime
+  to: DateTime
+  origin: PurchaseOrigin
+  hasEvidence: Boolean
+  search: String
+  categoryId: ID @nodeID(of: "Category")
+  uncategorized: Boolean
+  tagId: ID @nodeID(of: "Tag")
+  paymentAccountId: ID @nodeID(of: "Account")
+  poolId: ID @nodeID(of: "Pool")
+  minimumAmount: Long
+  maximumAmount: Long
+  amountTarget: PurchaseAmountTarget
+}
+
 type PurchaseEdge {
   cursor: String!
   node: Purchase!
@@ -55,5 +72,5 @@ type PurchaseConnection {
 }
 
 extend type Query {
-  purchases(householdId: ID! @nodeID(of: "Household"), from: DateTime, to: DateTime, origin: PurchaseOrigin, hasEvidence: Boolean, search: String, categoryId: ID @nodeID(of: "Category"), uncategorized: Boolean, tagId: ID @nodeID(of: "Tag"), paymentAccountId: ID @nodeID(of: "Account"), poolId: ID @nodeID(of: "Pool"), after: String, before: String, first: Int, last: Int, minimumAmount: Long, maximumAmount: Long, amountTarget: PurchaseAmountTarget): PurchaseConnection!
+  purchases(filter: PurchaseFilter!, after: String, before: String, first: Int, last: Int): PurchaseConnection!
 }

@@ -11,15 +11,11 @@ import {
 import {
   makeIdempotencyKey,
   readGraphql,
-  type Connection,
   type Household,
-  type LoanBalance,
   type Settlement,
 } from "../../../shared/api";
 import { closePeriodMutation, settlementQuery } from "../../../entities/settlement";
 import {
-  loanBalancesQuery,
-  recordRepaymentMutation,
   recordFundingMutation,
   recordTransferMutation,
   useHouseholdLedger,
@@ -36,6 +32,7 @@ import {
   type FundingIntent,
   type TransferIntent,
 } from "../model/pending-ledger-mutations";
+import { SettlementLoans } from "./settlement-loans";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -48,7 +45,6 @@ const ledgerKindLabels: Record<string, string> = {
   FUNDING: "入金",
   ADVANCE: "立て替え",
   LOAN: "貸付",
-  REPAYMENT: "返済",
   GIFT: "贈与",
 };
 
@@ -82,10 +78,9 @@ export function SettlementPage({
     loadMore: loadMoreLedger,
     refresh: refreshLedger,
   } = useHouseholdLedger(household.id);
-  const [loans, setLoans] = useState<LoanBalance[]>([]);
-  const [loanCursor, setLoanCursor] = useState<string | null>(null);
-  const [loanHasNextPage, setLoanHasNextPage] = useState(false);
-  const [loanPageLoading, setLoanPageLoading] = useState(false);
+  const [hasUnsavedLoanRepayment, setHasUnsavedLoanRepayment] = useState(false);
+  const [hasPendingLoanRepayment, setHasPendingLoanRepayment] = useState(false);
+  const [loanRefreshSignal, setLoanRefreshSignal] = useState(0);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -97,12 +92,9 @@ export function SettlementPage({
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferFrom, setTransferFrom] = useState(household.members[0]?.id ?? "");
   const [transferTo, setTransferTo] = useState(household.members[1]?.id ?? "");
-  const [transferKind, setTransferKind] = useState<"ADVANCE" | "LOAN" | "REPAYMENT" | "GIFT">(
-    "ADVANCE",
-  );
+  const [transferKind, setTransferKind] = useState<"ADVANCE" | "LOAN" | "GIFT">("ADVANCE");
   const [transferAmount, setTransferAmount] = useState("");
   const [transferDescription, setTransferDescription] = useState("");
-  const [transferLoanId, setTransferLoanId] = useState("");
   const [transferPaymentAccountId, setTransferPaymentAccountId] = useState("");
   const [transferDestinationAccountId, setTransferDestinationAccountId] = useState("");
   const [hasUnsavedTransfer, setHasUnsavedTransfer] = useState(false);
@@ -118,9 +110,9 @@ export function SettlementPage({
         (fundingSourceAccounts[member.id] ?? "") !== (savedFundingSourceAccounts[member.id] ?? ""),
     ) || fundingDestinationAccountId !== savedFundingDestinationAccountId;
   useEffect(() => {
-    onUnsavedChanges(hasUnsavedTransfer || hasUnsavedFunding);
+    onUnsavedChanges(hasUnsavedTransfer || hasUnsavedFunding || hasUnsavedLoanRepayment);
     return () => onUnsavedChanges(false);
-  }, [hasUnsavedFunding, hasUnsavedTransfer, onUnsavedChanges]);
+  }, [hasUnsavedFunding, hasUnsavedLoanRepayment, hasUnsavedTransfer, onUnsavedChanges]);
   const markTransferUnsaved = () => setHasUnsavedTransfer(true);
   const load = async () => {
     const request = ++loadRequest.current;
@@ -129,48 +121,18 @@ export function SettlementPage({
     setLoadError("");
     try {
       refreshLedger();
-      const [settlementData, loanData] = await Promise.all([
-        readGraphql<{ settlement: Settlement }>(settlementQuery, {
-          householdId: requestedHouseholdId,
-          period: requestedPeriod,
-        }),
-        readGraphql<{ loanBalances: Connection<LoanBalance> }>(loanBalancesQuery, {
-          householdId: requestedHouseholdId,
-          first: 50,
-        }),
-      ]);
+      const settlementData = await readGraphql<{ settlement: Settlement }>(settlementQuery, {
+        householdId: requestedHouseholdId,
+        period: requestedPeriod,
+      });
       if (request !== loadRequest.current) return;
       setSettlementSnapshot({
         householdId: requestedHouseholdId,
         period: requestedPeriod,
         value: settlementData.settlement,
       });
-      setLoans(loanData.loanBalances.edges.map((edge) => edge.node));
-      setLoanCursor(loanData.loanBalances.pageInfo.endCursor ?? null);
-      setLoanHasNextPage(loanData.loanBalances.pageInfo.hasNextPage);
     } catch (reason) {
       if (request === loadRequest.current) setLoadError((reason as Error).message);
-    }
-  };
-  const loadMoreLoans = async () => {
-    if (!loanCursor || loanPageLoading) return;
-    setLoanPageLoading(true);
-    try {
-      const result = await readGraphql<{ loanBalances: Connection<LoanBalance> }>(
-        loanBalancesQuery,
-        {
-          householdId: household.id,
-          after: loanCursor,
-          first: 50,
-        },
-      );
-      setLoans((current) => [...current, ...result.loanBalances.edges.map((edge) => edge.node)]);
-      setLoanCursor(result.loanBalances.pageInfo.endCursor ?? null);
-      setLoanHasNextPage(result.loanBalances.pageInfo.hasNextPage);
-    } catch (reason) {
-      setLoadError((reason as Error).message);
-    } finally {
-      setLoanPageLoading(false);
     }
   };
   useEffect(() => {
@@ -185,18 +147,21 @@ export function SettlementPage({
       }
       setPendingFunding(funding);
       const transfer = getTransferIntent(household.id);
-      setPendingTransfer(transfer);
+      setPendingTransfer(transfer?.input.kind === "REPAYMENT" ? null : transfer);
       if (transfer) {
         const input = transfer.input;
-        setTransferKind(input.kind);
-        setTransferFrom(input.fromMemberId);
-        setTransferTo(input.toMemberId);
-        setTransferAmount(String(input.amountYen));
-        setTransferDescription(input.description);
-        setTransferLoanId(input.kind === "REPAYMENT" ? input.loanId : "");
-        setTransferPaymentAccountId(input.paymentAccountId ?? "");
-        setTransferDestinationAccountId(input.destinationAccountId ?? "");
-        setTransferOpen(true);
+        if (input.kind !== "REPAYMENT") setTransferKind(input.kind);
+        if (input.kind !== "REPAYMENT") {
+          setTransferFrom(input.fromMemberId);
+          setTransferTo(input.toMemberId);
+          setTransferAmount(String(input.amountYen));
+          setTransferDescription(input.description);
+          setTransferPaymentAccountId(input.paymentAccountId ?? "");
+          setTransferDestinationAccountId(input.destinationAccountId ?? "");
+          setTransferOpen(true);
+        } else {
+          setTransferOpen(false);
+        }
         setHasUnsavedTransfer(false);
       }
     } catch (reason) {
@@ -291,21 +256,18 @@ export function SettlementPage({
     setSuccess("");
     try {
       const existingIntent = getTransferIntent(household.id);
+      if (existingIntent?.input.kind === "REPAYMENT") {
+        throw new Error("貸付残高から返済を再試行してください");
+      }
       const amountYen = Number(transferAmount);
-      const selectedLoan = openLoans.find((loan) => loan.id === transferLoanId);
       if (!existingIntent) {
         if (
           !transferFrom ||
           !transferTo ||
           transferFrom === transferTo ||
           !Number.isSafeInteger(amountYen) ||
-          amountYen < 1 ||
-          (transferKind === "REPAYMENT" && !selectedLoan)
+          amountYen < 1
         ) {
-          return;
-        }
-        if (transferKind === "REPAYMENT" && selectedLoan && amountYen > selectedLoan.balanceYen) {
-          setError(`返済額は貸付残高${yen(selectedLoan.balanceYen)}以下にしてください`);
           return;
         }
       }
@@ -322,37 +284,16 @@ export function SettlementPage({
           occurredAt: new Date().toISOString(),
           description: transferDescription.trim() || "メンバー間の送金",
           idempotencyKey,
-          ...(transferKind === "REPAYMENT"
-            ? { kind: "REPAYMENT" as const, loanId: transferLoanId }
-            : { kind: transferKind }),
+          kind: transferKind,
         },
       };
       saveTransferIntent(household.id, intent);
       setPendingTransfer(intent);
-      if (intent.input.kind === "REPAYMENT") {
-        const input = intent.input;
-        await readGraphql(recordRepaymentMutation, {
-          input: {
-            householdId: input.householdId,
-            fromMemberId: input.fromMemberId,
-            toMemberId: input.toMemberId,
-            paymentAccountId: input.paymentAccountId,
-            destinationAccountId: input.destinationAccountId,
-            amountYen: input.amountYen,
-            occurredAt: input.occurredAt,
-            description: input.description,
-            idempotencyKey: input.idempotencyKey,
-            loanId: input.loanId,
-          },
-        });
-      } else {
-        await readGraphql(recordTransferMutation, { input: intent.input });
-      }
+      await readGraphql(recordTransferMutation, { input: intent.input });
       clearTransferIntent(household.id);
       setPendingTransfer(null);
       setTransferAmount("");
       setTransferDescription("");
-      setTransferLoanId("");
       setTransferPaymentAccountId("");
       setTransferDestinationAccountId("");
       setTransferOpen(false);
@@ -366,6 +307,7 @@ export function SettlementPage({
       setSuccess(
         `${fromName ?? "メンバー"}から${toName ?? "メンバー"}への${yen(intent.input.amountYen)}の${ledgerKindLabels[intent.input.kind]}を記録しました`,
       );
+      setLoanRefreshSignal((current) => current + 1);
       await load();
     } catch (reason) {
       setError((reason as Error).message);
@@ -374,26 +316,10 @@ export function SettlementPage({
     }
   };
   const totalDue = sum(settlement?.lines.map((line) => line.amountDueYen) ?? []);
-  const openLoans = loans.filter((loan) => loan.balanceYen > 0);
-  const selectedLoan = openLoans.find((loan) => loan.id === transferLoanId);
   const parsedTransferAmount = Number(transferAmount);
-  const hasPendingTransfer = Boolean(pendingTransfer);
+  const hasPendingTransfer = Boolean(pendingTransfer) || hasPendingLoanRepayment;
   const invalidTransferAmount =
-    !Number.isSafeInteger(parsedTransferAmount) ||
-    parsedTransferAmount < 1 ||
-    (transferKind === "REPAYMENT" &&
-      (!selectedLoan || parsedTransferAmount > selectedLoan.balanceYen));
-  const openTransferForLoan = (loan: LoanBalance) => {
-    markTransferUnsaved();
-    setTransferKind("REPAYMENT");
-    setTransferLoanId(loan.id);
-    setTransferFrom(loan.borrowerMemberId);
-    setTransferTo(loan.lenderMemberId);
-    setTransferAmount("");
-    setTransferDescription("");
-    setError("");
-    setTransferOpen(true);
-  };
+    !Number.isSafeInteger(parsedTransferAmount) || parsedTransferAmount < 1;
   const ledgerEntries = entries.filter((entry) =>
     ["FUNDING", "TRANSFER", "ADVANCE", "LOAN", "REPAYMENT", "GIFT"].includes(entry.kind),
   );
@@ -600,6 +526,7 @@ export function SettlementPage({
           </button>
           <button
             className="button button-primary"
+            disabled={hasPendingLoanRepayment}
             onClick={() => {
               if (transferOpen || hasPendingTransfer) setHasUnsavedTransfer(false);
               else markTransferUnsaved();
@@ -662,76 +589,20 @@ export function SettlementPage({
                   const nextKind = event.target.value as typeof transferKind;
                   markTransferUnsaved();
                   setTransferKind(nextKind);
-                  setTransferLoanId("");
                   setTransferAmount("");
                   setError("");
-                  if (transferKind === "REPAYMENT" && nextKind !== "REPAYMENT") {
-                    setTransferFrom(household.members[0]?.id ?? "");
-                    setTransferTo(household.members[1]?.id ?? "");
-                  }
                 }}
               >
                 <option value="ADVANCE">立て替え</option>
                 <option value="LOAN">貸し借り</option>
-                <option value="REPAYMENT">返済</option>
                 <option value="GIFT">贈与</option>
               </select>
             </label>
-            {transferKind === "REPAYMENT" && (
-              <>
-                <label>
-                  貸付
-                  <select
-                    required
-                    value={transferLoanId}
-                    disabled={pending || hasPendingTransfer}
-                    onChange={(event) => {
-                      markTransferUnsaved();
-                      const loan = openLoans.find((row) => row.id === event.target.value);
-                      setTransferLoanId(event.target.value);
-                      if (loan) {
-                        setTransferFrom(loan.borrowerMemberId);
-                        setTransferTo(loan.lenderMemberId);
-                      }
-                      setError("");
-                    }}
-                  >
-                    <option value="">貸付を選択</option>
-                    {openLoans.map((loan) => (
-                      <option key={loan.id} value={loan.id}>
-                        {household.members.find((member) => member.id === loan.borrowerMemberId)
-                          ?.displayName ?? "借主"}{" "}
-                        →{" "}
-                        {household.members.find((member) => member.id === loan.lenderMemberId)
-                          ?.displayName ?? "貸主"}{" "}
-                        {yen(loan.balanceYen)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {loanHasNextPage && (
-                  <button
-                    className="text-button"
-                    type="button"
-                    disabled={loanPageLoading}
-                    onClick={() => void loadMoreLoans()}
-                  >
-                    {loanPageLoading ? "読み込み中" : "さらに貸付を表示"}
-                  </button>
-                )}
-              </>
-            )}
             <label>
-              {transferKind === "LOAN"
-                ? "貸主"
-                : transferKind === "REPAYMENT"
-                  ? "借主"
-                  : transferKind === "GIFT"
-                    ? "贈与者"
-                    : "立替者"}
+              {transferKind === "LOAN" ? "貸主" : transferKind === "GIFT" ? "贈与者" : "立替者"}
               <select
                 value={transferFrom}
-                disabled={pending || hasPendingTransfer || transferKind === "REPAYMENT"}
+                disabled={pending || hasPendingTransfer}
                 onChange={(event) => {
                   markTransferUnsaved();
                   setTransferFrom(event.target.value);
@@ -745,16 +616,10 @@ export function SettlementPage({
               </select>
             </label>
             <label>
-              {transferKind === "LOAN"
-                ? "借主"
-                : transferKind === "REPAYMENT"
-                  ? "貸主"
-                  : transferKind === "GIFT"
-                    ? "受贈者"
-                    : "受益者"}
+              {transferKind === "LOAN" ? "借主" : transferKind === "GIFT" ? "受贈者" : "受益者"}
               <select
                 value={transferTo}
-                disabled={pending || hasPendingTransfer || transferKind === "REPAYMENT"}
+                disabled={pending || hasPendingTransfer}
                 onChange={(event) => {
                   markTransferUnsaved();
                   setTransferTo(event.target.value);
@@ -811,31 +676,12 @@ export function SettlementPage({
                 inputMode="numeric"
                 value={transferAmount}
                 disabled={pending || hasPendingTransfer}
-                max={transferKind === "REPAYMENT" ? selectedLoan?.balanceYen : undefined}
-                aria-invalid={
-                  transferKind === "REPAYMENT" &&
-                  selectedLoan !== undefined &&
-                  parsedTransferAmount > selectedLoan.balanceYen
-                }
                 onChange={(event) => {
                   markTransferUnsaved();
                   setTransferAmount(event.target.value.replace(/\D/g, ""));
                 }}
                 required
               />
-              {transferKind === "REPAYMENT" && selectedLoan && (
-                <small
-                  className={
-                    parsedTransferAmount > selectedLoan.balanceYen
-                      ? "payment-unbalanced"
-                      : undefined
-                  }
-                >
-                  {parsedTransferAmount > selectedLoan.balanceYen
-                    ? "返済額が残高を超えています"
-                    : `返済可能額 ${yen(selectedLoan.balanceYen)}`}
-                </small>
-              )}
             </label>
             <label className="transfer-description">
               摘要
@@ -854,8 +700,7 @@ export function SettlementPage({
                 pending ||
                 household.members.length < 2 ||
                 transferFrom === transferTo ||
-                invalidTransferAmount ||
-                (transferKind === "REPAYMENT" && !selectedLoan)
+                invalidTransferAmount
               }
             >
               <Check size={16} />
@@ -864,65 +709,26 @@ export function SettlementPage({
           </form>
         )}
       </section>
-      <section className="panel loan-panel">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">貸付と返済</span>
-            <h2>貸付残高</h2>
-          </div>
-          <span className="count-badge">{openLoans.length}</span>
-          <button
-            className="button button-soft"
-            onClick={() => {
-              markTransferUnsaved();
-              setTransferKind("LOAN");
-              setTransferLoanId("");
-              setTransferAmount("");
-              setTransferDescription("");
-              setError("");
-              if (transferKind === "REPAYMENT") {
-                setTransferFrom(household.members[0]?.id ?? "");
-                setTransferTo(household.members[1]?.id ?? "");
-              }
-              setTransferOpen(true);
-            }}
-          >
-            <Plus size={15} />
-            貸付を記録
-          </button>
-        </div>
-        {loans.length === 0 ? (
-          <div className="empty-state compact">
-            <Wallet />
-            <span>貸付記録はありません</span>
-          </div>
-        ) : (
-          loans.map((loan) => (
-            <div className="loan-balance-row" key={loan.id}>
-              <div>
-                <b>
-                  {household.members.find((member) => member.id === loan.borrowerMemberId)
-                    ?.displayName ?? "借主"}{" "}
-                  →{" "}
-                  {household.members.find((member) => member.id === loan.lenderMemberId)
-                    ?.displayName ?? "貸主"}
-                </b>
-                <small>
-                  元本 {yen(loan.principalYen)} · 返済済み {yen(loan.repaidYen)}
-                </small>
-              </div>
-              <strong>{yen(loan.balanceYen)}</strong>
-              <button
-                className="text-button"
-                disabled={loan.balanceYen <= 0}
-                onClick={() => openTransferForLoan(loan)}
-              >
-                返済を記録
-              </button>
-            </div>
-          ))
-        )}
-      </section>
+      <SettlementLoans
+        household={household}
+        refreshSignal={loanRefreshSignal}
+        canRecordLoan={!hasPendingTransfer}
+        canManageRepayments={!pendingTransfer}
+        onRecordLoan={() => {
+          markTransferUnsaved();
+          setTransferKind("LOAN");
+          setTransferAmount("");
+          setTransferDescription("");
+          setError("");
+          setTransferOpen(true);
+        }}
+        onPendingIntentChange={setHasPendingLoanRepayment}
+        onRecorded={() => {
+          setSuccess("返済を記録しました");
+          void load();
+        }}
+        onUnsavedChanges={setHasUnsavedLoanRepayment}
+      />
       <div className="section-heading">
         <div>
           <span className="eyebrow">資金の記録</span>

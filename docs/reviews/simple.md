@@ -8,12 +8,13 @@
 
 | ファイル | 行数 | `useState`の呼び出し数 |
 | --- | ---: | ---: |
-| [settings-page.tsx](../../web/src/pages/settings/ui/settings-page.tsx) | 2,190 | 55 |
-| [ledger-page.tsx](../../web/src/pages/ledger/ui/ledger-page.tsx) | 2,431 | 18 |
-| [imports-page.tsx](../../web/src/pages/imports/ui/imports-page.tsx) | 2,479 | 20 |
-| [purchase-create-page.tsx](../../web/src/pages/purchase-create/ui/purchase-create-page.tsx) | 669 | 11 |
+| [settings-page.tsx](../../web/src/pages/settings/ui/settings-page.tsx) | 1,653 | 45 |
+| [ledger-page.tsx](../../web/src/pages/ledger/ui/ledger-page.tsx) | 2,386 | 18 |
+| [imports-page.tsx](../../web/src/pages/imports/ui/imports-page.tsx) | 2,140 | 20 |
+| [purchase-create-page.tsx](../../web/src/pages/purchase-create/ui/purchase-create-page.tsx) | 664 | 11 |
+| [settlement-page.tsx](../../web/src/pages/settlement/ui/settlement-page.tsx) | 783 | 20 |
 
-`SettingsPage`は口座、負担先、配賦、商品、タグ、予算、定期支出、資金移動、残高推移を扱います。招待管理と口座残高推移は同じ`pages/settings`sliceの専用UIへ分け、招待APIと残高照会operationも同sliceのAPI segmentへ移しました。`LedgerPage`は検索、一覧、選択、一括更新、購入編集、訂正、証拠、観測照合を扱います。`ImportsPage`は取込一覧、確認、送信、カメラ画像処理を扱い、画像座標変換は同じpage sliceのmodelへ分離しました。`PurchaseCreatePage`は購入共通項目と保存・送信を持ち、品目行編集、Undo、キーボード操作、貼付け、候補選択を同じ`pages/purchase-create`sliceの専用UIとmodelへ移しました。
+`SettingsPage`は口座、負担先、配賦、商品、資金移動、残高推移を扱い、招待管理、タグ、予算、定期支出、口座残高推移は同じ`pages/settings`sliceの専用UIへ分けました。招待・残高照会operationも同sliceのAPI segmentへ移しました。`LedgerPage`は検索、一覧、選択、一括更新、購入編集、訂正、証拠、観測照合を扱い、検索filterのstyleはpage CSS moduleへ移しました。`ImportsPage`は取込一覧、確認、送信を扱い、カメラ撮影・画像確認・回転・切り抜きは専用UIへ、画像座標変換は同じpage sliceのmodelへ分離しました。`PurchaseCreatePage`は購入共通項目と保存・送信を持ち、品目行編集、Undo、キーボード操作、貼付け、候補選択を同じ`pages/purchase-create`sliceの専用UIとmodelへ移しました。`SettlementPage`は月次精算の組立てを担い、貸付・返済の一覧と操作は同じsliceの専用UIへ移しました。
 
 画面の機能ごとにUIと状態の所有者を分け、親コンポーネントを配置と画面遷移の責務に限定する余地があります。単に処理を別ファイルや巨大なHookへ移すのではなく、機能が独立して変更できる境界を作る必要があります。
 
@@ -23,7 +24,7 @@
 
 [use-household-purchases.ts](../../web/src/entities/purchase/api/use-household-purchases.ts)は生成されたPurchaseList fragmentの品目型を受け取る明示的なEntity mapperを使い、`as unknown as PurchaseItem[]`を解消しています。
 
-購入作成・記帳と品目更新の変数変換はPurchase Entity内の生成型mapperへ移し、Mutation名による共通基盤の分岐と`as never`を削除しました。`normalizeGraphQLValue()`と手書き通信型は残っており、Relay生成型を通信境界で維持する必要があります。
+購入作成・記帳と品目更新の変数変換はPurchase Entity内の生成型mapperへ移し、Mutation名による共通基盤の分岐と`as never`を削除しました。Purchase履歴の2画面もRelay生成operationとPurchase Entity mapperへ移し、`normalizeGraphQLValue()`の品目単価・数量変換を削除しました。`normalizeGraphQLValue()`のLedgerEntry変換とmutation unionのunwrap、手書き通信型は残っており、ほかのoperationも生成型と明示mapperへ移す必要があります。
 
 ## 3. 中優先：会計の共通規則が複数パッケージに重複している
 
@@ -33,21 +34,13 @@
 
 仕訳生成は共通化済みです。会計期間、金額計算、イベント記録、冪等性の共通化は未対応です。
 
-## 4. 中優先：帳簿の検索条件がサーバー処理と画面処理に分かれている
+## 4. 中優先：画面固有CSSと重要な純粋処理が分離されていない
 
-購入検索では期間、検索語、分類、タグ、決済口座、負担先、起点、証拠有無をサーバー側で適用してからページングしています。全ページを無条件に取得してブラウザで絞るという以前の指摘は解消しています。
-
-一方、[ledger-page.tsx](../../web/src/pages/ledger/ui/ledger-page.tsx)は購入表示と品目表示の表示条件を別々に実装し、サーバー検索後にも期間・検索語・分類・タグ・決済口座などを`filter()`と`flatMap()`で絞り込みます。金額の下限・上限は購入Queryの`minimumAmount`・`maximumAmount`でページング前に適用し、購入合計と品目額の対象も選べます。品目対象では金額・カテゴリ・タグ・負担先を同じ品目で判定し、返却する品目にも同じ条件を適用します。購入単位の範囲、品目単位の範囲、ページ境界、品目属性との組み合わせを検証する統合テストは追加しました。GitHub Actions run `38451243233`ではDB統合テストが実行され、抽出品目ごとの証拠リンク数に関する古い期待値で失敗しました。期待値を修正し、同じ品目に検索語・金額・属性が一致する条件も追加しました。修正後のCI結果は未確認です。
-
-検索条件を単一のQuery入力へまとめ、購入表示と品目表示で共通化できる判定を共有する必要があります。
-
-## 5. 中優先：画面固有CSSと重要な純粋処理が分離されていない
-
-[global.css](../../web/src/app/styles/global.css)は4,871行あり、画面固有のスタイルも含みます。共通デザイントークンと汎用UIを残し、画面に固有の規則を機能単位のCSSへ分ける余地があります。
+[global.css](../../web/src/app/styles/global.css)は4,974行あり、画面固有のスタイルも含みます。帳簿検索のstyleをpage CSS moduleへ移しました。共通デザイントークンと汎用UIを残し、ほかの画面固有規則も機能単位のCSSへ分ける余地があります。
 
 画像座標の行列演算は[importsのmodel](../../web/src/pages/imports/model/evidence-geometry.ts)へ分離しました。`web/src`には`.test.ts`、`.test.tsx`、`.spec.ts`、`.spec.tsx`がなく、`web/package.json`にもテスト用スクリプトがありません。購入データ変換、Outbox、矩形範囲の処理など、純粋関数として分離できる重要処理の検証は未整備です。
 
-## 6. 低優先：GraphQLの購入読み込みが広い関連データを組み立てる
+## 5. 低優先：GraphQLの購入読み込みが広い関連データを組み立てる
 
 [loadPurchases](../../internal/graph/helpers.go)は購入に対し、口座、証拠、確認、品目、支払、訂正、品目配賦、タグなどをまとめて読み込み、GraphQLモデルを構築します。Bobのバッチローダーを利用してN+1は避けていますが、一覧で一部のフィールドしか使わない場合にも広い関連データを読み込みます。
 
@@ -60,7 +53,6 @@
 | P1 | 大きなReact画面の機能・状態分割 |
 | P1 | Relay生成型と明示的mapperを中心にした通信境界 |
 | P2 | 会計期間、金額計算、イベント、冪等性の共通化 |
-| P2 | 帳簿フィルターのQuery入力と画面表示の統合 |
 | P2 | 画面固有CSSの分離と重要な純粋処理の検証 |
 | P3 | 必要性を測定した後の購入読み取りモデル分割 |
 

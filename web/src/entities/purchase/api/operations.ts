@@ -1,41 +1,79 @@
 import { graphql } from "react-relay";
 
 export const purchasesQuery = graphql`
-  query PurchasesQuery(
-    $householdId: ID!
-    $from: DateTime
-    $to: DateTime
-    $origin: PurchaseOrigin
-    $hasEvidence: Boolean
-    $search: String
-    $categoryId: ID
-    $uncategorized: Boolean
-    $tagId: ID
-    $paymentAccountId: ID
-    $poolId: ID
-    $minimumAmount: Long
-    $maximumAmount: Long
-    $amountTarget: PurchaseAmountTarget
-    $first: Int
-  ) {
-    ...PurchaseListFragment
-      @arguments(
-        householdId: $householdId
-        from: $from
-        to: $to
-        origin: $origin
-        hasEvidence: $hasEvidence
-        search: $search
-        categoryId: $categoryId
-        uncategorized: $uncategorized
-        tagId: $tagId
-        paymentAccountId: $paymentAccountId
-        poolId: $poolId
-        minimumAmount: $minimumAmount
-        maximumAmount: $maximumAmount
-        amountTarget: $amountTarget
-        first: $first
-      )
+  query PurchasesQuery($filter: PurchaseFilter!, $first: Int) {
+    ...PurchaseListFragment @arguments(filter: $filter, first: $first)
+  }
+`;
+
+export const purchaseHistoryQuery = graphql`
+  query PurchaseHistoryQuery($filter: PurchaseFilter!, $first: Int) {
+    purchases(filter: $filter, first: $first) {
+      edges {
+        cursor
+        node {
+          id
+          householdId
+          occurredAt
+          merchant
+          origin
+          hasEvidence
+          sourceKinds
+          paymentAllocations {
+            paymentAccountId
+            amountYen
+            account {
+              id
+              name
+            }
+          }
+          items {
+            ...PurchaseItemFields @relay(mask: false)
+          }
+          totalYen
+          corrections(first: 100) {
+            edges {
+              cursor
+              node {
+                __typename
+                id
+                ... on PurchaseItemCorrection {
+                  itemId
+                }
+                amountDeltaYen
+                reason
+                occurredAt
+                settlementMonth
+                paymentAllocations {
+                  paymentAccountId
+                  amountYen
+                  account {
+                    id
+                    name
+                  }
+                }
+              }
+            }
+            pageInfo {
+              endCursor
+              hasNextPage
+            }
+          }
+          revision
+          status
+          createdAt
+          updatedAt
+        }
+      }
+      pageInfo {
+        startCursor
+        endCursor
+        hasNextPage
+        hasPreviousPage
+      }
+      totalCount
+      syncCursor
+    }
   }
 `;
 
@@ -75,61 +113,13 @@ export const purchaseCorrectionsPaginationQuery = graphql`
 export const purchaseListFragment = graphql`
   fragment PurchaseListFragment on Query
   @argumentDefinitions(
-    householdId: { type: "ID!" }
-    from: { type: "DateTime" }
-    to: { type: "DateTime" }
-    origin: { type: "PurchaseOrigin" }
-    hasEvidence: { type: "Boolean" }
-    search: { type: "String" }
-    categoryId: { type: "ID" }
-    uncategorized: { type: "Boolean" }
-    tagId: { type: "ID" }
-    paymentAccountId: { type: "ID" }
-    poolId: { type: "ID" }
-    minimumAmount: { type: "Long" }
-    maximumAmount: { type: "Long" }
-    amountTarget: { type: "PurchaseAmountTarget" }
+    filter: { type: "PurchaseFilter!" }
     first: { type: "Int", defaultValue: 100 }
     after: { type: "String" }
   )
   @refetchable(queryName: "PurchasePaginationQuery") {
-    purchases(
-      householdId: $householdId
-      from: $from
-      to: $to
-      origin: $origin
-      hasEvidence: $hasEvidence
-      search: $search
-      categoryId: $categoryId
-      uncategorized: $uncategorized
-      tagId: $tagId
-      paymentAccountId: $paymentAccountId
-      poolId: $poolId
-      minimumAmount: $minimumAmount
-      maximumAmount: $maximumAmount
-      amountTarget: $amountTarget
-      after: $after
-      first: $first
-    )
-      @connection(
-        key: "PurchaseListFragment_purchases"
-        filters: [
-          "householdId"
-          "from"
-          "to"
-          "origin"
-          "hasEvidence"
-          "search"
-          "categoryId"
-          "uncategorized"
-          "tagId"
-          "paymentAccountId"
-          "poolId"
-          "minimumAmount"
-          "maximumAmount"
-          "amountTarget"
-        ]
-      ) {
+    purchases(filter: $filter, after: $after, first: $first)
+      @connection(key: "PurchaseListFragment_purchases", filters: ["filter"]) {
       edges {
         cursor
         node {

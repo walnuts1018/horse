@@ -1723,22 +1723,14 @@ a {
   font-size: 10px;
 }
 
-.ledger-controls {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  margin-bottom: 13px;
-}
-
-.ledger-filters {
+form.ledger-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin: -9px 0 16px;
 }
 
-.ledger-filters .select-filter select,
-.ledger-bulk-actions .select-filter select {
+form.ledger-filters .select-filter select {
   min-width: 118px;
   border: 0;
   background: transparent;
@@ -1746,7 +1738,7 @@ a {
   font-size: 10px;
 }
 
-.ledger-filters .select-filter input[type="number"] {
+form.ledger-filters .select-filter input[type="number"] {
   width: 65px;
   border: 0;
   background: transparent;
@@ -1803,12 +1795,6 @@ a {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 3px 5px;
-}
-
-.ledger-more {
-  display: flex;
-  justify-content: center;
-  padding: 16px 0;
 }
 
 .input-with-icon {
@@ -3528,15 +3514,11 @@ a {
     display: none;
   }
 
-  .ledger-controls {
-    gap: 7px;
-  }
-
   .ledger-filters {
     margin-top: -4px;
   }
 
-  .ledger-filters .select-filter {
+  form.ledger-filters .select-filter {
     flex: 1 1 calc(50% - 8px);
     min-width: 130px;
   }

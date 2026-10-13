@@ -40,7 +40,7 @@ export const defaultLedgerSearch: LedgerSearch = {
 export function toPurchaseAmountVariables(
   filters: Pick<LedgerSearch, "minimumAmount" | "maximumAmount">,
   viewMode: LedgerSearch["viewMode"],
-): Pick<PurchasesQuery["variables"], "minimumAmount" | "maximumAmount" | "amountTarget"> {
+): Pick<PurchasesQuery["variables"]["filter"], "minimumAmount" | "maximumAmount" | "amountTarget"> {
   return {
     minimumAmount: filters.minimumAmount ? Number(filters.minimumAmount) : undefined,
     maximumAmount: filters.maximumAmount ? Number(filters.maximumAmount) : undefined,

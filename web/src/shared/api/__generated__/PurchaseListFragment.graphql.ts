@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1238cb4e7647173e9e31ae6c0d982760>>
+ * @generated SignedSource<<d8d3e9f3b6b6ff98e23c64566590091e>>
  * @lightSyntaxTransform
  */
 
@@ -262,77 +262,12 @@ return {
     {
       "defaultValue": null,
       "kind": "LocalArgument",
-      "name": "amountTarget"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "categoryId"
+      "name": "filter"
     },
     {
       "defaultValue": 100,
       "kind": "LocalArgument",
       "name": "first"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "from"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "hasEvidence"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "householdId"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "maximumAmount"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "minimumAmount"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "origin"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "paymentAccountId"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "poolId"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "search"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "tagId"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "to"
-    },
-    {
-      "defaultValue": null,
-      "kind": "LocalArgument",
-      "name": "uncategorized"
     }
   ],
   "kind": "Fragment",
@@ -365,73 +300,8 @@ return {
       "args": [
         {
           "kind": "Variable",
-          "name": "amountTarget",
-          "variableName": "amountTarget"
-        },
-        {
-          "kind": "Variable",
-          "name": "categoryId",
-          "variableName": "categoryId"
-        },
-        {
-          "kind": "Variable",
-          "name": "from",
-          "variableName": "from"
-        },
-        {
-          "kind": "Variable",
-          "name": "hasEvidence",
-          "variableName": "hasEvidence"
-        },
-        {
-          "kind": "Variable",
-          "name": "householdId",
-          "variableName": "householdId"
-        },
-        {
-          "kind": "Variable",
-          "name": "maximumAmount",
-          "variableName": "maximumAmount"
-        },
-        {
-          "kind": "Variable",
-          "name": "minimumAmount",
-          "variableName": "minimumAmount"
-        },
-        {
-          "kind": "Variable",
-          "name": "origin",
-          "variableName": "origin"
-        },
-        {
-          "kind": "Variable",
-          "name": "paymentAccountId",
-          "variableName": "paymentAccountId"
-        },
-        {
-          "kind": "Variable",
-          "name": "poolId",
-          "variableName": "poolId"
-        },
-        {
-          "kind": "Variable",
-          "name": "search",
-          "variableName": "search"
-        },
-        {
-          "kind": "Variable",
-          "name": "tagId",
-          "variableName": "tagId"
-        },
-        {
-          "kind": "Variable",
-          "name": "to",
-          "variableName": "to"
-        },
-        {
-          "kind": "Variable",
-          "name": "uncategorized",
-          "variableName": "uncategorized"
+          "name": "filter",
+          "variableName": "filter"
         }
       ],
       "concreteType": "PurchaseConnection",
@@ -808,6 +678,6 @@ return {
 };
 })();
 
-(node as any).hash = "1ef3ad54a1e9c70526e069dec3615a7c";
+(node as any).hash = "bc6a7409d6b32192ff77524f22daac61";
 
 export default node;

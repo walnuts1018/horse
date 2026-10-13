@@ -220,7 +220,9 @@ export type CreatePurchaseInput = {
   }>;
 };
 export type PurchasePaymentInput = { paymentAccountId: string; amountYen: number };
-export type PurchasePayment = PurchasePaymentInput & { account?: Account | null };
+export type PurchasePayment = PurchasePaymentInput & {
+  account?: Pick<Account, "id" | "name"> | null;
+};
 export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN";
 export type SourceKind = "RECEIPT" | "ORDER" | "EMAIL" | "CARD" | "BANK";
 export type UnmatchedObservationState = "UNMATCHED" | "CONFIRMED";
@@ -617,36 +619,6 @@ function normalizeGraphQLValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalizeGraphQLValue);
   if (!value || typeof value !== "object") return value;
   const item = value as Record<string, unknown>;
-  if ("quantity" in item || "printedUnitPrice" in item || "effectiveUnitPrice" in item) {
-    const quantity = item.quantity as {
-      numerator?: string;
-      denominator?: string;
-      unit?: string;
-    } | null;
-    const printed = item.printedUnitPrice as {
-      amountYen: number;
-      basis: { numerator: string; denominator: string; unit: string };
-    } | null;
-    const effective = item.effectiveUnitPrice as {
-      numeratorYen: string;
-      denominator: string;
-    } | null;
-    const normalized = {
-      ...item,
-      quantityNumerator: quantity?.numerator ?? null,
-      quantityDenominator: quantity?.denominator ?? null,
-      quantityUnit: quantity?.unit ?? null,
-      printedUnitPriceYen: printed?.amountYen ?? null,
-      printedUnitPriceQuantityNumerator: printed?.basis.numerator ?? null,
-      printedUnitPriceQuantityDenominator: printed?.basis.denominator ?? null,
-      printedUnitPriceUnit: printed?.basis.unit ?? null,
-      effectiveUnitPriceNumeratorYen: effective?.numeratorYen ?? null,
-      effectiveUnitPriceDenominator: effective?.denominator ?? null,
-    };
-    return Object.fromEntries(
-      Object.entries(normalized).map(([key, nested]) => [key, normalizeGraphQLValue(nested)]),
-    );
-  }
   if (typeof item.__typename === "string" && item.__typename.endsWith("LedgerEntry")) {
     const typename = item.__typename;
     const base = Object.fromEntries(

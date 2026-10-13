@@ -33,6 +33,7 @@ import { formatQuantity, parseQuantity } from "../../../shared/lib";
 import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
 import { ObservationLinker } from "./observation-linker";
 import { toPurchaseAmountVariables, type LedgerSearch } from "../model/ledger-search";
+import styles from "./ledger-search.module.css";
 
 type PurchaseEvidence = {
   documentId: string;
@@ -356,7 +357,7 @@ export function LedgerPage({
     let after: string | null = null;
     for (;;) {
       const result: { purchases: Connection<Purchase> } = await readGraphql(purchasesQuery, {
-        householdId: household.id,
+        filter: { householdId: household.id },
         first: 100,
         after,
       });
@@ -714,60 +715,10 @@ export function LedgerPage({
       } else setEditError((reason as Error).message);
     }
   };
-  const filtered = purchases.filter((purchase) => {
-    const month = purchaseMonth(purchase.occurredAt);
-    return (
-      (!fromMonth || month >= fromMonth) &&
-      (!toMonth || month <= toMonth) &&
-      (!search ||
-        `${purchase.merchant} ${purchase.items.map((item) => item.name).join(" ")}`
-          .toLocaleLowerCase()
-          .includes(search.toLocaleLowerCase())) &&
-      (!categoryFilter ||
-        purchase.items.some((item) =>
-          categoryFilter === "__uncategorized"
-            ? !item.categoryId
-            : item.categoryId === categoryFilter,
-        )) &&
-      (!poolFilter ||
-        purchase.items.some((item) =>
-          item.allocations.some((allocation) => allocation.poolId === poolFilter),
-        )) &&
-      (!accountFilter ||
-        purchase.paymentAllocations.some(
-          (payment) => payment.paymentAccountId === accountFilter,
-        )) &&
-      (!tagFilter || purchase.items.some((item) => item.tags.some((tag) => tag.id === tagFilter)))
-    );
-  });
-  const filteredItems = purchases.flatMap((purchase) => {
-    const month = purchaseMonth(purchase.occurredAt);
-    const purchaseMatches =
-      (!fromMonth || month >= fromMonth) &&
-      (!toMonth || month <= toMonth) &&
-      (!accountFilter ||
-        purchase.paymentAllocations.some((payment) => payment.paymentAccountId === accountFilter));
-    if (!purchaseMatches) return [];
-    return purchase.items
-      .filter((item) => {
-        const searchMatches =
-          !search ||
-          `${purchase.merchant} ${item.name}`
-            .toLocaleLowerCase()
-            .includes(search.toLocaleLowerCase());
-        return (
-          searchMatches &&
-          (!categoryFilter ||
-            (categoryFilter === "__uncategorized"
-              ? !item.categoryId
-              : item.categoryId === categoryFilter)) &&
-          (!poolFilter ||
-            item.allocations.some((allocation) => allocation.poolId === poolFilter)) &&
-          (!tagFilter || item.tags.some((tag) => tag.id === tagFilter))
-        );
-      })
-      .map((item) => ({ purchase, item }));
-  });
+  const filtered = purchases;
+  const filteredItems = purchases.flatMap((purchase) =>
+    purchase.items.map((item) => ({ purchase, item })),
+  );
   const itemCoverageComplete = !loadingMore && !hasNextPage && !moreError;
   const selectedCount = selectedItems.size;
   const selectedPurchaseCount = selectedPurchases.size;
@@ -1021,7 +972,7 @@ export function LedgerPage({
           買い物を追加
         </button>
       </div>
-      <div className="ledger-controls">
+      <div className={styles.controls}>
         {recordMode === "purchases" && (
           <label className="input-with-icon">
             <Search size={16} />
@@ -1058,7 +1009,7 @@ export function LedgerPage({
               : `${filtered.length}件表示 · ${purchases.length}/${totalCount}件読込`}
         </div>
       </div>
-      <div className="ledger-filters">
+      <div className={styles.filters}>
         <label className="select-filter">
           <span>表示</span>
           <select
@@ -1238,7 +1189,10 @@ export function LedgerPage({
         )}
       </div>
       {recordMode === "purchases" && viewMode === "purchases" && selectedPurchaseCount > 0 && (
-        <section className="panel ledger-bulk-actions" aria-label="選択した購入の一括編集">
+        <section
+          className={`panel ledger-bulk-actions ${styles.bulkActions}`}
+          aria-label="選択した購入の一括編集"
+        >
           <span>{selectedPurchaseCount}件の購入を選択中</span>
           <label>
             <input
@@ -1311,7 +1265,7 @@ export function LedgerPage({
         </section>
       )}
       {purchaseBulkUndo && (
-        <section className="panel ledger-bulk-actions" aria-live="polite">
+        <section className={`panel ledger-bulk-actions ${styles.bulkActions}`} aria-live="polite">
           <span>{purchaseBulkUndo.length}件の購入変更</span>
           <button
             className="text-button"
@@ -1324,7 +1278,10 @@ export function LedgerPage({
         </section>
       )}
       {selectedCount > 0 && (
-        <section className="panel ledger-bulk-actions" aria-label="選択品目の一括編集">
+        <section
+          className={`panel ledger-bulk-actions ${styles.bulkActions}`}
+          aria-label="選択品目の一括編集"
+        >
           <span>{selectedCount}品目を選択中</span>
           <label className="select-filter">
             <span>カテゴリ</span>
@@ -1473,7 +1430,7 @@ export function LedgerPage({
         </section>
       )}
       {bulkUndo && (
-        <section className="panel ledger-bulk-actions" aria-live="polite">
+        <section className={`panel ledger-bulk-actions ${styles.bulkActions}`} aria-live="polite">
           <span>{bulkUndo.length}品目の変更</span>
           <button
             className="button button-soft"
@@ -1571,7 +1528,7 @@ export function LedgerPage({
           )}
           {unmatched.moreError && <InlineError message={unmatched.moreError} />}
           {unmatched.hasNextPage && (
-            <div className="ledger-more">
+            <div className={styles.more}>
               <button
                 className="button button-soft"
                 disabled={unmatched.loadingMore}
@@ -1647,10 +1604,10 @@ export function LedgerPage({
               </div>
             ))
           )}
-          {loadingMore && <div className="ledger-more">購入履歴を取得中</div>}
+          {loadingMore && <div className={styles.more}>購入履歴を取得中</div>}
           {moreError && <InlineError message={moreError} />}
           {moreError && hasNextPage && (
-            <div className="ledger-more">
+            <div className={styles.more}>
               <button
                 className="button button-soft"
                 disabled={loadingMore}
@@ -2399,7 +2356,7 @@ export function LedgerPage({
       )}
       {recordMode === "purchases" && moreError && <InlineError message={moreError} />}
       {recordMode === "purchases" && hasNextPage && !moreError && (
-        <div className="ledger-more">
+        <div className={styles.more}>
           <button
             className="button button-soft"
             disabled={loadingMore}
@@ -2414,7 +2371,7 @@ export function LedgerPage({
         </div>
       )}
       {recordMode === "purchases" && viewMode === "purchases" && moreError && hasNextPage && (
-        <div className="ledger-more">
+        <div className={styles.more}>
           <button
             className="button button-soft"
             disabled={loadingMore}

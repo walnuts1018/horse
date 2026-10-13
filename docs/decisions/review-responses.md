@@ -162,6 +162,10 @@ GitHub Actions run `38451243233`ではPostgreSQL統合テストが実行され�
 
 購入一覧のRelay fragmentは`mapPurchaseItem`でEntity型へ変換し、`as unknown as PurchaseItem[]`を削除しました。mapperは生成されたPurchaseList fragmentの品目型を入力に取ります。この具体的な指摘は解決済みとして`docs/reviews/simple.md`から除き、手書きのHousehold API型、`normalizeGraphQLValue()`、Mutation名を使う`normalizePurchaseVariables()`は残る課題として維持しました。
 
-招待管理と口座残高推移のUI・状態を設定ページから別componentへ分け、GraphQL operationも`pages/settings/api`へ整理しました。どちらも設定ページだけで使うため、`pages/settings/ui`内に置き、再利用されないfeature sliceを作りません。品目入力も同様に`pages/purchase-create/ui/edit-purchase-items.tsx`へ分け、状態と行更新を親ページから移しました。画像座標変換は`pages/imports/model/evidence-geometry.ts`へ分離しました。共有API生成型の参照は`shared/api/index.ts`から公開します。
+招待管理・タグ・予算・定期支出・口座残高推移のUIと状態を設定ページから別componentへ分け、GraphQL operationも`pages/settings/api`へ整理しました。どれも設定ページだけで使うため、`pages/settings/ui`内に置き、再利用されないfeature sliceを作りません。品目入力も同様に`pages/purchase-create/ui/edit-purchase-items.tsx`へ分け、状態と行更新を親ページから移しました。Importsの撮影・プレビュー・回転・切り抜きも`pages/imports/ui/camera-capture.tsx`へ移し、親ページにはupload queueへの追加を残しました。画像座標変換は`pages/imports/model/evidence-geometry.ts`へ分離しました。共有API生成型の参照は`shared/api/index.ts`から公開します。
 
 口座の初期残高、口座移動、外部入金の借貸仕訳は`accounting.BuildEntries()`と`InsertEntries()`を利用するように統一しました。既存の`internal/application/accounting`テストが仕訳の釣り合いと不正行を検証するため、同じ不変条件を重ねるテストは追加していません。
+
+購入Queryの検索条件を`PurchaseFilter`入力に集約しました。金額・日付・検索語・分類・タグ・口座・負担先をページング前にBob DSLで適用し、品目表示では条件を同一品目へ適用して該当品目だけを返します。LedgerPageの購入・品目結果に対する重複filterを削除しました。GraphQL/Relay生成、GraphQL通常テスト、Web型検査、Relay検証、format検査が成功しました。PostgreSQL統合テストの実行結果はGitHub Actions確認後に記録します。
+
+Purchaseの履歴QueryをRelay生成operationへ移し、Purchase Entityのmapperで数量・印字単価・実効単価と訂正unionを変換します。購入入力と観測照合はEntityの公開read APIを利用するため、`normalizeGraphQLValue()`のPurchaseItem変換を削除しました。LedgerEntry変換とmutation unionのunwrapは利用箇所が残るため維持します。生成型を`shared/api`から公開し、Entityのdeep importを解消しました。Web型検査、Steiger、Relay検証、lint、formatの統合検査が成功しました。

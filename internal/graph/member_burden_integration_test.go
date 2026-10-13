@@ -111,7 +111,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	}
 	query := (&Resolver{DB: db}).Query()
 	evidenceAbsent := false
-	withoutEvidence, err := query.Purchases(ctx, household.ID, nil, nil, nil, &evidenceAbsent, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	withoutEvidence, err := query.Purchases(ctx, model.PurchaseFilter{HouseholdID: household.ID, HasEvidence: &evidenceAbsent}, nil, nil, nil, nil)
 	if err != nil || withoutEvidence.TotalCount != 1 || len(withoutEvidence.Edges) != 1 || withoutEvidence.Edges[0].Node.ID != purchase.ID {
 		t.Fatalf("purchase without evidence was excluded: connection=%#v error=%v", withoutEvidence, err)
 	}
@@ -135,7 +135,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		t.Fatalf("manual origin must remain distinct from later evidence attachment: %#v", withEvidence)
 	}
 	manualOrigin, evidencePresent := model.PurchaseOriginManual, true
-	filtered, err := query.Purchases(ctx, household.ID, nil, nil, &manualOrigin, &evidencePresent, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	filtered, err := query.Purchases(ctx, model.PurchaseFilter{HouseholdID: household.ID, Origin: &manualOrigin, HasEvidence: &evidencePresent}, nil, nil, nil, nil)
 	if err != nil || filtered.TotalCount != 1 || len(filtered.Edges) != 1 || filtered.Edges[0].Node.Origin != model.PurchaseOriginManual {
 		t.Fatalf("origin and evidence filters did not remain independent: connection=%#v error=%v", filtered, err)
 	}
@@ -223,7 +223,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if _, err := models.PurchaseItemTags.Insert(&models.PurchaseItemTagSetter{HouseholdID: &householdID, PurchaseID: &purchaseUUID, ItemID: &itemUUID, TagID: &tagUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	listed, err := (&Resolver{DB: db}).Query().Purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	listed, err := (&Resolver{DB: db}).Query().Purchases(ctx, model.PurchaseFilter{HouseholdID: household.ID}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ export { useCreateAndPostPurchase } from "./api/create-and-post";
 export { mapUpdatePurchaseItemInput } from "./api/map-update-purchase-item-input";
 export { useUpdatePurchaseItem } from "./api/use-update-purchase-item";
 export { useHouseholdPurchases } from "./api/use-household-purchases";
+export { readHouseholdPurchases } from "./api/read-household-purchases";
 export type { PurchasesQuery } from "../../shared/api/__generated__/PurchasesQuery.graphql";
 export type { PurchaseAmountTarget } from "../../shared/api/__generated__/PurchasesQuery.graphql";
 export type { PurchaseChangesSubscription } from "../../shared/api/__generated__/PurchaseChangesSubscription.graphql";

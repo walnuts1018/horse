@@ -1355,6 +1355,23 @@ type PurchaseEdge struct {
 	Node   *Purchase `json:"node"`
 }
 
+type PurchaseFilter struct {
+	HouseholdID      string                `json:"householdId"`
+	From             *DateTime             `json:"from,omitempty"`
+	To               *DateTime             `json:"to,omitempty"`
+	Origin           *PurchaseOrigin       `json:"origin,omitempty"`
+	HasEvidence      *bool                 `json:"hasEvidence,omitempty"`
+	Search           *string               `json:"search,omitempty"`
+	CategoryID       *string               `json:"categoryId,omitempty"`
+	Uncategorized    *bool                 `json:"uncategorized,omitempty"`
+	TagID            *string               `json:"tagId,omitempty"`
+	PaymentAccountID *string               `json:"paymentAccountId,omitempty"`
+	PoolID           *string               `json:"poolId,omitempty"`
+	MinimumAmount    *Long                 `json:"minimumAmount,omitempty"`
+	MaximumAmount    *Long                 `json:"maximumAmount,omitempty"`
+	AmountTarget     *PurchaseAmountTarget `json:"amountTarget,omitempty"`
+}
+
 type PurchaseItem struct {
 	ID                 string                    `json:"id"`
 	Name               string                    `json:"name"`

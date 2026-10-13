@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, Link2 } from "lucide-react";
-import { purchasesQuery } from "../../../entities/purchase";
-import {
-  readGraphql,
-  type Connection,
-  type Household,
-  type Purchase,
-  type UnmatchedObservation,
-} from "../../../shared/api";
+import { readHouseholdPurchases } from "../../../entities/purchase";
+import { type Household, type Purchase, type UnmatchedObservation } from "../../../shared/api";
 import { InlineError } from "../../../shared/ui";
 
 type MatchCandidate = {
@@ -67,10 +61,7 @@ export function ObservationLinker({
         fetch(`/documents/${encodeURIComponent(observation.documentId)}/matches`, {
           credentials: "include",
         }),
-        readGraphql<{ purchases: Connection<Purchase> }>(purchasesQuery, {
-          householdId: household.id,
-          first: 100,
-        }),
+        readHouseholdPurchases(household.id, 100),
       ]);
       if (!matchResponse.ok)
         throw new Error(`照合候補を取得できませんでした (${matchResponse.status})`);
@@ -83,7 +74,7 @@ export function ObservationLinker({
       );
       setMatches(sourceMatches?.matches ?? []);
       setMatchesTruncated(payload.truncated);
-      setPurchases(purchaseResult.purchases.edges.map((edge) => edge.node));
+      setPurchases(purchaseResult);
     } catch (reason) {
       setError((reason as Error).message);
     } finally {

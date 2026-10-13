@@ -454,24 +454,62 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	const statementTransactionID = "card-2"
 	const statementRowDescription = "statement row"
 	const statementOccurredAt = "2026-04-20T12:01:00Z"
-	statementObservations := ingestion.SourceObservations(documentID, hash, "card", ingestion.Verification{Statements: []ingestion.StatementEntry{
+	statementDocumentID := uuid.NewV7().String()
+	statementDocumentUUID, _ := gofrsuuid.FromString(statementDocumentID)
+	statementHash, statementObjectKey, statementMimeType, statementSourceKind := "hash-"+statementDocumentID, householdID+"/originals/"+statementDocumentID, "application/pdf", "card"
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &statementDocumentUUID, HouseholdID: &householdUUID, Sha256: &statementHash, ObjectKey: &statementObjectKey, MimeType: &statementMimeType, SourceKind: &statementSourceKind, CreatedBy: &memberAUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	statementObservations := ingestion.SourceObservations(statementDocumentID, statementHash, "card", ingestion.Verification{Statements: []ingestion.StatementEntry{
 		{Row: 2, TransactionID: statementTransactionID, Merchant: statementRowDescription, Amount: 1, OccurredAt: statementOccurredAt},
 		{Row: 3, TransactionID: statementTransactionID, Merchant: statementRowDescription, Amount: 1, OccurredAt: statementOccurredAt},
 	}})
 	rowReference, secondRowReference := statementObservations[0].SourceReference, statementObservations[1].SourceReference
-	rowInput := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &documentID, SourceReference: &rowReference, OccurredAt: statementOccurredAt, Merchant: statementRowDescription, Items: []*model.PurchaseItemInput{{Name: statementRowDescription, AmountYen: 1}}}
-	rowPurchase, err := resolver.createPurchase(ctx, rowInput)
-	if err != nil || rowPurchase.ID == confirmed.ID {
-		t.Fatalf("a distinct statement row should confirm independently: purchase=%#v error=%v", rowPurchase, err)
+	rowInput := model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, SourceDocumentID: &statementDocumentID, SourceReference: &rowReference, OccurredAt: statementOccurredAt, Merchant: statementRowDescription, PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: paymentAccount.ID, AmountYen: 1}}, Items: []*model.PurchaseItemInput{{Name: statementRowDescription, AmountYen: 1}}}
+	rowPurchase, err := resolver.createAndPostPurchase(ctx, rowInput)
+	if err != nil || rowPurchase.ID == confirmed.ID || rowPurchase.Status != model.PurchaseStatusPosted || rowPurchase.Revision != 2 {
+		t.Fatalf("a card statement row should create and post independently: purchase=%#v error=%v", rowPurchase, err)
+	}
+	rowPurchaseUUID, _ := gofrsuuid.FromString(rowPurchase.ID)
+	confirmations, err := models.DocumentConfirmations.Query(sm.Where(psql.And(
+		models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(statementDocumentUUID)),
+		models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(rowReference)),
+		models.DocumentConfirmations.Columns.PurchaseID.EQ(psql.Arg(rowPurchaseUUID)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(confirmations) != 1 {
+		t.Fatalf("posted purchase should retain its statement row confirmation: confirmations=%d error=%v", len(confirmations), err)
+	}
+	statementEvidence, err := models.EvidenceLinks.Query(sm.Where(psql.And(
+		models.EvidenceLinks.Columns.SourceDocumentID.EQ(psql.Arg(statementDocumentUUID)),
+		models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(rowPurchaseUUID)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(statementEvidence) != 1 || statementEvidence[0].ItemID.Valid {
+		t.Fatalf("posted statement purchase should retain one document evidence link: links=%d error=%v", len(statementEvidence), err)
+	}
+	statementJournals, err := models.Journals.Query(sm.Where(psql.And(
+		models.Journals.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.Journals.Columns.SourceKind.EQ(psql.Arg("PURCHASE")),
+		models.Journals.Columns.SourceID.EQ(psql.Arg(rowPurchaseUUID)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	statementLedgers, err := models.LedgerEntries.Query(sm.Where(psql.And(
+		models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.LedgerEntries.Columns.SourcePurchaseID.EQ(psql.Arg(sql.Null[gofrsuuid.UUID]{V: rowPurchaseUUID, Valid: true})),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(statementJournals) != 1 || len(statementLedgers) != 1 {
+		t.Fatalf("posted statement purchase should have one journal and ledger entry: journals=%d ledgers=%d error=%v", len(statementJournals), len(statementLedgers), err)
 	}
 	rowInput.IdempotencyKey = uuid.NewV7().String()
-	rowReplay, err := resolver.createPurchase(ctx, rowInput)
+	rowReplay, err := resolver.createAndPostPurchase(ctx, rowInput)
 	if err != nil || rowReplay.ID != rowPurchase.ID {
-		t.Fatalf("statement row confirmation should be idempotent: purchase=%#v error=%v", rowReplay, err)
+		t.Fatalf("statement row create and post should be idempotent: purchase=%#v error=%v", rowReplay, err)
 	}
 	secondRowInput := rowInput
 	secondRowInput.IdempotencyKey = uuid.NewV7().String()
 	secondRowInput.SourceReference = &secondRowReference
+	secondRowInput.PaymentAllocations = nil
 	secondRowPurchase, err := resolver.createPurchase(ctx, secondRowInput)
 	if err != nil || secondRowPurchase.ID == rowPurchase.ID {
 		t.Fatalf("a second row with the same transaction id should confirm independently: purchase=%#v error=%v", secondRowPurchase, err)
@@ -484,23 +522,19 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if _, err := resolver.postPurchase(ctx, confirmed.ID, confirmed.Revision, uuid.NewV7().String()); err != nil {
 		t.Fatal(err)
 	}
-	for _, reference := range []string{rowReference, secondRowReference} {
-		if _, err := models.DocumentConfirmations.Delete(dm.Where(psql.And(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)), models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(reference))))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := models.DocumentConfirmations.Delete(dm.Where(psql.And(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(statementDocumentUUID)), models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(secondRowReference))))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
 	}
-	for _, purchaseID := range []string{rowPurchase.ID, secondRowPurchase.ID} {
-		purchaseUUID, _ := gofrsuuid.FromString(purchaseID)
-		if _, err := psql.Delete(dm.From(models.EvidenceLinks.NameExpr()), dm.Where(models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := models.Purchases.Delete(dm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
-			t.Fatal(err)
-		}
+	secondRowPurchaseUUID, _ := gofrsuuid.FromString(secondRowPurchase.ID)
+	if _, err := psql.Delete(dm.From(models.EvidenceLinks.NameExpr()), dm.Where(models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(secondRowPurchaseUUID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := models.Purchases.Delete(dm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(secondRowPurchaseUUID)))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
 	}
 	confirmedRows, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, bobpgx.NewPool(db))
 	confirmedPurchases := len(confirmedRows)
-	if err != nil || confirmedPurchases != 2 {
+	if err != nil || confirmedPurchases != 3 {
 		t.Fatalf("source replay created a duplicate purchase: count=%d error=%v", confirmedPurchases, err)
 	}
 	if _, err := resolver.recordFunding(ctx, model.RecordFundingInput{HouseholdID: householdID, MemberID: memberA, PoolID: poolA.ID, AmountYen: 6000, OccurredAt: "2026-04-15T10:00:00Z", IdempotencyKey: uuid.NewV7().String()}); err != nil {

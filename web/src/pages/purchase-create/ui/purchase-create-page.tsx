@@ -2,13 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Check, ChevronLeft, Plus, Undo2, X } from "lucide-react";
 import {
   makeIdempotencyKey,
-  readGraphql,
-  type Connection,
   type CreatePurchaseInput,
   type Household,
   type Purchase,
 } from "../../../shared/api";
-import { purchasesQuery } from "../../../entities/purchase";
+import { readHouseholdPurchases } from "../../../entities/purchase";
 import {
   enqueuePurchase,
   deletePurchaseDraft,
@@ -219,11 +217,8 @@ export function PurchaseCreatePage({
     [household.id, storageReady, draftHouseholdId],
   );
   useEffect(() => {
-    void readGraphql<{ purchases: Connection<Purchase> }>(purchasesQuery, {
-      householdId: household.id,
-      first: 80,
-    })
-      .then((data) => setHistory(data.purchases.edges.map((edge) => edge.node)))
+    void readHouseholdPurchases(household.id, 80)
+      .then(setHistory)
       .catch(() => {});
   }, [household.id]);
   const recentPurchases = useMemo(
