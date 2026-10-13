@@ -140,11 +140,13 @@ type ComplexityRoot struct {
 		CreatedAt     func(childComplexity int) int
 		Currency      func(childComplexity int) int
 		Description   func(childComplexity int) int
+		FromAccount   func(childComplexity int) int
 		FromAccountID func(childComplexity int) int
 		HouseholdID   func(childComplexity int) int
 		ID            func(childComplexity int) int
 		Kind          func(childComplexity int) int
 		OccurredAt    func(childComplexity int) int
+		ToAccount     func(childComplexity int) int
 		ToAccountID   func(childComplexity int) int
 	}
 
@@ -1050,7 +1052,9 @@ type AccountMovementResolver interface {
 	HouseholdID(ctx context.Context, obj *model.AccountMovement) (string, error)
 
 	FromAccountID(ctx context.Context, obj *model.AccountMovement) (string, error)
+	FromAccount(ctx context.Context, obj *model.AccountMovement) (*model.Account, error)
 	ToAccountID(ctx context.Context, obj *model.AccountMovement) (string, error)
+	ToAccount(ctx context.Context, obj *model.AccountMovement) (*model.Account, error)
 }
 type AllocationResolver interface {
 	PoolID(ctx context.Context, obj *model.Allocation) (string, error)
@@ -1510,6 +1514,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AccountMovement.Description(childComplexity), true
+	case "AccountMovement.fromAccount":
+		if e.ComplexityRoot.AccountMovement.FromAccount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountMovement.FromAccount(childComplexity), true
 	case "AccountMovement.fromAccountId":
 		if e.ComplexityRoot.AccountMovement.FromAccountID == nil {
 			break
@@ -1540,6 +1550,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AccountMovement.OccurredAt(childComplexity), true
+	case "AccountMovement.toAccount":
+		if e.ComplexityRoot.AccountMovement.ToAccount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.AccountMovement.ToAccount(childComplexity), true
 	case "AccountMovement.toAccountId":
 		if e.ComplexityRoot.AccountMovement.ToAccountID == nil {
 			break
@@ -5094,7 +5110,9 @@ extend type Query {
   kind: AccountMovementKind!
   occurredAt: DateTime!
   fromAccountId: ID! @goField(forceResolver: true)
+  fromAccount: Account! @goField(forceResolver: true)
   toAccountId: ID! @goField(forceResolver: true)
+  toAccount: Account! @goField(forceResolver: true)
   amountYen: Long!
   currency: String!
   description: String!
@@ -6873,8 +6891,12 @@ func (ec *executionContext) childFields_AccountMovement(ctx context.Context, fie
 		return ec.fieldContext_AccountMovement_occurredAt(ctx, field)
 	case "fromAccountId":
 		return ec.fieldContext_AccountMovement_fromAccountId(ctx, field)
+	case "fromAccount":
+		return ec.fieldContext_AccountMovement_fromAccount(ctx, field)
 	case "toAccountId":
 		return ec.fieldContext_AccountMovement_toAccountId(ctx, field)
+	case "toAccount":
+		return ec.fieldContext_AccountMovement_toAccount(ctx, field)
 	case "amountYen":
 		return ec.fieldContext_AccountMovement_amountYen(ctx, field)
 	case "currency":
@@ -11324,6 +11346,38 @@ func (ec *executionContext) fieldContext_AccountMovement_fromAccountId(_ context
 	return graphql.NewScalarFieldContext("AccountMovement", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
+func (ec *executionContext) _AccountMovement_fromAccount(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovement) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountMovement_fromAccount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.AccountMovement().FromAccount(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Account) graphql.Marshaler {
+			return ec.marshalNAccount2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccount(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountMovement_fromAccount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountMovement",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Account(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _AccountMovement_toAccountId(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovement) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -11345,6 +11399,38 @@ func (ec *executionContext) _AccountMovement_toAccountId(ctx context.Context, fi
 }
 func (ec *executionContext) fieldContext_AccountMovement_toAccountId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("AccountMovement", field, true, true, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _AccountMovement_toAccount(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovement) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_AccountMovement_toAccount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.AccountMovement().ToAccount(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Account) graphql.Marshaler {
+			return ec.marshalNAccount2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccount(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_AccountMovement_toAccount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AccountMovement",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Account(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _AccountMovement_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.AccountMovement) (ret graphql.Marshaler) {
@@ -32548,6 +32634,44 @@ func (ec *executionContext) _AccountMovement(ctx context.Context, sel ast.Select
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "fromAccount":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._AccountMovement_fromAccount(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "toAccountId":
 			field := field
 
@@ -32558,6 +32682,44 @@ func (ec *executionContext) _AccountMovement(ctx context.Context, sel ast.Select
 					}
 				}()
 				res = ec._AccountMovement_toAccountId(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "toAccount":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._AccountMovement_toAccount(ctx, field, obj)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}

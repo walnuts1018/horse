@@ -255,7 +255,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	query := (&Resolver{DB: db}).Query()
 	pageSize := 1
 	firstPage, err := query.AccountMovements(ctx, household.ID, nil, nil, &pageSize, nil)
-	if err != nil || len(firstPage.Edges) != 1 || firstPage.Edges[0].Node.ID != movement.ID || !firstPage.PageInfo.HasNextPage || firstPage.TotalCount != 2 || firstPage.PageInfo.EndCursor == nil {
+	if err != nil || len(firstPage.Edges) != 1 || firstPage.Edges[0].Node.ID != movement.ID || firstPage.Edges[0].Node.FromAccount == nil || firstPage.Edges[0].Node.FromAccount.Name != bank.Name || firstPage.Edges[0].Node.ToAccount == nil || firstPage.Edges[0].Node.ToAccount.Name != card.Name || !firstPage.PageInfo.HasNextPage || firstPage.TotalCount != 2 || firstPage.PageInfo.EndCursor == nil {
 		t.Fatalf("first account movement page failed: connection=%#v error=%v", firstPage, err)
 	}
 	nextMovementPage, err := query.AccountMovements(ctx, household.ID, firstPage.PageInfo.EndCursor, nil, &pageSize, nil)

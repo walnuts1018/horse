@@ -4,7 +4,9 @@ type AccountMovement implements Node {
   kind: AccountMovementKind!
   occurredAt: DateTime!
   fromAccountId: ID! @goField(forceResolver: true)
+  fromAccount: Account! @goField(forceResolver: true)
   toAccountId: ID! @goField(forceResolver: true)
+  toAccount: Account! @goField(forceResolver: true)
   amountYen: Long!
   currency: String!
   description: String!

@@ -260,7 +260,9 @@ type AccountMovement struct {
 	Kind          AccountMovementKind `json:"kind"`
 	OccurredAt    DateTime            `json:"occurredAt"`
 	FromAccountID string              `json:"fromAccountId"`
+	FromAccount   *Account            `json:"fromAccount"`
 	ToAccountID   string              `json:"toAccountId"`
+	ToAccount     *Account            `json:"toAccount"`
 	AmountYen     Long                `json:"amountYen"`
 	Currency      string              `json:"currency"`
 	Description   string              `json:"description"`

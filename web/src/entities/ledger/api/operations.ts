@@ -103,7 +103,15 @@ export const accountMovementsQuery = graphql`
           kind
           occurredAt
           fromAccountId
+          fromAccount {
+            id
+            name
+          }
           toAccountId
+          toAccount {
+            id
+            name
+          }
           amountYen
           currency
           description

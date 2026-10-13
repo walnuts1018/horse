@@ -8,6 +8,7 @@ package graph
 import (
 	"context"
 
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
@@ -26,9 +27,25 @@ func (r *accountMovementResolver) FromAccountID(ctx context.Context, obj *model.
 	return encodeNodeID("Account", obj.FromAccountID)
 }
 
+// FromAccount is the resolver for the fromAccount field.
+func (r *accountMovementResolver) FromAccount(ctx context.Context, obj *model.AccountMovement) (*model.Account, error) {
+	if obj.FromAccount != nil {
+		return obj.FromAccount, nil
+	}
+	return loadAccountMovementAccount(ctx, bobpgx.NewPool(r.DB), obj.HouseholdID, obj.FromAccountID)
+}
+
 // ToAccountID is the resolver for the toAccountId field.
 func (r *accountMovementResolver) ToAccountID(ctx context.Context, obj *model.AccountMovement) (string, error) {
 	return encodeNodeID("Account", obj.ToAccountID)
+}
+
+// ToAccount is the resolver for the toAccount field.
+func (r *accountMovementResolver) ToAccount(ctx context.Context, obj *model.AccountMovement) (*model.Account, error) {
+	if obj.ToAccount != nil {
+		return obj.ToAccount, nil
+	}
+	return loadAccountMovementAccount(ctx, bobpgx.NewPool(r.DB), obj.HouseholdID, obj.ToAccountID)
 }
 
 // AccountMovements is the resolver for the accountMovements field.

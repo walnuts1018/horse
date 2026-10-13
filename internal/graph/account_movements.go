@@ -306,6 +306,57 @@ func accountMovementModel(row *models.AccountMovement) *model.AccountMovement {
 	}
 }
 
+func loadAccountMovementAccount(ctx context.Context, executor bob.Executor, householdID, accountID string) (*model.Account, error) {
+	householdUUID, err := gofrsuuid.FromString(householdID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	accountUUID, err := gofrsuuid.FromString(accountID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	account, err := models.Accounts.Query(sm.Where(psql.And(
+		models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.Accounts.Columns.ID.EQ(psql.Arg(accountUUID)),
+	))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return graphAccount(account), nil
+}
+
+func loadAccountMovementAccounts(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, movements []*models.AccountMovement) (map[gofrsuuid.UUID]*model.Account, error) {
+	ids := make([]any, 0, len(movements)*2)
+	seen := make(map[gofrsuuid.UUID]struct{}, len(movements)*2)
+	for _, movement := range movements {
+		for _, id := range []gofrsuuid.UUID{movement.FromAccountID, movement.ToAccountID} {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	accountsByID := make(map[gofrsuuid.UUID]*model.Account, len(ids))
+	if len(ids) == 0 {
+		return accountsByID, nil
+	}
+	accounts, err := models.Accounts.Query(sm.Where(psql.And(
+		models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.Accounts.Columns.ID.In(psql.Arg(ids...)),
+	))).All(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	for _, account := range accounts {
+		accountsByID[account.ID] = graphAccount(account)
+	}
+	return accountsByID, nil
+}
+
 func (r *queryResolver) accountMovements(ctx context.Context, householdID string, after, before *string, first, last *int) (*model.AccountMovementConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
@@ -379,6 +430,10 @@ func (r *queryResolver) accountMovements(ctx context.Context, householdID string
 	if backward {
 		slices.Reverse(rows)
 	}
+	accountsByID, err := loadAccountMovementAccounts(ctx, executor, hhID, rows)
+	if err != nil {
+		return nil, err
+	}
 	pageInfo := &model.PageInfo{HasPreviousPage: backward && hasExtra, HasNextPage: !backward && hasExtra}
 	if !backward && after != nil && *after != "" {
 		pageInfo.HasPreviousPage = true
@@ -392,7 +447,10 @@ func (r *queryResolver) accountMovements(ctx context.Context, householdID string
 		TotalCount: int(totalCount),
 	}
 	for _, row := range rows {
-		connection.Edges = append(connection.Edges, &model.AccountMovementEdge{Cursor: encodeCursor("AccountMovement", row.ID.String()), Node: accountMovementModel(row)})
+		movement := accountMovementModel(row)
+		movement.FromAccount = accountsByID[row.FromAccountID]
+		movement.ToAccount = accountsByID[row.ToAccountID]
+		connection.Edges = append(connection.Edges, &model.AccountMovementEdge{Cursor: encodeCursor("AccountMovement", row.ID.String()), Node: movement})
 	}
 	if len(rows) > 0 {
 		start := encodeCursor("AccountMovement", rows[0].ID.String())

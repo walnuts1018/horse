@@ -68,7 +68,9 @@ export type AccountMovement = {
   kind: "TRANSFER" | "CARD_BILL_PAYMENT";
   occurredAt: string;
   fromAccountId: string;
+  fromAccount: Account;
   toAccountId: string;
+  toAccount: Account;
   amountYen: number;
   currency: string;
   description: string;

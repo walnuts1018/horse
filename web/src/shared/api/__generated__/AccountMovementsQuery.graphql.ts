@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f448b42dab0046f39ec13c5898c798af>>
+ * @generated SignedSource<<0c1d04140466b07814290b0c0e0eaf91>>
  * @lightSyntaxTransform
  */
 
@@ -23,11 +23,19 @@ export type AccountMovementsQuery$data = {
         readonly createdAt: string;
         readonly currency: string;
         readonly description: string;
+        readonly fromAccount: {
+          readonly id: string;
+          readonly name: string;
+        };
         readonly fromAccountId: string;
         readonly householdId: string;
         readonly id: string;
         readonly kind: AccountMovementKind;
         readonly occurredAt: string;
+        readonly toAccount: {
+          readonly id: string;
+          readonly name: string;
+        };
         readonly toAccountId: string;
       };
     }>;
@@ -58,7 +66,24 @@ v2 = {
   "kind": "LocalArgument",
   "name": "householdId"
 },
-v3 = [
+v3 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v4 = [
+  (v3/*:: as any*/),
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "name",
+    "storageKey": null
+  }
+],
+v5 = [
   {
     "alias": null,
     "args": [
@@ -106,13 +131,7 @@ v3 = [
             "name": "node",
             "plural": false,
             "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "id",
-                "storageKey": null
-              },
+              (v3/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -144,8 +163,28 @@ v3 = [
               {
                 "alias": null,
                 "args": null,
+                "concreteType": "Account",
+                "kind": "LinkedField",
+                "name": "fromAccount",
+                "plural": false,
+                "selections": (v4/*:: as any*/),
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
                 "kind": "ScalarField",
                 "name": "toAccountId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "Account",
+                "kind": "LinkedField",
+                "name": "toAccount",
+                "plural": false,
+                "selections": (v4/*:: as any*/),
                 "storageKey": null
               },
               {
@@ -221,7 +260,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "AccountMovementsQuery",
-    "selections": (v3/*:: as any*/),
+    "selections": (v5/*:: as any*/),
     "type": "Query",
     "abstractKey": null
   },
@@ -234,19 +273,19 @@ return {
     ],
     "kind": "Operation",
     "name": "AccountMovementsQuery",
-    "selections": (v3/*:: as any*/)
+    "selections": (v5/*:: as any*/)
   },
   "params": {
-    "cacheID": "7d83aa8a9864cfb22003968d977183fd",
+    "cacheID": "b910919e3b4a1545b6f5537f56a0b047",
     "id": null,
     "metadata": {},
     "name": "AccountMovementsQuery",
     "operationKind": "query",
-    "text": "query AccountMovementsQuery(\n  $householdId: ID!\n  $first: Int\n  $after: String\n) {\n  accountMovements(householdId: $householdId, first: $first, after: $after) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        kind\n        occurredAt\n        fromAccountId\n        toAccountId\n        amountYen\n        currency\n        description\n        createdAt\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
+    "text": "query AccountMovementsQuery(\n  $householdId: ID!\n  $first: Int\n  $after: String\n) {\n  accountMovements(householdId: $householdId, first: $first, after: $after) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        kind\n        occurredAt\n        fromAccountId\n        fromAccount {\n          id\n          name\n        }\n        toAccountId\n        toAccount {\n          id\n          name\n        }\n        amountYen\n        currency\n        description\n        createdAt\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c4a3c6b8aaad031818b85a16f3c1a63f";
+(node as any).hash = "f20f0eb475f2093813cb17733d797900";
 
 export default node;

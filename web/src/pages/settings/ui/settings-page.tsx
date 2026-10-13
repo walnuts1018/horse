@@ -2232,16 +2232,7 @@ export function SettingsPage({
                   <b>{movement.kind === "CARD_BILL_PAYMENT" ? "カード請求の支払い" : "口座移動"}</b>
                   <small>
                     {new Date(movement.occurredAt).toLocaleDateString("ja-JP")} ·{" "}
-                    {
-                      household.accounts.find((account) => account.id === movement.fromAccountId)
-                        ?.name
-                    }{" "}
-                    →{" "}
-                    {
-                      household.accounts.find((account) => account.id === movement.toAccountId)
-                        ?.name
-                    }{" "}
-                    · {movement.description}
+                    {movement.fromAccount.name} → {movement.toAccount.name} · {movement.description}
                   </small>
                 </div>
                 <strong>{yen(movement.amountYen)}</strong>
