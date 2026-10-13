@@ -6,6 +6,17 @@ type Tag implements Node {
   revision: Int!
 }
 
+type TagEdge {
+  cursor: String!
+  node: Tag!
+}
+
+type TagConnection {
+  edges: [TagEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
+  tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false, after: String, before: String, first: Int, last: Int): TagConnection!
 }

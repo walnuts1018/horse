@@ -27,7 +27,7 @@ import {
 } from "../../../entities/purchase";
 import { unmatchedObservationsQuery } from "../api/observation/operations";
 import { readProductCatalog } from "../../../entities/product";
-import { tagsQuery } from "../../../entities/tag";
+import { readTags } from "../../../entities/tag";
 import { EmptyState, InlineError } from "../../../shared/ui";
 import { formatQuantity, parseQuantity } from "../../../shared/lib";
 import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
@@ -243,8 +243,8 @@ export function LedgerPage({
   }, [expanded]);
   useEffect(() => {
     let active = true;
-    void readGraphql<{ tags: Tag[] }>(tagsQuery, { householdId: household.id })
-      .then((result) => active && setTags(result.tags))
+    void readTags(household.id)
+      .then((tags) => active && setTags(tags))
       .catch((reason) => active && setBulkError((reason as Error).message));
     return () => {
       active = false;

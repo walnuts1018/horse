@@ -1,13 +1,27 @@
 import { graphql } from "react-relay";
 
 export const tagsQuery = graphql`
-  query TagsQuery($householdId: ID!, $includeArchived: Boolean) {
-    tags(householdId: $householdId, includeArchived: $includeArchived) {
-      id
-      householdId
-      name
-      archived
-      revision
+  query TagsQuery($householdId: ID!, $includeArchived: Boolean, $first: Int!, $after: String) {
+    tags(
+      householdId: $householdId
+      includeArchived: $includeArchived
+      first: $first
+      after: $after
+    ) {
+      edges {
+        cursor
+        node {
+          id
+          householdId
+          name
+          archived
+          revision
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
     }
   }
 `;

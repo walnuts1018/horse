@@ -881,7 +881,7 @@ type ComplexityRoot struct {
 		Purchases               func(childComplexity int, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) int
 		RecurringExpenses       func(childComplexity int, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) int
 		Settlement              func(childComplexity int, householdID string, period model.YearMonth) int
-		Tags                    func(childComplexity int, householdID string, includeArchived *bool) int
+		Tags                    func(childComplexity int, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) int
 		UnmatchedObservations   func(childComplexity int, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) int
 		Viewer                  func(childComplexity int) int
 	}
@@ -1073,6 +1073,17 @@ type ComplexityRoot struct {
 		ID          func(childComplexity int) int
 		Name        func(childComplexity int) int
 		Revision    func(childComplexity int) int
+	}
+
+	TagConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	TagEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
 	}
 
 	UnconfiguredPersonalPool struct {
@@ -1402,7 +1413,7 @@ type QueryResolver interface {
 	PurchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error)
 	RecurringExpenses(ctx context.Context, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
 	Settlement(ctx context.Context, householdID string, period model.YearMonth) (model.SettlementVariant, error)
-	Tags(ctx context.Context, householdID string, includeArchived *bool) ([]*model.Tag, error)
+	Tags(ctx context.Context, householdID string, includeArchived *bool, after *string, before *string, first *int, last *int) (*model.TagConnection, error)
 	Viewer(ctx context.Context) (*model.Viewer, error)
 }
 type RecurringExpenseResolver interface {
@@ -4653,7 +4664,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Tags(childComplexity, args["householdId"].(string), args["includeArchived"].(*bool)), true
+		return e.ComplexityRoot.Query.Tags(childComplexity, args["householdId"].(string), args["includeArchived"].(*bool), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.unmatchedObservations":
 		if e.ComplexityRoot.Query.UnmatchedObservations == nil {
 			break
@@ -5249,6 +5260,38 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Tag.Revision(childComplexity), true
+
+	case "TagConnection.edges":
+		if e.ComplexityRoot.TagConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.TagConnection.Edges(childComplexity), true
+	case "TagConnection.pageInfo":
+		if e.ComplexityRoot.TagConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.TagConnection.PageInfo(childComplexity), true
+	case "TagConnection.totalCount":
+		if e.ComplexityRoot.TagConnection.TotalCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.TagConnection.TotalCount(childComplexity), true
+
+	case "TagEdge.cursor":
+		if e.ComplexityRoot.TagEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.TagEdge.Cursor(childComplexity), true
+	case "TagEdge.node":
+		if e.ComplexityRoot.TagEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.TagEdge.Node(childComplexity), true
 
 	case "UnconfiguredPersonalPool.defaultShareWeight":
 		if e.ComplexityRoot.UnconfiguredPersonalPool.DefaultShareWeight == nil {
@@ -7493,8 +7536,19 @@ extend type Query {
   revision: Int!
 }
 
+type TagEdge {
+  cursor: String!
+  node: Tag!
+}
+
+type TagConnection {
+  edges: [TagEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 extend type Query {
-  tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false): [Tag!]!
+  tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean = false, after: String, before: String, first: Int, last: Int): TagConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/update_budget_mutation.graphql", Input: `extend type Mutation {
@@ -8560,6 +8614,28 @@ func (ec *executionContext) childFields_Tag(ctx context.Context, field graphql.C
 		return ec.fieldContext_Tag_revision(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Tag", field.Name)
+}
+
+func (ec *executionContext) childFields_TagConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_TagConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_TagConnection_pageInfo(ctx, field)
+	case "totalCount":
+		return ec.fieldContext_TagConnection_totalCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type TagConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_TagEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_TagEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_TagEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type TagEdge", field.Name)
 }
 
 func (ec *executionContext) childFields_UnmatchedObservationConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -10933,6 +11009,38 @@ func (ec *executionContext) field_Query_tags_args(ctx context.Context, rawArgs m
 		return nil, err
 	}
 	args["includeArchived"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg4
+	arg5, err := graphql.ProcessArgField(ctx, rawArgs, "last",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["last"] = arg5
 	return args, nil
 }
 
@@ -23992,11 +24100,11 @@ func (ec *executionContext) _Query_tags(ctx context.Context, field graphql.Colle
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Tags(ctx, fc.Args["householdId"].(string), fc.Args["includeArchived"].(*bool))
+			return ec.Resolvers.Query().Tags(ctx, fc.Args["householdId"].(string), fc.Args["includeArchived"].(*bool), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v []*model.Tag) graphql.Marshaler {
-			return ec.marshalNTag2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTagᚄ(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v *model.TagConnection) graphql.Marshaler {
+			return ec.marshalNTagConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTagConnection(ctx, selections, v)
 		},
 		true,
 		true,
@@ -24009,7 +24117,7 @@ func (ec *executionContext) fieldContext_Query_tags(ctx context.Context, field g
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.childFields_Tag(ctx, field)
+			return ec.childFields_TagConnection(ctx, field)
 		},
 	}
 	defer func() {
@@ -26394,6 +26502,148 @@ func (ec *executionContext) _Tag_revision(ctx context.Context, field graphql.Col
 }
 func (ec *executionContext) fieldContext_Tag_revision(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Tag", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _TagConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.TagConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_TagConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.TagEdge) graphql.Marshaler {
+			return ec.marshalNTagEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTagEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_TagConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TagConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_TagEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TagConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.TagConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_TagConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_TagConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TagConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TagConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.TagConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_TagConnection_totalCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_TagConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("TagConnection", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _TagEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.TagEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_TagEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_TagEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("TagEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _TagEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.TagEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_TagEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Tag) graphql.Marshaler {
+			return ec.marshalNTag2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTag(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_TagEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TagEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Tag(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _UnconfiguredPersonalPool_id(ctx context.Context, field graphql.CollectedField, obj *model.UnconfiguredPersonalPool) (ret graphql.Marshaler) {
@@ -46792,6 +47042,97 @@ func (ec *executionContext) _Tag(ctx context.Context, sel ast.SelectionSet, obj 
 	return out
 }
 
+var tagConnectionImplementors = []string{"TagConnection"}
+
+func (ec *executionContext) _TagConnection(ctx context.Context, sel ast.SelectionSet, obj *model.TagConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, tagConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("TagConnection")
+		case "edges":
+			out.Values[i] = ec._TagConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._TagConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._TagConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var tagEdgeImplementors = []string{"TagEdge"}
+
+func (ec *executionContext) _TagEdge(ctx context.Context, sel ast.SelectionSet, obj *model.TagEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, tagEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("TagEdge")
+		case "cursor":
+			out.Values[i] = ec._TagEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._TagEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var unconfiguredPersonalPoolImplementors = []string{"UnconfiguredPersonalPool", "Node", "Pool"}
 
 func (ec *executionContext) _UnconfiguredPersonalPool(ctx context.Context, sel ast.SelectionSet, obj *model.UnconfiguredPersonalPool) graphql.Marshaler {
@@ -50187,6 +50528,42 @@ func (ec *executionContext) marshalNTag2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋ
 		return graphql.Null
 	}
 	return ec._Tag(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNTagConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTagConnection(ctx context.Context, sel ast.SelectionSet, v *model.TagConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._TagConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNTagEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTagEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.TagEdge) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNTagEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTagEdge(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNTagEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTagEdge(ctx context.Context, sel ast.SelectionSet, v *model.TagEdge) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._TagEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNTransferInputKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferInputKind(ctx context.Context, v any) (model.TransferInputKind, error) {

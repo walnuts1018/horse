@@ -1846,6 +1846,17 @@ type Tag struct {
 
 func (Tag) IsNode() {}
 
+type TagConnection struct {
+	Edges      []*TagEdge `json:"edges"`
+	PageInfo   *PageInfo  `json:"pageInfo"`
+	TotalCount int        `json:"totalCount"`
+}
+
+type TagEdge struct {
+	Cursor string `json:"cursor"`
+	Node   *Tag   `json:"node"`
+}
+
 type UnmatchedObservationConnection struct {
 	Edges      []*UnmatchedObservationEdge `json:"edges"`
 	PageInfo   *PageInfo                   `json:"pageInfo"`

@@ -43,7 +43,7 @@ import {
 import {
   archiveTagMutation,
   createTagMutation,
-  tagsQuery,
+  readTags,
   updateTagMutation,
 } from "../../../entities/tag";
 import {
@@ -333,10 +333,7 @@ export function SettingsPage({
   const refreshPlanning = async () => {
     const [tagResult, budgetResult, recurringResult, movementResult, incomeResult, balanceResult] =
       await Promise.all([
-        readGraphql<{ tags: Tag[] }>(tagsQuery, {
-          householdId: household.id,
-          includeArchived: true,
-        }),
+        readTags(household.id, true),
         readGraphql<{ budgets: Budget[] }>(budgetsQuery, {
           householdId: household.id,
           period: budgetPeriod,
@@ -364,7 +361,7 @@ export function SettingsPage({
           householdId: household.id,
         }),
       ]);
-    setTags(tagResult.tags);
+    setTags(tagResult);
     setBudgets(budgetResult.budgets);
     setRecurring(recurringResult);
     setMovements(movementResult.accountMovements.edges.map((edge) => edge.node));
