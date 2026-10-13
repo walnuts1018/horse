@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9cd827d78ea5790a246b860d9b0b14ba>>
+ * @generated SignedSource<<720a57ee3471ee655307756d98713533>>
  * @lightSyntaxTransform
  */
 
@@ -8,15 +8,32 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type AllocationRuleScope = "CATEGORY" | "MERCHANT" | "PRODUCT" | "PRODUCT_VARIANT" | "%future added value";
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
 export type SetAllocationRuleInput = {
   allocations: ReadonlyArray<AllocationInput>;
-  categoryId?: string | null | undefined;
   householdId: string;
-  merchant?: string | null | undefined;
-  productConceptId?: string | null | undefined;
-  productVariantId?: string | null | undefined;
+  target: AllocationRuleTargetInput;
+};
+export type AllocationRuleTargetInput = {
+  categoryId: string;
+  merchant?: never;
+  productConceptId?: never;
+  productVariantId?: never;
+} | {
+  categoryId?: never;
+  merchant: string;
+  productConceptId?: never;
+  productVariantId?: never;
+} | {
+  categoryId?: never;
+  merchant?: never;
+  productConceptId: string;
+  productVariantId?: never;
+} | {
+  categoryId?: never;
+  merchant?: never;
+  productConceptId?: never;
+  productVariantId: string;
 };
 export type AllocationInput = {
   poolId: string;
@@ -35,13 +52,12 @@ export type SetAllocationRuleMutation$data = {
         readonly poolId: string;
         readonly weight: any;
       }>;
-      readonly categoryId: string | null | undefined;
       readonly id: string;
-      readonly merchant: string | null | undefined;
-      readonly productConceptId: string | null | undefined;
-      readonly productVariantId: string | null | undefined;
       readonly revision: number;
-      readonly scope: AllocationRuleScope;
+      readonly target: {
+        readonly __typename: string;
+        readonly name: string;
+      };
     };
   };
 };
@@ -60,150 +76,140 @@ var v0 = [
 ],
 v1 = [
   {
-    "alias": null,
-    "args": [
-      {
-        "kind": "Variable",
-        "name": "input",
-        "variableName": "input"
-      }
-    ],
-    "concreteType": null,
-    "kind": "LinkedField",
-    "name": "setAllocationRule",
-    "plural": false,
-    "selections": [
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "__typename",
-        "storageKey": null
-      },
-      {
-        "kind": "InlineFragment",
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "AllocationRule",
-            "kind": "LinkedField",
-            "name": "result",
-            "plural": false,
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "id",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "scope",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "categoryId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "merchant",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "productConceptId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "productVariantId",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "revision",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "concreteType": "Allocation",
-                "kind": "LinkedField",
-                "name": "allocations",
-                "plural": true,
-                "selections": [
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "poolId",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "weight",
-                    "storageKey": null
-                  }
-                ],
-                "storageKey": null
-              }
-            ],
-            "storageKey": null
-          }
-        ],
-        "type": "SetAllocationRuleSuccess",
-        "abstractKey": null
-      },
-      {
-        "kind": "InlineFragment",
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "code",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "message",
-            "storageKey": null
-          }
-        ],
-        "type": "MutationError",
-        "abstractKey": "__isMutationError"
-      }
-    ],
-    "storageKey": null
+    "kind": "Variable",
+    "name": "input",
+    "variableName": "input"
   }
-];
+],
+v2 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "__typename",
+  "storageKey": null
+},
+v3 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "id",
+  "storageKey": null
+},
+v4 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v5 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "revision",
+  "storageKey": null
+},
+v6 = {
+  "alias": null,
+  "args": null,
+  "concreteType": "Allocation",
+  "kind": "LinkedField",
+  "name": "allocations",
+  "plural": true,
+  "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "poolId",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "weight",
+      "storageKey": null
+    }
+  ],
+  "storageKey": null
+},
+v7 = {
+  "kind": "InlineFragment",
+  "selections": [
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "code",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "message",
+      "storageKey": null
+    }
+  ],
+  "type": "MutationError",
+  "abstractKey": "__isMutationError"
+};
 return {
   "fragment": {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
     "name": "SetAllocationRuleMutation",
-    "selections": (v1/*:: as any*/),
+    "selections": [
+      {
+        "alias": null,
+        "args": (v1/*:: as any*/),
+        "concreteType": null,
+        "kind": "LinkedField",
+        "name": "setAllocationRule",
+        "plural": false,
+        "selections": [
+          (v2/*:: as any*/),
+          {
+            "kind": "InlineFragment",
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "AllocationRule",
+                "kind": "LinkedField",
+                "name": "result",
+                "plural": false,
+                "selections": [
+                  (v3/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": null,
+                    "kind": "LinkedField",
+                    "name": "target",
+                    "plural": false,
+                    "selections": [
+                      (v2/*:: as any*/),
+                      (v4/*:: as any*/)
+                    ],
+                    "storageKey": null
+                  },
+                  (v5/*:: as any*/),
+                  (v6/*:: as any*/)
+                ],
+                "storageKey": null
+              }
+            ],
+            "type": "SetAllocationRuleSuccess",
+            "abstractKey": null
+          },
+          (v7/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ],
     "type": "Mutation",
     "abstractKey": null
   },
@@ -212,19 +218,75 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "SetAllocationRuleMutation",
-    "selections": (v1/*:: as any*/)
+    "selections": [
+      {
+        "alias": null,
+        "args": (v1/*:: as any*/),
+        "concreteType": null,
+        "kind": "LinkedField",
+        "name": "setAllocationRule",
+        "plural": false,
+        "selections": [
+          (v2/*:: as any*/),
+          {
+            "kind": "InlineFragment",
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "AllocationRule",
+                "kind": "LinkedField",
+                "name": "result",
+                "plural": false,
+                "selections": [
+                  (v3/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": null,
+                    "kind": "LinkedField",
+                    "name": "target",
+                    "plural": false,
+                    "selections": [
+                      (v2/*:: as any*/),
+                      (v4/*:: as any*/),
+                      {
+                        "kind": "InlineFragment",
+                        "selections": [
+                          (v3/*:: as any*/)
+                        ],
+                        "type": "Node",
+                        "abstractKey": "__isNode"
+                      }
+                    ],
+                    "storageKey": null
+                  },
+                  (v5/*:: as any*/),
+                  (v6/*:: as any*/)
+                ],
+                "storageKey": null
+              }
+            ],
+            "type": "SetAllocationRuleSuccess",
+            "abstractKey": null
+          },
+          (v7/*:: as any*/)
+        ],
+        "storageKey": null
+      }
+    ]
   },
   "params": {
-    "cacheID": "b8120ef1a51ff1b74242e2b932964981",
+    "cacheID": "24ec6059bade31ba339d84713d29c495",
     "id": null,
     "metadata": {},
     "name": "SetAllocationRuleMutation",
     "operationKind": "mutation",
-    "text": "mutation SetAllocationRuleMutation(\n  $input: SetAllocationRuleInput!\n) {\n  setAllocationRule(input: $input) {\n    __typename\n    ... on SetAllocationRuleSuccess {\n      result {\n        id\n        scope\n        categoryId\n        merchant\n        productConceptId\n        productVariantId\n        revision\n        allocations {\n          poolId\n          weight\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SetAllocationRuleMutation(\n  $input: SetAllocationRuleInput!\n) {\n  setAllocationRule(input: $input) {\n    __typename\n    ... on SetAllocationRuleSuccess {\n      result {\n        id\n        target {\n          __typename\n          name\n          ... on Node {\n            __isNode: __typename\n            id\n          }\n        }\n        revision\n        allocations {\n          poolId\n          weight\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c834d3520bf1ad37f9b8e4fbed081faa";
+(node as any).hash = "e30b369aecf139c9df91be6eea3e508a";
 
 export default node;

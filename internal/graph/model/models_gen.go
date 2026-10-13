@@ -15,6 +15,11 @@ type AcceptHouseholdInvitationResult interface {
 	IsAcceptHouseholdInvitationResult()
 }
 
+type AllocationRuleTarget interface {
+	IsAllocationRuleTarget()
+	GetName() string
+}
+
 type ArchiveBudgetResult interface {
 	IsArchiveBudgetResult()
 }
@@ -300,15 +305,11 @@ type AllocationInput struct {
 }
 
 type AllocationRule struct {
-	ID               string              `json:"id"`
-	HouseholdID      string              `json:"householdId"`
-	Scope            AllocationRuleScope `json:"scope"`
-	CategoryID       *string             `json:"categoryId,omitempty"`
-	Merchant         *string             `json:"merchant,omitempty"`
-	ProductConceptID *string             `json:"productConceptId,omitempty"`
-	ProductVariantID *string             `json:"productVariantId,omitempty"`
-	Revision         int                 `json:"revision"`
-	Allocations      []*Allocation       `json:"allocations"`
+	ID          string               `json:"id"`
+	HouseholdID string               `json:"householdId"`
+	Target      AllocationRuleTarget `json:"target"`
+	Revision    int                  `json:"revision"`
+	Allocations []*Allocation        `json:"allocations"`
 }
 
 func (AllocationRule) IsNode() {}
@@ -322,6 +323,13 @@ type AllocationRuleConnection struct {
 type AllocationRuleEdge struct {
 	Cursor string          `json:"cursor"`
 	Node   *AllocationRule `json:"node"`
+}
+
+type AllocationRuleTargetInput struct {
+	CategoryID       *string `json:"categoryId,omitempty"`
+	Merchant         *string `json:"merchant,omitempty"`
+	ProductConceptID *string `json:"productConceptId,omitempty"`
+	ProductVariantID *string `json:"productVariantId,omitempty"`
 }
 
 type ArchiveBudgetInput struct {
@@ -475,6 +483,9 @@ type Category struct {
 }
 
 func (Category) IsNode() {}
+
+func (Category) IsAllocationRuleTarget() {}
+func (this Category) GetName() string    { return this.Name }
 
 type ClosePeriodInput struct {
 	HouseholdID      string    `json:"householdId"`
@@ -957,6 +968,13 @@ type Member struct {
 
 func (Member) IsNode() {}
 
+type MerchantAllocationRuleTarget struct {
+	Name string `json:"name"`
+}
+
+func (MerchantAllocationRuleTarget) IsAllocationRuleTarget() {}
+func (this MerchantAllocationRuleTarget) GetName() string    { return this.Name }
+
 type MonthlyCategorySpending struct {
 	Period       YearMonth `json:"period"`
 	CategoryID   *string   `json:"categoryId,omitempty"`
@@ -1068,6 +1086,9 @@ type ProductConcept struct {
 
 func (ProductConcept) IsNode() {}
 
+func (ProductConcept) IsAllocationRuleTarget() {}
+func (this ProductConcept) GetName() string    { return this.Name }
+
 type ProductConceptConnection struct {
 	Edges    []*ProductConceptEdge `json:"edges"`
 	PageInfo *PageInfo             `json:"pageInfo"`
@@ -1100,6 +1121,9 @@ type ProductVariant struct {
 }
 
 func (ProductVariant) IsNode() {}
+
+func (ProductVariant) IsAllocationRuleTarget() {}
+func (this ProductVariant) GetName() string    { return this.Name }
 
 type Purchase struct {
 	ID                 string                `json:"id"`
@@ -1441,12 +1465,9 @@ func (this RevokeHouseholdInvitationUserError) GetCode() MutationErrorCode { ret
 func (this RevokeHouseholdInvitationUserError) GetMessage() string         { return this.Message }
 
 type SetAllocationRuleInput struct {
-	HouseholdID      string             `json:"householdId"`
-	CategoryID       *string            `json:"categoryId,omitempty"`
-	Merchant         *string            `json:"merchant,omitempty"`
-	ProductConceptID *string            `json:"productConceptId,omitempty"`
-	ProductVariantID *string            `json:"productVariantId,omitempty"`
-	Allocations      []*AllocationInput `json:"allocations"`
+	HouseholdID string                     `json:"householdId"`
+	Target      *AllocationRuleTargetInput `json:"target"`
+	Allocations []*AllocationInput         `json:"allocations"`
 }
 
 type SetAllocationRuleSuccess struct {
@@ -1929,65 +1950,6 @@ func (e *AccountMovementKind) UnmarshalJSON(b []byte) error {
 }
 
 func (e AccountMovementKind) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	e.MarshalGQL(&buf)
-	return buf.Bytes(), nil
-}
-
-type AllocationRuleScope string
-
-const (
-	AllocationRuleScopeProductVariant AllocationRuleScope = "PRODUCT_VARIANT"
-	AllocationRuleScopeProduct        AllocationRuleScope = "PRODUCT"
-	AllocationRuleScopeCategory       AllocationRuleScope = "CATEGORY"
-	AllocationRuleScopeMerchant       AllocationRuleScope = "MERCHANT"
-)
-
-var AllAllocationRuleScope = []AllocationRuleScope{
-	AllocationRuleScopeProductVariant,
-	AllocationRuleScopeProduct,
-	AllocationRuleScopeCategory,
-	AllocationRuleScopeMerchant,
-}
-
-func (e AllocationRuleScope) IsValid() bool {
-	switch e {
-	case AllocationRuleScopeProductVariant, AllocationRuleScopeProduct, AllocationRuleScopeCategory, AllocationRuleScopeMerchant:
-		return true
-	}
-	return false
-}
-
-func (e AllocationRuleScope) String() string {
-	return string(e)
-}
-
-func (e *AllocationRuleScope) UnmarshalGQL(v any) error {
-	str, ok := v.(string)
-	if !ok {
-		return fmt.Errorf("enums must be strings")
-	}
-
-	*e = AllocationRuleScope(str)
-	if !e.IsValid() {
-		return fmt.Errorf("%s is not a valid AllocationRuleScope", str)
-	}
-	return nil
-}
-
-func (e AllocationRuleScope) MarshalGQL(w io.Writer) {
-	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
-}
-
-func (e *AllocationRuleScope) UnmarshalJSON(b []byte) error {
-	s, err := strconv.Unquote(string(b))
-	if err != nil {
-		return err
-	}
-	return e.UnmarshalGQL(s)
-}
-
-func (e AllocationRuleScope) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

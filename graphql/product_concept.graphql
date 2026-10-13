@@ -1,4 +1,4 @@
-type ProductConcept implements Node {
+type ProductConcept implements Node & AllocationRuleTarget {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   name: String!

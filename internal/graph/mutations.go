@@ -430,8 +430,12 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 	if err != nil {
 		return nil, err
 	}
+	if input.Target == nil {
+		return nil, fmt.Errorf("%w: allocation rule target is required", ErrBadInput)
+	}
+	target := input.Target
 	scopeCount := 0
-	for _, selected := range []*string{input.ProductVariantID, input.ProductConceptID, input.CategoryID, input.Merchant} {
+	for _, selected := range []*string{target.ProductVariantID, target.ProductConceptID, target.CategoryID, target.Merchant} {
 		if selected != nil {
 			scopeCount++
 		}
@@ -447,8 +451,8 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 		return nil, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
 	merchantKey := ""
-	if input.Merchant != nil {
-		merchantKey = normalizeMerchant(*input.Merchant)
+	if target.Merchant != nil {
+		merchantKey = normalizeMerchant(*target.Merchant)
 		if merchantKey == "" || len(merchantKey) > 240 {
 			return nil, fmt.Errorf("%w: invalid merchant rule key", ErrBadInput)
 		}
@@ -484,7 +488,7 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 			return nil, err
 		}
 	}
-	for _, referenceID := range []*string{input.CategoryID, input.ProductConceptID, input.ProductVariantID} {
+	for _, referenceID := range []*string{target.CategoryID, target.ProductConceptID, target.ProductVariantID} {
 		if referenceID == nil {
 			continue
 		}
@@ -492,24 +496,24 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 			return nil, fmt.Errorf("%w: invalid allocation rule reference id", ErrBadInput)
 		}
 	}
-	if input.CategoryID != nil {
-		id := generatedUUID(*input.CategoryID)
+	if target.CategoryID != nil {
+		id := generatedUUID(*target.CategoryID)
 		if _, err := models.Categories.Query(sm.Where(psql.And(models.Categories.Columns.ID.EQ(psql.Arg(id)), models.Categories.Columns.HouseholdID.EQ(psql.Arg(householdUUID))))).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		} else if err != nil {
 			return nil, err
 		}
 	}
-	if input.ProductConceptID != nil {
-		id := generatedUUID(*input.ProductConceptID)
+	if target.ProductConceptID != nil {
+		id := generatedUUID(*target.ProductConceptID)
 		if _, err := models.ProductConcepts.Query(sm.Where(psql.And(models.ProductConcepts.Columns.ID.EQ(psql.Arg(id)), models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID))))).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		} else if err != nil {
 			return nil, err
 		}
 	}
-	if input.ProductVariantID != nil {
-		id := generatedUUID(*input.ProductVariantID)
+	if target.ProductVariantID != nil {
+		id := generatedUUID(*target.ProductVariantID)
 		if _, err := models.ProductVariants.Query(sm.Where(psql.And(models.ProductVariants.Columns.ID.EQ(psql.Arg(id)), models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID))))).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		} else if err != nil {
@@ -518,16 +522,16 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 	}
 	var ruleRow *models.AllocationRule
 	var ruleErr error
-	if input.CategoryID != nil {
-		id := generatedUUID(*input.CategoryID)
+	if target.CategoryID != nil {
+		id := generatedUUID(*target.CategoryID)
 		ruleRow, ruleErr = models.AllocationRules.Query(sm.Where(psql.And(models.AllocationRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.AllocationRules.Columns.CategoryID.EQ(psql.Arg(id)))), sm.ForUpdate()).One(ctx, executor)
-	} else if input.Merchant != nil {
+	} else if target.Merchant != nil {
 		ruleRow, ruleErr = models.AllocationRules.Query(sm.Where(psql.And(models.AllocationRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.AllocationRules.Columns.MerchantKey.EQ(psql.Arg(merchantKey)))), sm.ForUpdate()).One(ctx, executor)
-	} else if input.ProductConceptID != nil {
-		id := generatedUUID(*input.ProductConceptID)
+	} else if target.ProductConceptID != nil {
+		id := generatedUUID(*target.ProductConceptID)
 		ruleRow, ruleErr = models.AllocationRules.Query(sm.Where(psql.And(models.AllocationRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.AllocationRules.Columns.ProductConceptID.EQ(psql.Arg(id)))), sm.ForUpdate()).One(ctx, executor)
 	} else {
-		id := generatedUUID(*input.ProductVariantID)
+		id := generatedUUID(*target.ProductVariantID)
 		ruleRow, ruleErr = models.AllocationRules.Query(sm.Where(psql.And(models.AllocationRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)), models.AllocationRules.Columns.ProductVariantID.EQ(psql.Arg(id)))), sm.ForUpdate()).One(ctx, executor)
 	}
 	ruleID, revision := "", int64(1)
@@ -536,16 +540,16 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 		ruleUUID := generatedUUID(ruleID)
 		categoryValue, conceptValue, variantValue := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
 		merchantValue := sql.Null[string]{}
-		if input.CategoryID != nil {
-			categoryValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.CategoryID), Valid: true}
+		if target.CategoryID != nil {
+			categoryValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*target.CategoryID), Valid: true}
 		}
-		if input.ProductConceptID != nil {
-			conceptValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.ProductConceptID), Valid: true}
+		if target.ProductConceptID != nil {
+			conceptValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*target.ProductConceptID), Valid: true}
 		}
-		if input.ProductVariantID != nil {
-			variantValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*input.ProductVariantID), Valid: true}
+		if target.ProductVariantID != nil {
+			variantValue = sql.Null[gofrsuuid.UUID]{V: generatedUUID(*target.ProductVariantID), Valid: true}
 		}
-		if input.Merchant != nil {
+		if target.Merchant != nil {
 			merchantValue = sql.Null[string]{V: merchantKey, Valid: true}
 		}
 		if _, err := models.AllocationRules.Insert(&models.AllocationRuleSetter{
@@ -577,11 +581,11 @@ func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.Se
 		}
 	}
 	changedFields := []string{"allocations"}
-	if input.ProductVariantID != nil {
+	if target.ProductVariantID != nil {
 		changedFields = append(changedFields, "productVariantId")
-	} else if input.ProductConceptID != nil {
+	} else if target.ProductConceptID != nil {
 		changedFields = append(changedFields, "productConceptId")
-	} else if input.CategoryID != nil {
+	} else if target.CategoryID != nil {
 		changedFields = append(changedFields, "categoryId")
 	} else {
 		changedFields = append(changedFields, "merchant")

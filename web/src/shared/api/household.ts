@@ -229,11 +229,10 @@ export type Settlement = {
 export type AllocationRule = {
   id: string;
   householdId: string;
-  scope: "PRODUCT_VARIANT" | "PRODUCT" | "CATEGORY" | "MERCHANT";
-  categoryId?: string | null;
-  merchant?: string | null;
-  productConceptId?: string | null;
-  productVariantId?: string | null;
+  target: {
+    __typename: "Category" | "ProductConcept" | "ProductVariant" | "MerchantAllocationRuleTarget";
+    name: string;
+  };
   revision: number;
   allocations: Allocation[];
 };

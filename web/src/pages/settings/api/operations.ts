@@ -8,11 +8,10 @@ export const allocationRulesQuery = graphql`
         node {
           id
           householdId
-          scope
-          categoryId
-          merchant
-          productConceptId
-          productVariantId
+          target {
+            __typename
+            name
+          }
           revision
           allocations {
             poolId
@@ -56,11 +55,10 @@ export const setAllocationRuleMutation = graphql`
       ... on SetAllocationRuleSuccess {
         result {
           id
-          scope
-          categoryId
-          merchant
-          productConceptId
-          productVariantId
+          target {
+            __typename
+            name
+          }
           revision
           allocations {
             poolId

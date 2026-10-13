@@ -169,15 +169,11 @@ type ComplexityRoot struct {
 	}
 
 	AllocationRule struct {
-		Allocations      func(childComplexity int) int
-		CategoryID       func(childComplexity int) int
-		HouseholdID      func(childComplexity int) int
-		ID               func(childComplexity int) int
-		Merchant         func(childComplexity int) int
-		ProductConceptID func(childComplexity int) int
-		ProductVariantID func(childComplexity int) int
-		Revision         func(childComplexity int) int
-		Scope            func(childComplexity int) int
+		Allocations func(childComplexity int) int
+		HouseholdID func(childComplexity int) int
+		ID          func(childComplexity int) int
+		Revision    func(childComplexity int) int
+		Target      func(childComplexity int) int
 	}
 
 	AllocationRuleConnection struct {
@@ -499,6 +495,10 @@ type ComplexityRoot struct {
 		DisplayName func(childComplexity int) int
 		ID          func(childComplexity int) int
 		Role        func(childComplexity int) int
+	}
+
+	MerchantAllocationRuleTarget struct {
+		Name func(childComplexity int) int
 	}
 
 	MonthlyCategorySpending struct {
@@ -1062,11 +1062,6 @@ type AllocationResolver interface {
 type AllocationRuleResolver interface {
 	ID(ctx context.Context, obj *model.AllocationRule) (string, error)
 	HouseholdID(ctx context.Context, obj *model.AllocationRule) (string, error)
-
-	CategoryID(ctx context.Context, obj *model.AllocationRule) (*string, error)
-
-	ProductConceptID(ctx context.Context, obj *model.AllocationRule) (*string, error)
-	ProductVariantID(ctx context.Context, obj *model.AllocationRule) (*string, error)
 }
 type BudgetResolver interface {
 	ID(ctx context.Context, obj *model.Budget) (string, error)
@@ -1626,12 +1621,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AllocationRule.Allocations(childComplexity), true
-	case "AllocationRule.categoryId":
-		if e.ComplexityRoot.AllocationRule.CategoryID == nil {
-			break
-		}
-
-		return e.ComplexityRoot.AllocationRule.CategoryID(childComplexity), true
 	case "AllocationRule.householdId":
 		if e.ComplexityRoot.AllocationRule.HouseholdID == nil {
 			break
@@ -1644,36 +1633,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.AllocationRule.ID(childComplexity), true
-	case "AllocationRule.merchant":
-		if e.ComplexityRoot.AllocationRule.Merchant == nil {
-			break
-		}
-
-		return e.ComplexityRoot.AllocationRule.Merchant(childComplexity), true
-	case "AllocationRule.productConceptId":
-		if e.ComplexityRoot.AllocationRule.ProductConceptID == nil {
-			break
-		}
-
-		return e.ComplexityRoot.AllocationRule.ProductConceptID(childComplexity), true
-	case "AllocationRule.productVariantId":
-		if e.ComplexityRoot.AllocationRule.ProductVariantID == nil {
-			break
-		}
-
-		return e.ComplexityRoot.AllocationRule.ProductVariantID(childComplexity), true
 	case "AllocationRule.revision":
 		if e.ComplexityRoot.AllocationRule.Revision == nil {
 			break
 		}
 
 		return e.ComplexityRoot.AllocationRule.Revision(childComplexity), true
-	case "AllocationRule.scope":
-		if e.ComplexityRoot.AllocationRule.Scope == nil {
+	case "AllocationRule.target":
+		if e.ComplexityRoot.AllocationRule.Target == nil {
 			break
 		}
 
-		return e.ComplexityRoot.AllocationRule.Scope(childComplexity), true
+		return e.ComplexityRoot.AllocationRule.Target(childComplexity), true
 
 	case "AllocationRuleConnection.edges":
 		if e.ComplexityRoot.AllocationRuleConnection.Edges == nil {
@@ -2631,6 +2602,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Member.Role(childComplexity), true
+
+	case "MerchantAllocationRuleTarget.name":
+		if e.ComplexityRoot.MerchantAllocationRuleTarget.Name == nil {
+			break
+		}
+
+		return e.ComplexityRoot.MerchantAllocationRuleTarget.Name(childComplexity), true
 
 	case "MonthlyCategorySpending.amountYen":
 		if e.ComplexityRoot.MonthlyCategorySpending.AmountYen == nil {
@@ -4875,6 +4853,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputAcceptHouseholdInvitationInput,
 		ec.unmarshalInputAccountOpeningBalanceInput,
 		ec.unmarshalInputAllocationInput,
+		ec.unmarshalInputAllocationRuleTargetInput,
 		ec.unmarshalInputArchiveBudgetInput,
 		ec.unmarshalInputArchiveRecurringExpenseInput,
 		ec.unmarshalInputArchiveTagInput,
@@ -5151,23 +5130,20 @@ input AllocationInput {
   weight: Long!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/allocation_rule.graphql", Input: `type AllocationRule implements Node {
-  id: ID! @goField(forceResolver: true)
-  householdId: ID! @goField(forceResolver: true)
-  scope: AllocationRuleScope!
-  categoryId: ID @goField(forceResolver: true)
-  merchant: String
-  productConceptId: ID @goField(forceResolver: true)
-  productVariantId: ID @goField(forceResolver: true)
-  revision: Int!
-  allocations: [Allocation!]!
+	{Name: "../../graphql/allocation_rule.graphql", Input: `interface AllocationRuleTarget {
+  name: String!
 }
 
-enum AllocationRuleScope {
-  PRODUCT_VARIANT
-  PRODUCT
-  CATEGORY
-  MERCHANT
+type MerchantAllocationRuleTarget implements AllocationRuleTarget {
+  name: String!
+}
+
+type AllocationRule implements Node {
+  id: ID! @goField(forceResolver: true)
+  householdId: ID! @goField(forceResolver: true)
+  target: AllocationRuleTarget!
+  revision: Int!
+  allocations: [Allocation!]!
 }
 
 type AllocationRuleEdge {
@@ -5344,7 +5320,7 @@ type BulkUpdatePurchasesUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/category.graphql", Input: `type Category implements Node {
+	{Name: "../../graphql/category.graphql", Input: `type Category implements Node & AllocationRuleTarget {
   id: ID! @goField(forceResolver: true)
   name: String!
   parentId: ID @goField(forceResolver: true)
@@ -5947,7 +5923,7 @@ type PostPurchaseUserError implements MutationError {
   revision: Int!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/product_concept.graphql", Input: `type ProductConcept implements Node {
+	{Name: "../../graphql/product_concept.graphql", Input: `type ProductConcept implements Node & AllocationRuleTarget {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   name: String!
@@ -5983,7 +5959,7 @@ extend type Query {
   productSuggestions(householdId: ID! @nodeID(of: "Household"), query: String!, merchant: String, first: Int = 8): [ProductSuggestion!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/product_variant.graphql", Input: `type ProductVariant implements Node {
+	{Name: "../../graphql/product_variant.graphql", Input: `type ProductVariant implements Node & AllocationRuleTarget {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   conceptId: ID! @goField(forceResolver: true)
@@ -6349,6 +6325,7 @@ scalar YearMonth
 
 directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
 directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
+directive @oneOf on INPUT_OBJECT
 
 interface Node {
   id: ID!
@@ -6393,11 +6370,15 @@ type SetAllocationRuleSuccess {
 
 input SetAllocationRuleInput {
   householdId: ID! @nodeID(of: "Household")
+  target: AllocationRuleTargetInput!
+  allocations: [AllocationInput!]!
+}
+
+input AllocationRuleTargetInput @oneOf {
   categoryId: ID @nodeID(of: "Category")
   merchant: String
   productConceptId: ID @nodeID(of: "ProductConcept")
   productVariantId: ID @nodeID(of: "ProductVariant")
-  allocations: [AllocationInput!]!
 }
 
 type SetAllocationRuleUserError implements MutationError {
@@ -6951,16 +6932,8 @@ func (ec *executionContext) childFields_AllocationRule(ctx context.Context, fiel
 		return ec.fieldContext_AllocationRule_id(ctx, field)
 	case "householdId":
 		return ec.fieldContext_AllocationRule_householdId(ctx, field)
-	case "scope":
-		return ec.fieldContext_AllocationRule_scope(ctx, field)
-	case "categoryId":
-		return ec.fieldContext_AllocationRule_categoryId(ctx, field)
-	case "merchant":
-		return ec.fieldContext_AllocationRule_merchant(ctx, field)
-	case "productConceptId":
-		return ec.fieldContext_AllocationRule_productConceptId(ctx, field)
-	case "productVariantId":
-		return ec.fieldContext_AllocationRule_productVariantId(ctx, field)
+	case "target":
+		return ec.fieldContext_AllocationRule_target(ctx, field)
 	case "revision":
 		return ec.fieldContext_AllocationRule_revision(ctx, field)
 	case "allocations":
@@ -11805,119 +11778,36 @@ func (ec *executionContext) fieldContext_AllocationRule_householdId(_ context.Co
 	return graphql.NewScalarFieldContext("AllocationRule", field, true, true, errors.New("field of type ID does not have child fields"))
 }
 
-func (ec *executionContext) _AllocationRule_scope(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRule) (ret graphql.Marshaler) {
+func (ec *executionContext) _AllocationRule_target(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRule) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
 		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_AllocationRule_scope(ctx, field)
+			return ec.fieldContext_AllocationRule_target(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
-			return obj.Scope, nil
+			return obj.Target, nil
 		},
 		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.AllocationRuleScope) graphql.Marshaler {
-			return ec.marshalNAllocationRuleScope2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleScope(ctx, selections, v)
+		func(ctx context.Context, selections ast.SelectionSet, v model.AllocationRuleTarget) graphql.Marshaler {
+			return ec.marshalNAllocationRuleTarget2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleTarget(ctx, selections, v)
 		},
 		true,
 		true,
 	)
 }
-func (ec *executionContext) fieldContext_AllocationRule_scope(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AllocationRule", field, false, false, errors.New("field of type AllocationRuleScope does not have child fields"))
-}
-
-func (ec *executionContext) _AllocationRule_categoryId(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRule) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_AllocationRule_categoryId(ctx, field)
+func (ec *executionContext) fieldContext_AllocationRule_target(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AllocationRule",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
 		},
-		func(ctx context.Context) (any, error) {
-			return ec.Resolvers.AllocationRule().CategoryID(ctx, obj)
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOID2ᚖstring(ctx, selections, v)
-		},
-		true,
-		false,
-	)
-}
-func (ec *executionContext) fieldContext_AllocationRule_categoryId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AllocationRule", field, true, true, errors.New("field of type ID does not have child fields"))
-}
-
-func (ec *executionContext) _AllocationRule_merchant(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRule) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_AllocationRule_merchant(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			return obj.Merchant, nil
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOString2ᚖstring(ctx, selections, v)
-		},
-		true,
-		false,
-	)
-}
-func (ec *executionContext) fieldContext_AllocationRule_merchant(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AllocationRule", field, false, false, errors.New("field of type String does not have child fields"))
-}
-
-func (ec *executionContext) _AllocationRule_productConceptId(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRule) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_AllocationRule_productConceptId(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			return ec.Resolvers.AllocationRule().ProductConceptID(ctx, obj)
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOID2ᚖstring(ctx, selections, v)
-		},
-		true,
-		false,
-	)
-}
-func (ec *executionContext) fieldContext_AllocationRule_productConceptId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AllocationRule", field, true, true, errors.New("field of type ID does not have child fields"))
-}
-
-func (ec *executionContext) _AllocationRule_productVariantId(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRule) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_AllocationRule_productVariantId(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			return ec.Resolvers.AllocationRule().ProductVariantID(ctx, obj)
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
-			return ec.marshalOID2ᚖstring(ctx, selections, v)
-		},
-		true,
-		false,
-	)
-}
-func (ec *executionContext) fieldContext_AllocationRule_productVariantId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	return graphql.NewScalarFieldContext("AllocationRule", field, true, true, errors.New("field of type ID does not have child fields"))
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _AllocationRule_revision(ctx context.Context, field graphql.CollectedField, obj *model.AllocationRule) (ret graphql.Marshaler) {
@@ -15801,6 +15691,29 @@ func (ec *executionContext) _Member_role(ctx context.Context, field graphql.Coll
 }
 func (ec *executionContext) fieldContext_Member_role(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Member", field, false, false, errors.New("field of type MemberRole does not have child fields"))
+}
+
+func (ec *executionContext) _MerchantAllocationRuleTarget_name(ctx context.Context, field graphql.CollectedField, obj *model.MerchantAllocationRuleTarget) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_MerchantAllocationRuleTarget_name(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_MerchantAllocationRuleTarget_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("MerchantAllocationRuleTarget", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _MonthlyCategorySpending_period(ctx context.Context, field graphql.CollectedField, obj *model.MonthlyCategorySpending) (ret graphql.Marshaler) {
@@ -25945,6 +25858,123 @@ func (ec *executionContext) unmarshalInputAllocationInput(ctx context.Context, o
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputAllocationRuleTargetInput(ctx context.Context, obj any) (model.AllocationRuleTargetInput, error) {
+	var it model.AllocationRuleTargetInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"categoryId", "merchant", "productConceptId", "productVariantId"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "categoryId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("categoryId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Category")
+				if err != nil {
+					var zeroVal *string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal *string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(*string); ok {
+				it.CategoryID = data
+			} else if tmp == nil {
+				it.CategoryID = nil
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "merchant":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("merchant"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Merchant = data
+		case "productConceptId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("productConceptId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "ProductConcept")
+				if err != nil {
+					var zeroVal *string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal *string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(*string); ok {
+				it.ProductConceptID = data
+			} else if tmp == nil {
+				it.ProductConceptID = nil
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "productVariantId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("productVariantId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "ProductVariant")
+				if err != nil {
+					var zeroVal *string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal *string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(*string); ok {
+				it.ProductVariantID = data
+			} else if tmp == nil {
+				it.ProductVariantID = nil
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputArchiveBudgetInput(ctx context.Context, obj any) (model.ArchiveBudgetInput, error) {
 	var it model.ArchiveBudgetInput
 	if obj == nil {
@@ -29029,7 +29059,7 @@ func (ec *executionContext) unmarshalInputSetAllocationRuleInput(ctx context.Con
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "categoryId", "merchant", "productConceptId", "productVariantId", "allocations"}
+	fieldsInOrder := [...]string{"householdId", "target", "allocations"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -29063,100 +29093,13 @@ func (ec *executionContext) unmarshalInputSetAllocationRuleInput(ctx context.Con
 				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
 				return it, graphql.ErrorOnPath(ctx, err)
 			}
-		case "categoryId":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("categoryId"))
-			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
-
-			directive1 := func(ctx context.Context) (any, error) {
-				of, err := ec.unmarshalNString2string(ctx, "Category")
-				if err != nil {
-					var zeroVal *string
-					return zeroVal, err
-				}
-				if ec.Directives.NodeID == nil {
-					var zeroVal *string
-					return zeroVal, errors.New("directive nodeID is not implemented")
-				}
-				return ec.Directives.NodeID(ctx, obj, directive0, of)
-			}
-
-			tmp, err := directive1(ctx)
-			if err != nil {
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-			if data, ok := tmp.(*string); ok {
-				it.CategoryID = data
-			} else if tmp == nil {
-				it.CategoryID = nil
-			} else {
-				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-		case "merchant":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("merchant"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+		case "target":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("target"))
+			data, err := ec.unmarshalNAllocationRuleTargetInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleTargetInput(ctx, v)
 			if err != nil {
 				return it, err
 			}
-			it.Merchant = data
-		case "productConceptId":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("productConceptId"))
-			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
-
-			directive1 := func(ctx context.Context) (any, error) {
-				of, err := ec.unmarshalNString2string(ctx, "ProductConcept")
-				if err != nil {
-					var zeroVal *string
-					return zeroVal, err
-				}
-				if ec.Directives.NodeID == nil {
-					var zeroVal *string
-					return zeroVal, errors.New("directive nodeID is not implemented")
-				}
-				return ec.Directives.NodeID(ctx, obj, directive0, of)
-			}
-
-			tmp, err := directive1(ctx)
-			if err != nil {
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-			if data, ok := tmp.(*string); ok {
-				it.ProductConceptID = data
-			} else if tmp == nil {
-				it.ProductConceptID = nil
-			} else {
-				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-		case "productVariantId":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("productVariantId"))
-			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
-
-			directive1 := func(ctx context.Context) (any, error) {
-				of, err := ec.unmarshalNString2string(ctx, "ProductVariant")
-				if err != nil {
-					var zeroVal *string
-					return zeroVal, err
-				}
-				if ec.Directives.NodeID == nil {
-					var zeroVal *string
-					return zeroVal, errors.New("directive nodeID is not implemented")
-				}
-				return ec.Directives.NodeID(ctx, obj, directive0, of)
-			}
-
-			tmp, err := directive1(ctx)
-			if err != nil {
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
-			if data, ok := tmp.(*string); ok {
-				it.ProductVariantID = data
-			} else if tmp == nil {
-				it.ProductVariantID = nil
-			} else {
-				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
-				return it, graphql.ErrorOnPath(ctx, err)
-			}
+			it.Target = data
 		case "allocations":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("allocations"))
 			data, err := ec.unmarshalNAllocationInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInputᚄ(ctx, v)
@@ -30306,6 +30249,47 @@ func (ec *executionContext) _AcceptHouseholdInvitationResult(ctx context.Context
 	}
 }
 
+func (ec *executionContext) _AllocationRuleTarget(ctx context.Context, sel ast.SelectionSet, obj model.AllocationRuleTarget) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.ProductVariant:
+		return ec._ProductVariant(ctx, sel, &obj)
+	case *model.ProductVariant:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._ProductVariant(ctx, sel, obj)
+	case model.ProductConcept:
+		return ec._ProductConcept(ctx, sel, &obj)
+	case *model.ProductConcept:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._ProductConcept(ctx, sel, obj)
+	case model.Category:
+		return ec._Category(ctx, sel, &obj)
+	case *model.Category:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._Category(ctx, sel, obj)
+	case model.MerchantAllocationRuleTarget:
+		return ec._MerchantAllocationRuleTarget(ctx, sel, &obj)
+	case *model.MerchantAllocationRuleTarget:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._MerchantAllocationRuleTarget(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of AllocationRuleTarget must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _ArchiveBudgetResult(ctx context.Context, sel ast.SelectionSet, obj model.ArchiveBudgetResult) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -31123,6 +31107,20 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 			return graphql.Null
 		}
 		return ec._PurchaseLedgerEntry(ctx, sel, obj)
+	case model.ProductVariant:
+		return ec._ProductVariant(ctx, sel, &obj)
+	case *model.ProductVariant:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._ProductVariant(ctx, sel, obj)
+	case model.ProductConcept:
+		return ec._ProductConcept(ctx, sel, &obj)
+	case *model.ProductConcept:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._ProductConcept(ctx, sel, obj)
 	case model.FundingLedgerEntry:
 		return ec._FundingLedgerEntry(ctx, sel, &obj)
 	case *model.FundingLedgerEntry:
@@ -31137,6 +31135,13 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 			return graphql.Null
 		}
 		return ec._CorrectionLedgerEntry(ctx, sel, obj)
+	case model.Category:
+		return ec._Category(ctx, sel, &obj)
+	case *model.Category:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._Category(ctx, sel, obj)
 	case model.UnmatchedObservation:
 		return ec._UnmatchedObservation(ctx, sel, &obj)
 	case *model.UnmatchedObservation:
@@ -31186,20 +31191,6 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 			return graphql.Null
 		}
 		return ec._Purchase(ctx, sel, obj)
-	case model.ProductVariant:
-		return ec._ProductVariant(ctx, sel, &obj)
-	case *model.ProductVariant:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._ProductVariant(ctx, sel, obj)
-	case model.ProductConcept:
-		return ec._ProductConcept(ctx, sel, &obj)
-	case *model.ProductConcept:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._ProductConcept(ctx, sel, obj)
 	case model.ProductAlias:
 		return ec._ProductAlias(ctx, sel, &obj)
 	case *model.ProductAlias:
@@ -31254,13 +31245,6 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 			return graphql.Null
 		}
 		return ec._FundingSchedule(ctx, sel, obj)
-	case model.Category:
-		return ec._Category(ctx, sel, &obj)
-	case *model.Category:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._Category(ctx, sel, obj)
 	case model.Budget:
 		return ec._Budget(ctx, sel, &obj)
 	case *model.Budget:
@@ -33054,130 +33038,11 @@ func (ec *executionContext) _AllocationRule(ctx context.Context, sel ast.Selecti
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "scope":
-			out.Values[i] = ec._AllocationRule_scope(ctx, field, obj)
+		case "target":
+			out.Values[i] = ec._AllocationRule_target(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
-		case "categoryId":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._AllocationRule_categoryId(ctx, field, obj)
-				if res == graphql.RequiredNull {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.IsDeferred() {
-				deferredFieldSet.AddField(field)
-				fieldIndex := len(deferredFieldSet.Values) - 1
-				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, deferredFieldSet)
-				})
-
-				for _, deferrable := range field.Deferrables {
-					view, ok := deferLabelToView[deferrable.Label]
-					if !ok {
-						view = deferredFieldSet.NewView()
-						deferLabelToView[deferrable.Label] = view
-					}
-					view.AddIndices(fieldIndex)
-				}
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "merchant":
-			out.Values[i] = ec._AllocationRule_merchant(ctx, field, obj)
-			if out.Values[i] == graphql.RequiredNull {
-				atomic.AddUint32(&out.Invalids, 1)
-			}
-		case "productConceptId":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._AllocationRule_productConceptId(ctx, field, obj)
-				if res == graphql.RequiredNull {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.IsDeferred() {
-				deferredFieldSet.AddField(field)
-				fieldIndex := len(deferredFieldSet.Values) - 1
-				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, deferredFieldSet)
-				})
-
-				for _, deferrable := range field.Deferrables {
-					view, ok := deferLabelToView[deferrable.Label]
-					if !ok {
-						view = deferredFieldSet.NewView()
-						deferLabelToView[deferrable.Label] = view
-					}
-					view.AddIndices(fieldIndex)
-				}
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "productVariantId":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._AllocationRule_productVariantId(ctx, field, obj)
-				if res == graphql.RequiredNull {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.IsDeferred() {
-				deferredFieldSet.AddField(field)
-				fieldIndex := len(deferredFieldSet.Values) - 1
-				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, deferredFieldSet)
-				})
-
-				for _, deferrable := range field.Deferrables {
-					view, ok := deferLabelToView[deferrable.Label]
-					if !ok {
-						view = deferredFieldSet.NewView()
-						deferLabelToView[deferrable.Label] = view
-					}
-					view.AddIndices(fieldIndex)
-				}
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "revision":
 			out.Values[i] = ec._AllocationRule_revision(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -33892,7 +33757,7 @@ func (ec *executionContext) _BulkUpdatePurchasesUserError(ctx context.Context, s
 	return out
 }
 
-var categoryImplementors = []string{"Category", "Node"}
+var categoryImplementors = []string{"Category", "Node", "AllocationRuleTarget"}
 
 func (ec *executionContext) _Category(ctx context.Context, sel ast.SelectionSet, obj *model.Category) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, categoryImplementors)
@@ -36401,6 +36266,44 @@ func (ec *executionContext) _Member(ctx context.Context, sel ast.SelectionSet, o
 	return out
 }
 
+var merchantAllocationRuleTargetImplementors = []string{"MerchantAllocationRuleTarget", "AllocationRuleTarget"}
+
+func (ec *executionContext) _MerchantAllocationRuleTarget(ctx context.Context, sel ast.SelectionSet, obj *model.MerchantAllocationRuleTarget) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, merchantAllocationRuleTargetImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("MerchantAllocationRuleTarget")
+		case "name":
+			out.Values[i] = ec._MerchantAllocationRuleTarget_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var monthlyCategorySpendingImplementors = []string{"MonthlyCategorySpending"}
 
 func (ec *executionContext) _MonthlyCategorySpending(ctx context.Context, sel ast.SelectionSet, obj *model.MonthlyCategorySpending) graphql.Marshaler {
@@ -37480,7 +37383,7 @@ func (ec *executionContext) _ProductAlias(ctx context.Context, sel ast.Selection
 	return out
 }
 
-var productConceptImplementors = []string{"ProductConcept", "Node"}
+var productConceptImplementors = []string{"ProductConcept", "Node", "AllocationRuleTarget"}
 
 func (ec *executionContext) _ProductConcept(ctx context.Context, sel ast.SelectionSet, obj *model.ProductConcept) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, productConceptImplementors)
@@ -37791,7 +37694,7 @@ func (ec *executionContext) _ProductSuggestion(ctx context.Context, sel ast.Sele
 	return out
 }
 
-var productVariantImplementors = []string{"ProductVariant", "Node"}
+var productVariantImplementors = []string{"ProductVariant", "Node", "AllocationRuleTarget"}
 
 func (ec *executionContext) _ProductVariant(ctx context.Context, sel ast.SelectionSet, obj *model.ProductVariant) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, productVariantImplementors)
@@ -42719,14 +42622,19 @@ func (ec *executionContext) marshalNAllocationRuleEdge2ᚖgithubᚗcomᚋwalnuts
 	return ec._AllocationRuleEdge(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNAllocationRuleScope2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleScope(ctx context.Context, v any) (model.AllocationRuleScope, error) {
-	var res model.AllocationRuleScope
-	err := res.UnmarshalGQL(v)
-	return res, graphql.ErrorOnPath(ctx, err)
+func (ec *executionContext) marshalNAllocationRuleTarget2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleTarget(ctx context.Context, sel ast.SelectionSet, v model.AllocationRuleTarget) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AllocationRuleTarget(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNAllocationRuleScope2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleScope(ctx context.Context, sel ast.SelectionSet, v model.AllocationRuleScope) graphql.Marshaler {
-	return v
+func (ec *executionContext) unmarshalNAllocationRuleTargetInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationRuleTargetInput(ctx context.Context, v any) (*model.AllocationRuleTargetInput, error) {
+	res, err := ec.unmarshalInputAllocationRuleTargetInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalNArchiveBudgetInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐArchiveBudgetInput(ctx context.Context, v any) (model.ArchiveBudgetInput, error) {

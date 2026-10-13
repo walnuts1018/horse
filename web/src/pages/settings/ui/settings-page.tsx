@@ -881,16 +881,18 @@ export function SettingsPage({
       return;
     setPending(true);
     try {
+      const target =
+        ruleScope === "CATEGORY"
+          ? { categoryId: ruleCategoryId }
+          : ruleScope === "MERCHANT"
+            ? { merchant: ruleMerchant.trim() }
+            : ruleScope === "PRODUCT"
+              ? { productConceptId: ruleProductId }
+              : { productVariantId: ruleVariantId };
       await readGraphql(setAllocationRuleMutation, {
         input: {
           householdId: household.id,
-          ...(ruleScope === "CATEGORY"
-            ? { categoryId: ruleCategoryId }
-            : ruleScope === "MERCHANT"
-              ? { merchant: ruleMerchant.trim() }
-              : ruleScope === "PRODUCT"
-                ? { productConceptId: ruleProductId }
-                : { productVariantId: ruleVariantId }),
+          target,
           allocations,
         },
       });
@@ -1434,29 +1436,16 @@ export function SettingsPage({
             {allocationRules.map((rule) => (
               <div className="setting-row" key={rule.id}>
                 <div className="pool-avatar">
-                  {rule.scope === "CATEGORY"
+                  {rule.target.__typename === "Category"
                     ? "分"
-                    : rule.scope === "MERCHANT"
+                    : rule.target.__typename === "MerchantAllocationRuleTarget"
                       ? "店"
-                      : rule.scope === "PRODUCT"
+                      : rule.target.__typename === "ProductConcept"
                         ? "品"
                         : "規"}
                 </div>
                 <div>
-                  <b>
-                    {rule.scope === "CATEGORY"
-                      ? (household.categories.find((category) => category.id === rule.categoryId)
-                          ?.name ?? "カテゴリ")
-                      : rule.scope === "MERCHANT"
-                        ? rule.merchant
-                        : rule.scope === "PRODUCT"
-                          ? (catalog.find((product) => product.id === rule.productConceptId)
-                              ?.name ?? "商品")
-                          : (catalog
-                              .flatMap((product) => product.variants)
-                              .find((variant) => variant.id === rule.productVariantId)?.name ??
-                            "バリエーション")}
-                  </b>
+                  <b>{rule.target.name}</b>
                   <small>
                     {rule.allocations
                       .map(

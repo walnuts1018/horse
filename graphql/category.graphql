@@ -1,4 +1,4 @@
-type Category implements Node {
+type Category implements Node & AllocationRuleTarget {
   id: ID! @goField(forceResolver: true)
   name: String!
   parentId: ID @goField(forceResolver: true)

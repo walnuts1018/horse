@@ -146,12 +146,12 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("category restoration failed: category=%#v error=%v", category, err)
 	}
 	storeRuleMerchant := "  MARKET  "
-	categoryRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, CategoryID: &category.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}, {PoolID: poolB.ID, Weight: 3}}})
-	if err != nil || categoryRule.Scope != model.AllocationRuleScopeCategory {
+	categoryRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, Target: &model.AllocationRuleTargetInput{CategoryID: &category.ID}, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}, {PoolID: poolB.ID, Weight: 3}}})
+	if err != nil || categoryRule.Target.GetName() != category.Name {
 		t.Fatalf("category allocation rule was not saved: rule=%#v error=%v", categoryRule, err)
 	}
-	storeRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, Merchant: &storeRuleMerchant, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 4}, {PoolID: poolB.ID, Weight: 1}}})
-	if err != nil || storeRule.Scope != model.AllocationRuleScopeMerchant || *storeRule.Merchant != "market" {
+	storeRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, Target: &model.AllocationRuleTargetInput{Merchant: &storeRuleMerchant}, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 4}, {PoolID: poolB.ID, Weight: 1}}})
+	if err != nil || storeRule.Target.GetName() != "market" {
 		t.Fatalf("merchant allocation rule was not normalized: rule=%#v error=%v", storeRule, err)
 	}
 	productConcept, err := resolver.createProductConcept(ctx, model.CreateProductConceptInput{HouseholdID: householdID, Name: "Yogurt", CategoryID: &category.ID})
@@ -162,16 +162,16 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	productConceptRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, ProductConceptID: &productConcept.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}, {PoolID: poolB.ID, Weight: 4}}})
-	if err != nil || productConceptRule.Scope != model.AllocationRuleScopeProduct {
+	productConceptRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, Target: &model.AllocationRuleTargetInput{ProductConceptID: &productConcept.ID}, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}, {PoolID: poolB.ID, Weight: 4}}})
+	if err != nil || productConceptRule.Target.GetName() != productConcept.Name {
 		t.Fatalf("product concept rule was not saved: rule=%#v error=%v", productConceptRule, err)
 	}
 	conceptPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:59:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 500, ProductVariantID: &productVariant.ID}}})
 	if err != nil || conceptPurchase.Items[0].CategoryID == nil || *conceptPurchase.Items[0].CategoryID != category.ID || conceptPurchase.Items[0].Allocations[0].AmountYen == nil || *conceptPurchase.Items[0].Allocations[0].AmountYen != 100 {
 		t.Fatalf("linked product should inherit its category and concept rule: purchase=%#v error=%v", conceptPurchase, err)
 	}
-	productVariantRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, ProductVariantID: &productVariant.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 4}, {PoolID: poolB.ID, Weight: 1}}})
-	if err != nil || productVariantRule.Scope != model.AllocationRuleScopeProductVariant {
+	productVariantRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, Target: &model.AllocationRuleTargetInput{ProductVariantID: &productVariant.ID}, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 4}, {PoolID: poolB.ID, Weight: 1}}})
+	if err != nil || productVariantRule.Target.GetName() != productVariant.Name {
 		t.Fatalf("product variant rule was not saved: rule=%#v error=%v", productVariantRule, err)
 	}
 	variantPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T11:58:00Z", Merchant: "market", Items: []*model.PurchaseItemInput{{Name: "YOG-PB 400", AmountYen: 600, ProductVariantID: &productVariant.ID}}})
@@ -265,7 +265,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || len(allocations) == 0 || appliedRuleID == nil || *appliedRuleID != categoryRule.ID || appliedRuleRevision != 1 {
 		t.Fatalf("category rule snapshot metadata mismatch: id=%v revision=%d error=%v", appliedRuleID, appliedRuleRevision, err)
 	}
-	updatedCategoryRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, CategoryID: &category.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 3}, {PoolID: poolB.ID, Weight: 2}}})
+	updatedCategoryRule, err := resolver.setAllocationRule(ctx, model.SetAllocationRuleInput{HouseholdID: householdID, Target: &model.AllocationRuleTargetInput{CategoryID: &category.ID}, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 3}, {PoolID: poolB.ID, Weight: 2}}})
 	if err != nil || updatedCategoryRule.Revision != categoryRule.Revision+1 {
 		t.Fatalf("category rule revision did not advance: rule=%#v error=%v", updatedCategoryRule, err)
 	}

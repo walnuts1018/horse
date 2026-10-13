@@ -66,6 +66,9 @@ func TestSettlementRejectsPostedPurchasePaidFromAccountWithoutPool(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, OwnerMemberID: &memberID, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := mutation.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}

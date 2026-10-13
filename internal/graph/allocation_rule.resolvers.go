@@ -21,21 +21,6 @@ func (r *allocationRuleResolver) HouseholdID(ctx context.Context, obj *model.All
 	return encodeNodeID("Household", obj.HouseholdID)
 }
 
-// CategoryID is the resolver for the categoryId field.
-func (r *allocationRuleResolver) CategoryID(ctx context.Context, obj *model.AllocationRule) (*string, error) {
-	return encodeNodeIDPtr("Category", obj.CategoryID)
-}
-
-// ProductConceptID is the resolver for the productConceptId field.
-func (r *allocationRuleResolver) ProductConceptID(ctx context.Context, obj *model.AllocationRule) (*string, error) {
-	return encodeNodeIDPtr("ProductConcept", obj.ProductConceptID)
-}
-
-// ProductVariantID is the resolver for the productVariantId field.
-func (r *allocationRuleResolver) ProductVariantID(ctx context.Context, obj *model.AllocationRule) (*string, error) {
-	return encodeNodeIDPtr("ProductVariant", obj.ProductVariantID)
-}
-
 // AllocationRules is the resolver for the allocationRules field.
 func (r *queryResolver) AllocationRules(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AllocationRuleConnection, error) {
 	return r.allocationRules(ctx, householdID, after, before, first, last)

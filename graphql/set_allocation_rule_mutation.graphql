@@ -10,11 +10,15 @@ type SetAllocationRuleSuccess {
 
 input SetAllocationRuleInput {
   householdId: ID! @nodeID(of: "Household")
+  target: AllocationRuleTargetInput!
+  allocations: [AllocationInput!]!
+}
+
+input AllocationRuleTargetInput @oneOf {
   categoryId: ID @nodeID(of: "Category")
   merchant: String
   productConceptId: ID @nodeID(of: "ProductConcept")
   productVariantId: ID @nodeID(of: "ProductVariant")
-  allocations: [AllocationInput!]!
 }
 
 type SetAllocationRuleUserError implements MutationError {

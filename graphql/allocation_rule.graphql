@@ -1,20 +1,17 @@
+interface AllocationRuleTarget {
+  name: String!
+}
+
+type MerchantAllocationRuleTarget implements AllocationRuleTarget {
+  name: String!
+}
+
 type AllocationRule implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
-  scope: AllocationRuleScope!
-  categoryId: ID @goField(forceResolver: true)
-  merchant: String
-  productConceptId: ID @goField(forceResolver: true)
-  productVariantId: ID @goField(forceResolver: true)
+  target: AllocationRuleTarget!
   revision: Int!
   allocations: [Allocation!]!
-}
-
-enum AllocationRuleScope {
-  PRODUCT_VARIANT
-  PRODUCT
-  CATEGORY
-  MERCHANT
 }
 
 type AllocationRuleEdge {

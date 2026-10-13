@@ -234,29 +234,57 @@ func loadAllocationRule(ctx context.Context, db *pgxpool.Pool, ruleID string) (*
 	}
 	result := &model.AllocationRule{ID: rule.ID.String(), HouseholdID: rule.HouseholdID.String(), Revision: int(rule.Revision)}
 	if rule.CategoryID.Valid {
-		value := rule.CategoryID.V.String()
-		result.CategoryID = &value
-	}
-	if rule.MerchantKey.Valid {
-		result.Merchant = &rule.MerchantKey.V
-	}
-	if rule.ProductConceptID.Valid {
-		value := rule.ProductConceptID.V.String()
-		result.ProductConceptID = &value
-	}
-	if rule.ProductVariantID.Valid {
-		value := rule.ProductVariantID.V.String()
-		result.ProductVariantID = &value
-	}
-	switch {
-	case result.ProductVariantID != nil:
-		result.Scope = model.AllocationRuleScopeProductVariant
-	case result.ProductConceptID != nil:
-		result.Scope = model.AllocationRuleScopeProduct
-	case result.CategoryID != nil:
-		result.Scope = model.AllocationRuleScopeCategory
-	default:
-		result.Scope = model.AllocationRuleScopeMerchant
+		category, err := models.Categories.Query(sm.Where(psql.And(
+			models.Categories.Columns.ID.EQ(psql.Arg(rule.CategoryID.V)),
+			models.Categories.Columns.HouseholdID.EQ(psql.Arg(rule.HouseholdID)),
+		))).One(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		var parentID *string
+		if category.ParentID.Valid {
+			parentID = new(category.ParentID.V.String())
+		}
+		result.Target = &model.Category{ID: category.ID.String(), Name: category.Name, ParentID: parentID, Archived: category.Archived}
+	} else if rule.ProductConceptID.Valid {
+		concept, err := models.ProductConcepts.Query(sm.Where(psql.And(
+			models.ProductConcepts.Columns.ID.EQ(psql.Arg(rule.ProductConceptID.V)),
+			models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(rule.HouseholdID)),
+		))).One(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		var categoryID *string
+		if concept.CategoryID.Valid {
+			categoryID = new(concept.CategoryID.V.String())
+		}
+		result.Target = &model.ProductConcept{
+			ID: concept.ID.String(), HouseholdID: concept.HouseholdID.String(), Name: concept.Name,
+			NormalizedName: concept.NormalizedName, CategoryID: categoryID, Archived: concept.Archived,
+			Revision: int(concept.Revision),
+		}
+	} else if rule.ProductVariantID.Valid {
+		variant, err := models.ProductVariants.Query(sm.Where(psql.And(
+			models.ProductVariants.Columns.ID.EQ(psql.Arg(rule.ProductVariantID.V)),
+			models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(rule.HouseholdID)),
+		))).One(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		var barcode *string
+		if variant.Barcode.Valid {
+			barcode = new(variant.Barcode.V)
+		}
+		result.Target = &model.ProductVariant{
+			ID: variant.ID.String(), HouseholdID: variant.HouseholdID.String(), ConceptID: variant.ConceptID.String(),
+			Name: variant.Name, NormalizedName: variant.NormalizedName, Brand: new(variant.Brand),
+			PackageSize: new(variant.PackageSize), Barcode: barcode, Archived: variant.Archived,
+			Revision: int(variant.Revision),
+		}
+	} else if rule.MerchantKey.Valid {
+		result.Target = model.MerchantAllocationRuleTarget{Name: rule.MerchantKey.V}
+	} else {
+		return nil, fmt.Errorf("allocation rule %s has no target", rule.ID)
 	}
 	weights, err := models.AllocationRuleWeights.Query(sm.Where(models.AllocationRuleWeights.Columns.RuleID.EQ(psql.Arg(id))), sm.OrderBy(models.AllocationRuleWeights.Columns.PoolID)).All(ctx, executor)
 	if err != nil {

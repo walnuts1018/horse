@@ -62,6 +62,11 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, pool := range []*model.Pool{poolA, poolB} {
+		if _, err := resolver.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: pool.ID, OwnerMemberID: &memberID, FundingShares: []*model.PoolFundingShareInput{}, ExpectedVersion: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	category, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: "Food"})
 	if err != nil {
 		t.Fatal(err)

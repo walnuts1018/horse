@@ -1,4 +1,4 @@
-type ProductVariant implements Node {
+type ProductVariant implements Node & AllocationRuleTarget {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   conceptId: ID! @goField(forceResolver: true)
