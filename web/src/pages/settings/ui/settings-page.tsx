@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Activity, ArrowLeftRight, Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import {
   makeIdempotencyKey,
@@ -13,7 +13,6 @@ import {
   type Household,
   type AccountMovement,
   type AccountBalance,
-  type AccountBalanceAnalysis,
   type AccountIncome,
   type Budget,
   type RecurringExpense,
@@ -53,11 +52,11 @@ import {
   readProductCatalog,
   setProductAliasMutation,
 } from "../../../entities/product";
-import { ManageHouseholdInvitations } from "../../../features/manage-household-invitations";
+import { ManageHouseholdInvitations } from "./manage-household-invitations";
+import { ViewAccountBalanceHistory } from "./view-account-balance-history";
 import {
   accountMovementsQuery,
   accountBalancesQuery,
-  accountBalanceAnalysisQuery,
   accountIncomesQuery,
   recordAccountMovementMutation,
   recordExternalIncomeMutation,
@@ -94,31 +93,6 @@ const yen = (amount: number) =>
     currency: "JPY",
     maximumFractionDigits: 0,
   }).format(amount);
-const monthIndex = (month: string) => {
-  const [year, number] = month.split("-").map(Number);
-  return year * 12 + number - 1;
-};
-const shiftMonth = (month: string, offset: number) => {
-  const shifted = monthIndex(month) + offset;
-  return `${Math.floor(shifted / 12)}-${String((shifted % 12) + 1).padStart(2, "0")}`;
-};
-const balanceChangeSource = (sourceType: string) =>
-  ({
-    AccountOpeningBalance: "初期残高",
-    Purchase: "購入",
-    PurchaseWideCorrection: "訂正",
-    PurchaseItemCorrection: "訂正",
-    PurchaseLedgerEntry: "購入",
-    CorrectionLedgerEntry: "訂正",
-    FundingLedgerEntry: "資金拠出",
-    AdvanceTransferLedgerEntry: "立替",
-    LoanTransferLedgerEntry: "貸付",
-    RepaymentTransferLedgerEntry: "返済",
-    GiftTransferLedgerEntry: "贈与",
-    AccountMovement: "口座振替",
-    AccountIncome: "外部入金",
-  })[sourceType] ?? "仕訳";
-
 type SettingsTab = "accounts" | "allocation" | "catalog" | "planning" | "members";
 
 const settingsTabs: { id: SettingsTab; label: string }[] = [
@@ -236,21 +210,7 @@ export function SettingsPage({
   const [movementPageError, setMovementPageError] = useState("");
   const [incomePageError, setIncomePageError] = useState("");
   const [balances, setBalances] = useState<AccountBalance[]>([]);
-  const [balanceHistoryAccountId, setBalanceHistoryAccountId] = useState(
-    household.accounts[0]?.id ?? "",
-  );
-  const [balanceHistoryFrom, setBalanceHistoryFrom] = useState(() =>
-    shiftMonth(currentMonth(), -5),
-  );
-  const [balanceHistoryTo, setBalanceHistoryTo] = useState(currentMonth);
-  const [balanceHistory, setBalanceHistory] = useState<AccountBalanceAnalysis | null>(null);
   const [balanceHistoryRevision, setBalanceHistoryRevision] = useState(0);
-  const [balanceHistoryLoading, setBalanceHistoryLoading] = useState(false);
-  const [balanceHistoryLoadingMore, setBalanceHistoryLoadingMore] = useState(false);
-  const [balanceHistoryError, setBalanceHistoryError] = useState("");
-  const [balanceHistoryMoreError, setBalanceHistoryMoreError] = useState("");
-  const balanceHistoryGeneration = useRef(0);
-  const balanceHistoryRequest = useRef(false);
   const [incomeAccountId, setIncomeAccountId] = useState("");
   const [incomeAmount, setIncomeAmount] = useState("");
   const [incomeDescription, setIncomeDescription] = useState("");
@@ -457,118 +417,6 @@ export function SettingsPage({
       ),
     );
   }, [household.id, household.pools, household.members]);
-  useEffect(() => {
-    if (!household.accounts.some((account) => account.id === balanceHistoryAccountId)) {
-      setBalanceHistoryAccountId(household.accounts[0]?.id ?? "");
-    }
-  }, [household.accounts, balanceHistoryAccountId]);
-  useEffect(() => {
-    const generation = ++balanceHistoryGeneration.current;
-    balanceHistoryRequest.current = false;
-    if (!balanceHistoryAccountId) {
-      setBalanceHistory(null);
-      setBalanceHistoryError("");
-      setBalanceHistoryLoading(false);
-      setBalanceHistoryLoadingMore(false);
-      setBalanceHistoryMoreError("");
-      return;
-    }
-    if (
-      !/^\d{4}-\d{2}$/.test(balanceHistoryFrom) ||
-      !/^\d{4}-\d{2}$/.test(balanceHistoryTo) ||
-      monthIndex(balanceHistoryTo) < monthIndex(balanceHistoryFrom) ||
-      monthIndex(balanceHistoryTo) - monthIndex(balanceHistoryFrom) > 120
-    ) {
-      setBalanceHistory(null);
-      setBalanceHistoryError("期間は前後関係を確認し、10年以内で指定してください");
-      setBalanceHistoryLoading(false);
-      setBalanceHistoryLoadingMore(false);
-      setBalanceHistoryMoreError("");
-      return;
-    }
-    setBalanceHistory(null);
-    setBalanceHistoryLoading(true);
-    setBalanceHistoryLoadingMore(false);
-    setBalanceHistoryError("");
-    setBalanceHistoryMoreError("");
-    void readGraphql<{ accountBalanceAnalysis: AccountBalanceAnalysis }>(
-      accountBalanceAnalysisQuery,
-      {
-        householdId: household.id,
-        accountId: balanceHistoryAccountId,
-        from: balanceHistoryFrom,
-        to: balanceHistoryTo,
-        first: 100,
-      },
-    )
-      .then((result) => {
-        if (balanceHistoryGeneration.current === generation)
-          setBalanceHistory(result.accountBalanceAnalysis);
-      })
-      .catch((reason) => {
-        if (balanceHistoryGeneration.current === generation)
-          setBalanceHistoryError((reason as Error).message);
-      })
-      .finally(() => {
-        if (balanceHistoryGeneration.current === generation) setBalanceHistoryLoading(false);
-      });
-    return () => {
-      if (balanceHistoryGeneration.current === generation) balanceHistoryGeneration.current++;
-    };
-  }, [
-    household.id,
-    balanceHistoryAccountId,
-    balanceHistoryFrom,
-    balanceHistoryTo,
-    balanceHistoryRevision,
-  ]);
-  const loadMoreBalanceChanges = async () => {
-    const after = balanceHistory?.changes.pageInfo.endCursor;
-    if (
-      !balanceHistory ||
-      !balanceHistory.changes.pageInfo.hasNextPage ||
-      !after ||
-      balanceHistoryRequest.current
-    )
-      return;
-    const generation = balanceHistoryGeneration.current;
-    balanceHistoryRequest.current = true;
-    setBalanceHistoryLoadingMore(true);
-    setBalanceHistoryMoreError("");
-    try {
-      const result = await readGraphql<{ accountBalanceAnalysis: AccountBalanceAnalysis }>(
-        accountBalanceAnalysisQuery,
-        {
-          householdId: household.id,
-          accountId: balanceHistoryAccountId,
-          from: balanceHistoryFrom,
-          to: balanceHistoryTo,
-          first: 100,
-          after,
-        },
-      );
-      if (balanceHistoryGeneration.current !== generation) return;
-      setBalanceHistory((current) => {
-        if (!current || current.accountId !== result.accountBalanceAnalysis.accountId)
-          return current;
-        return {
-          ...current,
-          changes: {
-            ...result.accountBalanceAnalysis.changes,
-            edges: [...current.changes.edges, ...result.accountBalanceAnalysis.changes.edges],
-          },
-        };
-      });
-    } catch (reason) {
-      if (balanceHistoryGeneration.current === generation)
-        setBalanceHistoryMoreError((reason as Error).message);
-    } finally {
-      if (balanceHistoryGeneration.current === generation) {
-        balanceHistoryRequest.current = false;
-        setBalanceHistoryLoadingMore(false);
-      }
-    }
-  };
   useEffect(() => {
     void Promise.all([refreshRules(), refreshProducts(), refreshPlanning()]).catch((reason) =>
       onNotice((reason as Error).message, "error"),
@@ -1162,12 +1010,6 @@ export function SettingsPage({
       setPending(false);
     }
   };
-  const visibleBalanceChanges = balanceHistory?.changes.edges.map(({ node }) => node) ?? [];
-  const maxBalanceChange =
-    balanceHistory?.changes.edges.reduce(
-      (maximum, { node }) => Math.max(maximum, Math.abs(node.changeYen)),
-      1,
-    ) ?? 1;
   return (
     <>
       <div className="page-heading">
@@ -1327,119 +1169,12 @@ export function SettingsPage({
             </button>
           </form>
         </section>
-        <section
-          className="panel settings-section account-balance-analysis"
+        <ViewAccountBalanceHistory
+          householdId={household.id}
+          accounts={household.accounts}
           hidden={activeSettingsTab !== "accounts"}
-        >
-          <div className="panel-heading">
-            <div>
-              <span className="eyebrow">口座別の仕訳</span>
-              <h2>残高の増減</h2>
-            </div>
-            {balanceHistory?.currency && <span>{balanceHistory.currency}</span>}
-          </div>
-          <div className="analysis-controls">
-            <label className="select-filter">
-              <span>口座</span>
-              <select
-                value={balanceHistoryAccountId}
-                disabled={!household.accounts.length}
-                onChange={(event) => setBalanceHistoryAccountId(event.target.value)}
-              >
-                {household.accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="select-filter">
-              <span>開始月</span>
-              <input
-                aria-label="残高分析の開始月"
-                type="month"
-                value={balanceHistoryFrom}
-                onChange={(event) => setBalanceHistoryFrom(event.target.value)}
-              />
-            </label>
-            <label className="select-filter">
-              <span>終了月</span>
-              <input
-                aria-label="残高分析の終了月"
-                type="month"
-                value={balanceHistoryTo}
-                onChange={(event) => setBalanceHistoryTo(event.target.value)}
-              />
-            </label>
-          </div>
-          {balanceHistoryError && <InlineError message={balanceHistoryError} />}
-          {balanceHistoryLoading ? (
-            <p>残高を集計しています</p>
-          ) : balanceHistory ? (
-            <>
-              <div className="account-balance-summary">
-                <div>
-                  <small>期首残高</small>
-                  <b>{yen(balanceHistory.openingBalanceYen)}</b>
-                </div>
-                <div>
-                  <small>期末残高</small>
-                  <b>{yen(balanceHistory.closingBalanceYen)}</b>
-                </div>
-              </div>
-              {household.accounts.find((account) => account.id === balanceHistoryAccountId)
-                ?.kind === "CARD" && (
-                <small className="account-balance-sign">カード債務の増加はプラス</small>
-              )}
-              <div className="account-balance-changes">
-                {visibleBalanceChanges.map((change, index) => (
-                  <div
-                    className="account-balance-change"
-                    key={`${change.source.id}-${change.occurredAt}-${index}`}
-                  >
-                    <div className="account-balance-change-copy">
-                      <b>{change.description || balanceChangeSource(change.source.__typename)}</b>
-                      <small>
-                        {new Date(change.occurredAt).toLocaleString("ja-JP", {
-                          month: "numeric",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}{" "}
-                        · {balanceChangeSource(change.source.__typename)}
-                      </small>
-                    </div>
-                    <div className="account-balance-change-bar">
-                      <i
-                        className={change.changeYen < 0 ? "account-balance-negative" : ""}
-                        style={{
-                          width: `${Math.max(2, Math.min(100, (Math.abs(change.changeYen) / maxBalanceChange) * 100))}%`,
-                        }}
-                      />
-                    </div>
-                    <b className={change.changeYen < 0 ? "account-balance-negative-text" : ""}>
-                      {change.changeYen > 0 ? "+" : ""}
-                      {yen(change.changeYen)}
-                    </b>
-                    <small>残高 {yen(change.balanceYen)}</small>
-                  </div>
-                ))}
-                {!balanceHistory.changes.edges.length && <p>この期間に仕訳はありません</p>}
-                {balanceHistory.changes.pageInfo.hasNextPage && (
-                  <button
-                    className="text-button"
-                    type="button"
-                    disabled={balanceHistoryLoadingMore}
-                    onClick={() => void loadMoreBalanceChanges()}
-                  >
-                    {balanceHistoryLoadingMore ? "読み込み中" : "過去の仕訳を表示"}
-                  </button>
-                )}
-                {balanceHistoryMoreError && <InlineError message={balanceHistoryMoreError} />}
-              </div>
-            </>
-          ) : null}
-        </section>
+          refreshRevision={balanceHistoryRevision}
+        />
         <section
           className="panel settings-section"
           hidden={activeSettingsTab !== "accounts"}

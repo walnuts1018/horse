@@ -8,12 +8,12 @@
 
 | ファイル | 行数 | `useState`の呼び出し数 |
 | --- | ---: | ---: |
-| [settings-page.tsx](../../web/src/pages/settings/ui/settings-page.tsx) | 2,455 | 55 |
+| [settings-page.tsx](../../web/src/pages/settings/ui/settings-page.tsx) | 2,190 | 55 |
 | [ledger-page.tsx](../../web/src/pages/ledger/ui/ledger-page.tsx) | 2,431 | 18 |
 | [imports-page.tsx](../../web/src/pages/imports/ui/imports-page.tsx) | 2,479 | 20 |
-| [purchase-create-page.tsx](../../web/src/pages/purchase-create/ui/purchase-create-page.tsx) | 1,218 | 12 |
+| [purchase-create-page.tsx](../../web/src/pages/purchase-create/ui/purchase-create-page.tsx) | 669 | 11 |
 
-`SettingsPage`は口座、負担先、配賦、商品、タグ、予算、定期支出、資金移動、残高推移を扱います。招待管理は`features/manage-household-invitations`へ移し、クエリ、発行、失効、ページングの状態とUIを分離しました。`LedgerPage`は検索、一覧、選択、一括更新、購入編集、訂正、証拠、観測照合を扱います。`ImportsPage`は取込一覧、確認、送信、カメラ画像処理を扱い、画像座標変換は同じpage sliceのmodelへ分離しました。
+`SettingsPage`は口座、負担先、配賦、商品、タグ、予算、定期支出、資金移動、残高推移を扱います。招待管理と口座残高推移は同じ`pages/settings`sliceの専用UIへ分け、招待APIと残高照会operationも同sliceのAPI segmentへ移しました。`LedgerPage`は検索、一覧、選択、一括更新、購入編集、訂正、証拠、観測照合を扱います。`ImportsPage`は取込一覧、確認、送信、カメラ画像処理を扱い、画像座標変換は同じpage sliceのmodelへ分離しました。`PurchaseCreatePage`は購入共通項目と保存・送信を持ち、品目行編集、Undo、キーボード操作、貼付け、候補選択を同じ`pages/purchase-create`sliceの専用UIとmodelへ移しました。
 
 画面の機能ごとにUIと状態の所有者を分け、親コンポーネントを配置と画面遷移の責務に限定する余地があります。単に処理を別ファイルや巨大なHookへ移すのではなく、機能が独立して変更できる境界を作る必要があります。
 
@@ -29,7 +29,7 @@
 
 会計期間計算、金額加算、イベント記録、冪等性検証は購入、送金、資金拠出、口座移動など複数のApplicationパッケージに同様の関数があります。各処理の将来の変更で規則が分岐する可能性があります。
 
-口座の初期残高は[mutations_account.go](../../internal/graph/mutations_account.go)で仕訳行を個別に作成します。口座間移動と外部入金は`accounting.BuildEntries()`と`InsertEntries()`を使うように統一しましたが、初期残高の仕訳生成は残っています。
+口座の初期残高、口座間移動、外部入金は`accounting.BuildEntries()`と`InsertEntries()`を使うように統一し、借貸行の生成と検証の重複を解消しました。
 
 共通化対象を会計期間、金額計算、イベント記録、冪等性、仕訳生成に限定し、既存の仕訳生成処理を各記帳経路から利用できるようにする余地があります。
 
@@ -37,7 +37,7 @@
 
 購入検索では期間、検索語、分類、タグ、決済口座、負担先、起点、証拠有無をサーバー側で適用してからページングしています。全ページを無条件に取得してブラウザで絞るという以前の指摘は解消しています。
 
-一方、[ledger-page.tsx](../../web/src/pages/ledger/ui/ledger-page.tsx)は購入表示と品目表示の検索条件を別々に実装し、サーバー検索後にも表示データを`filter()`と`flatMap()`で絞り込みます。金額の下限・上限はサーバーへ渡していないため、取得済みページ内だけに適用されます。フィルター型の一部は[ledger-search.ts](../../web/src/pages/ledger/model/ledger-search.ts)にありますが、Query変数への変換と画面側の絞り込みは分かれています。
+一方、[ledger-page.tsx](../../web/src/pages/ledger/ui/ledger-page.tsx)は購入表示と品目表示の表示条件を別々に実装し、サーバー検索後にも期間・検索語・分類・タグ・決済口座などを`filter()`と`flatMap()`で絞り込みます。金額の下限・上限は購入Queryの`minimumAmount`・`maximumAmount`でページング前に適用し、購入合計と品目額の対象も選べます。品目対象では金額・カテゴリ・タグ・負担先を同じ品目で判定し、返却する品目にも同じ条件を適用します。購入単位の範囲、品目単位の範囲、ページ境界、品目属性との組み合わせを検証する統合テストは追加しましたが、ローカルDBがないため実行結果はCI待ちです。
 
 検索条件を単一のQuery入力へまとめ、金額条件もページング前に適用したうえで、購入表示と品目表示で共通化できる判定を共有する必要があります。
 

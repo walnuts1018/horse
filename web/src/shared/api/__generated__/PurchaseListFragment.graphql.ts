@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<18c27408cd7fd708ea633868678e77c8>>
+ * @generated SignedSource<<1238cb4e7647173e9e31ae6c0d982760>>
  * @lightSyntaxTransform
  */
 
@@ -262,6 +262,11 @@ return {
     {
       "defaultValue": null,
       "kind": "LocalArgument",
+      "name": "amountTarget"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
       "name": "categoryId"
     },
     {
@@ -283,6 +288,16 @@ return {
       "defaultValue": null,
       "kind": "LocalArgument",
       "name": "householdId"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "maximumAmount"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "minimumAmount"
     },
     {
       "defaultValue": null,
@@ -350,6 +365,11 @@ return {
       "args": [
         {
           "kind": "Variable",
+          "name": "amountTarget",
+          "variableName": "amountTarget"
+        },
+        {
+          "kind": "Variable",
           "name": "categoryId",
           "variableName": "categoryId"
         },
@@ -367,6 +387,16 @@ return {
           "kind": "Variable",
           "name": "householdId",
           "variableName": "householdId"
+        },
+        {
+          "kind": "Variable",
+          "name": "maximumAmount",
+          "variableName": "maximumAmount"
+        },
+        {
+          "kind": "Variable",
+          "name": "minimumAmount",
+          "variableName": "minimumAmount"
         },
         {
           "kind": "Variable",
@@ -778,6 +808,6 @@ return {
 };
 })();
 
-(node as any).hash = "177b57bcfb1a7d83c45f176279c82e10";
+(node as any).hash = "1ef3ad54a1e9c70526e069dec3615a7c";
 
 export default node;

@@ -1,5 +1,4 @@
 export {
-  accountBalanceAnalysisQuery,
   accountBalancesQuery,
   accountIncomesQuery,
   accountMovementsQuery,

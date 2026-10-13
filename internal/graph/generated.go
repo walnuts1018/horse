@@ -921,7 +921,7 @@ type ComplexityRoot struct {
 		ProductCatalog          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		ProductSuggestions      func(childComplexity int, householdID string, query string, merchant *string, first int) int
 		PurchaseCorrections     func(childComplexity int, purchaseID string, first *int, after *string) int
-		Purchases               func(childComplexity int, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after *string, before *string, first *int, last *int) int
+		Purchases               func(childComplexity int, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after *string, before *string, first *int, last *int, minimumAmount *model.Long, maximumAmount *model.Long, amountTarget *model.PurchaseAmountTarget) int
 		RecurringExpenses       func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
 		Settlement              func(childComplexity int, householdID string, period model.YearMonth) int
 		Tags                    func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
@@ -1454,7 +1454,7 @@ type QueryResolver interface {
 	UnmatchedObservations(ctx context.Context, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) (*model.UnmatchedObservationConnection, error)
 	ProductCatalog(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.ProductConceptConnection, error)
 	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first int) ([]*model.ProductSuggestion, error)
-	Purchases(ctx context.Context, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
+	Purchases(ctx context.Context, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after *string, before *string, first *int, last *int, minimumAmount *model.Long, maximumAmount *model.Long, amountTarget *model.PurchaseAmountTarget) (*model.PurchaseConnection, error)
 	PurchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error)
 	RecurringExpenses(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
 	Settlement(ctx context.Context, householdID string, period model.YearMonth) (model.SettlementVariant, error)
@@ -4808,7 +4808,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Purchases(childComplexity, args["householdId"].(string), args["from"].(*model.DateTime), args["to"].(*model.DateTime), args["origin"].(*model.PurchaseOrigin), args["hasEvidence"].(*bool), args["search"].(*string), args["categoryId"].(*string), args["uncategorized"].(*bool), args["tagId"].(*string), args["paymentAccountId"].(*string), args["poolId"].(*string), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
+		return e.ComplexityRoot.Query.Purchases(childComplexity, args["householdId"].(string), args["from"].(*model.DateTime), args["to"].(*model.DateTime), args["origin"].(*model.PurchaseOrigin), args["hasEvidence"].(*bool), args["search"].(*string), args["categoryId"].(*string), args["uncategorized"].(*bool), args["tagId"].(*string), args["paymentAccountId"].(*string), args["poolId"].(*string), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int), args["minimumAmount"].(*model.Long), args["maximumAmount"].(*model.Long), args["amountTarget"].(*model.PurchaseAmountTarget)), true
 	case "Query.recurringExpenses":
 		if e.ComplexityRoot.Query.RecurringExpenses == nil {
 			break
@@ -7097,6 +7097,11 @@ enum PurchaseOrigin {
   UNKNOWN
 }
 
+enum PurchaseAmountTarget {
+  PURCHASE
+  ITEM
+}
+
 type PurchaseEdge {
   cursor: String!
   node: Purchase!
@@ -7110,7 +7115,7 @@ type PurchaseConnection {
 }
 
 extend type Query {
-  purchases(householdId: ID! @nodeID(of: "Household"), from: DateTime, to: DateTime, origin: PurchaseOrigin, hasEvidence: Boolean, search: String, categoryId: ID @nodeID(of: "Category"), uncategorized: Boolean, tagId: ID @nodeID(of: "Tag"), paymentAccountId: ID @nodeID(of: "Account"), poolId: ID @nodeID(of: "Pool"), after: String, before: String, first: Int, last: Int): PurchaseConnection!
+  purchases(householdId: ID! @nodeID(of: "Household"), from: DateTime, to: DateTime, origin: PurchaseOrigin, hasEvidence: Boolean, search: String, categoryId: ID @nodeID(of: "Category"), uncategorized: Boolean, tagId: ID @nodeID(of: "Tag"), paymentAccountId: ID @nodeID(of: "Account"), poolId: ID @nodeID(of: "Pool"), after: String, before: String, first: Int, last: Int, minimumAmount: Long, maximumAmount: Long, amountTarget: PurchaseAmountTarget): PurchaseConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/purchase_correction.graphql", Input: `interface PurchaseCorrection implements Node {
@@ -11230,6 +11235,30 @@ func (ec *executionContext) field_Query_purchases_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["last"] = arg14
+	arg15, err := graphql.ProcessArgField(ctx, rawArgs, "minimumAmount",
+		func(ctx context.Context, v any) (*model.Long, error) {
+			return ec.unmarshalOLong2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["minimumAmount"] = arg15
+	arg16, err := graphql.ProcessArgField(ctx, rawArgs, "maximumAmount",
+		func(ctx context.Context, v any) (*model.Long, error) {
+			return ec.unmarshalOLong2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["maximumAmount"] = arg16
+	arg17, err := graphql.ProcessArgField(ctx, rawArgs, "amountTarget",
+		func(ctx context.Context, v any) (*model.PurchaseAmountTarget, error) {
+			return ec.unmarshalOPurchaseAmountTarget2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseAmountTarget(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["amountTarget"] = arg17
 	return args, nil
 }
 
@@ -25115,7 +25144,7 @@ func (ec *executionContext) _Query_purchases(ctx context.Context, field graphql.
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Purchases(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*model.DateTime), fc.Args["to"].(*model.DateTime), fc.Args["origin"].(*model.PurchaseOrigin), fc.Args["hasEvidence"].(*bool), fc.Args["search"].(*string), fc.Args["categoryId"].(*string), fc.Args["uncategorized"].(*bool), fc.Args["tagId"].(*string), fc.Args["paymentAccountId"].(*string), fc.Args["poolId"].(*string), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
+			return ec.Resolvers.Query().Purchases(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*model.DateTime), fc.Args["to"].(*model.DateTime), fc.Args["origin"].(*model.PurchaseOrigin), fc.Args["hasEvidence"].(*bool), fc.Args["search"].(*string), fc.Args["categoryId"].(*string), fc.Args["uncategorized"].(*bool), fc.Args["tagId"].(*string), fc.Args["paymentAccountId"].(*string), fc.Args["poolId"].(*string), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int), fc.Args["minimumAmount"].(*model.Long), fc.Args["maximumAmount"].(*model.Long), fc.Args["amountTarget"].(*model.PurchaseAmountTarget))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.PurchaseConnection) graphql.Marshaler {
@@ -52868,6 +52897,22 @@ func (ec *executionContext) unmarshalOProductLearningConfigurationInput2ᚖgithu
 	}
 	res, err := ec.unmarshalInputProductLearningConfigurationInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalOPurchaseAmountTarget2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseAmountTarget(ctx context.Context, v any) (*model.PurchaseAmountTarget, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.PurchaseAmountTarget)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOPurchaseAmountTarget2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseAmountTarget(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseAmountTarget) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
 }
 
 func (ec *executionContext) unmarshalOPurchaseCorrectionItemTargetInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseCorrectionItemTargetInput(ctx context.Context, v any) (*model.PurchaseCorrectionItemTargetInput, error) {

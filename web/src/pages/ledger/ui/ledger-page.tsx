@@ -32,7 +32,7 @@ import { EmptyState, InlineError } from "../../../shared/ui";
 import { formatQuantity, parseQuantity } from "../../../shared/lib";
 import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
 import { ObservationLinker } from "./observation-linker";
-import type { LedgerSearch } from "../model/ledger-search";
+import { toPurchaseAmountVariables, type LedgerSearch } from "../model/ledger-search";
 
 type PurchaseEvidence = {
   documentId: string;
@@ -133,6 +133,9 @@ export function LedgerPage({
       tagId: recordMode === "purchases" ? tagFilter || undefined : undefined,
       paymentAccountId: recordMode === "purchases" ? accountFilter || undefined : undefined,
       poolId: recordMode === "purchases" ? poolFilter || undefined : undefined,
+      ...(recordMode === "purchases"
+        ? toPurchaseAmountVariables({ minimumAmount, maximumAmount }, viewMode)
+        : {}),
     });
   const unmatched = useUnmatchedObservations(household.id, {
     enabled: recordMode === "observations",
@@ -734,10 +737,7 @@ export function LedgerPage({
         purchase.paymentAllocations.some(
           (payment) => payment.paymentAccountId === accountFilter,
         )) &&
-      (!tagFilter ||
-        purchase.items.some((item) => item.tags.some((tag) => tag.id === tagFilter))) &&
-      (!minimumAmount || purchase.totalYen >= Number(minimumAmount)) &&
-      (!maximumAmount || purchase.totalYen <= Number(maximumAmount))
+      (!tagFilter || purchase.items.some((item) => item.tags.some((tag) => tag.id === tagFilter)))
     );
   });
   const filteredItems = purchases.flatMap((purchase) => {
@@ -763,9 +763,7 @@ export function LedgerPage({
               : item.categoryId === categoryFilter)) &&
           (!poolFilter ||
             item.allocations.some((allocation) => allocation.poolId === poolFilter)) &&
-          (!tagFilter || item.tags.some((tag) => tag.id === tagFilter)) &&
-          (!minimumAmount || item.amountYen >= Number(minimumAmount)) &&
-          (!maximumAmount || item.amountYen <= Number(maximumAmount))
+          (!tagFilter || item.tags.some((tag) => tag.id === tagFilter))
         );
       })
       .map((item) => ({ purchase, item }));

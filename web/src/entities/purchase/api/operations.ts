@@ -13,6 +13,9 @@ export const purchasesQuery = graphql`
     $tagId: ID
     $paymentAccountId: ID
     $poolId: ID
+    $minimumAmount: Long
+    $maximumAmount: Long
+    $amountTarget: PurchaseAmountTarget
     $first: Int
   ) {
     ...PurchaseListFragment
@@ -28,6 +31,9 @@ export const purchasesQuery = graphql`
         tagId: $tagId
         paymentAccountId: $paymentAccountId
         poolId: $poolId
+        minimumAmount: $minimumAmount
+        maximumAmount: $maximumAmount
+        amountTarget: $amountTarget
         first: $first
       )
   }
@@ -80,6 +86,9 @@ export const purchaseListFragment = graphql`
     tagId: { type: "ID" }
     paymentAccountId: { type: "ID" }
     poolId: { type: "ID" }
+    minimumAmount: { type: "Long" }
+    maximumAmount: { type: "Long" }
+    amountTarget: { type: "PurchaseAmountTarget" }
     first: { type: "Int", defaultValue: 100 }
     after: { type: "String" }
   )
@@ -96,6 +105,9 @@ export const purchaseListFragment = graphql`
       tagId: $tagId
       paymentAccountId: $paymentAccountId
       poolId: $poolId
+      minimumAmount: $minimumAmount
+      maximumAmount: $maximumAmount
+      amountTarget: $amountTarget
       after: $after
       first: $first
     )
@@ -113,6 +125,9 @@ export const purchaseListFragment = graphql`
           "tagId"
           "paymentAccountId"
           "poolId"
+          "minimumAmount"
+          "maximumAmount"
+          "amountTarget"
         ]
       ) {
       edges {

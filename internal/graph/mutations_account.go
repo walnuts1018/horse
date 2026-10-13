@@ -9,6 +9,7 @@ import (
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -73,26 +74,18 @@ func (r *mutationResolver) createAccount(ctx context.Context, input model.Create
 		}).Exec(ctx, executor); err != nil {
 			return nil, err
 		}
-		accountReference := sql.Null[gofrsuuid.UUID]{V: idUUID, Valid: true}
-		noPool, noMember := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
-		zero := int64(0)
-		accountDebit, accountCredit := openingBalance, zero
-		contraDebit, contraCredit := zero, openingBalance
+		accountSide, offsetSide := accounting.Debit, accounting.Credit
 		if input.Kind == model.AccountKindCard {
-			accountDebit, accountCredit = zero, openingBalance
-			contraDebit, contraCredit = openingBalance, zero
+			accountSide, offsetSide = accounting.Credit, accounting.Debit
 		}
-		lineOne, lineTwo := int32(1), int32(2)
-		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-			JournalID: &journalID, LineNo: &lineOne, AccountID: &accountReference, PoolID: &noPool, MemberID: &noMember,
-			DebitYen: &accountDebit, CreditYen: &accountCredit, Memo: new("Opening balance"),
-		}).Exec(ctx, executor); err != nil {
+		entries, err := accounting.BuildEntries([]accounting.Posting{
+			{Side: accountSide, AccountID: &idUUID, AmountYen: openingBalance, Memo: "Opening balance"},
+			{Side: offsetSide, AmountYen: openingBalance, Memo: "Opening balance offset"},
+		})
+		if err != nil {
 			return nil, err
 		}
-		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-			JournalID: &journalID, LineNo: &lineTwo, AccountID: &noMember, PoolID: &noPool, MemberID: &noPool,
-			DebitYen: &contraDebit, CreditYen: &contraCredit, Memo: new("Opening balance offset"),
-		}).Exec(ctx, executor); err != nil {
+		if err := accounting.InsertEntries(ctx, executor, journalID, entries); err != nil {
 			return nil, err
 		}
 	}

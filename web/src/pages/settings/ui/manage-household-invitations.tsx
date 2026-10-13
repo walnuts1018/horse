@@ -10,7 +10,7 @@ import {
   createHouseholdInvitationMutation,
   householdInvitationsQuery,
   revokeHouseholdInvitationMutation,
-} from "../api/operations";
+} from "../api/household-invitations";
 
 type Invitation = HouseholdInvitationsQuery$data["householdInvitations"]["edges"][number]["node"];
 

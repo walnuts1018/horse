@@ -19,6 +19,10 @@ import (
 )
 
 func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
+	const (
+		alignedItemName   = "Aligned item"
+		expensiveItemName = "Expensive item"
+	)
 	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -103,6 +107,45 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	matched := makePurchase("Market", "Apple", "2026-04-10T12:00:00Z", &category.ID, &account.ID, &pool.ID)
 	matchedLater := makePurchase("Market", "Apple Juice", "2026-04-20T12:00:00Z", &category.ID, nil, &otherPool.ID)
 	unmatched := makePurchase("Hardware", "Hammer", "2026-05-10T12:00:00Z", nil, nil, &otherPool.ID)
+	amountPurchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID,
+		OccurredAt: model.DateTime("2026-05-11T12:00:00Z"), Merchant: "Amount market",
+		Items: []*model.PurchaseItemInput{
+			{Name: "Small item", AmountYen: 100, CategoryID: &category.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}},
+			{Name: "Large item", AmountYen: 200},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	alignedPurchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID,
+		OccurredAt: model.DateTime("2026-05-09T12:00:00Z"), Merchant: "Wanted aligned market",
+		Items: []*model.PurchaseItemInput{{Name: alignedItemName, AmountYen: 200, CategoryID: &category.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantedItemName := "Wanted item"
+	disjointSearchPurchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID,
+		OccurredAt: model.DateTime("2026-05-13T12:00:00Z"), Merchant: "Different market",
+		Items: []*model.PurchaseItemInput{
+			{Name: wantedItemName, AmountYen: 100},
+			{Name: expensiveItemName, AmountYen: 200, CategoryID: &category.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = mutation.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID,
+		OccurredAt: model.DateTime("2026-05-14T12:00:00Z"), Merchant: "Below minimum",
+		Items: []*model.PurchaseItemInput{{Name: "Small item", AmountYen: 100}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	matchedUUID, err := gofrsuuid.FromString(matched.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -117,6 +160,27 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	}
 	if _, err := models.PurchaseItemTags.Insert(&models.PurchaseItemTagSetter{HouseholdID: &householdUUID, PurchaseID: &matchedUUID, ItemID: &itemUUID, TagID: &tagUUID}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
+	}
+	for _, target := range []struct {
+		purchase  *model.Purchase
+		itemIndex int
+	}{
+		{purchase: amountPurchase, itemIndex: 0},
+		{purchase: alignedPurchase, itemIndex: 0},
+		{purchase: disjointSearchPurchase, itemIndex: 1},
+	} {
+		purchase := target.purchase
+		purchaseUUID, err := gofrsuuid.FromString(purchase.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		purchaseItemUUID, err := gofrsuuid.FromString(purchase.Items[target.itemIndex].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := models.PurchaseItemTags.Insert(&models.PurchaseItemTagSetter{HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, ItemID: &purchaseItemUUID, TagID: &tagUUID}).Exec(ctx, executor); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	query := &queryResolver{Resolver: resolver}
@@ -158,6 +222,26 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	poolResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, nil, &pool.ID, nil, nil, new(10), nil)
 	if err != nil || poolResult.TotalCount != 1 || len(poolResult.Edges) != 1 || poolResult.Edges[0].Node.ID != matched.ID {
 		t.Fatalf("pool filter returned %#v, error %v", poolResult, err)
+	}
+	minimumAmount := model.Long(150)
+	purchaseAmountTarget := model.PurchaseAmountTargetPurchase
+	purchaseAmountResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, new(1), nil, purchaseAmountFilter{minimum: &minimumAmount, target: &purchaseAmountTarget})
+	if err != nil || purchaseAmountResult.TotalCount != 3 || len(purchaseAmountResult.Edges) != 1 || purchaseAmountResult.Edges[0].Node.ID != disjointSearchPurchase.ID || purchaseAmountResult.Edges[0].Node.TotalYen != 300 {
+		t.Fatalf("purchase amount filter returned %#v, error %v", purchaseAmountResult, err)
+	}
+	itemAmountTarget := model.PurchaseAmountTargetItem
+	itemAmountResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, new(1), nil, purchaseAmountFilter{minimum: &minimumAmount, target: &itemAmountTarget})
+	if err != nil || itemAmountResult.TotalCount != 3 || len(itemAmountResult.Edges) != 1 || itemAmountResult.Edges[0].Node.ID != disjointSearchPurchase.ID || len(itemAmountResult.Edges[0].Node.Items) != 1 || itemAmountResult.Edges[0].Node.Items[0].Name != expensiveItemName {
+		t.Fatalf("item amount filter returned %#v, error %v", itemAmountResult, err)
+	}
+	itemAttributeResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, &category.ID, nil, &tag.ID, nil, &pool.ID, nil, nil, new(10), nil, purchaseAmountFilter{minimum: &minimumAmount, target: &itemAmountTarget})
+	if err != nil || itemAttributeResult.TotalCount != 2 || len(itemAttributeResult.Edges) != 2 || itemAttributeResult.Edges[0].Node.ID != disjointSearchPurchase.ID || itemAttributeResult.Edges[1].Node.ID != alignedPurchase.ID || len(itemAttributeResult.Edges[0].Node.Items) != 1 || itemAttributeResult.Edges[0].Node.Items[0].Name != expensiveItemName || len(itemAttributeResult.Edges[1].Node.Items) != 1 || itemAttributeResult.Edges[1].Node.Items[0].Name != alignedItemName {
+		t.Fatalf("combined item amount and attributes returned %#v, error %v", itemAttributeResult, err)
+	}
+	searchTerm := "Wanted"
+	itemSearchResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, &searchTerm, &category.ID, nil, &tag.ID, nil, &pool.ID, nil, nil, new(10), nil, purchaseAmountFilter{minimum: &minimumAmount, target: &itemAmountTarget})
+	if err != nil || itemSearchResult.TotalCount != 1 || len(itemSearchResult.Edges) != 1 || itemSearchResult.Edges[0].Node.ID != alignedPurchase.ID || len(itemSearchResult.Edges[0].Node.Items) != 1 || itemSearchResult.Edges[0].Node.Items[0].Name != alignedItemName {
+		t.Fatalf("combined item search, amount, and attributes returned %#v, error %v", itemSearchResult, err)
 	}
 	if _, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, &category.ID, new(true), nil, nil, nil, nil, nil, new(10), nil); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("simultaneous category and uncategorized filters returned %v; want bad input", err)

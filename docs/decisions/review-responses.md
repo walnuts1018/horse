@@ -158,8 +158,10 @@ UXレビューの未分類カテゴリ指摘は、履歴・商品候補・復元
 
 レシート観測保存とHouseholdロック順の更新後に`go test ./internal/application/purchase ./internal/graph`と対象範囲のgolangci-lintが成功しました。ただし`HORSE_TEST_DATABASE_URL`が設定されていないため、`TestCreateAndPostPurchaseIsAtomicAndIdempotent`を含むGraphQL DB統合テストはskipされています。この統合テストは成功時のPOSTED状態・revision・冪等再試行・レシート品目証拠と、記帳失敗時に購入・確認・証拠・冪等性記録を残さないrollbackを検証する構成ですが、DB実行結果はありません。したがって確認済みなのはコード、通常テスト、静的解析であり、実行時の原子性確認ではありません。
 
+GitHub Actions run `38451243233`ではPostgreSQL統合テストが実行され、購入作成時の品目証拠リンクを検証する既存テストが、削除済みの汎用リンクも期待していたため失敗しました。現行の契約は抽出品目ごとのEvidenceLinkのみを作成するため、テストの期待数を購入品目数に合わせました。修正後の統合テスト結果は次のCIで確認します。
+
 購入一覧のRelay fragmentは`mapPurchaseItem`でEntity型へ変換し、`as unknown as PurchaseItem[]`を削除しました。mapperは生成されたPurchaseList fragmentの品目型を入力に取ります。この具体的な指摘は解決済みとして`docs/reviews/simple.md`から除き、手書きのHousehold API型、`normalizeGraphQLValue()`、Mutation名を使う`normalizePurchaseVariables()`は残る課題として維持しました。
 
-設定画面の招待一覧・発行・失効を`features/manage-household-invitations`へ移し、ページング、通知、未保存変更保護を維持しました。設定内で完結する業務機能で再利用されなくても状態とUIの所有範囲を分離するため、このsliceを維持します。Steigerはこのsliceに対する`insignificant-slice`だけを対象限定で除外し、ほかのFSD検査を維持しました。画像座標変換も`pages/imports/model/evidence-geometry.ts`へ移しました。共有API生成型の参照は`shared/api/index.ts`から公開し、feature間の直接importを避けました。
+招待管理と口座残高推移のUI・状態を設定ページから別componentへ分け、GraphQL operationも`pages/settings/api`へ整理しました。どちらも設定ページだけで使うため、`pages/settings/ui`内に置き、再利用されないfeature sliceを作りません。品目入力も同様に`pages/purchase-create/ui/edit-purchase-items.tsx`へ分け、状態と行更新を親ページから移しました。画像座標変換は`pages/imports/model/evidence-geometry.ts`へ分離しました。共有API生成型の参照は`shared/api/index.ts`から公開します。
 
-口座移動と外部入金の借貸仕訳は`accounting.BuildEntries()`と`InsertEntries()`を利用するように統一しました。既存の`internal/application/accounting`テストが仕訳の釣り合いと不正行を検証するため、同じ不変条件を重ねるテストは追加していません。初期残高を記録するResolverの仕訳生成は引き続き個別実装です。
+口座の初期残高、口座移動、外部入金の借貸仕訳は`accounting.BuildEntries()`と`InsertEntries()`を利用するように統一しました。既存の`internal/application/accounting`テストが仕訳の釣り合いと不正行を検証するため、同じ不変条件を重ねるテストは追加していません。

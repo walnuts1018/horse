@@ -10,6 +10,7 @@ import type {
   PurchaseChangesSubscription,
   PurchaseCorrectionsPaginationQuery,
   PurchaseListFragment$key,
+  PurchaseAmountTarget,
   PurchasesQuery,
 } from "..";
 import { getRelayEnvironment } from "../../../shared/api";
@@ -32,6 +33,9 @@ type Options = {
   tagId?: string;
   paymentAccountId?: string;
   poolId?: string;
+  minimumAmount?: number;
+  maximumAmount?: number;
+  amountTarget?: PurchaseAmountTarget | null;
   loadAll?: boolean;
 };
 
@@ -50,6 +54,9 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
       tagId: options.tagId,
       paymentAccountId: options.paymentAccountId,
       poolId: options.poolId,
+      minimumAmount: options.minimumAmount,
+      maximumAmount: options.maximumAmount,
+      amountTarget: options.amountTarget,
     }),
     [
       householdId,
@@ -64,6 +71,9 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
       options.tagId,
       options.paymentAccountId,
       options.poolId,
+      options.minimumAmount,
+      options.maximumAmount,
+      options.amountTarget,
     ],
   );
   const query = useLazyLoadQuery<PurchasesQuery>(purchasesQuery, variables, {

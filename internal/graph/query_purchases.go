@@ -17,7 +17,20 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after, before *string, first, last *int) (*model.PurchaseConnection, error) {
+type purchaseAmountFilter struct {
+	minimum *model.Long
+	maximum *model.Long
+	target  *model.PurchaseAmountTarget
+}
+
+func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after, before *string, first, last *int, amountFilters ...purchaseAmountFilter) (*model.PurchaseConnection, error) {
+	var minimumAmount, maximumAmount *model.Long
+	var amountTarget *model.PurchaseAmountTarget
+	if len(amountFilters) > 0 {
+		minimumAmount = amountFilters[0].minimum
+		maximumAmount = amountFilters[0].maximum
+		amountTarget = amountFilters[0].target
+	}
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
 	}
@@ -33,6 +46,39 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		return nil, fmt.Errorf("parse household id: %w", err)
 	}
 	filters := []bob.Expression{models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID))}
+	filterItemsByCriteria := amountTarget != nil && *amountTarget == model.PurchaseAmountTargetItem
+	var itemFilters []bob.Expression
+	if minimumAmount != nil && maximumAmount != nil && *minimumAmount > *maximumAmount {
+		return nil, fmt.Errorf("minimumAmount cannot exceed maximumAmount: %w", ErrBadInput)
+	}
+	if minimumAmount != nil || maximumAmount != nil {
+		target := model.PurchaseAmountTargetPurchase
+		if amountTarget != nil {
+			target = *amountTarget
+		}
+		var amountFilter []bob.Expression
+		if minimumAmount != nil {
+			amountFilter = append(amountFilter, models.PurchaseItems.Columns.AmountYen.GTE(psql.Arg(int64(*minimumAmount))))
+		}
+		if maximumAmount != nil {
+			amountFilter = append(amountFilter, models.PurchaseItems.Columns.AmountYen.LTE(psql.Arg(int64(*maximumAmount))))
+		}
+		if target == model.PurchaseAmountTargetItem {
+			itemFilters = append(itemFilters, amountFilter...)
+		} else {
+			totalAmount := psql.Select(
+				sm.Columns(psql.F("SUM", models.PurchaseItems.Columns.AmountYen)),
+				sm.From(models.PurchaseItems.NameAsExpr()),
+				sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(models.Purchases.Columns.ID)),
+			)
+			if minimumAmount != nil {
+				filters = append(filters, psql.Group(totalAmount).GTE(psql.Arg(int64(*minimumAmount))))
+			}
+			if maximumAmount != nil {
+				filters = append(filters, psql.Group(totalAmount).LTE(psql.Arg(int64(*maximumAmount))))
+			}
+		}
+	}
 	if origin != nil {
 		filters = append(filters, models.Purchases.Columns.Origin.EQ(psql.Arg(string(*origin))))
 	}
@@ -65,15 +111,31 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 			models.PurchaseItems.Columns.Name.ILike(psql.Arg(pattern)),
 		)).E
 		filters = append(filters, psql.Or(models.Purchases.Columns.Merchant.ILike(psql.Arg(pattern)), itemNameMatch))
+		if filterItemsByCriteria {
+			itemFilters = append(itemFilters, psql.Or(
+				models.Purchases.Columns.Merchant.ILike(psql.Arg(pattern)),
+				models.PurchaseItems.Columns.Name.ILike(psql.Arg(pattern)),
+			))
+		}
 	}
 	if categoryID != nil {
 		id, err := gofrsuuid.FromString(*categoryID)
 		if err != nil {
 			return nil, fmt.Errorf("parse category id: %w", ErrBadInput)
 		}
-		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(models.PurchaseItems.Columns.CategoryID.EQ(psql.Arg(id)))).E)
+		categoryFilter := models.PurchaseItems.Columns.CategoryID.EQ(psql.Arg(id))
+		if filterItemsByCriteria {
+			itemFilters = append(itemFilters, categoryFilter)
+		} else {
+			filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(categoryFilter)).E)
+		}
 	} else if uncategorized != nil && *uncategorized {
-		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(models.PurchaseItems.Columns.CategoryID.IsNull())).E)
+		categoryFilter := models.PurchaseItems.Columns.CategoryID.IsNull()
+		if filterItemsByCriteria {
+			itemFilters = append(itemFilters, categoryFilter)
+		} else {
+			filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(categoryFilter)).E)
+		}
 	}
 	if tagID != nil {
 		id, err := gofrsuuid.FromString(*tagID)
@@ -81,7 +143,11 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 			return nil, fmt.Errorf("parse tag id: %w", ErrBadInput)
 		}
 		tagFilter := models.SelectWhere.PurchaseItems.R.HasPurchaseItemTags(sm.Where(models.PurchaseItemTags.Columns.TagID.EQ(psql.Arg(id)))).E
-		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(tagFilter)).E)
+		if filterItemsByCriteria {
+			itemFilters = append(itemFilters, tagFilter)
+		} else {
+			filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(tagFilter)).E)
+		}
 	}
 	if paymentAccountID != nil {
 		id, err := gofrsuuid.FromString(*paymentAccountID)
@@ -96,7 +162,14 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 			return nil, fmt.Errorf("parse pool id: %w", ErrBadInput)
 		}
 		allocationFilter := models.SelectWhere.PurchaseItems.R.HasItemAllocations(sm.Where(models.ItemAllocations.Columns.PoolID.EQ(psql.Arg(id)))).E
-		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(allocationFilter)).E)
+		if filterItemsByCriteria {
+			itemFilters = append(itemFilters, allocationFilter)
+		} else {
+			filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(allocationFilter)).E)
+		}
+	}
+	if filterItemsByCriteria && len(itemFilters) > 0 {
+		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(psql.And(itemFilters...))).E)
 	}
 	executor := queryExecutor(r.DB)
 	syncCursor, err := latestHouseholdEventCursor(ctx, r.DB, hhID)
@@ -169,6 +242,36 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		return nil, err
 	}
 	for index, purchase := range loadedPurchases {
+		if filterItemsByCriteria && len(itemFilters) > 0 {
+			items := purchase.Items[:0]
+			for _, item := range purchase.Items {
+				if minimumAmount != nil && int64(item.AmountYen) < int64(*minimumAmount) {
+					continue
+				}
+				if maximumAmount != nil && int64(item.AmountYen) > int64(*maximumAmount) {
+					continue
+				}
+				if categoryID != nil && (item.CategoryID == nil || *item.CategoryID != *categoryID) {
+					continue
+				}
+				if uncategorized != nil && *uncategorized && item.CategoryID != nil {
+					continue
+				}
+				if tagID != nil && !slices.ContainsFunc(item.Tags, func(tag *model.Tag) bool { return tag.ID == *tagID }) {
+					continue
+				}
+				if poolID != nil && !slices.ContainsFunc(item.Allocations, func(allocation *model.PurchaseItemAllocation) bool { return allocation.PoolID == *poolID }) {
+					continue
+				}
+				if search != nil && strings.TrimSpace(*search) != "" &&
+					!strings.Contains(strings.ToLower(purchase.Merchant), strings.ToLower(strings.TrimSpace(*search))) &&
+					!strings.Contains(strings.ToLower(item.Name), strings.ToLower(strings.TrimSpace(*search))) {
+					continue
+				}
+				items = append(items, item)
+			}
+			purchase.Items = items
+		}
 		row := purchases[index]
 		connection.Edges = append(connection.Edges, &model.PurchaseEdge{Cursor: encodeCursor(nodeTypePurchase, row.ID.String()), Node: purchase})
 	}

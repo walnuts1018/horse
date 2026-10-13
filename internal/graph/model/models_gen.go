@@ -2398,6 +2398,61 @@ func (e PoolKind) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+type PurchaseAmountTarget string
+
+const (
+	PurchaseAmountTargetPurchase PurchaseAmountTarget = "PURCHASE"
+	PurchaseAmountTargetItem     PurchaseAmountTarget = "ITEM"
+)
+
+var AllPurchaseAmountTarget = []PurchaseAmountTarget{
+	PurchaseAmountTargetPurchase,
+	PurchaseAmountTargetItem,
+}
+
+func (e PurchaseAmountTarget) IsValid() bool {
+	switch e {
+	case PurchaseAmountTargetPurchase, PurchaseAmountTargetItem:
+		return true
+	}
+	return false
+}
+
+func (e PurchaseAmountTarget) String() string {
+	return string(e)
+}
+
+func (e *PurchaseAmountTarget) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = PurchaseAmountTarget(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid PurchaseAmountTarget", str)
+	}
+	return nil
+}
+
+func (e PurchaseAmountTarget) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *PurchaseAmountTarget) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e PurchaseAmountTarget) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
 type PurchaseChangeEntity string
 
 const (

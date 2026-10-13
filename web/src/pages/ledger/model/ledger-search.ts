@@ -1,4 +1,5 @@
 import type { Purchase, SourceKind, UnmatchedObservationState } from "../../../shared/api";
+import type { PurchaseAmountTarget, PurchasesQuery } from "../../../entities/purchase";
 
 export type LedgerSearch = {
   recordMode: "purchases" | "observations";
@@ -35,6 +36,17 @@ export const defaultLedgerSearch: LedgerSearch = {
   minimumAmount: "",
   maximumAmount: "",
 };
+
+export function toPurchaseAmountVariables(
+  filters: Pick<LedgerSearch, "minimumAmount" | "maximumAmount">,
+  viewMode: LedgerSearch["viewMode"],
+): Pick<PurchasesQuery["variables"], "minimumAmount" | "maximumAmount" | "amountTarget"> {
+  return {
+    minimumAmount: filters.minimumAmount ? Number(filters.minimumAmount) : undefined,
+    maximumAmount: filters.maximumAmount ? Number(filters.maximumAmount) : undefined,
+    amountTarget: (viewMode === "items" ? "ITEM" : "PURCHASE") satisfies PurchaseAmountTarget,
+  };
+}
 
 function stringValue(value: unknown, maxLength = 200): string {
   return typeof value === "string" ? value.slice(0, maxLength) : "";

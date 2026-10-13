@@ -406,8 +406,8 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 		t.Fatalf("global default allocation was not snapshotted: %#v", confirmed.Items)
 	}
 	evidenceLinks, err := models.EvidenceLinks.Query(sm.Where(models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(generatedUUID(confirmed.ID))))).All(ctx, bobpgx.NewPool(db))
-	if err != nil || len(evidenceLinks) != 3 {
-		t.Fatalf("source purchase should persist document and item evidence in the create transaction: links=%d error=%v", len(evidenceLinks), err)
+	if err != nil || len(evidenceLinks) != len(fromSource.Items) {
+		t.Fatalf("source purchase should persist one item evidence link per extracted item: links=%d error=%v", len(evidenceLinks), err)
 	}
 	itemEvidence := 0
 	seenItemIndexes := make(map[int]struct{}, len(fromSource.Items))
