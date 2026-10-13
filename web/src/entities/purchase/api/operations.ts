@@ -21,6 +21,36 @@ export const purchasesQuery = graphql`
   }
 `;
 
+export const purchaseCorrectionsPaginationQuery = graphql`
+  query PurchaseCorrectionsPaginationQuery($purchaseId: ID!, $first: Int, $after: String) {
+    purchaseCorrections(purchaseId: $purchaseId, first: $first, after: $after) {
+      edges {
+        cursor
+        node {
+          id
+          itemId
+          amountDeltaYen
+          reason
+          occurredAt
+          settlementMonth
+          paymentAllocations {
+            paymentAccountId
+            amountYen
+            account {
+              id
+              name
+            }
+          }
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+    }
+  }
+`;
+
 export const purchaseListFragment = graphql`
   fragment PurchaseListFragment on Query
   @argumentDefinitions(
@@ -70,6 +100,7 @@ export const purchaseListFragment = graphql`
           totalYen
           corrections(first: 100) {
             edges {
+              cursor
               node {
                 id
                 itemId
@@ -88,6 +119,7 @@ export const purchaseListFragment = graphql`
               }
             }
             pageInfo {
+              endCursor
               hasNextPage
             }
           }

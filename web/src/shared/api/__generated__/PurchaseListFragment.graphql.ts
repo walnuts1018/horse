@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9dad23ffed509b5243d75eeb7eddce14>>
+ * @generated SignedSource<<2c15ff5e9a4c94972d6b7400b51e3116>>
  * @lightSyntaxTransform
  */
 
@@ -19,6 +19,7 @@ export type PurchaseListFragment$data = {
       readonly node: {
         readonly corrections: {
           readonly edges: ReadonlyArray<{
+            readonly cursor: string;
             readonly node: {
               readonly amountDeltaYen: any;
               readonly id: string;
@@ -37,6 +38,7 @@ export type PurchaseListFragment$data = {
             };
           }>;
           readonly pageInfo: {
+            readonly endCursor: string | null | undefined;
             readonly hasNextPage: boolean;
           };
         };
@@ -127,38 +129,45 @@ v1 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "id",
+  "name": "cursor",
   "storageKey": null
 },
 v2 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "householdId",
+  "name": "id",
   "storageKey": null
 },
 v3 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "occurredAt",
+  "name": "householdId",
   "storageKey": null
 },
 v4 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "amountYen",
+  "name": "occurredAt",
   "storageKey": null
 },
 v5 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "name",
+  "name": "amountYen",
   "storageKey": null
 },
 v6 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "name",
+  "storageKey": null
+},
+v7 = {
   "alias": null,
   "args": null,
   "concreteType": "PurchasePayment",
@@ -173,7 +182,7 @@ v6 = {
       "name": "paymentAccountId",
       "storageKey": null
     },
-    (v4/*:: as any*/),
+    (v5/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -182,22 +191,22 @@ v6 = {
       "name": "account",
       "plural": false,
       "selections": [
-        (v1/*:: as any*/),
-        (v5/*:: as any*/)
+        (v2/*:: as any*/),
+        (v6/*:: as any*/)
       ],
       "storageKey": null
     }
   ],
   "storageKey": null
 },
-v7 = {
+v8 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "denominator",
   "storageKey": null
 },
-v8 = [
+v9 = [
   {
     "alias": null,
     "args": null,
@@ -205,7 +214,7 @@ v8 = [
     "name": "numerator",
     "storageKey": null
   },
-  (v7/*:: as any*/),
+  (v8/*:: as any*/),
   {
     "alias": null,
     "args": null,
@@ -214,14 +223,21 @@ v8 = [
     "storageKey": null
   }
 ],
-v9 = {
+v10 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "revision",
   "storageKey": null
 },
-v10 = {
+v11 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "endCursor",
+  "storageKey": null
+},
+v12 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
@@ -333,13 +349,7 @@ return {
           "name": "edges",
           "plural": true,
           "selections": [
-            {
-              "alias": null,
-              "args": null,
-              "kind": "ScalarField",
-              "name": "cursor",
-              "storageKey": null
-            },
+            (v1/*:: as any*/),
             {
               "alias": null,
               "args": null,
@@ -348,9 +358,9 @@ return {
               "name": "node",
               "plural": false,
               "selections": [
-                (v1/*:: as any*/),
                 (v2/*:: as any*/),
                 (v3/*:: as any*/),
+                (v4/*:: as any*/),
                 {
                   "alias": null,
                   "args": null,
@@ -379,7 +389,7 @@ return {
                   "name": "sourceKinds",
                   "storageKey": null
                 },
-                (v6/*:: as any*/),
+                (v7/*:: as any*/),
                 {
                   "alias": null,
                   "args": null,
@@ -388,9 +398,9 @@ return {
                   "name": "items",
                   "plural": true,
                   "selections": [
-                    (v1/*:: as any*/),
+                    (v2/*:: as any*/),
+                    (v6/*:: as any*/),
                     (v5/*:: as any*/),
-                    (v4/*:: as any*/),
                     {
                       "alias": null,
                       "args": null,
@@ -405,7 +415,7 @@ return {
                       "kind": "LinkedField",
                       "name": "quantity",
                       "plural": false,
-                      "selections": (v8/*:: as any*/),
+                      "selections": (v9/*:: as any*/),
                       "storageKey": null
                     },
                     {
@@ -416,7 +426,7 @@ return {
                       "name": "printedUnitPrice",
                       "plural": false,
                       "selections": [
-                        (v4/*:: as any*/),
+                        (v5/*:: as any*/),
                         {
                           "alias": null,
                           "args": null,
@@ -424,7 +434,7 @@ return {
                           "kind": "LinkedField",
                           "name": "basis",
                           "plural": false,
-                          "selections": (v8/*:: as any*/),
+                          "selections": (v9/*:: as any*/),
                           "storageKey": null
                         }
                       ],
@@ -445,11 +455,11 @@ return {
                           "name": "numeratorYen",
                           "storageKey": null
                         },
-                        (v7/*:: as any*/)
+                        (v8/*:: as any*/)
                       ],
                       "storageKey": null
                     },
-                    (v9/*:: as any*/),
+                    (v10/*:: as any*/),
                     {
                       "alias": null,
                       "args": null,
@@ -493,7 +503,7 @@ return {
                           "name": "weight",
                           "storageKey": null
                         },
-                        (v4/*:: as any*/)
+                        (v5/*:: as any*/)
                       ],
                       "storageKey": null
                     },
@@ -505,9 +515,9 @@ return {
                       "name": "tags",
                       "plural": true,
                       "selections": [
-                        (v1/*:: as any*/),
                         (v2/*:: as any*/),
-                        (v5/*:: as any*/),
+                        (v3/*:: as any*/),
+                        (v6/*:: as any*/),
                         {
                           "alias": null,
                           "args": null,
@@ -515,7 +525,7 @@ return {
                           "name": "archived",
                           "storageKey": null
                         },
-                        (v9/*:: as any*/)
+                        (v10/*:: as any*/)
                       ],
                       "storageKey": null
                     }
@@ -551,6 +561,7 @@ return {
                       "name": "edges",
                       "plural": true,
                       "selections": [
+                        (v1/*:: as any*/),
                         {
                           "alias": null,
                           "args": null,
@@ -559,7 +570,7 @@ return {
                           "name": "node",
                           "plural": false,
                           "selections": [
-                            (v1/*:: as any*/),
+                            (v2/*:: as any*/),
                             {
                               "alias": null,
                               "args": null,
@@ -581,7 +592,7 @@ return {
                               "name": "reason",
                               "storageKey": null
                             },
-                            (v3/*:: as any*/),
+                            (v4/*:: as any*/),
                             {
                               "alias": null,
                               "args": null,
@@ -589,7 +600,7 @@ return {
                               "name": "settlementMonth",
                               "storageKey": null
                             },
-                            (v6/*:: as any*/)
+                            (v7/*:: as any*/)
                           ],
                           "storageKey": null
                         }
@@ -604,14 +615,15 @@ return {
                       "name": "pageInfo",
                       "plural": false,
                       "selections": [
-                        (v10/*:: as any*/)
+                        (v11/*:: as any*/),
+                        (v12/*:: as any*/)
                       ],
                       "storageKey": null
                     }
                   ],
                   "storageKey": "corrections(first:100)"
                 },
-                (v9/*:: as any*/),
+                (v10/*:: as any*/),
                 {
                   "alias": null,
                   "args": null,
@@ -661,14 +673,8 @@ return {
               "name": "startCursor",
               "storageKey": null
             },
-            {
-              "alias": null,
-              "args": null,
-              "kind": "ScalarField",
-              "name": "endCursor",
-              "storageKey": null
-            },
-            (v10/*:: as any*/),
+            (v11/*:: as any*/),
+            (v12/*:: as any*/),
             {
               "alias": null,
               "args": null,
@@ -702,6 +708,6 @@ return {
 };
 })();
 
-(node as any).hash = "369a55796e8eae9cb1ee66afca2787af";
+(node as any).hash = "8bee253e4ad36ae080e659e904b90c30";
 
 export default node;
