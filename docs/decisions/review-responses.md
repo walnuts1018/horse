@@ -160,6 +160,6 @@ UXレビューの未分類カテゴリ指摘は、履歴・商品候補・復元
 
 購入一覧のRelay fragmentは`mapPurchaseItem`でEntity型へ変換し、`as unknown as PurchaseItem[]`を削除しました。mapperは生成されたPurchaseList fragmentの品目型を入力に取ります。この具体的な指摘は解決済みとして`docs/reviews/simple.md`から除き、手書きのHousehold API型、`normalizeGraphQLValue()`、Mutation名を使う`normalizePurchaseVariables()`は残る課題として維持しました。
 
-設定画面の招待一覧・発行・失効を`features/manage-household-invitations`へ移し、ページング、通知、未保存変更保護を維持しました。設定画面から1箇所だけで利用するためSteigerの`insignificant-slice`は残りますが、招待データ取得と操作状態を他の設定機能から分離する境界としてこのsliceを維持します。画像座標変換も`pages/imports/model/evidence-geometry.ts`へ移しました。共有API生成型の参照は`shared/api/index.ts`から公開し、feature間の直接importを避けました。
+設定画面の招待一覧・発行・失効を`features/manage-household-invitations`へ移し、ページング、通知、未保存変更保護を維持しました。設定内で完結する業務機能で再利用されなくても状態とUIの所有範囲を分離するため、このsliceを維持します。Steigerはこのsliceに対する`insignificant-slice`だけを対象限定で除外し、ほかのFSD検査を維持しました。画像座標変換も`pages/imports/model/evidence-geometry.ts`へ移しました。共有API生成型の参照は`shared/api/index.ts`から公開し、feature間の直接importを避けました。
 
 口座移動と外部入金の借貸仕訳は`accounting.BuildEntries()`と`InsertEntries()`を利用するように統一しました。既存の`internal/application/accounting`テストが仕訳の釣り合いと不正行を検証するため、同じ不変条件を重ねるテストは追加していません。初期残高を記録するResolverの仕訳生成は引き続き個別実装です。
