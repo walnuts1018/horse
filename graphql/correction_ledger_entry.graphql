@@ -1,0 +1,9 @@
+type CorrectionLedgerEntry implements LedgerEntry & Node {
+  id: ID! @goField(forceResolver: true)
+  occurredAt: DateTime!
+  description: String!
+  amountYen: Long!
+  currency: String!
+  createdAt: DateTime!
+  purchase: Purchase!
+}
