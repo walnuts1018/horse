@@ -1,0 +1,9 @@
+type AccountBalance {
+  accountId: ID! @goField(forceResolver: true)
+  balanceYen: Long!
+  currency: String!
+}
+
+extend type Query {
+  accountBalances(householdId: ID! @nodeID(of: "Household")): [AccountBalance!]!
+}
