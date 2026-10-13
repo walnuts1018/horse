@@ -1,12 +1,5 @@
 extend type Mutation {
   createPurchase(input: CreatePurchaseInput!): CreatePurchaseResult!
-  createAndPostPurchase(input: CreatePurchaseInput!): CreateAndPostPurchaseResult!
-}
-
-union CreateAndPostPurchaseResult = CreateAndPostPurchaseSuccess | CreateAndPostPurchaseUserError
-
-type CreateAndPostPurchaseSuccess {
-  result: Purchase!
 }
 
 union CreatePurchaseResult = CreatePurchaseSuccess | CreatePurchaseUserError
@@ -15,57 +8,7 @@ type CreatePurchaseSuccess {
   result: Purchase!
 }
 
-input CreatePurchaseInput {
-  idempotencyKey: String!
-  householdId: ID! @nodeID(of: "Household")
-  occurredAt: DateTime!
-  merchant: String!
-  origin: PurchaseOrigin
-  paymentAllocations: [CreatePurchasePaymentInput!]
-  sourceDocumentId: ID
-  sourceReference: String
-  receiptCandidateId: String
-  manualAmountOverrideReason: String
-  items: [PurchaseItemInput!]!
-}
-
-input PurchaseItemInput {
-  name: String!
-  amountYen: Long!
-  quantity: CreatePurchaseQuantityInput
-  printedUnitPrice: CreatePurchasePrintedUnitPriceInput
-  categoryId: ID @nodeID(of: "Category")
-  productVariantId: ID @nodeID(of: "ProductVariant")
-  allocations: [CreatePurchaseAllocationInput!]
-}
-
-input CreatePurchasePaymentInput {
-  paymentAccountId: ID! @nodeID(of: "Account")
-  amountYen: Long!
-}
-
-input CreatePurchaseQuantityInput {
-  numerator: String!
-  denominator: String!
-  unit: String!
-}
-
-input CreatePurchasePrintedUnitPriceInput {
-  amountYen: Long!
-  basis: CreatePurchaseQuantityInput!
-}
-
-input CreatePurchaseAllocationInput {
-  poolId: ID! @nodeID(of: "Pool")
-  weight: Long!
-}
-
 type CreatePurchaseUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-
-type CreateAndPostPurchaseUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }

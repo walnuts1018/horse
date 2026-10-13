@@ -1340,6 +1340,7 @@ type MutationResolver interface {
 	ClosePeriod(ctx context.Context, input model.ClosePeriodInput) (model.ClosePeriodResult, error)
 	CorrectPurchase(ctx context.Context, input model.CorrectPurchaseInput) (model.CorrectPurchaseResult, error)
 	CreateAccount(ctx context.Context, input model.CreateAccountInput) (model.CreateAccountResult, error)
+	CreateAndPostPurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreateAndPostPurchaseResult, error)
 	CreateBudget(ctx context.Context, input model.CreateBudgetInput) (model.CreateBudgetResult, error)
 	CreateCategory(ctx context.Context, input model.CreateCategoryInput) (model.CreateCategoryResult, error)
 	CreateHouseholdInvitation(ctx context.Context, input model.CreateHouseholdInvitationInput) (model.CreateHouseholdInvitationResult, error)
@@ -1348,7 +1349,6 @@ type MutationResolver interface {
 	CreateProductConcept(ctx context.Context, input model.CreateProductConceptInput) (model.CreateProductConceptResult, error)
 	CreateProductVariant(ctx context.Context, input model.CreateProductVariantInput) (model.CreateProductVariantResult, error)
 	CreatePurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreatePurchaseResult, error)
-	CreateAndPostPurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreateAndPostPurchaseResult, error)
 	CreateRecurringExpense(ctx context.Context, input model.CreateRecurringExpenseInput) (model.CreateRecurringExpenseResult, error)
 	CreateTag(ctx context.Context, input model.CreateTagInput) (model.CreateTagResult, error)
 	PostPurchase(ctx context.Context, input model.PostPurchaseInput) (model.PostPurchaseResult, error)
@@ -6373,6 +6373,21 @@ type CreateAccountUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/create_and_post_purchase_mutation.graphql", Input: `extend type Mutation {
+  createAndPostPurchase(input: CreatePurchaseInput!): CreateAndPostPurchaseResult!
+}
+
+union CreateAndPostPurchaseResult = CreateAndPostPurchaseSuccess | CreateAndPostPurchaseUserError
+
+type CreateAndPostPurchaseSuccess {
+  result: Purchase!
+}
+
+type CreateAndPostPurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/create_budget_mutation.graphql", Input: `extend type Mutation {
   createBudget(input: CreateBudgetInput!): CreateBudgetResult!
 }
@@ -6529,24 +6544,7 @@ type CreateProductVariantUserError implements MutationError {
   message: String!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/create_purchase_mutation.graphql", Input: `extend type Mutation {
-  createPurchase(input: CreatePurchaseInput!): CreatePurchaseResult!
-  createAndPostPurchase(input: CreatePurchaseInput!): CreateAndPostPurchaseResult!
-}
-
-union CreateAndPostPurchaseResult = CreateAndPostPurchaseSuccess | CreateAndPostPurchaseUserError
-
-type CreateAndPostPurchaseSuccess {
-  result: Purchase!
-}
-
-union CreatePurchaseResult = CreatePurchaseSuccess | CreatePurchaseUserError
-
-type CreatePurchaseSuccess {
-  result: Purchase!
-}
-
-input CreatePurchaseInput {
+	{Name: "../../graphql/create_purchase_input.graphql", Input: `input CreatePurchaseInput {
   idempotencyKey: String!
   householdId: ID! @nodeID(of: "Household")
   occurredAt: DateTime!
@@ -6590,13 +6588,18 @@ input CreatePurchaseAllocationInput {
   poolId: ID! @nodeID(of: "Pool")
   weight: Long!
 }
-
-type CreatePurchaseUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
+`, BuiltIn: false},
+	{Name: "../../graphql/create_purchase_mutation.graphql", Input: `extend type Mutation {
+  createPurchase(input: CreatePurchaseInput!): CreatePurchaseResult!
 }
 
-type CreateAndPostPurchaseUserError implements MutationError {
+union CreatePurchaseResult = CreatePurchaseSuccess | CreatePurchaseUserError
+
+type CreatePurchaseSuccess {
+  result: Purchase!
+}
+
+type CreatePurchaseUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
@@ -19253,6 +19256,50 @@ func (ec *executionContext) fieldContext_Mutation_createAccount(ctx context.Cont
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_createAndPostPurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createAndPostPurchase(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateAndPostPurchase(ctx, fc.Args["input"].(model.CreatePurchaseInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CreateAndPostPurchaseResult) graphql.Marshaler {
+			return ec.marshalNCreateAndPostPurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateAndPostPurchaseResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createAndPostPurchase(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CreateAndPostPurchaseResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createAndPostPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_createBudget(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -19599,50 +19646,6 @@ func (ec *executionContext) fieldContext_Mutation_createPurchase(ctx context.Con
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_createPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_createAndPostPurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Mutation_createAndPostPurchase(ctx, field)
-		},
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreateAndPostPurchase(ctx, fc.Args["input"].(model.CreatePurchaseInput))
-		},
-		nil,
-		func(ctx context.Context, selections ast.SelectionSet, v model.CreateAndPostPurchaseResult) graphql.Marshaler {
-			return ec.marshalNCreateAndPostPurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCreateAndPostPurchaseResult(ctx, selections, v)
-		},
-		true,
-		true,
-	)
-}
-func (ec *executionContext) fieldContext_Mutation_createAndPostPurchase(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type CreateAndPostPurchaseResult does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_createAndPostPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -43256,6 +43259,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "createAndPostPurchase":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createAndPostPurchase(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "createBudget":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createBudget(ctx, field)
@@ -43308,13 +43318,6 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "createPurchase":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createPurchase(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "createAndPostPurchase":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_createAndPostPurchase(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++

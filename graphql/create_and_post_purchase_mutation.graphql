@@ -1,0 +1,14 @@
+extend type Mutation {
+  createAndPostPurchase(input: CreatePurchaseInput!): CreateAndPostPurchaseResult!
+}
+
+union CreateAndPostPurchaseResult = CreateAndPostPurchaseSuccess | CreateAndPostPurchaseUserError
+
+type CreateAndPostPurchaseSuccess {
+  result: Purchase!
+}
+
+type CreateAndPostPurchaseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

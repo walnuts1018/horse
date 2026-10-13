@@ -70,9 +70,9 @@ CSV明細の永続参照は取引番号から行番号へ変更しました。Tr
 
 ### GraphQL Schema
 
-Mutation単位とドメイン型単位でSDLを分割し、gqlgenは`follow-schema`を使います。全37 Mutationが`Success | UserError`のResult unionを返し、共通`MutationError` interfaceを使います。Ledger、Settlement、Pool、Observation、PurchaseCorrection、AccountBalanceSourceも型の違いをinterface/unionで表しています。この構成はpiccaのADR 0002とSDL分割に沿うため、該当するレビュー指摘は解決済みとして`docs/reviews/graphql.md`から削除しました。根拠は`gqlgen.yml`、`graphql/*_mutation.graphql`、各domain SDLです。
+Mutation単位とドメイン型単位でSDLを分割し、gqlgenは`follow-schema`を使います。全38 Mutation操作が`Success | UserError`のResult unionを返し、共通`MutationError` interfaceを使います。Ledger、Settlement、Pool、Observation、PurchaseCorrection、AccountBalanceSourceも型の違いをinterface/unionで表しています。この構成はpiccaのADR 0002とSDL分割に沿うため、該当するレビュー指摘は解決済みとして`docs/reviews/graphql.md`から削除しました。根拠は`gqlgen.yml`、`graphql/*_mutation.graphql`、各domain SDLです。
 
-nullable outputの静的監査では、明白にnon-nullへ変更できるfieldは見つかりませんでした。任意の関連ID・終了日・商品数量・OCRの観測日時など、nullableが値の欠損条件を表す箇所は維持します。一方、default付きの`includeArchived`と`productSuggestions.first`はSDLでnon-nullにできる候補ですが、Relay operationとの互換性確認が必要です。`ProductVariant.brand`と`packageSize`はnullと空文字の扱いがresolver間で揃っていません。Relayを使わずread関数が全ページを順次取得する一覧と、nullableの残課題を`docs/reviews/graphql.md`に残します。run `38392241924`ではgqlgenとRelay生成物、Go DB統合テスト、Frontend型・FSD・lint・format・buildが成功しました。
+nullable outputの静的監査では、明白にnon-nullへ変更できるfieldは見つかりませんでした。任意の関連ID・終了日・商品数量・OCRの観測日時など、nullableが値の欠損条件を表す箇所は維持します。default付きの`includeArchived`と`productSuggestions.first`はSDLでnon-nullに変更し、Relay operation variablesとResolver引数も更新しました。`ProductVariant.brand`と`packageSize`は未設定値をnullへ統一しました。`Budget`、`Tag`、`RecurringExpense`、`ProductCatalog`の一覧はConnection化し、Frontend read関数で全ページを取得します。これらのレビュー項目は解決済みです。
 
 タグ一覧を`TagConnection`に変更し、`first`/`after`と`last`/`before`によるページングを追加しました。カーソルはタグ名とIDで安定順序を作り、カーソルの家庭スコープと`includeArchived`条件を検証します。Frontendの`readTags`は全ページを取得し、通常一覧ではアーカイブ済みを除外し、設定画面では従来どおり含めます。DB統合テストで前後ページ、アーカイブ条件、別家庭のカーソル拒否を確認し、run `38392241924`でGo DB統合テストとFrontend検査が成功しました。
 
@@ -146,7 +146,7 @@ GraphQLレビューの一覧取得項目を確認しました。`Budget`、`Tag`
 
 OCR照合はGeminiが返した品目だけでなく、信頼度0.5以上で金額と文字を含み、品目領域に対応しないOCR行も検出します。税・合計・支払・割引・日付などの明細以外の行は候補から除き、該当時は確認事項として返します。`TestOCRCorroborationFindsUnmatchedItemRows`で読み飛ばし候補の検出と小計行の除外を確認しました。
 
-SDL分割は、`LedgerEntry`のinterface/Connection、各具象ledger型、`PurchasePayment`を独立したドメイン型ファイルに分けました。`AccountBalanceSource` unionのメンバーは分割後も同名型として解決されます。Relayとgqlgenの生成後にGo GraphQLパッケージテストを実行しました。
+SDL分割は、`LedgerEntry`のinterface/Connection、各具象ledger型、`PurchasePayment`を独立したドメイン型ファイルに分けました。`createPurchase`と`createAndPostPurchase`も各Mutation操作のSDLファイルに分け、両方で使うInput型は`create_purchase_input.graphql`へ配置しました。`AccountBalanceSource` unionのメンバーは分割後も同名型として解決されます。Relayとgqlgenの生成後にGo GraphQLパッケージテストを実行しました。
 
 UXレビューの未分類カテゴリ指摘は、履歴・商品候補・復元下書き・貼り付け・購入複製から取得するカテゴリIDを有効カテゴリに照合し、無効またはアーカイブ済みなら未分類へ正規化して解決しました。日別支出はPOSTED/CLOSED購入を東京時間の購入日に集計し、返金を元の購入日に反映する既存会計規則に一致します。東京時間の日付境界、下書き除外、返金反映、7日分の出力を検証する統合テストを追加しました。
 
