@@ -52,5 +52,15 @@ type UnmatchedObservationConnection {
 }
 
 extend type Query {
-  unmatchedObservations(householdId: ID! @nodeID(of: "Household"), from: YearMonth, to: YearMonth, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, before: String, first: Int, last: Int): UnmatchedObservationConnection!
+  unmatchedObservations(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth
+    to: YearMonth
+    sourceKind: SourceKind
+    state: UnmatchedObservationState
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UnmatchedObservationConnection!
 }

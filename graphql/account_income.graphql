@@ -21,5 +21,11 @@ type AccountIncomeConnection {
 }
 
 extend type Query {
-  accountIncomes(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AccountIncomeConnection!
+  accountIncomes(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): AccountIncomeConnection!
 }

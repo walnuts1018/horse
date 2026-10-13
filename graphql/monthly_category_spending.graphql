@@ -6,5 +6,9 @@ type MonthlyCategorySpending {
 }
 
 extend type Query {
-  monthlyCategorySpending(householdId: ID! @nodeID(of: "Household"), from: YearMonth!, to: YearMonth!): [MonthlyCategorySpending!]!
+  monthlyCategorySpending(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth!
+    to: YearMonth!
+  ): [MonthlyCategorySpending!]!
 }

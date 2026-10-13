@@ -16,7 +16,8 @@ type Purchase implements Node {
   sourceKinds: [SourceKind!]!
   paymentAllocations: [PurchasePayment!]!
   items: [PurchaseItem!]!
-  corrections(first: Int, after: String): PurchaseCorrectionConnection! @goField(name: "CorrectionsConnection", forceResolver: true)
+  corrections(first: Int, after: String): PurchaseCorrectionConnection!
+    @goField(name: "CorrectionsConnection", forceResolver: true)
   totalYen: Long!
   currency: String!
   revision: Int!
@@ -72,5 +73,11 @@ type PurchaseConnection {
 }
 
 extend type Query {
-  purchases(filter: PurchaseFilter!, after: String, before: String, first: Int, last: Int): PurchaseConnection!
+  purchases(
+    filter: PurchaseFilter!
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): PurchaseConnection!
 }

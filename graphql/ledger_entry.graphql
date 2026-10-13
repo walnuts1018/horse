@@ -19,5 +19,11 @@ type LedgerConnection {
 }
 
 extend type Query {
-  ledger(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): LedgerConnection!
+  ledger(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): LedgerConnection!
 }

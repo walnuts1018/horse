@@ -1,12 +1,16 @@
 extend type Mutation {
-  acceptHouseholdInvitation(input: AcceptHouseholdInvitationInput!): AcceptHouseholdInvitationResult!
+  acceptHouseholdInvitation(
+    input: AcceptHouseholdInvitationInput!
+  ): AcceptHouseholdInvitationResult!
 }
 
 input AcceptHouseholdInvitationInput {
   token: String!
 }
 
-union AcceptHouseholdInvitationResult = AcceptHouseholdInvitationSuccess | AcceptHouseholdInvitationUserError
+union AcceptHouseholdInvitationResult =
+  | AcceptHouseholdInvitationSuccess
+  | AcceptHouseholdInvitationUserError
 
 type AcceptHouseholdInvitationSuccess {
   result: Household!

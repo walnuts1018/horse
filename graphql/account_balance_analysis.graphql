@@ -27,7 +27,20 @@ type AccountBalanceChangeConnection {
   totalCount: Int!
 }
 
-union AccountBalanceSource = AccountOpeningBalance | Purchase | PurchaseWideCorrection | PurchaseItemCorrection | CorrectionLedgerEntry | FundingLedgerEntry | PurchaseLedgerEntry | AdvanceTransferLedgerEntry | LoanTransferLedgerEntry | RepaymentTransferLedgerEntry | GiftTransferLedgerEntry | AccountMovement | AccountIncome
+union AccountBalanceSource =
+  | AccountOpeningBalance
+  | Purchase
+  | PurchaseWideCorrection
+  | PurchaseItemCorrection
+  | CorrectionLedgerEntry
+  | FundingLedgerEntry
+  | PurchaseLedgerEntry
+  | AdvanceTransferLedgerEntry
+  | LoanTransferLedgerEntry
+  | RepaymentTransferLedgerEntry
+  | GiftTransferLedgerEntry
+  | AccountMovement
+  | AccountIncome
 
 type AccountOpeningBalance implements Node {
   id: ID!
@@ -35,5 +48,12 @@ type AccountOpeningBalance implements Node {
 }
 
 extend type Query {
-  accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: YearMonth!, to: YearMonth!, first: Int, after: String): AccountBalanceAnalysis!
+  accountBalanceAnalysis(
+    householdId: ID! @nodeID(of: "Household")
+    accountId: ID! @nodeID(of: "Account")
+    from: YearMonth!
+    to: YearMonth!
+    first: Int
+    after: String
+  ): AccountBalanceAnalysis!
 }

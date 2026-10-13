@@ -38,5 +38,9 @@ type PurchaseCorrectionConnection {
 }
 
 extend type Query {
-  purchaseCorrections(purchaseId: ID! @nodeID(of: "Purchase"), first: Int, after: String): PurchaseCorrectionConnection!
+  purchaseCorrections(
+    purchaseId: ID! @nodeID(of: "Purchase")
+    first: Int
+    after: String
+  ): PurchaseCorrectionConnection!
 }

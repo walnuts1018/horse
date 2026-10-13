@@ -11,5 +11,9 @@ type MonthlyMemberSpendingReport {
 }
 
 extend type Query {
-  monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: YearMonth!, to: YearMonth!): MonthlyMemberSpendingReport!
+  monthlyMemberSpending(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth!
+    to: YearMonth!
+  ): MonthlyMemberSpendingReport!
 }

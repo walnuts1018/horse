@@ -1,8 +1,12 @@
 extend type Mutation {
-  createHouseholdInvitation(input: CreateHouseholdInvitationInput!): CreateHouseholdInvitationResult!
+  createHouseholdInvitation(
+    input: CreateHouseholdInvitationInput!
+  ): CreateHouseholdInvitationResult!
 }
 
-union CreateHouseholdInvitationResult = CreateHouseholdInvitationSuccess | CreateHouseholdInvitationUserError
+union CreateHouseholdInvitationResult =
+  | CreateHouseholdInvitationSuccess
+  | CreateHouseholdInvitationUserError
 
 type CreatedHouseholdInvitation {
   invitation: HouseholdInvitation!

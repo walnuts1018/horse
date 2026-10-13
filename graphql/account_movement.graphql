@@ -30,5 +30,11 @@ enum AccountMovementKind {
 }
 
 extend type Query {
-  accountMovements(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AccountMovementConnection!
+  accountMovements(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): AccountMovementConnection!
 }

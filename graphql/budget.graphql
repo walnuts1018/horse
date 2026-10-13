@@ -24,5 +24,12 @@ type BudgetConnection {
 }
 
 extend type Query {
-  budgets(householdId: ID! @nodeID(of: "Household"), period: YearMonth!, after: String, before: String, first: Int, last: Int): BudgetConnection!
+  budgets(
+    householdId: ID! @nodeID(of: "Household")
+    period: YearMonth!
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): BudgetConnection!
 }

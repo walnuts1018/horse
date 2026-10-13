@@ -8,7 +8,9 @@ input ArchiveRecurringExpenseInput {
   archived: Boolean!
 }
 
-union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | ArchiveRecurringExpenseUserError
+union ArchiveRecurringExpenseResult =
+  | ArchiveRecurringExpenseSuccess
+  | ArchiveRecurringExpenseUserError
 
 type ArchiveRecurringExpenseSuccess {
   result: RecurringExpense!

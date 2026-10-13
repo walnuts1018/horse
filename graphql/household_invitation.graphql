@@ -47,5 +47,11 @@ type HouseholdInvitationConnection {
 }
 
 extend type Query {
-  householdInvitations(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): HouseholdInvitationConnection!
+  householdInvitations(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): HouseholdInvitationConnection!
 }

@@ -20,5 +20,11 @@ type LoanBalanceConnection {
 }
 
 extend type Query {
-  loanBalances(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): LoanBalanceConnection!
+  loanBalances(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): LoanBalanceConnection!
 }

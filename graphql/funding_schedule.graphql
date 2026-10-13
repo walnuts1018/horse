@@ -27,5 +27,12 @@ type FundingScheduleConnection {
 }
 
 extend type Query {
-  fundingSchedules(householdId: ID! @nodeID(of: "Household"), active: Boolean, after: String, before: String, first: Int, last: Int): FundingScheduleConnection!
+  fundingSchedules(
+    householdId: ID! @nodeID(of: "Household")
+    active: Boolean
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): FundingScheduleConnection!
 }
