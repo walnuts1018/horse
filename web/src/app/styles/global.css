@@ -1390,19 +1390,6 @@ form.ledger-filters .select-filter input[type="number"] {
     overscroll-behavior-y: none;
   }
 
-  html.mobile-drawer-open {
-    overflow: hidden;
-    overscroll-behavior: none;
-  }
-
-  html.mobile-drawer-open body {
-    position: fixed;
-    top: var(--mobile-drawer-scroll-top, 0);
-    right: 0;
-    left: 0;
-    overflow: hidden;
-  }
-
   body {
     background: #f7f8f5;
   }
@@ -1883,6 +1870,7 @@ textarea:focus-visible,
   min-height: 44px;
   border-radius: 10px;
   background: var(--green);
+  color: #fff;
   box-shadow: none;
 }
 

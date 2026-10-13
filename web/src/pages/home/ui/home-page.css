@@ -2,128 +2,51 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 0 27px;
+  margin: 0 0 20px;
 }
 
 .home-page .welcome-row h1 {
   font-family: "Noto Sans JP Variable", "Noto Sans JP", sans-serif;
-  font-size: 27px;
-  letter-spacing: -0.05em;
+  font-size: 25px;
+  letter-spacing: -0.025em;
   margin: 7px 0 4px;
   color: #263a32;
 }
 
-.welcome-row p {
+.home-page .welcome-row p {
   font-size: 12px;
   color: #5f6d65;
   margin: 0;
 }
 
-.welcome-row > .button {
+.home-page .welcome-row > .button {
   margin-top: 9px;
-}
-
-.quick-actions {
-  display: grid;
-  grid-template-columns: 1.15fr 1fr;
-  gap: 13px;
-  margin-bottom: 20px;
-}
-
-.quick-card {
-  height: 76px;
-  border: 1px solid #e9eeea;
-  background: #fff;
-  border-radius: 14px;
-  box-shadow: var(--shadow);
-  display: flex;
-  align-items: center;
-  text-align: left;
-  padding: 0 17px;
-  gap: 13px;
-  cursor: pointer;
-  transition:
-    transform 0.15s,
-    box-shadow 0.15s;
-}
-
-.quick-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 7px 20px #31594313;
-}
-
-.quick-card > svg {
-  margin-left: auto;
-  color: #a7b1ab;
-  width: 16px;
-}
-
-.quick-main {
-  background: #f0f7f2;
-  border-color: #e1eee5;
-}
-
-.quick-icon {
-  width: 38px;
-  height: 38px;
-  background: #dfefe4;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  color: #34785e;
-}
-
-.quick-icon svg {
-  width: 18px;
-  height: 18px;
-  stroke-width: 1.8;
-}
-
-.quick-amber {
-  background: #fbf0dd;
-  color: #b77e32;
-}
-
-.quick-card b,
-.quick-card small {
-  display: block;
-}
-
-.quick-card b {
-  font-size: 12px;
-  color: #34463d;
-}
-
-.quick-card small {
-  font-size: 10px;
-  color: #5f6d65;
-  margin-top: 5px;
 }
 
 .home-page .overview-grid {
   display: grid;
   grid-template-columns: 1.2fr 0.8fr;
-  gap: 14px;
+  gap: 12px;
 }
 
 .home-page .spend-panel,
 .home-page .settle-card {
-  padding: 19px 20px 15px;
-  min-height: 230px;
+  min-height: 0;
+  padding: 18px;
 }
 
-.mini-chart {
+.home-page .mini-chart {
   margin-top: 14px;
 }
 
-.mini-bars {
+.home-page .mini-bars {
   height: 91px;
   display: flex;
   align-items: flex-end;
   gap: 10px;
 }
 
-.bar-track {
+.home-page .bar-track {
   flex: 1;
   height: 100%;
   display: flex;
@@ -132,7 +55,7 @@
   border-radius: 6px 6px 2px 2px;
 }
 
-.bar-track i {
+.home-page .bar-track i {
   display: block;
   width: 100%;
   min-height: 3px;
@@ -140,19 +63,19 @@
   background: #b7d7c3;
 }
 
-.bar-track i.bar-current {
+.home-page .bar-track i.bar-current {
   background: #59a483;
 }
 
-.chart-labels {
+.home-page .chart-labels {
   display: flex;
   justify-content: space-between;
   margin-top: 7px;
-  font-size: 8px;
+  font-size: 11px;
   color: #5f6d65;
 }
 
-.spend-footer {
+.home-page .spend-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -160,20 +83,20 @@
   padding-top: 11px;
   border-top: 1px solid #f0f2ef;
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
 }
 
-.spend-footer b {
+.home-page .spend-footer b {
   color: #53655b;
   margin-left: 4px;
 }
 
-.settle-card {
+.home-page .settle-card {
   background: #f5f8f2;
   border-color: #e8eee3;
 }
 
-.settle-icon {
+.home-page .settle-icon {
   width: 32px;
   height: 32px;
   background: #e7efe0;
@@ -183,155 +106,31 @@
   place-items: center;
 }
 
-.settle-line {
+.home-page .settle-line {
   margin-top: 21px;
   display: flex;
   align-items: center;
   gap: 9px;
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
 }
 
-.settle-line .status-dot {
+.home-page .settle-line .status-dot {
   width: 6px;
   height: 6px;
   box-shadow: none;
   background: #9da871;
 }
 
-.settle-card .button {
+.home-page .settle-card .button {
   margin-top: 13px;
-  height: 34px;
-  font-size: 10px;
+  height: 44px;
+  font-size: 13px;
   background: #e7efe1;
 }
 
-.recent-panel {
-  padding: 0 18px;
-}
-
-@media (width <= 760px) {
-  .welcome-row {
-    align-items: flex-start;
-    margin-bottom: 20px;
-  }
-
-  .welcome-row h1 {
-    font-size: 24px;
-  }
-
-  .welcome-row p {
-    font-size: 10px;
-  }
-
-  .welcome-row > .button {
-    height: 37px;
-    padding: 0 10px;
-    font-size: 9px;
-    margin-top: 22px;
-    gap: 4px;
-  }
-
-  .quick-actions {
-    gap: 9px;
-    margin-bottom: 13px;
-  }
-
-  .quick-card {
-    height: 68px;
-    padding: 0 10px;
-    gap: 8px;
-    border-radius: 12px;
-  }
-
-  .quick-icon {
-    width: 31px;
-    height: 31px;
-    border-radius: 10px;
-  }
-
-  .quick-icon svg {
-    width: 16px;
-  }
-
-  .quick-card b {
-    font-size: 9px;
-  }
-
-  .quick-card small {
-    font-size: 8px;
-  }
-
-  .quick-card > svg {
-    width: 13px;
-  }
-
-  .overview-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .spend-panel,
-  .settle-card {
-    min-height: 0;
-    padding: 16px;
-  }
-
-  .spend-panel .mini-chart {
-    margin-top: 9px;
-  }
-
-  .mini-bars {
-    height: 67px;
-    gap: 7px;
-  }
-
-  .spend-footer {
-    margin-top: 10px;
-    padding-top: 9px;
-  }
-
-  .settle-card .panel-heading h2 {
-    font-size: 18px;
-  }
-
-  .settle-line {
-    margin-top: 11px;
-  }
-
-  .settle-card .button {
-    margin-top: 9px;
-  }
-
-  .section-heading {
-    margin-top: 23px;
-  }
-
-  .recent-panel {
-    padding: 0 12px;
-  }
-}
-
-.welcome-row {
-  margin-bottom: 20px;
-}
-
-.welcome-row h1 {
-  font-size: 25px;
-  letter-spacing: -0.025em;
-}
-
-.overview-grid {
-  gap: 12px;
-}
-
-.spend-panel,
-.settle-card {
-  min-height: 0;
-  padding: 18px;
-}
-
 .home-page .quick-actions {
+  display: grid;
   grid-template-columns: minmax(0, 360px);
   gap: 0;
   margin: 14px 0 18px;
@@ -342,12 +141,16 @@
 .home-page .quick-card {
   min-width: 0;
   height: 56px;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  text-align: left;
   padding: 0 10px;
   gap: 10px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  cursor: pointer;
   transition:
     color 140ms ease,
     background-color 140ms ease;
@@ -359,40 +162,48 @@
   box-shadow: none;
 }
 
+.home-page .quick-card > svg {
+  margin-left: auto;
+  color: #a7b1ab;
+  width: 16px;
+  flex: none;
+}
+
 .home-page .quick-icon {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
   background: transparent;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
   color: var(--green-dark);
+}
+
+.home-page .quick-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.8;
+}
+
+.home-page .quick-card b,
+.home-page .quick-card small {
+  display: block;
 }
 
 .home-page .quick-card b {
   font-size: 13px;
   font-weight: 600;
+  color: #34463d;
 }
 
-.home-page .quick-card > svg {
-  width: 16px;
-  flex: none;
-}
-
-.home-page .chart-labels {
-  font-size: 11px;
-}
-
-.home-page .spend-footer,
-.home-page .settle-line {
-  font-size: 12px;
-}
-
-.home-page .settle-card .button {
-  height: 44px;
-  font-size: 13px;
+.home-page .quick-card small {
+  font-size: 10px;
+  color: #5f6d65;
+  margin-top: 5px;
 }
 
 .home-page .recent-panel {
-  padding-inline: 15px;
+  padding: 0 15px;
 }
 
 @media (width <= 760px) {
@@ -404,10 +215,12 @@
   .home-page .welcome-row > .button {
     width: 44px;
     min-width: 44px;
+    height: 37px;
     overflow: hidden;
     gap: 20px;
     padding: 0 13px;
     font-size: 0;
+    margin-top: 22px;
   }
 
   .home-page .overview-grid {
@@ -429,49 +242,79 @@
     gap: 5px;
   }
 
-  .home-page .quick-card b {
-    font-size: 12px;
-  }
-
   .home-page .quick-card > svg {
     width: 13px;
+  }
+
+  .home-page .spend-panel .mini-chart {
+    margin-top: 9px;
+  }
+
+  .home-page .mini-bars {
+    height: 67px;
+    gap: 7px;
+  }
+
+  .home-page .spend-footer {
+    margin-top: 10px;
+    padding-top: 9px;
+  }
+
+  .home-page .settle-card .panel-heading h2 {
+    font-size: 18px;
+  }
+
+  .home-page .settle-line {
+    margin-top: 11px;
+  }
+
+  .home-page .settle-card .button {
+    margin-top: 9px;
+  }
+
+  .home-page .section-heading {
+    margin-top: 23px;
+  }
+
+  .home-page .recent-panel {
+    padding: 0 12px;
   }
 }
 
 @media (width <= 380px) {
-  .quick-card {
+  .home-page .quick-card {
     gap: 6px;
     padding: 0 7px;
   }
 
-  .quick-card b {
+  .home-page .quick-card b {
     font-size: 8px;
   }
 
-  .quick-card small {
+  .home-page .quick-card small {
     font-size: 7px;
   }
 
-  .quick-icon {
+  .home-page .quick-icon {
     width: 28px;
     height: 28px;
   }
 
-  .welcome-row > .button {
+  .home-page .welcome-row > .button {
     font-size: 8px;
   }
 }
 
 @media (width <= 760px) {
-  .welcome-row p,
-  .welcome-row > .button,
-  .quick-card b,
-  .quick-card small {
+  .home-page .welcome-row p,
+  .home-page .welcome-row > .button,
+  .home-page .quick-card b,
+  .home-page .quick-card small {
     font-size: max(var(--mobile-font-supporting), 1em);
   }
 
-  .quick-card small,
-  .chart-labels {
+  .home-page .quick-card small,
+  .home-page .chart-labels {
     font-size: 10px;
   }
 }

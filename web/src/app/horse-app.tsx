@@ -1,3 +1,4 @@
+import { Dialog } from "@base-ui/react/dialog";
 import {
   Link,
   Outlet,
@@ -30,6 +31,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -54,6 +56,22 @@ import { isAppPage, type AppPage } from "./app-page";
 import { GraphQLErrorBoundary } from "./graphql-error-boundary";
 import { householdRouteContext } from "./household-route-context";
 
+const mobileViewportQuery = "(width <= 760px)";
+
+function subscribeToMobileViewport(callback: () => void) {
+  const media = window.matchMedia(mobileViewportQuery);
+  media.addEventListener("change", callback);
+  return () => media.removeEventListener("change", callback);
+}
+
+function getMobileViewport(): boolean | null {
+  return window.matchMedia(mobileViewportQuery).matches;
+}
+
+function getServerMobileViewport(): null {
+  return null;
+}
+
 export function App() {
   const navigate = useNavigate({ from: "/" });
   const params = useParams({ strict: false });
@@ -77,7 +95,13 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
+  const isMobileViewport = useSyncExternalStore(
+    subscribeToMobileViewport,
+    getMobileViewport,
+    getServerMobileViewport,
+  );
   const [householdMenu, setHouseholdMenu] = useState(false);
+  const householdMenuOpen = householdMenu && households.length > 1;
   const [notice, setNotice] = useState<{ message: string; kind: NoticeKind } | null>(null);
   const noticeTimeout = useRef<number | undefined>(undefined);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -91,23 +115,11 @@ export function App() {
   const currentHouseholdId = useRef(household?.id);
   currentHouseholdId.current = household?.id;
   const autoNavigateKey = useRef<string | null>(null);
+  const appShellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMobileMenu(false);
   }, [page]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (!mobileMenu) return;
-    const scrollY = window.scrollY;
-    root.style.setProperty("--mobile-drawer-scroll-top", `${-scrollY}px`);
-    root.classList.add("mobile-drawer-open");
-    return () => {
-      root.classList.remove("mobile-drawer-open");
-      root.style.removeProperty("--mobile-drawer-scroll-top");
-      window.scrollTo(0, scrollY);
-    };
-  }, [mobileMenu]);
 
   useBlocker({
     shouldBlockFn: ({ current, next }) => {
@@ -184,6 +196,7 @@ export function App() {
       .then(([session, householdList]) => {
         if (!active) return;
         setViewer(session);
+        setHouseholdMenu(false);
         setHouseholds(householdList);
       })
       .catch((reason: unknown) => {
@@ -360,6 +373,7 @@ export function App() {
       const result = await acceptHouseholdInvitation({ token: pendingInvitation });
       window.sessionStorage.removeItem("horse:pending-household-invitation");
       setPendingInvitation("");
+      setHouseholdMenu(false);
       setHouseholds((current) => [
         { id: result.id, name: result.name },
         ...current.filter((item) => item.id !== result.id),
@@ -431,304 +445,312 @@ export function App() {
   };
 
   return (
-    <div className="app-shell">
-      <a className="skip-link" href="#main-content">
-        メインコンテンツへ移動
-      </a>
-      <aside
-        className={`sidebar ${mobileMenu ? "sidebar-open" : ""}`}
-        id="primary-navigation"
-        aria-label="メインメニュー"
-      >
-        <div className="sidebar-top">
+    <Dialog.Root
+      open={isMobileViewport === false || (isMobileViewport === true && mobileMenu)}
+      modal={isMobileViewport === true}
+      onOpenChange={(open) => setMobileMenu(open)}
+    >
+      <div className="app-shell" ref={appShellRef}>
+        <a className="skip-link" href="#main-content">
+          メインコンテンツへ移動
+        </a>
+        <Dialog.Portal container={appShellRef}>
+          <Dialog.Backdrop className="sidebar-scrim" />
+          <Dialog.Popup
+            className={`sidebar ${mobileMenu ? "sidebar-open" : ""}`}
+            id="primary-navigation"
+            aria-label="メインメニュー"
+            initialFocus={isMobileViewport === true}
+            render={<aside />}
+          >
+            <div className="sidebar-top">
+              <Link
+                className="brand"
+                to="/households/$householdId"
+                params={{ householdId: householdId ?? "" }}
+                search
+              >
+                <span className="brand-mark">h</span>
+                <span>
+                  horse<small>HOUSEHOLD</small>
+                </span>
+              </Link>
+              <Dialog.Close
+                className="icon-button close-menu"
+                render={<button type="button" aria-label="メニューを閉じる" />}
+              >
+                <X size={19} />
+              </Dialog.Close>
+            </div>
+            <button
+              className="household-switch"
+              type="button"
+              disabled={households.length <= 1}
+              onClick={() => {
+                if (households.length > 1) setHouseholdMenu((open) => !open);
+              }}
+              aria-expanded={householdMenuOpen}
+              aria-controls={households.length > 1 ? "household-menu" : undefined}
+            >
+              <span className="household-avatar">{activeHousehold?.name?.slice(0, 1) ?? "家"}</span>
+              <div className="household-name">
+                <b>{activeHousehold?.name ?? "家計簿"}</b>
+                <small>{activeHousehold?.members?.length ?? 0}人で共有</small>
+              </div>
+              <ChevronDown size={15} />
+            </button>
+            {householdMenuOpen && (
+              <div className="household-menu" id="household-menu">
+                {households.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      selectHousehold(item.id);
+                      setHouseholdMenu(false);
+                    }}
+                  >
+                    <span className="household-avatar">{item.name.slice(0, 1)}</span>
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="nav-label">メニュー</p>
+            <nav className="main-nav">
+              <NavItem
+                icon={<Home />}
+                label="ホーム"
+                active={page === "home"}
+                to="/households/$householdId"
+                householdId={householdId ?? ""}
+              />
+              <NavItem
+                icon={<BookOpen />}
+                label="帳簿"
+                active={page === "ledger"}
+                to="/households/$householdId/ledger"
+                householdId={householdId ?? ""}
+              />
+              <NavItem
+                icon={<ArrowLeftRight />}
+                label="精算"
+                active={page === "settlement"}
+                to="/households/$householdId/settlement"
+                householdId={householdId ?? ""}
+              />
+              <NavItem
+                icon={<BarChart3 />}
+                label="分析"
+                active={page === "analysis"}
+                to="/households/$householdId/analysis"
+                householdId={householdId ?? ""}
+              />
+              <NavItem
+                icon={<FileImage />}
+                label="取り込み"
+                active={page === "imports"}
+                to="/households/$householdId/imports"
+                householdId={householdId ?? ""}
+              />
+            </nav>
+            <div className="sidebar-bottom">
+              <div className="shared-status">
+                <span>メンバー</span>
+                <span className="shared-avatars">
+                  {activeHousehold?.members?.slice(0, 3).map((member) => (
+                    <i key={member.id}>{member.displayName.slice(0, 1)}</i>
+                  ))}
+                </span>
+              </div>
+              <NavItem
+                icon={<Settings2 />}
+                label="設定"
+                active={page === "settings"}
+                to="/households/$householdId/settings"
+                householdId={householdId ?? ""}
+              />
+              <div className="profile-row">
+                <div className="profile-avatar">{viewer.displayName.slice(0, 1)}</div>
+                <div>
+                  <b>{viewer.displayName}</b>
+                  <small>{viewer.email ?? "メンバー"}</small>
+                </div>
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label="ログアウト"
+                  disabled={loggingOut}
+                  onClick={() => void logout()}
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+            </div>
+          </Dialog.Popup>
+        </Dialog.Portal>
+        <main className="main-area" id="main-content" tabIndex={-1}>
+          <header className="topbar">
+            <Dialog.Trigger
+              className="icon-button menu-toggle"
+              aria-expanded={mobileMenu}
+              aria-controls="primary-navigation"
+              render={<button type="button" aria-label="メニューを開く" />}
+            >
+              <Menu size={20} />
+            </Dialog.Trigger>
+            <div className="crumb">
+              <span>{activeHousehold?.name ?? "家計簿"}</span>
+              <ChevronRight size={14} />
+              <b>{pageTitle(page)}</b>
+            </div>
+            <div className="topbar-actions">
+              {syncLabel && (
+                <Link
+                  className={`sync-status-pill ${failedOutboxCount ? "sync-status-error" : ""}`}
+                  to="/households/$householdId/new"
+                  params={{ householdId: householdId ?? "" }}
+                  search
+                  onClick={(event) => {
+                    if (!household) {
+                      event.preventDefault();
+                      return;
+                    }
+                    if (page !== "new") purchaseCreatePreviousPage.current = page;
+                  }}
+                  aria-disabled={!household}
+                  tabIndex={household ? undefined : -1}
+                >
+                  {outbox.online === false ? (
+                    <WifiOff size={15} />
+                  ) : failedOutboxCount ? (
+                    <AlertCircle size={15} />
+                  ) : (
+                    <CloudUpload size={15} />
+                  )}
+                  <span>{syncLabel}</span>
+                </Link>
+              )}
+              <Link
+                className="search-pill"
+                to="/households/$householdId/ledger"
+                params={{ householdId: householdId ?? "" }}
+                search
+              >
+                <Search size={16} />
+                <span>帳簿を開く</span>
+              </Link>
+            </div>
+          </header>
+          {outbox.reloadMessage && (
+            <div className="database-upgrade-notice" role="alert">
+              <span>{outbox.reloadMessage}</span>
+              <button type="button" onClick={() => window.location.reload()}>
+                再読み込み
+              </button>
+            </div>
+          )}
+          {pendingInvitation && (
+            <section className="invitation-prompt" aria-label="家計簿への招待">
+              <span>家計簿への招待があります</span>
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={acceptingInvitation}
+                onClick={() => void acceptInvitation()}
+              >
+                {acceptingInvitation ? "参加中" : "招待を受け入れる"}
+              </button>
+              <button className="text-button" type="button" onClick={dismissInvitation}>
+                閉じる
+              </button>
+            </section>
+          )}
+          <div className="page-content" key={householdId ?? "no-household"}>
+            <householdRouteContext.Provider value={routeContext}>
+              <GraphQLErrorBoundary key={pathname}>
+                <Suspense
+                  fallback={<div className="loading-screen">購入履歴を読み込んでいます</div>}
+                >
+                  {householdLoading ? (
+                    <div className="loading-screen">
+                      <span className="loading-dot" /> 家計簿を開いています
+                    </div>
+                  ) : activeHousehold ? (
+                    <Outlet />
+                  ) : (
+                    <EmptyHousehold
+                      households={households}
+                      onSelect={selectHousehold}
+                      onCreated={(id) => {
+                        void refreshHousehold(id);
+                        setHouseholdMenu(false);
+                        setHouseholds((items) => [{ id, name: "家計簿" }, ...items]);
+                      }}
+                    />
+                  )}
+                </Suspense>
+              </GraphQLErrorBoundary>
+            </householdRouteContext.Provider>
+          </div>
+        </main>
+        {notice && <Notice message={notice.message} kind={notice.kind} />}
+        <nav className="mobile-dock" aria-label="モバイルメニュー">
           <Link
-            className="brand"
+            className={page === "home" ? "dock-active" : ""}
+            aria-current={page === "home" ? "page" : undefined}
             to="/households/$householdId"
             params={{ householdId: householdId ?? "" }}
             search
           >
-            <span className="brand-mark">h</span>
-            <span>
-              horse<small>HOUSEHOLD</small>
-            </span>
+            <Home />
+            <span>ホーム</span>
           </Link>
-          <button
-            className="icon-button close-menu"
-            aria-label="メニューを閉じる"
-            onClick={() => setMobileMenu(false)}
-          >
-            <X size={19} />
-          </button>
-        </div>
-        <button
-          className="household-switch"
-          type="button"
-          onClick={() => setHouseholdMenu((open) => !open)}
-          aria-expanded={householdMenu}
-          aria-controls="household-menu"
-        >
-          <span className="household-avatar">{activeHousehold?.name?.slice(0, 1) ?? "家"}</span>
-          <div className="household-name">
-            <b>{activeHousehold?.name ?? "家計簿"}</b>
-            <small>{activeHousehold?.members?.length ?? 0}人で共有</small>
-          </div>
-          <ChevronDown size={15} />
-        </button>
-        {householdMenu && households.length > 1 && (
-          <div className="household-menu" id="household-menu">
-            {households.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  selectHousehold(item.id);
-                  setHouseholdMenu(false);
-                }}
-              >
-                <span className="household-avatar">{item.name.slice(0, 1)}</span>
-                {item.name}
-              </button>
-            ))}
-          </div>
-        )}
-        <p className="nav-label">メニュー</p>
-        <nav className="main-nav">
-          <NavItem
-            icon={<Home />}
-            label="ホーム"
-            active={page === "home"}
-            to="/households/$householdId"
-            householdId={householdId ?? ""}
-          />
-          <NavItem
-            icon={<BookOpen />}
-            label="帳簿"
-            active={page === "ledger"}
+          <Link
+            className={page === "ledger" ? "dock-active" : ""}
+            aria-current={page === "ledger" ? "page" : undefined}
             to="/households/$householdId/ledger"
-            householdId={householdId ?? ""}
-          />
-          <NavItem
-            icon={<ArrowLeftRight />}
-            label="精算"
-            active={page === "settlement"}
-            to="/households/$householdId/settlement"
-            householdId={householdId ?? ""}
-          />
-          <NavItem
-            icon={<BarChart3 />}
-            label="分析"
-            active={page === "analysis"}
-            to="/households/$householdId/analysis"
-            householdId={householdId ?? ""}
-          />
-          <NavItem
-            icon={<FileImage />}
-            label="取り込み"
-            active={page === "imports"}
-            to="/households/$householdId/imports"
-            householdId={householdId ?? ""}
-          />
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="shared-status">
-            <span>メンバー</span>
-            <span className="shared-avatars">
-              {activeHousehold?.members?.slice(0, 3).map((member) => (
-                <i key={member.id}>{member.displayName.slice(0, 1)}</i>
-              ))}
-            </span>
-          </div>
-          <NavItem
-            icon={<Settings2 />}
-            label="設定"
-            active={page === "settings"}
-            to="/households/$householdId/settings"
-            householdId={householdId ?? ""}
-          />
-          <div className="profile-row">
-            <div className="profile-avatar">{viewer.displayName.slice(0, 1)}</div>
-            <div>
-              <b>{viewer.displayName}</b>
-              <small>{viewer.email ?? "メンバー"}</small>
-            </div>
-            <button
-              className="icon-button"
-              type="button"
-              aria-label="ログアウト"
-              disabled={loggingOut}
-              onClick={() => void logout()}
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
-        </div>
-      </aside>
-      {mobileMenu && (
-        <button
-          className="sidebar-scrim"
-          aria-label="メニューを閉じる"
-          onClick={() => setMobileMenu(false)}
-        />
-      )}
-      <main className="main-area" id="main-content" tabIndex={-1}>
-        <header className="topbar">
-          <button
-            className="icon-button menu-toggle"
-            aria-label="メニューを開く"
-            aria-expanded={mobileMenu}
-            aria-controls="primary-navigation"
-            onClick={() => setMobileMenu(true)}
+            params={{ householdId: householdId ?? "" }}
+            search
           >
-            <Menu size={20} />
-          </button>
-          <div className="crumb">
-            <span>{activeHousehold?.name ?? "家計簿"}</span>
-            <ChevronRight size={14} />
-            <b>{pageTitle(page)}</b>
-          </div>
-          <div className="topbar-actions">
-            {syncLabel && (
-              <Link
-                className={`sync-status-pill ${failedOutboxCount ? "sync-status-error" : ""}`}
-                to="/households/$householdId/new"
-                params={{ householdId: householdId ?? "" }}
-                search
-                onClick={(event) => {
-                  if (!household) {
-                    event.preventDefault();
-                    return;
-                  }
-                  if (page !== "new") purchaseCreatePreviousPage.current = page;
-                }}
-                aria-disabled={!household}
-                tabIndex={household ? undefined : -1}
-              >
-                {outbox.online === false ? (
-                  <WifiOff size={15} />
-                ) : failedOutboxCount ? (
-                  <AlertCircle size={15} />
-                ) : (
-                  <CloudUpload size={15} />
-                )}
-                <span>{syncLabel}</span>
-              </Link>
-            )}
-            <Link
-              className="search-pill"
-              to="/households/$householdId/ledger"
-              params={{ householdId: householdId ?? "" }}
-              search
-            >
-              <Search size={16} />
-              <span>帳簿を開く</span>
-            </Link>
-          </div>
-        </header>
-        {outbox.reloadMessage && (
-          <div className="database-upgrade-notice" role="alert">
-            <span>{outbox.reloadMessage}</span>
-            <button type="button" onClick={() => window.location.reload()}>
-              再読み込み
-            </button>
-          </div>
-        )}
-        {pendingInvitation && (
-          <section className="invitation-prompt" aria-label="家計簿への招待">
-            <span>家計簿への招待があります</span>
-            <button
-              className="button button-primary"
-              type="button"
-              disabled={acceptingInvitation}
-              onClick={() => void acceptInvitation()}
-            >
-              {acceptingInvitation ? "参加中" : "招待を受け入れる"}
-            </button>
-            <button className="text-button" type="button" onClick={dismissInvitation}>
-              閉じる
-            </button>
-          </section>
-        )}
-        <div className="page-content" key={householdId ?? "no-household"}>
-          <householdRouteContext.Provider value={routeContext}>
-            <GraphQLErrorBoundary key={pathname}>
-              <Suspense fallback={<div className="loading-screen">購入履歴を読み込んでいます</div>}>
-                {householdLoading ? (
-                  <div className="loading-screen">
-                    <span className="loading-dot" /> 家計簿を開いています
-                  </div>
-                ) : activeHousehold ? (
-                  <Outlet />
-                ) : (
-                  <EmptyHousehold
-                    households={households}
-                    onSelect={selectHousehold}
-                    onCreated={(id) => {
-                      void refreshHousehold(id);
-                      setHouseholds((items) => [{ id, name: "家計簿" }, ...items]);
-                    }}
-                  />
-                )}
-              </Suspense>
-            </GraphQLErrorBoundary>
-          </householdRouteContext.Provider>
-        </div>
-      </main>
-      {notice && <Notice message={notice.message} kind={notice.kind} />}
-      <nav className="mobile-dock" aria-label="モバイルメニュー">
-        <Link
-          className={page === "home" ? "dock-active" : ""}
-          aria-current={page === "home" ? "page" : undefined}
-          to="/households/$householdId"
-          params={{ householdId: householdId ?? "" }}
-          search
-        >
-          <Home />
-          <span>ホーム</span>
-        </Link>
-        <Link
-          className={page === "ledger" ? "dock-active" : ""}
-          aria-current={page === "ledger" ? "page" : undefined}
-          to="/households/$householdId/ledger"
-          params={{ householdId: householdId ?? "" }}
-          search
-        >
-          <BookOpen />
-          <span>帳簿</span>
-        </Link>
-        <Link
-          className="dock-add"
-          to="/households/$householdId/new"
-          params={{ householdId: householdId ?? "" }}
-          search
-          onClick={() => {
-            if (page !== "new") purchaseCreatePreviousPage.current = page;
-          }}
-        >
-          <Plus />
-          <span>追加</span>
-        </Link>
-        <Link
-          className={page === "settlement" ? "dock-active" : ""}
-          aria-current={page === "settlement" ? "page" : undefined}
-          to="/households/$householdId/settlement"
-          params={{ householdId: householdId ?? "" }}
-          search
-        >
-          <ArrowLeftRight />
-          <span>精算</span>
-        </Link>
-        <Link
-          className={page === "analysis" ? "dock-active" : ""}
-          aria-current={page === "analysis" ? "page" : undefined}
-          to="/households/$householdId/analysis"
-          params={{ householdId: householdId ?? "" }}
-          search
-        >
-          <BarChart3 />
-          <span>分析</span>
-        </Link>
-      </nav>
-    </div>
+            <BookOpen />
+            <span>帳簿</span>
+          </Link>
+          <Link
+            className="dock-add"
+            to="/households/$householdId/new"
+            params={{ householdId: householdId ?? "" }}
+            search
+            onClick={() => {
+              if (page !== "new") purchaseCreatePreviousPage.current = page;
+            }}
+          >
+            <Plus />
+            <span>追加</span>
+          </Link>
+          <Link
+            className={page === "settlement" ? "dock-active" : ""}
+            aria-current={page === "settlement" ? "page" : undefined}
+            to="/households/$householdId/settlement"
+            params={{ householdId: householdId ?? "" }}
+            search
+          >
+            <ArrowLeftRight />
+            <span>精算</span>
+          </Link>
+          <Link
+            className={page === "analysis" ? "dock-active" : ""}
+            aria-current={page === "analysis" ? "page" : undefined}
+            to="/households/$householdId/analysis"
+            params={{ householdId: householdId ?? "" }}
+            search
+          >
+            <BarChart3 />
+            <span>分析</span>
+          </Link>
+        </nav>
+      </div>
+    </Dialog.Root>
   );
 }
 

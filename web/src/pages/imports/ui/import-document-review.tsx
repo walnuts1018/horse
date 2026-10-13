@@ -67,13 +67,11 @@ export function ImportDocumentReview({
         <section className={styles.attachmentGroup}>
           <span className="eyebrow">添付ファイル</span>
           {document.attachments.map((attachment) => {
-            const child = documents.some((entry) => entry.id === attachment.id);
             return (
               <div className={styles.attachmentRow} key={attachment.id}>
                 <button
                   type="button"
                   className="text-button"
-                  disabled={!child}
                   onClick={() => onSelectDocument(attachment.id)}
                 >
                   {attachment.filename}

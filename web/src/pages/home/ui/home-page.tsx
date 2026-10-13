@@ -99,6 +99,11 @@ export function HomePage({
           <Plus size={17} /> 買い物を追加
         </Link>
       </div>
+      <SetupGuidance
+        household={household}
+        purchaseCount={totalCount}
+        onNavigateToPurchase={onNavigateToPurchase}
+      />
       <div className="overview-grid">
         <section className="panel spend-panel">
           <div className="panel-heading">
@@ -167,11 +172,6 @@ export function HomePage({
           <ChevronRight aria-hidden="true" />
         </Link>
       </div>
-      <SetupGuidance
-        household={household}
-        purchaseCount={totalCount}
-        onNavigateToPurchase={onNavigateToPurchase}
-      />
       <div className="section-heading">
         <div>
           <span className="eyebrow">最近の記録</span>
