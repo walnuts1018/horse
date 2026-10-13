@@ -42,6 +42,7 @@ export function PurchaseItemsComposer({
     itemList: string;
     entryForm: string;
     entryHint: string;
+    entryInputTarget: string;
     bottom: string;
   };
   onChange: (value: PurchaseItemsValue) => void;
@@ -69,6 +70,7 @@ export function PurchaseItemsComposer({
             itemList: classNames.itemList,
             entryForm: classNames.entryForm,
             entryHint: classNames.entryHint,
+            entryInputTarget: classNames.entryInputTarget,
           }}
           onChange={onChange}
           onDirty={onDirty}

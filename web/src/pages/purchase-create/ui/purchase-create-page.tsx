@@ -392,6 +392,7 @@ export function PurchaseCreatePage({
           itemList: styles.itemList,
           entryForm: styles.entryForm,
           entryHint: styles.entryHint,
+          entryInputTarget: styles.entryInputTarget,
           bottom: styles.bottom,
         }}
         onChange={setItemsValue}

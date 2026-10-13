@@ -47,6 +47,7 @@ export function EditPurchaseItems({
     itemList: string;
     entryForm: string;
     entryHint: string;
+    entryInputTarget: string;
   };
   undoToken: number;
   onChange: (value: PurchaseItemsValue) => void;
@@ -57,6 +58,8 @@ export function EditPurchaseItems({
   const draftRef = useRef(draft);
   const [selectedProductVariantId, setSelectedProductVariantId] = useState("");
   const [productSuggestions, setProductSuggestions] = useState<ProductSuggestion[]>([]);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const [undoItems, setUndoItems] = useState<PurchaseDraftItem[] | null>(null);
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -87,6 +90,8 @@ export function EditPurchaseItems({
   };
   const changeItemName = (name: string) => {
     setSelectedProductVariantId("");
+    setActiveSuggestionIndex(-1);
+    setSuggestionsDismissed(false);
     patchDraft({
       itemName: name,
       categoryId:
@@ -155,8 +160,16 @@ export function EditPurchaseItems({
     let active = true;
     const timer = window.setTimeout(() => {
       void readProductSuggestions(householdId, query, merchant.trim() || null, 6)
-        .then((result) => active && setProductSuggestions(result))
-        .catch(() => active && setProductSuggestions([]));
+        .then((result) => {
+          if (!active) return;
+          setProductSuggestions(result);
+          setActiveSuggestionIndex(-1);
+        })
+        .catch(() => {
+          if (!active) return;
+          setProductSuggestions([]);
+          setActiveSuggestionIndex(-1);
+        });
     }, 220);
     return () => {
       active = false;
@@ -222,7 +235,60 @@ export function EditPurchaseItems({
     setFocused("name");
     nameRef.current?.focus();
   };
+  const selectHistorySuggestion = (name: string) => {
+    changeItemName(name);
+    amountRef.current?.focus();
+    setFocused("amount");
+  };
+  const selectProductSuggestion = (candidate: ProductSuggestion) => {
+    changeItemName(candidate.matchedName || draft.itemName.trim());
+    setSelectedProductVariantId(candidate.variant.id);
+    if (
+      isEnabledCategory(candidate.concept.categoryId) &&
+      categorySource.current !== "manual" &&
+      categorySource.current !== "restored"
+    )
+      updateCategory(candidate.concept.categoryId, "product");
+    setProductSuggestions([]);
+    amountRef.current?.focus();
+    setFocused("amount");
+  };
+  const visibleSuggestionCount =
+    productSuggestions.length > 0 && !selectedProductVariantId
+      ? productSuggestions.length
+      : suggestions.length;
   const onNameKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape" && visibleSuggestionCount > 0) {
+      event.preventDefault();
+      setSuggestionsDismissed(true);
+      setActiveSuggestionIndex(-1);
+      return;
+    }
+    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && visibleSuggestionCount > 0) {
+      event.preventDefault();
+      setSuggestionsDismissed(false);
+      setActiveSuggestionIndex((index) => {
+        if (event.key === "ArrowDown") return (index + 1) % visibleSuggestionCount;
+        return index <= 0 ? visibleSuggestionCount - 1 : index - 1;
+      });
+      return;
+    }
+    if (
+      event.key === "Enter" &&
+      activeSuggestionIndex >= 0 &&
+      !event.nativeEvent.isComposing &&
+      !composing.current
+    ) {
+      event.preventDefault();
+      if (productSuggestions.length > 0 && !selectedProductVariantId) {
+        const candidate = productSuggestions[activeSuggestionIndex];
+        if (candidate) selectProductSuggestion(candidate);
+      } else {
+        const suggestion = suggestions[activeSuggestionIndex];
+        if (suggestion) selectHistorySuggestion(suggestion);
+      }
+      return;
+    }
     if (
       event.key === "Enter" &&
       !event.nativeEvent.isComposing &&
@@ -443,7 +509,7 @@ export function EditPurchaseItems({
         )}
       </div>
       <div className={`entry-form ${focused ? "entry-focused" : ""} ${classNames.entryForm}`}>
-        <div className="entry-input-wrap name-wrap">
+        <div className={`entry-input-wrap name-wrap ${classNames.entryInputTarget}`}>
           <input
             ref={nameRef}
             value={draft.itemName}
@@ -451,7 +517,10 @@ export function EditPurchaseItems({
               markDirty();
               changeItemName(event.target.value);
             }}
-            onFocus={() => setFocused("name")}
+            onFocus={() => {
+              setFocused("name");
+              setSuggestionsDismissed(false);
+            }}
             onBlur={() => window.setTimeout(() => setFocused(null), 160)}
             onKeyDown={onNameKey}
             onPaste={pasteRows}
@@ -461,66 +530,88 @@ export function EditPurchaseItems({
             onCompositionEnd={() => {
               composing.current = false;
             }}
+            enterKeyHint="next"
             placeholder="品名を入力"
             aria-label="品名"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls="purchase-item-suggestions"
+            aria-expanded={
+              focused === "name" && visibleSuggestionCount > 0 && !suggestionsDismissed
+            }
+            aria-activedescendant={
+              activeSuggestionIndex >= 0 && !suggestionsDismissed
+                ? `purchase-item-suggestion-${activeSuggestionIndex}`
+                : undefined
+            }
             autoComplete="off"
           />
           <kbd>Enter</kbd>
-          {focused === "name" && suggestions.length > 0 && productSuggestions.length === 0 && (
-            <div className="suggestions">
-              {suggestions.map((name) => (
-                <button
-                  type="button"
-                  key={name}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    changeItemName(name);
-                    amountRef.current?.focus();
-                    setFocused("amount");
-                  }}
-                >
-                  <Search size={13} />
-                  {name}
-                  <span>購入履歴</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {focused === "name" && productSuggestions.length > 0 && !selectedProductVariantId && (
-            <div className="suggestions product-suggestions">
-              {productSuggestions.map((candidate) => (
-                <button
-                  type="button"
-                  key={candidate.variant.id}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    changeItemName(candidate.matchedName || draft.itemName.trim());
-                    setSelectedProductVariantId(candidate.variant.id);
-                    if (
-                      isEnabledCategory(candidate.concept.categoryId) &&
-                      categorySource.current !== "manual" &&
-                      categorySource.current !== "restored"
-                    )
-                      updateCategory(candidate.concept.categoryId, "product");
-                    setProductSuggestions([]);
-                    amountRef.current?.focus();
-                    setFocused("amount");
-                  }}
-                >
-                  <Search size={13} />
-                  <span>{candidate.matchedName}</span>
-                  <small>
-                    {candidate.concept.name} · {candidate.variant.name}
-                  </small>
-                </button>
-              ))}
-            </div>
-          )}
+          {focused === "name" &&
+            !suggestionsDismissed &&
+            suggestions.length > 0 &&
+            productSuggestions.length === 0 && (
+              <div
+                className="suggestions"
+                id="purchase-item-suggestions"
+                role="listbox"
+                aria-label="購入履歴の商品候補"
+              >
+                {suggestions.map((name, index) => (
+                  <button
+                    type="button"
+                    key={name}
+                    id={`purchase-item-suggestion-${index}`}
+                    role="option"
+                    aria-selected={activeSuggestionIndex === index}
+                    style={{ background: activeSuggestionIndex === index ? "#f3f7f3" : undefined }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setActiveSuggestionIndex(index)}
+                    onClick={() => selectHistorySuggestion(name)}
+                  >
+                    <Search size={13} />
+                    {name}
+                    <span>購入履歴</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          {focused === "name" &&
+            !suggestionsDismissed &&
+            productSuggestions.length > 0 &&
+            !selectedProductVariantId && (
+              <div
+                className="suggestions product-suggestions"
+                id="purchase-item-suggestions"
+                role="listbox"
+                aria-label="商品候補"
+              >
+                {productSuggestions.map((candidate, index) => (
+                  <button
+                    type="button"
+                    key={candidate.variant.id}
+                    id={`purchase-item-suggestion-${index}`}
+                    role="option"
+                    aria-selected={activeSuggestionIndex === index}
+                    style={{ background: activeSuggestionIndex === index ? "#f3f7f3" : undefined }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setActiveSuggestionIndex(index)}
+                    onClick={() => selectProductSuggestion(candidate)}
+                  >
+                    <Search size={13} />
+                    <span>{candidate.matchedName}</span>
+                    <small>
+                      {candidate.concept.name} · {candidate.variant.name}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            )}
           {selectedProductVariantId && (
             <small className="selected-product-label">商品を選択済み</small>
           )}
         </div>
-        <div className="entry-input-wrap amount-wrap">
+        <div className={`entry-input-wrap amount-wrap ${classNames.entryInputTarget}`}>
           <span>¥</span>
           <input
             ref={amountRef}
@@ -539,6 +630,7 @@ export function EditPurchaseItems({
             onCompositionEnd={() => {
               composing.current = false;
             }}
+            enterKeyHint="next"
             onPaste={pasteRows}
             placeholder="金額"
             aria-label="金額"

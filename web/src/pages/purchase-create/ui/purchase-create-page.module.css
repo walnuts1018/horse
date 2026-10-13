@@ -191,4 +191,8 @@
       "entry-hint"
       "item-table";
   }
+
+  .entryInputTarget {
+    min-height: 44px;
+  }
 }
