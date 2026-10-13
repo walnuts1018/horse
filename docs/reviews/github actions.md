@@ -1,1 +1,0 @@
-- GitHub Actionsにおいて、最新機能であるParallel Stepを用いて高速化する
