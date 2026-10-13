@@ -25,13 +25,13 @@ import {
   updatePurchaseMutation,
   useHouseholdPurchases,
 } from "../../../entities/purchase";
-import { unmatchedObservationsQuery } from "../api/observation/operations";
 import { readProductCatalog } from "../../../entities/product";
 import { readTags } from "../../../entities/tag";
 import { EmptyState, InlineError } from "../../../shared/ui";
 import { formatQuantity, parseQuantity } from "../../../shared/lib";
 import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
 import { ObservationLinker } from "./observation-linker";
+import type { LedgerSearch } from "../model/ledger-search";
 
 type PurchaseEvidence = {
   documentId: string;
@@ -63,10 +63,14 @@ const nextMonth = (month: string) => {
 
 export function LedgerPage({
   household,
+  filters,
+  onFiltersChange,
   onAdd,
   onUnsavedChanges,
 }: {
   household: Household;
+  filters: LedgerSearch;
+  onFiltersChange: (updates: Partial<LedgerSearch>) => void;
   onAdd: () => void;
   onUnsavedChanges: (unsaved: boolean) => void;
 }) {
@@ -80,23 +84,24 @@ export function LedgerPage({
   const { mutate: mutateBulkUpdatePurchaseItems } = useGraphqlMutation<{
     bulkUpdatePurchaseItems: Array<{ id: string; revision: number }>;
   }>(bulkUpdatePurchaseItemsMutation);
-  const [recordMode, setRecordMode] = useState<"purchases" | "observations">("purchases");
-  const [viewMode, setViewMode] = useState<"purchases" | "items">("purchases");
-  const [search, setSearch] = useState("");
-  const [fromMonth, setFromMonth] = useState("");
-  const [toMonth, setToMonth] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [poolFilter, setPoolFilter] = useState("");
-  const [accountFilter, setAccountFilter] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
-  const [originFilter, setOriginFilter] = useState<Purchase["origin"] | "">("");
-  const [evidenceFilter, setEvidenceFilter] = useState("");
-  const [observationSourceFilter, setObservationSourceFilter] = useState<SourceKind | "">("");
-  const [observationStateFilter, setObservationStateFilter] = useState<
-    UnmatchedObservationState | ""
-  >("UNMATCHED");
-  const [minimumAmount, setMinimumAmount] = useState("");
-  const [maximumAmount, setMaximumAmount] = useState("");
+  const {
+    recordMode,
+    viewMode,
+    search,
+    fromMonth,
+    toMonth,
+    categoryFilter,
+    poolFilter,
+    accountFilter,
+    tagFilter,
+    originFilter,
+    evidenceFilter,
+    observationSourceFilter,
+    observationStateFilter,
+    minimumAmount,
+    maximumAmount,
+  } = filters;
+  const updateFilters = (updates: Partial<LedgerSearch>) => onFiltersChange(updates);
   const filtersActive = Boolean(
     search ||
     fromMonth ||
@@ -163,6 +168,7 @@ export function LedgerPage({
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkTagsActive, setBulkTagsActive] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [tagsLoaded, setTagsLoaded] = useState(false);
   const [bulkPending, setBulkPending] = useState(false);
   const [bulkError, setBulkError] = useState("");
   const [bulkUndo, setBulkUndo] = useState<Array<{
@@ -243,13 +249,49 @@ export function LedgerPage({
   }, [expanded]);
   useEffect(() => {
     let active = true;
+    setTagsLoaded(false);
     void readTags(household.id)
-      .then((tags) => active && setTags(tags))
-      .catch((reason) => active && setBulkError((reason as Error).message));
+      .then((result) => {
+        if (!active) return;
+        setTags(result);
+        setTagsLoaded(true);
+      })
+      .catch((reason) => {
+        if (!active) return;
+        setBulkError((reason as Error).message);
+        setTagsLoaded(true);
+      });
     return () => {
       active = false;
     };
   }, [household.id]);
+  useEffect(() => {
+    const updates: Partial<LedgerSearch> = {};
+    if (
+      categoryFilter &&
+      categoryFilter !== "__uncategorized" &&
+      !household.categories.some((category) => category.id === categoryFilter)
+    )
+      updates.categoryFilter = "";
+    if (poolFilter && !household.pools.some((pool) => pool.id === poolFilter))
+      updates.poolFilter = "";
+    if (accountFilter && !household.accounts.some((account) => account.id === accountFilter))
+      updates.accountFilter = "";
+    if (tagsLoaded && tagFilter && !tags.some((tag) => tag.id === tagFilter))
+      updates.tagFilter = "";
+    if (Object.keys(updates).length) onFiltersChange(updates);
+  }, [
+    accountFilter,
+    categoryFilter,
+    household.accounts,
+    household.categories,
+    household.pools,
+    onFiltersChange,
+    poolFilter,
+    tagFilter,
+    tags,
+    tagsLoaded,
+  ]);
   const [correctionTarget, setCorrectionTarget] = useState<{
     purchaseId: string;
     itemId: string;
@@ -986,7 +1028,7 @@ export function LedgerPage({
             <Search size={16} />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => updateFilters({ search: e.target.value })}
               placeholder="店名、品名で検索"
             />
           </label>
@@ -997,7 +1039,7 @@ export function LedgerPage({
             aria-label="開始月"
             type="month"
             value={fromMonth}
-            onChange={(event) => setFromMonth(event.target.value)}
+            onChange={(event) => updateFilters({ fromMonth: event.target.value })}
           />
         </label>
         <label className="select-filter">
@@ -1006,7 +1048,7 @@ export function LedgerPage({
             aria-label="終了月"
             type="month"
             value={toMonth}
-            onChange={(event) => setToMonth(event.target.value)}
+            onChange={(event) => updateFilters({ toMonth: event.target.value })}
           />
         </label>
         <div className="record-count">
@@ -1024,7 +1066,7 @@ export function LedgerPage({
             value={recordMode}
             onChange={(event) => {
               const mode = event.target.value as "purchases" | "observations";
-              setRecordMode(mode);
+              updateFilters({ recordMode: mode });
               if (mode === "observations") {
                 setSelectedItems(new Set());
                 selectionAnchors.current.item = null;
@@ -1041,7 +1083,7 @@ export function LedgerPage({
             <select
               value={viewMode}
               onChange={(event) => {
-                setViewMode(event.target.value as "purchases" | "items");
+                updateFilters({ viewMode: event.target.value as "purchases" | "items" });
                 setSelectedItems(new Set());
                 selectionAnchors.current.item = null;
               }}
@@ -1057,7 +1099,9 @@ export function LedgerPage({
               <span>入力元</span>
               <select
                 value={originFilter}
-                onChange={(event) => setOriginFilter(event.target.value as Purchase["origin"] | "")}
+                onChange={(event) =>
+                  updateFilters({ originFilter: event.target.value as Purchase["origin"] | "" })
+                }
               >
                 <option value="">すべて</option>
                 <option value="AI">AI入力</option>
@@ -1069,7 +1113,9 @@ export function LedgerPage({
               <span>原本</span>
               <select
                 value={evidenceFilter}
-                onChange={(event) => setEvidenceFilter(event.target.value)}
+                onChange={(event) =>
+                  updateFilters({ evidenceFilter: event.target.value as "true" | "false" | "" })
+                }
               >
                 <option value="">すべて</option>
                 <option value="true">あり</option>
@@ -1080,7 +1126,7 @@ export function LedgerPage({
               <span>カテゴリ</span>
               <select
                 value={categoryFilter}
-                onChange={(event) => setCategoryFilter(event.target.value)}
+                onChange={(event) => updateFilters({ categoryFilter: event.target.value })}
               >
                 <option value="">すべて</option>
                 <option value="__uncategorized">未分類</option>
@@ -1093,7 +1139,10 @@ export function LedgerPage({
             </label>
             <label className="select-filter">
               <span>負担先</span>
-              <select value={poolFilter} onChange={(event) => setPoolFilter(event.target.value)}>
+              <select
+                value={poolFilter}
+                onChange={(event) => updateFilters({ poolFilter: event.target.value })}
+              >
                 <option value="">すべて</option>
                 {household.pools.map((pool) => (
                   <option key={pool.id} value={pool.id}>
@@ -1106,7 +1155,7 @@ export function LedgerPage({
               <span>決済元</span>
               <select
                 value={accountFilter}
-                onChange={(event) => setAccountFilter(event.target.value)}
+                onChange={(event) => updateFilters({ accountFilter: event.target.value })}
               >
                 <option value="">すべて</option>
                 {household.accounts.map((account) => (
@@ -1118,7 +1167,10 @@ export function LedgerPage({
             </label>
             <label className="select-filter">
               <span>タグ</span>
-              <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+              <select
+                value={tagFilter}
+                onChange={(event) => updateFilters({ tagFilter: event.target.value })}
+              >
                 <option value="">すべて</option>
                 {tags
                   .filter((tag) => !tag.archived)
@@ -1137,7 +1189,7 @@ export function LedgerPage({
                 min="0"
                 placeholder="下限"
                 value={minimumAmount}
-                onChange={(event) => setMinimumAmount(event.target.value)}
+                onChange={(event) => updateFilters({ minimumAmount: event.target.value })}
               />
               <span>〜</span>
               <input
@@ -1146,7 +1198,7 @@ export function LedgerPage({
                 min="0"
                 placeholder="上限"
                 value={maximumAmount}
-                onChange={(event) => setMaximumAmount(event.target.value)}
+                onChange={(event) => updateFilters({ maximumAmount: event.target.value })}
               />
             </label>
           </>
@@ -1157,7 +1209,9 @@ export function LedgerPage({
               <select
                 value={observationStateFilter}
                 onChange={(event) =>
-                  setObservationStateFilter(event.target.value as UnmatchedObservationState | "")
+                  updateFilters({
+                    observationStateFilter: event.target.value as UnmatchedObservationState | "",
+                  })
                 }
               >
                 <option value="UNMATCHED">未照合</option>
@@ -1170,7 +1224,7 @@ export function LedgerPage({
               <select
                 value={observationSourceFilter}
                 onChange={(event) =>
-                  setObservationSourceFilter(event.target.value as SourceKind | "")
+                  updateFilters({ observationSourceFilter: event.target.value as SourceKind | "" })
                 }
               >
                 <option value="">すべて</option>
@@ -1584,8 +1638,7 @@ export function LedgerPage({
                     className="text-button"
                     type="button"
                     onClick={() => {
-                      setRecordMode("purchases");
-                      setViewMode("purchases");
+                      updateFilters({ recordMode: "purchases", viewMode: "purchases" });
                       setExpanded(purchase.id);
                     }}
                   >

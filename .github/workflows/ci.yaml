@@ -154,7 +154,7 @@ jobs:
               sbom: true
               tags: |
                 ghcr.io/${{ github.repository }}:latest
-                ghcr.io/${{ github.repository }}:v0.0.0-${{ github.sha }}-${{ github.run_number }}
+                ghcr.io/${{ github.repository }}:v0.0.${{ github.run_number }}
               cache-from: type=gha,scope=horse-go
               cache-to: type=gha,scope=horse-go,mode=max
 
@@ -171,7 +171,7 @@ jobs:
               sbom: true
               tags: |
                 ghcr.io/${{ github.repository }}-web:latest
-                ghcr.io/${{ github.repository }}-web:v0.0.0-${{ github.sha }}-${{ github.run_number }}
+                ghcr.io/${{ github.repository }}-web:v0.0.${{ github.run_number }}
               cache-from: type=gha,scope=horse-web
               cache-to: type=gha,scope=horse-web,mode=max
 
@@ -187,7 +187,7 @@ jobs:
               sbom: true
               tags: |
                 ghcr.io/${{ github.repository }}-ocr:latest
-                ghcr.io/${{ github.repository }}-ocr:v0.0.0-${{ github.sha }}-${{ github.run_number }}
+                ghcr.io/${{ github.repository }}-ocr:v0.0.${{ github.run_number }}
               cache-from: type=gha,scope=horse-ocr
               cache-to: type=gha,scope=horse-ocr,mode=max
 
@@ -196,7 +196,7 @@ jobs:
           GO_IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           WEB_IMAGE_DIGEST: ${{ steps.web-image.outputs.digest }}
           OCR_IMAGE_DIGEST: ${{ steps.ocr-image.outputs.digest }}
-          IMAGE_TAG: v0.0.0-${{ github.sha }}-${{ github.run_number }}
+          IMAGE_TAG: v0.0.${{ github.run_number }}
         run: |
           {
             printf 'Published ghcr.io/%s:%s@%s (Go API, worker, and Atlas).\n' "$GITHUB_REPOSITORY" "$IMAGE_TAG" "$GO_IMAGE_DIGEST"

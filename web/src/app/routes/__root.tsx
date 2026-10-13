@@ -1,8 +1,14 @@
-import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
+import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { RelayEnvironmentProvider } from "react-relay";
+import { getRelayEnvironment } from "../../shared/api";
+import { parseLedgerSearch, serializeLedgerSearch } from "../../pages/ledger";
+import { App } from "../horse-app";
 import "../styles/global.css";
 
 export const Route = createRootRoute({
+  validateSearch: (search: Record<string, unknown>) =>
+    serializeLedgerSearch(parseLedgerSearch(search)),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -16,7 +22,9 @@ export const Route = createRootRoute({
 function Root() {
   return (
     <RootDocument>
-      <Outlet />
+      <RelayEnvironmentProvider environment={getRelayEnvironment()}>
+        <App />
+      </RelayEnvironmentProvider>
     </RootDocument>
   );
 }

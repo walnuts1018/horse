@@ -7,7 +7,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { useBlocker, useNavigate, useSearch } from "@tanstack/react-router";
+import { Outlet, useBlocker, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
   AlertCircle,
@@ -35,6 +35,7 @@ import {
   householdsQuery,
 } from "./api/operations";
 import { useCreateAndPostPurchase } from "../entities/purchase";
+import { parseLedgerSearch, serializeLedgerSearch } from "../pages/ledger";
 import { GraphQLErrorBoundary } from "./graphql-error-boundary";
 import {
   claimPurchaseOutbox,
@@ -43,14 +44,8 @@ import {
   renewPurchaseOutboxLease,
   usePurchaseOutbox,
 } from "../shared/lib";
-import { AnalysisPage } from "../pages/analysis";
-import { HomePage } from "../pages/home";
-import { ImportsPage } from "../pages/imports";
-import { LedgerPage } from "../pages/ledger";
-import { PurchaseCreatePage } from "../pages/purchase-create";
-import { SettingsPage } from "../pages/settings";
-import { SettlementPage } from "../pages/settlement";
-import type { AppPage } from "./app-page";
+import { isAppPage, type AppPage } from "./app-page";
+import { householdRouteContext } from "./household-route-context";
 
 async function read<T>(
   operation: Parameters<typeof executeGraphql>[0],
@@ -61,8 +56,10 @@ async function read<T>(
 
 export function App() {
   const navigate = useNavigate({ from: "/" });
-  const { page: selectedPage } = useSearch({ from: "/" });
-  const page: AppPage = selectedPage ?? "home";
+  const params = useParams({ strict: false });
+  const householdId = "householdId" in params ? params.householdId : undefined;
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const page = appPageFromPath(pathname);
   const outbox = usePurchaseOutbox();
   const createAndPostPurchase = useCreateAndPostPurchase();
   const [viewer, setViewer] = useState<{ id: string; displayName: string; email?: string } | null>(
@@ -86,7 +83,15 @@ export function App() {
   const purchaseCreatePreviousPage = useRef<AppPage>("home");
   const currentHouseholdId = useRef(household?.id);
   currentHouseholdId.current = household?.id;
+  const resolvingHouseholdId = useRef<string | null>(null);
   const autoNavigateKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    void navigate({
+      replace: true,
+      search: (previous) => serializeLedgerSearch(parseLedgerSearch(previous)),
+    });
+  }, [navigate]);
 
   useEffect(() => {
     setMobileMenu(false);
@@ -106,8 +111,10 @@ export function App() {
   }, [mobileMenu]);
 
   useBlocker({
-    shouldBlockFn: () =>
-      hasUnsavedChangesRef.current && !window.confirm("未保存の変更を破棄しますか？"),
+    shouldBlockFn: ({ current, next }) => {
+      if (current.pathname === next.pathname) return false;
+      return hasUnsavedChangesRef.current && !window.confirm("未保存の変更を破棄しますか？");
+    },
     enableBeforeUnload: () => hasUnsavedChangesRef.current,
   });
 
@@ -120,8 +127,24 @@ export function App() {
     if (nextPage === "new") {
       if (page !== "new") purchaseCreatePreviousPage.current = page;
     }
+    if (household?.id) navigateToHouseholdPage(household.id, nextPage);
+  };
+
+  const navigateToHouseholdPage = (id: string, nextPage: AppPage, replace = false) => {
+    const toByPage = {
+      home: "/households/$householdId",
+      ledger: "/households/$householdId/ledger",
+      new: "/households/$householdId/new",
+      settlement: "/households/$householdId/settlement",
+      analysis: "/households/$householdId/analysis",
+      imports: "/households/$householdId/imports",
+      settings: "/households/$householdId/settings",
+    } as const;
     void navigate({
-      search: (previous) => ({ ...previous, page: nextPage === "home" ? undefined : nextPage }),
+      to: toByPage[nextPage],
+      params: { householdId: id },
+      search: true,
+      replace,
     });
   };
 
@@ -153,10 +176,11 @@ export function App() {
         if (!active) return;
         setViewer(session);
         setHouseholds(result.households);
-        if (result.households[0]) {
-          const data = await read<{ household: Household }>(householdQuery, {
-            id: result.households[0].id,
-          });
+        const requested = result.households.find((item) => item.id === householdId);
+        const target = requested ?? result.households[0];
+        if (target) {
+          resolvingHouseholdId.current = target.id;
+          const data = await read<{ household: Household }>(householdQuery, { id: target.id });
           if (active) setHousehold(data.household);
         }
       })
@@ -172,10 +196,39 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!households.length) return;
+    const requestedHousehold = households.find((item) => item.id === householdId);
+    const target = requestedHousehold ?? households[0];
+    if (!target) return;
+    if (!requestedHousehold) navigateToHouseholdPage(target.id, "home", true);
+    if (resolvingHouseholdId.current === target.id) return;
+    resolvingHouseholdId.current = target.id;
+    let active = true;
+    void read<{ household: Household }>(householdQuery, { id: target.id })
+      .then((data) => {
+        if (!active) return;
+        setHousehold(data.household);
+      })
+      .catch((reason: unknown) => {
+        if (!active) return;
+        resolvingHouseholdId.current = null;
+        setError((reason as Error).message || "家計簿を読み込めませんでした");
+      });
+    return () => {
+      active = false;
+    };
+  }, [households, householdId, navigate, pathname]);
+
   const showNotice = (message: string) => {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 3200);
   };
+  const onPurchaseQueued = (idempotencyKey: string) => {
+    autoNavigateKey.current = idempotencyKey;
+    showNotice("送信待ちに保存しました");
+  };
+  const onBackFromPurchase = () => navigateToPage(purchaseCreatePreviousPage.current);
   const showNoticeRef = useRef(showNotice);
   showNoticeRef.current = showNotice;
   const refreshHouseholdRef = useRef(refreshHousehold);
@@ -274,11 +327,10 @@ export function App() {
   };
   const acceptInvitation = async () => {
     if (!pendingInvitation || acceptingInvitation) return;
-    if (
-      hasUnsavedChangesRef.current &&
-      !window.confirm("未保存の変更を破棄して招待を受け入れますか？")
-    )
+    const hadUnsavedChanges = hasUnsavedChangesRef.current;
+    if (hadUnsavedChanges && !window.confirm("未保存の変更を破棄して招待を受け入れますか？"))
       return;
+    if (hadUnsavedChanges) hasUnsavedChangesRef.current = false;
     setAcceptingInvitation(true);
     try {
       const result = await read<{ acceptHouseholdInvitation: { id: string; name: string } }>(
@@ -287,13 +339,14 @@ export function App() {
       );
       window.sessionStorage.removeItem("horse:pending-household-invitation");
       setPendingInvitation("");
-      await refreshHousehold(result.acceptHouseholdInvitation.id);
       setHouseholds((current) => [
         { id: result.acceptHouseholdInvitation.id, name: result.acceptHouseholdInvitation.name },
         ...current.filter((item) => item.id !== result.acceptHouseholdInvitation.id),
       ]);
+      navigateToHouseholdPage(result.acceptHouseholdInvitation.id, page);
       showNotice("家計簿に参加しました");
     } catch (reason) {
+      if (hadUnsavedChanges) hasUnsavedChangesRef.current = true;
       showNotice((reason as Error).message);
     } finally {
       setAcceptingInvitation(false);
@@ -303,22 +356,10 @@ export function App() {
     window.sessionStorage.removeItem("horse:pending-household-invitation");
     setPendingInvitation("");
   };
-  const selectHousehold = async (id: string) => {
+  const selectHousehold = (id: string) => {
     if (id === household?.id) return;
-    if (
-      hasUnsavedChangesRef.current &&
-      !window.confirm("未保存の変更を破棄して家計簿を切り替えますか？")
-    )
-      return;
-    try {
-      await refreshHousehold(id);
-      setHouseholds((current) => {
-        const selected = current.find((item) => item.id === id);
-        return selected ? [selected, ...current.filter((item) => item.id !== id)] : current;
-      });
-    } catch (reason) {
-      showNotice((reason as Error).message);
-    }
+    if (!households.some((item) => item.id === id)) return;
+    navigateToHouseholdPage(id, page);
   };
 
   if (loading)
@@ -342,6 +383,17 @@ export function App() {
         </div>
       </main>
     );
+
+  const routeContext = {
+    household,
+    viewerId: viewer.id,
+    navigateToPage,
+    reportUnsavedChanges,
+    onPurchaseQueued,
+    onBackFromPurchase,
+    refreshHousehold,
+    showNotice,
+  };
 
   return (
     <div className="app-shell">
@@ -545,67 +597,23 @@ export function App() {
           </section>
         )}
         <div className="page-content" key={household?.id ?? "no-household"}>
-          <GraphQLErrorBoundary>
-            <Suspense fallback={<div className="loading-screen">購入履歴を読み込んでいます</div>}>
-              {page === "home" && household && (
-                <HomePage household={household} onNavigate={navigateToPage} />
-              )}
-              {page === "new" && household && (
-                <PurchaseCreatePage
-                  household={household}
-                  onBack={() => navigateToPage(purchaseCreatePreviousPage.current)}
-                  onUnsavedChanges={reportUnsavedChanges}
-                  onQueued={(idempotencyKey) => {
-                    autoNavigateKey.current = idempotencyKey;
-                    showNotice("送信待ちに保存しました");
-                  }}
-                />
-              )}
-              {page === "ledger" && household && (
-                <LedgerPage
-                  household={household}
-                  onAdd={() => navigateToPage("new")}
-                  onUnsavedChanges={reportUnsavedChanges}
-                />
-              )}
-              {page === "settlement" && household && (
-                <SettlementPage household={household} onUnsavedChanges={reportUnsavedChanges} />
-              )}
-              {page === "analysis" && household && <AnalysisPage household={household} />}
-              {page === "imports" && household && (
-                <ImportsPage
-                  household={household}
-                  onUnsavedChanges={reportUnsavedChanges}
-                  onAdded={async (keepOpen) => {
-                    await refreshHousehold(household.id);
-                    if (!keepOpen) navigateToPage("ledger");
-                    showNotice("買い物を帳簿に追加しました");
-                  }}
-                />
-              )}
-              {page === "settings" && household && (
-                <SettingsPage
-                  household={household}
-                  isOwner={household.members.some(
-                    (member) => member.id === viewer.id && member.role === "OWNER",
-                  )}
-                  onUnsavedChanges={reportUnsavedChanges}
-                  onRefresh={() => refreshHousehold(household.id)}
-                  onNotice={showNotice}
-                />
-              )}
-              {!household && (
-                <EmptyHousehold
-                  households={households}
-                  onSelect={selectHousehold}
-                  onCreated={(id) => {
-                    void refreshHousehold(id);
-                    setHouseholds((items) => [{ id, name: "家計簿" }, ...items]);
-                  }}
-                />
-              )}
-            </Suspense>
-          </GraphQLErrorBoundary>
+          <householdRouteContext.Provider value={routeContext}>
+            <GraphQLErrorBoundary>
+              <Suspense fallback={<div className="loading-screen">購入履歴を読み込んでいます</div>}>
+                <Outlet />
+                {!household && (
+                  <EmptyHousehold
+                    households={households}
+                    onSelect={selectHousehold}
+                    onCreated={(id) => {
+                      void refreshHousehold(id);
+                      setHouseholds((items) => [{ id, name: "家計簿" }, ...items]);
+                    }}
+                  />
+                )}
+              </Suspense>
+            </GraphQLErrorBoundary>
+          </householdRouteContext.Provider>
         </div>
       </main>
       {notice && (
@@ -684,6 +692,11 @@ function pageTitle(page: AppPage) {
       settings: "設定",
     } as Record<AppPage, string>
   )[page];
+}
+
+function appPageFromPath(pathname: string): AppPage {
+  const child = /^\/households\/[^/]+\/([^/]+)\/?$/.exec(pathname)?.[1];
+  return isAppPage(child) ? child : "home";
 }
 
 function EmptyHousehold({

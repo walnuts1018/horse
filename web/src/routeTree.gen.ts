@@ -10,33 +10,139 @@
 
 import { Route as rootRouteImport } from './app/routes/__root'
 import { Route as IndexRouteImport } from './app/routes/index'
+import { Route as HouseholdsHouseholdIdRouteImport } from './app/routes/households.$householdId'
+import { Route as HouseholdsHouseholdIdIndexRouteImport } from './app/routes/households.$householdId.index'
+import { Route as HouseholdsHouseholdIdAnalysisRouteImport } from './app/routes/households.$householdId.analysis'
+import { Route as HouseholdsHouseholdIdImportsRouteImport } from './app/routes/households.$householdId.imports'
+import { Route as HouseholdsHouseholdIdLedgerRouteImport } from './app/routes/households.$householdId.ledger'
+import { Route as HouseholdsHouseholdIdNewRouteImport } from './app/routes/households.$householdId.new'
+import { Route as HouseholdsHouseholdIdSettingsRouteImport } from './app/routes/households.$householdId.settings'
+import { Route as HouseholdsHouseholdIdSettlementRouteImport } from './app/routes/households.$householdId.settlement'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HouseholdsHouseholdIdRoute = HouseholdsHouseholdIdRouteImport.update({
+  id: '/households/$householdId',
+  path: '/households/$householdId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HouseholdsHouseholdIdIndexRoute =
+  HouseholdsHouseholdIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => HouseholdsHouseholdIdRoute,
+  } as any)
+const HouseholdsHouseholdIdAnalysisRoute =
+  HouseholdsHouseholdIdAnalysisRouteImport.update({
+    id: '/analysis',
+    path: '/analysis',
+    getParentRoute: () => HouseholdsHouseholdIdRoute,
+  } as any)
+const HouseholdsHouseholdIdImportsRoute =
+  HouseholdsHouseholdIdImportsRouteImport.update({
+    id: '/imports',
+    path: '/imports',
+    getParentRoute: () => HouseholdsHouseholdIdRoute,
+  } as any)
+const HouseholdsHouseholdIdLedgerRoute =
+  HouseholdsHouseholdIdLedgerRouteImport.update({
+    id: '/ledger',
+    path: '/ledger',
+    getParentRoute: () => HouseholdsHouseholdIdRoute,
+  } as any)
+const HouseholdsHouseholdIdNewRoute =
+  HouseholdsHouseholdIdNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => HouseholdsHouseholdIdRoute,
+  } as any)
+const HouseholdsHouseholdIdSettingsRoute =
+  HouseholdsHouseholdIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => HouseholdsHouseholdIdRoute,
+  } as any)
+const HouseholdsHouseholdIdSettlementRoute =
+  HouseholdsHouseholdIdSettlementRouteImport.update({
+    id: '/settlement',
+    path: '/settlement',
+    getParentRoute: () => HouseholdsHouseholdIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/households/$householdId': typeof HouseholdsHouseholdIdRouteWithChildren
+  '/households/$householdId/analysis': typeof HouseholdsHouseholdIdAnalysisRoute
+  '/households/$householdId/imports': typeof HouseholdsHouseholdIdImportsRoute
+  '/households/$householdId/ledger': typeof HouseholdsHouseholdIdLedgerRoute
+  '/households/$householdId/new': typeof HouseholdsHouseholdIdNewRoute
+  '/households/$householdId/settings': typeof HouseholdsHouseholdIdSettingsRoute
+  '/households/$householdId/settlement': typeof HouseholdsHouseholdIdSettlementRoute
+  '/households/$householdId/': typeof HouseholdsHouseholdIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/households/$householdId/analysis': typeof HouseholdsHouseholdIdAnalysisRoute
+  '/households/$householdId/imports': typeof HouseholdsHouseholdIdImportsRoute
+  '/households/$householdId/ledger': typeof HouseholdsHouseholdIdLedgerRoute
+  '/households/$householdId/new': typeof HouseholdsHouseholdIdNewRoute
+  '/households/$householdId/settings': typeof HouseholdsHouseholdIdSettingsRoute
+  '/households/$householdId/settlement': typeof HouseholdsHouseholdIdSettlementRoute
+  '/households/$householdId': typeof HouseholdsHouseholdIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/households/$householdId': typeof HouseholdsHouseholdIdRouteWithChildren
+  '/households/$householdId/analysis': typeof HouseholdsHouseholdIdAnalysisRoute
+  '/households/$householdId/imports': typeof HouseholdsHouseholdIdImportsRoute
+  '/households/$householdId/ledger': typeof HouseholdsHouseholdIdLedgerRoute
+  '/households/$householdId/new': typeof HouseholdsHouseholdIdNewRoute
+  '/households/$householdId/settings': typeof HouseholdsHouseholdIdSettingsRoute
+  '/households/$householdId/settlement': typeof HouseholdsHouseholdIdSettlementRoute
+  '/households/$householdId/': typeof HouseholdsHouseholdIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/households/$householdId'
+    | '/households/$householdId/analysis'
+    | '/households/$householdId/imports'
+    | '/households/$householdId/ledger'
+    | '/households/$householdId/new'
+    | '/households/$householdId/settings'
+    | '/households/$householdId/settlement'
+    | '/households/$householdId/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/households/$householdId/analysis'
+    | '/households/$householdId/imports'
+    | '/households/$householdId/ledger'
+    | '/households/$householdId/new'
+    | '/households/$householdId/settings'
+    | '/households/$householdId/settlement'
+    | '/households/$householdId'
+  id:
+    | '__root__'
+    | '/'
+    | '/households/$householdId'
+    | '/households/$householdId/analysis'
+    | '/households/$householdId/imports'
+    | '/households/$householdId/ledger'
+    | '/households/$householdId/new'
+    | '/households/$householdId/settings'
+    | '/households/$householdId/settlement'
+    | '/households/$householdId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HouseholdsHouseholdIdRoute: typeof HouseholdsHouseholdIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +154,93 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/households/$householdId': {
+      id: '/households/$householdId'
+      path: '/households/$householdId'
+      fullPath: '/households/$householdId'
+      preLoaderRoute: typeof HouseholdsHouseholdIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/households/$householdId/': {
+      id: '/households/$householdId/'
+      path: '/'
+      fullPath: '/households/$householdId/'
+      preLoaderRoute: typeof HouseholdsHouseholdIdIndexRouteImport
+      parentRoute: typeof HouseholdsHouseholdIdRoute
+    }
+    '/households/$householdId/analysis': {
+      id: '/households/$householdId/analysis'
+      path: '/analysis'
+      fullPath: '/households/$householdId/analysis'
+      preLoaderRoute: typeof HouseholdsHouseholdIdAnalysisRouteImport
+      parentRoute: typeof HouseholdsHouseholdIdRoute
+    }
+    '/households/$householdId/imports': {
+      id: '/households/$householdId/imports'
+      path: '/imports'
+      fullPath: '/households/$householdId/imports'
+      preLoaderRoute: typeof HouseholdsHouseholdIdImportsRouteImport
+      parentRoute: typeof HouseholdsHouseholdIdRoute
+    }
+    '/households/$householdId/ledger': {
+      id: '/households/$householdId/ledger'
+      path: '/ledger'
+      fullPath: '/households/$householdId/ledger'
+      preLoaderRoute: typeof HouseholdsHouseholdIdLedgerRouteImport
+      parentRoute: typeof HouseholdsHouseholdIdRoute
+    }
+    '/households/$householdId/new': {
+      id: '/households/$householdId/new'
+      path: '/new'
+      fullPath: '/households/$householdId/new'
+      preLoaderRoute: typeof HouseholdsHouseholdIdNewRouteImport
+      parentRoute: typeof HouseholdsHouseholdIdRoute
+    }
+    '/households/$householdId/settings': {
+      id: '/households/$householdId/settings'
+      path: '/settings'
+      fullPath: '/households/$householdId/settings'
+      preLoaderRoute: typeof HouseholdsHouseholdIdSettingsRouteImport
+      parentRoute: typeof HouseholdsHouseholdIdRoute
+    }
+    '/households/$householdId/settlement': {
+      id: '/households/$householdId/settlement'
+      path: '/settlement'
+      fullPath: '/households/$householdId/settlement'
+      preLoaderRoute: typeof HouseholdsHouseholdIdSettlementRouteImport
+      parentRoute: typeof HouseholdsHouseholdIdRoute
+    }
   }
 }
 
+interface HouseholdsHouseholdIdRouteChildren {
+  HouseholdsHouseholdIdAnalysisRoute: typeof HouseholdsHouseholdIdAnalysisRoute
+  HouseholdsHouseholdIdImportsRoute: typeof HouseholdsHouseholdIdImportsRoute
+  HouseholdsHouseholdIdLedgerRoute: typeof HouseholdsHouseholdIdLedgerRoute
+  HouseholdsHouseholdIdNewRoute: typeof HouseholdsHouseholdIdNewRoute
+  HouseholdsHouseholdIdSettingsRoute: typeof HouseholdsHouseholdIdSettingsRoute
+  HouseholdsHouseholdIdSettlementRoute: typeof HouseholdsHouseholdIdSettlementRoute
+  HouseholdsHouseholdIdIndexRoute: typeof HouseholdsHouseholdIdIndexRoute
+}
+
+const HouseholdsHouseholdIdRouteChildren: HouseholdsHouseholdIdRouteChildren = {
+  HouseholdsHouseholdIdAnalysisRoute: HouseholdsHouseholdIdAnalysisRoute,
+  HouseholdsHouseholdIdImportsRoute: HouseholdsHouseholdIdImportsRoute,
+  HouseholdsHouseholdIdLedgerRoute: HouseholdsHouseholdIdLedgerRoute,
+  HouseholdsHouseholdIdNewRoute: HouseholdsHouseholdIdNewRoute,
+  HouseholdsHouseholdIdSettingsRoute: HouseholdsHouseholdIdSettingsRoute,
+  HouseholdsHouseholdIdSettlementRoute: HouseholdsHouseholdIdSettlementRoute,
+  HouseholdsHouseholdIdIndexRoute: HouseholdsHouseholdIdIndexRoute,
+}
+
+const HouseholdsHouseholdIdRouteWithChildren =
+  HouseholdsHouseholdIdRoute._addFileChildren(
+    HouseholdsHouseholdIdRouteChildren,
+  )
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HouseholdsHouseholdIdRoute: HouseholdsHouseholdIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

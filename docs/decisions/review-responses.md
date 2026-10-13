@@ -48,6 +48,12 @@ UXレビューの品目では、商品サジェストを選択した直後に自
 
 Go API・Worker・Atlas MigrationとWebを別イメージに分け、依存取得のBuildKit cache mount、main push時のイメージ公開、provenance、SBOMを設定しました。CI run `38392241924`でGo、Web、OCRイメージの公開に成功しました。OCRのソースは変更していないためinfraのOCR digestは維持しました。infra commit `664ff46b3`でAPI・Worker・WebのdigestとWebの正しい`horse-web`リポジトリを反映し、Argo CDが`Synced`・`Healthy`になり4 PodがReadyであることを確認しました。Web実行イメージをpiccaと同じNode 24 distrolessへ切り替えたため、CI公開と公開Podの起動確認までは`docs/reviews/docker.md`にその項目だけを残します。
 
+Renovateが更新できるよう、Go・Web・OCRの公開タグはGitHub Actionsのrun numberをpatch番号にした`v0.0.<run number>`へ統一します。SHAを含む疑似バージョンは使いません。infra commit `16c224ca8`で既存digestに厳密なタグを付け、Webの起動commandがNode distroless imageと合わない問題をinfra commit `92433d001`で修正しました。Horseの次のCIでroute変更を含む新しいdigestを公開し、Argo CDと公開URLの稼働を確認してから、`horse`、`horse-web`、`horse-ocr`の過去のpackage versionsを削除します。稼働中indexが参照するplatform manifestとprovenance/SBOM manifestは削除対象にしません。
+
+### ファイルベースrouteとURL state
+
+ページ名を`?page=`へ保存する方式を廃止し、TanStack Startのfile-based routeで`/households/$householdId/{page}`を構成します。帳簿の検索条件は共有と再読み込みに必要なためsearch paramsへ保存します。各画面routeは`pages/`のpublic APIを呼び出し、App shellをroot routeに一度だけ配置して未保存変更のblockerと画面状態を維持します。型検査、Steiger、oxlint、oxfmt、Vite buildを確認しました。新しいimageの稼働確認と直接URL・戻る/進むの公開環境確認はCIとデプロイ後に記録します。
+
 ### GraphQL Schema
 
 Mutation単位とドメイン型単位でSDLを分割し、gqlgenは`follow-schema`を使います。全37 Mutationが`Success | UserError`のResult unionを返し、共通`MutationError` interfaceを使います。Ledger、Settlement、Pool、Observation、PurchaseCorrection、AccountBalanceSourceも型の違いをinterface/unionで表しています。この構成はpiccaのADR 0002とSDL分割に沿うため、該当するレビュー指摘は解決済みとして`docs/reviews/graphql.md`から削除しました。根拠は`gqlgen.yml`、`graphql/*_mutation.graphql`、各domain SDLです。
