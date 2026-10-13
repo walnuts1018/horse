@@ -25,7 +25,6 @@ import {
   updatePurchaseMutation,
   useHouseholdPurchases,
 } from "../../../entities/purchase";
-import { ledgerQuery } from "../../../entities/ledger";
 import { unmatchedObservationsQuery } from "../api/observation/operations";
 import { readProductCatalog } from "../../../entities/product";
 import { tagsQuery } from "../../../entities/tag";

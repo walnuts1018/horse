@@ -1,12 +1,52 @@
 import { graphql } from "react-relay";
 
-export const ledgerQuery = graphql`
-  query LedgerQuery($householdId: ID!, $after: String, $first: Int) {
-    ledger(householdId: $householdId, after: $after, first: $first) {
+export const householdLedgerQuery = graphql`
+  query HouseholdLedgerQuery($householdId: ID!, $first: Int) {
+    ...HouseholdLedgerFragment @arguments(householdId: $householdId, first: $first)
+  }
+`;
+
+export const householdLedgerFragment = graphql`
+  fragment HouseholdLedgerFragment on Query
+  @argumentDefinitions(
+    householdId: { type: "ID!" }
+    first: { type: "Int", defaultValue: 100 }
+    after: { type: "String" }
+  )
+  @refetchable(queryName: "HouseholdLedgerPaginationQuery") {
+    ledger(householdId: $householdId, first: $first, after: $after)
+      @connection(key: "HouseholdLedgerFragment_ledger", filters: ["householdId"]) {
       edges {
         cursor
         node {
-          ...LedgerEntryFields
+          ...LedgerEntryFields @relay(mask: false)
+          ... on FundingLedgerEntry {
+            member {
+              id
+            }
+            pool {
+              id
+            }
+          }
+          ... on TransferLedgerEntry {
+            fromMember {
+              id
+            }
+            toMember {
+              id
+            }
+            transferKind
+          }
+          ... on PurchaseLedgerEntry {
+            purchase {
+              id
+            }
+          }
+          ... on CorrectionLedgerEntry {
+            purchase {
+              id
+            }
+          }
         }
       }
       pageInfo {

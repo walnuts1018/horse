@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9560bba636b2fe55d11620888076a285>>
+ * @generated SignedSource<<2f3d4ff7aa62ef8f60834b6656540623>>
  * @lightSyntaxTransform
  */
 
@@ -9,48 +9,38 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 import type { FragmentRefs } from "relay-runtime";
-export type LedgerQuery$variables = {
+export type HouseholdLedgerPaginationQuery$variables = {
   after?: string | null | undefined;
   first?: number | null | undefined;
   householdId: string;
 };
-export type LedgerQuery$data = {
-  readonly ledger: {
-    readonly edges: ReadonlyArray<{
-      readonly cursor: string;
-      readonly node: {
-        readonly " $fragmentSpreads": FragmentRefs<"LedgerEntryFields">;
-      };
-    }>;
-    readonly pageInfo: {
-      readonly endCursor: string | null | undefined;
-      readonly hasNextPage: boolean;
-    };
-    readonly totalCount: number;
-  };
+export type HouseholdLedgerPaginationQuery$data = {
+  readonly " $fragmentSpreads": FragmentRefs<"HouseholdLedgerFragment">;
 };
-export type LedgerQuery = {
-  response: LedgerQuery$data;
-  variables: LedgerQuery$variables;
+export type HouseholdLedgerPaginationQuery = {
+  response: HouseholdLedgerPaginationQuery$data;
+  variables: HouseholdLedgerPaginationQuery$variables;
 };
 
 const node: ConcreteRequest = (function(){
-var v0 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "after"
-},
-v1 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "first"
-},
-v2 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
-  "name": "householdId"
-},
-v3 = [
+var v0 = [
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "after"
+  },
+  {
+    "defaultValue": 100,
+    "kind": "LocalArgument",
+    "name": "first"
+  },
+  {
+    "defaultValue": null,
+    "kind": "LocalArgument",
+    "name": "householdId"
+  }
+],
+v1 = [
   {
     "kind": "Variable",
     "name": "after",
@@ -67,56 +57,17 @@ v3 = [
     "variableName": "householdId"
   }
 ],
-v4 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "cursor",
-  "storageKey": null
-},
-v5 = {
-  "alias": null,
-  "args": null,
-  "concreteType": "PageInfo",
-  "kind": "LinkedField",
-  "name": "pageInfo",
-  "plural": false,
-  "selections": [
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "endCursor",
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "hasNextPage",
-      "storageKey": null
-    }
-  ],
-  "storageKey": null
-},
-v6 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "totalCount",
-  "storageKey": null
-},
-v7 = {
+v2 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v8 = [
-  (v7/*:: as any*/)
+v3 = [
+  (v2/*:: as any*/)
 ],
-v9 = [
+v4 = [
   {
     "alias": null,
     "args": null,
@@ -124,12 +75,12 @@ v9 = [
     "kind": "LinkedField",
     "name": "purchase",
     "plural": false,
-    "selections": (v8/*:: as any*/),
+    "selections": (v3/*:: as any*/),
     "storageKey": null
   }
 ],
-v10 = [
-  (v7/*:: as any*/),
+v5 = [
+  (v2/*:: as any*/),
   {
     "alias": null,
     "args": null,
@@ -140,55 +91,15 @@ v10 = [
 ];
 return {
   "fragment": {
-    "argumentDefinitions": [
-      (v0/*:: as any*/),
-      (v1/*:: as any*/),
-      (v2/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Fragment",
     "metadata": null,
-    "name": "LedgerQuery",
+    "name": "HouseholdLedgerPaginationQuery",
     "selections": [
       {
-        "alias": null,
-        "args": (v3/*:: as any*/),
-        "concreteType": "LedgerConnection",
-        "kind": "LinkedField",
-        "name": "ledger",
-        "plural": false,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "LedgerEdge",
-            "kind": "LinkedField",
-            "name": "edges",
-            "plural": true,
-            "selections": [
-              (v4/*:: as any*/),
-              {
-                "alias": null,
-                "args": null,
-                "concreteType": null,
-                "kind": "LinkedField",
-                "name": "node",
-                "plural": false,
-                "selections": [
-                  {
-                    "args": null,
-                    "kind": "FragmentSpread",
-                    "name": "LedgerEntryFields"
-                  }
-                ],
-                "storageKey": null
-              }
-            ],
-            "storageKey": null
-          },
-          (v5/*:: as any*/),
-          (v6/*:: as any*/)
-        ],
-        "storageKey": null
+        "args": (v1/*:: as any*/),
+        "kind": "FragmentSpread",
+        "name": "HouseholdLedgerFragment"
       }
     ],
     "type": "Query",
@@ -196,17 +107,13 @@ return {
   },
   "kind": "Request",
   "operation": {
-    "argumentDefinitions": [
-      (v2/*:: as any*/),
-      (v0/*:: as any*/),
-      (v1/*:: as any*/)
-    ],
+    "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
-    "name": "LedgerQuery",
+    "name": "HouseholdLedgerPaginationQuery",
     "selections": [
       {
         "alias": null,
-        "args": (v3/*:: as any*/),
+        "args": (v1/*:: as any*/),
         "concreteType": "LedgerConnection",
         "kind": "LinkedField",
         "name": "ledger",
@@ -220,7 +127,13 @@ return {
             "name": "edges",
             "plural": true,
             "selections": [
-              (v4/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "cursor",
+                "storageKey": null
+              },
               {
                 "alias": null,
                 "args": null,
@@ -240,7 +153,7 @@ return {
                     "kind": "TypeDiscriminator",
                     "abstractKey": "__isLedgerEntry"
                   },
-                  (v7/*:: as any*/),
+                  (v2/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -278,7 +191,7 @@ return {
                   },
                   {
                     "kind": "InlineFragment",
-                    "selections": (v9/*:: as any*/),
+                    "selections": (v4/*:: as any*/),
                     "type": "PurchaseLedgerEntry",
                     "abstractKey": null
                   },
@@ -292,7 +205,7 @@ return {
                         "kind": "LinkedField",
                         "name": "member",
                         "plural": false,
-                        "selections": (v10/*:: as any*/),
+                        "selections": (v5/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -303,7 +216,7 @@ return {
                         "name": "pool",
                         "plural": false,
                         "selections": [
-                          (v7/*:: as any*/),
+                          (v2/*:: as any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -328,7 +241,7 @@ return {
                         "kind": "LinkedField",
                         "name": "fromMember",
                         "plural": false,
-                        "selections": (v10/*:: as any*/),
+                        "selections": (v5/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -338,7 +251,7 @@ return {
                         "kind": "LinkedField",
                         "name": "toMember",
                         "plural": false,
-                        "selections": (v10/*:: as any*/),
+                        "selections": (v5/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -355,7 +268,7 @@ return {
                         "kind": "LinkedField",
                         "name": "loan",
                         "plural": false,
-                        "selections": (v8/*:: as any*/),
+                        "selections": (v3/*:: as any*/),
                         "storageKey": null
                       }
                     ],
@@ -364,7 +277,7 @@ return {
                   },
                   {
                     "kind": "InlineFragment",
-                    "selections": (v9/*:: as any*/),
+                    "selections": (v4/*:: as any*/),
                     "type": "CorrectionLedgerEntry",
                     "abstractKey": null
                   }
@@ -374,24 +287,65 @@ return {
             ],
             "storageKey": null
           },
-          (v5/*:: as any*/),
-          (v6/*:: as any*/)
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "PageInfo",
+            "kind": "LinkedField",
+            "name": "pageInfo",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "endCursor",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "hasNextPage",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "totalCount",
+            "storageKey": null
+          }
         ],
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": (v1/*:: as any*/),
+        "filters": [
+          "householdId"
+        ],
+        "handle": "connection",
+        "key": "HouseholdLedgerFragment_ledger",
+        "kind": "LinkedHandle",
+        "name": "ledger"
       }
     ]
   },
   "params": {
-    "cacheID": "0ef6beaae271e19f09ecd66c7db82331",
+    "cacheID": "5ff33dabcccab796b6ed4812344fe3d2",
     "id": null,
     "metadata": {},
-    "name": "LedgerQuery",
+    "name": "HouseholdLedgerPaginationQuery",
     "operationKind": "query",
-    "text": "query LedgerQuery(\n  $householdId: ID!\n  $after: String\n  $first: Int\n) {\n  ledger(householdId: $householdId, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        __typename\n        ...LedgerEntryFields\n        id\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n\nfragment LedgerEntryFields on LedgerEntry {\n  __isLedgerEntry: __typename\n  __typename\n  id\n  occurredAt\n  description\n  amountYen\n  currency\n  createdAt\n  ... on PurchaseLedgerEntry {\n    purchase {\n      id\n    }\n  }\n  ... on FundingLedgerEntry {\n    member {\n      id\n      displayName\n    }\n    pool {\n      id\n      name\n    }\n  }\n  ... on TransferLedgerEntry {\n    fromMember {\n      id\n      displayName\n    }\n    toMember {\n      id\n      displayName\n    }\n    transferKind\n    loan {\n      id\n    }\n  }\n  ... on CorrectionLedgerEntry {\n    purchase {\n      id\n    }\n  }\n}\n"
+    "text": "query HouseholdLedgerPaginationQuery(\n  $after: String\n  $first: Int = 100\n  $householdId: ID!\n) {\n  ...HouseholdLedgerFragment_1x5y0e\n}\n\nfragment HouseholdLedgerFragment_1x5y0e on Query {\n  ledger(householdId: $householdId, first: $first, after: $after) {\n    edges {\n      cursor\n      node {\n        __typename\n        __isLedgerEntry: __typename\n        id\n        occurredAt\n        description\n        amountYen\n        currency\n        createdAt\n        ... on PurchaseLedgerEntry {\n          purchase {\n            id\n          }\n        }\n        ... on FundingLedgerEntry {\n          member {\n            id\n            displayName\n          }\n          pool {\n            id\n            name\n          }\n        }\n        ... on TransferLedgerEntry {\n          fromMember {\n            id\n            displayName\n          }\n          toMember {\n            id\n            displayName\n          }\n          transferKind\n          loan {\n            id\n          }\n        }\n        ... on CorrectionLedgerEntry {\n          purchase {\n            id\n          }\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "e3e5e320e61803f10014d69d615db9f6";
+(node as any).hash = "78037216fba1ed1cdd8c4ca8bd7a2363";
 
 export default node;

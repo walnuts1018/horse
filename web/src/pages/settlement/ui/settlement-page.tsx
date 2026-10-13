@@ -13,17 +13,16 @@ import {
   readGraphql,
   type Connection,
   type Household,
-  type LedgerEntry,
   type LoanBalance,
   type Settlement,
 } from "../../../shared/api";
 import { closePeriodMutation, settlementQuery } from "../../../entities/settlement";
 import {
-  ledgerQuery,
   loanBalancesQuery,
   recordRepaymentMutation,
   recordFundingMutation,
   recordTransferMutation,
+  useHouseholdLedger,
 } from "../../../entities/ledger";
 import { InlineError } from "../../../shared/ui";
 import { japanMonth } from "../../../shared/lib";
@@ -46,7 +45,14 @@ const ledgerKindLabels: Record<string, string> = {
 export function SettlementPage({ household }: { household: Household }) {
   const [period, setPeriod] = useState(() => japanMonth(new Date()));
   const [settlement, setSettlement] = useState<Settlement | null>(null);
-  const [entries, setEntries] = useState<LedgerEntry[]>([]);
+  const {
+    entries,
+    hasNextPage: ledgerHasNextPage,
+    loadingMore: ledgerLoadingMore,
+    moreError: ledgerMoreError,
+    loadMore: loadMoreLedger,
+    refresh: refreshLedger,
+  } = useHouseholdLedger(household.id);
   const [loans, setLoans] = useState<LoanBalance[]>([]);
   const [loanCursor, setLoanCursor] = useState<string | null>(null);
   const [loanHasNextPage, setLoanHasNextPage] = useState(false);
@@ -69,14 +75,11 @@ export function SettlementPage({ household }: { household: Household }) {
   const [fundingDestinationAccountId, setFundingDestinationAccountId] = useState("");
   const load = async () => {
     try {
-      const [settlementData, ledgerData, loanData] = await Promise.all([
+      refreshLedger();
+      const [settlementData, loanData] = await Promise.all([
         readGraphql<{ settlement: Settlement }>(settlementQuery, {
           householdId: household.id,
           period,
-        }),
-        readGraphql<{ ledger: Connection<LedgerEntry> }>(ledgerQuery, {
-          householdId: household.id,
-          first: 100,
         }),
         readGraphql<{ loanBalances: Connection<LoanBalance> }>(loanBalancesQuery, {
           householdId: household.id,
@@ -84,7 +87,6 @@ export function SettlementPage({ household }: { household: Household }) {
         }),
       ]);
       setSettlement(settlementData.settlement);
-      setEntries(ledgerData.ledger.edges.map((edge) => edge.node));
       setLoans(loanData.loanBalances.edges.map((edge) => edge.node));
       setLoanCursor(loanData.loanBalances.pageInfo.endCursor ?? null);
       setLoanHasNextPage(loanData.loanBalances.pageInfo.hasNextPage);
@@ -233,6 +235,9 @@ export function SettlementPage({ household }: { household: Household }) {
     setError("");
     setTransferOpen(true);
   };
+  const ledgerEntries = entries.filter((entry) =>
+    ["FUNDING", "TRANSFER", "ADVANCE", "LOAN", "REPAYMENT", "GIFT"].includes(entry.kind),
+  );
   return (
     <>
       <div className="page-heading">
@@ -649,41 +654,46 @@ export function SettlementPage({ household }: { household: Household }) {
         </div>
       </div>
       <section className="panel ledger-panel">
-        {entries.filter((entry) =>
-          ["FUNDING", "TRANSFER", "ADVANCE", "LOAN", "REPAYMENT", "GIFT"].includes(entry.kind),
-        ).length === 0 ? (
+        {ledgerEntries.length === 0 ? (
           <div className="empty-state compact">
             <ArrowLeftRight />
             <span>記録はありません</span>
           </div>
         ) : (
-          entries
-            .filter((entry) =>
-              ["FUNDING", "TRANSFER", "ADVANCE", "LOAN", "REPAYMENT", "GIFT"].includes(entry.kind),
-            )
-            .map((entry) => (
-              <div className="funding-entry" key={entry.id}>
-                <span className="funding-icon">
-                  <ArrowDownLeft />
-                </span>
-                <div>
-                  <b>{entry.description}</b>
-                  <small>{ledgerKindLabels[entry.kind] ?? "送金"}</small>
-                  {entry.fromMemberId && entry.toMemberId && (
-                    <small>
-                      {household.members.find((member) => member.id === entry.fromMemberId)
-                        ?.displayName ?? "送金元"}
-                      から
-                      {household.members.find((member) => member.id === entry.toMemberId)
-                        ?.displayName ?? "送金先"}
-                      へ
-                    </small>
-                  )}
-                  <small>{new Date(entry.occurredAt).toLocaleDateString("ja-JP")}</small>
-                </div>
-                <strong>{yen(entry.amountYen)}</strong>
+          ledgerEntries.map((entry) => (
+            <div className="funding-entry" key={entry.id}>
+              <span className="funding-icon">
+                <ArrowDownLeft />
+              </span>
+              <div>
+                <b>{entry.description}</b>
+                <small>{ledgerKindLabels[entry.kind] ?? "送金"}</small>
+                {entry.fromMemberId && entry.toMemberId && (
+                  <small>
+                    {household.members.find((member) => member.id === entry.fromMemberId)
+                      ?.displayName ?? "送金元"}
+                    から
+                    {household.members.find((member) => member.id === entry.toMemberId)
+                      ?.displayName ?? "送金先"}
+                    へ
+                  </small>
+                )}
+                <small>{new Date(entry.occurredAt).toLocaleDateString("ja-JP")}</small>
               </div>
-            ))
+              <strong>{yen(entry.amountYen)}</strong>
+            </div>
+          ))
+        )}
+        {ledgerMoreError && <InlineError message={ledgerMoreError} />}
+        {ledgerHasNextPage && (
+          <button
+            className="text-button"
+            type="button"
+            disabled={ledgerLoadingMore}
+            onClick={loadMoreLedger}
+          >
+            {ledgerLoadingMore ? "読み込み中" : "さらに記録を表示"}
+          </button>
         )}
       </section>
     </>

@@ -3,7 +3,8 @@ export {
   accountBalancesQuery,
   accountIncomesQuery,
   accountMovementsQuery,
-  ledgerQuery,
+  householdLedgerFragment,
+  householdLedgerQuery,
   loanBalancesQuery,
   recordAccountMovementMutation,
   recordExternalIncomeMutation,
@@ -11,3 +12,6 @@ export {
   recordTransferMutation,
   recordRepaymentMutation,
 } from "./api/operations";
+export { useHouseholdLedger } from "./api/use-household-ledger";
+export type { HouseholdLedgerQuery } from "../../shared/api/__generated__/HouseholdLedgerQuery.graphql";
+export type { HouseholdLedgerFragment$key } from "../../shared/api/__generated__/HouseholdLedgerFragment.graphql";
