@@ -108,7 +108,7 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand, operations 
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(purchase.HouseholdID))), sm.ForShare()).One(ctx, executor); err != nil {
 		return UpdateResult{}, err
 	}
-	if status != "DRAFT" && status != "POSTED" {
+	if status != draftStatus && status != postedStatus {
 		return UpdateResult{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 	}
 	if command.BaseRevision > purchase.Revision {
@@ -159,7 +159,7 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand, operations 
 				return UpdateResult{}, fmt.Errorf("%w: purchase total is too large", ErrBadInput)
 			}
 		}
-		if status == "POSTED" {
+		if status == postedStatus {
 			var paid int64
 			for _, payment := range payments {
 				var ok bool
@@ -187,7 +187,7 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand, operations 
 	).Exec(ctx, executor); err != nil {
 		return UpdateResult{}, err
 	}
-	if status == "POSTED" {
+	if status == postedStatus {
 		if operations.SyncAccounting == nil {
 			return UpdateResult{}, errors.New("purchase update requires accounting synchronization")
 		}

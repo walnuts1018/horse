@@ -186,7 +186,7 @@ func (s *Service) create(ctx context.Context, input CreateCommand, fingerprint [
 	purchaseUUID := newUUID()
 	purchaseID := purchaseUUID.String()
 	createdBy := actorUUID
-	purchaseStatus := "DRAFT"
+	purchaseStatus := draftStatus
 	if _, err := models.Purchases.Insert(&models.PurchaseSetter{
 		ID: &purchaseUUID, HouseholdID: &householdUUID, OccurredAt: &input.OccurredAt, Merchant: &merchant,
 		Status: &purchaseStatus, AllocationRuleVersion: &ruleVersion, CreatedBy: &createdBy, Origin: &origin,

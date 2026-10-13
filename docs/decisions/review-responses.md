@@ -10,7 +10,7 @@
 
 確認箇所は`internal/application/`、`internal/graph/query_purchases.go`、`internal/graph/monthly_spending.go`、`internal/graph/account_balances.go`、`internal/graph/purchase_accounting.go`です。購入一覧の関連データ取得、集計、会計更新を対象にしたDB統合テストを維持します。
 
-購入更新も`internal/application/purchase`のServiceへ移しました。Resolverがトランザクションを所有すると会計期間ロック、購入revisionの競合確認、支払内訳、POSTED購入の仕訳同期、イベント記録がGraphQL層に集まり、別の呼び出し経路で一部だけ実行されるおそれがあるためです。Serviceが同一トランザクション内でこれらを実行し、GraphQL層から注入する操作も同じTxを使います。独立レビューでは権限確認、rollback、会計同期の境界を確認しました。DB統合テストの追加分はローカルDB未設定により実行できず、公開CIの次回実行を待っています。
+購入更新も`internal/application/purchase`のServiceへ移しました。Resolverがトランザクションを所有すると会計期間ロック、購入revisionの競合確認、支払内訳、POSTED購入の仕訳同期、イベント記録がGraphQL層に集まり、別の呼び出し経路で一部だけ実行されるおそれがあるためです。Serviceが同一トランザクション内でこれらを実行し、GraphQL層から注入する操作も同じTxを使います。独立レビューでは権限確認、rollback、会計同期の境界を確認しました。`c379926`のCIはGo buildとfresh DB migrationを通過しましたが、購入状態の`DRAFT`文字列が重複するlint指摘で終了しました。状態名をpackage定数へまとめ、対象packageのgolangci-lintを通過しました。追加DB統合テストは公開CIで再確認します。
 
 複数月の精算previewは、月ごとに精算を計算して同じ基礎データを読み直す構成を改め、未締め期間の拠出義務、予定拠出、訂正、購入由来expenseを範囲単位で読み込み、会計月ごとに計算する構成にしました。購入IDなどの関連読込は引き続き500件単位で分割します。独立の静的レビューで月範囲、終了日を含む予定拠出、終了済み予定の適用月、履歴snapshot、overflow検査を確認しました。締め済み残高を含む月次計算との一致を確認するDB統合テストを追加しましたが、ローカルDB未設定によりskipされました。クエリ数や実行時間の実測はしていないため、性能改善の数値は主張せず、CIのDB統合テスト通過後に複数月読み直しのレビュー項目を解決済みにします。
 
@@ -27,6 +27,8 @@ Resolver内に残る購入訂正などのトランザクションと業務処理
 購入・精算・設定・取込の未保存変更を検知し、家庭切替やログアウトなどで変更を破棄する前に確認する処理を追加しました。drawer表示中はbodyを固定し、閉じた後に表示位置を復元します。`?page=`による画面URLは維持し、ブラウザーの履歴と再読み込みの確認を継続します。
 
 変更は`web/src/app/horse-app.tsx`と画面ごとの編集フォームにあります。iOS実機でのpull-to-refresh抑止、履歴操作、深いURLからの再読み込みは未確認のため、`docs/reviews/spa.md`は残します。
+
+ソース監査では、dirty状態に対する`useBlocker`と`beforeunload`、購入下書きのIndexedDB保存、drawer表示中の`overscroll-behavior`とbody固定を確認しました。これらは実装の存在を示すだけで、タブ閉じ・更新時の確認やAndroid/iOSのジェスチャーを確認した証拠にはしません。旧公開イメージのURL不具合も残っているため、公開環境の検証完了までレビューを解決扱いにしません。
 
 2026年10月13日に公開環境へログインし、帳簿へ移動してもURLが`https://horse.walnuts.dev/`のまま変わらず、`https://horse.walnuts.dev/?page=ledger`を直接開くとホームが表示されることを確認しました。購入入力画面で合成の1円下書きを作って帳簿へ移動した後、購入入力画面を開き直すと商品名と金額が復元されました。テスト用下書きは画面上で削除し、送信していません。稼働中のWebイメージは`v0.0.0-4e119145357fe4b6b7c662f4d7791d0e4eba93d6-117`で、現在のソースにある`useSearch`と`navigate`による画面URL管理より古いものです。最新イメージ配備後に画面遷移、直接URL、再読み込み、戻る・進むを再確認します。この実測結果があるため、SPAレビューは解決扱いにしません。
 

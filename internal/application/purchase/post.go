@@ -22,7 +22,10 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-const postedStatus = "POSTED"
+const (
+	draftStatus  = "DRAFT"
+	postedStatus = "POSTED"
+)
 
 func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha256.Size]byte) (PostResult, error) {
 	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 {
@@ -95,7 +98,7 @@ func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha2
 	if err != nil {
 		return PostResult{}, err
 	}
-	if accountingPeriod(purchase.OccurredAt) != period || purchase.Revision != input.ExpectedRevision || purchase.Status != "DRAFT" {
+	if accountingPeriod(purchase.OccurredAt) != period || purchase.Revision != input.ExpectedRevision || purchase.Status != draftStatus {
 		return PostResult{}, ErrConflict
 	}
 	items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseID)))).All(ctx, executor)
