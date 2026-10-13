@@ -17,6 +17,7 @@ import {
 } from "../../../shared/api";
 import type { PurchaseChangedField } from "../../../shared/api/__generated__/UpdatePurchaseMutation.graphql";
 import type { PurchaseItemChangedField } from "../../../shared/api/__generated__/UpdatePurchaseItemMutation.graphql";
+import type { BulkPurchaseItemChangedField } from "../../../shared/api/__generated__/BulkUpdatePurchaseItemsMutation.graphql";
 import {
   bulkUpdatePurchaseItemsMutation,
   bulkUpdatePurchasesMutation,
@@ -82,10 +83,23 @@ const toPurchaseItemChangedFields = (fields: readonly string[]): PurchaseItemCha
         return "PRODUCT_VARIANT_ID";
       case "allocations":
         return "ALLOCATIONS";
+      default:
+        throw new Error("不明な品目の変更項目です");
+    }
+  });
+const toBulkPurchaseItemChangedFields = (fields: readonly string[]): BulkPurchaseItemChangedField[] =>
+  fields.map((field) => {
+    switch (field) {
+      case "categoryId":
+        return "CATEGORY_ID";
+      case "productVariantId":
+        return "PRODUCT_VARIANT_ID";
+      case "allocations":
+        return "ALLOCATIONS";
       case "tags":
         return "TAGS";
       default:
-        throw new Error("不明な品目の変更項目です");
+        throw new Error("不明な一括品目の変更項目です");
     }
   });
 const purchaseMonth = (occurredAt: string) =>
@@ -808,7 +822,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
         input: {
           targets: targets.map(({ item }) => ({ itemId: item.id, baseRevision: item.revision })),
           patch,
-          changedFields: toPurchaseItemChangedFields(changedFields),
+          changedFields: toBulkPurchaseItemChangedFields(changedFields),
         },
       });
       const undoEntries: NonNullable<typeof bulkUndo> = targets.map(({ item }) => {
@@ -863,7 +877,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
           input: {
             targets: group.map(({ itemId, baseRevision }) => ({ itemId, baseRevision })),
             patch: group[0].patch,
-            changedFields: toPurchaseItemChangedFields(group[0].changedFields),
+            changedFields: toBulkPurchaseItemChangedFields(group[0].changedFields),
           },
         });
         undone += group.length;

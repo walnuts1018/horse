@@ -3073,7 +3073,24 @@ func purchaseItemChangedFieldKeys(fields []model.PurchaseItemChangedField) []str
 			keys[i] = "productVariantId"
 		case model.PurchaseItemChangedFieldAllocations:
 			keys[i] = "allocations"
-		case model.PurchaseItemChangedFieldTags:
+		default:
+			keys[i] = string(field)
+		}
+	}
+	return keys
+}
+
+func bulkPurchaseItemChangedFieldKeys(fields []model.BulkPurchaseItemChangedField) []string {
+	keys := make([]string, len(fields))
+	for i, field := range fields {
+		switch field {
+		case model.BulkPurchaseItemChangedFieldCategoryID:
+			keys[i] = "categoryId"
+		case model.BulkPurchaseItemChangedFieldProductVariantID:
+			keys[i] = "productVariantId"
+		case model.BulkPurchaseItemChangedFieldAllocations:
+			keys[i] = "allocations"
+		case model.BulkPurchaseItemChangedFieldTags:
 			keys[i] = "tags"
 		default:
 			keys[i] = string(field)

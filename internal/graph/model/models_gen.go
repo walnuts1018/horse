@@ -413,9 +413,9 @@ type BulkPurchasePatch struct {
 }
 
 type BulkUpdatePurchaseItemsInput struct {
-	Targets       []*PurchaseItemTargetInput `json:"targets"`
-	Patch         *BulkPurchaseItemPatch     `json:"patch"`
-	ChangedFields []PurchaseItemChangedField `json:"changedFields"`
+	Targets       []*PurchaseItemTargetInput     `json:"targets"`
+	Patch         *BulkPurchaseItemPatch         `json:"patch"`
+	ChangedFields []BulkPurchaseItemChangedField `json:"changedFields"`
 }
 
 type BulkUpdatePurchaseItemsSuccess struct {
@@ -1929,6 +1929,65 @@ func (e AllocationRuleScope) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+type BulkPurchaseItemChangedField string
+
+const (
+	BulkPurchaseItemChangedFieldCategoryID       BulkPurchaseItemChangedField = "CATEGORY_ID"
+	BulkPurchaseItemChangedFieldProductVariantID BulkPurchaseItemChangedField = "PRODUCT_VARIANT_ID"
+	BulkPurchaseItemChangedFieldAllocations      BulkPurchaseItemChangedField = "ALLOCATIONS"
+	BulkPurchaseItemChangedFieldTags             BulkPurchaseItemChangedField = "TAGS"
+)
+
+var AllBulkPurchaseItemChangedField = []BulkPurchaseItemChangedField{
+	BulkPurchaseItemChangedFieldCategoryID,
+	BulkPurchaseItemChangedFieldProductVariantID,
+	BulkPurchaseItemChangedFieldAllocations,
+	BulkPurchaseItemChangedFieldTags,
+}
+
+func (e BulkPurchaseItemChangedField) IsValid() bool {
+	switch e {
+	case BulkPurchaseItemChangedFieldCategoryID, BulkPurchaseItemChangedFieldProductVariantID, BulkPurchaseItemChangedFieldAllocations, BulkPurchaseItemChangedFieldTags:
+		return true
+	}
+	return false
+}
+
+func (e BulkPurchaseItemChangedField) String() string {
+	return string(e)
+}
+
+func (e *BulkPurchaseItemChangedField) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = BulkPurchaseItemChangedField(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid BulkPurchaseItemChangedField", str)
+	}
+	return nil
+}
+
+func (e BulkPurchaseItemChangedField) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *BulkPurchaseItemChangedField) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e BulkPurchaseItemChangedField) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
 type FundingScheduleCadence string
 
 const (
@@ -2393,7 +2452,6 @@ const (
 	PurchaseItemChangedFieldCategoryID       PurchaseItemChangedField = "CATEGORY_ID"
 	PurchaseItemChangedFieldProductVariantID PurchaseItemChangedField = "PRODUCT_VARIANT_ID"
 	PurchaseItemChangedFieldAllocations      PurchaseItemChangedField = "ALLOCATIONS"
-	PurchaseItemChangedFieldTags             PurchaseItemChangedField = "TAGS"
 )
 
 var AllPurchaseItemChangedField = []PurchaseItemChangedField{
@@ -2404,12 +2462,11 @@ var AllPurchaseItemChangedField = []PurchaseItemChangedField{
 	PurchaseItemChangedFieldCategoryID,
 	PurchaseItemChangedFieldProductVariantID,
 	PurchaseItemChangedFieldAllocations,
-	PurchaseItemChangedFieldTags,
 }
 
 func (e PurchaseItemChangedField) IsValid() bool {
 	switch e {
-	case PurchaseItemChangedFieldName, PurchaseItemChangedFieldAmountYen, PurchaseItemChangedFieldQuantity, PurchaseItemChangedFieldPrintedUnitPrice, PurchaseItemChangedFieldCategoryID, PurchaseItemChangedFieldProductVariantID, PurchaseItemChangedFieldAllocations, PurchaseItemChangedFieldTags:
+	case PurchaseItemChangedFieldName, PurchaseItemChangedFieldAmountYen, PurchaseItemChangedFieldQuantity, PurchaseItemChangedFieldPrintedUnitPrice, PurchaseItemChangedFieldCategoryID, PurchaseItemChangedFieldProductVariantID, PurchaseItemChangedFieldAllocations:
 		return true
 	}
 	return false

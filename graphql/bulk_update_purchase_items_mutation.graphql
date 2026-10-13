@@ -11,7 +11,14 @@ type BulkUpdatePurchaseItemsSuccess {
 input BulkUpdatePurchaseItemsInput {
   targets: [PurchaseItemTargetInput!]!
   patch: BulkPurchaseItemPatch!
-  changedFields: [PurchaseItemChangedField!]!
+  changedFields: [BulkPurchaseItemChangedField!]!
+}
+
+enum BulkPurchaseItemChangedField {
+  CATEGORY_ID
+  PRODUCT_VARIANT_ID
+  ALLOCATIONS
+  TAGS
 }
 
 input BulkPurchaseItemPatch {

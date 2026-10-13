@@ -182,7 +182,7 @@ func (r *queryResolver) tags(ctx context.Context, householdID string, includeArc
 }
 
 func (r *mutationResolver) bulkUpdatePurchaseItems(ctx context.Context, input model.BulkUpdatePurchaseItemsInput) ([]*model.PurchaseItem, error) {
-	changedFields := purchaseItemChangedFieldKeys(input.ChangedFields)
+	changedFields := bulkPurchaseItemChangedFieldKeys(input.ChangedFields)
 	user, err := principal(ctx)
 	if err != nil {
 		return nil, err
@@ -319,7 +319,7 @@ func (r *mutationResolver) bulkUpdatePurchaseItems(ctx context.Context, input mo
 }
 
 func updateBulkItem(ctx context.Context, tx pgx.Tx, executor bob.Executor, item *models.PurchaseItem, purchase *models.Purchase, input model.BulkUpdatePurchaseItemsInput, ruleVersion int64) (int64, error) {
-	changed := purchaseItemChangedFieldKeys(input.ChangedFields)
+	changed := bulkPurchaseItemChangedFieldKeys(input.ChangedFields)
 	newRevision := item.Revision + 1
 	fieldRevisions, err := setFieldRevisions(item.FieldRevisions.Val, changed, newRevision)
 	if err != nil {

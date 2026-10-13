@@ -142,7 +142,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	updated, err := resolver.bulkUpdatePurchaseItems(ctx, model.BulkUpdatePurchaseItemsInput{
 		Targets:       itemTargets,
 		Patch:         &model.BulkPurchaseItemPatch{CategoryID: &category.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 3}, {PoolID: poolB.ID, Weight: 1}}, TagIds: []string{tag.ID}},
-		ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldCategoryID, model.PurchaseItemChangedFieldAllocations, model.PurchaseItemChangedFieldTags},
+		ChangedFields: []model.BulkPurchaseItemChangedField{model.BulkPurchaseItemChangedFieldCategoryID, model.BulkPurchaseItemChangedFieldAllocations, model.BulkPurchaseItemChangedFieldTags},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +152,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	}
 	stale, err := resolver.bulkUpdatePurchaseItems(ctx, model.BulkUpdatePurchaseItemsInput{
 		Targets: []*model.PurchaseItemTargetInput{{ItemID: updated[0].ID, BaseRevision: updated[0].Revision}, {ItemID: updated[1].ID, BaseRevision: 1}},
-		Patch:   &model.BulkPurchaseItemPatch{TagIds: []string{}}, ChangedFields: []model.PurchaseItemChangedField{model.PurchaseItemChangedFieldTags},
+		Patch:   &model.BulkPurchaseItemPatch{TagIds: []string{}}, ChangedFields: []model.BulkPurchaseItemChangedField{model.BulkPurchaseItemChangedFieldTags},
 	})
 	if stale != nil || !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale target must reject the entire bulk operation: result=%#v error=%v", stale, err)

@@ -23,6 +23,16 @@ input UpdatePurchaseItemInput {
   changedFields: [PurchaseItemChangedField!]!
 }
 
+enum PurchaseItemChangedField {
+  NAME
+  AMOUNT_YEN
+  QUANTITY
+  PRINTED_UNIT_PRICE
+  CATEGORY_ID
+  PRODUCT_VARIANT_ID
+  ALLOCATIONS
+}
+
 enum ProductLearningScope {
   ITEM_ONLY
   VARIANT_NAME
