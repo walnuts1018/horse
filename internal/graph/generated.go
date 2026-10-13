@@ -4640,24 +4640,13 @@ type AcceptHouseholdInvitationUserError implements MutationError {
   poolId: ID @goField(forceResolver: true)
 }
 
-enum AccountKind {
-  BANK
-  CASH
-  CARD
-  OTHER
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/account_balance.graphql", Input: `type AccountBalance {
+type AccountBalance {
   accountId: ID! @goField(forceResolver: true)
   balanceYen: Long!
   currency: String!
 }
 
-extend type Query {
-  accountBalances(householdId: ID! @nodeID(of: "Household")): [AccountBalance!]!
-}
-`, BuiltIn: false},
-	{Name: "../../graphql/account_balance_analysis.graphql", Input: `type AccountBalanceAnalysis {
+type AccountBalanceAnalysis {
   accountId: ID! @goField(forceResolver: true)
   currency: String!
   from: String!
@@ -4676,7 +4665,15 @@ type AccountBalanceChange {
   balanceYen: Long!
 }
 
+enum AccountKind {
+  BANK
+  CASH
+  CARD
+  OTHER
+}
+
 extend type Query {
+  accountBalances(householdId: ID! @nodeID(of: "Household")): [AccountBalance!]!
   accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: String!, to: String!): AccountBalanceAnalysis!
 }
 `, BuiltIn: false},

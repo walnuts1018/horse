@@ -6,12 +6,14 @@ import {
   type Budget,
   type Purchase,
   type RecurringExpense,
+  monthlyCategorySpendingQuery,
 } from "../../../shared/api";
-import { monthlyCategorySpendingQuery, monthlyMemberSpendingQuery } from "../api/operations";
+import { monthlyMemberSpendingQuery } from "../api/operations";
 import { budgetsQuery } from "../../../entities/budget";
 import { recurringExpensesQuery } from "../../../entities/recurring-expense";
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { InlineError } from "../../../shared/ui";
+import { japanMonth } from "../../../shared/lib";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -20,12 +22,6 @@ const yen = (amount = 0) =>
     maximumFractionDigits: 0,
   }).format(amount);
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
-const japanMonth = (date: Date) =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-  }).format(date);
 const monthRange = (current: string, count: number) => {
   const [year, month] = current.split("-").map(Number);
   const endIndex = year * 12 + month - 1;

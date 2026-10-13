@@ -5,9 +5,39 @@ type Account implements Node {
   poolId: ID @goField(forceResolver: true)
 }
 
+type AccountBalance {
+  accountId: ID! @goField(forceResolver: true)
+  balanceYen: Long!
+  currency: String!
+}
+
+type AccountBalanceAnalysis {
+  accountId: ID! @goField(forceResolver: true)
+  currency: String!
+  from: String!
+  to: String!
+  openingBalanceYen: Long!
+  closingBalanceYen: Long!
+  changes: [AccountBalanceChange!]!
+}
+
+type AccountBalanceChange {
+  occurredAt: String!
+  sourceKind: String!
+  sourceId: ID!
+  description: String!
+  changeYen: Long!
+  balanceYen: Long!
+}
+
 enum AccountKind {
   BANK
   CASH
   CARD
   OTHER
+}
+
+extend type Query {
+  accountBalances(householdId: ID! @nodeID(of: "Household")): [AccountBalance!]!
+  accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: String!, to: String!): AccountBalanceAnalysis!
 }

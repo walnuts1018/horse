@@ -23,6 +23,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -948,10 +949,6 @@ func syncPostedPurchaseAccounting(ctx context.Context, tx pgx.Tx, purchaseID str
 	if err := refreshPurchaseMemberBurden(ctx, executor, householdID, purchaseUUID, allocations); err != nil {
 		return err
 	}
-	type purchaseShare struct {
-		poolID gofrsuuid.UUID
-		amount int64
-	}
 	sharesByPool := make(map[gofrsuuid.UUID]int64)
 	for _, allocation := range allocations {
 		var ok bool
@@ -960,60 +957,40 @@ func syncPostedPurchaseAccounting(ctx context.Context, tx pgx.Tx, purchaseID str
 			return fmt.Errorf("%w: purchase allocation total is too large", ErrBadInput)
 		}
 	}
-	shares := make([]purchaseShare, 0, len(sharesByPool))
-	for poolID, amount := range sharesByPool {
-		shares = append(shares, purchaseShare{poolID: poolID, amount: amount})
+	pools := make([]gofrsuuid.UUID, 0, len(sharesByPool))
+	for poolID := range sharesByPool {
+		pools = append(pools, poolID)
 	}
-	slices.SortFunc(shares, func(a, b purchaseShare) int { return strings.Compare(a.poolID.String(), b.poolID.String()) })
-	lineNo := 1
-	for _, share := range shares {
-		if share.amount == 0 {
+	slices.SortFunc(pools, func(a, b gofrsuuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	postings := make([]accounting.Posting, 0, len(pools)+len(items))
+	for _, poolID := range pools {
+		amount := sharesByPool[poolID]
+		if amount == 0 {
 			continue
 		}
-		lineNoValue := int32(lineNo)
-		zero := int64(0)
-		poolValue := sql.Null[gofrsuuid.UUID]{V: share.poolID, Valid: true}
-		memo := "Purchase allocation"
-		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-			JournalID: &journal.ID, LineNo: &lineNoValue, AccountID: new(sql.Null[gofrsuuid.UUID]),
-			PoolID: &poolValue, MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &share.amount, CreditYen: &zero, Memo: &memo,
-		}).Exec(ctx, executor); err != nil {
-			return err
-		}
-		lineNo++
+		postings = append(postings, accounting.Posting{Side: accounting.Debit, PoolID: &poolID, AmountYen: amount, Memo: "Purchase allocation"})
 	}
 	payments, err := purchasePayments(ctx, tx, householdID, purchaseID, paymentAccountID, total)
 	if err != nil {
 		return err
 	}
 	if len(payments) == 0 {
-		lineNoValue := int32(lineNo)
-		zero := int64(0)
-		memo := "Payment"
-		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-			JournalID: &journal.ID, LineNo: &lineNoValue, AccountID: new(sql.Null[gofrsuuid.UUID]),
-			PoolID: new(sql.Null[gofrsuuid.UUID]), MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &zero, CreditYen: &total, Memo: &memo,
-		}).Exec(ctx, executor); err != nil {
-			return err
-		}
+		postings = append(postings, accounting.Posting{Side: accounting.Credit, AmountYen: total, Memo: "Payment"})
 	} else {
 		for _, payment := range payments {
 			accountUUID, parseErr := gofrsuuid.FromString(payment.PaymentAccountID)
 			if parseErr != nil {
 				return parseErr
 			}
-			lineNoValue := int32(lineNo)
-			amount, zero := int64(payment.AmountYen), int64(0)
-			memo := "Payment"
-			accountValue := sql.Null[gofrsuuid.UUID]{V: accountUUID, Valid: true}
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journal.ID, LineNo: &lineNoValue, AccountID: &accountValue,
-				PoolID: new(sql.Null[gofrsuuid.UUID]), MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &zero, CreditYen: &amount, Memo: &memo,
-			}).Exec(ctx, executor); err != nil {
-				return err
-			}
-			lineNo++
+			postings = append(postings, accounting.Posting{Side: accounting.Credit, AccountID: &accountUUID, AmountYen: int64(payment.AmountYen), Memo: "Payment"})
 		}
+	}
+	entries, err := accounting.BuildEntries(postings)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrBadInput, err)
+	}
+	if err := accounting.InsertEntries(ctx, executor, journal.ID, entries); err != nil {
+		return err
 	}
 	ledgers, err := models.LedgerEntries.Query(sm.Where(psql.And(
 		models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
@@ -2818,34 +2795,19 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	}).Exec(ctx, executor); err != nil {
 		return nil, err
 	}
-	lineNo := int32(1)
-	noAccount, noPool := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
+	postings := make([]accounting.Posting, 0, len(shares)+len(input.PaymentAllocations)+1)
 	for _, share := range shares {
 		if share.Amount == 0 {
 			continue
 		}
+		poolUUID := generatedUUID(share.PoolID)
+		posting := accounting.Posting{PoolID: &poolUUID, AmountYen: share.Amount, Memo: input.Reason}
 		if delta > 0 {
-			poolUUID := generatedUUID(share.PoolID)
-			zero := int64(0)
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journalUUID, LineNo: &lineNo, AccountID: &noAccount,
-				PoolID: &sql.Null[gofrsuuid.UUID]{V: poolUUID, Valid: true}, MemberID: &noPool,
-				DebitYen: &share.Amount, CreditYen: &zero, Memo: &input.Reason,
-			}).Exec(ctx, executor); err != nil {
-				return nil, err
-			}
+			posting.Side = accounting.Debit
 		} else {
-			poolUUID := generatedUUID(share.PoolID)
-			zero := int64(0)
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journalUUID, LineNo: &lineNo, AccountID: &noAccount,
-				PoolID: &sql.Null[gofrsuuid.UUID]{V: poolUUID, Valid: true}, MemberID: &noPool,
-				DebitYen: &zero, CreditYen: &share.Amount, Memo: &input.Reason,
-			}).Exec(ctx, executor); err != nil {
-				return nil, err
-			}
+			posting.Side = accounting.Credit
 		}
-		lineNo++
+		postings = append(postings, posting)
 	}
 	var payments []model.PurchasePaymentInput
 	if len(input.PaymentAllocations) > 0 {
@@ -2900,45 +2862,31 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 		}
 	}
 	if len(payments) == 0 {
-		memo := "Correction offset"
-		zero := int64(0)
-		noMember := sql.Null[gofrsuuid.UUID]{}
+		posting := accounting.Posting{AmountYen: abs(delta), Memo: "Correction offset"}
 		if delta > 0 {
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journalUUID, LineNo: &lineNo, AccountID: &noAccount, PoolID: &noPool, MemberID: &noMember,
-				DebitYen: &zero, CreditYen: &delta, Memo: &memo,
-			}).Exec(ctx, executor); err != nil {
-				return nil, err
-			}
+			posting.Side = accounting.Credit
 		} else {
-			debit := -delta
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journalUUID, LineNo: &lineNo, AccountID: &noAccount, PoolID: &noPool, MemberID: &noMember,
-				DebitYen: &debit, CreditYen: &zero, Memo: &memo,
-			}).Exec(ctx, executor); err != nil {
-				return nil, err
-			}
+			posting.Side = accounting.Debit
 		}
+		postings = append(postings, posting)
 	} else {
 		for _, payment := range payments {
 			accountUUID := generatedUUID(payment.PaymentAccountID)
-			noPool, noMember := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
-			zero := int64(0)
-			memo := "Correction payment"
-			paymentAmount := int64(payment.AmountYen)
-			setter := &models.JournalEntrySetter{JournalID: &journalUUID, LineNo: &lineNo,
-				AccountID: &sql.Null[gofrsuuid.UUID]{V: accountUUID, Valid: true}, PoolID: &noPool, MemberID: &noMember,
-				DebitYen: &zero, CreditYen: &zero, Memo: &memo}
+			posting := accounting.Posting{AccountID: &accountUUID, AmountYen: int64(payment.AmountYen), Memo: "Correction payment"}
 			if delta > 0 {
-				setter.CreditYen = &paymentAmount
+				posting.Side = accounting.Credit
 			} else {
-				setter.DebitYen = &paymentAmount
+				posting.Side = accounting.Debit
 			}
-			if _, err := models.JournalEntries.Insert(setter).Exec(ctx, executor); err != nil {
-				return nil, err
-			}
-			lineNo++
+			postings = append(postings, posting)
 		}
+	}
+	entries, err := accounting.BuildEntries(postings)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBadInput, err)
+	}
+	if err := accounting.InsertEntries(ctx, executor, journalUUID, entries); err != nil {
+		return nil, err
 	}
 	correctionLedgerKind := "CORRECTION"
 	noMemberValue := sql.Null[gofrsuuid.UUID]{}

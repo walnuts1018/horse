@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { BookOpen, ChevronRight, Plus, ReceiptJapaneseYen, Upload, Wallet } from "lucide-react";
-import { readGraphql, type Household, type Purchase, type Settlement } from "../../../shared/api";
+import {
+  monthlyCategorySpendingQuery,
+  readGraphql,
+  type Household,
+  type Purchase,
+  type Settlement,
+} from "../../../shared/api";
 import { settlementQuery } from "../../../entities/settlement";
 import { EmptyState } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../entities/purchase";
+import { japanMonth } from "../../../shared/lib";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -11,7 +18,6 @@ const yen = (amount = 0) =>
     currency: "JPY",
     maximumFractionDigits: 0,
   }).format(amount);
-const monthKey = () => new Date().toISOString().slice(0, 7);
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
 
 export function HomePage({
@@ -21,11 +27,40 @@ export function HomePage({
   household: Household;
   onNavigate: (page: "new" | "ledger" | "analysis" | "imports" | "settlement") => void;
 }) {
-  const { purchases } = useHouseholdPurchases(household.id, 8);
-  const currentMonth = monthKey();
-  const monthPurchases = purchases.filter((item) => item.occurredAt.slice(0, 7) === currentMonth);
-  const total = sum(monthPurchases.map((item) => item.totalYen));
+  const { purchases, totalCount } = useHouseholdPurchases(household.id, 8);
+  const currentMonth = japanMonth(new Date());
+  const monthPurchases = purchases.filter(
+    (item) => japanMonth(new Date(item.occurredAt)) === currentMonth,
+  );
+  const purchaseRevision = purchases
+    .map((purchase) => `${purchase.id}:${purchase.revision}:${purchase.totalYen}`)
+    .join("|");
+  const [monthTotal, setMonthTotal] = useState<number | null>(null);
   const [settlement, setSettlement] = useState<Settlement | null>(null);
+  useEffect(() => {
+    let active = true;
+    void readGraphql<{
+      monthlyCategorySpending: Array<{ period: string; amountYen: number }>;
+    }>(monthlyCategorySpendingQuery, {
+      householdId: household.id,
+      from: currentMonth,
+      to: currentMonth,
+    })
+      .then(({ monthlyCategorySpending }) => {
+        if (active)
+          setMonthTotal(
+            sum(
+              monthlyCategorySpending
+                .filter((entry) => entry.period === currentMonth)
+                .map((entry) => entry.amountYen),
+            ),
+          );
+      })
+      .catch(() => active && setMonthTotal(null));
+    return () => {
+      active = false;
+    };
+  }, [household.id, currentMonth, totalCount, purchaseRevision]);
   useEffect(() => {
     void readGraphql<{ settlement: Settlement }>(settlementQuery, {
       householdId: household.id,
@@ -78,11 +113,9 @@ export function HomePage({
           <div className="panel-heading">
             <div>
               <span className="eyebrow">今月の支出</span>
-              <h2>{yen(total)}</h2>
+              <h2>{monthTotal === null ? "—" : yen(monthTotal)}</h2>
             </div>
-            <span className="period-chip">
-              {new Date().toLocaleDateString("ja-JP", { month: "long" })}
-            </span>
+            <span className="period-chip">{Number(currentMonth.slice(5))}月</span>
           </div>
           <MiniBars purchases={purchases} />
           <div className="spend-footer">

@@ -26,6 +26,7 @@ import {
   recordTransferMutation,
 } from "../../../entities/ledger";
 import { InlineError } from "../../../shared/ui";
+import { japanMonth } from "../../../shared/lib";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -33,7 +34,6 @@ const yen = (amount = 0) =>
     currency: "JPY",
     maximumFractionDigits: 0,
   }).format(amount);
-const monthKey = () => new Date().toISOString().slice(0, 7);
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
 const ledgerKindLabels: Record<string, string> = {
   FUNDING: "入金",
@@ -44,7 +44,7 @@ const ledgerKindLabels: Record<string, string> = {
 };
 
 export function SettlementPage({ household }: { household: Household }) {
-  const [period, setPeriod] = useState(monthKey());
+  const [period, setPeriod] = useState(() => japanMonth(new Date()));
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [loans, setLoans] = useState<LoanBalance[]>([]);

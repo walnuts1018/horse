@@ -17,6 +17,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -138,40 +139,31 @@ func (s *Service) post(ctx context.Context, input PostCommand, fingerprint [sha2
 		pools = append(pools, poolID)
 	}
 	slices.SortFunc(pools, func(left, right gofrsuuid.UUID) int { return strings.Compare(left.String(), right.String()) })
-	lineNo := int32(1)
+	postings := make([]accounting.Posting, 0, len(shares)+len(allocations))
 	for _, poolID := range pools {
 		amount := shares[poolID]
 		if amount == 0 {
 			continue
 		}
-		zero := int64(0)
-		pool := sql.Null[gofrsuuid.UUID]{V: poolID, Valid: true}
-		memo := "Purchase allocation"
-		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{JournalID: &journalID, LineNo: &lineNo, AccountID: new(sql.Null[gofrsuuid.UUID]), PoolID: &pool, MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &amount, CreditYen: &zero, Memo: &memo}).Exec(ctx, executor); err != nil {
-			return PostResult{}, err
-		}
-		lineNo++
+		postings = append(postings, accounting.Posting{Side: accounting.Debit, PoolID: &poolID, AmountYen: amount, Memo: "Purchase allocation"})
 	}
 	payments, err := purchasePayments(ctx, executor, householdID, purchaseID, total)
 	if err != nil {
 		return PostResult{}, err
 	}
 	if len(payments) == 0 {
-		zero := int64(0)
-		memo := "Payment"
-		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{JournalID: &journalID, LineNo: &lineNo, AccountID: new(sql.Null[gofrsuuid.UUID]), PoolID: new(sql.Null[gofrsuuid.UUID]), MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &zero, CreditYen: &total, Memo: &memo}).Exec(ctx, executor); err != nil {
-			return PostResult{}, err
-		}
+		postings = append(postings, accounting.Posting{Side: accounting.Credit, AmountYen: total, Memo: "Payment"})
 	} else {
 		for _, payment := range payments {
-			amount, zero := payment.AmountYen, int64(0)
-			account := sql.Null[gofrsuuid.UUID]{V: payment.AccountID, Valid: true}
-			memo := "Payment"
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{JournalID: &journalID, LineNo: &lineNo, AccountID: &account, PoolID: new(sql.Null[gofrsuuid.UUID]), MemberID: new(sql.Null[gofrsuuid.UUID]), DebitYen: &zero, CreditYen: &amount, Memo: &memo}).Exec(ctx, executor); err != nil {
-				return PostResult{}, err
-			}
-			lineNo++
+			postings = append(postings, accounting.Posting{Side: accounting.Credit, AccountID: &payment.AccountID, AmountYen: payment.AmountYen, Memo: "Payment"})
 		}
+	}
+	entries, err := accounting.BuildEntries(postings)
+	if err != nil {
+		return PostResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
+	}
+	if err := accounting.InsertEntries(ctx, executor, journalID, entries); err != nil {
+		return PostResult{}, err
 	}
 	ledgerKind, description, status := "PURCHASE", purchase.Merchant, "POSTED"
 	noPool := sql.Null[gofrsuuid.UUID]{}

@@ -21,7 +21,39 @@ func (r *accountResolver) PoolID(ctx context.Context, obj *model.Account) (*stri
 	return encodeNodeIDPtr("Pool", obj.PoolID)
 }
 
+// AccountID is the resolver for the accountId field.
+func (r *accountBalanceResolver) AccountID(ctx context.Context, obj *model.AccountBalance) (string, error) {
+	return encodeNodeID("Account", obj.AccountID)
+}
+
+// AccountID is the resolver for the accountId field.
+func (r *accountBalanceAnalysisResolver) AccountID(ctx context.Context, obj *model.AccountBalanceAnalysis) (string, error) {
+	return encodeNodeID("Account", obj.AccountID)
+}
+
+// AccountBalances is the resolver for the accountBalances field.
+func (r *queryResolver) AccountBalances(ctx context.Context, householdID string) ([]*model.AccountBalance, error) {
+	return r.accountBalances(ctx, householdID)
+}
+
+// AccountBalanceAnalysis is the resolver for the accountBalanceAnalysis field.
+func (r *queryResolver) AccountBalanceAnalysis(ctx context.Context, householdID string, accountID string, from string, to string) (*model.AccountBalanceAnalysis, error) {
+	return r.accountBalanceAnalysis(ctx, householdID, accountID, from, to)
+}
+
 // Account returns AccountResolver implementation.
 func (r *Resolver) Account() AccountResolver { return &accountResolver{r} }
 
-type accountResolver struct{ *Resolver }
+// AccountBalance returns AccountBalanceResolver implementation.
+func (r *Resolver) AccountBalance() AccountBalanceResolver { return &accountBalanceResolver{r} }
+
+// AccountBalanceAnalysis returns AccountBalanceAnalysisResolver implementation.
+func (r *Resolver) AccountBalanceAnalysis() AccountBalanceAnalysisResolver {
+	return &accountBalanceAnalysisResolver{r}
+}
+
+type (
+	accountResolver                struct{ *Resolver }
+	accountBalanceResolver         struct{ *Resolver }
+	accountBalanceAnalysisResolver struct{ *Resolver }
+)
