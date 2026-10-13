@@ -150,4 +150,6 @@ UXレビューの未分類カテゴリ指摘は、履歴・商品候補・復元
 
 ### 保守性・シンプルさレビューの現行コード照合
 
-`docs/reviews/simple.md`をコミット`1433e4e`のコードに照合し、現行コードで解消している記述を削除または限定しました。購入更新以外のApplication Service移行を反映し、購入更新でResolverから`UpdateOperations`を注入している残課題だけを記録しました。購入検索の主要条件はサーバー側でページング前に適用されるため、全件取得して画面で絞るという旧指摘を削除しました。金額条件の画面内適用と購入・品目表示の重複は残しています。口座移動と外部入金はApplication Serviceへ移りましたが、初期残高・口座移動・外部入金の仕訳行は個別に作成されるため、仕訳生成の重複は未解決としました。画面行数と`useState`数、global.css行数、Frontendテストの有無は現行ファイルから再計測しました。
+`docs/reviews/simple.md`をコミット`1433e4e`のコードに照合し、現行コードで解消している記述を削除または限定しました。購入更新以外のApplication Service移行を反映し、購入更新でResolverから`UpdateOperations`を注入している課題を記録しました。購入検索の主要条件はサーバー側でページング前に適用されるため、全件取得して画面で絞るという旧指摘を削除しました。金額条件の画面内適用と購入・品目表示の重複は残しています。口座移動と外部入金はApplication Serviceへ移りましたが、初期残高・口座移動・外部入金の仕訳行は個別に作成されるため、仕訳生成の重複は未解決としました。画面行数と`useState`数、global.css行数、Frontendテストの有無は当時のコードから再計測しました。
+
+購入更新と購入品目更新から`UpdateOperations`・`UpdateItemOperations`を削除し、会計期間ロック、支払更新、資金負担snapshot維持、仕訳・ledger同期、商品別名更新をPurchase Application Service内のBob DSL処理へ移しました。Resolverは認証、入力変換、Service呼び出し、結果変換を行います。`docs/reviews/simple.md`から解消した指摘を削除しました。対象Goテストとgolangci-lintは成功し、DB統合テストは`HORSE_TEST_DATABASE_URL`未設定のためローカルではskipされます。新規コードに生SQL文字列はありません。

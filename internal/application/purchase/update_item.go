@@ -36,7 +36,7 @@ const (
 	itemLearningMerchantAlias = "MERCHANT_ALIAS"
 )
 
-func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand, operations UpdateItemOperations) (UpdateResult, error) {
+func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (UpdateResult, error) {
 	if len(command.ChangedFields) == 0 {
 		return UpdateResult{}, fmt.Errorf("%w: patch must contain a field", ErrBadInput)
 	}
@@ -87,10 +87,7 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand, ope
 		return UpdateResult{}, err
 	}
 	observedPeriod := accountingPeriod(observedPurchase.OccurredAt)
-	if operations.LockAccountingPeriods == nil {
-		return UpdateResult{}, errors.New("purchase item update requires accounting period locking")
-	}
-	if err := operations.LockAccountingPeriods(ctx, tx, householdID.String(), observedPeriod); err != nil {
+	if err := lockPurchaseAccountingPeriods(ctx, executor, householdID, observedPeriod); err != nil {
 		return UpdateResult{}, err
 	}
 	household, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForShare()).One(ctx, executor)
@@ -312,10 +309,7 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand, ope
 			if merchantKey == "" {
 				return UpdateResult{}, fmt.Errorf("%w: merchant-specific learning requires a merchant", ErrBadInput)
 			}
-			if operations.UpsertProductAlias == nil {
-				return UpdateResult{}, errors.New("purchase item update requires product alias persistence")
-			}
-			aliasID, err := operations.UpsertProductAlias(ctx, tx, householdID.String(), *variantID, merchantKey, item.Name, normalizeProductName(item.Name))
+			aliasID, err := upsertProductAlias(ctx, executor, householdID, variantID, merchantKey, item.Name, normalizeProductName(item.Name))
 			if err != nil {
 				return UpdateResult{}, err
 			}
@@ -368,10 +362,11 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand, ope
 		}
 	}
 	if updatePayments {
-		if operations.ReplacePayments == nil {
-			return UpdateResult{}, errors.New("purchase item update requires payment replacement")
+		validated, err := validatePayments(ctx, tx, householdID, payments)
+		if err != nil {
+			return UpdateResult{}, err
 		}
-		if err := operations.ReplacePayments(ctx, tx, householdID.String(), purchase.ID.String(), payments); err != nil {
+		if err := replaceUpdatePayments(ctx, executor, purchase, validated); err != nil {
 			return UpdateResult{}, err
 		}
 	}
@@ -384,10 +379,7 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand, ope
 		return UpdateResult{}, err
 	}
 	if status == postedStatus {
-		if operations.SyncAccounting == nil {
-			return UpdateResult{}, errors.New("purchase item update requires accounting synchronization")
-		}
-		if err := operations.SyncAccounting(ctx, tx, purchase.ID.String()); err != nil {
+		if err := syncPostedPurchaseAccounting(ctx, executor, purchase); err != nil {
 			return UpdateResult{}, err
 		}
 	}

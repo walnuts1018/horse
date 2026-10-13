@@ -1,10 +1,7 @@
 package purchase
 
 import (
-	"context"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 type CreateCommand struct {
@@ -78,12 +75,6 @@ type UpdateCommand struct {
 	ChangedFields      []string
 }
 
-type UpdateOperations struct {
-	LockAccountingPeriods func(context.Context, pgx.Tx, string, ...string) error
-	ReplacePayments       func(context.Context, pgx.Tx, string, string, []Payment) error
-	SyncAccounting        func(context.Context, pgx.Tx, string) error
-}
-
 type UpdateResult struct {
 	PurchaseID string
 }
@@ -113,11 +104,4 @@ type ProductLearning struct {
 	ItemOnly      *bool
 	VariantName   *string
 	MerchantAlias *bool
-}
-
-type UpdateItemOperations struct {
-	LockAccountingPeriods func(context.Context, pgx.Tx, string, ...string) error
-	ReplacePayments       func(context.Context, pgx.Tx, string, string, []Payment) error
-	SyncAccounting        func(context.Context, pgx.Tx, string) error
-	UpsertProductAlias    func(context.Context, pgx.Tx, string, string, string, string, string) (string, error)
 }

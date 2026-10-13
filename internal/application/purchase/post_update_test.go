@@ -33,14 +33,14 @@ func TestPostAndUpdateRejectMalformedUUIDsAsBadInput(t *testing.T) {
 		{
 			name: "update purchase id",
 			run: func(ctx context.Context, service *Service) error {
-				_, err := service.Update(ctx, UpdateCommand{PurchaseID: invalidUUID, ActorID: validUUID, ChangedFields: []string{updateFieldMerchant}, Merchant: &merchant}, UpdateOperations{})
+				_, err := service.Update(ctx, UpdateCommand{PurchaseID: invalidUUID, ActorID: validUUID, ChangedFields: []string{updateFieldMerchant}, Merchant: &merchant})
 				return err
 			},
 		},
 		{
 			name: "update actor id",
 			run: func(ctx context.Context, service *Service) error {
-				_, err := service.Update(ctx, UpdateCommand{PurchaseID: validUUID, ActorID: invalidUUID, ChangedFields: []string{updateFieldMerchant}, Merchant: &merchant}, UpdateOperations{})
+				_, err := service.Update(ctx, UpdateCommand{PurchaseID: validUUID, ActorID: invalidUUID, ChangedFields: []string{updateFieldMerchant}, Merchant: &merchant})
 				return err
 			},
 		},

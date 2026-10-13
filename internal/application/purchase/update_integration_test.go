@@ -2,24 +2,22 @@ package purchase
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"os"
 	"testing"
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
-	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func TestServiceUpdatePersistsRevisionEventAndRollsBackHookFailure(t *testing.T) {
+func TestServiceUpdatePersistsRevisionEventAndRejectsClosedPeriod(t *testing.T) {
 	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -85,13 +83,6 @@ func TestServiceUpdatePersistsRevisionEventAndRollsBackHookFailure(t *testing.T)
 	result, err := service.Update(ctx, UpdateCommand{
 		ActorID: memberID.String(), PurchaseID: purchaseID.String(), BaseRevision: 1,
 		Merchant: &updatedMerchant, ChangedFields: []string{updateFieldMerchant},
-	}, UpdateOperations{
-		LockAccountingPeriods: func(_ context.Context, _ pgx.Tx, _ string, periods ...string) error {
-			if len(periods) != 2 || periods[0] != "2026-10" || periods[1] != "2026-10" {
-				t.Errorf("period lock received %v; want old and target period 2026-10", periods)
-			}
-			return nil
-		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -118,29 +109,20 @@ func TestServiceUpdatePersistsRevisionEventAndRollsBackHookFailure(t *testing.T)
 		t.Fatalf("purchase events after update = %#v; want one purchase.updated event at revision 2", events)
 	}
 
-	hookErr := errors.New("period unavailable")
+	period, closed := "2026-10", "CLOSED"
+	if _, err := models.AccountingPeriods.Update((&models.AccountingPeriodSetter{Status: &closed}).UpdateMod(), um.Where(psql.And(
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
+	))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
 	rollbackMerchant := "Must roll back"
 	_, err = NewService(db).Update(ctx, UpdateCommand{
 		ActorID: memberID.String(), PurchaseID: purchaseID.String(), BaseRevision: updated.Revision,
 		Merchant: &rollbackMerchant, ChangedFields: []string{updateFieldMerchant},
-	}, UpdateOperations{
-		LockAccountingPeriods: func(ctx context.Context, tx pgx.Tx, householdID string, periods ...string) error {
-			householdUUID, err := gofrsuuid.FromString(householdID)
-			if err != nil {
-				return err
-			}
-			status := "OPEN"
-			revision := int64(0)
-			if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
-				HouseholdID: &householdUUID, Period: &periods[0], Status: &status, Revision: &revision,
-			}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, bobpgx.NewTx(tx, nil)); err != nil {
-				return err
-			}
-			return hookErr
-		},
 	})
-	if !errors.Is(err, hookErr) {
-		t.Fatalf("Update error = %v; want %v", err, hookErr)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("Update error = %v; want ErrConflict for closed accounting period", err)
 	}
 	updated, err = models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, bobpgx.NewPool(db))
 	if err != nil {
@@ -148,12 +130,5 @@ func TestServiceUpdatePersistsRevisionEventAndRollsBackHookFailure(t *testing.T)
 	}
 	if updated.Merchant != updatedMerchant || updated.Revision != 2 {
 		t.Fatalf("purchase after failed update has merchant %q and revision %d; want %q and 2", updated.Merchant, updated.Revision, updatedMerchant)
-	}
-	_, err = models.AccountingPeriods.Query(sm.Where(psql.And(
-		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-		models.AccountingPeriods.Columns.Period.EQ(psql.Arg("2026-10")),
-	))).One(ctx, bobpgx.NewPool(db))
-	if !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("accounting period after failed update error = %v; want no row", err)
 	}
 }

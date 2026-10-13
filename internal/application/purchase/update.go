@@ -28,7 +28,7 @@ const (
 
 var purchaseUpdateLocation = time.FixedZone("JST", 9*60*60)
 
-func (s *Service) Update(ctx context.Context, command UpdateCommand, operations UpdateOperations) (UpdateResult, error) {
+func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResult, error) {
 	if len(command.ChangedFields) == 0 {
 		return UpdateResult{}, fmt.Errorf("%w: patch must contain a field", ErrBadInput)
 	}
@@ -82,10 +82,7 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand, operations 
 	if command.OccurredAt != nil {
 		targetOccurredAt = *command.OccurredAt
 	}
-	if operations.LockAccountingPeriods == nil {
-		return UpdateResult{}, errors.New("purchase update requires accounting period locking")
-	}
-	if err := operations.LockAccountingPeriods(ctx, tx, observedHouseholdID,
+	if err := lockPurchaseAccountingPeriods(ctx, executor, observed.HouseholdID,
 		purchaseAccountingPeriod(observed.OccurredAt), purchaseAccountingPeriod(targetOccurredAt)); err != nil {
 		return UpdateResult{}, err
 	}
@@ -143,9 +140,6 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand, operations 
 		purchase.Merchant = merchant
 	}
 	if updatePayments {
-		if operations.ReplacePayments == nil {
-			return UpdateResult{}, errors.New("purchase update requires payment replacement")
-		}
 		payments := *command.PaymentAllocations
 		var total int64
 		items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
@@ -172,7 +166,11 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand, operations 
 				return UpdateResult{}, fmt.Errorf("%w: payment allocations must equal purchase total", ErrBadInput)
 			}
 		}
-		if err := operations.ReplacePayments(ctx, tx, householdID, command.PurchaseID, payments); err != nil {
+		validated, err := validatePayments(ctx, tx, purchase.HouseholdID, payments)
+		if err != nil {
+			return UpdateResult{}, err
+		}
+		if err := replaceUpdatePayments(ctx, executor, purchase, validated); err != nil {
 			return UpdateResult{}, err
 		}
 	}
@@ -188,10 +186,7 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand, operations 
 		return UpdateResult{}, err
 	}
 	if status == postedStatus {
-		if operations.SyncAccounting == nil {
-			return UpdateResult{}, errors.New("purchase update requires accounting synchronization")
-		}
-		if err := operations.SyncAccounting(ctx, tx, command.PurchaseID); err != nil {
+		if err := syncPostedPurchaseAccounting(ctx, executor, purchase); err != nil {
 			return UpdateResult{}, err
 		}
 	}

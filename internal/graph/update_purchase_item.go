@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/walnuts1018/horse/internal/application/purchase"
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
@@ -74,12 +73,7 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 			command.Allocations = append(command.Allocations, purchase.Allocation{PoolID: weight.PoolID, Weight: weight.Value})
 		}
 	}
-	result, err := purchase.NewService(r.DB).UpdateItem(ctx, command, purchase.UpdateItemOperations{
-		LockAccountingPeriods: lockAccountingPeriods,
-		ReplacePayments:       replacePurchasePayments,
-		SyncAccounting:        syncPostedPurchaseAccounting,
-		UpsertProductAlias:    upsertPurchaseItemProductAlias,
-	})
+	result, err := purchase.NewService(r.DB).UpdateItem(ctx, command)
 	if err != nil {
 		return nil, err
 	}
@@ -93,12 +87,4 @@ func (r *mutationResolver) updatePurchaseItem(ctx context.Context, input model.U
 		}
 	}
 	return nil, ErrNotFound
-}
-
-func upsertPurchaseItemProductAlias(ctx context.Context, tx pgx.Tx, householdID, variantID, merchantKey, alias, normalizedAlias string) (string, error) {
-	var aliasID string
-	if err := upsertProductAlias(ctx, tx, householdID, variantID, merchantKey, alias, normalizedAlias, &aliasID); err != nil {
-		return "", err
-	}
-	return aliasID, nil
 }

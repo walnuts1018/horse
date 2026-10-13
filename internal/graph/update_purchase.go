@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/walnuts1018/horse/internal/application/purchase"
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
@@ -21,11 +20,7 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 	if err != nil {
 		return nil, err
 	}
-	result, err := purchase.NewService(r.DB).Update(ctx, command, purchase.UpdateOperations{
-		LockAccountingPeriods: lockAccountingPeriods,
-		ReplacePayments:       replacePurchasePayments,
-		SyncAccounting:        syncPostedPurchaseAccounting,
-	})
+	result, err := purchase.NewService(r.DB).Update(ctx, command)
 	if err != nil {
 		return nil, err
 	}
@@ -58,16 +53,4 @@ func updatePurchaseCommand(input model.UpdatePurchaseInput, actorID string, chan
 		command.PaymentAllocations = &allocations
 	}
 	return command, nil
-}
-
-func replacePurchasePayments(ctx context.Context, tx pgx.Tx, householdID, purchaseID string, payments []purchase.Payment) error {
-	inputs := make([]*model.PurchasePaymentInput, 0, len(payments))
-	for _, payment := range payments {
-		inputs = append(inputs, &model.PurchasePaymentInput{PaymentAccountID: payment.AccountID, AmountYen: model.Long(payment.AmountYen)})
-	}
-	validated, err := validatePurchasePaymentInputs(ctx, tx, householdID, inputs)
-	if err != nil {
-		return err
-	}
-	return replacePurchasePaymentRows(ctx, tx, householdID, purchaseID, validated)
 }
