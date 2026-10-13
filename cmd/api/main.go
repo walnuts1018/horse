@@ -11,10 +11,8 @@ import (
 	"time"
 
 	"github.com/walnuts1018/horse/internal/api"
-	"github.com/walnuts1018/horse/internal/auth"
+	bootstrapapi "github.com/walnuts1018/horse/internal/bootstrap/api"
 	"github.com/walnuts1018/horse/internal/ingestion"
-	"github.com/walnuts1018/horse/internal/observability"
-	"github.com/walnuts1018/horse/internal/postgres"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -33,61 +31,18 @@ func run(logger *slog.Logger) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	telemetry, err := observability.New(ctx, "horse-api")
+	app, err := bootstrapapi.NewAPI(ctx, logger)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := telemetry.Shutdown(shutdownCtx); err != nil {
-			logger.Warn("Shutting down telemetry failed", "error", err)
-		}
-	}()
-	pool, err := postgres.NewPool(ctx, databaseURL)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-	if err := pool.Ping(ctx); err != nil {
-		return err
-	}
-	publicOrigin := os.Getenv("PUBLIC_ORIGIN")
-	authService, err := auth.New(ctx, pool, auth.Config{
-		IssuerURL: os.Getenv("OIDC_ISSUER_URL"), ClientID: os.Getenv("OIDC_CLIENT_ID"),
-		ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"), RedirectURL: os.Getenv("OIDC_REDIRECT_URL"),
-		PublicOrigin: publicOrigin, FrontendOrigin: os.Getenv("FRONTEND_ORIGIN"),
-	})
-	if err != nil {
-		return err
-	}
-	var objectStore *ingestion.ObjectStore
-	if os.Getenv("S3_ENDPOINT") != "" || os.Getenv("S3_BUCKET") != "" || os.Getenv("S3_ACCESS_KEY_ID") != "" || os.Getenv("S3_SECRET_ACCESS_KEY") != "" {
-		objectStore, err = ingestion.NewObjectStore(os.Getenv("S3_ENDPOINT"), os.Getenv("S3_BUCKET"), os.Getenv("S3_ACCESS_KEY_ID"), os.Getenv("S3_SECRET_ACCESS_KEY"))
-		if err != nil {
-			return err
-		}
-	}
-	var queue *ingestion.Queue
-	if endpoint := os.Getenv("RABBITMQ_URL"); endpoint != "" {
-		queue, err = ingestion.NewQueue(endpoint)
-		if err != nil {
-			logger.Warn("Extraction queue unavailable; database jobs will be recovered by the worker", "error", err)
-		} else {
-			defer func() {
-				if err := queue.Close(); err != nil {
-					logger.Warn("Closing extraction queue failed", "error", err)
-				}
-			}()
-		}
-	}
+	defer app.Close()
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 	httpServer := &http.Server{
 		Addr:              ":" + port,
-		Handler:           otelhttp.NewHandler(api.New(pool, authService, logger, api.Config{PublicOrigin: publicOrigin, FrontendOrigin: os.Getenv("FRONTEND_ORIGIN"), Store: objectStore, OCR: ingestion.OCR{Endpoint: os.Getenv("OCR_URL")}, Queue: queue}).Handler(), "horse-api"),
+		Handler:           otelhttp.NewHandler(api.New(app.Pool, app.Auth, logger, api.Config{PublicOrigin: app.Config.PublicOrigin, FrontendOrigin: app.Config.FrontendOrigin, Store: app.ObjectStore, OCR: ingestion.OCR{Endpoint: app.Config.OCREndpoint}, Queue: app.Queue}).Handler(), "horse-api"),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      0,
