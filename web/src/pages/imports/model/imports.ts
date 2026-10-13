@@ -85,6 +85,37 @@ export type DocumentFilters = {
   sourceKind: string;
   confirmed: string;
 };
+
+export const defaultDocumentFilters: DocumentFilters = {
+  store: "",
+  from: "",
+  to: "",
+  sourceKind: "",
+  confirmed: "",
+};
+
+export function parseDocumentFilters(search: URLSearchParams): DocumentFilters {
+  const sourceKind = search.get("sourceKind") ?? "";
+  const confirmed = search.get("confirmed") ?? "";
+  return {
+    store: search.get("store") ?? "",
+    from: search.get("from") ?? "",
+    to: search.get("to") ?? "",
+    sourceKind: ["receipt", "order", "email", "card", "bank"].includes(sourceKind)
+      ? sourceKind
+      : "",
+    confirmed: confirmed === "true" || confirmed === "false" ? confirmed : "",
+  };
+}
+
+export function serializeDocumentFilters(filters: DocumentFilters, search: URLSearchParams) {
+  const query = new URLSearchParams(search);
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) query.set(key, value);
+    else query.delete(key);
+  }
+  return query;
+}
 export type ReceiptPaymentDraft = {
   key: string;
   method?: string;

@@ -31,20 +31,14 @@ import { formatQuantity, parseQuantity } from "../../../shared/lib";
 import { createPurchaseDraft, type PurchaseDraft } from "../model/purchase-draft";
 import { getRemainingRefundAmount } from "../model/purchase-correction";
 import { usePurchaseBulkEdit } from "../model/purchase-bulk-edit";
+import { usePurchaseEvidence } from "../model/use-purchase-evidence";
 import { ObservationLedger } from "./observation-ledger";
 import { PurchaseBulkActions } from "./purchase-bulk-actions";
 import { PurchaseCorrection } from "./purchase-correction";
+import { PurchaseEvidence } from "./purchase-evidence";
 import { PurchaseEditForm } from "./purchase-edit-form";
 import { toPurchaseAmountVariables, type LedgerSearch } from "../model/ledger-search";
 import styles from "./ledger-search.module.css";
-
-type PurchaseEvidence = {
-  documentId: string;
-  itemId?: string | null;
-  sourceKind: string;
-  mimeType: string;
-  region?: { page: number; top: number; left: number; bottom: number; right: number } | null;
-};
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -190,6 +184,7 @@ export function LedgerPage({
     patch: Record<string, unknown>;
   }> | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const { evidence: purchaseEvidence, error: evidenceError } = usePurchaseEvidence(expanded);
   const [editing, setEditing] = useState<string | null>(null);
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
   const [itemDrafts, setItemDrafts] = useState<
@@ -211,8 +206,6 @@ export function LedgerPage({
     >
   >({});
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
-  const [purchaseEvidence, setPurchaseEvidence] = useState<PurchaseEvidence[]>([]);
-  const [evidenceError, setEvidenceError] = useState("");
   const [highlightedEvidenceItem, setHighlightedEvidenceItem] = useState<string | null>(null);
   const [editError, setEditError] = useState("");
   const [postingPurchase, setPostingPurchase] = useState<string | null>(null);
@@ -236,25 +229,7 @@ export function LedgerPage({
     }
   };
   useEffect(() => {
-    if (!expanded) {
-      setPurchaseEvidence([]);
-      setEvidenceError("");
-      setHighlightedEvidenceItem(null);
-      return;
-    }
-    let active = true;
-    setPurchaseEvidence([]);
-    setEvidenceError("");
-    void fetch(`/purchases/${encodeURIComponent(expanded)}/evidence`, { credentials: "include" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`証拠を取得できませんでした (${response.status})`);
-        return (await response.json()) as { evidence: PurchaseEvidence[] };
-      })
-      .then((payload) => active && setPurchaseEvidence(payload.evidence))
-      .catch((reason) => active && setEvidenceError((reason as Error).message));
-    return () => {
-      active = false;
-    };
+    setHighlightedEvidenceItem(null);
   }, [expanded]);
   useEffect(() => {
     let active = true;
@@ -1362,68 +1337,13 @@ export function LedgerPage({
                         </div>
                       </section>
                     )}
-                    {(purchaseEvidence.length > 0 || evidenceError) && (
-                      <section className="panel ledger-evidence-panel">
-                        <div className="panel-heading">
-                          <div>
-                            <span className="eyebrow">購入の証拠</span>
-                            <h3>{purchaseEvidence.length}件</h3>
-                          </div>
-                        </div>
-                        {evidenceError && <InlineError message={evidenceError} />}
-                        {purchaseEvidence.map((entry, index) => {
-                          const linkedItem = purchase.items.find(
-                            (item) => item.id === entry.itemId,
-                          );
-                          return (
-                            <div
-                              className="ledger-evidence-entry"
-                              key={`${entry.documentId}-${entry.itemId ?? "purchase"}-${index}`}
-                            >
-                              <a
-                                href={`/documents/${encodeURIComponent(entry.documentId)}/content`}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {entry.sourceKind} · {linkedItem?.name ?? "購入全体"}を開く
-                              </a>
-                              {entry.mimeType.startsWith("image/") && (
-                                <div className="evidence-image-stage">
-                                  <img
-                                    src={`/documents/${encodeURIComponent(entry.documentId)}/content`}
-                                    alt={`${entry.sourceKind}の原本`}
-                                  />
-                                  {entry.region && (
-                                    <button
-                                      type="button"
-                                      className={`evidence-region ${highlightedEvidenceItem === entry.itemId ? "evidence-region-selected" : ""}`}
-                                      style={{
-                                        top: `${entry.region.top * 100}%`,
-                                        left: `${entry.region.left * 100}%`,
-                                        width: `${(entry.region.right - entry.region.left) * 100}%`,
-                                        height: `${(entry.region.bottom - entry.region.top) * 100}%`,
-                                      }}
-                                      aria-label={`${linkedItem?.name ?? "購入"}の原本位置`}
-                                      onClick={() =>
-                                        setHighlightedEvidenceItem(entry.itemId ?? null)
-                                      }
-                                    />
-                                  )}
-                                </div>
-                              )}
-                              {entry.mimeType === "application/pdf" && (
-                                <iframe
-                                  className="evidence-pdf-preview"
-                                  title="証拠原本"
-                                  src={`/documents/${encodeURIComponent(entry.documentId)}/content`}
-                                />
-                              )}
-                              {linkedItem && <span>品目 {linkedItem.name}</span>}
-                            </div>
-                          );
-                        })}
-                      </section>
-                    )}
+                    <PurchaseEvidence
+                      purchase={purchase}
+                      evidence={purchaseEvidence}
+                      error={evidenceError}
+                      highlightedItemId={highlightedEvidenceItem}
+                      onHighlightItem={setHighlightedEvidenceItem}
+                    />
                     {editing === purchase.id && purchaseDraft ? (
                       <PurchaseEditForm
                         purchase={purchase}

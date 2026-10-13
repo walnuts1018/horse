@@ -3082,6 +3082,10 @@ form.ledger-filters .select-filter input[type="number"] {
 }
 
 @media (width <= 760px) {
+  html {
+    overscroll-behavior-y: none;
+  }
+
   html.mobile-drawer-open {
     overflow: hidden;
     overscroll-behavior: none;

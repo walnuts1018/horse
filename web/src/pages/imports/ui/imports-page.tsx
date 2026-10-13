@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "@tanstack/react-router";
 import { Camera, Check, FileImage, ShieldCheck, Upload, X } from "lucide-react";
 import { type Household } from "../../../shared/api";
 import { useCreateAndPostPurchase } from "../../../entities/purchase";
@@ -16,6 +17,9 @@ import { documentListURL, importIdempotencyKey } from "../api/documents";
 import {
   isProcessing,
   isSupportedFile,
+  defaultDocumentFilters,
+  parseDocumentFilters,
+  serializeDocumentFilters,
   sourceKind,
   sourceKindLabel,
   yen,
@@ -37,6 +41,7 @@ export function ImportsPage({
   onAdded: (keepOpen?: boolean) => void;
   onUnsavedChanges: (unsaved: boolean) => void;
 }) {
+  const router = useRouter();
   const createAndPostPurchase = useCreateAndPostPurchase();
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<CameraCaptureHandle>(null);
@@ -45,13 +50,11 @@ export function ImportsPage({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [csvKinds, setCsvKinds] = useState<Record<string, "card" | "bank">>({});
   const [documents, setDocuments] = useState<DocumentReview[]>([]);
-  const [documentFilters, setDocumentFilters] = useState<DocumentFilters>({
-    store: "",
-    from: "",
-    to: "",
-    sourceKind: "",
-    confirmed: "",
-  });
+  const [documentFilters, setDocumentFilters] = useState<DocumentFilters>(() =>
+    typeof window === "undefined"
+      ? defaultDocumentFilters
+      : parseDocumentFilters(new URLSearchParams(window.location.search)),
+  );
   const [documentFilterDraft, setDocumentFilterDraft] = useState(documentFilters);
   const documentFilterScope = JSON.stringify(documentFilters);
   const documentFilterScopeRef = useRef(documentFilterScope);
@@ -204,10 +207,30 @@ export function ImportsPage({
     ];
   }
   const markUnsaved = () => setHasUnsavedChanges(true);
+  const applyDocumentFilters = (filters: DocumentFilters) => {
+    setDocumentFilters(filters);
+    setDocumentFilterDraft(filters);
+    const url = new URL(window.location.href);
+    url.search = serializeDocumentFilters(filters, url.searchParams).toString();
+    router.history.replace(
+      `${url.pathname}${url.search}${url.hash}`,
+      router.history.location.state,
+      { ignoreBlocker: true },
+    );
+  };
   useEffect(() => {
     onUnsavedChanges(hasUnsavedChanges);
     return () => onUnsavedChanges(false);
   }, [hasUnsavedChanges, onUnsavedChanges]);
+  useEffect(() => {
+    const restoreFilters = () => {
+      const filters = parseDocumentFilters(new URLSearchParams(window.location.search));
+      setDocumentFilters(filters);
+      setDocumentFilterDraft(filters);
+    };
+    window.addEventListener("popstate", restoreFilters);
+    return () => window.removeEventListener("popstate", restoreFilters);
+  }, []);
   useEffect(() => {
     setCropRegion(null);
   }, [selectedDocument?.id]);
@@ -233,8 +256,8 @@ export function ImportsPage({
                 ? { result: existing.result }
                 : {}),
               name:
-                existing?.name ??
                 document.name ??
+                existing?.name ??
                 `${sourceKindLabel(document.sourceKind)} · ${
                   document.createdAt
                     ? new Date(document.createdAt).toLocaleString("ja-JP", {
@@ -728,7 +751,7 @@ export function ImportsPage({
             selected={selected}
             filters={documentFilterDraft}
             onFiltersChange={setDocumentFilterDraft}
-            onSearch={() => setDocumentFilters(documentFilterDraft)}
+            onSearch={() => applyDocumentFilters(documentFilterDraft)}
             onCsvKindChange={(filename, kind) => {
               markUnsaved();
               setCsvKinds((current) => ({ ...current, [filename]: kind }));

@@ -7,6 +7,7 @@ import {
   type PointerEvent,
 } from "react";
 import { X } from "lucide-react";
+import "./camera-capture.css";
 
 type Crop = { left: number; top: number; right: number; bottom: number };
 type CameraDraft = { file: File; src: string; crop: Crop | null };
@@ -199,7 +200,7 @@ export const CameraCapture = forwardRef<
             role="dialog"
             aria-modal="true"
             aria-labelledby="camera-review-title"
-            className="panel"
+            className="panel camera-capture-dialog"
             style={{ width: "min(720px, 100%)", maxHeight: "100%", overflow: "auto", padding: 20 }}
           >
             <div className="panel-heading">
