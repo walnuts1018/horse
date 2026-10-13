@@ -5425,17 +5425,6 @@ extend type Query {
   monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: String!, to: String!): MonthlyMemberSpendingReport!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/mutation_error.graphql", Input: `enum MutationErrorCode {
-  BAD_INPUT
-  CONFLICT
-  NOT_FOUND
-}
-
-interface MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
-`, BuiltIn: false},
 	{Name: "../../graphql/pool.graphql", Input: `type Pool implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
@@ -5840,6 +5829,17 @@ type RevokeHouseholdInvitationUserError implements MutationError {
 
 directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
 directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
+
+enum MutationErrorCode {
+  BAD_INPUT
+  CONFLICT
+  NOT_FOUND
+}
+
+interface MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
 
 interface Node {
   id: ID!

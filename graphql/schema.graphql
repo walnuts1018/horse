@@ -3,6 +3,17 @@ scalar Long
 directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
 directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
 
+enum MutationErrorCode {
+  BAD_INPUT
+  CONFLICT
+  NOT_FOUND
+}
+
+interface MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
 interface Node {
   id: ID!
 }
