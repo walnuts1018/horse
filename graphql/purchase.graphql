@@ -29,6 +29,12 @@ enum PurchaseOrigin {
   UNKNOWN
 }
 
+enum PurchaseChangedField {
+  OCCURRED_AT
+  MERCHANT
+  PAYMENT_ALLOCATIONS
+}
+
 type PurchasePayment {
   paymentAccountId: ID! @goField(forceResolver: true)
   account: Account!

@@ -21,12 +21,6 @@ input PurchasePatch {
   paymentAllocations: [PurchasePaymentInput!]
 }
 
-enum PurchaseChangedField {
-  OCCURRED_AT
-  MERCHANT
-  PAYMENT_ALLOCATIONS
-}
-
 type UpdatePurchaseUserError implements MutationError {
   code: MutationErrorCode!
   message: String!

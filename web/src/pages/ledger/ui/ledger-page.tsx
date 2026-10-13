@@ -22,7 +22,6 @@ import {
   postPurchaseMutation,
   purchasesQuery,
   type BulkPurchaseItemChangedField,
-  type BulkPurchaseChangedField,
   type PurchaseChangedField,
   type PurchaseItemChangedField,
   updatePurchaseItemMutation,
@@ -55,19 +54,6 @@ const yen = (amount = 0) =>
 const sameNullableString = (left?: string | null, right?: string | null) =>
   (left ?? "") === (right ?? "");
 const toPurchaseChangedFields = (fields: readonly string[]): PurchaseChangedField[] =>
-  fields.map((field) => {
-    switch (field) {
-      case "occurredAt":
-        return "OCCURRED_AT";
-      case "merchant":
-        return "MERCHANT";
-      case "paymentAllocations":
-        return "PAYMENT_ALLOCATIONS";
-      default:
-        throw new Error("不明な買い物の変更項目です");
-    }
-  });
-const toBulkPurchaseChangedFields = (fields: readonly string[]): BulkPurchaseChangedField[] =>
   fields.map((field) => {
     switch (field) {
       case "occurredAt":
@@ -939,7 +925,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
                 : {}),
             },
           })),
-          changedFields: toBulkPurchaseChangedFields(changedFields),
+          changedFields: toPurchaseChangedFields(changedFields),
         },
       });
       for (const purchase of targets) {
@@ -993,7 +979,7 @@ export function LedgerPage({ household, onAdd }: { household: Household; onAdd: 
             baseRevision: entry.baseRevision,
             patch: entry.patch,
           })),
-          changedFields: toBulkPurchaseChangedFields(purchaseBulkUndo[0].changedFields),
+          changedFields: toPurchaseChangedFields(purchaseBulkUndo[0].changedFields),
         },
       });
       setPurchaseBulkUndo(null);

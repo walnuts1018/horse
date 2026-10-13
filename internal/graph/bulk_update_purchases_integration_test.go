@@ -84,7 +84,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 			{PurchaseID: first.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{OccurredAt: &newDate}},
 			{PurchaseID: second.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{OccurredAt: &newDate}},
 		},
-		ChangedFields: []model.BulkPurchaseChangedField{model.BulkPurchaseChangedFieldOccurredAt},
+		ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldOccurredAt},
 	})
 	if err != nil || len(updated) != 2 {
 		t.Fatalf("bulk update should merge stale disjoint fields: purchases=%#v error=%v", updated, err)
@@ -109,7 +109,7 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 			{PurchaseID: first.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{Merchant: &atomicMerchant, OccurredAt: &newDate}},
 			{PurchaseID: second.ID, BaseRevision: second.Revision, Patch: &model.BulkPurchasePatch{Merchant: &atomicMerchant, OccurredAt: &conflictingDate}},
 		},
-		ChangedFields: []model.BulkPurchaseChangedField{model.BulkPurchaseChangedFieldMerchant, model.BulkPurchaseChangedFieldOccurredAt},
+		ChangedFields: []model.PurchaseChangedField{model.PurchaseChangedFieldMerchant, model.PurchaseChangedFieldOccurredAt},
 	})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("bulk update should report the overlapping stale field, got %v", err)
