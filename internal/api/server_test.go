@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -12,6 +14,19 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/vektah/gqlparser/v2/ast"
 )
+
+func TestHandlerPreservesGetRoutesForHeadRequests(t *testing.T) {
+	t.Parallel()
+	server := New(nil, nil, slog.New(slog.DiscardHandler), Config{})
+	request := httptest.NewRequest(http.MethodHead, "/healthz", nil)
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("HEAD /healthz status = %d, want %d", response.Code, http.StatusOK)
+	}
+}
 
 func TestLogGraphQLResolverFailureIncludesSafePostgresMetadata(t *testing.T) {
 	t.Parallel()

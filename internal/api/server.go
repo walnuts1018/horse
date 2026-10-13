@@ -19,6 +19,7 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/echo/v5"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
@@ -64,26 +65,33 @@ func New(db *pgxpool.Pool, authService *auth.Service, logger *slog.Logger, cfg C
 }
 
 func (s *Server) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.HandleFunc("GET /readyz", s.ready)
-	mux.HandleFunc("GET /auth/login", s.login)
-	mux.HandleFunc("GET /auth/callback", s.callback)
-	mux.HandleFunc("GET /auth/me", s.me)
-	mux.HandleFunc("POST /auth/logout", s.logout)
-	mux.HandleFunc("POST /graphql", s.graphql)
-	mux.HandleFunc("POST /documents", s.uploadDocument)
-	mux.HandleFunc("GET /documents", s.documents)
-	mux.HandleFunc("GET /documents/{id}", s.document)
-	mux.HandleFunc("GET /documents/{id}/content", s.documentContent)
-	mux.HandleFunc("GET /documents/{id}/preview", s.documentPreview)
-	mux.HandleFunc("GET /documents/{id}/matches", s.documentMatches)
-	mux.HandleFunc("POST /documents/{id}/retry", s.retryDocument)
-	mux.HandleFunc("POST /documents/{id}/confirm", s.confirmEvidence)
-	mux.HandleFunc("POST /purchases/{id}/evidence", s.confirmPurchaseEvidence)
-	mux.HandleFunc("GET /purchases/{id}/evidence", s.purchaseEvidence)
-	mux.HandleFunc("GET /events", s.events)
-	return s.recover(s.accessLog(mux))
+	e := echo.New()
+	add := func(method, path string, handler http.HandlerFunc) {
+		wrapped := echo.WrapHandler(handler)
+		e.Add(method, path, wrapped)
+		if method == http.MethodGet {
+			e.HEAD(path, wrapped)
+		}
+	}
+	add(http.MethodGet, "/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	add(http.MethodGet, "/readyz", s.ready)
+	add(http.MethodGet, "/auth/login", s.login)
+	add(http.MethodGet, "/auth/callback", s.callback)
+	add(http.MethodGet, "/auth/me", s.me)
+	add(http.MethodPost, "/auth/logout", s.logout)
+	add(http.MethodPost, "/graphql", s.graphql)
+	add(http.MethodPost, "/documents", s.uploadDocument)
+	add(http.MethodGet, "/documents", s.documents)
+	add(http.MethodGet, "/documents/:id", s.document)
+	add(http.MethodGet, "/documents/:id/content", s.documentContent)
+	add(http.MethodGet, "/documents/:id/preview", s.documentPreview)
+	add(http.MethodGet, "/documents/:id/matches", s.documentMatches)
+	add(http.MethodPost, "/documents/:id/retry", s.retryDocument)
+	add(http.MethodPost, "/documents/:id/confirm", s.confirmEvidence)
+	add(http.MethodPost, "/purchases/:id/evidence", s.confirmPurchaseEvidence)
+	add(http.MethodGet, "/purchases/:id/evidence", s.purchaseEvidence)
+	add(http.MethodGet, "/events", s.events)
+	return s.recover(s.accessLog(e))
 }
 
 func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {

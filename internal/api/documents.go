@@ -16,6 +16,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/gabriel-vasile/mimetype"
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob"
@@ -510,7 +511,7 @@ func parseDocumentFilters(r *http.Request) (documentFilters, error) {
 }
 
 func encodeDocumentCursor(cursor documentCursor, filters documentFilters) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%s|%s|%x", cursor.id, cursor.createdAt.Format(time.RFC3339Nano), documentFilterHash(filters))))
+	return base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, "%s|%s|%x", cursor.id, cursor.createdAt.Format(time.RFC3339Nano), documentFilterHash(filters)))
 }
 
 func decodeDocumentCursor(value string, filters documentFilters) (*documentCursor, error) {
@@ -899,10 +900,18 @@ func validDocumentMIME(value string) bool {
 }
 
 func documentMIME(filename string, data []byte) string {
-	if mime := http.DetectContentType(data); strings.HasPrefix(mime, "image/") || mime == "application/pdf" {
-		return mime
+	detected := mimetype.Detect(data).String()
+	if !strings.HasPrefix(detected, "text/plain") {
+		if validDocumentMIME(detected) {
+			return detected
+		}
+		return ""
 	}
-	switch strings.ToLower(filename[strings.LastIndex(filename, ".")+1:]) {
+	if !strings.HasPrefix(http.DetectContentType(data), "text/plain") {
+		return ""
+	}
+	_, extension, _ := strings.CutLast(strings.ToLower(filename), ".")
+	switch extension {
 	case "csv":
 		return "text/csv"
 	case "eml":

@@ -64,3 +64,29 @@ func TestParseDocumentFilters(t *testing.T) {
 		}
 	}
 }
+
+func TestDocumentMIMEUsesContentBeforeTextExtensionFallback(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		filename string
+		data     []byte
+		want     string
+	}{
+		{name: "pdf content overrides extension", filename: "receipt.txt", data: []byte("%PDF-1.7\n"), want: documentMIMEPDF},
+		{name: "csv text uses extension fallback", filename: "receipt.CSV", data: []byte("date,amount\n2026-10-14,1200\n"), want: "text/csv"},
+		{name: "email text uses extension fallback", filename: "receipt.eml", data: []byte("From: shop@example.test\nSubject: receipt\n\nTotal: 1200\n"), want: "message/rfc822"},
+		{name: "plain text uses extension fallback", filename: "receipt.txt", data: []byte("receipt total 1200"), want: "text/plain"},
+		{name: "unsupported detected content is rejected", filename: "receipt.jpg", data: []byte("GIF89a"), want: ""},
+		{name: "unknown binary is not accepted by extension", filename: "receipt.csv", data: []byte{0x00, 0x01, 0x02, 0x03}, want: ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := documentMIME(test.filename, test.data); got != test.want {
+				t.Fatalf("documentMIME(%q, %q) = %q, want %q", test.filename, test.data, got, test.want)
+			}
+		})
+	}
+}
