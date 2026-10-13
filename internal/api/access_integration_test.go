@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	stdjson "encoding/json"
 	"encoding/json/v2"
 	"image"
@@ -298,6 +299,98 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	server.ServeHTTP(documentsResponse, documentsRequest)
 	if documentsResponse.Code != http.StatusOK || !strings.Contains(documentsResponse.Body.String(), uploadedID) || !strings.Contains(documentsResponse.Body.String(), `"name":"receipt.png"`) {
 		t.Fatalf("raw household UUID compatibility failed: status=%d body=%s", documentsResponse.Code, documentsResponse.Body.String())
+	}
+	pdfData := []byte("%PDF-1.4 synthetic receipt")
+	encodedPDF := base64.StdEncoding.EncodeToString(pdfData)
+	emailData := []byte("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=mail\r\n\r\n" +
+		"--mail\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=receipt.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\n" + encodedPDF + "\r\n--mail--\r\n")
+	var emailUploadBody bytes.Buffer
+	emailUploadForm := multipart.NewWriter(&emailUploadBody)
+	if err := emailUploadForm.WriteField("householdId", householdNodeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := emailUploadForm.WriteField("sourceKind", "email"); err != nil {
+		t.Fatal(err)
+	}
+	emailFilePart, err := emailUploadForm.CreateFormFile("file", "order.eml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := emailFilePart.Write(emailData); err != nil {
+		t.Fatal(err)
+	}
+	if err := emailUploadForm.Close(); err != nil {
+		t.Fatal(err)
+	}
+	emailUploadRequest := httptest.NewRequest(http.MethodPost, "/documents", &emailUploadBody)
+	emailUploadRequest.Header.Set("Origin", "http://horse.test")
+	emailUploadRequest.Header.Set("Content-Type", emailUploadForm.FormDataContentType())
+	emailUploadRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	emailUploadResponse := httptest.NewRecorder()
+	server.ServeHTTP(emailUploadResponse, emailUploadRequest)
+	var emailResponse struct {
+		ID          string `json:"id"`
+		JobID       string `json:"jobId"`
+		Attachments []struct {
+			ID       string `json:"id"`
+			Filename string `json:"filename"`
+			MIMEType string `json:"mimeType"`
+			Status   string `json:"status"`
+			JobID    string `json:"jobId"`
+		} `json:"attachments"`
+	}
+	if emailUploadResponse.Code != http.StatusAccepted {
+		t.Fatalf("email upload failed: status=%d body=%s", emailUploadResponse.Code, emailUploadResponse.Body.String())
+	}
+	if err := stdjson.Unmarshal(emailUploadResponse.Body.Bytes(), &emailResponse); err != nil {
+		t.Fatal(err)
+	}
+	if emailResponse.ID == "" || emailResponse.JobID == "" || len(emailResponse.Attachments) != 1 || emailResponse.Attachments[0].ID == "" || emailResponse.Attachments[0].Filename != "receipt.pdf" || emailResponse.Attachments[0].MIMEType != "application/pdf" || emailResponse.Attachments[0].Status != documentStatusQueued || emailResponse.Attachments[0].JobID == "" {
+		t.Fatalf("email upload response omitted its child document: %s", emailUploadResponse.Body.String())
+	}
+	parentID := mustIntegrationUUID(t, emailResponse.ID)
+	childID := mustIntegrationUUID(t, emailResponse.Attachments[0].ID)
+	parentDocument, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(parentID)))).One(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childDocument, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(childID)))).One(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parentDocument.MimeType != "message/rfc822" || parentDocument.SourceKind != "email" || childDocument.MimeType != "application/pdf" || childDocument.SourceKind != testReceiptSourceKind {
+		t.Fatalf("email parent or child document was persisted incorrectly: parent=%#v child=%#v", parentDocument, childDocument)
+	}
+	attachmentRelations, err := models.SourceDocumentAttachments.Query(sm.Where(psql.And(
+		models.SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.SourceDocumentAttachments.Columns.ParentDocumentID.EQ(psql.Arg(parentID)),
+	))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attachmentRelations) != 1 || attachmentRelations[0].ChildDocumentID != childID || attachmentRelations[0].Filename != "receipt.pdf" {
+		t.Fatalf("email attachment relation was not persisted: %#v", attachmentRelations)
+	}
+	jobIDs := make(map[gofrsuuid.UUID]gofrsuuid.UUID, 2)
+	for _, documentID := range []gofrsuuid.UUID{parentID, childID} {
+		job, err := models.ExtractionJobs.Query(sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(documentID)))).One(ctx, executor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.Status != documentStatusQueued {
+			t.Fatalf("email document job status = %q, want queued", job.Status)
+		}
+		jobIDs[documentID] = job.ID
+	}
+	if emailResponse.JobID != jobIDs[parentID].String() || emailResponse.Attachments[0].JobID != jobIDs[childID].String() {
+		t.Fatalf("email upload response job IDs do not match persisted jobs: response=%s persisted=%v", emailUploadResponse.Body.String(), jobIDs)
+	}
+	conflictJobID, err := insertDocumentJob(ctx, executor, householdUUID, childID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conflictJobID != jobIDs[childID] {
+		t.Fatalf("conflicting job insert returned %s, want persisted job %s", conflictJobID, jobIDs[childID])
 	}
 	invalidPreviewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview?page=-1", nil)
 	invalidPreviewRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})

@@ -58,14 +58,14 @@ func TestGeminiExtractParsesEmailBodyAndWarnsAboutUnparsedAttachments(t *testing
 
 func TestParseEmailExtractsValidatedAttachments(t *testing.T) {
 	t.Parallel()
-	parsed, err := parseEmail(syntheticEmail(t, true))
+	attachments, err := ParseEmailAttachments(syntheticEmail(t, true))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(parsed.Attachments) != 1 {
-		t.Fatalf("attachment count = %d, want 1", len(parsed.Attachments))
+	if len(attachments) != 1 {
+		t.Fatalf("attachment count = %d, want 1", len(attachments))
 	}
-	attachment := parsed.Attachments[0]
+	attachment := attachments[0]
 	if attachment.Filename != "invoice.pdf" || attachment.MIMEType != mimeTypePDF || !bytes.HasPrefix(attachment.Data, []byte("%PDF-")) {
 		t.Fatalf("unexpected extracted attachment: %#v", attachment)
 	}

@@ -45,6 +45,12 @@ type emailAttachment struct {
 	Data     []byte
 }
 
+type EmailAttachment struct {
+	Filename string
+	MIMEType string
+	Data     []byte
+}
+
 type emailMIMEContent struct {
 	Plain         []string
 	HTML          []string
@@ -108,6 +114,22 @@ func parseEmail(data []byte) (emailContent, error) {
 	content.HasUnparsedAttachments = parsed.HasAttachment
 	content.Attachments = parsed.Attachments
 	return content, nil
+}
+
+func ParseEmailAttachments(data []byte) ([]EmailAttachment, error) {
+	parsed, err := parseEmail(data)
+	if err != nil {
+		return nil, err
+	}
+	attachments := make([]EmailAttachment, 0, len(parsed.Attachments))
+	for _, attachment := range parsed.Attachments {
+		attachments = append(attachments, EmailAttachment{
+			Filename: attachment.Filename,
+			MIMEType: attachment.MIMEType,
+			Data:     attachment.Data,
+		})
+	}
+	return attachments, nil
 }
 
 func (e emailContent) text() string {

@@ -40,18 +40,36 @@ const (
 )
 
 type documentResponse struct {
-	ID            string                 `json:"id"`
-	HouseholdID   string                 `json:"householdId"`
-	Name          string                 `json:"name,omitempty"`
-	SHA256        string                 `json:"sha256"`
-	MIMEType      string                 `json:"mimeType"`
-	SourceKind    string                 `json:"sourceKind"`
-	Status        string                 `json:"status"`
-	JobID         string                 `json:"jobId,omitempty"`
-	Duplicate     bool                   `json:"duplicate"`
-	Result        any                    `json:"result,omitempty"`
-	CreatedAt     time.Time              `json:"createdAt"`
-	Confirmations []documentConfirmation `json:"confirmations"`
+	ID               string                    `json:"id"`
+	HouseholdID      string                    `json:"householdId"`
+	Name             string                    `json:"name,omitempty"`
+	SHA256           string                    `json:"sha256"`
+	MIMEType         string                    `json:"mimeType"`
+	SourceKind       string                    `json:"sourceKind"`
+	Status           string                    `json:"status"`
+	JobID            string                    `json:"jobId,omitempty"`
+	Duplicate        bool                      `json:"duplicate"`
+	Result           any                       `json:"result,omitempty"`
+	CreatedAt        time.Time                 `json:"createdAt"`
+	Confirmations    []documentConfirmation    `json:"confirmations"`
+	Attachments      []documentAttachment      `json:"attachments,omitempty"`
+	AttachmentParent *documentAttachmentParent `json:"attachmentParent,omitempty"`
+}
+
+type documentAttachment struct {
+	ID       string `json:"id"`
+	Name     string `json:"name,omitempty"`
+	Filename string `json:"filename"`
+	MIMEType string `json:"mimeType"`
+	Status   string `json:"status,omitempty"`
+	JobID    string `json:"jobId,omitempty"`
+}
+
+type documentAttachmentParent struct {
+	ID       string `json:"id"`
+	Name     string `json:"name,omitempty"`
+	Filename string `json:"filename"`
+	Index    int32  `json:"index"`
 }
 
 type documentConfirmation struct {
@@ -119,6 +137,14 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported document type", http.StatusUnsupportedMediaType)
 		return
 	}
+	var emailAttachments []ingestion.EmailAttachment
+	if mimeType == "message/rfc822" {
+		emailAttachments, err = ingestion.ParseEmailAttachments(data)
+		if err != nil {
+			http.Error(w, "invalid email message", http.StatusBadRequest)
+			return
+		}
+	}
 	householdID = householdUUID.String()
 	key, hash, err := s.cfg.Store.Put(r.Context(), householdID, mimeType, data)
 	if err != nil {
@@ -156,6 +182,33 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "document lookup failed", http.StatusInternalServerError)
 			return
 		}
+		if len(emailAttachments) > 0 {
+			queuedJobIDs, attachmentErr := s.registerEmailAttachments(r.Context(), executor, householdUUID, memberID, existingDocument.ID, householdID, emailAttachments)
+			if attachmentErr != nil {
+				http.Error(w, "document registration failed", http.StatusInternalServerError)
+				return
+			}
+			if err := tx.Commit(r.Context()); err != nil {
+				http.Error(w, "document registration failed", http.StatusInternalServerError)
+				return
+			}
+			s.publishDocumentJobs(r.Context(), queuedJobIDs)
+			existing, err = s.documentResponse(r.Context(), bobpgx.NewPool(s.db), existingDocument)
+			if err == nil {
+				err = s.loadDocumentAttachments(r.Context(), bobpgx.NewPool(s.db), &existing)
+			}
+			if err != nil {
+				http.Error(w, "document lookup failed", http.StatusInternalServerError)
+				return
+			}
+			existing.Duplicate = true
+			writeJSON(w, http.StatusOK, existing)
+			return
+		}
+		if err := s.loadDocumentAttachments(r.Context(), executor, &existing); err != nil {
+			http.Error(w, "document lookup failed", http.StatusInternalServerError)
+			return
+		}
 		existing.Duplicate = true
 		_ = tx.Rollback(context.WithoutCancel(r.Context()))
 		writeJSON(w, http.StatusOK, existing)
@@ -165,35 +218,138 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
-	jobID, err := gofrsuuid.FromString(uuid.NewV7().String())
+	jobID, err := insertDocumentJob(r.Context(), executor, householdUUID, document.ID)
 	if err != nil {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
-	request, err := json.Marshal(map[string]any{"purpose": ingestion.JobPurposeInteractive})
+	attachmentJobIDs, err := s.registerEmailAttachments(r.Context(), executor, householdUUID, memberID, document.ID, householdID, emailAttachments)
 	if err != nil {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
-	requestJSON := types.JSON[stdjson.RawMessage]{Val: request}
-	version := int32(1)
-	status := documentStatusQueued
-	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
-		ID: &jobID, HouseholdID: &householdUUID, SourceDocumentID: &document.ID, Version: &version, Status: &status, Request: &requestJSON,
-	}).Exec(r.Context(), executor); err != nil {
-		http.Error(w, "document registration failed", http.StatusInternalServerError)
-		return
-	}
+	queuedJobIDs := append([]gofrsuuid.UUID{jobID}, attachmentJobIDs...)
 	if err := tx.Commit(r.Context()); err != nil {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
-	if s.cfg.Queue != nil {
-		if err := s.cfg.Queue.Publish(r.Context(), jobID.String()); err != nil {
-			s.logger.WarnContext(r.Context(), "extraction job notification failed", "job_id", jobID.String(), "error", err)
+	s.publishDocumentJobs(r.Context(), queuedJobIDs)
+	result, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), document)
+	if err != nil {
+		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		return
+	}
+	if err := s.loadDocumentAttachments(r.Context(), bobpgx.NewPool(s.db), &result); err != nil {
+		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (s *Server) registerEmailAttachments(ctx context.Context, exec bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, householdKey string, attachments []ingestion.EmailAttachment) ([]gofrsuuid.UUID, error) {
+	queuedJobIDs := make([]gofrsuuid.UUID, 0, len(attachments))
+	seenChildren := make(map[gofrsuuid.UUID]struct{}, len(attachments))
+	for index, attachment := range attachments {
+		childKey, childHash, err := s.cfg.Store.Put(ctx, householdKey, attachment.MIMEType, attachment.Data)
+		if err != nil {
+			s.logger.ErrorContext(ctx, "email attachment storage failed", "error", err)
+			return nil, err
+		}
+		childID, childJobID, err := insertAttachmentDocument(ctx, exec, householdID, memberID, attachment, childKey, childHash)
+		if err != nil {
+			return nil, err
+		}
+		if _, duplicate := seenChildren[childID]; duplicate {
+			continue
+		}
+		seenChildren[childID] = struct{}{}
+		attachmentIndex := int32(index)
+		if _, err := models.SourceDocumentAttachments.Insert(&models.SourceDocumentAttachmentSetter{
+			HouseholdID: &householdID, ParentDocumentID: &parentID, ChildDocumentID: &childID,
+			AttachmentIndex: &attachmentIndex, Filename: &attachment.Filename, MimeType: &attachment.MIMEType,
+		}, im.OnConflict("parent_document_id", "attachment_index").DoNothing()).Exec(ctx, exec); err != nil {
+			return nil, err
+		}
+		if childJobID != nil {
+			queuedJobIDs = append(queuedJobIDs, *childJobID)
 		}
 	}
-	writeJSON(w, http.StatusAccepted, documentResponse{ID: document.ID.String(), HouseholdID: householdID, Name: document.SourceFilename.V, SHA256: hash, MIMEType: mimeType, SourceKind: sourceKind, Status: documentStatusQueued, JobID: jobID.String(), CreatedAt: document.CreatedAt})
+	return queuedJobIDs, nil
+}
+
+func (s *Server) publishDocumentJobs(ctx context.Context, jobIDs []gofrsuuid.UUID) {
+	if s.cfg.Queue == nil {
+		return
+	}
+	for _, jobID := range jobIDs {
+		if err := s.cfg.Queue.Publish(ctx, jobID.String()); err != nil {
+			s.logger.WarnContext(ctx, "extraction job notification failed", "job_id", jobID.String(), "error", err)
+		}
+	}
+}
+
+func insertDocumentJob(ctx context.Context, exec bob.Executor, householdID, documentID gofrsuuid.UUID) (gofrsuuid.UUID, error) {
+	jobID, err := gofrsuuid.FromString(uuid.NewV7().String())
+	if err != nil {
+		return gofrsuuid.Nil, err
+	}
+	request, err := json.Marshal(map[string]any{"purpose": ingestion.JobPurposeInteractive})
+	if err != nil {
+		return gofrsuuid.Nil, err
+	}
+	requestJSON := types.JSON[stdjson.RawMessage]{Val: request}
+	version := int32(1)
+	status := documentStatusQueued
+	job, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
+		ID: &jobID, HouseholdID: &householdID, SourceDocumentID: &documentID, Version: &version, Status: &status, Request: &requestJSON,
+	}, im.OnConflict("source_document_id", "version").DoNothing()).One(ctx, exec)
+	if errors.Is(err, sql.ErrNoRows) {
+		job, err = models.ExtractionJobs.Query(sm.Where(psql.And(
+			models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(documentID)),
+			models.ExtractionJobs.Columns.Version.EQ(psql.Arg(version)),
+		))).One(ctx, exec)
+	}
+	if err != nil {
+		return gofrsuuid.Nil, err
+	}
+	return job.ID, nil
+}
+
+func insertAttachmentDocument(ctx context.Context, exec bob.Executor, householdID, memberID gofrsuuid.UUID, attachment ingestion.EmailAttachment, key, hash string) (gofrsuuid.UUID, *gofrsuuid.UUID, error) {
+	id, err := gofrsuuid.FromString(uuid.NewV7().String())
+	if err != nil {
+		return gofrsuuid.Nil, nil, err
+	}
+	sourceKind := "receipt"
+	filename := sql.Null[string]{V: attachment.Filename, Valid: true}
+	document, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
+		ID: &id, HouseholdID: &householdID, Sha256: &hash, ObjectKey: &key, MimeType: &attachment.MIMEType,
+		SourceKind: &sourceKind, SourceFilename: &filename, CreatedBy: &memberID,
+	}, im.OnConflict("household_id", "sha256").DoNothing()).One(ctx, exec)
+	if errors.Is(err, sql.ErrNoRows) {
+		document, err = models.SourceDocuments.Query(sm.Where(psql.And(
+			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.SourceDocuments.Columns.Sha256.EQ(psql.Arg(hash)),
+		))).One(ctx, exec)
+	}
+	if err != nil {
+		return gofrsuuid.Nil, nil, err
+	}
+	_, err = models.ExtractionJobs.Query(
+		sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID))),
+		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(), sm.Limit(1),
+	).One(ctx, exec)
+	if err == nil {
+		return document.ID, nil, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return gofrsuuid.Nil, nil, err
+	}
+	jobID, err := insertDocumentJob(ctx, exec, householdID, document.ID)
+	if err != nil {
+		return gofrsuuid.Nil, nil, err
+	}
+	return document.ID, &jobID, nil
 }
 
 func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, document *models.SourceDocument) (documentResponse, error) {
@@ -223,6 +379,79 @@ func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, docume
 		}
 	}
 	return result, nil
+}
+
+func (s *Server) loadDocumentAttachments(ctx context.Context, exec bob.Executor, document *documentResponse) error {
+	documentID, err := gofrsuuid.FromString(document.ID)
+	if err != nil {
+		return err
+	}
+	householdID, err := gofrsuuid.FromString(document.HouseholdID)
+	if err != nil {
+		return err
+	}
+	children, err := models.SourceDocumentAttachments.Query(
+		sm.Where(psql.And(
+			models.SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.SourceDocumentAttachments.Columns.ParentDocumentID.EQ(psql.Arg(documentID)),
+		)),
+		sm.OrderBy(models.SourceDocumentAttachments.Columns.AttachmentIndex),
+	).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+	if len(children) > 0 {
+		document.Attachments = make([]documentAttachment, 0, len(children))
+	}
+	for _, relation := range children {
+		child, lookupErr := models.SourceDocuments.Query(sm.Where(psql.And(
+			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.SourceDocuments.Columns.ID.EQ(psql.Arg(relation.ChildDocumentID)),
+		))).One(ctx, exec)
+		if lookupErr != nil {
+			return lookupErr
+		}
+		attachment := documentAttachment{
+			ID: child.ID.String(), Name: child.SourceFilename.V, Filename: relation.Filename, MIMEType: relation.MimeType,
+		}
+		job, jobErr := models.ExtractionJobs.Query(
+			sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(child.ID))),
+			sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(), sm.Limit(1),
+		).One(ctx, exec)
+		if jobErr == nil {
+			attachment.Status = job.Status
+			attachment.JobID = job.ID.String()
+		} else if !errors.Is(jobErr, sql.ErrNoRows) {
+			return jobErr
+		}
+		document.Attachments = append(document.Attachments, attachment)
+	}
+	parents, err := models.SourceDocumentAttachments.Query(
+		sm.Where(psql.And(
+			models.SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.SourceDocumentAttachments.Columns.ChildDocumentID.EQ(psql.Arg(documentID)),
+		)),
+		sm.OrderBy(models.SourceDocumentAttachments.Columns.ParentDocumentID),
+		sm.OrderBy(models.SourceDocumentAttachments.Columns.AttachmentIndex),
+		sm.Limit(1),
+	).One(ctx, exec)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	parent, err := models.SourceDocuments.Query(sm.Where(psql.And(
+		models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.SourceDocuments.Columns.ID.EQ(psql.Arg(parents.ParentDocumentID)),
+	))).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+	document.AttachmentParent = &documentAttachmentParent{
+		ID: parent.ID.String(), Name: parent.SourceFilename.V, Filename: parents.Filename, Index: parents.AttachmentIndex,
+	}
+	return nil
 }
 
 func documentForMember(ctx context.Context, exec bob.Executor, documentID, memberID gofrsuuid.UUID, lock bool) (*models.SourceDocument, error) {
@@ -279,6 +508,10 @@ func (s *Server) document(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), storedDocument)
 	if err != nil {
+		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		return
+	}
+	if err := s.loadDocumentAttachments(r.Context(), bobpgx.NewPool(s.db), &result); err != nil {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
 	}
@@ -407,6 +640,10 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 	for _, storedDocument := range storedDocuments {
 		item, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), storedDocument)
 		if err != nil {
+			http.Error(w, "document lookup failed", http.StatusInternalServerError)
+			return
+		}
+		if err := s.loadDocumentAttachments(r.Context(), bobpgx.NewPool(s.db), &item); err != nil {
 			http.Error(w, "document lookup failed", http.StatusInternalServerError)
 			return
 		}
