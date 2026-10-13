@@ -1,11 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { bulkUpdatePurchasesMutation } from "../../../entities/purchase";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  bulkUpdatePurchasesMutation,
+  type BulkUpdatePurchasesMutation$data,
+  type BulkUpdatePurchasesMutation$variables,
+} from "../../../entities/purchase";
 import { useGraphqlMutation, type Purchase } from "../../../shared/api";
+
+type PurchaseBulkEditResult = {
+  bulkUpdatePurchases: NonNullable<
+    BulkUpdatePurchasesMutation$data["bulkUpdatePurchases"]["purchases"]
+  >;
+};
+type PurchaseBulkPatch = BulkUpdatePurchasesMutation$variables["input"]["targets"][number]["patch"];
 
 type PurchaseBulkUndo = Array<{
   purchaseId: string;
   baseRevision: number;
-  patch: Record<string, unknown>;
+  patch: PurchaseBulkPatch;
 }>;
 
 export function usePurchaseBulkEdit({
@@ -19,9 +30,11 @@ export function usePurchaseBulkEdit({
   selectionKey: string;
   refresh: () => void | Promise<void>;
 }) {
-  const { mutate } = useGraphqlMutation<{
-    bulkUpdatePurchases: { purchases: Array<{ id: string; revision: number }> };
-  }>(bulkUpdatePurchasesMutation);
+  const { mutate } = useGraphqlMutation<PurchaseBulkEditResult>(bulkUpdatePurchasesMutation);
+  const mutateBulkUpdatePurchases = useCallback(
+    (variables: BulkUpdatePurchasesMutation$variables) => mutate(variables),
+    [mutate],
+  );
   const [selectedPurchases, setSelectedPurchases] = useState<Set<string>>(() => new Set());
   const selectionAnchor = useRef<string | null>(null);
   const [merchantActive, setMerchantActive] = useState(false);
@@ -91,7 +104,7 @@ export function usePurchaseBulkEdit({
     setUndo(null);
     const undoEntries: PurchaseBulkUndo = [];
     try {
-      const result = await mutate({
+      const result = await mutateBulkUpdatePurchases({
         input: {
           targets: targets.map((purchase) => ({
             purchaseId: purchase.id,
@@ -109,7 +122,7 @@ export function usePurchaseBulkEdit({
         },
       });
       for (const purchase of targets) {
-        const patch: Record<string, unknown> = {};
+        const patch: PurchaseBulkPatch = {};
         if (merchantActive) patch.merchant = purchase.merchant;
         if (occurredAtActive) patch.occurredAt = purchase.occurredAt;
         if (paymentAccountId)
@@ -122,8 +135,8 @@ export function usePurchaseBulkEdit({
         undoEntries.push({
           purchaseId: purchase.id,
           baseRevision:
-            result.bulkUpdatePurchases.purchases.find((updated) => updated.id === purchase.id)
-              ?.revision ?? purchase.revision + 1,
+            result.bulkUpdatePurchases.find((updated) => updated.id === purchase.id)?.revision ??
+            purchase.revision + 1,
           patch,
         });
       }
@@ -150,7 +163,7 @@ export function usePurchaseBulkEdit({
     setPending(true);
     setError("");
     try {
-      await mutate({
+      await mutateBulkUpdatePurchases({
         input: {
           targets: undo.map((entry) => ({
             purchaseId: entry.purchaseId,

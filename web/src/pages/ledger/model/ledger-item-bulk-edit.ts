@@ -1,11 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { bulkUpdatePurchaseItemsMutation } from "../../../entities/purchase";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  bulkUpdatePurchaseItemsMutation,
+  type BulkUpdatePurchaseItemsMutation$data,
+  type BulkUpdatePurchaseItemsMutation$variables,
+} from "../../../entities/purchase";
 import { useGraphqlMutation, type Purchase } from "../../../shared/api";
+
+type LedgerItemBulkEditResult = {
+  bulkUpdatePurchaseItems: NonNullable<
+    BulkUpdatePurchaseItemsMutation$data["bulkUpdatePurchaseItems"]["items"]
+  >;
+};
+type LedgerItemBulkPatch = BulkUpdatePurchaseItemsMutation$variables["input"]["patch"];
 
 type LedgerItemBulkUndo = Array<{
   itemId: string;
   baseRevision: number;
-  patch: Record<string, unknown>;
+  patch: LedgerItemBulkPatch;
 }>;
 
 export function useLedgerItemBulkEdit({
@@ -19,9 +30,11 @@ export function useLedgerItemBulkEdit({
   selectionKey: string;
   refresh: () => void | Promise<void>;
 }) {
-  const { mutate } = useGraphqlMutation<{
-    bulkUpdatePurchaseItems: Array<{ id: string; revision: number }>;
-  }>(bulkUpdatePurchaseItemsMutation);
+  const { mutate } = useGraphqlMutation<LedgerItemBulkEditResult>(bulkUpdatePurchaseItemsMutation);
+  const mutateBulkUpdatePurchaseItems = useCallback(
+    (variables: BulkUpdatePurchaseItemsMutation$variables) => mutate(variables),
+    [mutate],
+  );
   const [selectedItems, setSelectedItems] = useState<Set<string>>(() => new Set());
   const selectionAnchor = useRef<{ context: string; id: string } | null>(null);
   const [category, setCategory] = useState("");
@@ -93,7 +106,7 @@ export function useLedgerItemBulkEdit({
     setError("");
     setUndo(null);
     try {
-      const patch: Record<string, unknown> = {};
+      const patch: BulkUpdatePurchaseItemsMutation$variables["input"]["patch"] = {};
       if (category) patch.categoryId = category === "__uncategorized" ? null : category;
       if (allocationsActive)
         patch.allocations = Object.entries(allocations)
@@ -101,14 +114,14 @@ export function useLedgerItemBulkEdit({
           .map(([poolId, weight]) => ({ poolId, weight: Number(weight) }));
       if (variantId) patch.productVariantId = variantId === "__none" ? null : variantId;
       if (tagsActive) patch.tagIds = tags;
-      const result = await mutate({
+      const result = await mutateBulkUpdatePurchaseItems({
         input: {
           targets: targets.map(({ item }) => ({ itemId: item.id, baseRevision: item.revision })),
           patch,
         },
       });
       const undoEntries: NonNullable<typeof undo> = targets.map(({ item }) => {
-        const undoPatch: Record<string, unknown> = {};
+        const undoPatch: LedgerItemBulkPatch = {};
         if (category) undoPatch.categoryId = item.categoryId ?? null;
         if (allocationsActive)
           undoPatch.allocations = item.allocations
@@ -145,28 +158,28 @@ export function useLedgerItemBulkEdit({
     if (!undo?.length) return;
     setPending(true);
     setError("");
-    let undone = 0;
+    const completed = new Set<number>();
     try {
-      const groups = new Map<string, LedgerItemBulkUndo>();
-      for (const entry of undo) {
+      const groups = new Map<string, Array<{ index: number; entry: LedgerItemBulkUndo[number] }>>();
+      undo.forEach((entry, index) => {
         const key = JSON.stringify(entry.patch);
-        groups.set(key, [...(groups.get(key) ?? []), entry]);
-      }
+        groups.set(key, [...(groups.get(key) ?? []), { index, entry }]);
+      });
       for (const group of groups.values()) {
         if (!group.length) continue;
-        await mutate({
+        await mutateBulkUpdatePurchaseItems({
           input: {
-            targets: group.map(({ itemId, baseRevision }) => ({ itemId, baseRevision })),
-            patch: group[0].patch,
+            targets: group.map(({ entry: { itemId, baseRevision } }) => ({ itemId, baseRevision })),
+            patch: group[0].entry.patch,
           },
         });
-        undone += group.length;
+        group.forEach(({ index }) => completed.add(index));
       }
       setUndo(null);
       await refresh();
     } catch (reason) {
       setError((reason as Error).message);
-      setUndo(undo.slice(undone));
+      setUndo(undo.filter((_, index) => !completed.has(index)));
       await refresh();
     } finally {
       setPending(false);

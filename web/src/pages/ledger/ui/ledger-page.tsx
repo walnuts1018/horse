@@ -36,6 +36,7 @@ import { PurchaseCorrection } from "./purchase-correction";
 import { PurchaseEvidence } from "./purchase-evidence";
 import { PurchaseEditForm } from "./purchase-edit-form";
 import { LedgerItemBulkActions } from "./ledger-item-bulk-actions";
+import { PurchaseItemEditor, type LedgerItemDraft } from "./purchase-item-editor";
 import { toPurchaseAmountVariables, type LedgerSearch } from "../model/ledger-search";
 import styles from "./ledger-search.module.css";
 
@@ -192,24 +193,7 @@ export function LedgerPage({
   const { evidence: purchaseEvidence, error: evidenceError } = usePurchaseEvidence(expanded);
   const [editing, setEditing] = useState<string | null>(null);
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
-  const [itemDrafts, setItemDrafts] = useState<
-    Record<
-      string,
-      {
-        name: string;
-        amountYen: string;
-        quantity: string;
-        quantityUnit: string;
-        printedUnitPriceYen: string;
-        printedBasisQuantity: string;
-        printedUnitPriceUnit: string;
-        categoryId: string;
-        productVariantId: string;
-        productLearning: "ITEM_ONLY" | "VARIANT_NAME" | "MERCHANT_ALIAS";
-        variantName: string;
-      }
-    >
-  >({});
+  const [itemDrafts, setItemDrafts] = useState<Record<string, LedgerItemDraft>>({});
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
   const [highlightedEvidenceItem, setHighlightedEvidenceItem] = useState<string | null>(null);
   const [editError, setEditError] = useState("");
@@ -1064,217 +1048,19 @@ export function LedgerPage({
                           disabled={editing === purchase.id || bulkPending}
                         />
                         {editing === purchase.id ? (
-                          <>
-                            <input
-                              aria-label="品名"
-                              value={itemDrafts[item.id]?.name ?? item.name}
-                              onChange={(event) =>
-                                setItemDrafts((current) => ({
-                                  ...current,
-                                  [item.id]: { ...current[item.id], name: event.target.value },
-                                }))
-                              }
-                            />
-                            <select
-                              aria-label="カテゴリ"
-                              value={itemDrafts[item.id]?.categoryId ?? item.categoryId ?? ""}
-                              onChange={(event) =>
-                                setItemDrafts((current) => ({
-                                  ...current,
-                                  [item.id]: {
-                                    ...current[item.id],
-                                    categoryId: event.target.value,
-                                  },
-                                }))
-                              }
-                            >
-                              <option value="">未分類</option>
-                              {household.categories
-                                .filter((category) => !category.archived)
-                                .map((category) => (
-                                  <option key={category.id} value={category.id}>
-                                    {category.name}
-                                  </option>
-                                ))}
-                            </select>
-                            <select
-                              aria-label="正規商品"
-                              value={
-                                itemDrafts[item.id]?.productVariantId ?? item.productVariantId ?? ""
-                              }
-                              onChange={(event) =>
-                                setItemDrafts((current) => ({
-                                  ...current,
-                                  [item.id]: {
-                                    ...current[item.id],
-                                    productVariantId: event.target.value,
-                                    variantName:
-                                      catalog
-                                        .flatMap((concept) => concept.variants)
-                                        .find((variant) => variant.id === event.target.value)
-                                        ?.name ?? "",
-                                  },
-                                }))
-                              }
-                            >
-                              <option value="">商品未選択</option>
-                              {catalog.flatMap((concept) =>
-                                concept.variants
-                                  .filter((variant) => !variant.archived)
-                                  .map((variant) => (
-                                    <option key={variant.id} value={variant.id}>
-                                      {concept.name} · {variant.name}
-                                    </option>
-                                  )),
-                              )}
-                            </select>
-                            {itemDrafts[item.id]?.productVariantId !==
-                              (item.productVariantId ?? "") &&
-                              itemDrafts[item.id]?.productVariantId && (
-                                <>
-                                  <select
-                                    aria-label="商品名の学習範囲"
-                                    value={itemDrafts[item.id]?.productLearning ?? "ITEM_ONLY"}
-                                    onChange={(event) =>
-                                      setItemDrafts((current) => ({
-                                        ...current,
-                                        [item.id]: {
-                                          ...current[item.id],
-                                          productLearning: event.target.value as
-                                            | "ITEM_ONLY"
-                                            | "VARIANT_NAME"
-                                            | "MERCHANT_ALIAS",
-                                        },
-                                      }))
-                                    }
-                                  >
-                                    <option value="ITEM_ONLY">この品目だけ</option>
-                                    <option value="VARIANT_NAME">バリエーション名として学習</option>
-                                    <option value="MERCHANT_ALIAS">この店の別表記として学習</option>
-                                  </select>
-                                  {itemDrafts[item.id]?.productLearning === "VARIANT_NAME" && (
-                                    <input
-                                      aria-label="バリエーション名"
-                                      value={itemDrafts[item.id]?.variantName ?? ""}
-                                      onChange={(event) =>
-                                        setItemDrafts((current) => ({
-                                          ...current,
-                                          [item.id]: {
-                                            ...current[item.id],
-                                            variantName: event.target.value,
-                                          },
-                                        }))
-                                      }
-                                      placeholder="バリエーション名"
-                                    />
-                                  )}
-                                </>
-                              )}
-                            <input
-                              aria-label="金額"
-                              inputMode="numeric"
-                              value={itemDrafts[item.id]?.amountYen ?? String(item.amountYen)}
-                              onChange={(event) =>
-                                setItemDrafts((current) => ({
-                                  ...current,
-                                  [item.id]: {
-                                    ...current[item.id],
-                                    amountYen: event.target.value.replace(/\D/g, ""),
-                                  },
-                                }))
-                              }
-                            />
-                            <details className="item-measure-details">
-                              <summary>数量・印字単価</summary>
-                              <label>
-                                数量
-                                <input
-                                  value={itemDrafts[item.id]?.quantity ?? ""}
-                                  onChange={(event) =>
-                                    setItemDrafts((current) => ({
-                                      ...current,
-                                      [item.id]: {
-                                        ...current[item.id],
-                                        quantity: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  placeholder="1、1/2"
-                                />
-                              </label>
-                              <label>
-                                単位
-                                <input
-                                  value={itemDrafts[item.id]?.quantityUnit ?? ""}
-                                  onChange={(event) =>
-                                    setItemDrafts((current) => ({
-                                      ...current,
-                                      [item.id]: {
-                                        ...current[item.id],
-                                        quantityUnit: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  maxLength={32}
-                                />
-                              </label>
-                              <label>
-                                印字単価
-                                <input
-                                  inputMode="numeric"
-                                  value={itemDrafts[item.id]?.printedUnitPriceYen ?? ""}
-                                  onChange={(event) =>
-                                    setItemDrafts((current) => ({
-                                      ...current,
-                                      [item.id]: {
-                                        ...current[item.id],
-                                        printedUnitPriceYen: event.target.value.replace(/\D/g, ""),
-                                      },
-                                    }))
-                                  }
-                                />
-                              </label>
-                              <label>
-                                基準量
-                                <input
-                                  value={itemDrafts[item.id]?.printedBasisQuantity ?? ""}
-                                  onChange={(event) =>
-                                    setItemDrafts((current) => ({
-                                      ...current,
-                                      [item.id]: {
-                                        ...current[item.id],
-                                        printedBasisQuantity: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  placeholder="1、100、1/2"
-                                />
-                              </label>
-                              <label>
-                                印字単位
-                                <input
-                                  value={itemDrafts[item.id]?.printedUnitPriceUnit ?? ""}
-                                  onChange={(event) =>
-                                    setItemDrafts((current) => ({
-                                      ...current,
-                                      [item.id]: {
-                                        ...current[item.id],
-                                        printedUnitPriceUnit: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  maxLength={32}
-                                />
-                              </label>
-                            </details>
-                            <button
-                              className="text-button"
-                              type="button"
-                              onClick={() => void saveItem(purchase, item)}
-                            >
-                              品目を保存
-                            </button>
-                          </>
+                          <PurchaseItemEditor
+                            item={item}
+                            draft={itemDrafts[item.id]}
+                            categories={household.categories}
+                            catalog={catalog}
+                            onChange={(updates) =>
+                              setItemDrafts((current) => ({
+                                ...current,
+                                [item.id]: { ...current[item.id], ...updates },
+                              }))
+                            }
+                            onSave={() => void saveItem(purchase, item)}
+                          />
                         ) : (
                           <>
                             <span>{item.name}</span>

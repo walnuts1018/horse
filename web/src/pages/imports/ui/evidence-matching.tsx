@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, Link2 } from "lucide-react";
+import styles from "./imports-page.module.css";
 import type { Purchase } from "../../../shared/api";
 import { linkPurchaseEvidence, readDocumentMatches } from "../api/document-matches";
 import {
@@ -119,7 +120,7 @@ export function EvidenceMatching({
   if (!document.result || observations.length === 0) return null;
 
   return (
-    <section className="panel evidence-group-panel">
+    <section className={`panel ${styles.evidenceGroupPanel}`}>
       <div className="panel-heading">
         <div>
           <span className="eyebrow">照合候補</span>
@@ -157,15 +158,15 @@ export function EvidenceMatching({
           })}
         </select>
       </label>
-      <div className="evidence-match-list">
+      <div className={styles.evidenceMatchList}>
         {observations.map((observation) => (
-          <div className="evidence-match-group" key={observation.sourceReference}>
+          <div className={styles.evidenceMatchGroup} key={observation.sourceReference}>
             <small>{observation.sourceReference || "レシート全体"}</small>
             {observation.matches.map((candidate) => {
               const key = `${observation.sourceReference}\u0000${candidate.documentId}\u0000${candidate.sourceReference}`;
               const sourceDocument = documents.find((entry) => entry.id === candidate.documentId);
               return (
-                <label className="evidence-match-row" key={key}>
+                <label className={styles.evidenceMatchRow} key={key}>
                   <input
                     type="checkbox"
                     checked={selectedMatches.has(key)}

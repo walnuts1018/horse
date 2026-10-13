@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { FileImage } from "lucide-react";
+import styles from "./imports-page.module.css";
 import { InlineError } from "../../../shared/ui";
 import type { EvidencePreviewController } from "../model/evidence-preview";
 import { yen, type DocumentReview } from "../model/imports";
@@ -40,9 +41,9 @@ export function EvidenceSourcePreview({
   } = previewState;
 
   return (
-    <details className="evidence-source-column" open>
+    <details className={styles.evidenceSourceColumn} open>
       <summary>原本</summary>
-      <div className="evidence-preview">
+      <div className={styles.evidencePreview}>
         <a
           className="review-image"
           href={`/documents/${encodeURIComponent(document.id)}/content`}
@@ -55,7 +56,7 @@ export function EvidenceSourcePreview({
         {document.mimeType?.startsWith("image/") || document.mimeType === "application/pdf" ? (
           <>
             {document.mimeType === "application/pdf" && (
-              <div className="evidence-preview-page-controls">
+              <div className={styles.evidencePreviewPageControls}>
                 <label>
                   PDFページ
                   <input
@@ -78,14 +79,14 @@ export function EvidenceSourcePreview({
             {loading && <p>ページを読み込んでいます</p>}
             {error && <InlineError message={error} />}
             {preview?.documentId === document.id && preview.page === page && (
-              <div className="evidence-image-stage">
+              <div className={styles.evidenceImageStage}>
                 <img src={preview.src} alt={`${page + 1}ページ目の原本`} />
                 {document.result?.receipt?.items?.map((item, index) =>
                   item.region?.page === page ? (
                     <button
                       key={`item-${index}`}
                       type="button"
-                      className={`evidence-region ${Number(receiptEvidenceIndex) === index ? "evidence-region-selected" : ""}`}
+                      className={`${styles.evidenceRegion} ${Number(receiptEvidenceIndex) === index ? styles.evidenceRegionSelected : ""}`}
                       style={{
                         clipPath: `polygon(${regionPolygon(item.region, preview.transform)})`,
                       }}
@@ -102,7 +103,7 @@ export function EvidenceSourcePreview({
                     <button
                       key={`line-${index}`}
                       type="button"
-                      className="evidence-region evidence-region-ocr"
+                      className={`${styles.evidenceRegion} ${styles.evidenceRegionOcr}`}
                       style={{
                         clipPath: `polygon(${regionPolygon(line.region, preview.transform)})`,
                       }}
@@ -118,7 +119,7 @@ export function EvidenceSourcePreview({
       </div>
       {(document.result?.receipt?.items?.length ||
         document.result?.ocrLines?.some((line) => line.region)) && (
-        <section className="panel evidence-crop-panel">
+        <section className={`panel ${styles.evidenceCropPanel}`}>
           <div className="panel-heading">
             <div>
               <span className="eyebrow">原本座標</span>
@@ -126,12 +127,12 @@ export function EvidenceSourcePreview({
             </div>
             <span>{cropRegion ? `ページ ${cropRegion.page + 1}` : "範囲未選択"}</span>
           </div>
-          <div className="evidence-source-items">
+          <div className={styles.evidenceSourceItems}>
             {document.result?.receipt?.items?.map((item, index) => (
               <button
                 type="button"
                 key={index}
-                className={`text-button ${Number(receiptEvidenceIndex) === index ? "evidence-item-selected" : ""}`}
+                className={`text-button ${Number(receiptEvidenceIndex) === index ? styles.evidenceItemSelected : ""}`}
                 aria-pressed={Number(receiptEvidenceIndex) === index}
                 disabled={!item.region}
                 onClick={() => {
@@ -144,7 +145,7 @@ export function EvidenceSourcePreview({
             ))}
           </div>
           {!!document.result?.ocrLines?.length && (
-            <div className="evidence-ocr-lines">
+            <div className={styles.evidenceOcrLines}>
               {document.result.ocrLines
                 .filter((line) => line.region)
                 .slice(0, 80)
@@ -161,7 +162,7 @@ export function EvidenceSourcePreview({
             </div>
           )}
           {cropRegion && (
-            <div className="crop-coordinate-fields">
+            <div className={styles.cropCoordinateFields}>
               {(["top", "left", "bottom", "right"] as const).map((key) => (
                 <label key={key}>
                   {{ top: "上", left: "左", bottom: "下", right: "右" }[key]}

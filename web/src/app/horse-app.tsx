@@ -33,13 +33,13 @@ import {
   Search,
   WifiOff,
 } from "lucide-react";
-import { ApiError, executeGraphql, getViewer, type Household } from "../shared/api";
 import {
-  acceptHouseholdInvitationMutation,
-  createHouseholdMutation,
-  householdQuery,
-  householdsQuery,
-} from "./api/operations";
+  acceptHouseholdInvitation,
+  createHousehold,
+  readHousehold,
+  readHouseholds,
+} from "../entities/household";
+import { ApiError, getViewer, type Household } from "../shared/api";
 import { useCreateAndPostPurchase } from "../entities/purchase";
 import { GraphQLErrorBoundary } from "./graphql-error-boundary";
 import {
@@ -52,13 +52,6 @@ import {
 import { isAppPage, type AppPage } from "./app-page";
 import { householdRouteContext } from "./household-route-context";
 import { Notice, type NoticeKind } from "../shared/ui";
-
-async function read<T>(
-  operation: Parameters<typeof executeGraphql>[0],
-  variables: Record<string, unknown> = {},
-) {
-  return executeGraphql<T, Record<string, unknown>>(operation, variables);
-}
 
 export function App() {
   const navigate = useNavigate({ from: "/" });
@@ -168,8 +161,7 @@ export function App() {
   };
 
   const refreshHousehold = async (id: string) => {
-    const data = await read<{ household: Household }>(householdQuery, { id });
-    setHousehold(data.household);
+    setHousehold(await readHousehold(id));
   };
 
   useEffect(() => {
@@ -187,14 +179,11 @@ export function App() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([
-      getViewer(),
-      read<{ households: Array<{ id: string; name: string }> }>(householdsQuery),
-    ])
-      .then(([session, result]) => {
+    void Promise.all([getViewer(), readHouseholds()])
+      .then(([session, householdList]) => {
         if (!active) return;
         setViewer(session);
-        setHouseholds(result.households);
+        setHouseholds(householdList);
       })
       .catch((reason: unknown) => {
         if (!active) return;
@@ -223,10 +212,10 @@ export function App() {
     }
     let active = true;
     setHouseholdLoading(true);
-    void read<{ household: Household }>(householdQuery, { id: target.id })
+    void readHousehold(target.id)
       .then((data) => {
         if (!active) return;
-        setHousehold(data.household);
+        setHousehold(data);
       })
       .catch((reason: unknown) => {
         if (!active) return;
@@ -359,17 +348,14 @@ export function App() {
     if (hadUnsavedChanges) hasUnsavedChangesRef.current = false;
     setAcceptingInvitation(true);
     try {
-      const result = await read<{ acceptHouseholdInvitation: { id: string; name: string } }>(
-        acceptHouseholdInvitationMutation,
-        { input: { token: pendingInvitation } },
-      );
+      const result = await acceptHouseholdInvitation({ token: pendingInvitation });
       window.sessionStorage.removeItem("horse:pending-household-invitation");
       setPendingInvitation("");
       setHouseholds((current) => [
-        { id: result.acceptHouseholdInvitation.id, name: result.acceptHouseholdInvitation.name },
-        ...current.filter((item) => item.id !== result.acceptHouseholdInvitation.id),
+        { id: result.id, name: result.name },
+        ...current.filter((item) => item.id !== result.id),
       ]);
-      navigateToHouseholdPage(result.acceptHouseholdInvitation.id, page);
+      navigateToHouseholdPage(result.id, page);
       showNotice("家計簿に参加しました", "success");
     } catch (reason) {
       if (hadUnsavedChanges) hasUnsavedChangesRef.current = true;
@@ -790,10 +776,8 @@ function EmptyHousehold({
     event.preventDefault();
     setPending(true);
     try {
-      const data = await read<{ createHousehold: { id: string } }>(createHouseholdMutation, {
-        input: { name, memberNames: [] },
-      });
-      onCreated(data.createHousehold.id);
+      const household = await createHousehold({ name, memberNames: [] });
+      onCreated(household.id);
     } catch (reason) {
       window.alert((reason as Error).message);
     } finally {

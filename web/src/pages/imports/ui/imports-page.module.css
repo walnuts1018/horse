@@ -1,0 +1,185 @@
+.evidenceReviewLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: start;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.evidenceSourceColumn {
+  position: sticky;
+  top: 79px;
+  min-width: 0;
+}
+
+.evidenceSourceColumn > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.evidenceEditColumn {
+  min-width: 0;
+}
+
+.evidencePreview,
+.evidenceCropPanel,
+.evidenceGroupPanel {
+  margin-top: 12px;
+}
+
+.evidenceImageStage {
+  position: relative;
+  overflow: hidden;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f5f7f5;
+  line-height: 0;
+}
+
+.evidenceImageStage img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.evidencePreviewPageControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.evidencePreviewPageControls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.evidencePreviewPageControls input {
+  width: 72px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 7px;
+}
+
+.evidenceRegion {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: rgb(76 155 108 / 20%);
+  cursor: pointer;
+}
+
+.evidenceRegionOcr {
+  z-index: 1;
+  background: rgb(61 128 188 / 13%);
+}
+
+.evidenceRegion:not(.evidenceRegionOcr) {
+  z-index: 2;
+}
+
+.evidenceRegionSelected {
+  z-index: 3;
+  background: rgb(229 138 54 / 30%);
+}
+
+.evidenceCropPanel,
+.evidenceGroupPanel {
+  padding: 14px;
+}
+
+.evidenceSourceItems,
+.evidenceOcrLines,
+.evidenceMatchList {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.evidenceItemSelected {
+  justify-content: flex-start;
+  border-radius: 7px;
+  background: #fff0df;
+  color: #9c5c28;
+}
+
+.evidenceOcrLines {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.evidenceMatchGroup {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.evidenceMatchGroup > small {
+  color: var(--muted);
+}
+
+.cropCoordinateFields {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(60px, 1fr));
+  align-items: end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cropCoordinateFields label,
+.cropCoordinateFields input {
+  min-width: 0;
+}
+
+.evidenceMatchRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.evidenceMatchRow span {
+  display: grid;
+  gap: 4px;
+}
+
+.evidenceMatchRow small {
+  color: var(--muted);
+}
+
+@media (width >= 900px) {
+  .evidenceSourceColumn > summary {
+    display: none;
+  }
+
+  .evidenceSourceColumn:not([open]) > :not(summary) {
+    display: block;
+  }
+}
+
+@media (width < 900px) {
+  .evidenceReviewLayout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .evidenceSourceColumn {
+    position: static;
+  }
+
+  .evidenceSourceColumn > summary {
+    padding: 10px 0;
+  }
+}

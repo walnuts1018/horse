@@ -28,6 +28,33 @@ func TestOCRCorroboration(t *testing.T) {
 	}
 }
 
+func TestOCRCorroborationFindsUnmatchedItemRows(t *testing.T) {
+	t.Parallel()
+	itemRegion := Region{Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
+	missedItemRegion := Region{Top: 0.25, Left: 0.1, Bottom: 0.35, Right: 0.9}
+	receipt := Receipt{Items: []Item{{PrintedName: "ヨーグルト", PrintedAmount: 198, Region: &itemRegion}}}
+	lines := []OCRLine{
+		{Text: "ヨーグルト 198", Confidence: 0.95, Region: itemRegion},
+		{Text: "月見バーガー 430", Confidence: 0.92, Region: missedItemRegion},
+	}
+	issues := CompareOCR(receipt, lines)
+	if len(issues) != 1 || issues[0] != "OCRにのみ読み取られた明細候補を確認してください。" {
+		t.Fatalf("unmatched item row was not reported: %v", issues)
+	}
+
+	lines = append(lines, OCRLine{Text: "小計 366", Confidence: 0.99, Region: Region{Top: 0.8, Left: 0.1, Bottom: 0.9, Right: 0.9}})
+	if got := CompareOCR(receipt, lines); len(got) != 1 {
+		t.Fatalf("summary line was reported as an unmatched item: %v", got)
+	}
+	if got := CompareOCR(Receipt{}, lines); len(got) != 1 {
+		t.Fatalf("receipt with no recognized items did not report OCR item rows: %v", got)
+	}
+	lines = append(lines, OCRLine{Text: "2026年10月13日", Confidence: 0.99, Region: Region{Top: 0.95, Left: 0.1, Bottom: 0.99, Right: 0.9}})
+	if got := CompareOCR(receipt, lines); len(got) != 1 {
+		t.Fatalf("receipt date was reported as an unmatched item: %v", got)
+	}
+}
+
 func TestOCRCropUsesRequestedPageAndValidatesPreview(t *testing.T) {
 	t.Parallel()
 	var pngData bytes.Buffer

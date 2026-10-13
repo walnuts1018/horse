@@ -144,6 +144,8 @@ GraphQLレビューの一覧取得項目を確認しました。`Budget`、`Tag`
 
 `ProductVariant.brand`と`packageSize`は未設定をnullで表す契約に揃えました。単一variant resolverは空文字をnullへ変換していましたが、allocation ruleとbatch catalog resolverは空文字を返していました。該当するBob DSL結果の変換も同じoptional mapperを使うようにし、GraphQLレビューから項目を削除しました。
 
+OCR照合はGeminiが返した品目だけでなく、信頼度0.5以上で金額と文字を含み、品目領域に対応しないOCR行も検出します。税・合計・支払・割引・日付などの明細以外の行は候補から除き、該当時は確認事項として返します。`TestOCRCorroborationFindsUnmatchedItemRows`で読み飛ばし候補の検出と小計行の除外を確認しました。
+
 SDL分割は、`LedgerEntry`のinterface/Connection、各具象ledger型、`PurchasePayment`を独立したドメイン型ファイルに分けました。`AccountBalanceSource` unionのメンバーは分割後も同名型として解決されます。Relayとgqlgenの生成後にGo GraphQLパッケージテストを実行しました。
 
 UXレビューの未分類カテゴリ指摘は、履歴・商品候補・復元下書き・貼り付け・購入複製から取得するカテゴリIDを有効カテゴリに照合し、無効またはアーカイブ済みなら未分類へ正規化して解決しました。日別支出はPOSTED/CLOSED購入を東京時間の購入日に集計し、返金を元の購入日に反映する既存会計規則に一致します。東京時間の日付境界、下書き除外、返金反映、7日分の出力を検証する統合テストを追加しました。
@@ -161,6 +163,8 @@ UXレビューの未分類カテゴリ指摘は、履歴・商品候補・復元
 GitHub Actions run `38451243233`ではPostgreSQL統合テストが実行され、購入作成時の品目証拠リンクを検証する既存テストが、削除済みの汎用リンクも期待していたため失敗しました。現行の契約は抽出品目ごとのEvidenceLinkのみを作成するため、テストの期待数を購入品目数に合わせました。修正後の統合テスト結果は次のCIで確認します。
 
 購入一覧のRelay fragmentは`mapPurchaseItem`でEntity型へ変換し、`as unknown as PurchaseItem[]`を削除しました。mapperは生成されたPurchaseList fragmentの品目型を入力に取ります。この具体的な指摘は解決済みとして`docs/reviews/simple.md`から除き、手書きのHousehold API型、`normalizeGraphQLValue()`、Mutation名を使う`normalizePurchaseVariables()`は残る課題として維持しました。
+
+Household Entityへ家計一覧・詳細のRelay read APIと作成・招待受け入れMutationを移しました。生成型を明示mapperへ通し、pool種別、member role、負担率、default allocationをdomain型へ変換します。Mutationはsuccess、`MutationError`、未知の`__typename`を分岐し、画面から`executeGraphql<T>`と手書きresponse型を削除しました。未使用になった`executeGraphql()`も削除しました。`useGraphqlMutation()`が他のMutation unionを展開するため、共有の`normalizeGraphQLValue()`とunwrap処理は維持しました。型検査、FSD検査、Relay検証、対象ファイルformat検査が成功しました。
 
 招待管理・タグ・予算・定期支出・口座残高推移のUIと状態を設定ページから別componentへ分け、GraphQL operationも`pages/settings/api`へ整理しました。どれも設定ページだけで使うため、`pages/settings/ui`内に置き、再利用されないfeature sliceを作りません。品目入力も同様に`pages/purchase-create/ui/edit-purchase-items.tsx`へ分け、状態と行更新を親ページから移しました。Importsの撮影・プレビュー・回転・切り抜きも`pages/imports/ui/camera-capture.tsx`へ移し、親ページにはupload queueへの追加を残しました。画像座標変換は`pages/imports/model/evidence-geometry.ts`へ分離しました。共有API生成型の参照は`shared/api/index.ts`から公開します。
 
@@ -180,7 +184,7 @@ Purchaseの履歴QueryをRelay生成operationへ移し、Purchase Entityのmappe
 
 カテゴリ、標準負担割合、口座、資金拠出ルール、負担ルール、商品、入出金、予算、タグ、定期支出の設定Mutationをpage APIへ移しました。Relay生成variablesとresponse型を使い、success、`MutationError`、未知の結果を明示的に処理します。精算の入金、送金、返済、期間締めも生成Mutation型へ移し、snapshot revisionと成功後の再取得順を維持しました。未使用になった共有`readGraphql<T>`を削除しました。
 
-Ledgerの品目一括編集は選択、適用、Undoをpage内のmodelとUIへ分離しました。revision競合時の一括rollbackとfilter変更時のselection解除は維持し、既存の一括更新統合テストを実行しました。購入の競合再取得はRelay生成`PurchaseHistoryQuery`とPurchase Entityのmapperを使い、100件単位のcursor走査をoperation変数へ反映しました。Importsのレシート確認フォームを同じpage sliceの専用UIへ移しました。Web型検査、FSD検査、lint、format、Relay検証が成功しました。
+Ledgerの品目一括編集は選択、適用、Undoをpage内のmodelとUIへ分離しました。revision競合時の一括rollbackとfilter変更時のselection解除は維持し、既存の一括更新統合テストを実行しました。購入の競合再取得はRelay生成`PurchaseHistoryQuery`とPurchase Entityのmapperを使い、100件単位のcursor走査をoperation変数へ反映しました。Importsのレシート確認フォームとLedgerの数量・印字単価・正規商品の編集フォームを、それぞれ同じpage sliceの専用UIへ移しました。今回の変更後にWeb型検査、FSD検査、format検査が成功しました。
 
 購入証拠の取得状態と表示をLedgerの同sliceにあるAPI・model・UIへ分離しました。画像・PDF表示、品目ハイライト、取得エラーを維持し、`ledger-page.tsx`は1,775行から1,695行になりました。取込検索条件はURLクエリから復元し、適用、戻る、進むで同期します。原本ファイル名はAPIが返す保存値を優先します。
 
@@ -203,3 +207,5 @@ HouseholdEventのJSON化とBob insertを`accounting.RecordEvent`へ集約し、�
 設定、取込、帳簿、購入作成、精算の画面から機能別UIと状態を同じ`pages`slice内へ分けました。画面固有の機能で再利用先がないため、独立した`features`sliceは追加しません。設定の口座活動・配賦ルールと購入履歴はRelay生成operationを使い、各所有sliceのmapperで画面・Entityの型へ明示的に変換します。口座活動mapperはQueryが返す口座の`id`と`name`だけを扱い、未取得のフィールドを補いません。購入履歴の`PurchaseItem`汎用変換は削除し、LedgerEntry変換とMutation結果の共通処理は既存利用が残るため維持します。
 
 レビューの画面行数と`useState`呼び出し数を現在の実装に合わせて更新しました。Web型検査、Steiger、Relay検証、対象lint・formatが成功しました。残る共通GraphQL変換と手書き通信型は`docs/reviews/simple.md`に維持しています。
+
+`SetFundingSchedule`のトランザクション、旧scheduleの終了と無効化、新schedule作成、イベント記録を`internal/application/funding_schedule`へ移しました。Resolverは認証、日付変換、Service呼び出し、GraphQL結果変換を行います。Application Service内のDB操作はBob DSLを使用します。

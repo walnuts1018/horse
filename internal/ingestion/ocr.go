@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type OCRLine struct {
@@ -31,6 +32,8 @@ type OCR struct {
 }
 
 var printedNumber = regexp.MustCompile(`-?[0-9][0-9,.]*`)
+var printedDate = regexp.MustCompile(`[0-9]{1,4}[./-][0-9]{1,2}([./-][0-9]{1,4})?`)
+var printedJapaneseDate = regexp.MustCompile(`([0-9]{2,4}年)?[0-9]{1,2}月[0-9]{1,2}日`)
 
 var ErrInvalidCropPage = errors.New("invalid crop page")
 
@@ -179,11 +182,13 @@ func (o OCR) Crop(ctx context.Context, document Document, region Region) (Docume
 // CompareOCRは独立した読取を照合し、不一致を人間の確認事項に残す。
 func CompareOCR(receipt Receipt, lines []OCRLine) []string {
 	var issues []string
+	regions := make([]Region, 0, len(receipt.Items))
 	for i, item := range receipt.Items {
 		if item.Region == nil {
 			issues = append(issues, fmt.Sprintf("品目%dの画像領域が未確定です。", i+1))
 			continue
 		}
+		regions = append(regions, *item.Region)
 		var texts []string
 		for _, line := range lines {
 			if overlap(*item.Region, line.Region) > 0.2 {
@@ -209,7 +214,57 @@ func CompareOCR(receipt Receipt, lines []OCRLine) []string {
 			issues = append(issues, fmt.Sprintf("品目%dの印字金額とOCR読取を確認してください。", i+1))
 		}
 	}
+	if hasUnmatchedReceiptLine(lines, regions) {
+		issues = append(issues, "OCRにのみ読み取られた明細候補を確認してください。")
+	}
 	return issues
+}
+
+func hasUnmatchedReceiptLine(lines []OCRLine, regions []Region) bool {
+	for _, line := range lines {
+		if line.Confidence < 0.5 || !validRegion(line.Region) || !hasPrintedAmount(line.Text) || !hasLetters(line.Text) || isReceiptSummaryLine(line.Text) {
+			continue
+		}
+		matched := false
+		for _, region := range regions {
+			if overlap(region, line.Region) > 0.2 {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPrintedAmount(text string) bool {
+	for _, number := range printedNumber.FindAllString(text, -1) {
+		if _, err := strconv.ParseInt(strings.ReplaceAll(number, ",", ""), 10, 64); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func hasLetters(text string) bool {
+	for _, r := range text {
+		if unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func isReceiptSummaryLine(text string) bool {
+	text = strings.ToLower(text)
+	for _, marker := range []string{"合計", "小計", "税", "対象", "値引", "割引", "クーポン", "ポイント", "現金", "カード", "お預", "釣銭", "返品", "会計", "領収", "番号", "担当", "電話", "登録", "total", "subtotal", "tax", "discount", "coupon", "payment", "cash", "credit", "change", "receipt", "no."} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return printedDate.MatchString(text) || printedJapaneseDate.MatchString(text)
 }
 
 func overlap(a, b Region) float64 {

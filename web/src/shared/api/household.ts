@@ -1,4 +1,4 @@
-import { commitMutation, fetchQuery } from "react-relay";
+import { commitMutation } from "react-relay";
 import {
   Environment,
   Network,
@@ -7,7 +7,6 @@ import {
   Store,
   type GraphQLTaggedNode,
   type GraphQLResponse,
-  type OperationType,
 } from "relay-runtime";
 import { useCallback, useRef, useState } from "react";
 
@@ -63,7 +62,7 @@ export function isSharedPool(pool: Pool): pool is SharedPool | UnconfiguredShare
   return pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool";
 }
 export type Account = { id: string; name: string; kind: string; poolId?: string | null };
-export type Category = { id: string; name: string; archived?: boolean };
+export type Category = { id: string; name: string; parentId?: string | null; archived?: boolean };
 export type Allocation = { poolId: string; poolName: string; weight: number };
 export type PurchaseItemAllocation = Allocation & { amountYen: number };
 export type Tag = {
@@ -274,7 +273,7 @@ export type Household = {
   members: Member[];
   pools: Pool[];
   accounts: Account[];
-  categories: Category[];
+  categories: Array<Category & { archived: boolean }>;
   defaultAllocation: Allocation[];
 };
 type SettlementLine = {
@@ -519,43 +518,6 @@ export function getRelayEnvironment() {
   const relayEnvironment = new Environment({ network, store: new Store(new RecordSource()) });
   environment = relayEnvironment;
   return relayEnvironment;
-}
-
-export async function executeGraphql<T, V extends OperationType["variables"]>(
-  operation: GraphQLTaggedNode,
-  variables: V,
-): Promise<T> {
-  const request = operation as { params?: { operationKind?: string } };
-  const requestVariables = variables;
-  if (request.params?.operationKind === "mutation") {
-    return new Promise<T>((resolve, reject) =>
-      commitMutation(getRelayEnvironment(), {
-        mutation: operation,
-        variables: requestVariables,
-        onCompleted: (response, errors) => {
-          if (errors?.length) {
-            reject(
-              new ApiError(
-                errors[0].message,
-                (errors[0] as Error & { extensions?: { code?: string } }).extensions?.code,
-              ),
-            );
-            return;
-          }
-          try {
-            resolve(normalizeGraphQLValue(unwrapMutationResults(response)) as T);
-          } catch (reason) {
-            reject(reason);
-          }
-        },
-        onError: reject,
-      }),
-    );
-  }
-  const result = await fetchQuery(getRelayEnvironment(), operation, requestVariables, {
-    fetchPolicy: "network-only",
-  }).toPromise();
-  return normalizeGraphQLValue(result) as T;
 }
 
 export function useGraphqlMutation<T = unknown>(operation: GraphQLTaggedNode) {

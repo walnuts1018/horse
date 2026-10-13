@@ -1,5 +1,18 @@
 export * from "./household";
 export * from "./monthly-spending";
+export type { HouseholdQuery, HouseholdQuery$data } from "./__generated__/HouseholdQuery.graphql";
+export type {
+  HouseholdsQuery,
+  HouseholdsQuery$data,
+} from "./__generated__/HouseholdsQuery.graphql";
+export type {
+  CreateHouseholdMutation$data,
+  CreateHouseholdMutation$variables,
+} from "./__generated__/CreateHouseholdMutation.graphql";
+export type {
+  AcceptHouseholdInvitationMutation$data,
+  AcceptHouseholdInvitationMutation$variables,
+} from "./__generated__/AcceptHouseholdInvitationMutation.graphql";
 export type { PurchaseListFragment$data } from "./__generated__/PurchaseListFragment.graphql";
 export type {
   PurchaseHistoryQuery,

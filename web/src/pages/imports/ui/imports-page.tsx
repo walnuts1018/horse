@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { Camera, FileImage, ShieldCheck, Upload } from "lucide-react";
+import styles from "./imports-page.module.css";
 import { type Household } from "../../../shared/api";
 import { useCreateAndPostPurchase } from "../../../entities/purchase";
 import { InlineError } from "../../../shared/ui";
@@ -768,7 +769,7 @@ export function ImportsPage({
             onUpload={() => void uploadFiles()}
           />
           {selectedDocument && (
-            <div className="evidence-review-layout">
+            <div className={styles.evidenceReviewLayout}>
               <EvidenceSourcePreview
                 document={selectedDocument}
                 previewState={evidencePreview}
@@ -780,7 +781,7 @@ export function ImportsPage({
                 onDirty={markUnsaved}
                 onRetryCrop={() => void retryDocumentCrop(selectedDocument)}
               />
-              <div className="evidence-edit-column">
+              <div className={styles.evidenceEditColumn}>
                 {!!selectedDocument.result?.receipt?.items?.length && (
                   <ReceiptReview
                     household={household}
