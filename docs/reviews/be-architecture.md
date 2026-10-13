@@ -173,13 +173,12 @@ DBロックを保持したまま外部APIを待つ構成にはしないでくだ
 
 優先度：中〜高 / 設計・性能
 
-読み取り処理の一部はGraphQLパッケージに残っています。例えば`monthly_spending.go`と`account_balances.go`はBob DSLを使いますが、専用Query層には分離されていません。商品候補検索は`internal/postgres/query`へ移しました。
+`monthlySpending`と商品候補検索は`internal/postgres/query`へ移しました。口座残高分析はGraphQLパッケージに残っています。
 
 具体的には以下です。
 
 | 処理 | 現状の問題 | 推奨 |
 | ------------------------- | ---------------------- | ------------ |
-| `monthlySpending` | DB集計と表示用集計がGraphQLパッケージにある | Bobの集計Queryと結果変換を専用Query層へまとめる |
 | `accountBalanceAnalysis` | 仕訳取得と残高分析がGraphQLパッケージにある | 読取条件と残高計算を専用Query層へまとめる |
 
 これらの処理には、CQRSのような大掛かりなフレームワークは不要です。
@@ -199,18 +198,6 @@ postgres/
 これによってGraphQLの変更とBob DSLの最適化を独立して進められます。
 
 ## 5. OpenTelemetryとテスト基盤
-
-### PostgreSQLのトレースを取得する
-
-`cmd/api/main.go`と`cmd/worker/main.go`はOpenTelemetry SDKを初期化し、APIは`otelhttp`でHTTP計測を行います。一方、両方のDBプールは`pgxpool.New`で作成され、pgxのトレーサーは設定されていません。`go.mod`にも`otelpgx`はありません。
-
-ここには otelpgx が適しています。
-
-`otelpgx.NewTracer()`をpgxに設定すれば、SQLの実行時間やコネクション取得をTraceへ追加できます。DBプールの統計も収集可能です。
-
-これを導入しておくと、今回指摘したN+1や遅いSQLを実際のトレースから特定できます。
-
-SQL全文やパラメータを不用意に収集しないよう、計測属性の設定には注意してください。
 
 ### テスト用Factoryを検討する
 
