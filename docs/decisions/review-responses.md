@@ -236,4 +236,6 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 
 資金記録、送金、購入確定では家庭行をロックした後に冪等キーを再読込し、同時に届いた同一要求が先行transactionのリソースを返すようにしました。Testcontainersを使うGraphQL DB統合テストで、同じキーの並行要求が同じリソースIDを返し、仕訳と台帳行が各1件だけ作られることを確認しました。オフライン評価器には`ExtractionRun.Receipt`ごとのモデル別精度、推定費用、記録された遅延の比較を追加しました。合成fixtureのみで評価し、Gemini APIは呼び出していません。対象のGoテストと`mise run evaluation:run`が成功しました。
 
-購入画面の`convertPurchaseItems`をpage model内の純粋関数として分離しました。`fast-check`の300反復で、1〜30件の任意品目について金額合計の保持と正の配賦weightだけを送る性質を確認します。Vitest、Frontend型検査、lint、FSD、format検査が成功しました。Outboxの復元・再送に関する確認はレビューに残します。
+購入画面の`convertPurchaseItems`をpage model内の純粋関数として分離しました。`fast-check`の300反復で、1〜30件の任意品目について金額合計の保持と正の配賦weightだけを送る性質を確認します。Vitest、Frontend型検査、lint、FSD、format検査が成功しました。
+
+`fake-indexeddb` v6.2.5を使った実IndexedDBテストを追加しました。Outboxの同一entryを並行claimしても一方のownerだけが取得し、失敗後の再送でも元の冪等キーを保ち、成功後にentryが削除されることを1つの経路で確認します。Frontendの対象test、型検査、FSD、format検査が成功したため、Outbox処理のテスト不足をレビューから削除しました。
