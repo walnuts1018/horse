@@ -69,7 +69,7 @@ func (r *mutationResolver) updatePurchase(ctx context.Context, input model.Updat
 	}
 	householdID := purchase.HouseholdID.String()
 	status := purchase.Status
-	if householdID != observedHouseholdID || !purchase.OccurredAt.Equal(observedOccurredAt) {
+	if householdID != observedHouseholdID || accountingPeriod(purchase.OccurredAt) != accountingPeriod(observedOccurredAt) {
 		return nil, ErrConflict
 	}
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {

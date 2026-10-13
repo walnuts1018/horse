@@ -2,6 +2,7 @@ package graph
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -232,6 +233,12 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	if closedLines[memberA].AdvanceCreditYen != 400 || closedLines[memberA].AmountDueYen != -400 || closedLines[memberB].MonthlyAdjustmentYen != 400 || closedLines[memberB].AmountDueYen != 400 {
 		t.Fatalf("closed settlement did not capture the original purchase allocation: %#v", closedLines)
 	}
+	changedAmount := model.Long(900)
+	if _, err := mutation.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
+		ItemID: posted.Items[0].ID, BaseRevision: posted.Items[0].Revision, AmountYen: omittable(&changedAmount),
+	}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("editing a purchase after closing its period returned %v; want ErrConflict", err)
+	}
 
 	if _, err := mutation.correctPurchase(ctx, model.CorrectPurchaseInput{
 		HouseholdID: household.ID, Target: &model.CorrectPurchaseTargetInput{Item: &model.PurchaseCorrectionItemTargetInput{PurchaseID: purchase.ID, ItemID: posted.Items[0].ID}},
@@ -242,6 +249,26 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(generatedUUID(purchase.ID))))).All(ctx, bobpgx.NewPool(db))
 	if err != nil || len(corrections) != 1 || !corrections[0].EffectivePeriod.Valid || corrections[0].EffectivePeriod.V != correctionPeriod || correctionPeriod == originalPeriod {
 		t.Fatalf("correction was not assigned to the open period after closing the purchase month: corrections=%#v error=%v", corrections, err)
+	}
+	correctionEntries, err := models.JournalEntries.Query(sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(corrections[0].JournalID)))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var correctionDebits, correctionCredits int64
+	for _, entry := range correctionEntries {
+		correctionDebits += entry.DebitYen
+		correctionCredits += entry.CreditYen
+	}
+	if len(correctionEntries) != 2 || correctionDebits != 100 || correctionCredits != 100 {
+		t.Fatalf("correction journal must balance at the refund amount: entries=%#v debits=%d credits=%d", correctionEntries, correctionDebits, correctionCredits)
+	}
+	ledgerEntries, err := models.LedgerEntries.Query(sm.Where(psql.And(
+		models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.LedgerEntries.Columns.Kind.EQ(psql.Arg(sourceKindCorrection)),
+		models.LedgerEntries.Columns.SourcePurchaseID.EQ(psql.Arg(generatedUUID(purchase.ID))),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(ledgerEntries) != 1 || ledgerEntries[0].JournalID != corrections[0].JournalID || ledgerEntries[0].AmountYen != 100 {
+		t.Fatalf("correction ledger entry did not capture the refund: entries=%#v error=%v", ledgerEntries, err)
 	}
 
 	closedAgain, err := apiResolver.Query().Settlement(ctx, household.ID, model.YearMonth(originalPeriod))
@@ -292,6 +319,14 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	if nextLines[memberA].MonthlyAdjustmentYen != 40 || nextLines[memberA].PriorBalanceYen != -400 || nextLines[memberA].AmountDueYen != -360 ||
 		nextLines[memberB].MonthlyAdjustmentYen != -40 || nextLines[memberB].PriorBalanceYen != 400 || nextLines[memberB].AmountDueYen != 360 {
 		t.Fatalf("next settlement did not apply the correction while carrying the closed balance: %#v", nextLines)
+	}
+	accountAnalysis, err := query.AccountBalanceAnalysis(ctx, household.ID, account.ID, model.YearMonth(correctionPeriod), model.YearMonth(correctionPeriod))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accountAnalysis.Changes) != 1 || accountAnalysis.Changes[0].ChangeYen != -100 || accountAnalysis.ClosingBalanceYen != accountAnalysis.OpeningBalanceYen-100 ||
+		accountBalanceSourceType(accountAnalysis.Changes[0].Source) != "CorrectionLedgerEntry" {
+		t.Fatalf("correction period card balance analysis did not reflect the refund: %#v", accountAnalysis)
 	}
 }
 
