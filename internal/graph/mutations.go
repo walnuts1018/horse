@@ -1832,9 +1832,7 @@ func (r *mutationResolver) recordFunding(ctx context.Context, input model.Record
 		} else {
 			sourceAccount = sql.Null[gofrsuuid.UUID]{V: *sourceAccountID, Valid: true}
 		}
-		if destinationAccountID == nil {
-			destinationDebit = 0
-		} else {
+		if destinationAccountID != nil {
 			destinationAccount = sql.Null[gofrsuuid.UUID]{V: *destinationAccountID, Valid: true}
 		}
 		if sourceAccountID == nil && destinationAccountID != nil {

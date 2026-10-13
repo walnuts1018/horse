@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"uuid"
 
@@ -1118,7 +1119,11 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if _, err := resolver.correctPurchase(ctx, correctionInput); err != nil {
 		t.Fatalf("retrying a full refund with the same request should succeed: %v", err)
 	}
-	correctionMonth := correctedPurchase.Corrections[0].OccurredAt[:7]
+	correctionOccurredAt, err := time.Parse(time.RFC3339Nano, correctedPurchase.Corrections[0].OccurredAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	correctionMonth := accountingPeriod(correctionOccurredAt)
 	correctionAnalysis, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, cardAccount.ID, correctionMonth, correctionMonth)
 	if err != nil {
 		t.Fatal(err)
