@@ -11,14 +11,15 @@ import (
 )
 
 type StatementEntry struct {
-	Row           int    `json:"row"`
-	Kind          string `json:"kind"`
-	OccurredAt    string `json:"occurredAt"`
-	Merchant      string `json:"merchant"`
-	Amount        int64  `json:"amount"`
-	TransactionID string `json:"transactionId"`
-	OrderID       string `json:"orderId"`
-	CardLast4     string `json:"cardLast4"`
+	Row             int    `json:"row"`
+	SourceReference string `json:"sourceReference,omitempty"`
+	Kind            string `json:"kind"`
+	OccurredAt      string `json:"occurredAt"`
+	Merchant        string `json:"merchant"`
+	Amount          int64  `json:"amount"`
+	TransactionID   string `json:"transactionId"`
+	OrderID         string `json:"orderId"`
+	CardLast4       string `json:"cardLast4"`
 }
 
 // ParseStatementCSVはカード利用と銀行資金移動を区別し、複数行を独立した観測として保持する。
@@ -80,12 +81,16 @@ func ParseStatementCSV(data []byte, sourceKind string) ([]StatementEntry, error)
 		if sourceKind == statementSourceBank {
 			kind = bankTransactionKind(value(row, "transactionKind"))
 		}
-		result = append(result, StatementEntry{Row: rowNumber, Kind: kind, OccurredAt: date.Format(time.RFC3339), Merchant: merchant, Amount: amount, TransactionID: value(row, "transactionId"), OrderID: value(row, "orderId"), CardLast4: value(row, "cardLast4")})
+		result = append(result, StatementEntry{Row: rowNumber, SourceReference: statementSourceReference(rowNumber), Kind: kind, OccurredAt: date.Format(time.RFC3339), Merchant: merchant, Amount: amount, TransactionID: value(row, "transactionId"), OrderID: value(row, "orderId"), CardLast4: value(row, "cardLast4")})
 	}
 	if len(result) == 0 {
 		return nil, errors.New("statement has no transactions")
 	}
 	return result, nil
+}
+
+func statementSourceReference(row int) string {
+	return "row:" + strconv.Itoa(row)
 }
 
 func headerKey(value string) string {

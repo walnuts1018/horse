@@ -1,7 +1,6 @@
 package ingestion
 
 import (
-	"strconv"
 	"strings"
 	"time"
 )
@@ -91,7 +90,10 @@ func SourceObservations(documentID, hash, sourceKind string, result Verification
 	observations := make([]Observation, 0, len(result.Statements)+1)
 	for _, entry := range result.Statements {
 		occurredAt, _ := time.Parse(time.RFC3339, entry.OccurredAt)
-		reference := "row:" + strconv.Itoa(entry.Row)
+		reference := entry.SourceReference
+		if reference == "" {
+			reference = statementSourceReference(entry.Row)
+		}
 		observations = append(observations, Observation{DocumentID: documentID, SourceReference: reference, Hash: hash, SourceKind: sourceKind, TransactionKind: entry.Kind, OrderID: entry.OrderID, TransactionID: entry.TransactionID, Merchant: entry.Merchant, OccurredAt: occurredAt, Amount: entry.Amount, CardLast4: entry.CardLast4})
 	}
 	if len(result.Receipt.Items) > 0 {

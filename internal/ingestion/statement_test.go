@@ -33,3 +33,26 @@ func TestStatementCSV(t *testing.T) {
 		}
 	}
 }
+
+func TestStatementSourceReferencesAreStableAndUnique(t *testing.T) {
+	t.Parallel()
+	data := []byte("date,merchant,amount,transactionId\n2026-10-12,店,100,duplicate\n2026-10-12,店,100,duplicate\n")
+	first, err := ParseStatementCSV(data, statementSourceCard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ParseStatementCSV(data, statementSourceCard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 2 || first[0].SourceReference != "row:2" || first[1].SourceReference != "row:3" {
+		t.Fatalf("duplicate transaction IDs did not receive unique row references: %+v", first)
+	}
+	if first[0].SourceReference != second[0].SourceReference || first[1].SourceReference != second[1].SourceReference {
+		t.Fatalf("reparsing changed row references: first=%+v second=%+v", first, second)
+	}
+	observations := SourceObservations("document", "hash", statementSourceCard, Verification{Statements: first})
+	if len(observations) != 2 || observations[0].SourceReference != first[0].SourceReference || observations[1].SourceReference != first[1].SourceReference {
+		t.Fatalf("reconciliation references differed from parsed references: %+v", observations)
+	}
+}
