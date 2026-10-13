@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"uuid"
 
@@ -137,6 +138,158 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 			len(analysis.Changes) != 1 || analysis.Changes[0].ChangeYen != model.Long(expected.change) || accountBalanceSourceType(analysis.Changes[0].Source) != "AccountMovement" {
 			t.Fatalf("account analysis did not reflect its side of the transfer: account=%s analysis=%#v", expected.accountID, analysis)
 		}
+	}
+}
+
+func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeriod(t *testing.T) {
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := t.Context()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	memberA, memberB := uuid.NewV7().String(), uuid.NewV7().String()
+	for id, name := range map[string]string{memberA: "A", memberB: "B"} {
+		memberUUID := generatedUUID(id)
+		subject := "purchase-correction-e2e:" + id
+		if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &subject, DisplayName: &name}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(generatedUUID(memberA))))).Exec(context.Background(), bobpgx.NewPool(db))
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(generatedUUID(memberB))))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
+
+	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberA, Subject: "purchase-correction-e2e:" + memberA, DisplayName: "A"})
+	apiResolver := &Resolver{DB: db}
+	mutation := &mutationResolver{Resolver: apiResolver}
+	household, err := mutation.createHousehold(ctx, model.CreateHouseholdInput{Name: "Purchase correction settlement"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(context.Background(), bobpgx.NewPool(db))
+	}()
+	householdUUID, memberBUUID := generatedUUID(household.ID), generatedUUID(memberB)
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberBUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+
+	personalPool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "A wallet", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sharedPool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "Shared", Kind: model.PoolKindShared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: household.ID, PoolID: personalPool.ID, OwnerMemberID: &memberA, ExpectedVersion: 1}); err != nil {
+		t.Fatal(err)
+	}
+	policy := model.SharedPoolSettlementPolicyBalanceToStandard
+	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{
+		HouseholdID: household.ID, PoolID: sharedPool.ID,
+		FundingShares:    []*model.PoolFundingShareInput{{MemberID: memberA, Weight: 60}, {MemberID: memberB, Weight: 40}},
+		SettlementPolicy: &policy, ExpectedVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	account, err := mutation.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "A card", Kind: model.AccountKindCard, PoolID: &personalPool.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().In(accountingLocation)
+	currentMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, accountingLocation)
+	originalMonth := currentMonth.AddDate(0, -1, 0)
+	purchaseAt := time.Date(originalMonth.Year(), originalMonth.Month(), 10, 12, 0, 0, 0, accountingLocation)
+	originalPeriod, correctionPeriod := accountingPeriod(purchaseAt), accountingPeriod(now)
+	purchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: model.DateTime(purchaseAt.UTC().Format(time.RFC3339)), Merchant: "Shop",
+		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 1000}},
+		Items:              []*model.PurchaseItemInput{{Name: "Shared item", AmountYen: 1000, Allocations: []*model.AllocationInput{{PoolID: sharedPool.ID, Weight: 1}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	posted, err := mutation.postPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, err := mutation.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: model.YearMonth(originalPeriod), ExpectedRevision: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedLines := settlementByMember(t, closed.Lines)
+	if closedLines[memberA].AdvanceCreditYen != 400 || closedLines[memberA].AmountDueYen != -400 || closedLines[memberB].MonthlyAdjustmentYen != 400 || closedLines[memberB].AmountDueYen != 400 {
+		t.Fatalf("closed settlement did not capture the original purchase allocation: %#v", closedLines)
+	}
+
+	if _, err := mutation.correctPurchase(ctx, model.CorrectPurchaseInput{
+		HouseholdID: household.ID, PurchaseID: purchase.ID, ItemID: &posted.Items[0].ID,
+		AmountDeltaYen: -100, Reason: "Refund", IdempotencyKey: uuid.NewV7().String(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(generatedUUID(purchase.ID))))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(corrections) != 1 || !corrections[0].EffectivePeriod.Valid || corrections[0].EffectivePeriod.V != correctionPeriod || correctionPeriod == originalPeriod {
+		t.Fatalf("correction was not assigned to the open period after closing the purchase month: corrections=%#v error=%v", corrections, err)
+	}
+
+	closedAgain, err := apiResolver.Query().Settlement(ctx, household.ID, model.YearMonth(originalPeriod))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closedAgain.Status != closed.Status || closedAgain.Revision != closed.Revision {
+		t.Fatalf("correction changed the closed settlement revision: before=%#v after=%#v", closed, closedAgain)
+	}
+	closedAgainLines := settlementByMember(t, closedAgain.Lines)
+	for memberID, before := range closedLines {
+		after := closedAgainLines[memberID]
+		if *before != *after {
+			t.Fatalf("correction rewrote the closed settlement for member %s: before=%#v after=%#v", memberID, before, after)
+		}
+	}
+
+	query := apiResolver.Query()
+	memberSpending, err := query.MonthlyMemberSpending(ctx, household.ID, model.YearMonth(originalPeriod), model.YearMonth(originalPeriod))
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberAmounts := make(map[string]int64, len(memberSpending.Items))
+	for _, item := range memberSpending.Items {
+		if string(item.Period) != originalPeriod {
+			t.Fatalf("correction moved member spending out of the purchase month: %#v", memberSpending.Items)
+		}
+		memberAmounts[item.MemberID] = int64(item.AmountYen)
+	}
+	if memberAmounts[memberA] != 540 || memberAmounts[memberB] != 360 {
+		t.Fatalf("purchase-month member analytics did not retain the corrected historical burden: %#v", memberSpending.Items)
+	}
+	categorySpending, err := query.MonthlyCategorySpending(ctx, household.ID, model.YearMonth(originalPeriod), model.YearMonth(originalPeriod))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(categorySpending) != 1 || string(categorySpending[0].Period) != originalPeriod || int64(categorySpending[0].AmountYen) != 900 {
+		t.Fatalf("purchase-month category analytics did not retain the correction: %#v", categorySpending)
+	}
+
+	nextSettlement, err := query.Settlement(ctx, household.ID, model.YearMonth(correctionPeriod))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextLines := settlementByMember(t, nextSettlement.Lines)
+	if nextLines[memberA].MonthlyAdjustmentYen != 40 || nextLines[memberA].PriorBalanceYen != -400 || nextLines[memberA].AmountDueYen != -360 ||
+		nextLines[memberB].MonthlyAdjustmentYen != -40 || nextLines[memberB].PriorBalanceYen != 400 || nextLines[memberB].AmountDueYen != 360 {
+		t.Fatalf("next settlement did not apply the correction while carrying the closed balance: %#v", nextLines)
 	}
 }
 
