@@ -18,6 +18,8 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+const closedPeriodOccurredAt = "2026-04-15T12:00:00Z"
+
 func TestClosedPeriodRejectsAccountMovementsAndOpeningBalances(t *testing.T) {
 	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
@@ -64,19 +66,19 @@ func TestClosedPeriodRejectsAccountMovementsAndOpeningBalances(t *testing.T) {
 	}
 	if _, err := mutation.recordAccountMovement(ctx, model.RecordAccountMovementInput{
 		HouseholdID: household.ID, Kind: model.AccountMovementKindTransfer, FromAccountID: from.ID, ToAccountID: to.ID,
-		AmountYen: 500, OccurredAt: "2026-04-15T12:00:00Z", IdempotencyKey: uuid.NewV7().String(),
+		AmountYen: 500, OccurredAt: closedPeriodOccurredAt, IdempotencyKey: uuid.NewV7().String(),
 	}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("closed-period account movement should fail with conflict: %v", err)
 	}
 	if _, err := mutation.createAccount(ctx, model.CreateAccountInput{
 		HouseholdID: household.ID, Name: "Opening balance in closed period", Kind: model.AccountKindBank,
-		OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(1200), At: "2026-04-15T12:00:00Z"},
+		OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(1200), At: closedPeriodOccurredAt},
 	}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("closed-period opening balance should fail with conflict: %v", err)
 	}
 	incomeKey := uuid.NewV7().String()
 	if _, err := mutation.recordExternalIncome(ctx, model.RecordExternalIncomeInput{
-		HouseholdID: household.ID, AccountID: to.ID, AmountYen: 800, OccurredAt: "2026-04-15T12:00:00Z",
+		HouseholdID: household.ID, AccountID: to.ID, AmountYen: 800, OccurredAt: closedPeriodOccurredAt,
 		Description: "Closed-period income", IdempotencyKey: incomeKey,
 	}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("closed-period external income should fail with conflict: %v", err)

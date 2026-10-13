@@ -16,6 +16,12 @@
 
 Resolver内に残る購入訂正などのトランザクションと業務処理、Gemini SchemaとGo型の同期、Query層の配置、DBトレーシング、SSEのポーリングは未完了の指摘として`docs/reviews/be-architecture.md`に残しています。
 
+### AI購入登録と証拠の原子性
+
+レシート由来の購入登録では、購入・品目・DocumentConfirmation・文書と品目のEvidenceLinkを同じトランザクションで保存します。抽出済み品目数や金額と入力が一致しない場合は購入作成を拒否します。購入を下書きから確定する`postPurchase`は別操作ですが、証拠は購入作成時に記録するため、確定失敗で品目別証拠が欠落しません。
+
+根拠は`internal/graph/accounting_integration_test.go`の`TestAccountingFlowUsesScheduleAndActualFundingSeparately`にある件数・金額不一致の拒否と3件の証拠リンク検査です。実環境でのレシート取込から確定までの操作は`docs/completion-audit.md`に未検証として残します。
+
 ### 抽出ジョブ基盤
 
 `docs/reviews/be-library.md`にあったPostgreSQLのジョブ管理を廃止してRabbitMQとWatermillへ移す提案は採用しませんでした。PostgreSQLは文書とジョブの原子的な登録、ジョブ状態、再試行、Worker停止後の回復を担います。RabbitMQはWorkerを早く起こす通知に使い、通知を失ってもDB走査で処理を再開します。Watermillを加えてもDBのclaimと回復処理が残るため、責務を減らす効果が確認できませんでした。
@@ -28,7 +34,7 @@ Resolver内に残る購入訂正などのトランザクションと業務処理
 
 変更は`web/src/app/horse-app.tsx`と画面ごとの編集フォームにあります。公開環境では履歴操作と深いURLからの再読み込みを確認しました。iOS実機でのpull-to-refresh抑止と、タブを閉じる・更新する場合の未保存確認は未確認のため、`docs/reviews/spa.md`に残します。
 
-ソース監査でdirty状態に対する`useBlocker`と`beforeunload`、購入下書きのIndexedDB保存、drawer表示中の`overscroll-behavior`とbody固定を確認しました。2026年10月13日に公開環境で帳簿への遷移によるURL変更、深いURLの直接表示、再読み込み後の画面維持、戻る・進むを確認しました。dirtyな購入入力からホームへ移動すると破棄確認が表示されました。合成入力を空に戻してからホームへ移動し、購入は送信していません。ブラウザー上でタブを閉じる・更新する場合の確認とAndroid/iOS実機でのpull-to-refresh抑止は未確認のため、`docs/reviews/spa.md`に残します。
+ソース監査でdirty状態に対する`useBlocker`と`beforeunload`、購入下書きのIndexedDB保存、drawer表示中の`overscroll-behavior`とbody固定を確認しました。2026年10月13日に公開環境で帳簿への遷移によるURL変更、深いURLの直接表示、再読み込み後の画面維持、戻る・進むを確認しました。dirtyな購入入力からホームへ移動すると破棄確認が表示されました。別の合成入力では直接再読み込み後も品名と金額が下書きから復元されましたが、ブラウザー確認は表示されませんでした。合成入力は空に戻し、購入は送信していません。タブを閉じた後の復元、下書き保存前の離脱、Android/iOS実機でのpull-to-refresh抑止は未確認のため、`docs/reviews/spa.md`に残します。
 
 ### Dockerと公開イメージ
 
@@ -38,7 +44,7 @@ Go API・Worker・Atlas MigrationとWebを別イメージに分け、依存取�
 
 Mutation単位とドメイン型単位でSDLを分割し、gqlgenは`follow-schema`を使います。全37 Mutationが`Success | UserError`のResult unionを返し、共通`MutationError` interfaceを使います。Ledger、Settlement、Pool、Observation、PurchaseCorrection、AccountBalanceSourceも型の違いをinterface/unionで表しています。この構成はpiccaのADR 0002とSDL分割に沿うため、該当するレビュー指摘は解決済みとして`docs/reviews/graphql.md`から削除しました。根拠は`gqlgen.yml`、`graphql/*_mutation.graphql`、各domain SDLです。
 
-Relayの`@connection`と`usePaginationFragment`は帳簿と購入一覧で使っていますが、Budget、Tag、RecurringExpense、ProductCatalogの一覧には全ページを順に取得するread関数が残ります。画面が全件を必要とする用途と、追加読込できる用途を分け、後者はRelay pagination APIを使う必要があります。またnullable field/argumentの意味を網羅して監査した記録がありません。これらは`docs/reviews/graphql.md`に残します。run `38392241924`ではgqlgenとRelay生成物、Go DB統合テスト、Frontend型・FSD・lint・format・buildが成功しました。公開環境ではroute URL、直接表示、再読み込み、戻る・進むを確認しました。
+nullable outputの静的監査では、明白にnon-nullへ変更できるfieldは見つかりませんでした。任意の関連ID・終了日・商品数量・OCRの観測日時など、nullableが値の欠損条件を表す箇所は維持します。一方、default付きの`includeArchived`と`productSuggestions.first`はSDLでnon-nullにできる候補ですが、Relay operationとの互換性確認が必要です。`ProductVariant.brand`と`packageSize`はnullと空文字の扱いがresolver間で揃っていません。Relayを使わずread関数が全ページを順次取得する一覧と、nullableの残課題を`docs/reviews/graphql.md`に残します。run `38392241924`ではgqlgenとRelay生成物、Go DB統合テスト、Frontend型・FSD・lint・format・buildが成功しました。
 
 タグ一覧を`TagConnection`に変更し、`first`/`after`と`last`/`before`によるページングを追加しました。カーソルはタグ名とIDで安定順序を作り、カーソルの家庭スコープと`includeArchived`条件を検証します。Frontendの`readTags`は全ページを取得し、通常一覧ではアーカイブ済みを除外し、設定画面では従来どおり含めます。DB統合テストで前後ページ、アーカイブ条件、別家庭のカーソル拒否を確認し、run `38392241924`でGo DB統合テストとFrontend検査が成功しました。
 
