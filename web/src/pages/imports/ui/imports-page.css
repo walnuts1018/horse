@@ -114,6 +114,25 @@
   flex: none;
 }
 
+.attachment-reclassification {
+  flex: 1 0 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 10px 47px;
+}
+
+.attachment-reclassification select {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
 .file-review-row > img,
 .file-thumb {
   width: 37px;
@@ -232,6 +251,11 @@
 
   .import-review {
     padding: 15px;
+  }
+
+  .attachment-reclassification {
+    justify-content: flex-start;
+    padding-left: 0;
   }
 
   .drop-caption,

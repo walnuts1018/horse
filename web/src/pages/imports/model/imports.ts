@@ -37,6 +37,7 @@ export type StatementEntry = {
   orderId?: string;
   cardLast4?: string;
 };
+export type StatementSourceKind = "card" | "bank";
 
 export function receiptDateInputValue(purchasedAt?: string): string {
   if (!purchasedAt) return "";
@@ -123,6 +124,7 @@ export type DocumentReview = {
   createdAt?: string;
   sha256?: string;
   duplicateOf?: string;
+  hasEvidence?: boolean;
   confirmations?: Array<{ sourceReference: string; purchaseId: string }>;
   result?: {
     receipt?: {
@@ -141,6 +143,20 @@ export type DocumentReview = {
     statements?: StatementEntry[];
   };
 };
+
+export function canReclassifyAttachment(
+  document: DocumentReview,
+  targetKind?: StatementSourceKind,
+) {
+  return (
+    !!document.attachmentParent &&
+    !document.hasEvidence &&
+    !document.confirmations?.length &&
+    document.status.toUpperCase() !== "RUNNING" &&
+    (!targetKind || targetKind !== document.sourceKind)
+  );
+}
+
 export type PendingUpload = {
   id: string;
   file: File;

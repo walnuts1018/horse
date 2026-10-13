@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { AlertCircle, ChevronRight, FileImage, Upload, X } from "lucide-react";
 import {
+  canReclassifyAttachment,
   isCsvFile,
   sourceKindLabel,
   statusLabel,
   type DocumentFilters,
   type DocumentReview,
   type PendingUpload,
+  type StatementSourceKind,
 } from "../model/imports";
 
 export function ImportDocumentList({
@@ -20,6 +23,7 @@ export function ImportDocumentList({
   onRemoveFile,
   onSelectDocument,
   onRetryDocument,
+  onReclassifyAttachment,
   nextCursor,
   loadingOlder,
   onLoadOlder,
@@ -37,6 +41,7 @@ export function ImportDocumentList({
   onRemoveFile: (id: string) => void;
   onSelectDocument: (id: string) => void;
   onRetryDocument: (document: DocumentReview) => void;
+  onReclassifyAttachment: (document: DocumentReview, sourceKind: StatementSourceKind) => void;
   nextCursor: string | null;
   loadingOlder: boolean;
   onLoadOlder: () => void;
@@ -183,6 +188,13 @@ export function ImportDocumentList({
               再抽出
             </button>
           )}
+          {canReclassifyAttachment(document) && (
+            <AttachmentReclassification
+              document={document}
+              pending={pending}
+              onReclassify={onReclassifyAttachment}
+            />
+          )}
         </div>
       ))}
       {nextCursor && (
@@ -202,5 +214,42 @@ export function ImportDocumentList({
         </button>
       )}
     </>
+  );
+}
+
+function AttachmentReclassification({
+  document,
+  pending,
+  onReclassify,
+}: {
+  document: DocumentReview;
+  pending: boolean;
+  onReclassify: (document: DocumentReview, sourceKind: StatementSourceKind) => void;
+}) {
+  const [sourceKind, setSourceKind] = useState<StatementSourceKind | "">("");
+
+  return (
+    <div className="attachment-reclassification">
+      <select
+        aria-label={`${document.name ?? "添付文書"}の明細種別`}
+        value={sourceKind}
+        disabled={pending}
+        onChange={(event) => setSourceKind(event.target.value as StatementSourceKind | "")}
+      >
+        <option value="">明細種別</option>
+        <option value="card">カード明細</option>
+        <option value="bank">銀行明細</option>
+      </select>
+      <button
+        type="button"
+        className="text-button"
+        disabled={pending || !sourceKind || !canReclassifyAttachment(document, sourceKind)}
+        onClick={() => {
+          if (sourceKind) onReclassify(document, sourceKind);
+        }}
+      >
+        選択した種別で再解析
+      </button>
+    </div>
   );
 }

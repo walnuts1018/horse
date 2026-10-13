@@ -20,6 +20,7 @@ import {
   type DocumentReview,
   type PendingUpload,
   type StatementEntry,
+  type StatementSourceKind,
 } from "../model/imports";
 import { useImportConfirmation } from "../model/use-import-confirmation";
 
@@ -221,6 +222,28 @@ export function ImportsPage({
       setPending(false);
     }
   };
+  const reclassifyAttachment = async (
+    document: DocumentReview,
+    sourceKind: StatementSourceKind,
+  ) => {
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/documents/${encodeURIComponent(document.id)}/retry`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sourceKind }),
+      });
+      if (!response.ok) throw new Error(`明細種別を変更できませんでした (${response.status})`);
+      editedReceiptDocuments.current.delete(document.id);
+      await refreshDocuments(true);
+    } catch (reason) {
+      setMessage((reason as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
   const confirmReceipt = async (document: DocumentReview) => {
     setPending(true);
     setMessage("");
@@ -354,6 +377,7 @@ export function ImportsPage({
             }}
             onSelectDocument={setSelected}
             onRetryDocument={(document) => void retryDocument(document)}
+            onReclassifyAttachment={(document, kind) => void reclassifyAttachment(document, kind)}
             nextCursor={nextDocumentCursor}
             loadingOlder={loadingOlderDocuments}
             onLoadOlder={() => void loadOlderDocuments()}
