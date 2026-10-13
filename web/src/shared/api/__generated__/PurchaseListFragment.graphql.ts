@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<5347b8558d89ddbebde5b50bf7a76360>>
+ * @generated SignedSource<<18c27408cd7fd708ea633868678e77c8>>
  * @lightSyntaxTransform
  */
 
@@ -260,6 +260,11 @@ return {
       "name": "after"
     },
     {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "categoryId"
+    },
+    {
       "defaultValue": 100,
       "kind": "LocalArgument",
       "name": "first"
@@ -287,7 +292,32 @@ return {
     {
       "defaultValue": null,
       "kind": "LocalArgument",
+      "name": "paymentAccountId"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "poolId"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "search"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "tagId"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
       "name": "to"
+    },
+    {
+      "defaultValue": null,
+      "kind": "LocalArgument",
+      "name": "uncategorized"
     }
   ],
   "kind": "Fragment",
@@ -320,6 +350,11 @@ return {
       "args": [
         {
           "kind": "Variable",
+          "name": "categoryId",
+          "variableName": "categoryId"
+        },
+        {
+          "kind": "Variable",
           "name": "from",
           "variableName": "from"
         },
@@ -340,8 +375,33 @@ return {
         },
         {
           "kind": "Variable",
+          "name": "paymentAccountId",
+          "variableName": "paymentAccountId"
+        },
+        {
+          "kind": "Variable",
+          "name": "poolId",
+          "variableName": "poolId"
+        },
+        {
+          "kind": "Variable",
+          "name": "search",
+          "variableName": "search"
+        },
+        {
+          "kind": "Variable",
+          "name": "tagId",
+          "variableName": "tagId"
+        },
+        {
+          "kind": "Variable",
           "name": "to",
           "variableName": "to"
+        },
+        {
+          "kind": "Variable",
+          "name": "uncategorized",
+          "variableName": "uncategorized"
         }
       ],
       "concreteType": "PurchaseConnection",
@@ -718,6 +778,6 @@ return {
 };
 })();
 
-(node as any).hash = "eda1e909b11ebc946a678683ab7f81d4";
+(node as any).hash = "177b57bcfb1a7d83c45f176279c82e10";
 
 export default node;

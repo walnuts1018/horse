@@ -7,6 +7,12 @@ export const purchasesQuery = graphql`
     $to: DateTime
     $origin: PurchaseOrigin
     $hasEvidence: Boolean
+    $search: String
+    $categoryId: ID
+    $uncategorized: Boolean
+    $tagId: ID
+    $paymentAccountId: ID
+    $poolId: ID
     $first: Int
   ) {
     ...PurchaseListFragment
@@ -16,6 +22,12 @@ export const purchasesQuery = graphql`
         to: $to
         origin: $origin
         hasEvidence: $hasEvidence
+        search: $search
+        categoryId: $categoryId
+        uncategorized: $uncategorized
+        tagId: $tagId
+        paymentAccountId: $paymentAccountId
+        poolId: $poolId
         first: $first
       )
   }
@@ -62,6 +74,12 @@ export const purchaseListFragment = graphql`
     to: { type: "DateTime" }
     origin: { type: "PurchaseOrigin" }
     hasEvidence: { type: "Boolean" }
+    search: { type: "String" }
+    categoryId: { type: "ID" }
+    uncategorized: { type: "Boolean" }
+    tagId: { type: "ID" }
+    paymentAccountId: { type: "ID" }
+    poolId: { type: "ID" }
     first: { type: "Int", defaultValue: 100 }
     after: { type: "String" }
   )
@@ -72,12 +90,30 @@ export const purchaseListFragment = graphql`
       to: $to
       origin: $origin
       hasEvidence: $hasEvidence
+      search: $search
+      categoryId: $categoryId
+      uncategorized: $uncategorized
+      tagId: $tagId
+      paymentAccountId: $paymentAccountId
+      poolId: $poolId
       after: $after
       first: $first
     )
       @connection(
         key: "PurchaseListFragment_purchases"
-        filters: ["householdId", "from", "to", "origin", "hasEvidence"]
+        filters: [
+          "householdId"
+          "from"
+          "to"
+          "origin"
+          "hasEvidence"
+          "search"
+          "categoryId"
+          "uncategorized"
+          "tagId"
+          "paymentAccountId"
+          "poolId"
+        ]
       ) {
       edges {
         cursor

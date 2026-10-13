@@ -122,7 +122,16 @@ export function LedgerPage({
       origin: recordMode === "purchases" ? originFilter || undefined : undefined,
       hasEvidence:
         recordMode === "purchases" && evidenceFilter !== "" ? evidenceFilter === "true" : undefined,
-      loadAll: recordMode === "purchases" && (viewMode === "items" || filtersActive),
+      search: recordMode === "purchases" ? search || undefined : undefined,
+      categoryId:
+        recordMode === "purchases" && categoryFilter && categoryFilter !== "__uncategorized"
+          ? categoryFilter
+          : undefined,
+      uncategorized:
+        recordMode === "purchases" && categoryFilter === "__uncategorized" ? true : undefined,
+      tagId: recordMode === "purchases" ? tagFilter || undefined : undefined,
+      paymentAccountId: recordMode === "purchases" ? accountFilter || undefined : undefined,
+      poolId: recordMode === "purchases" ? poolFilter || undefined : undefined,
     });
   const unmatched = useUnmatchedObservations(household.id, {
     enabled: recordMode === "observations",
@@ -2399,14 +2408,18 @@ export function LedgerPage({
         </section>
       )}
       {recordMode === "purchases" && moreError && <InlineError message={moreError} />}
-      {recordMode === "purchases" && hasNextPage && !filtersActive && (
+      {recordMode === "purchases" && hasNextPage && !moreError && (
         <div className="ledger-more">
           <button
             className="button button-soft"
             disabled={loadingMore}
             onClick={() => void loadMore()}
           >
-            {loadingMore ? "読み込み中" : "古い記録を読み込む"}
+            {loadingMore
+              ? "読み込み中"
+              : filtersActive
+                ? "検索結果をさらに読み込む"
+                : "古い記録を読み込む"}
           </button>
         </div>
       )}

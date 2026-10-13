@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -97,6 +98,7 @@ export function PurchaseCreatePage({
   const [undoItems, setUndoItems] = useState<DraftItem[] | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [draftSaveError, setDraftSaveError] = useState("");
   const [history, setHistory] = useState<Purchase[]>([]);
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -151,6 +153,28 @@ export function PurchaseCreatePage({
   };
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const persistDraft = useCallback(async () => {
+    const current = draftRef.current;
+    const version = editVersion.current;
+    const hasContent = Boolean(
+      current.merchant.trim() ||
+      current.itemName.trim() ||
+      current.itemAmount ||
+      current.items.length,
+    );
+    setDraftSaveError("");
+    try {
+      if (hasContent) await savePurchaseDraft(household.id, current);
+      else await deletePurchaseDraft(household.id);
+      setSavedAt(new Date());
+      if (editVersion.current === version) setHasUnsavedChanges(false);
+    } catch (reason) {
+      if (editVersion.current === version) {
+        setDraftSaveError((reason as Error).message);
+        setHasUnsavedChanges(true);
+      }
+    }
+  }, [household.id]);
   useEffect(() => {
     let active = true;
     setStorageReady(false);
@@ -201,28 +225,13 @@ export function PurchaseCreatePage({
       return;
     }
     if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
-    draftTimer.current = window.setTimeout(() => {
-      const current = draftRef.current;
-      const version = editVersion.current;
-      const store =
-        current.merchant.trim() ||
-        current.itemName.trim() ||
-        current.itemAmount ||
-        current.items.length
-          ? savePurchaseDraft(household.id, current)
-          : deletePurchaseDraft(household.id);
-      void store
-        .then(() => {
-          setSavedAt(new Date());
-          if (editVersion.current === version) setHasUnsavedChanges(false);
-        })
-        .catch((reason) => setMessage((reason as Error).message));
-    }, 450);
+    draftTimer.current = window.setTimeout(() => void persistDraft(), 450);
     return () => {
       if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
     };
   }, [
     household.id,
+    persistDraft,
     storageReady,
     draftHouseholdId,
     merchant,
@@ -1171,10 +1180,18 @@ export function PurchaseCreatePage({
           </button>
         </div>
       </div>
-      {(outbox.storageError || message) && (
+      {(outbox.storageError || message || draftSaveError) && (
         <div className={styles.errors}>
           {outbox.storageError && <InlineError message={outbox.storageError} />}
           {message && <InlineError message={message} />}
+          {draftSaveError && (
+            <div className={styles.draftSaveFailure} role="alert">
+              <InlineError message={draftSaveError} />
+              <button type="button" className="text-button" onClick={() => void persistDraft()}>
+                保存を再試行
+              </button>
+            </div>
+          )}
         </div>
       )}
     </form>

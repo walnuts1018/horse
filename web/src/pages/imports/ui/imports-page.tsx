@@ -137,6 +137,7 @@ type ReceiptPaymentDraft = {
   paymentAccountId: string;
   amountYen: number;
 };
+type ReviewTarget = { key: string; label: string; elementId: string };
 const documentListURL = (householdId: string, filters: DocumentFilters, after?: string) => {
   const query = new URLSearchParams({ householdId, first: "50" });
   if (filters.store.trim()) query.set("store", filters.store.trim());
@@ -348,6 +349,7 @@ export function ImportsPage({
   const [selected, setSelected] = useState<string | null>(null);
   const [confirmedStatements, setConfirmedStatements] = useState<Set<string>>(() => new Set());
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
+  const [reviewTargetIndex, setReviewTargetIndex] = useState(0);
   const [manualAmountOverrides, setManualAmountOverrides] = useState<Record<string, boolean>>({});
   const [manualAmountOverrideReasons, setManualAmountOverrideReasons] = useState<
     Record<string, string>
@@ -409,7 +411,74 @@ export function ImportsPage({
       (total, item, index) => total + receiptItemAmount(document, item, index),
       0,
     );
-  const paymentDraftFor = (document: DocumentReview): ReceiptPaymentDraft[] => {
+  const reviewTargets: ReviewTarget[] = selectedDocument?.result?.receipt?.items
+    ? [
+        ...selectedDocument.result.receipt.items.flatMap((item, index) =>
+          item.verification.toUpperCase() === "UNRESOLVED" || item.confidence < 0.8
+            ? [
+                {
+                  key: `item:${index}`,
+                  label: `品目 ${index + 1}`,
+                  elementId: `receipt-review-item-${index}`,
+                },
+              ]
+            : [],
+        ),
+        ...(() => {
+          const selectedCandidate = selectedDocument.result?.candidates?.find(
+            (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
+          );
+          const needsCandidateSelection =
+            (selectedDocument.result?.candidates?.length ?? 0) > 0 && !selectedCandidate;
+          const paymentsTotal = paymentDraftFor(selectedDocument).reduce(
+            (total, payment) => total + payment.amountYen,
+            0,
+          );
+          const needsAmountReview =
+            manualAmountOverrides[selectedDocument.id] ||
+            needsCandidateSelection ||
+            (selectedCandidate
+              ? !selectedCandidate.consistent
+              : selectedDocument.result?.balanced === false);
+          const needsPaymentReview =
+            household.accounts.length > 0 && paymentsTotal !== receiptTotal(selectedDocument);
+          return [
+            ...(needsAmountReview
+              ? [
+                  {
+                    key: "amount",
+                    label: "金額差異",
+                    elementId: needsCandidateSelection
+                      ? "receipt-review-candidates"
+                      : "receipt-review-amount-reason",
+                  },
+                ]
+              : []),
+            ...(needsPaymentReview
+              ? [
+                  {
+                    key: "payments",
+                    label: "決済合計",
+                    elementId: "receipt-review-payments",
+                  },
+                ]
+              : []),
+          ];
+        })(),
+      ]
+    : [];
+  const activeReviewIndex = Math.min(reviewTargetIndex, Math.max(0, reviewTargets.length - 1));
+  const activeReviewTarget = reviewTargets[activeReviewIndex];
+  useEffect(() => {
+    setReviewTargetIndex(0);
+  }, [selectedDocument?.id]);
+  useEffect(() => {
+    if (!activeReviewTarget) return;
+    const element = document.getElementById(activeReviewTarget.elementId);
+    element?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (element instanceof HTMLElement) element.focus({ preventScroll: true });
+  }, [activeReviewTarget?.key, activeReviewTarget?.elementId]);
+  function paymentDraftFor(document: DocumentReview): ReceiptPaymentDraft[] {
     if (receiptPayments[document.id]) return receiptPayments[document.id];
     const recognizedPayments = document.result?.receipt?.payments ?? [];
     if (recognizedPayments.length) {
@@ -435,7 +504,7 @@ export function ImportsPage({
         amountYen: receiptTotal(document),
       },
     ];
-  };
+  }
   const markUnsaved = () => setHasUnsavedChanges(true);
   useEffect(() => {
     onUnsavedChanges(hasUnsavedChanges);
@@ -1519,6 +1588,34 @@ export function ImportsPage({
               <div className="evidence-edit-column">
                 {!!selectedDocument.result?.receipt?.items?.length && (
                   <div className="receipt-review">
+                    {reviewTargets.length > 0 && (
+                      <section className="panel-heading" aria-label="確認順">
+                        <div aria-live="polite">
+                          <span className="eyebrow">
+                            確認 {activeReviewIndex + 1}/{reviewTargets.length}
+                          </span>
+                          <h3>{activeReviewTarget?.label}</h3>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            className="button button-soft"
+                            disabled={activeReviewIndex === 0}
+                            onClick={() => setReviewTargetIndex((index) => index - 1)}
+                          >
+                            前へ
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-soft"
+                            disabled={activeReviewIndex >= reviewTargets.length - 1}
+                            onClick={() => setReviewTargetIndex((index) => index + 1)}
+                          >
+                            次へ
+                          </button>
+                        </div>
+                      </section>
+                    )}
                     <div className="review-fields">
                       <div className="review-merchant">
                         <label>
@@ -1548,7 +1645,7 @@ export function ImportsPage({
                           />
                         </label>
                       </div>
-                      <div className="field-group">
+                      <div className="field-group" id="receipt-review-payments" tabIndex={-1}>
                         <label>決済内訳</label>
                         {paymentDraftFor(selectedDocument).map((payment, index) => (
                           <div className="review-merchant" key={payment.key}>
@@ -1672,6 +1769,7 @@ export function ImportsPage({
                         <div className="receipt-item-review" key={index}>
                           <div>
                             <input
+                              id={`receipt-review-item-${index}`}
                               aria-label="品名"
                               value={item.name}
                               onChange={(event) =>
@@ -1822,7 +1920,11 @@ export function ImportsPage({
                         </div>
                       ))}
                       {!!selectedDocument.result.candidates?.length && (
-                        <div className="candidate-review">
+                        <div
+                          className="candidate-review"
+                          id="receipt-review-candidates"
+                          tabIndex={-1}
+                        >
                           <div className="panel-heading">
                             <div>
                               <span className="eyebrow">金額の解釈</span>
@@ -1864,7 +1966,11 @@ export function ImportsPage({
                                 candidate.id === selectedCandidates[selectedDocument.id],
                             )?.consistent
                           : !selectedDocument.result.balanced)) && (
-                        <label className="field-group">
+                        <label
+                          className="field-group"
+                          id="receipt-review-amount-reason"
+                          tabIndex={-1}
+                        >
                           金額の訂正理由
                           <input
                             maxLength={500}

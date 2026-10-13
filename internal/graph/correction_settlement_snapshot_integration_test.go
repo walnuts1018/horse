@@ -110,7 +110,7 @@ func TestPurchaseRefundSettlementUsesOriginalFundingSnapshotAfterRuleChanges(t *
 		t.Fatal(err)
 	}
 	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{
-		HouseholdID: household.ID, PoolID: personalA.ID, Configuration: personalPoolFundingConfiguration(memberB), ExpectedVersion: 1,
+		HouseholdID: household.ID, PoolID: personalA.ID, Configuration: personalPoolFundingConfiguration(memberB), ExpectedVersion: 2,
 	}); err != nil {
 		t.Fatal(err)
 	}

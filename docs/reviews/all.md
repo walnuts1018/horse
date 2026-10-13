@@ -29,20 +29,6 @@ changes, err := domain.CalculateExpenseAdjustments(
 
 修正方針: 訂正時の決済元・負担先に関する計算も、元の購入のスナップショットを使用するよう統一してください。購入確定後に拠出比率・所有者・精算ポリシーを変更してから返品する統合テストが必要です。
 
-## 5. 【中】原本の照合APIが、家庭の抽出履歴を毎回全件取得する
-
-該当: [`internal/api/reconciliation.go`](https://github.com/walnuts1018/horse/blob/6079b358539bc9819ec1d3dcfa0ce13e6265b448/internal/api/reconciliation.go#L78-L171)
-
-`documentMatches` は、同じ家庭の `status=succeeded` の抽出ジョブを `.All()` で全件読み込み、その後アプリケーション側で文書IDを集約しています。
-
-最終的な照合対象は直近100文書なのに、その100件を決める前に、過去の成功ジョブをすべて取得しています。
-
-取り込み履歴が増えると、1件の照合操作でも大量のDB行を転送・走査することになります。
-
-修正: PostgreSQL側で `EXISTS`、`DISTINCT ON`、または適切なサブクエリを使い、成功ジョブの存在を条件として直近100文書を直接取得してください。必要なジョブ結果だけを後段で取得する構成がよいです。
-
-これは正確性より性能の問題ですが、CSVやメールを長期的に取り込むシステムなので、今のうちに直す価値があります。
-
 ## 6. 【中】負担ルール一覧にN+1クエリが残っている
 
 該当: [`internal/graph/query_allocation_rules.go`](https://github.com/walnuts1018/horse/blob/6079b358539bc9819ec1d3dcfa0ce13e6265b448/internal/graph/query_allocation_rules.go#L64-L104)
@@ -77,7 +63,6 @@ GitHub Actions run `38409639022`は`Lint Go`で失敗し、commit `959a3af`のru
 | 優先 | 対象 | 確認事項 |
 | -- | ------------------ | ------------------ |
 | P1 | 2. 訂正での過去ルールの利用 | DB統合テストのCI通過 |
-| P2 | 5. 原本照合の全件走査 | DB統合テストのCI通過 |
 | P2 | 6. 負担ルール一覧のN+1 | DB統合テストを含む変更後の挙動確認 |
 | P3 | 商品候補検索の性能計測 | 実データ量での応答時間とDB読取量の計測 |
 

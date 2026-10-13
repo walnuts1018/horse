@@ -230,9 +230,22 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	if err != nil || len(rules.Edges) != pageSize || rules.TotalCount != 4 || !rules.PageInfo.HasNextPage || rules.PageInfo.EndCursor == nil {
 		t.Fatalf("allocation rule query failed: rules=%#v error=%v", rules, err)
 	}
+	assertLoadedRule := func(rule *model.AllocationRule) {
+		t.Helper()
+		if rule.Target == nil || len(rule.Allocations) != 2 {
+			t.Errorf("allocation rule target or weights were not loaded: rule=%#v", rule)
+			return
+		}
+		for _, allocation := range rule.Allocations {
+			if allocation.PoolName == "" || allocation.Weight <= 0 {
+				t.Errorf("allocation rule pool or weight was not loaded: allocation=%#v", allocation)
+			}
+		}
+	}
 	seenRuleIDs := make(map[string]struct{}, rules.TotalCount)
 	orderedRuleIDs := make([]string, 0, rules.TotalCount)
 	for _, edge := range rules.Edges {
+		assertLoadedRule(edge.Node)
 		seenRuleIDs[edge.Node.ID] = struct{}{}
 		orderedRuleIDs = append(orderedRuleIDs, edge.Node.ID)
 	}
@@ -242,6 +255,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 			t.Fatalf("allocation rule cursor query failed: %v", err)
 		}
 		for _, edge := range rules.Edges {
+			assertLoadedRule(edge.Node)
 			if _, exists := seenRuleIDs[edge.Node.ID]; exists {
 				t.Fatalf("allocation rule cursor returned a duplicate: %s", edge.Node.ID)
 			}
@@ -255,6 +269,9 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	lastRules, err := apiResolver.Query().AllocationRules(ctx, householdID, nil, nil, nil, &pageSize)
 	if err != nil || len(lastRules.Edges) != pageSize || lastRules.Edges[0].Node.ID != orderedRuleIDs[2] || lastRules.Edges[1].Node.ID != orderedRuleIDs[3] || !lastRules.PageInfo.HasPreviousPage || lastRules.PageInfo.HasNextPage {
 		t.Fatalf("allocation rule backward pagination failed: rules=%#v error=%v", lastRules, err)
+	}
+	for _, edge := range lastRules.Edges {
+		assertLoadedRule(edge.Node)
 	}
 	purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: householdID, OccurredAt: "2026-04-12T12:00:00Z", Merchant: testMarketName, PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: paymentAccount.ID, AmountYen: 500}},

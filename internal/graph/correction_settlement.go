@@ -58,7 +58,7 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 		snapshotsByLine[snapshot.PaymentLineNo] = append(snapshotsByLine[snapshot.PaymentLineNo], snapshot)
 	}
 	rules := make(map[string]domain.PoolFundingRule)
-	fundingPayments := make([]domain.FundingPayment, 0, len(payments))
+	paymentWeights := make([]domain.Weight, 0, len(payments))
 	for _, payment := range payments {
 		snapshots := snapshotsByLine[payment.LineNo]
 		if len(snapshots) == 0 {
@@ -85,11 +85,22 @@ func correctionFundingExpense(ctx context.Context, executor bob.Executor, househ
 			rule.FundingShares = nil
 		}
 		rules[alias] = rule
-		fundingPayments = append(fundingPayments, domain.FundingPayment{ID: alias, PoolID: alias, Amount: payment.AmountYen})
+		paymentWeights = append(paymentWeights, domain.Weight{PoolID: alias, Value: payment.AmountYen})
 		delete(snapshotsByLine, payment.LineNo)
 	}
 	if len(snapshotsByLine) != 0 {
 		return nil, nil, fmt.Errorf("%w: purchase %s has orphaned payment snapshots", ErrMissingPurchaseFundingSnapshot, purchaseID)
+	}
+	allocatedPayments, err := domain.Allocate(amount, paymentWeights)
+	if err != nil {
+		return nil, nil, err
+	}
+	fundingPayments := make([]domain.FundingPayment, 0, len(allocatedPayments))
+	for _, payment := range allocatedPayments {
+		if payment.Amount == 0 {
+			continue
+		}
+		fundingPayments = append(fundingPayments, domain.FundingPayment{ID: payment.PoolID, PoolID: payment.PoolID, Amount: payment.Amount})
 	}
 	where := []bob.Expression{
 		models.PurchaseMemberBurdens.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),

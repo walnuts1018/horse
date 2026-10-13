@@ -25,6 +25,12 @@ type Options = {
   to?: string;
   origin?: PurchaseOrigin;
   hasEvidence?: boolean;
+  search?: string;
+  categoryId?: string;
+  uncategorized?: boolean;
+  tagId?: string;
+  paymentAccountId?: string;
+  poolId?: string;
   loadAll?: boolean;
 };
 
@@ -37,8 +43,27 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
       to: options.to,
       origin: options.origin,
       hasEvidence: options.hasEvidence,
+      search: options.search,
+      categoryId: options.categoryId,
+      uncategorized: options.uncategorized,
+      tagId: options.tagId,
+      paymentAccountId: options.paymentAccountId,
+      poolId: options.poolId,
     }),
-    [householdId, first, options.from, options.to, options.origin, options.hasEvidence],
+    [
+      householdId,
+      first,
+      options.from,
+      options.to,
+      options.origin,
+      options.hasEvidence,
+      options.search,
+      options.categoryId,
+      options.uncategorized,
+      options.tagId,
+      options.paymentAccountId,
+      options.poolId,
+    ],
   );
   const query = useLazyLoadQuery<PurchasesQuery>(purchasesQuery, variables, {
     fetchPolicy: "store-or-network",

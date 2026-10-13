@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob"
@@ -16,9 +17,12 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, after, before *string, first, last *int) (*model.PurchaseConnection, error) {
+func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after, before *string, first, last *int) (*model.PurchaseConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err
+	}
+	if categoryID != nil && uncategorized != nil && *uncategorized {
+		return nil, fmt.Errorf("categoryId and uncategorized cannot both be set: %w", ErrBadInput)
 	}
 	pageSize, backward, err := pageDirection(first, last)
 	if err != nil {
@@ -54,6 +58,45 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 			return nil, err
 		}
 		filters = append(filters, models.Purchases.Columns.OccurredAt.LT(psql.Arg(value)))
+	}
+	if search != nil && strings.TrimSpace(*search) != "" {
+		pattern := "%" + escapeLikePattern(strings.TrimSpace(*search)) + "%"
+		itemNameMatch := models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(
+			models.PurchaseItems.Columns.Name.ILike(psql.Arg(pattern)),
+		)).E
+		filters = append(filters, psql.Or(models.Purchases.Columns.Merchant.ILike(psql.Arg(pattern)), itemNameMatch))
+	}
+	if categoryID != nil {
+		id, err := gofrsuuid.FromString(*categoryID)
+		if err != nil {
+			return nil, fmt.Errorf("parse category id: %w", ErrBadInput)
+		}
+		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(models.PurchaseItems.Columns.CategoryID.EQ(psql.Arg(id)))).E)
+	} else if uncategorized != nil && *uncategorized {
+		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(models.PurchaseItems.Columns.CategoryID.IsNull())).E)
+	}
+	if tagID != nil {
+		id, err := gofrsuuid.FromString(*tagID)
+		if err != nil {
+			return nil, fmt.Errorf("parse tag id: %w", ErrBadInput)
+		}
+		tagFilter := models.SelectWhere.PurchaseItems.R.HasPurchaseItemTags(sm.Where(models.PurchaseItemTags.Columns.TagID.EQ(psql.Arg(id)))).E
+		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(tagFilter)).E)
+	}
+	if paymentAccountID != nil {
+		id, err := gofrsuuid.FromString(*paymentAccountID)
+		if err != nil {
+			return nil, fmt.Errorf("parse payment account id: %w", ErrBadInput)
+		}
+		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchasePayments(sm.Where(models.PurchasePayments.Columns.AccountID.EQ(psql.Arg(id)))).E)
+	}
+	if poolID != nil {
+		id, err := gofrsuuid.FromString(*poolID)
+		if err != nil {
+			return nil, fmt.Errorf("parse pool id: %w", ErrBadInput)
+		}
+		allocationFilter := models.SelectWhere.PurchaseItems.R.HasItemAllocations(sm.Where(models.ItemAllocations.Columns.PoolID.EQ(psql.Arg(id)))).E
+		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(allocationFilter)).E)
 	}
 	executor := queryExecutor(r.DB)
 	syncCursor, err := latestHouseholdEventCursor(ctx, r.DB, hhID)
@@ -136,6 +179,12 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		connection.PageInfo.EndCursor = &end
 	}
 	return connection, nil
+}
+
+func escapeLikePattern(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `%`, `\%`)
+	return strings.ReplaceAll(value, `_`, `\_`)
 }
 
 func (r *queryResolver) purchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error) {

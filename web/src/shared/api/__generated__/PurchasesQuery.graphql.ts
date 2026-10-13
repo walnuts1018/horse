@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8c1bc62b54d69faadbaf6491f6355d9a>>
+ * @generated SignedSource<<2d403e4677ec468bfc410268958d82ba>>
  * @lightSyntaxTransform
  */
 
@@ -11,12 +11,18 @@ import type { ConcreteRequest } from 'relay-runtime';
 import type { FragmentRefs } from "relay-runtime";
 export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN" | "%future added value";
 export type PurchasesQuery$variables = {
+  categoryId?: string | null | undefined;
   first?: number | null | undefined;
   from?: string | null | undefined;
   hasEvidence?: boolean | null | undefined;
   householdId: string;
   origin?: PurchaseOrigin | null | undefined;
+  paymentAccountId?: string | null | undefined;
+  poolId?: string | null | undefined;
+  search?: string | null | undefined;
+  tagId?: string | null | undefined;
   to?: string | null | undefined;
+  uncategorized?: boolean | null | undefined;
 };
 export type PurchasesQuery$data = {
   readonly " $fragmentSpreads": FragmentRefs<"PurchaseListFragment">;
@@ -30,34 +36,69 @@ const node: ConcreteRequest = (function(){
 var v0 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "first"
+  "name": "categoryId"
 },
 v1 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "from"
+  "name": "first"
 },
 v2 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "hasEvidence"
+  "name": "from"
 },
 v3 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "householdId"
+  "name": "hasEvidence"
 },
 v4 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "origin"
+  "name": "householdId"
 },
 v5 = {
   "defaultValue": null,
   "kind": "LocalArgument",
+  "name": "origin"
+},
+v6 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "paymentAccountId"
+},
+v7 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "poolId"
+},
+v8 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "search"
+},
+v9 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "tagId"
+},
+v10 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
   "name": "to"
 },
-v6 = [
+v11 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "uncategorized"
+},
+v12 = [
+  {
+    "kind": "Variable",
+    "name": "categoryId",
+    "variableName": "categoryId"
+  },
   {
     "kind": "Variable",
     "name": "first",
@@ -85,53 +126,78 @@ v6 = [
   },
   {
     "kind": "Variable",
+    "name": "paymentAccountId",
+    "variableName": "paymentAccountId"
+  },
+  {
+    "kind": "Variable",
+    "name": "poolId",
+    "variableName": "poolId"
+  },
+  {
+    "kind": "Variable",
+    "name": "search",
+    "variableName": "search"
+  },
+  {
+    "kind": "Variable",
+    "name": "tagId",
+    "variableName": "tagId"
+  },
+  {
+    "kind": "Variable",
     "name": "to",
     "variableName": "to"
+  },
+  {
+    "kind": "Variable",
+    "name": "uncategorized",
+    "variableName": "uncategorized"
   }
 ],
-v7 = {
+v13 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "cursor",
   "storageKey": null
 },
-v8 = {
+v14 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v9 = {
+v15 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "householdId",
   "storageKey": null
 },
-v10 = {
+v16 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "occurredAt",
   "storageKey": null
 },
-v11 = {
+v17 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "amountYen",
   "storageKey": null
 },
-v12 = {
+v18 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "name",
   "storageKey": null
 },
-v13 = {
+v19 = {
   "alias": null,
   "args": null,
   "concreteType": "PurchasePayment",
@@ -146,7 +212,7 @@ v13 = {
       "name": "paymentAccountId",
       "storageKey": null
     },
-    (v11/*:: as any*/),
+    (v17/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -155,22 +221,22 @@ v13 = {
       "name": "account",
       "plural": false,
       "selections": [
-        (v8/*:: as any*/),
-        (v12/*:: as any*/)
+        (v14/*:: as any*/),
+        (v18/*:: as any*/)
       ],
       "storageKey": null
     }
   ],
   "storageKey": null
 },
-v14 = {
+v20 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "denominator",
   "storageKey": null
 },
-v15 = [
+v21 = [
   {
     "alias": null,
     "args": null,
@@ -178,7 +244,7 @@ v15 = [
     "name": "numerator",
     "storageKey": null
   },
-  (v14/*:: as any*/),
+  (v20/*:: as any*/),
   {
     "alias": null,
     "args": null,
@@ -187,28 +253,28 @@ v15 = [
     "storageKey": null
   }
 ],
-v16 = {
+v22 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "revision",
   "storageKey": null
 },
-v17 = {
+v23 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "__typename",
   "storageKey": null
 },
-v18 = {
+v24 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "endCursor",
   "storageKey": null
 },
-v19 = {
+v25 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
@@ -223,14 +289,20 @@ return {
       (v2/*:: as any*/),
       (v3/*:: as any*/),
       (v4/*:: as any*/),
-      (v5/*:: as any*/)
+      (v5/*:: as any*/),
+      (v6/*:: as any*/),
+      (v7/*:: as any*/),
+      (v8/*:: as any*/),
+      (v9/*:: as any*/),
+      (v10/*:: as any*/),
+      (v11/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "PurchasesQuery",
     "selections": [
       {
-        "args": (v6/*:: as any*/),
+        "args": (v12/*:: as any*/),
         "kind": "FragmentSpread",
         "name": "PurchaseListFragment"
       }
@@ -241,19 +313,25 @@ return {
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
-      (v3/*:: as any*/),
-      (v1/*:: as any*/),
-      (v5/*:: as any*/),
       (v4/*:: as any*/),
       (v2/*:: as any*/),
-      (v0/*:: as any*/)
+      (v10/*:: as any*/),
+      (v5/*:: as any*/),
+      (v3/*:: as any*/),
+      (v8/*:: as any*/),
+      (v0/*:: as any*/),
+      (v11/*:: as any*/),
+      (v9/*:: as any*/),
+      (v6/*:: as any*/),
+      (v7/*:: as any*/),
+      (v1/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "PurchasesQuery",
     "selections": [
       {
         "alias": null,
-        "args": (v6/*:: as any*/),
+        "args": (v12/*:: as any*/),
         "concreteType": "PurchaseConnection",
         "kind": "LinkedField",
         "name": "purchases",
@@ -267,7 +345,7 @@ return {
             "name": "edges",
             "plural": true,
             "selections": [
-              (v7/*:: as any*/),
+              (v13/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -276,9 +354,9 @@ return {
                 "name": "node",
                 "plural": false,
                 "selections": [
-                  (v8/*:: as any*/),
-                  (v9/*:: as any*/),
-                  (v10/*:: as any*/),
+                  (v14/*:: as any*/),
+                  (v15/*:: as any*/),
+                  (v16/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -307,7 +385,7 @@ return {
                     "name": "sourceKinds",
                     "storageKey": null
                   },
-                  (v13/*:: as any*/),
+                  (v19/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -316,9 +394,9 @@ return {
                     "name": "items",
                     "plural": true,
                     "selections": [
-                      (v8/*:: as any*/),
-                      (v12/*:: as any*/),
-                      (v11/*:: as any*/),
+                      (v14/*:: as any*/),
+                      (v18/*:: as any*/),
+                      (v17/*:: as any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -333,7 +411,7 @@ return {
                         "kind": "LinkedField",
                         "name": "quantity",
                         "plural": false,
-                        "selections": (v15/*:: as any*/),
+                        "selections": (v21/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -344,7 +422,7 @@ return {
                         "name": "printedUnitPrice",
                         "plural": false,
                         "selections": [
-                          (v11/*:: as any*/),
+                          (v17/*:: as any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -352,7 +430,7 @@ return {
                             "kind": "LinkedField",
                             "name": "basis",
                             "plural": false,
-                            "selections": (v15/*:: as any*/),
+                            "selections": (v21/*:: as any*/),
                             "storageKey": null
                           }
                         ],
@@ -373,11 +451,11 @@ return {
                             "name": "numeratorYen",
                             "storageKey": null
                           },
-                          (v14/*:: as any*/)
+                          (v20/*:: as any*/)
                         ],
                         "storageKey": null
                       },
-                      (v16/*:: as any*/),
+                      (v22/*:: as any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -421,7 +499,7 @@ return {
                             "name": "weight",
                             "storageKey": null
                           },
-                          (v11/*:: as any*/)
+                          (v17/*:: as any*/)
                         ],
                         "storageKey": null
                       },
@@ -433,9 +511,9 @@ return {
                         "name": "tags",
                         "plural": true,
                         "selections": [
-                          (v8/*:: as any*/),
-                          (v9/*:: as any*/),
-                          (v12/*:: as any*/),
+                          (v14/*:: as any*/),
+                          (v15/*:: as any*/),
+                          (v18/*:: as any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -443,7 +521,7 @@ return {
                             "name": "archived",
                             "storageKey": null
                           },
-                          (v16/*:: as any*/)
+                          (v22/*:: as any*/)
                         ],
                         "storageKey": null
                       }
@@ -479,7 +557,7 @@ return {
                         "name": "edges",
                         "plural": true,
                         "selections": [
-                          (v7/*:: as any*/),
+                          (v13/*:: as any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -488,8 +566,8 @@ return {
                             "name": "node",
                             "plural": false,
                             "selections": [
-                              (v17/*:: as any*/),
-                              (v8/*:: as any*/),
+                              (v23/*:: as any*/),
+                              (v14/*:: as any*/),
                               {
                                 "kind": "InlineFragment",
                                 "selections": [
@@ -518,7 +596,7 @@ return {
                                 "name": "reason",
                                 "storageKey": null
                               },
-                              (v10/*:: as any*/),
+                              (v16/*:: as any*/),
                               {
                                 "alias": null,
                                 "args": null,
@@ -526,7 +604,7 @@ return {
                                 "name": "settlementMonth",
                                 "storageKey": null
                               },
-                              (v13/*:: as any*/)
+                              (v19/*:: as any*/)
                             ],
                             "storageKey": null
                           }
@@ -541,15 +619,15 @@ return {
                         "name": "pageInfo",
                         "plural": false,
                         "selections": [
-                          (v18/*:: as any*/),
-                          (v19/*:: as any*/)
+                          (v24/*:: as any*/),
+                          (v25/*:: as any*/)
                         ],
                         "storageKey": null
                       }
                     ],
                     "storageKey": "corrections(first:100)"
                   },
-                  (v16/*:: as any*/),
+                  (v22/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -571,7 +649,7 @@ return {
                     "name": "updatedAt",
                     "storageKey": null
                   },
-                  (v17/*:: as any*/)
+                  (v23/*:: as any*/)
                 ],
                 "storageKey": null
               }
@@ -593,8 +671,8 @@ return {
                 "name": "startCursor",
                 "storageKey": null
               },
-              (v18/*:: as any*/),
-              (v19/*:: as any*/),
+              (v24/*:: as any*/),
+              (v25/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -624,13 +702,19 @@ return {
       },
       {
         "alias": null,
-        "args": (v6/*:: as any*/),
+        "args": (v12/*:: as any*/),
         "filters": [
           "householdId",
           "from",
           "to",
           "origin",
-          "hasEvidence"
+          "hasEvidence",
+          "search",
+          "categoryId",
+          "uncategorized",
+          "tagId",
+          "paymentAccountId",
+          "poolId"
         ],
         "handle": "connection",
         "key": "PurchaseListFragment_purchases",
@@ -640,16 +724,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "310676fd6c1a27fab94eb6fefc61b442",
+    "cacheID": "7fe9def693c136c5b2bb6ab15e53bfe1",
     "id": null,
     "metadata": {},
     "name": "PurchasesQuery",
     "operationKind": "query",
-    "text": "query PurchasesQuery(\n  $householdId: ID!\n  $from: DateTime\n  $to: DateTime\n  $origin: PurchaseOrigin\n  $hasEvidence: Boolean\n  $first: Int\n) {\n  ...PurchaseListFragment_oDAFC\n}\n\nfragment PurchaseListFragment_oDAFC on Query {\n  purchases(householdId: $householdId, from: $from, to: $to, origin: $origin, hasEvidence: $hasEvidence, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections(first: 100) {\n          edges {\n            cursor\n            node {\n              __typename\n              id\n              ... on PurchaseItemCorrection {\n                itemId\n              }\n              amountDeltaYen\n              reason\n              occurredAt\n              settlementMonth\n              paymentAllocations {\n                paymentAccountId\n                amountYen\n                account {\n                  id\n                  name\n                }\n              }\n            }\n          }\n          pageInfo {\n            endCursor\n            hasNextPage\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n        __typename\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
+    "text": "query PurchasesQuery(\n  $householdId: ID!\n  $from: DateTime\n  $to: DateTime\n  $origin: PurchaseOrigin\n  $hasEvidence: Boolean\n  $search: String\n  $categoryId: ID\n  $uncategorized: Boolean\n  $tagId: ID\n  $paymentAccountId: ID\n  $poolId: ID\n  $first: Int\n) {\n  ...PurchaseListFragment_4jFVLB\n}\n\nfragment PurchaseListFragment_4jFVLB on Query {\n  purchases(householdId: $householdId, from: $from, to: $to, origin: $origin, hasEvidence: $hasEvidence, search: $search, categoryId: $categoryId, uncategorized: $uncategorized, tagId: $tagId, paymentAccountId: $paymentAccountId, poolId: $poolId, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections(first: 100) {\n          edges {\n            cursor\n            node {\n              __typename\n              id\n              ... on PurchaseItemCorrection {\n                itemId\n              }\n              amountDeltaYen\n              reason\n              occurredAt\n              settlementMonth\n              paymentAllocations {\n                paymentAccountId\n                amountYen\n                account {\n                  id\n                  name\n                }\n              }\n            }\n          }\n          pageInfo {\n            endCursor\n            hasNextPage\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n        __typename\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "4964a3636e6da18462ba183caae613f8";
+(node as any).hash = "7d14fac614961855a7e6695b9eba030c";
 
 export default node;

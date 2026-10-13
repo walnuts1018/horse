@@ -911,7 +911,7 @@ type ComplexityRoot struct {
 		ProductCatalog          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		ProductSuggestions      func(childComplexity int, householdID string, query string, merchant *string, first int) int
 		PurchaseCorrections     func(childComplexity int, purchaseID string, first *int, after *string) int
-		Purchases               func(childComplexity int, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) int
+		Purchases               func(childComplexity int, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after *string, before *string, first *int, last *int) int
 		RecurringExpenses       func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
 		Settlement              func(childComplexity int, householdID string, period model.YearMonth) int
 		Tags                    func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
@@ -1443,7 +1443,7 @@ type QueryResolver interface {
 	UnmatchedObservations(ctx context.Context, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) (*model.UnmatchedObservationConnection, error)
 	ProductCatalog(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.ProductConceptConnection, error)
 	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first int) ([]*model.ProductSuggestion, error)
-	Purchases(ctx context.Context, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
+	Purchases(ctx context.Context, householdID string, from *model.DateTime, to *model.DateTime, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
 	PurchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error)
 	RecurringExpenses(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
 	Settlement(ctx context.Context, householdID string, period model.YearMonth) (model.SettlementVariant, error)
@@ -4766,7 +4766,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Purchases(childComplexity, args["householdId"].(string), args["from"].(*model.DateTime), args["to"].(*model.DateTime), args["origin"].(*model.PurchaseOrigin), args["hasEvidence"].(*bool), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
+		return e.ComplexityRoot.Query.Purchases(childComplexity, args["householdId"].(string), args["from"].(*model.DateTime), args["to"].(*model.DateTime), args["origin"].(*model.PurchaseOrigin), args["hasEvidence"].(*bool), args["search"].(*string), args["categoryId"].(*string), args["uncategorized"].(*bool), args["tagId"].(*string), args["paymentAccountId"].(*string), args["poolId"].(*string), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
 	case "Query.recurringExpenses":
 		if e.ComplexityRoot.Query.RecurringExpenses == nil {
 			break
@@ -7129,7 +7129,7 @@ type PurchaseConnection {
 }
 
 extend type Query {
-  purchases(householdId: ID! @nodeID(of: "Household"), from: DateTime, to: DateTime, origin: PurchaseOrigin, hasEvidence: Boolean, after: String, before: String, first: Int, last: Int): PurchaseConnection!
+  purchases(householdId: ID! @nodeID(of: "Household"), from: DateTime, to: DateTime, origin: PurchaseOrigin, hasEvidence: Boolean, search: String, categoryId: ID @nodeID(of: "Category"), uncategorized: Boolean, tagId: ID @nodeID(of: "Tag"), paymentAccountId: ID @nodeID(of: "Account"), poolId: ID @nodeID(of: "Pool"), after: String, before: String, first: Int, last: Int): PurchaseConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/purchase_correction.graphql", Input: `interface PurchaseCorrection implements Node {
@@ -11090,38 +11090,78 @@ func (ec *executionContext) field_Query_purchases_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["hasEvidence"] = arg4
-	arg5, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+	arg5, err := graphql.ProcessArgField(ctx, rawArgs, "search",
 		func(ctx context.Context, v any) (*string, error) {
 			return ec.unmarshalOString2ᚖstring(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["after"] = arg5
-	arg6, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+	args["search"] = arg5
+
+	arg6, err := ec.field_Query_purchases_argsCategoryID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["categoryId"] = arg6
+	arg7, err := graphql.ProcessArgField(ctx, rawArgs, "uncategorized",
+		func(ctx context.Context, v any) (*bool, error) {
+			return ec.unmarshalOBoolean2ᚖbool(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["uncategorized"] = arg7
+
+	arg8, err := ec.field_Query_purchases_argsTagID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["tagId"] = arg8
+
+	arg9, err := ec.field_Query_purchases_argsPaymentAccountID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["paymentAccountId"] = arg9
+
+	arg10, err := ec.field_Query_purchases_argsPoolID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["poolId"] = arg10
+	arg11, err := graphql.ProcessArgField(ctx, rawArgs, "after",
 		func(ctx context.Context, v any) (*string, error) {
 			return ec.unmarshalOString2ᚖstring(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["before"] = arg6
-	arg7, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+	args["after"] = arg11
+	arg12, err := graphql.ProcessArgField(ctx, rawArgs, "before",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg12
+	arg13, err := graphql.ProcessArgField(ctx, rawArgs, "first",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["first"] = arg7
-	arg8, err := graphql.ProcessArgField(ctx, rawArgs, "last",
+	args["first"] = arg13
+	arg14, err := graphql.ProcessArgField(ctx, rawArgs, "last",
 		func(ctx context.Context, v any) (*int, error) {
 			return ec.unmarshalOInt2ᚖint(ctx, v)
 		})
 	if err != nil {
 		return nil, err
 	}
-	args["last"] = arg8
+	args["last"] = arg14
 	return args, nil
 }
 
@@ -11167,6 +11207,198 @@ func (ec *executionContext) field_Query_purchases_argsHouseholdID(
 	} else {
 		var zeroVal string
 		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
+}
+
+func (ec *executionContext) field_Query_purchases_argsCategoryID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["categoryId"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("categoryId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["categoryId"]
+		if !ok {
+			var zeroVal *string
+			return zeroVal, nil
+		}
+		return ec.unmarshalOID2ᚖstring(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Category")
+		if err != nil {
+			var zeroVal *string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal *string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal *string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(*string); ok {
+		return data, nil
+	} else if tmp == nil {
+		var zeroVal *string
+		return zeroVal, nil
+	} else {
+		var zeroVal *string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp))
+	}
+}
+
+func (ec *executionContext) field_Query_purchases_argsTagID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["tagId"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("tagId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["tagId"]
+		if !ok {
+			var zeroVal *string
+			return zeroVal, nil
+		}
+		return ec.unmarshalOID2ᚖstring(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Tag")
+		if err != nil {
+			var zeroVal *string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal *string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal *string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(*string); ok {
+		return data, nil
+	} else if tmp == nil {
+		var zeroVal *string
+		return zeroVal, nil
+	} else {
+		var zeroVal *string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp))
+	}
+}
+
+func (ec *executionContext) field_Query_purchases_argsPaymentAccountID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["paymentAccountId"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("paymentAccountId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["paymentAccountId"]
+		if !ok {
+			var zeroVal *string
+			return zeroVal, nil
+		}
+		return ec.unmarshalOID2ᚖstring(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Account")
+		if err != nil {
+			var zeroVal *string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal *string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal *string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(*string); ok {
+		return data, nil
+	} else if tmp == nil {
+		var zeroVal *string
+		return zeroVal, nil
+	} else {
+		var zeroVal *string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp))
+	}
+}
+
+func (ec *executionContext) field_Query_purchases_argsPoolID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["poolId"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("poolId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["poolId"]
+		if !ok {
+			var zeroVal *string
+			return zeroVal, nil
+		}
+		return ec.unmarshalOID2ᚖstring(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Pool")
+		if err != nil {
+			var zeroVal *string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal *string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal *string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(*string); ok {
+		return data, nil
+	} else if tmp == nil {
+		var zeroVal *string
+		return zeroVal, nil
+	} else {
+		var zeroVal *string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp))
 	}
 }
 
@@ -24693,7 +24925,7 @@ func (ec *executionContext) _Query_purchases(ctx context.Context, field graphql.
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Purchases(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*model.DateTime), fc.Args["to"].(*model.DateTime), fc.Args["origin"].(*model.PurchaseOrigin), fc.Args["hasEvidence"].(*bool), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
+			return ec.Resolvers.Query().Purchases(ctx, fc.Args["householdId"].(string), fc.Args["from"].(*model.DateTime), fc.Args["to"].(*model.DateTime), fc.Args["origin"].(*model.PurchaseOrigin), fc.Args["hasEvidence"].(*bool), fc.Args["search"].(*string), fc.Args["categoryId"].(*string), fc.Args["uncategorized"].(*bool), fc.Args["tagId"].(*string), fc.Args["paymentAccountId"].(*string), fc.Args["poolId"].(*string), fc.Args["after"].(*string), fc.Args["before"].(*string), fc.Args["first"].(*int), fc.Args["last"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v *model.PurchaseConnection) graphql.Marshaler {
