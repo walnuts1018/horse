@@ -193,6 +193,9 @@ export function ImportsPage({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [csvKinds, setCsvKinds] = useState<Record<string, "card" | "bank">>({});
   const [documents, setDocuments] = useState<DocumentReview[]>([]);
+  const [nextDocumentCursor, setNextDocumentCursor] = useState<string | null>(null);
+  const [loadingOlderDocuments, setLoadingOlderDocuments] = useState(false);
+  const loadedOlderPages = useRef(false);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
@@ -305,9 +308,12 @@ export function ImportsPage({
           { credentials: "include" },
         );
         if (!response.ok) throw new Error(`証拠一覧を取得できませんでした (${response.status})`);
-        const payload = (await response.json()) as { documents: DocumentReview[] };
-        setDocuments((current) =>
-          payload.documents.map((document) => {
+        const payload = (await response.json()) as {
+          documents: DocumentReview[];
+          nextCursor: string | null;
+        };
+        setDocuments((current) => [
+          ...payload.documents.map((document) => {
             const existing = current.find((entry) => entry.id === document.id);
             return {
               ...document,
@@ -328,7 +334,11 @@ export function ImportsPage({
                 }`,
             };
           }),
-        );
+          ...current.filter(
+            (entry) => !payload.documents.some((document) => document.id === entry.id),
+          ),
+        ]);
+        if (!loadedOlderPages.current) setNextDocumentCursor(payload.nextCursor);
         setSelected((current) => current ?? payload.documents[0]?.id ?? null);
       } catch (reason) {
         if (!silent) setMessage((reason as Error).message);
@@ -338,12 +348,58 @@ export function ImportsPage({
   );
   useEffect(() => {
     setDocuments([]);
+    setNextDocumentCursor(null);
+    loadedOlderPages.current = false;
     editedReceiptDocuments.current.clear();
     setSelected(null);
     setConfirmedStatements(new Set());
     setSelectedCandidates({});
     void refreshDocuments();
   }, [refreshDocuments]);
+  const loadOlderDocuments = useCallback(async () => {
+    if (!nextDocumentCursor || loadingOlderDocuments) return;
+    setLoadingOlderDocuments(true);
+    try {
+      const response = await fetch(
+        `/documents?householdId=${encodeURIComponent(household.id)}&first=50&after=${encodeURIComponent(nextDocumentCursor)}`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error(`証拠一覧を取得できませんでした (${response.status})`);
+      const payload = (await response.json()) as {
+        documents: DocumentReview[];
+        nextCursor: string | null;
+      };
+      setDocuments((current) => {
+        const ids = new Set(current.map((document) => document.id));
+        return [
+          ...current,
+          ...payload.documents
+            .filter((document) => !ids.has(document.id))
+            .map((document) => ({
+              ...document,
+              name:
+                document.name ??
+                `${sourceKindLabel(document.sourceKind)} · ${
+                  document.createdAt
+                    ? new Date(document.createdAt).toLocaleString("ja-JP", {
+                        month: "numeric",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : document.id.slice(0, 8)
+                }`,
+            })),
+        ];
+      });
+      setNextDocumentCursor(payload.nextCursor);
+      loadedOlderPages.current = true;
+    } catch (reason) {
+      setMessage((reason as Error).message);
+    } finally {
+      setLoadingOlderDocuments(false);
+    }
+  }, [household.id, loadingOlderDocuments, nextDocumentCursor]);
   const hasProcessingDocuments = documents.some((document) => isProcessing(document.status));
   useEffect(() => {
     if (!hasProcessingDocuments) return;
@@ -881,6 +937,16 @@ export function ImportsPage({
               )}
             </div>
           ))}
+          {nextDocumentCursor && (
+            <button
+              className="button button-soft button-wide"
+              type="button"
+              disabled={loadingOlderDocuments}
+              onClick={() => void loadOlderDocuments()}
+            >
+              {loadingOlderDocuments ? "読み込み中" : "古い履歴を読み込む"}
+            </button>
+          )}
           {files.length > 0 && (
             <button
               className="button button-primary button-wide"

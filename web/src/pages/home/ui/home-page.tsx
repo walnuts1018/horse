@@ -11,6 +11,12 @@ import { settlementQuery } from "../../../entities/settlement";
 import { EmptyState } from "../../../shared/ui";
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { japanMonth } from "../../../shared/lib";
+import { homeSummaryQuery } from "../api/home-summary";
+
+type HomeSummary = {
+  dailySpending: Array<{ date: string; amountYen: number }>;
+  monthlyItemCount: number;
+};
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -29,14 +35,25 @@ export function HomePage({
 }) {
   const { purchases, totalCount } = useHouseholdPurchases(household.id, 8);
   const currentMonth = japanMonth(new Date());
-  const monthPurchases = purchases.filter(
-    (item) => japanMonth(new Date(item.occurredAt)) === currentMonth,
-  );
   const purchaseRevision = purchases
     .map((purchase) => `${purchase.id}:${purchase.revision}:${purchase.totalYen}`)
     .join("|");
   const [monthTotal, setMonthTotal] = useState<number | null>(null);
+  const [homeSummary, setHomeSummary] = useState<HomeSummary | null>(null);
   const [settlement, setSettlement] = useState<Settlement | null>(null);
+  useEffect(() => {
+    let active = true;
+    void readGraphql<{ homeSummary: HomeSummary }>(homeSummaryQuery, {
+      householdId: household.id,
+    })
+      .then(({ homeSummary: summary }) => {
+        if (active) setHomeSummary(summary);
+      })
+      .catch(() => active && setHomeSummary(null));
+    return () => {
+      active = false;
+    };
+  }, [household.id, totalCount, purchaseRevision]);
   useEffect(() => {
     let active = true;
     void readGraphql<{
@@ -117,11 +134,10 @@ export function HomePage({
             </div>
             <span className="period-chip">{Number(currentMonth.slice(5))}月</span>
           </div>
-          <MiniBars purchases={purchases} />
+          <MiniBars dailySpending={homeSummary?.dailySpending ?? []} />
           <div className="spend-footer">
             <span>
-              品目{" "}
-              <b>{monthPurchases.reduce((count, purchase) => count + purchase.items.length, 0)}</b>
+              品目 <b>{homeSummary?.monthlyItemCount ?? "—"}</b>
             </span>
             <button className="text-button" onClick={() => onNavigate("analysis")}>
               分析を見る <ChevronRight size={15} />
@@ -170,7 +186,7 @@ export function HomePage({
           />
         ) : (
           purchases
-            .slice(0, 5)
+            .slice(0, 8)
             .map((purchase) => <PurchaseRow key={purchase.id} purchase={purchase} />)
         )}
       </section>
@@ -178,33 +194,29 @@ export function HomePage({
   );
 }
 
-function MiniBars({ purchases }: { purchases: Purchase[] }) {
-  const totals = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - index));
-    const day = date.toISOString().slice(0, 10);
-    return sum(
-      purchases
-        .filter((purchase) => purchase.occurredAt.slice(0, 10) === day)
-        .map((purchase) => purchase.totalYen),
-    );
-  });
+function MiniBars({ dailySpending }: { dailySpending: HomeSummary["dailySpending"] }) {
+  const totals = dailySpending.map((day) => day.amountYen);
   const peak = Math.max(...totals, 1);
   return (
     <div className="mini-chart" aria-label="直近7日の支出">
       <div className="mini-bars">
-        {totals.map((amount, index) => (
-          <div key={index} className="bar-track">
+        {dailySpending.map((day, index) => (
+          <div key={day.date} className="bar-track" title={`${day.date}: ${yen(day.amountYen)}`}>
             <i
-              style={{ height: `${Math.max(5, (amount / peak) * 100)}%` }}
-              className={index === 6 ? "bar-current" : ""}
+              style={{ height: `${Math.max(5, (day.amountYen / peak) * 100)}%` }}
+              className={index === dailySpending.length - 1 ? "bar-current" : ""}
             />
           </div>
         ))}
       </div>
       <div className="chart-labels">
-        {["月", "火", "水", "木", "金", "土", "日"].map((day, index) => (
-          <span key={index}>{index === 0 ? "7日前" : index === 6 ? "今日" : day}</span>
+        {dailySpending.map((day) => (
+          <span key={day.date} title={day.date}>
+            {new Date(`${day.date}T00:00:00Z`).toLocaleDateString("ja-JP", {
+              weekday: "short",
+              timeZone: "UTC",
+            })}
+          </span>
         ))}
       </div>
     </div>

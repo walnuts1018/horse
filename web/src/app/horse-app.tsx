@@ -35,7 +35,6 @@ import {
   householdsQuery,
 } from "./api/operations";
 import { useCreateAndPostPurchase } from "../entities/purchase";
-import { parseLedgerSearch, serializeLedgerSearch } from "../pages/ledger";
 import { GraphQLErrorBoundary } from "./graphql-error-boundary";
 import {
   claimPurchaseOutbox,
@@ -87,13 +86,6 @@ export function App() {
   const currentHouseholdId = useRef(household?.id);
   currentHouseholdId.current = household?.id;
   const autoNavigateKey = useRef<string | null>(null);
-
-  useEffect(() => {
-    void navigate({
-      replace: true,
-      search: (previous) => serializeLedgerSearch(parseLedgerSearch(previous)),
-    });
-  }, [navigate]);
 
   useEffect(() => {
     setMobileMenu(false);

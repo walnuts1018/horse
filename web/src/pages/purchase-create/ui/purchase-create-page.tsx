@@ -72,7 +72,6 @@ export function PurchaseCreatePage({
   onQueued: (idempotencyKey: string) => void;
   onUnsavedChanges: (unsaved: boolean) => void;
 }) {
-  const defaultCategoryId = household.categories.find((item) => !item.archived)?.id ?? "";
   const [merchant, setMerchant] = useState("");
   const [occurredAt, setOccurredAt] = useState(localDateTime);
   const [paymentRows, setPaymentRows] = useState<PaymentDraft[]>(() => [
@@ -88,7 +87,7 @@ export function PurchaseCreatePage({
   const [itemAmount, setItemAmount] = useState("");
   const [selectedProductVariantId, setSelectedProductVariantId] = useState("");
   const [productSuggestions, setProductSuggestions] = useState<ProductSuggestion[]>([]);
-  const [categoryId, setCategoryId] = useState(defaultCategoryId);
+  const [categoryId, setCategoryId] = useState("");
   const categorySource = useRef<CategorySource>("default");
   const [storageReady, setStorageReady] = useState(false);
   const [draftHouseholdId, setDraftHouseholdId] = useState<string | null>(null);
@@ -123,7 +122,7 @@ export function PurchaseCreatePage({
     setItemName(name);
     setSelectedProductVariantId("");
     if (categorySource.current === "history" || categorySource.current === "product")
-      updateCategory(defaultCategoryId, "default");
+      updateCategory("", "default");
   };
   const outbox = usePurchaseOutbox();
   const householdOutbox = outbox.entries.filter(
@@ -182,7 +181,7 @@ export function PurchaseCreatePage({
           }
           setItemName(loaded.itemName);
           setItemAmount(loaded.itemAmount);
-          updateCategory(loaded.categoryId || defaultCategoryId, "restored");
+          updateCategory(loaded.categoryId ?? "", loaded.categoryId ? "restored" : "default");
           setItems(loaded.items);
           setSavedAt(new Date());
         }
@@ -297,9 +296,9 @@ export function PurchaseCreatePage({
       setCategoryId(match.categoryId);
     } else if (categorySource.current === "history") {
       categorySource.current = "default";
-      setCategoryId(defaultCategoryId);
+      setCategoryId("");
     }
-  }, [itemName, history, defaultCategoryId]);
+  }, [itemName, history]);
   const suggestions = useMemo(() => {
     const seen = new Set<string>();
     return history
@@ -368,7 +367,7 @@ export function PurchaseCreatePage({
     setItems((current) => [...current, item]);
     setItemName("");
     setItemAmount("");
-    updateCategory(defaultCategoryId, "default");
+    updateCategory("", "default");
     setSelectedProductVariantId("");
     setProductSuggestions([]);
     setFocused("name");
@@ -469,7 +468,13 @@ export function PurchaseCreatePage({
         key: crypto.randomUUID(),
         name,
         amount: amount.replace(/[¥,]/g, ""),
-        categoryId: categorySource.current === "manual" ? categoryId : defaultCategoryId,
+        categoryId:
+          categorySource.current === "manual" || categorySource.current === "restored"
+            ? categoryId
+            : (history
+                .flatMap((purchase) => purchase.items)
+                .find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())
+                ?.categoryId ?? ""),
         allocations: [],
       })),
     ]);
@@ -582,7 +587,7 @@ export function PurchaseCreatePage({
       setPaymentAutoTotal(true);
       setItemName("");
       setItemAmount("");
-      updateCategory(defaultCategoryId, "default");
+      updateCategory("", "default");
       setItems([]);
       setSavedAt(null);
       setHasUnsavedChanges(false);

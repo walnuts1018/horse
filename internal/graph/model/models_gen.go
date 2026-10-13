@@ -1008,6 +1008,16 @@ func (GiftTransferLedgerEntry) IsTransferLedgerEntry() {}
 func (this GiftTransferLedgerEntry) GetFromMember() *Member { return this.FromMember }
 func (this GiftTransferLedgerEntry) GetToMember() *Member   { return this.ToMember }
 
+type HomeDailySpending struct {
+	Date      Date `json:"date"`
+	AmountYen Long `json:"amountYen"`
+}
+
+type HomeSummary struct {
+	DailySpending    []*HomeDailySpending `json:"dailySpending"`
+	MonthlyItemCount Long                 `json:"monthlyItemCount"`
+}
+
 type Household struct {
 	ID                string        `json:"id"`
 	Name              string        `json:"name"`

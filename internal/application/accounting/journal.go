@@ -140,15 +140,18 @@ func BuildPurchaseEntries(allocations []PurchaseAllocation, payments []PurchaseP
 }
 
 func InsertEntries(ctx context.Context, executor bob.Executor, journalID gofrsuuid.UUID, entries []Entry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	setters := make([]*models.JournalEntrySetter, 0, len(entries))
 	for _, entry := range entries {
-		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+		setters = append(setters, &models.JournalEntrySetter{
 			JournalID: &journalID, LineNo: &entry.LineNo, AccountID: &entry.AccountID, PoolID: &entry.PoolID,
 			MemberID: &entry.MemberID, DebitYen: &entry.DebitYen, CreditYen: &entry.CreditYen, Memo: &entry.Memo,
-		}).Exec(ctx, executor); err != nil {
-			return err
-		}
+		})
 	}
-	return nil
+	_, err := models.JournalEntries.Insert(bob.ToMods(setters...)).All(ctx, executor)
+	return err
 }
 
 func nullableUUID(value *gofrsuuid.UUID) sql.Null[gofrsuuid.UUID] {

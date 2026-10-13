@@ -525,6 +525,16 @@ type ComplexityRoot struct {
 		ToMember    func(childComplexity int) int
 	}
 
+	HomeDailySpending struct {
+		AmountYen func(childComplexity int) int
+		Date      func(childComplexity int) int
+	}
+
+	HomeSummary struct {
+		DailySpending    func(childComplexity int) int
+		MonthlyItemCount func(childComplexity int) int
+	}
+
 	Household struct {
 		Accounts          func(childComplexity int) int
 		Categories        func(childComplexity int) int
@@ -888,6 +898,7 @@ type ComplexityRoot struct {
 		AllocationRules         func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		Budgets                 func(childComplexity int, householdID string, period model.YearMonth, after *string, before *string, first *int, last *int) int
 		FundingSchedules        func(childComplexity int, householdID string, active *bool, after *string, before *string, first *int, last *int) int
+		HomeSummary             func(childComplexity int, householdID string) int
 		Household               func(childComplexity int, id string) int
 		HouseholdInvitations    func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		Households              func(childComplexity int) int
@@ -1421,6 +1432,7 @@ type QueryResolver interface {
 	AllocationRules(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.AllocationRuleConnection, error)
 	Budgets(ctx context.Context, householdID string, period model.YearMonth, after *string, before *string, first *int, last *int) (*model.BudgetConnection, error)
 	FundingSchedules(ctx context.Context, householdID string, active *bool, after *string, before *string, first *int, last *int) (*model.FundingScheduleConnection, error)
+	HomeSummary(ctx context.Context, householdID string) (*model.HomeSummary, error)
 	Households(ctx context.Context) ([]*model.Household, error)
 	Household(ctx context.Context, id string) (*model.Household, error)
 	HouseholdInvitations(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.HouseholdInvitationConnection, error)
@@ -2895,6 +2907,32 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.GiftTransferLedgerEntry.ToMember(childComplexity), true
+
+	case "HomeDailySpending.amountYen":
+		if e.ComplexityRoot.HomeDailySpending.AmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HomeDailySpending.AmountYen(childComplexity), true
+	case "HomeDailySpending.date":
+		if e.ComplexityRoot.HomeDailySpending.Date == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HomeDailySpending.Date(childComplexity), true
+
+	case "HomeSummary.dailySpending":
+		if e.ComplexityRoot.HomeSummary.DailySpending == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HomeSummary.DailySpending(childComplexity), true
+	case "HomeSummary.monthlyItemCount":
+		if e.ComplexityRoot.HomeSummary.MonthlyItemCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HomeSummary.MonthlyItemCount(childComplexity), true
 
 	case "Household.accounts":
 		if e.ComplexityRoot.Household.Accounts == nil {
@@ -4579,6 +4617,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.FundingSchedules(childComplexity, args["householdId"].(string), args["active"].(*bool), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
+	case "Query.homeSummary":
+		if e.ComplexityRoot.Query.HomeSummary == nil {
+			break
+		}
+
+		args, err := ec.field_Query_homeSummary_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.HomeSummary(childComplexity, args["householdId"].(string)), true
 	case "Query.household":
 		if e.ComplexityRoot.Query.Household == nil {
 			break
@@ -6567,6 +6616,20 @@ extend type Query {
   fundingSchedules(householdId: ID! @nodeID(of: "Household"), active: Boolean, after: String, before: String, first: Int, last: Int): FundingScheduleConnection!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/home_summary.graphql", Input: `type HomeDailySpending {
+  date: Date!
+  amountYen: Long!
+}
+
+type HomeSummary {
+  dailySpending: [HomeDailySpending!]!
+  monthlyItemCount: Long!
+}
+
+extend type Query {
+  homeSummary(householdId: ID! @nodeID(of: "Household")): HomeSummary!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/household.graphql", Input: `type Household implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
@@ -8196,6 +8259,26 @@ func (ec *executionContext) childFields_FundingScheduleEdge(ctx context.Context,
 		return ec.fieldContext_FundingScheduleEdge_node(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type FundingScheduleEdge", field.Name)
+}
+
+func (ec *executionContext) childFields_HomeDailySpending(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "date":
+		return ec.fieldContext_HomeDailySpending_date(ctx, field)
+	case "amountYen":
+		return ec.fieldContext_HomeDailySpending_amountYen(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type HomeDailySpending", field.Name)
+}
+
+func (ec *executionContext) childFields_HomeSummary(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "dailySpending":
+		return ec.fieldContext_HomeSummary_dailySpending(ctx, field)
+	case "monthlyItemCount":
+		return ec.fieldContext_HomeSummary_monthlyItemCount(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type HomeSummary", field.Name)
 }
 
 func (ec *executionContext) childFields_Household(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -10124,6 +10207,63 @@ func (ec *executionContext) field_Query_fundingSchedules_args(ctx context.Contex
 }
 
 func (ec *executionContext) field_Query_fundingSchedules_argsHouseholdID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["householdId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["householdId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Household")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
+}
+
+func (ec *executionContext) field_Query_homeSummary_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+
+	arg0, err := ec.field_Query_homeSummary_argsHouseholdID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_homeSummary_argsHouseholdID(
 	ctx context.Context,
 	rawArgs map[string]any,
 ) (string, error) {
@@ -17095,6 +17235,107 @@ func (ec *executionContext) fieldContext_GiftTransferLedgerEntry_toMember(_ cont
 	return fc, nil
 }
 
+func (ec *executionContext) _HomeDailySpending_date(ctx context.Context, field graphql.CollectedField, obj *model.HomeDailySpending) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HomeDailySpending_date(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Date, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Date) graphql.Marshaler {
+			return ec.marshalNDate2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDate(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HomeDailySpending_date(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HomeDailySpending", field, false, false, errors.New("field of type Date does not have child fields"))
+}
+
+func (ec *executionContext) _HomeDailySpending_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.HomeDailySpending) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HomeDailySpending_amountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HomeDailySpending_amountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HomeDailySpending", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _HomeSummary_dailySpending(ctx context.Context, field graphql.CollectedField, obj *model.HomeSummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HomeSummary_dailySpending(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.DailySpending, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.HomeDailySpending) graphql.Marshaler {
+			return ec.marshalNHomeDailySpending2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHomeDailySpendingᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HomeSummary_dailySpending(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HomeSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HomeDailySpending(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HomeSummary_monthlyItemCount(ctx context.Context, field graphql.CollectedField, obj *model.HomeSummary) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HomeSummary_monthlyItemCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MonthlyItemCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HomeSummary_monthlyItemCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HomeSummary", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
 func (ec *executionContext) _Household_id(ctx context.Context, field graphql.CollectedField, obj *model.Household) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -23964,6 +24205,50 @@ func (ec *executionContext) fieldContext_Query_fundingSchedules(ctx context.Cont
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_fundingSchedules_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_homeSummary(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_homeSummary(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().HomeSummary(ctx, fc.Args["householdId"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.HomeSummary) graphql.Marshaler {
+			return ec.marshalNHomeSummary2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHomeSummary(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_homeSummary(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HomeSummary(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_homeSummary_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -41319,6 +41604,92 @@ func (ec *executionContext) _GiftTransferLedgerEntry(ctx context.Context, sel as
 	return out
 }
 
+var homeDailySpendingImplementors = []string{"HomeDailySpending"}
+
+func (ec *executionContext) _HomeDailySpending(ctx context.Context, sel ast.SelectionSet, obj *model.HomeDailySpending) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, homeDailySpendingImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("HomeDailySpending")
+		case "date":
+			out.Values[i] = ec._HomeDailySpending_date(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "amountYen":
+			out.Values[i] = ec._HomeDailySpending_amountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var homeSummaryImplementors = []string{"HomeSummary"}
+
+func (ec *executionContext) _HomeSummary(ctx context.Context, sel ast.SelectionSet, obj *model.HomeSummary) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, homeSummaryImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("HomeSummary")
+		case "dailySpending":
+			out.Values[i] = ec._HomeSummary_dailySpending(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "monthlyItemCount":
+			out.Values[i] = ec._HomeSummary_monthlyItemCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var householdImplementors = []string{"Household", "Node"}
 
 func (ec *executionContext) _Household(ctx context.Context, sel ast.SelectionSet, obj *model.Household) graphql.Marshaler {
@@ -45359,6 +45730,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_fundingSchedules(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "homeSummary":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_homeSummary(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -49857,6 +50250,42 @@ func (ec *executionContext) marshalNFundingScheduleEdge2ᚖgithubᚗcomᚋwalnut
 		return graphql.Null
 	}
 	return ec._FundingScheduleEdge(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNHomeDailySpending2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHomeDailySpendingᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.HomeDailySpending) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNHomeDailySpending2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHomeDailySpending(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNHomeDailySpending2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHomeDailySpending(ctx context.Context, sel ast.SelectionSet, v *model.HomeDailySpending) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._HomeDailySpending(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNHomeSummary2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHomeSummary(ctx context.Context, sel ast.SelectionSet, v *model.HomeSummary) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._HomeSummary(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNHousehold2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Household) graphql.Marshaler {

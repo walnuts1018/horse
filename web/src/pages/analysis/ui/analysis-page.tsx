@@ -189,11 +189,15 @@ export function AnalysisPage({ household }: { household: Household }) {
   const finalMonth = months[months.length - 1];
   const from = `${months[0]}-01T00:00:00+09:00`;
   const to = `${nextMonth(finalMonth)}-01T00:00:00+09:00`;
-  const { purchases, loadingMore, moreError } = useHouseholdPurchases(household.id, 100, {
-    from,
-    to,
-    loadAll: true,
-  });
+  const { purchases, loadingMore, moreError, hasNextPage, loadMore } = useHouseholdPurchases(
+    household.id,
+    100,
+    {
+      from,
+      to,
+      loadAll: true,
+    },
+  );
   const [spending, setSpending] = useState<
     Array<{
       period: string;
@@ -287,64 +291,86 @@ export function AnalysisPage({ household }: { household: Household }) {
     };
   }, [household.id]);
 
-  const data = purchaseDimensions(purchases, household);
-  const categories = Array.from(
-    spending
-      .reduce((totals, entry) => {
-        const id = entry.categoryId ?? "uncategorized";
-        const current = totals.get(id) ?? {
-          id,
-          name: entry.categoryName ?? "未分類",
-          amount: 0,
-          count: 0,
-        };
-        current.amount += entry.amountYen;
-        totals.set(id, current);
-        return totals;
-      }, new Map<string, AnalyticsRow>())
-      .values(),
-  ).sort((a, b) => b.amount - a.amount);
-  const members = Array.from(
-    memberSpending
-      .reduce((totals, entry) => {
-        const current = totals.get(entry.memberId) ?? {
-          id: entry.memberId,
-          name: entry.memberName,
-          amount: 0,
-          count: 0,
-        };
-        current.amount += entry.amountYen;
-        current.count += 1;
-        totals.set(entry.memberId, current);
-        return totals;
-      }, new Map<string, AnalyticsRow>())
-      .values(),
-  );
+  const usesPurchases = dimension !== "category" && dimension !== "member";
+  const aggregateError = usesPurchases
+    ? moreError
+    : dimension === "category"
+      ? spendingError
+      : memberSpendingError;
+  const aggregateLoading = usesPurchases
+    ? loadingMore || hasNextPage
+    : dimension === "category"
+      ? spendingLoading
+      : memberSpendingLoading;
+  const aggregateReady = !aggregateError && !aggregateLoading;
+  const data = aggregateReady && usesPurchases ? purchaseDimensions(purchases, household) : null;
+  const categories = aggregateReady
+    ? Array.from(
+        spending
+          .reduce((totals, entry) => {
+            const id = entry.categoryId ?? "uncategorized";
+            const current = totals.get(id) ?? {
+              id,
+              name: entry.categoryName ?? "未分類",
+              amount: 0,
+              count: 0,
+            };
+            current.amount += entry.amountYen;
+            totals.set(id, current);
+            return totals;
+          }, new Map<string, AnalyticsRow>())
+          .values(),
+      ).sort((a, b) => b.amount - a.amount)
+    : [];
+  const members = aggregateReady
+    ? Array.from(
+        memberSpending
+          .reduce((totals, entry) => {
+            const current = totals.get(entry.memberId) ?? {
+              id: entry.memberId,
+              name: entry.memberName,
+              amount: 0,
+              count: 0,
+            };
+            current.amount += entry.amountYen;
+            current.count += 1;
+            totals.set(entry.memberId, current);
+            return totals;
+          }, new Map<string, AnalyticsRow>())
+          .values(),
+      )
+    : [];
   const selectedRows =
     dimension === "category"
       ? categories
       : dimension === "member"
         ? members
-        : Array.from(data.rows[dimension].values());
+        : data
+          ? Array.from(data.rows[dimension].values())
+          : [];
   const rows = selectedRows.sort((a, b) => b.amount - a.amount).slice(0, 8);
-  const monthly = months.map((month) => ({
-    month,
-    amount:
-      dimension === "category"
-        ? sum(spending.filter((entry) => entry.period === month).map((entry) => entry.amountYen))
-        : dimension === "member"
-          ? sum(
-              memberSpending
-                .filter((entry) => entry.period === month)
-                .map((entry) => entry.amountYen),
-            )
-          : sum(
-              data.monthly[dimension]
-                .filter((entry) => entry.month === month)
-                .map((entry) => entry.amount),
-            ),
-  }));
-  const total = sum(monthly.map((row) => row.amount));
+  const monthly = aggregateReady
+    ? months.map((month) => ({
+        month,
+        amount:
+          dimension === "category"
+            ? sum(
+                spending.filter((entry) => entry.period === month).map((entry) => entry.amountYen),
+              )
+            : dimension === "member"
+              ? sum(
+                  memberSpending
+                    .filter((entry) => entry.period === month)
+                    .map((entry) => entry.amountYen),
+                )
+              : sum(
+                  data!.monthly[dimension]
+                    .filter((entry) => entry.month === month)
+                    .map((entry) => entry.amount),
+                ),
+      }))
+    : [];
+  const total = aggregateReady ? sum(monthly.map((row) => row.amount)) : 0;
   const displayedPeriodCount = months.length;
   const max = Math.max(...monthly.map((row) => row.amount), 1);
   const peakRow = rows[0];
@@ -356,10 +382,7 @@ export function AnalysisPage({ household }: { household: Household }) {
     account: "決済元",
     member: "メンバー負担",
   };
-  const isLoading =
-    loadingMore || spendingLoading || (dimension === "member" && memberSpendingLoading);
-  const loadError =
-    moreError || spendingError || budgetError || recurringError || memberSpendingError;
+  const loadError = budgetError || recurringError;
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
@@ -434,23 +457,37 @@ export function AnalysisPage({ household }: { household: Household }) {
         </div>
       </div>
       {loadError && <InlineError message={loadError} />}
-      <div className="analysis-summary">
-        <section className="panel summary-card">
-          <span className="eyebrow">期間合計</span>
-          <h2>{yen(total)}</h2>
-          <small>{annual ? `${annualYear}年` : `${displayedPeriodCount}か月`}</small>
-        </section>
-        <section className="panel summary-card">
-          <span className="eyebrow">月平均</span>
-          <h2>{yen(Math.round(total / displayedPeriodCount))}</h2>
-          <small>{displayedPeriodCount}か月</small>
-        </section>
-        <section className="panel summary-card">
-          <span className="eyebrow">最多の{labels[dimension]}</span>
-          <h2>{peakRow?.name ?? "—"}</h2>
-          <small>{peakRow ? yen(peakRow.amount) : "記録なし"}</small>
-        </section>
-      </div>
+      {aggregateError && <InlineError message={aggregateError} />}
+      {usesPurchases && moreError && hasNextPage && (
+        <button className="text-button" onClick={loadMore}>
+          再試行
+        </button>
+      )}
+      {aggregateLoading && (
+        <div className="empty-state compact">
+          <BarChart3 />
+          <span>{usesPurchases ? "購入履歴を取得中" : "集計中"}</span>
+        </div>
+      )}
+      {aggregateReady && (
+        <div className="analysis-summary">
+          <section className="panel summary-card">
+            <span className="eyebrow">期間合計</span>
+            <h2>{yen(total)}</h2>
+            <small>{annual ? `${annualYear}年` : `${displayedPeriodCount}か月`}</small>
+          </section>
+          <section className="panel summary-card">
+            <span className="eyebrow">月平均</span>
+            <h2>{yen(Math.round(total / displayedPeriodCount))}</h2>
+            <small>{displayedPeriodCount}か月</small>
+          </section>
+          <section className="panel summary-card">
+            <span className="eyebrow">最多の{labels[dimension]}</span>
+            <h2>{peakRow?.name ?? "—"}</h2>
+            <small>{peakRow ? yen(peakRow.amount) : "記録なし"}</small>
+          </section>
+        </div>
+      )}
       {budgets.length > 0 && (
         <section className="panel analysis-budget-panel">
           <div className="panel-heading">
@@ -517,31 +554,25 @@ export function AnalysisPage({ household }: { household: Household }) {
           ))
         )}
       </section>
-      <div className="analysis-grid">
-        <section className="panel analysis-chart-panel">
-          <div className="panel-heading">
-            <div>
-              <span className="eyebrow">月別推移</span>
-              <h2>{labels[dimension]}の支出</h2>
-              {dimension === "member" && (
-                <small>
-                  購入時の負担スナップショット
-                  {hasUnattributedPurchases && " · 履歴不明の購入を含みません"}
-                </small>
-              )}
+      {aggregateReady && (
+        <div className="analysis-grid">
+          <section className="panel analysis-chart-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="eyebrow">月別推移</span>
+                <h2>{labels[dimension]}の支出</h2>
+                {dimension === "member" && (
+                  <small>
+                    購入時の負担スナップショット
+                    {hasUnattributedPurchases && " · 履歴不明の購入を含みません"}
+                  </small>
+                )}
+              </div>
+              <span className="chart-legend">
+                <i />
+                合計
+              </span>
             </div>
-            <span className="chart-legend">
-              <i />
-              合計
-            </span>
-          </div>
-          {isLoading ? (
-            <div className="skeleton-list">
-              <i />
-              <i />
-              <i />
-            </div>
-          ) : (
             <div className="monthly-chart">
               {monthly.map((row) => (
                 <div className="month-column" key={row.month}>
@@ -551,38 +582,38 @@ export function AnalysisPage({ household }: { household: Household }) {
                 </div>
               ))}
             </div>
-          )}
-        </section>
-        <section className="panel category-panel">
-          <div className="panel-heading">
-            <div>
-              <span className="eyebrow">内訳</span>
-              <h2>{labels[dimension]}別</h2>
-            </div>
-          </div>
-          {rows.length === 0 ? (
-            <div className="empty-state compact">
-              <BarChart3 />
-              <span>支出の記録</span>
-            </div>
-          ) : (
-            rows.map((row, index) => (
-              <div className="category-row" key={row.id}>
-                <span className={`category-swatch swatch-${index % 6}`} />
-                <span>{row.name}</span>
-                <i>
-                  <b
-                    style={{
-                      width: `${Math.max(8, (row.amount / (rows[0]?.amount || 1)) * 100)}%`,
-                    }}
-                  />
-                </i>
-                <strong>{yen(row.amount)}</strong>
+          </section>
+          <section className="panel category-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="eyebrow">内訳</span>
+                <h2>{labels[dimension]}別</h2>
               </div>
-            ))
-          )}
-        </section>
-      </div>
+            </div>
+            {rows.length === 0 ? (
+              <div className="empty-state compact">
+                <BarChart3 />
+                <span>支出の記録</span>
+              </div>
+            ) : (
+              rows.map((row, index) => (
+                <div className="category-row" key={row.id}>
+                  <span className={`category-swatch swatch-${index % 6}`} />
+                  <span>{row.name}</span>
+                  <i>
+                    <b
+                      style={{
+                        width: `${Math.max(8, (row.amount / (rows[0]?.amount || 1)) * 100)}%`,
+                      }}
+                    />
+                  </i>
+                  <strong>{yen(row.amount)}</strong>
+                </div>
+              ))
+            )}
+          </section>
+        </div>
+      )}
       {dimension === "item" && rows.length > 0 && (
         <section className="panel analysis-price-panel">
           <div className="panel-heading">
@@ -610,7 +641,7 @@ export function AnalysisPage({ household }: { household: Household }) {
             </label>
           </div>
           {rows.slice(0, 5).map((row) => {
-            const prices = data.monthly.item
+            const prices = (data?.monthly.item ?? [])
               .filter((entry) => entry.id === row.id)
               .sort((left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt));
             const trend =

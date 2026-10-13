@@ -106,4 +106,57 @@ func TestCreatePurchaseAndPostPurchaseCanShareIdempotencyKey(t *testing.T) {
 	if posted.ID != purchase.ID || posted.Status != model.PurchaseStatusPosted {
 		t.Fatalf("postPurchase did not post the created purchase: created=%#v posted=%#v", purchase, posted)
 	}
+
+	fundingInput := model.RecordFundingInput{
+		HouseholdID: household.ID, MemberID: memberID, PoolID: pool.ID, AmountYen: 250,
+		OccurredAt: testPurchaseTime, IdempotencyKey: uuid.NewV7().String(),
+	}
+	funding, err := resolver.recordFunding(ctx, fundingInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retriedFunding, err := resolver.recordFunding(ctx, fundingInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retriedFunding.ID != funding.ID {
+		t.Fatalf("retry created a second funding ledger entry: first=%s retry=%s", funding.ID, retriedFunding.ID)
+	}
+
+	otherMemberID := uuid.NewV7().String()
+	otherMemberUUID, err := gofrsuuid.FromString(otherMemberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSubject := "idempotency-integration:" + otherMemberID
+	otherDisplayName := "idempotency beneficiary"
+	if _, err := models.Members.Insert(&models.MemberSetter{
+		ID: &otherMemberUUID, OidcSubject: &otherSubject, DisplayName: &otherDisplayName,
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(otherMemberUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
+	})
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{
+		HouseholdID: &householdUUID, MemberID: &otherMemberUUID,
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	transferInput := model.RecordTransferInput{
+		HouseholdID: household.ID, FromMemberID: memberID, ToMemberID: otherMemberID,
+		Kind: model.TransferInputKindGift, AmountYen: 125, OccurredAt: testPurchaseTime,
+		Description: "Idempotency test", IdempotencyKey: uuid.NewV7().String(),
+	}
+	transfer, err := resolver.recordTransfer(ctx, transferInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retriedTransfer, err := resolver.recordTransfer(ctx, transferInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retriedTransfer.ID != transfer.ID {
+		t.Fatalf("retry created a second transfer ledger entry: first=%s retry=%s", transfer.ID, retriedTransfer.ID)
+	}
 }

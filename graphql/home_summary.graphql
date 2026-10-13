@@ -1,0 +1,13 @@
+type HomeDailySpending {
+  date: Date!
+  amountYen: Long!
+}
+
+type HomeSummary {
+  dailySpending: [HomeDailySpending!]!
+  monthlyItemCount: Long!
+}
+
+extend type Query {
+  homeSummary(householdId: ID! @nodeID(of: "Household")): HomeSummary!
+}
