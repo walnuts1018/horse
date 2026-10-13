@@ -174,6 +174,8 @@ Purchaseの履歴QueryをRelay生成operationへ移し、Purchase Entityのmappe
 
 ### 2026年10月14日のレビュー対応
 
+招待の発行・失効を設定pageのAPIへ移し、Relay生成Mutation型と結果unionの明示的な分岐を使うようにしました。招待一覧のread pathと合わせ、設定UIから`readGraphql<T>`とunsafe castを除去しました。発行tokenの表示、一時IDの保持、一覧更新順は維持しています。型検査、FSD検査、lint、format、Relay検証が成功しました。
+
 購入証拠の取得状態と表示をLedgerの同sliceにあるAPI・model・UIへ分離しました。画像・PDF表示、品目ハイライト、取得エラーを維持し、`ledger-page.tsx`は1,775行から1,695行になりました。取込検索条件はURLクエリから復元し、適用、戻る、進むで同期します。原本ファイル名はAPIが返す保存値を優先します。
 
 予算、タグ、定期支出の一覧read operationをRelay生成型と明示mapperへ移しました。手書きConnection型と`readGraphql<T>`を除き、金額とenumの変換を各mapperで明示します。未知の定期支出cadenceは暗黙変換せずエラーにします。

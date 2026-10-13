@@ -1,8 +1,10 @@
-import { fetchQuery, graphql } from "react-relay";
+import { commitMutation, fetchQuery, graphql } from "react-relay";
 import {
   getRelayEnvironment,
+  type CreateHouseholdInvitationMutation$data,
   type HouseholdInvitationsQuery,
   type HouseholdInvitationsQuery$data,
+  type RevokeHouseholdInvitationMutation$data,
 } from "../../../shared/api";
 
 export type HouseholdInvitation = {
@@ -19,6 +21,11 @@ export type HouseholdInvitationPage = {
   invitations: HouseholdInvitation[];
   endCursor: string | null;
   hasNextPage: boolean;
+};
+
+export type CreatedHouseholdInvitation = {
+  token: string;
+  invitation: HouseholdInvitation;
 };
 
 type HouseholdInvitationRecord =
@@ -40,6 +47,80 @@ export async function readHouseholdInvitations(
     endCursor: data.householdInvitations.pageInfo.endCursor ?? null,
     hasNextPage: data.householdInvitations.pageInfo.hasNextPage,
   };
+}
+
+export function createHouseholdInvitation(input: {
+  householdId: string;
+  expiresAt: string;
+}): Promise<CreatedHouseholdInvitation> {
+  return new Promise((resolve, reject) =>
+    commitMutation(getRelayEnvironment(), {
+      mutation: createHouseholdInvitationMutation,
+      variables: { input },
+      onCompleted: (response, errors) => {
+        if (errors?.length) {
+          reject(new Error(errors[0].message));
+          return;
+        }
+        const result = (response as CreateHouseholdInvitationMutation$data)
+          .createHouseholdInvitation;
+        switch (result.__typename) {
+          case "CreateHouseholdInvitationSuccess": {
+            if (!result.result) {
+              reject(new Error("招待を発行できませんでした"));
+              return;
+            }
+            resolve({
+              token: result.result.token,
+              invitation: mapHouseholdInvitation(result.result.invitation),
+            });
+            return;
+          }
+          case "MutationError":
+            reject(new Error(result.message ?? "招待を発行できませんでした"));
+            return;
+          default:
+            reject(new Error(`未対応の招待発行結果です: ${result.__typename}`));
+        }
+      },
+      onError: reject,
+    }),
+  );
+}
+
+export function revokeHouseholdInvitation(input: {
+  householdId: string;
+  invitationId: string;
+}): Promise<void> {
+  return new Promise((resolve, reject) =>
+    commitMutation(getRelayEnvironment(), {
+      mutation: revokeHouseholdInvitationMutation,
+      variables: { input },
+      onCompleted: (response, errors) => {
+        if (errors?.length) {
+          reject(new Error(errors[0].message));
+          return;
+        }
+        const result = (response as RevokeHouseholdInvitationMutation$data)
+          .revokeHouseholdInvitation;
+        switch (result.__typename) {
+          case "RevokeHouseholdInvitationSuccess":
+            if (!result.result) {
+              reject(new Error("招待を失効できませんでした"));
+              return;
+            }
+            resolve();
+            return;
+          case "MutationError":
+            reject(new Error(result.message ?? "招待を失効できませんでした"));
+            return;
+          default:
+            reject(new Error(`未対応の招待失効結果です: ${result.__typename}`));
+        }
+      },
+      onError: reject,
+    }),
+  );
 }
 
 function mapHouseholdInvitation(record: HouseholdInvitationRecord): HouseholdInvitation {

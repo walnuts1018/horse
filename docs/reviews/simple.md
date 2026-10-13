@@ -24,7 +24,7 @@
 
 [use-household-purchases.ts](../../web/src/entities/purchase/api/use-household-purchases.ts)は生成されたPurchaseList fragmentの品目型を受け取る明示的なEntity mapperを使い、`as unknown as PurchaseItem[]`を解消しています。
 
-購入作成・記帳と品目更新の変数変換はPurchase Entity内の生成型mapperへ移し、Mutation名による共通基盤の分岐と`as never`を削除しました。購入履歴の2画面、口座活動、残高一覧と履歴、配賦ルール、予算、タグ、定期支出、商品カタログ、商品候補、招待一覧、ホームの概要・月間支出・精算結果、分析の月間支出・メンバー別支出、精算と貸付一覧、未照合観測の読み込みをRelay生成operationと明示mapperへ移しました。これらのread pathは`normalizeGraphQLValue()`を通りません。残る`readGraphql<T>`の利用箇所は招待の発行・失効と設定Mutationで、Mutation結果の共通変換と手書き通信型は残っています。
+購入作成・記帳と品目更新の変数変換はPurchase Entity内の生成型mapperへ移し、Mutation名による共通基盤の分岐と`as never`を削除しました。購入履歴の2画面、口座活動、残高一覧と履歴、配賦ルール、予算、タグ、定期支出、商品カタログ、商品候補、招待一覧、ホームの概要・月間支出・精算結果、分析の月間支出・メンバー別支出、精算と貸付一覧、未照合観測の読み込みをRelay生成operationと明示mapperへ移しました。これらのread pathは`normalizeGraphQLValue()`を通りません。招待の発行・失効もRelay生成Mutation型を使うpage APIへ移し、残る`readGraphql<T>`の利用箇所は設定Mutationです。Mutation結果の共通変換と手書き通信型は残っています。
 
 ## 3. 中優先：会計の共通規則が複数パッケージに重複している
 

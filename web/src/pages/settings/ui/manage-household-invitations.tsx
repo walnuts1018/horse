@@ -2,14 +2,9 @@ import styles from "./settings-page.module.css";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import {
-  readGraphql,
-  type CreateHouseholdInvitationMutation$data,
-  type RevokeHouseholdInvitationMutation$data,
-} from "../../../shared/api";
-import {
-  createHouseholdInvitationMutation,
+  createHouseholdInvitation,
   readHouseholdInvitations,
-  revokeHouseholdInvitationMutation,
+  revokeHouseholdInvitation,
   type HouseholdInvitation,
 } from "../api/household-invitations";
 
@@ -69,13 +64,7 @@ export function ManageHouseholdInvitations({
     onPendingChange(true);
     try {
       const expiresAt = new Date(Date.now() + Number(expiresInDays) * 86_400_000).toISOString();
-      const result = await readGraphql<CreateHouseholdInvitationMutation$data>(
-        createHouseholdInvitationMutation,
-        { input: { householdId, expiresAt } },
-      );
-      const created = result.createHouseholdInvitation as unknown as NonNullable<
-        CreateHouseholdInvitationMutation$data["createHouseholdInvitation"]["result"]
-      >;
+      const created = await createHouseholdInvitation({ householdId, expiresAt });
       onInvitationFormSaved();
       setInvitationLink(`${window.location.origin}/#invite=${encodeURIComponent(created.token)}`);
       setIssuedInvitationId(created.invitation.id);
@@ -91,9 +80,7 @@ export function ManageHouseholdInvitations({
   const revokeInvitation = async (invitationId: string) => {
     onPendingChange(true);
     try {
-      await readGraphql<RevokeHouseholdInvitationMutation$data>(revokeHouseholdInvitationMutation, {
-        input: { householdId, invitationId },
-      });
+      await revokeHouseholdInvitation({ householdId, invitationId });
       if (invitationId === issuedInvitationId) {
         setInvitationLink("");
         setIssuedInvitationId("");
