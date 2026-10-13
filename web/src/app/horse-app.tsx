@@ -65,6 +65,9 @@ export function App() {
   const params = useParams({ strict: false });
   const householdId = "householdId" in params ? params.householdId : undefined;
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const returnTo = useRouterState({
+    select: (state) => `${state.location.pathname}${state.location.searchStr}`,
+  });
   const page = appPageFromPath(pathname);
   const outbox = usePurchaseOutbox();
   const createAndPostPurchase = useCreateAndPostPurchase();
@@ -398,7 +401,10 @@ export function App() {
         <div className="auth-card">
           <div className="brand-mark">h</div>
           <h1>家計簿</h1>
-          <a className="button button-primary button-wide" href="/auth/login">
+          <a
+            className="button button-primary button-wide"
+            href={`/auth/login?returnTo=${encodeURIComponent(returnTo)}`}
+          >
             ログイン <ChevronRight size={18} />
           </a>
           {pendingInvitation && <p>ログイン後に招待を確認できます</p>}
