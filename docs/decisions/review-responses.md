@@ -249,3 +249,7 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 ### 2026年10月14日のApplication入力検証
 
 `validator/v10`を再利用する`inputvalidation.Check`をApplicationへ追加し、タグ・カテゴリ・商品別名・予算・定期支出の文字列空欄と最大長を検証します。GraphQLの必須値、scalar、Global ID形式はgqlgenに任せ、金額・期間・配賦・会計整合性は各Serviceに残します。境界検証の純粋関数テスト、対象ApplicationのGoテスト、`mise run lint`が成功しました。
+
+### Gemini利用予算の制御
+
+`docs/reviews/all2.md`が提案するアプリ内の月間利用予算・家庭別上限は追加しません。Google Cloud側のSpend Capを500円に設定し、Spend Capが利用可能な状態であることを確認済みです。費用制限と通知をGoogle Cloudで管理し、同じ役割の予算予約や利用集計をアプリへ重複実装しない判断です。Spend Capの状態や課金上限機能が利用できなくなった場合は再検討します。

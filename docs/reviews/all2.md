@@ -131,18 +131,6 @@ IndexedDBの送信待ちデータには `householdId` はありますが、登�
 
 修正方針: 下書きとOutboxを `memberId + householdId` で区別し、送信時に現在の認証ユーザーと所有者が一致していることを確認します。ログアウト後も元ユーザーの未送信データを安全に保存できる設計が適切です。
 
-### P2 — Geminiの有料フォールバックにアプリ側の利用予算制御がない
-
-[router.go:77–159](https://github.com/walnuts1018/horse/blob/345d605958294830c18ad048d677aecd9fc96a33/internal/ingestion/router.go#L77-L159)
-
-以前検討した、Free Projectを優先して必要時にPaid Projectへ切り替える方針は反映されています。モデル別ルーティングや料金推定のテストもあります。
-
-ただし、現状のRouterは無料枠の制限に遭遇すると有料経路へ進む一方、月間予算や家庭ごとの利用上限を、リクエスト送信前に検査しているわけではありません。
-
-自宅用途で利用者が限られるなら緊急性は高くありませんが、将来複数の家庭が利用する場合、一つの家庭の大量アップロードが全体の有料API利用を増やす可能性があります。
-
-Google側のSpend Capに加えて、アプリ側でも予算予約・利用量集計・家庭単位の制限を設けることを推奨します。
-
 ### P3 — AIを無効化したときのジョブ検索は、大量の待機ジョブに弱い
 
 [worker_claim.go:33–75](https://github.com/walnuts1018/horse/blob/345d605958294830c18ad048d677aecd9fc96a33/internal/ingestion/worker_claim.go#L33-L75)
