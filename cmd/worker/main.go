@@ -2,17 +2,15 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/walnuts1018/horse/internal/bootstrap/worker"
 	"github.com/walnuts1018/horse/internal/config"
 	"github.com/walnuts1018/horse/internal/ingestion"
-	"github.com/walnuts1018/horse/internal/observability"
-	"github.com/walnuts1018/horse/internal/postgres"
 )
 
 func main() {
@@ -30,46 +28,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	telemetry, err := observability.New(ctx, "horse-worker")
+	runtime, err := worker.InitializeWorker(ctx, settings)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		shutdownCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
-		defer stop()
-		if err := telemetry.Shutdown(shutdownCtx); err != nil {
-			slog.Warn("Shutdown worker telemetry failed")
-		}
-	}()
+	defer runtime.Close()
 	if !settings.GeminiEnabled {
 		slog.Info("Gemini extraction is disabled; source documents remain queued")
 	}
-	db, err := postgres.NewPool(ctx, settings.DatabaseURL)
-	if err != nil {
-		return errors.New("initialize worker database failed")
-	}
-	defer db.Close()
-	store, err := ingestion.NewObjectStore(settings.S3Endpoint, settings.S3Bucket, settings.S3AccessKeyID, settings.S3SecretAccessKey)
-	if err != nil {
-		return err
-	}
-	worker := ingestion.Worker{
-		DB:            db,
-		Store:         store,
-		GeminiEnabled: settings.GeminiEnabled && (settings.GeminiFreeAPIKey != "" || settings.GeminiPaidAPIKey != ""),
-		Router: ingestion.GeminiRouter{
-			Free:             ingestion.Gemini{APIKey: settings.GeminiFreeAPIKey, Project: settings.GeminiFreeProject},
-			Paid:             ingestion.Gemini{APIKey: settings.GeminiPaidAPIKey, Project: settings.GeminiPaidProject},
-			FlashModel:       settings.GeminiFlashModel,
-			LiteModel:        settings.GeminiLiteModel,
-			ProModel:         settings.GeminiProModel,
-			USDJPYRate:       settings.EffectiveUSDJPYRate(),
-			USDJPYRateSource: settings.EffectiveUSDJPYRateSource(),
-			USDJPYRateAsOf:   settings.USDJPYRateAsOf,
-		},
-		OCR: ingestion.OCR{Endpoint: settings.OCRURL},
-	}
-	health, err := startHealthServer(db)
+	health, err := startHealthServer(runtime.DB)
 	if err != nil {
 		return err
 	}
@@ -109,7 +76,7 @@ func run() error {
 							connected = false
 							break
 						}
-						if _, err := worker.RunOne(ctx, string(message.Body)); err != nil {
+						if _, err := runtime.Worker.RunOne(ctx, string(message.Body)); err != nil {
 							slog.Error("Run notified extraction failed", "error", err)
 							if err := message.Nack(false, true); err != nil {
 								slog.Warn("Requeue extraction notification failed", "error", err)
@@ -118,7 +85,7 @@ func run() error {
 							slog.Warn("Acknowledge extraction notification failed", "error", err)
 						}
 					case <-poll.C:
-						drain(ctx, &worker)
+						drain(ctx, &runtime.Worker)
 					}
 				}
 				poll.Stop()
@@ -134,7 +101,7 @@ func run() error {
 			case <-time.After(5 * time.Second):
 			}
 		} else {
-			drain(ctx, &worker)
+			drain(ctx, &runtime.Worker)
 			select {
 			case <-ctx.Done():
 			case <-time.After(10 * time.Second):
