@@ -331,6 +331,13 @@ export function AnalysisPage({ household }: { household: Household }) {
   if (remainingCategories.length > 0) {
     categorySeries.push({ id: "__other", name: "その他", colorIndex: 5 });
   }
+  const categoryAmountsByMonth = new Map<string, Map<string, number>>();
+  for (const entry of spending) {
+    const amounts = categoryAmountsByMonth.get(entry.period) ?? new Map<string, number>();
+    const id = entry.categoryId ?? "uncategorized";
+    amounts.set(id, (amounts.get(id) ?? 0) + entry.amountYen);
+    categoryAmountsByMonth.set(entry.period, amounts);
+  }
   const members = aggregateReady
     ? Array.from(
         memberSpending
@@ -382,6 +389,18 @@ export function AnalysisPage({ household }: { household: Household }) {
   const total = aggregateReady ? sum(monthly.map((row) => row.amount)) : 0;
   const displayedPeriodCount = months.length;
   const max = Math.max(...monthly.map((row) => row.amount), 1);
+  const categoryMonthTotals = Array.from(categoryAmountsByMonth.values()).map((amounts) =>
+    Array.from(amounts.values()).reduce(
+      (totals, amount) => {
+        if (amount > 0) totals.positive += amount;
+        if (amount < 0) totals.negative -= amount;
+        return totals;
+      },
+      { positive: 0, negative: 0 },
+    ),
+  );
+  const maxCategoryPositive = Math.max(...categoryMonthTotals.map(({ positive }) => positive), 1);
+  const maxCategoryNegative = Math.max(...categoryMonthTotals.map(({ negative }) => negative), 1);
   const peakRow = rows[0];
   const labels: Record<Dimension, string> = {
     category: "カテゴリ",
@@ -604,12 +623,7 @@ export function AnalysisPage({ household }: { household: Household }) {
                     </div>
                   );
                 }
-                const categoryAmounts = new Map<string, number>();
-                for (const entry of spending) {
-                  if (entry.period !== row.month) continue;
-                  const id = entry.categoryId ?? "uncategorized";
-                  categoryAmounts.set(id, (categoryAmounts.get(id) ?? 0) + entry.amountYen);
-                }
+                const categoryAmounts = categoryAmountsByMonth.get(row.month) ?? new Map();
                 const otherAmount = remainingCategories.reduce(
                   (amount, category) => amount + (categoryAmounts.get(category.id) ?? 0),
                   0,
@@ -621,23 +635,52 @@ export function AnalysisPage({ household }: { household: Household }) {
                       ? otherAmount
                       : (categoryAmounts.get(category.id) ?? 0),
                 }));
+                const positiveSegments = segments.filter((segment) => segment.amount > 0);
+                const negativeSegments = segments.filter((segment) => segment.amount < 0);
+                const positiveTotal = sum(positiveSegments.map((segment) => segment.amount));
+                const negativeTotal = sum(negativeSegments.map((segment) => -segment.amount));
+                const monthlyBreakdown = segments
+                  .filter((segment) => segment.amount !== 0)
+                  .map((segment) => `${segment.name} ${yen(segment.amount)}`)
+                  .join("、");
                 return (
-                  <div className="month-column category-month-column" key={row.month}>
+                  <div
+                    className="month-column category-month-column"
+                    key={row.month}
+                    role="img"
+                    aria-label={`${row.month}: ${monthlyBreakdown}、合計${yen(row.amount)}`}
+                  >
                     <b>{yen(row.amount)}</b>
-                    <div
-                      className="category-stack"
-                      style={{ height: `${Math.max(3, (row.amount / max) * 72)}%` }}
-                    >
-                      {segments
-                        .filter((segment) => segment.amount > 0)
-                        .map((segment) => (
+                    <div className="category-stack">
+                      <div
+                        className="category-positive"
+                        style={{
+                          height: `${Math.max(1, (positiveTotal / maxCategoryPositive) * 108)}px`,
+                        }}
+                      >
+                        {positiveSegments.map((segment) => (
                           <i
                             className={`swatch-${segment.colorIndex}`}
                             key={segment.id}
                             style={{ flexGrow: segment.amount }}
-                            title={`${segment.name} ${yen(segment.amount)}`}
                           />
                         ))}
+                      </div>
+                      <div className="category-baseline" />
+                      <div
+                        className="category-negative"
+                        style={{
+                          height: `${Math.max(1, (negativeTotal / maxCategoryNegative) * 30)}px`,
+                        }}
+                      >
+                        {negativeSegments.map((segment) => (
+                          <i
+                            className={`swatch-${segment.colorIndex}`}
+                            key={segment.id}
+                            style={{ flexGrow: -segment.amount }}
+                          />
+                        ))}
+                      </div>
                     </div>
                     <span>{Number(row.month.slice(5))}月</span>
                   </div>

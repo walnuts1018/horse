@@ -273,8 +273,9 @@ export function SettingsPage({
   const [movementDescription, setMovementDescription] = useState("");
   const [movementDate, setMovementDate] = useState(localDateTime);
   const [pendingIncomeIntent, setPendingIncomeIntent] = useState<AccountIncomeIntent | null>(null);
-  const [pendingMovementIntent, setPendingMovementIntent] =
-    useState<AccountMovementIntent | null>(null);
+  const [pendingMovementIntent, setPendingMovementIntent] = useState<AccountMovementIntent | null>(
+    null,
+  );
   useEffect(() => {
     onUnsavedChanges(pending || dirtyForms.size > 0);
   }, [dirtyForms, onUnsavedChanges, pending]);
