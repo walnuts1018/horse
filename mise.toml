@@ -71,11 +71,11 @@ run = "pnpm format:check"
 
 [tasks."web:format:graphql"]
 description = "GraphQL SDLのフォーマット"
-run = "mise exec -- pnpm --dir web exec oxfmt --write 'graphql/**/*.graphql'"
+run = "mise exec -- web/node_modules/.bin/oxfmt --write 'graphql/**/*.graphql'"
 
 [tasks."web:format:graphql:check"]
 description = "GraphQL SDLのフォーマット検査"
-run = "mise exec -- pnpm --dir web exec oxfmt --check 'graphql/**/*.graphql'"
+run = "mise exec -- web/node_modules/.bin/oxfmt --check 'graphql/**/*.graphql'"
 
 [tasks.api]
 description = "APIの起動"
