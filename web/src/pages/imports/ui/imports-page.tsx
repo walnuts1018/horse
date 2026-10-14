@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Camera, FileImage, ShieldCheck, Upload } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Camera, FileImage, PenLine, ShieldCheck, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "./imports-page.css";
@@ -504,6 +505,15 @@ export function ImportsPage({
               <Upload size={16} />
               ファイルを選ぶ
             </button>
+            <Link
+              className="button button-soft"
+              to="/households/$householdId/new"
+              params={{ householdId: household.id }}
+              search
+            >
+              <PenLine size={16} />
+              手入力で追加
+            </Link>
           </div>
         </section>
         <section className="panel import-review">
