@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { BookOpen, ChevronRight, Plus, Upload, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -7,7 +8,8 @@ import { useHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type HomeDashboardQuery, type Purchase } from "../../../shared/api";
 import { japanMonth } from "../../../shared/lib";
 import { EmptyState } from "../../../shared/ui";
-import { homeDashboardQuery } from "../api/home-summary";
+import { homeDashboardQuery } from "../model/home-summary";
+import { readPendingImportStatus } from "../model/pending-imports";
 import { SetupGuidance } from "./setup-guidance";
 
 import "./home-page.css";
@@ -78,6 +80,12 @@ export function HomePage({
   const dashboard = useLazyLoadQuery<HomeDashboardQuery>(homeDashboardQuery, dashboardVariables, {
     fetchPolicy: "network-only",
     fetchKey: refreshKey,
+  });
+  const pendingImports = useQuery({
+    queryKey: ["home-pending-imports", household.id],
+    queryFn: ({ signal }) => readPendingImportStatus(household.id, signal),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
   const homeSummary = {
     dailySpending: dashboard.homeSummary.dailySpending.map((day) => ({
@@ -183,6 +191,15 @@ export function HomePage({
           </span>
           <span>
             <b>レシートを取り込む</b>
+            {pendingImports.data?.kind === "review" ? (
+              <small>
+                {pendingImports.data.hasMore
+                  ? "確認待ちあり"
+                  : `確認待ち ${pendingImports.data.count}件`}
+              </small>
+            ) : pendingImports.data?.kind === "processing" ? (
+              <small>AI解析中</small>
+            ) : null}
           </span>
           <ChevronRight aria-hidden="true" />
         </Link>
