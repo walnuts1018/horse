@@ -20,7 +20,9 @@ function item(name: string, printedAmount: number, grossAmount: number, confiden
 }
 
 function hasChangedReceiptItems(result: DocumentReview["result"] | undefined): boolean {
-  return Boolean(result && "reviewReceiptItemsChanged" in result && result.reviewReceiptItemsChanged);
+  return Boolean(
+    result && "reviewReceiptItemsChanged" in result && result.reviewReceiptItemsChanged,
+  );
 }
 
 function draftResult(value: NonNullable<DocumentReview["result"]>) {

@@ -97,9 +97,7 @@ export function PurchaseItemsComposer({
             )}
           </span>
           {uncategorizedItemCount > 0 && (
-            <small className="uncategorized-notice">
-              未分類 {uncategorizedItemCount}品目
-            </small>
+            <small className="uncategorized-notice">未分類 {uncategorizedItemCount}品目</small>
           )}
         </div>
         <div className="composer-actions">{children}</div>
