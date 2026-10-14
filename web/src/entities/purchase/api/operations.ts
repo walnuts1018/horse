@@ -144,6 +144,21 @@ export const purchaseChangesSubscription = graphql`
   subscription PurchaseChangesSubscription($householdId: ID!, $after: String) {
     purchaseChanges(householdId: $householdId, after: $after) {
       cursor
+      entityId
+      entityKind
+      kind
+      changedFields
+    }
+  }
+`;
+
+export const purchaseItemChangeQuery = graphql`
+  query PurchaseItemChangeQuery($id: ID!) {
+    node(id: $id) {
+      __typename
+      ... on PurchaseItem {
+        ...PurchaseItemFields @alias(as: "purchaseItem")
+      }
     }
   }
 `;

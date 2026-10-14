@@ -24,6 +24,10 @@ const formatMonth = (month: string) => {
 };
 type ChartScaleStyle = CSSProperties & { "--chart-scale": number };
 
+const scaleStyle = (amount: number, maxAmount: number): ChartScaleStyle => ({
+  "--chart-scale": Math.abs(amount) / maxAmount,
+});
+
 export function AnalysisBreakdown({
   dimension,
   monthly,
@@ -47,6 +51,11 @@ export function AnalysisBreakdown({
   rows: AnalyticsRow[];
   hasUnattributedPurchases: boolean;
 }) {
+  const maxNegative = Math.max(
+    ...monthly.filter((item) => item.amount < 0).map((item) => -item.amount),
+    1,
+  );
+
   return (
     <div className="analysis-grid">
       <section className="panel analysis-chart-panel">
@@ -83,9 +92,27 @@ export function AnalysisBreakdown({
             const accessibleLabel = `${Number(row.month.slice(0, 4))}年${Number(row.month.slice(5))}月、支出${yen(row.amount)}`;
             if (dimension !== "category") {
               return (
-                <figure className="month-column" key={row.month} aria-label={accessibleLabel}>
+                <figure
+                  className="month-column signed-month-column"
+                  key={row.month}
+                  aria-label={accessibleLabel}
+                >
                   <b title={yen(row.amount)}>{chartYen(row.amount)}</b>
-                  <i style={{ height: `${Math.max(3, (row.amount / max) * 100)}%` }} />
+                  <div className="signed-month-stack" aria-hidden="true">
+                    <div
+                      className="signed-month-positive"
+                      style={scaleStyle(row.amount > 0 ? row.amount : 0, max)}
+                    >
+                      {row.amount > 0 && <i />}
+                    </div>
+                    <div className="signed-month-baseline" />
+                    <div
+                      className="signed-month-negative"
+                      style={scaleStyle(row.amount < 0 ? row.amount : 0, maxNegative)}
+                    >
+                      {row.amount < 0 && <i />}
+                    </div>
+                  </div>
                   <span>{label}</span>
                 </figure>
               );

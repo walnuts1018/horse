@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dialect"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/ingestion"
@@ -41,7 +44,14 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
 		return
 	}
-	incoming, err := reconciliationObservations(r.Context(), executor, document.HouseholdID, &document.ID)
+	query := r.URL.Query()
+	_, hasSourceReference := query["sourceReference"]
+	incoming, err := reconciliationObservations(r.Context(), executor, document.HouseholdID, reconciliationObservationQuery{
+		documentID:      &document.ID,
+		sourceReference: query.Get("sourceReference"),
+		hasSourceRef:    hasSourceReference,
+		limit:           reconciliationObservationLimit + 1,
+	})
 	if err != nil {
 		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
 		return
@@ -61,22 +71,19 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	truncated := false
-	if reference := r.URL.Query().Get("sourceReference"); reference != "" {
-		selected := make([]ingestion.Observation, 0, 1)
-		for _, observation := range incoming {
-			if observation.SourceReference == reference {
-				selected = append(selected, observation)
-			}
-		}
-		incoming = selected
+	truncated := len(incoming) > reconciliationObservationLimit
+	if truncated {
+		incoming = incoming[:reconciliationObservationLimit]
 	}
-	if len(incoming) > 100 {
-		incoming = incoming[:100]
-		truncated = true
+	if len(incoming) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"observations": []any{}, "truncated": truncated})
+
+		return
 	}
 	// 候補検索は確定した購入へ自動統合せず、同じ家庭の全原本に保存された観測を照合する。
-	existing, err := reconciliationObservations(r.Context(), executor, document.HouseholdID, nil)
+	existing, err := reconciliationObservations(r.Context(), executor, document.HouseholdID, reconciliationObservationQuery{
+		candidates: incoming,
+	})
 	if err != nil {
 		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
 		return
@@ -100,12 +107,43 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"observations": result, "truncated": truncated})
 }
 
-func reconciliationObservations(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, documentID *gofrsuuid.UUID) ([]ingestion.Observation, error) {
+const reconciliationObservationLimit = 100
+
+type reconciliationObservationQuery struct {
+	documentID      *gofrsuuid.UUID
+	sourceReference string
+	hasSourceRef    bool
+	limit           int
+	candidates      []ingestion.Observation
+}
+
+func reconciliationObservations(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, query reconciliationObservationQuery) ([]ingestion.Observation, error) {
 	conditions := []bob.Expression{models.SourceObservations.Columns.HouseholdID.EQ(psql.Arg(householdID))}
-	if documentID != nil {
-		conditions = append(conditions, models.SourceObservations.Columns.SourceDocumentID.EQ(psql.Arg(*documentID)))
+	if query.documentID != nil {
+		conditions = append(conditions, models.SourceObservations.Columns.SourceDocumentID.EQ(psql.Arg(*query.documentID)))
 	}
-	rows, err := models.SourceObservations.Query(sm.Where(psql.And(conditions...))).All(ctx, executor)
+	if query.hasSourceRef {
+		conditions = append(conditions, models.SourceObservations.Columns.SourceReference.EQ(psql.Arg(query.sourceReference)))
+	}
+	if len(query.candidates) > 0 {
+		filters := make([]bob.Expression, 0, len(query.candidates)*4)
+		for _, candidate := range query.candidates {
+			filters = append(filters, reconciliationCandidateCondition(candidate)...)
+		}
+		if len(filters) == 0 {
+			return []ingestion.Observation{}, nil
+		}
+		conditions = append(conditions, psql.Or(filters...))
+	}
+	mods := []bob.Mod[*dialect.SelectQuery]{
+		sm.Where(psql.And(conditions...)),
+		sm.OrderBy(models.SourceObservations.Columns.SourceDocumentID),
+		sm.OrderBy(models.SourceObservations.Columns.SourceReference),
+	}
+	if query.limit > 0 {
+		mods = append(mods, sm.Limit(query.limit))
+	}
+	rows, err := models.SourceObservations.Query(mods...).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
@@ -123,4 +161,32 @@ func reconciliationObservations(ctx context.Context, executor bob.Executor, hous
 		observations = append(observations, observation)
 	}
 	return observations, nil
+}
+
+func reconciliationCandidateCondition(candidate ingestion.Observation) []bob.Expression {
+	columns := models.SourceObservations.Columns
+	conditions := make([]bob.Expression, 0, 4)
+	if candidate.Hash != "" {
+		conditions = append(conditions, columns.SourceHash.EQ(psql.Arg(candidate.Hash)))
+	}
+	if candidate.TransactionID != "" {
+		conditions = append(conditions, columns.TransactionID.EQ(psql.Arg(candidate.TransactionID)))
+	}
+	if candidate.OrderID != "" {
+		conditions = append(conditions, columns.OrderID.EQ(psql.Arg(candidate.OrderID)))
+	}
+	if strings.TrimSpace(candidate.Merchant) != "" && !candidate.OccurredAt.IsZero() {
+		occurredAt := columns.OccurredAt
+		amountConditions := []bob.Expression{columns.AmountYen.EQ(psql.Arg(candidate.Amount))}
+		if candidate.Amount != -1<<63 && candidate.Amount != 0 {
+			amountConditions = append(amountConditions, columns.AmountYen.EQ(psql.Arg(-candidate.Amount)))
+		}
+		conditions = append(conditions, psql.And(
+			psql.Or(amountConditions...),
+			occurredAt.GTE(psql.Arg(candidate.OccurredAt.Add(-72*time.Hour))),
+			occurredAt.LTE(psql.Arg(candidate.OccurredAt.Add(72*time.Hour))),
+		))
+	}
+
+	return conditions
 }

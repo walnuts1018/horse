@@ -6,26 +6,52 @@ import { purchaseDimensions } from "./purchase-analytics";
 
 describe("purchaseDimensions", () => {
   it("reflects item and purchase-wide corrections in purchase-based totals", () => {
-    const purchase = {
+    const purchase: Purchase = {
+      id: "purchase-1",
+      householdId: "household-1",
+      datePrecision: "DATE_TIME",
+      origin: "MANUAL",
+      hasEvidence: false,
+      sourceKinds: [],
       status: "POSTED",
       occurredAt: "2025-04-15T03:00:00.000Z",
       merchant: "店舗",
+      revision: 1,
+      createdAt: "2025-04-15T03:00:00.000Z",
+      updatedAt: "2025-04-15T03:00:00.000Z",
       totalYen: 1000,
       correctionAmountYen: -150,
-      paymentAllocations: [{ paymentAccountId: "account-1", amountYen: 1000 }],
+      correctionCount: 2,
+      remainingRefundableAmountYen: 850,
+      paymentAllocations: [
+        { paymentAccountId: "account-1", amountYen: 1000, account: null },
+      ],
       items: [
         {
           id: "item-1",
           name: "商品",
           amountYen: 500,
           remainingRefundableAmountYen: 400,
+          revision: 1,
           quantityUnit: null,
           productVariantId: null,
-          allocations: [{ poolId: "pool-1", poolName: "プール", amountYen: 500 }],
+          allocations: [
+            { poolId: "pool-1", poolName: "プール", weight: 1, amountYen: 500 },
+          ],
+          tags: [],
         },
       ],
-    } as Purchase;
-    const household = { accounts: [{ id: "account-1", name: "カード" }] } as Household;
+    };
+    const household: Household = {
+      id: "household-1",
+      name: "家計",
+      revision: 1,
+      members: [],
+      pools: [],
+      accounts: [{ id: "account-1", name: "カード", kind: "CARD" }],
+      categories: [],
+      defaultAllocation: [],
+    };
 
     const { rows } = purchaseDimensions([purchase], household);
 

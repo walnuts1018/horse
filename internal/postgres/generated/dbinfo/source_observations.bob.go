@@ -156,6 +156,55 @@ var SourceObservations = Table[
 			Where:         "",
 			Include:       []string{},
 		},
+		SourceObservationsAmountOccurredIdx: index{
+			Type: "btree",
+			Name: "source_observations_amount_occurred_idx",
+			Columns: []indexColumn{
+				{
+					Name:         "household_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "amount_yen",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "occurred_at",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        false,
+			Comment:       "",
+			NullsFirst:    []bool{false, false, false},
+			NullsDistinct: false,
+			Where:         "",
+			Include:       []string{},
+		},
+		SourceObservationsHashIdx: index{
+			Type: "btree",
+			Name: "source_observations_hash_idx",
+			Columns: []indexColumn{
+				{
+					Name:         "household_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "source_hash",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        false,
+			Comment:       "",
+			NullsFirst:    []bool{false, false},
+			NullsDistinct: false,
+			Where:         "",
+			Include:       []string{},
+		},
 		SourceObservationsHouseholdIdx: index{
 			Type: "btree",
 			Name: "source_observations_household_idx",
@@ -271,15 +320,17 @@ func (c sourceObservationColumns) AsSlice() []column {
 }
 
 type sourceObservationIndexes struct {
-	SourceObservationsPkey           index
-	SourceObservationsHouseholdIdx   index
-	SourceObservationsOrderIdx       index
-	SourceObservationsTransactionIdx index
+	SourceObservationsPkey              index
+	SourceObservationsAmountOccurredIdx index
+	SourceObservationsHashIdx           index
+	SourceObservationsHouseholdIdx      index
+	SourceObservationsOrderIdx          index
+	SourceObservationsTransactionIdx    index
 }
 
 func (i sourceObservationIndexes) AsSlice() []index {
 	return []index{
-		i.SourceObservationsPkey, i.SourceObservationsHouseholdIdx, i.SourceObservationsOrderIdx, i.SourceObservationsTransactionIdx,
+		i.SourceObservationsPkey, i.SourceObservationsAmountOccurredIdx, i.SourceObservationsHashIdx, i.SourceObservationsHouseholdIdx, i.SourceObservationsOrderIdx, i.SourceObservationsTransactionIdx,
 	}
 }
 

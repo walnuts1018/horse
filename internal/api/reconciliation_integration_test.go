@@ -15,10 +15,11 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func TestReconciliationObservationsReadAllHouseholdRecords(t *testing.T) {
+func TestReconciliationObservationsUseStableBoundedQueries(t *testing.T) {
 	t.Parallel()
 
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
@@ -108,20 +109,52 @@ func TestReconciliationObservationsReadAllHouseholdRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	all, err := reconciliationObservations(ctx, executor, householdID, nil)
+	all, err := reconciliationObservations(ctx, executor, householdID, reconciliationObservationQuery{limit: 101})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantAll := priorDocumentCount*observationsPerDocument + 125
-	if len(all) != wantAll {
-		t.Fatalf("got %d household observations, want %d", len(all), wantAll)
+	if len(all) != 101 {
+		t.Fatalf("got %d household observations, want the stable page of 101", len(all))
 	}
-	current, err := reconciliationObservations(ctx, executor, householdID, &currentDocumentID)
+	for i := 1; i < len(all); i++ {
+		if all[i-1].DocumentID > all[i].DocumentID || (all[i-1].DocumentID == all[i].DocumentID && all[i-1].SourceReference > all[i].SourceReference) {
+			t.Fatalf("observations are not in stable document/reference order at index %d", i)
+		}
+	}
+	current, err := reconciliationObservations(ctx, executor, householdID, reconciliationObservationQuery{documentID: &currentDocumentID, limit: 101})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current) != 125 {
-		t.Fatalf("got %d observations for the current document, want 125", len(current))
+	if len(current) != 101 {
+		t.Fatalf("got %d observations for the current document, want the stable page of 101", len(current))
+	}
+	selected, err := reconciliationObservations(ctx, executor, householdID, reconciliationObservationQuery{
+		documentID: &currentDocumentID, sourceReference: "row:123", hasSourceRef: true,
+		limit: 101,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selected) != 1 || selected[0].SourceReference != "row:123" {
+		t.Fatalf("sourceReference query returned %#v, want row:123", selected)
+	}
+	candidates, err := reconciliationObservations(ctx, executor, householdID, reconciliationObservationQuery{
+		candidates: []ingestion.Observation{{Hash: "prior-7"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != observationsPerDocument {
+		t.Fatalf("candidate query returned %d observations, want %d for one matching source hash", len(candidates), observationsPerDocument)
+	}
+	amountCandidates, err := reconciliationObservations(ctx, executor, householdID, reconciliationObservationQuery{
+		candidates: []ingestion.Observation{{Merchant: "店舗", OccurredAt: occurredAt.V, Amount: 1000}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(amountCandidates) != priorDocumentCount {
+		t.Fatalf("amount/date candidate query returned %d observations, want %d", len(amountCandidates), priorDocumentCount)
 	}
 	for _, observation := range all {
 		if observation.Hash == otherDigest || observation.DocumentID == otherDocumentID.String() {

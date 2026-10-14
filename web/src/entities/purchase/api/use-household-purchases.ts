@@ -14,6 +14,7 @@ import type {
   PurchasesQuery,
 } from "..";
 import type { Purchase, PurchaseCorrection, PurchaseOrigin } from "../../../shared/api";
+import type { PurchaseItemChangeQuery } from "../../../shared/api/__generated__/PurchaseItemChangeQuery.graphql";
 
 import { getRelayEnvironment } from "../../../shared/api";
 import { isOneOf } from "../../../shared/lib";
@@ -21,6 +22,7 @@ import { mapPurchaseItem } from "./map-purchase-item";
 import {
   purchaseChangesSubscription,
   purchaseCorrectionsPaginationQuery,
+  purchaseItemChangeQuery,
   purchaseListFragment,
   purchasesQuery,
 } from "./operations";
@@ -132,7 +134,9 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   const [correctionPages, setCorrectionPages] = useState<
     Record<string, PurchaseCorrectionPageState>
   >({});
+  const subscriptionRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadingCorrectionPages = useRef(new Set<string>());
+  const correctionVersions = useRef(new Map<string, number>());
   const purchases: Purchase[] = data.purchases.edges.map(({ node }) => {
     return {
       ...node,
@@ -145,7 +149,8 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
     };
   });
   const loadCorrections = useCallback(async (purchaseId: string, after?: string) => {
-    const requestId = `${purchaseId}:${after ?? "first"}`;
+    const requestVersion = correctionVersions.current.get(purchaseId) ?? 0;
+    const requestId = `${purchaseId}:${requestVersion}:${after ?? "first"}`;
     if (loadingCorrectionPages.current.has(requestId)) return;
     loadingCorrectionPages.current.add(requestId);
     setCorrectionPages((current) => ({
@@ -160,6 +165,7 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
         { fetchPolicy: "network-only" },
       ).toPromise();
       if (!result) throw new Error("購入の訂正履歴を取得できませんでした");
+      if ((correctionVersions.current.get(purchaseId) ?? 0) !== requestVersion) return;
       const connection = result.purchaseCorrections;
       const corrections = connection.edges.map(({ node }) => toPurchaseCorrection(node));
       setCorrectionPages((current) => {
@@ -176,6 +182,7 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
         };
       });
     } catch (error) {
+      if ((correctionVersions.current.get(purchaseId) ?? 0) !== requestVersion) return;
       setCorrectionPages((current) => ({
         ...current,
         [purchaseId]: {
@@ -192,9 +199,15 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   }, []);
   const refresh = useCallback(() => {
     setMoreErrorState(null);
-    setCorrectionPages({});
     refetch(variables, { fetchPolicy: "network-only" });
   }, [refetch, variables]);
+  const scheduleRefresh = useCallback(() => {
+    if (subscriptionRefreshTimer.current !== null) return;
+    subscriptionRefreshTimer.current = setTimeout(() => {
+      subscriptionRefreshTimer.current = null;
+      refresh();
+    }, 100);
+  }, [refresh]);
   const loadMore = useCallback(() => {
     if (!hasNext || isLoadingNext) return;
     setMoreErrorState(null);
@@ -213,10 +226,48 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
     const subscription = requestSubscription<PurchaseChangesSubscription>(getRelayEnvironment(), {
       subscription: purchaseChangesSubscription,
       variables: { householdId, after: data.purchases.syncCursor },
-      onNext: refresh,
+      onNext: (payload) => {
+        if (!payload) return;
+        const change = payload.purchaseChanges;
+        if (change.kind === "CORRECTED" && change.entityKind === "PURCHASE") {
+          correctionVersions.current.set(
+            change.entityId,
+            (correctionVersions.current.get(change.entityId) ?? 0) + 1,
+          );
+          setCorrectionPages((current) => {
+            if (!(change.entityId in current)) return current;
+            const next = { ...current };
+            delete next[change.entityId];
+            return next;
+          });
+        }
+        if (
+          change.kind === "ITEM_UPDATED" &&
+          change.changedFields.length === 1 &&
+          change.changedFields[0] === "NAME" &&
+          !options.search?.trim()
+        ) {
+          void fetchQuery<PurchaseItemChangeQuery>(
+            getRelayEnvironment(),
+            purchaseItemChangeQuery,
+            { id: change.entityId },
+            { fetchPolicy: "network-only" },
+          )
+            .toPromise()
+            .catch(scheduleRefresh);
+          return;
+        }
+        scheduleRefresh();
+      },
     });
-    return () => subscription.dispose();
-  }, [data.purchases.syncCursor, householdId, refresh]);
+    return () => {
+      subscription.dispose();
+      if (subscriptionRefreshTimer.current !== null) {
+        clearTimeout(subscriptionRefreshTimer.current);
+        subscriptionRefreshTimer.current = null;
+      }
+    };
+  }, [data.purchases.syncCursor, householdId, options.search, scheduleRefresh]);
 
   useEffect(() => {
     if (options.loadAll && hasNext && !isLoadingNext && !moreError) {

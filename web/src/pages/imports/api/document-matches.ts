@@ -20,8 +20,14 @@ function toDocumentMatches(value: unknown): DocumentMatches {
   return isDocumentMatches(value) ? value : { observations: [], truncated: false };
 }
 
-export async function readDocumentMatches(documentId: string): Promise<DocumentMatches> {
-  const response = await fetch(`/documents/${encodeURIComponent(documentId)}/matches`, {
+export async function readDocumentMatches(
+  documentId: string,
+  sourceReference?: string,
+): Promise<DocumentMatches> {
+  const params = new URLSearchParams();
+  if (sourceReference !== undefined) params.set("sourceReference", sourceReference);
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  const response = await fetch(`/documents/${encodeURIComponent(documentId)}/matches${query}`, {
     credentials: "include",
   });
   if (!response.ok) throw new Error(`照合候補を取得できませんでした (${response.status})`);

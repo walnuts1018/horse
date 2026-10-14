@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<641843a58ce6c23a813557cf17d0ae14>>
+ * @generated SignedSource<<30c053e2da79f8d6db524233145e6143>>
  * @lightSyntaxTransform
  */
 
@@ -8,13 +8,20 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type PurchaseChangeEntity = "PURCHASE" | "PURCHASE_ITEM" | "%future added value";
+export type PurchaseChangeField = "ALLOCATIONS" | "AMOUNT_YEN" | "CATEGORY_ID" | "CORRECTION" | "MERCHANT" | "NAME" | "OCCURRED_AT" | "PAYMENT_ALLOCATIONS" | "PRINTED_UNIT_PRICE" | "PRODUCT_VARIANT_ID" | "QUANTITY" | "STATUS" | "TAGS" | "%future added value";
+export type PurchaseChangeKind = "CORRECTED" | "CREATED" | "ITEM_UPDATED" | "POSTED" | "UPDATED" | "%future added value";
 export type PurchaseChangesSubscription$variables = {
   after?: string | null | undefined;
   householdId: string;
 };
 export type PurchaseChangesSubscription$data = {
   readonly purchaseChanges: {
+    readonly changedFields: ReadonlyArray<PurchaseChangeField>;
     readonly cursor: string;
+    readonly entityId: string;
+    readonly entityKind: PurchaseChangeEntity;
+    readonly kind: PurchaseChangeKind;
   };
 };
 export type PurchaseChangesSubscription = {
@@ -59,6 +66,34 @@ v2 = [
         "kind": "ScalarField",
         "name": "cursor",
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "entityId",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "entityKind",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "kind",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "changedFields",
+        "storageKey": null
       }
     ],
     "storageKey": null
@@ -88,16 +123,16 @@ return {
     "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "b67aef1dd19f9ee9fcbaa2ba0c56e3d9",
+    "cacheID": "e8475f4a0f968afc81051878957f8b44",
     "id": null,
     "metadata": {},
     "name": "PurchaseChangesSubscription",
     "operationKind": "subscription",
-    "text": "subscription PurchaseChangesSubscription(\n  $householdId: ID!\n  $after: String\n) {\n  purchaseChanges(householdId: $householdId, after: $after) {\n    cursor\n  }\n}\n"
+    "text": "subscription PurchaseChangesSubscription(\n  $householdId: ID!\n  $after: String\n) {\n  purchaseChanges(householdId: $householdId, after: $after) {\n    cursor\n    entityId\n    entityKind\n    kind\n    changedFields\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "7e83767f738d71198a5c97d6800e5559";
+(node as any).hash = "d260bdd49deeacd9f47df1d91923d164";
 
 export default node;

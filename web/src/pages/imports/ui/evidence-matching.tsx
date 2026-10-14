@@ -7,6 +7,7 @@ import { errorMessage } from "../../../shared/lib/errors";
 import { linkPurchaseEvidence, readDocumentMatches } from "../api/document-matches";
 import {
   sourceKindLabel,
+  statementSourceReference,
   yen,
   type DocumentReview,
   type ObservationCandidates,
@@ -94,6 +95,34 @@ export function EvidenceMatching({
     };
   }, [document, hasReceiptItems, onError]);
 
+  const statements = document.result?.statements ?? [];
+  const availableStatements = statements.map((statement) => ({
+    sourceReference: statementSourceReference(statement),
+    merchant: statement.merchant,
+  }));
+
+  const selectObservation = (sourceReference: string) => {
+    markDirty();
+    setActiveObservationRef(sourceReference);
+    if (observations.some((observation) => observation.sourceReference === sourceReference)) return;
+    void readDocumentMatches(document.id, sourceReference)
+      .then((payload) => {
+        setMatchingState((current) => {
+          if (current.document !== document) return current;
+          const knownReferences = new Set(current.observations.map((item) => item.sourceReference));
+          return {
+            ...current,
+            observations: [
+              ...current.observations,
+              ...payload.observations.filter((item) => !knownReferences.has(item.sourceReference)),
+            ],
+            truncated: current.truncated || payload.truncated,
+          };
+        });
+      })
+      .catch((reason) => onError(errorMessage(reason)));
+  };
+
   const markDirty = () => {
     onDirty();
   };
@@ -157,7 +186,7 @@ export function EvidenceMatching({
       </div>
       {truncated && (
         <output>
-          <AlertCircle aria-hidden size={14} /> 候補を直近100件に絞っています
+          <AlertCircle aria-hidden size={14} /> 候補の一部を省略しています
         </output>
       )}
       <label className="select-filter">
@@ -165,24 +194,15 @@ export function EvidenceMatching({
         <select
           value={activeObservationRef}
           onChange={(event) => {
-            markDirty();
-            setActiveObservationRef(event.target.value);
+            selectObservation(event.target.value);
           }}
         >
           {receiptItems.length > 0 && <option value="">レシート全体</option>}
-          {observations.map((observation) => {
-            const statement = document.result?.statements?.find((entry) => {
-              const reference = entry.transactionId
-                ? `transaction:${entry.transactionId}`
-                : `row:${entry.row}`;
-              return reference === observation.sourceReference;
-            });
-            return (
-              <option key={observation.sourceReference} value={observation.sourceReference}>
-                {statement?.merchant || observation.sourceReference || "レシート"}
-              </option>
-            );
-          })}
+          {availableStatements.map((statement) => (
+            <option key={statement.sourceReference} value={statement.sourceReference}>
+              {statement.merchant || statement.sourceReference || "レシート"}
+            </option>
+          ))}
         </select>
       </label>
       <div className={styles.evidenceMatchList}>

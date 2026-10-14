@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/walnuts1018/horse/internal/graph/model"
@@ -38,7 +37,17 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 		return nil, fmt.Errorf("%w: to must be within ten years after from", ErrBadInput)
 	}
 	start, end := fromMonth.UTC(), toMonth.AddDate(0, 1, 0).UTC()
-	analysis, err := postgresquery.AccountBalanceAnalysisForPeriod(ctx, queryExecutor(r.DB), householdUUID, accountUUID, start, end)
+	var afterID *gofrsuuid.UUID
+	if cursorValue, err := cursorID(after, cursorTypeAccountBalanceChange); err != nil {
+		return nil, err
+	} else if cursorValue != nil {
+		cursorUUID, err := gofrsuuid.FromString(*cursorValue)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid account balance change cursor", ErrBadInput)
+		}
+		afterID = &cursorUUID
+	}
+	analysis, err := postgresquery.AccountBalanceAnalysisForPeriod(ctx, queryExecutor(r.DB), householdUUID, accountUUID, start, end, afterID, limit)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -48,35 +57,15 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 	if err != nil {
 		return nil, err
 	}
-	startIndex := 0
-	if cursorID, err := cursorID(after, cursorTypeAccountBalanceChange); err != nil {
-		return nil, err
-	} else if cursorID != nil {
-		cursorUUID, err := gofrsuuid.FromString(*cursorID)
-		if err != nil {
-			return nil, fmt.Errorf("%w: invalid account balance change cursor", ErrBadInput)
-		}
-		cursorIndex := slices.IndexFunc(analysis.Changes, func(change postgresquery.AccountBalanceChange) bool {
-			return change.Journal.ID == cursorUUID
-		})
-		if cursorIndex < 0 {
-			return nil, ErrNotFound
-		}
-		startIndex = len(analysis.Changes) - cursorIndex
-	}
-	orderedChanges := slices.Clone(analysis.Changes)
-	slices.Reverse(orderedChanges)
-	endIndex := min(startIndex+limit, len(orderedChanges))
 	connection := &model.AccountBalanceChangeConnection{
-		Edges: make([]*model.AccountBalanceChangeEdge, 0, endIndex-startIndex),
+		Edges: make([]*model.AccountBalanceChangeEdge, 0, len(analysis.Changes)),
 		PageInfo: &model.PageInfo{
-			HasNextPage:     endIndex < len(orderedChanges),
-			HasPreviousPage: startIndex > 0,
+			HasNextPage:     analysis.HasNextPage,
+			HasPreviousPage: analysis.HasPreviousPage,
 		},
-		TotalCount: len(orderedChanges),
+		TotalCount: analysis.TotalCount,
 	}
-	for index := startIndex; index < endIndex; index++ {
-		change := orderedChanges[index]
+	for _, change := range analysis.Changes {
 		source, err := r.accountBalanceSource(ctx, householdID, analysis.Account, change.Journal)
 		if err != nil {
 			return nil, err

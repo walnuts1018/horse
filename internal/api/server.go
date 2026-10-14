@@ -138,6 +138,7 @@ func (s *Server) newGraphQLHandler() *handler.Server {
 		presented := graphql.DefaultErrorPresenter(ctx, err)
 		kind, isApplicationError := graph.ApplicationErrorKind(err)
 		if isGraphQLProtocolError(presented) {
+			s.logGraphQLProtocolRejection(ctx, presented)
 			return presented
 		} else if isApplicationError && kind == apperror.KindConflict {
 			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "CONFLICT"}
@@ -164,6 +165,16 @@ func (s *Server) newGraphQLHandler() *handler.Server {
 		return errors.New("internal server error")
 	})
 	return executor
+}
+
+func (s *Server) logGraphQLProtocolRejection(ctx context.Context, err *gqlerror.Error) {
+	attrs := []any{"graphql_error_code", err.Extensions[graphErrorCodeJSONKey]}
+	if graphql.HasOperationContext(ctx) {
+		if operationName := graphql.GetOperationContext(ctx).OperationName; operationName != "" && len(operationName) <= 128 {
+			attrs = append(attrs, "operation", operationName)
+		}
+	}
+	s.logger.WarnContext(ctx, "GraphQL protocol request rejected", attrs...)
 }
 
 func (s *Server) logGraphQLInputRejection(ctx context.Context, err error) {
