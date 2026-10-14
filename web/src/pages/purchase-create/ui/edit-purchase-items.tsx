@@ -14,6 +14,7 @@ import { z } from "zod";
 import type { PurchaseDraftItem } from "../../../shared/lib";
 
 import { type ProductSuggestion } from "../../../entities/product";
+import { EditPurchaseItemAllocations } from "../../../entities/purchase";
 import { useProductSuggestions } from "../../../features/product-variant-select";
 import { type Household, type Purchase } from "../../../shared/api";
 import { parsePastedPurchaseItems } from "../model/pasted-purchase-items";
@@ -102,7 +103,9 @@ export function EditPurchaseItems({
   >(() => new Map());
   const [mobileSelectionMode, setMobileSelectionMode] = useState(false);
   const [bulkCategory, setBulkCategory] = useState("");
-  const [bulkAllocation, setBulkAllocation] = useState("");
+  const [bulkAllocation, setBulkAllocation] = useState<PurchaseDraftItem["allocations"] | null>(
+    null,
+  );
   const selectionAnchorKey = useRef<string | null>(null);
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
   const [invalidEntryField, setInvalidEntryField] = useState<"name" | "amount" | null>(null);
@@ -627,7 +630,7 @@ export function EditPurchaseItems({
     );
     clearSelection();
     setBulkCategory("");
-    setBulkAllocation("");
+    setBulkAllocation(null);
   };
   const applyBulkCategory = () => {
     if (!bulkCategory) return;
@@ -636,15 +639,8 @@ export function EditPurchaseItems({
     applyBulkPatch(() => ({ categoryId }));
   };
   const applyBulkAllocation = () => {
-    if (!bulkAllocation) return;
-    const allocations =
-      bulkAllocation === "__default"
-        ? []
-        : household.pools.some((pool) => pool.id === bulkAllocation)
-          ? [{ poolId: bulkAllocation, weight: 1 }]
-          : null;
-    if (!allocations) return;
-    applyBulkPatch(() => ({ allocations }));
+    if (bulkAllocation === null) return;
+    applyBulkPatch(() => ({ allocations: bulkAllocation }));
   };
   const removeSelectedItems = () => {
     if (!selectedItems.length) return;
@@ -702,25 +698,16 @@ export function EditPurchaseItems({
           >
             カテゴリ変更
           </button>
-          <label>
-            <span>負担</span>
-            <select
-              value={bulkAllocation}
-              onChange={(event) => setBulkAllocation(event.target.value)}
-            >
-              <option value="">変更なし</option>
-              <option value="__default">標準に戻す</option>
-              {household.pools.map((pool) => (
-                <option key={pool.id} value={pool.id}>
-                  {pool.name}が全額負担
-                </option>
-              ))}
-            </select>
-          </label>
+          <EditPurchaseItemAllocations
+            allocations={bulkAllocation ?? []}
+            defaultAllocations={defaultAllocations}
+            pools={household.pools}
+            onChange={setBulkAllocation}
+          />
           <button
             className="button button-soft"
             type="button"
-            disabled={!bulkAllocation}
+            disabled={bulkAllocation === null}
             onClick={applyBulkAllocation}
           >
             負担変更
