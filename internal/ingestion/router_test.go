@@ -67,6 +67,85 @@ func TestGeminiRouterRetriesQuotaOnFreeRouteBeforeUsingPaid(t *testing.T) {
 	}
 }
 
+func TestGeminiCandidatePlanAndFallbackState(t *testing.T) {
+	clients := []Gemini{
+		{APIKey: testFreeGeminiAPIKey, ProjectRoute: ProjectFree},
+		{APIKey: testPaidGeminiAPIKey, ProjectRoute: ProjectPaid},
+	}
+	candidates := geminiCandidates(clients, ModelEmail, ModelReceipt, true, false)
+	if len(candidates) != 4 {
+		t.Fatalf("email route has %d candidates, want 4", len(candidates))
+	}
+	if candidates[0].client.ProjectRoute != ProjectFree || candidates[0].model != ModelEmail || candidates[0].condition != geminiCandidateAlways {
+		t.Fatalf("initial email candidate changed: %#v", candidates[0])
+	}
+	if candidates[1].client.ProjectRoute != ProjectPaid || candidates[1].model != ModelEmail || candidates[1].condition != geminiCandidateAfterInitialFallbackError {
+		t.Fatalf("initial paid fallback candidate changed: %#v", candidates[1])
+	}
+	if candidates[2].client.ProjectRoute != ProjectFree || candidates[2].model != ModelReceipt || candidates[2].condition != geminiCandidateAfterEmailLiteQuota {
+		t.Fatalf("free flash candidate changed: %#v", candidates[2])
+	}
+	if candidates[3].client.ProjectRoute != ProjectPaid || candidates[3].model != ModelReceipt || candidates[3].condition != geminiCandidateAfterEmailFlashFallbackError {
+		t.Fatalf("paid flash fallback candidate changed: %#v", candidates[3])
+	}
+
+	quota := &GeminiAPIError{Kind: GeminiFailureQuota}
+	quotaState := (geminiRouteState{}).afterFailure(quota, false)
+	if got := nextGeminiCandidate(candidates, 1, quotaState); got != 2 {
+		t.Fatalf("quota should select free flash candidate, got %d", got)
+	}
+	transientState := (geminiRouteState{}).afterFailure(&GeminiAPIError{Kind: GeminiFailureTemporary}, false)
+	if got := nextGeminiCandidate(candidates, 1, transientState); got != 1 {
+		t.Fatalf("temporary failure should select paid email candidate, got %d", got)
+	}
+	flashFallbackState := quotaState.afterFailure(&GeminiAPIError{Kind: GeminiFailureTemporary}, true)
+	if got := nextGeminiCandidate(candidates, 3, flashFallbackState); got != 3 {
+		t.Fatalf("temporary free flash failure should select paid flash candidate, got %d", got)
+	}
+}
+
+func TestGeminiFallbackReason(t *testing.T) {
+	tests := []struct {
+		name      string
+		email     bool
+		initial   string
+		flash     string
+		candidate geminiCandidate
+		next      geminiCandidate
+		err       error
+		want      string
+	}{
+		{
+			name:      "email quota switches model",
+			email:     true,
+			initial:   ModelEmail,
+			flash:     ModelReceipt,
+			candidate: geminiCandidate{model: ModelEmail},
+			next:      geminiCandidate{model: ModelReceipt},
+			err:       &GeminiAPIError{Kind: GeminiFailureQuota},
+			want:      "free_quota_model_fallback",
+		},
+		{
+			name: "quota retains generic fallback reason",
+			err:  &GeminiAPIError{Kind: GeminiFailureQuota},
+			want: "free_quota_fallback",
+		},
+		{
+			name: "temporary failure",
+			err:  &GeminiAPIError{Kind: GeminiFailureTemporary},
+			want: "free_transient_fallback",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := geminiFallbackReason(test.email, test.initial, test.flash, test.candidate, test.next, test.err)
+			if got != test.want {
+				t.Fatalf("geminiFallbackReason() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestGeminiRouterReservesCountedInputTokens(t *testing.T) {
 	t.Parallel()
 
