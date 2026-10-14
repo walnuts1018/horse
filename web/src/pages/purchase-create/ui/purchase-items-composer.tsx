@@ -51,6 +51,7 @@ export function PurchaseItemsComposer({
   children: ReactNode;
 }) {
   const items: PurchaseDraftItem[] = value.items;
+  const uncategorizedItemCount = items.filter((item) => !item.categoryId).length;
 
   return (
     <>
@@ -95,6 +96,11 @@ export function PurchaseItemsComposer({
               </>
             )}
           </span>
+          {uncategorizedItemCount > 0 && (
+            <small className="uncategorized-notice">
+              未分類 {uncategorizedItemCount}品目
+            </small>
+          )}
         </div>
         <div className="composer-actions">{children}</div>
       </div>

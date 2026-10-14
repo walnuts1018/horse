@@ -154,6 +154,9 @@ export function ReceiptReview({
         Number.isSafeInteger(item.grossAmount) &&
         item.grossAmount >= (item.verification === "MANUAL" ? 1 : 0),
     );
+  const uncategorizedItemCount = receiptItems.filter((item) =>
+    item.categoryId != null ? !item.categoryId : !suggestedCategoryId(item),
+  ).length;
   const allReceiptItemsReviewed =
     receiptItems.length > 0 &&
     receiptItems.every((item, index) => {
@@ -931,6 +934,11 @@ export function ReceiptReview({
           <span>帳簿に登録する金額の合計</span>
           <b>{yen(receiptTotal(selectedDocument))}</b>
         </div>
+        {uncategorizedItemCount > 0 && (
+          <small className={styles.uncategorizedNotice}>
+            未分類 {uncategorizedItemCount}品目
+          </small>
+        )}
         <button
           type="button"
           className="button button-primary button-wide"
