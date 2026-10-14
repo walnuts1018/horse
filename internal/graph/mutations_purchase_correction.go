@@ -73,6 +73,21 @@ func (r *mutationResolver) correctPurchaseFromStatement(ctx context.Context, inp
 	return loadPurchase(ctx, r.DB, result.PurchaseID)
 }
 
+func (r *mutationResolver) linkStatementRefundCorrection(ctx context.Context, input model.LinkStatementRefundCorrectionInput) (*model.Purchase, error) {
+	user, err := requireMember(ctx, r.DB, input.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	purchaseID, err := purchase.NewService(r.DB).LinkStatementRefundCorrection(ctx, purchase.LinkStatementRefundCorrectionCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, CorrectionID: input.CorrectionID,
+		SourceDocumentID: input.SourceDocumentID, SourceReference: input.SourceReference,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return loadPurchase(ctx, r.DB, purchaseID)
+}
+
 func sameAllocationWeights(inputs []*model.AllocationInput, saved []domain.Weight) bool {
 	allocations := make([]purchase.Allocation, 0, len(inputs))
 	for _, input := range inputs {

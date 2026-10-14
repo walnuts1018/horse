@@ -1,12 +1,21 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
+	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/stephenafamo/scan"
+	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 const testDocumentStore = "Market"
@@ -89,4 +98,79 @@ func TestDocumentMIMEUsesContentBeforeTextExtensionFallback(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDocumentResponsesUseConstantQueryCount(t *testing.T) {
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := t.Context()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+	executor := bobpgx.NewPool(db)
+	householdID, memberID := gofrsuuid.Must(gofrsuuid.NewV7()), gofrsuuid.Must(gofrsuuid.NewV7())
+	householdName, subject := "document response batch", "document-response-batch:"+memberID.String()
+	if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberID, OidcSubject: &subject, DisplayName: &subject}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberID)))).Exec(t.Context(), executor)
+	}()
+	if _, err := models.Households.Insert(&models.HouseholdSetter{ID: &householdID, Name: &householdName}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID)))).Exec(t.Context(), executor)
+	}()
+
+	documents := make([]*models.SourceDocument, 50)
+	for i := range documents {
+		documentID := gofrsuuid.Must(gofrsuuid.NewV7())
+		digest, objectKey, mimeType, sourceKind := "document-response:"+documentID.String(), "document-response/"+documentID.String(), "image/jpeg", "receipt"
+		createdAt := time.Date(2026, time.January, 1, 0, i, 0, 0, time.UTC)
+		stored, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
+			ID: &documentID, HouseholdID: &householdID, Sha256: &digest, ObjectKey: &objectKey,
+			MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberID, CreatedAt: &createdAt,
+		}).One(ctx, executor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		documents[i] = stored
+	}
+
+	for _, count := range []int{1, len(documents)} {
+		countingExecutor := &queryCountingExecutor{Executor: executor}
+		responses, err := (&Server{}).documentResponses(ctx, countingExecutor, documents[:count])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(responses) != count {
+			t.Fatalf("got %d document responses, want %d", len(responses), count)
+		}
+		if countingExecutor.queries != 5 {
+			t.Fatalf("document response query count for %d documents = %d, want 5", count, countingExecutor.queries)
+		}
+		for i, response := range responses {
+			if response.ID != documents[i].ID.String() || response.Status != documentStatusQueued || response.Confirmations == nil {
+				t.Fatalf("unexpected response at index %d: %#v", i, response)
+			}
+		}
+	}
+}
+
+type queryCountingExecutor struct {
+	bob.Executor
+	queries int
+}
+
+func (e *queryCountingExecutor) QueryContext(ctx context.Context, query string, args ...any) (scan.Rows, error) {
+	e.queries++
+	return e.Executor.QueryContext(ctx, query, args...)
 }

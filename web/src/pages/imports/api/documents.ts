@@ -11,6 +11,7 @@ import {
   linkStatementAccountMovementMutation,
   linkStatementAccountIncomeMutation,
 } from "../../../entities/ledger";
+import { linkStatementRefundCorrectionMutation } from "./operations";
 import {
   getRelayEnvironment,
   type RecordAccountMovementMutation,
@@ -19,6 +20,7 @@ import {
   type RecordTransferMutation,
   type LinkStatementTransferMutation,
   type LinkStatementAccountMovementMutation,
+  type LinkStatementRefundCorrectionMutation,
   type LinkStatementAccountIncomeMutation,
 } from "../../../shared/api";
 import { asRecord } from "../model/imports";
@@ -82,6 +84,31 @@ export function recordStatementAccountMovement(
           return;
         }
         reject(new Error(result.message || "口座間振替を記録できませんでした"));
+      },
+      onError: reject,
+    }),
+  );
+}
+
+export function linkStatementRefundCorrection(
+  input: LinkStatementRefundCorrectionMutation["variables"]["input"],
+) {
+  return new Promise<void>((resolve, reject) =>
+    commitMutation<LinkStatementRefundCorrectionMutation>(getRelayEnvironment(), {
+      mutation: linkStatementRefundCorrectionMutation,
+      variables: { input },
+      onCompleted: (response, errors) => {
+        if (errors?.length) return reject(new Error(errors[0].message));
+        if (response.linkStatementRefundCorrection.__typename === "LinkStatementRefundCorrectionSuccess") {
+          return resolve();
+        }
+        reject(
+          new Error(
+            response.linkStatementRefundCorrection.__typename === "LinkStatementRefundCorrectionUserError"
+              ? response.linkStatementRefundCorrection.message || "返金記録に紐付けられませんでした"
+              : "返金記録に紐付けられませんでした",
+          ),
+        );
       },
       onError: reject,
     }),

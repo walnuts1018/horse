@@ -7,6 +7,7 @@ import {
   loanBalancesQuery,
   statementTransferCandidatesQuery,
 } from "../../../entities/ledger";
+import { statementRefundCorrectionsQuery } from "../api/operations";
 import {
   getRelayEnvironment,
   type Account,
@@ -16,6 +17,7 @@ import {
   type LoanBalancesQuery,
   type Purchase,
   type StatementTransferCandidatesQuery,
+  type StatementRefundCorrectionsQuery,
 } from "../../../shared/api";
 import {
   statementConfirmationIssue,
@@ -34,6 +36,7 @@ export function StatementReview({
   pending,
   onConfirm,
   onConfirmRefund,
+  onLinkRefund,
   onConfirmTransfer,
   onConfirmLoan,
   onLinkExistingTransfer,
@@ -49,6 +52,7 @@ export function StatementReview({
   pending: boolean;
   onConfirm: (entry: StatementEntry, accountId: string) => void;
   onConfirmRefund: (entry: StatementEntry, purchaseId: string, itemId?: string) => void;
+  onLinkRefund: (entry: StatementEntry, correctionId: string) => void;
   onConfirmTransfer: (
     entry: StatementEntry,
     statementAccountId: string,
@@ -69,6 +73,15 @@ export function StatementReview({
   const [refundTargets, setRefundTargets] = useState<
     Record<string, { purchaseId: string; itemId: string }>
   >({});
+  const [refundCorrectionTargets, setRefundCorrectionTargets] = useState<Record<string, string>>({});
+  const [openRefundCorrections, setOpenRefundCorrections] = useState<Record<string, boolean>>({});
+  const [refundCorrectionCandidates, setRefundCorrectionCandidates] = useState<
+    Record<string, StatementRefundCorrectionsQuery["response"]["statementRefundCorrections"]["edges"]>
+  >({});
+  const [refundCorrectionPages, setRefundCorrectionPages] = useState<
+    Record<string, { after: string | null; hasNextPage: boolean; loading: boolean }>
+  >({});
+  const [refundCorrectionErrors, setRefundCorrectionErrors] = useState<Record<string, string>>({});
   const [paymentAccounts, setPaymentAccounts] = useState<Record<string, string>>({});
   const [statementAccounts, setStatementAccounts] = useState<
     Record<
@@ -106,6 +119,60 @@ export function StatementReview({
   const [hasMoreIncomeCandidates, setHasMoreIncomeCandidates] = useState(false);
   const [loadingIncomeCandidates, setLoadingIncomeCandidates] = useState(false);
   const [selectedIncomeIds, setSelectedIncomeIds] = useState<Record<string, string>>({});
+  const loadRefundCorrections = (entry: StatementEntry, after?: string) => {
+    const reference = statementSourceReference(entry);
+    const key = `${document.id}:${reference}`;
+    setRefundCorrectionErrors((current) => ({ ...current, [key]: "" }));
+    setRefundCorrectionPages((current) => ({
+      ...current,
+      [key]: { after: current[key]?.after ?? null, hasNextPage: false, loading: true },
+    }));
+    fetchQuery<StatementRefundCorrectionsQuery>(getRelayEnvironment(), statementRefundCorrectionsQuery, {
+      householdId: household.id,
+      sourceDocumentId: document.id,
+      sourceReference: reference,
+      first: 50,
+      after: after ?? null,
+    }).subscribe({
+      next: (data) => {
+        const page = data.statementRefundCorrections;
+        setRefundCorrectionCandidates((current) => ({
+          ...current,
+          [key]: after
+            ? [...(current[key] ?? []), ...page.edges]
+            : page.edges,
+        }));
+        setRefundCorrectionPages((current) => ({
+          ...current,
+          [key]: {
+            after: page.pageInfo.endCursor ?? null,
+            hasNextPage: page.pageInfo.hasNextPage,
+            loading: false,
+          },
+        }));
+      },
+      error: () =>
+        {
+          setRefundCorrectionPages((current) => ({
+            ...current,
+            [key]: { after: current[key]?.after ?? null, hasNextPage: false, loading: false },
+          }));
+          setRefundCorrectionErrors((current) => ({
+            ...current,
+            [key]: "返金記録を読み込めませんでした",
+          }));
+        },
+    });
+  };
+  const toggleRefundCorrections = (entry: StatementEntry) => {
+    const key = `${document.id}:${statementSourceReference(entry)}`;
+    if (openRefundCorrections[key]) {
+      setOpenRefundCorrections((current) => ({ ...current, [key]: false }));
+      return;
+    }
+    setOpenRefundCorrections((current) => ({ ...current, [key]: true }));
+    if (!(key in refundCorrectionCandidates)) loadRefundCorrections(entry);
+  };
   useEffect(() => {
     const subscription = fetchQuery<LoanBalancesQuery>(getRelayEnvironment(), loanBalancesQuery, {
       householdId: household.id,
@@ -326,6 +393,8 @@ export function StatementReview({
         const selectedTransferId = transferAccounts.existingTransferId ?? "";
         const selectedMovementId = transferAccounts.existingMovementId ?? "";
         const loanDraft = transferAccounts;
+        const refundCandidates = refundCorrectionCandidates[key] ?? [];
+        const refundCorrectionPage = refundCorrectionPages[key];
         return (
           <div
             className="statement-row"
@@ -431,6 +500,80 @@ export function StatementReview({
                     >
                       返品を記録
                     </button>
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={pending || Boolean(refundCorrectionPage?.loading)}
+                      aria-expanded={Boolean(openRefundCorrections[key])}
+                      onClick={() => toggleRefundCorrections(entry)}
+                    >
+                      {refundCorrectionPage?.loading
+                        ? "読み込み中"
+                        : openRefundCorrections[key]
+                          ? "候補を閉じる"
+                          : "既存の返金記録を探す"}
+                    </button>
+                    {openRefundCorrections[key] && (
+                      <>
+                        {refundCandidates.length > 0 ? (
+                          <>
+                            <label>
+                              <span>既存の返金記録</span>
+                              <select
+                                value={refundCorrectionTargets[key] ?? ""}
+                                disabled={pending}
+                                onChange={(event) =>
+                                  setRefundCorrectionTargets((current) => ({
+                                    ...current,
+                                    [key]: event.target.value,
+                                  }))
+                                }
+                              >
+                                <option value="">返金記録を選択</option>
+                                {refundCandidates.map(({ node }) => {
+                                  const label = [
+                                    `${new Date(node.occurredAt).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" })} ${node.merchant} · ${yen(Number(node.amountYen))}`,
+                                    node.sourceFilename,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ");
+                                  return (
+                                    <option key={node.id} value={node.id}>
+                                      {label}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              className="text-button"
+                              disabled={pending || !refundCorrectionTargets[key]}
+                              onClick={() =>
+                                onLinkRefund(entry, refundCorrectionTargets[key] ?? "")
+                              }
+                            >
+                              既存の返金に紐付ける
+                            </button>
+                          </>
+                        ) : null}
+                        {refundCorrectionErrors[key] && (
+                          <small role="alert">{refundCorrectionErrors[key]}</small>
+                        )}
+                        {refundCorrectionPage?.hasNextPage && (
+                          <button
+                            type="button"
+                            className="text-button"
+                            disabled={pending || refundCorrectionPage.loading}
+                            onClick={() =>
+                              loadRefundCorrections(entry, refundCorrectionPage.after ?? undefined)
+                            }
+                          >
+                            {refundCorrectionPage.loading ? "読み込み中" : "候補をさらに表示"}
+                          </button>
+                        )}
+                      </>
+                    )}
                   </>
                 )
               ) : isTransfer || isCardBillPayment || isLoan || isRepayment ? (

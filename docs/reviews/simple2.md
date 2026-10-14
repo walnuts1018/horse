@@ -8,23 +8,7 @@
 
 ## 優先度の高い改善点
 
-### 1. P1: 文書一覧のN+1クエリを解消する
-
-対象: [`internal/api/documents.go`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/internal/api/documents.go#L614-L740)
-
-`documents()`では、一覧に含まれる文書を1件ずつ処理する中で、次のDB取得を繰り返しています。
-
-- `documentResponse()`：最新の解析ジョブを文書ごとに検索
-- `loadDocumentAttachments()`：添付関係、添付先文書、ジョブ、親文書を個別取得
-- `loadDocumentConfirmations()`：確定結果を文書ごとに検索し、訂正も個別取得
-
-50件の一覧なら、添付がなくても多数のクエリが発生する構造です。一方、証拠リンクは既に一括取得できています。
-
-改善方法: 一覧の文書IDを収集し、最新ジョブ・添付関係・確認結果をそれぞれ一括取得して、Goの`map[UUID]...`にまとめます。最後に文書レスポンスを組み立てる構成にすると、SQL実行回数もコードの責務も明確になります。
-
-なお、一覧と単一文書取得は同じ組み立て処理を利用できます。HTTPハンドラー側は認証、検索条件、レスポンス返却だけに絞るのがよいです。
-
-### 2. P1: 購入訂正履歴の二重ページングをやめる
+### 1. P1: 購入訂正履歴の二重ページングをやめる
 
 対象: [`internal/graph/helpers.go`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/internal/graph/helpers.go#L288-L505)、[`query_purchases.go`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/internal/graph/query_purchases.go#L293-L347)、[`use-household-purchases.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/entities/purchase/api/use-household-purchases.ts#L141-L188)
 
@@ -38,7 +22,7 @@
 
 これでフロントの`completeCorrections`、専用の取得Effect、カーソルループをまとめて削除できます。
 
-### 3. P1: データ取得のための`useEffect`と独自stateを減らす
+### 2. P1: データ取得のための`useEffect`と独自stateを減らす
 
 対象: [`use-analysis-data.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/analysis/model/use-analysis-data.ts)、[`home-page.tsx`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/home/ui/home-page.tsx)、[`use-unmatched-observations.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/ledger/api/observation/use-unmatched-observations.ts)
 
@@ -52,7 +36,7 @@ GraphQLはRelayの`useLazyLoadQuery`、`usePreloadedQuery`、`usePaginationFragm
 
 また、各所の`queueMicrotask(() => setState(...))`はEffectのlintを回避するために使われていますが、複雑な非同期状態管理の根本的な解決にはなっていません。データ取得用のEffectそのものをなくす方向がよいです。
 
-### 4. P2: GraphQL Mutationの共通処理を統一する
+### 3. P2: GraphQL Mutationの共通処理を統一する
 
 対象: [`category-management.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/settings/api/category-management.ts)、[`imports/api/documents.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/imports/api/documents.ts)、[`commit-mutation.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/settings/api/commit-mutation.ts)
 
@@ -64,7 +48,7 @@ GraphQLはRelayの`useLazyLoadQuery`、`usePreloadedQuery`、`usePaginationFragm
 
 ただし、全Mutationを巨大な設定オブジェクトに押し込む必要はありません。呼び出し側が`createCategory(input)`のように読めるAPIは維持する方が簡潔です。
 
-### 5. P2: `App`に集中している責務を分離する
+### 4. P2: `App`に集中している責務を分離する
 
 対象: [`horse-app.tsx`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/app/horse-app.tsx)
 
@@ -78,7 +62,7 @@ GraphQLはRelayの`useLazyLoadQuery`、`usePreloadedQuery`、`usePaginationFragm
 
 認証・世帯データの取得は、TanStack Routerのloaderへの移行も有力です。ただしSSRを使う場合、Relay Environmentをサーバープロセスで共有せず、リクエスト単位に分離する設計が必要です。
 
-### 6. P2: 取り込み確定処理を純粋関数と実行処理に分ける
+### 5. P2: 取り込み確定処理を純粋関数と実行処理に分ける
 
 対象: [`use-import-confirmation.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/imports/model/use-import-confirmation.ts)
 
@@ -90,7 +74,7 @@ GraphQLはRelayの`useLazyLoadQuery`、`usePreloadedQuery`、`usePaginationFragm
 
 現在のテストは補助関数中心なので、分離した金額計算・返金・複数支払の入力生成も直接テストできるようにすると改善効果が大きいです。
 
-### 7. P2: IndexedDBの定型コードを`idb`へ置き換える
+### 6. P2: IndexedDBの定型コードを`idb`へ置き換える
 
 対象: [`purchase-storage.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/shared/lib/purchase-storage.ts)
 
@@ -102,7 +86,7 @@ GraphQLはRelayの`useLazyLoadQuery`、`usePreloadedQuery`、`usePaginationFragm
 
 ただし、購入送信のlease、冪等性キー、複数タブ間の排他、下書きとOutboxの同時更新は重要です。これらの原子性は維持し、`tx.done`でコミット完了を確認する実装にします。
 
-### 8. P3: Settingsのタブ状態をURLへ一本化する
+### 7. P3: Settingsのタブ状態をURLへ一本化する
 
 対象: [`settings-navigation.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/settings/model/settings-navigation.ts)
 
@@ -114,12 +98,11 @@ TanStack Routerのsearch paramsを唯一の状態にすれば、`useState`、has
 
 | 順位 | 作業 | 主な効果 |
 | -- | ----------------------- | ------------------------ |
-| 1 | 文書一覧の一括DB取得 | N+1解消、責務整理 |
-| 2 | 訂正履歴の取得設計変更 | 二重ページングと不要な状態を削除 |
-| 3 | Relayによる取得状態の統一 | `useEffect`と独自stateの大幅削減 |
-| 4 | Mutation共通処理の統一 | 重複コード削減 |
-| 5 | Appと取り込みHookの責務分離 | 変更時の見通しを改善 |
-| 6 | `idb`導入、SettingsのURL状態化 | ブラウザー側の定型コード削減 |
+| 1 | 訂正履歴の取得設計変更 | 二重ページングと不要な状態を削除 |
+| 2 | Relayによる取得状態の統一 | `useEffect`と独自stateの大幅削減 |
+| 3 | Mutation共通処理の統一 | 重複コード削減 |
+| 4 | Appと取り込みHookの責務分離 | 変更時の見通しを改善 |
+| 5 | `idb`導入、SettingsのURL状態化 | ブラウザー側の定型コード削減 |
 
 ## 維持したい実装
 

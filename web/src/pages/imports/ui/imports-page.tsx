@@ -300,6 +300,21 @@ export function ImportsPage({
       setPending(false);
     }
   };
+  const linkStatementRefundCorrection = async (
+    document: DocumentReview,
+    entry: StatementEntry,
+    correctionId: string,
+  ) => {
+    setPending(true);
+    setMessage("");
+    try {
+      await review.linkStatementRefundCorrection(document, entry, correctionId);
+    } catch (reason) {
+      setMessage(errorMessage(reason));
+    } finally {
+      setPending(false);
+    }
+  };
   const confirmStatementTransfer = async (
     document: DocumentReview,
     entry: StatementEntry,
@@ -463,6 +478,9 @@ export function ImportsPage({
               }
               onConfirmRefund={(entry, purchaseId, itemId) =>
                 void confirmStatementRefund(selectedDocument, entry, purchaseId, itemId)
+              }
+              onLinkRefund={(entry, correctionId) =>
+                void linkStatementRefundCorrection(selectedDocument, entry, correctionId)
               }
               onConfirmTransfer={(entry, statementAccountId, otherAccountId) =>
                 void confirmStatementTransfer(

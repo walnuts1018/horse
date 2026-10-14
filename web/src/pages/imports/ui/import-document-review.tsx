@@ -34,6 +34,7 @@ export function ImportDocumentReview({
   onConfirmReceipt,
   onConfirmStatement,
   onConfirmRefund,
+  onLinkRefund,
   onConfirmTransfer,
   onConfirmLoan,
   onLinkExistingTransfer,
@@ -58,6 +59,7 @@ export function ImportDocumentReview({
   onConfirmReceipt: () => void;
   onConfirmStatement: (entry: StatementEntry, accountId: string) => void;
   onConfirmRefund: (entry: StatementEntry, purchaseId: string, itemId?: string) => void;
+  onLinkRefund: (entry: StatementEntry, correctionId: string) => void;
   onConfirmTransfer: (
     entry: StatementEntry,
     statementAccountId: string,
@@ -175,6 +177,7 @@ export function ImportDocumentReview({
         pending={pending}
         onConfirm={onConfirmStatement}
         onConfirmRefund={onConfirmRefund}
+        onLinkRefund={onLinkRefund}
         onConfirmTransfer={onConfirmTransfer}
         onConfirmLoan={onConfirmLoan}
         onLinkExistingTransfer={onLinkExistingTransfer}

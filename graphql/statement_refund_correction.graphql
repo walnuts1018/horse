@@ -1,0 +1,49 @@
+extend type Query {
+  statementRefundCorrections(
+    householdId: ID! @nodeID(of: "Household")
+    sourceDocumentId: ID!
+    sourceReference: String!
+    first: Int
+    after: String
+  ): StatementRefundCorrectionConnection!
+}
+
+type StatementRefundCorrection {
+  id: ID! @goField(forceResolver: true)
+  amountYen: Long!
+  occurredAt: DateTime!
+  merchant: String!
+  sourceFilename: String!
+}
+
+type StatementRefundCorrectionEdge {
+  cursor: String!
+  node: StatementRefundCorrection!
+}
+
+type StatementRefundCorrectionConnection {
+  edges: [StatementRefundCorrectionEdge!]!
+  pageInfo: PageInfo!
+}
+
+extend type Mutation {
+  linkStatementRefundCorrection(input: LinkStatementRefundCorrectionInput!): LinkStatementRefundCorrectionResult!
+}
+
+input LinkStatementRefundCorrectionInput {
+  householdId: ID! @nodeID(of: "Household")
+  correctionId: ID! @nodeID(of: "PurchaseCorrection")
+  sourceDocumentId: ID!
+  sourceReference: String!
+}
+
+union LinkStatementRefundCorrectionResult = LinkStatementRefundCorrectionSuccess | LinkStatementRefundCorrectionUserError
+
+type LinkStatementRefundCorrectionSuccess {
+  result: Purchase!
+}
+
+type LinkStatementRefundCorrectionUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

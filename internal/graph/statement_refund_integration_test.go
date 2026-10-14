@@ -170,4 +170,106 @@ func TestCorrectPurchaseFromStatementKeepsRowEvidenceAtomic(t *testing.T) {
 	}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("refund accepted a document from another household: %v", err)
 	}
+
+	createRefundDocument := func(merchant string, amount int64, occurredAt string) string {
+		t.Helper()
+		id := uuid.NewV7().String()
+		documentUUID := generatedUUID(id)
+		hash, objectKey, mimeType, sourceKind := "hash-"+id, household.ID+"/originals/"+id, testApplicationPDF, testCardSourceKind
+		if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
+			ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &objectKey,
+			MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberUUID,
+		}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+			t.Fatal(err)
+		}
+		statement, err := stdjson.Marshal(ingestion.Verification{Statements: []ingestion.StatementEntry{{
+			Row: 2, SourceReference: "row:2", Kind: "REFUND", OccurredAt: occurredAt,
+			Merchant: merchant, Amount: amount, Region: &region,
+		}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		jobID, status := generatedUUID(uuid.NewV7().String()), extractionJobSucceededStatus
+		jobVersion := int32(1)
+		jobResult := sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: statement}, Valid: true}
+		if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
+			ID: &jobID, HouseholdID: &householdUUID, SourceDocumentID: &documentUUID,
+			Version: &jobVersion, Status: &status, Result: &jobResult,
+		}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	secondSourceDocumentID := createRefundDocument(originalShop, -250, testStatementTransferFirstOccurredAt)
+	secondCorrection, err := resolver.correctPurchaseFromStatement(ctx, model.CorrectPurchaseFromStatementInput{
+		HouseholdID: household.ID, SourceDocumentID: secondSourceDocumentID, SourceReference: "row:2",
+		Target: input.Target, Reason: "Card refund", IdempotencyKey: uuid.NewV7().String(),
+	})
+	if err != nil || secondCorrection.ID != purchase.ID {
+		t.Fatalf("second source refund did not create its own correction: purchase=%#v error=%v", secondCorrection, err)
+	}
+	duplicateSourceDocumentID := createRefundDocument(originalShop, -250, testStatementTransferFirstOccurredAt)
+	pageSize := 1
+	query := &queryResolver{Resolver: resolver.Resolver}
+	firstCandidates, err := query.statementRefundCorrections(ctx, household.ID, duplicateSourceDocumentID, "row:2", &pageSize, nil)
+	if err != nil || len(firstCandidates.Edges) != 1 || !firstCandidates.PageInfo.HasNextPage {
+		t.Fatalf("first source-backed refund candidate page is wrong: page=%#v error=%v", firstCandidates, err)
+	}
+	secondCursor := firstCandidates.PageInfo.EndCursor
+	secondCandidates, err := query.statementRefundCorrections(ctx, household.ID, duplicateSourceDocumentID, "row:2", &pageSize, secondCursor)
+	if err != nil || len(secondCandidates.Edges) != 1 || secondCandidates.PageInfo.HasNextPage {
+		t.Fatalf("second source-backed refund candidate page is wrong: page=%#v error=%v", secondCandidates, err)
+	}
+	correctionID := firstCandidates.Edges[0].Node.ID
+	linkedPurchase, err := resolver.linkStatementRefundCorrection(ctx, model.LinkStatementRefundCorrectionInput{
+		HouseholdID: household.ID, CorrectionID: correctionID,
+		SourceDocumentID: duplicateSourceDocumentID, SourceReference: "row:2",
+	})
+	if err != nil || linkedPurchase.ID != purchase.ID {
+		t.Fatalf("duplicate refund row did not link to the existing purchase: purchase=%#v error=%v", linkedPurchase, err)
+	}
+	if _, err := resolver.linkStatementRefundCorrection(ctx, model.LinkStatementRefundCorrectionInput{
+		HouseholdID: household.ID, CorrectionID: correctionID,
+		SourceDocumentID: duplicateSourceDocumentID, SourceReference: "row:2",
+	}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("same duplicate refund row was confirmed twice: %v", err)
+	}
+	linkedDocumentUUID := generatedUUID(duplicateSourceDocumentID)
+	linkedConfirmations, err := models.DocumentConfirmations.Query(sm.Where(psql.And(
+		models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(linkedDocumentUUID)),
+		models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg("row:2")),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(linkedConfirmations) != 1 || linkedConfirmations[0].PurchaseID.Valid || !linkedConfirmations[0].CorrectionID.Valid || linkedConfirmations[0].CorrectionID.V.String() != correctionID {
+		t.Fatalf("duplicate refund was not confirmed against the selected correction: confirmations=%#v error=%v", linkedConfirmations, err)
+	}
+	linkedEvidence, err := models.CorrectionEvidenceLinks.Query(sm.Where(models.CorrectionEvidenceLinks.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(linkedEvidence) != 2 {
+		t.Fatalf("linking duplicate refund changed its single-source evidence links: evidence=%#v error=%v", linkedEvidence, err)
+	}
+	refundCorrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.PurchaseID.EQ(psql.Arg(generatedUUID(purchase.ID))))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(refundCorrections) != 2 {
+		t.Fatalf("linking duplicate refund created a correction: corrections=%#v error=%v", refundCorrections, err)
+	}
+	for _, mismatch := range []struct {
+		name       string
+		merchant   string
+		amount     int64
+		occurredAt string
+	}{
+		{name: "merchant", merchant: "Different shop", amount: -250, occurredAt: testStatementTransferFirstOccurredAt},
+		{name: "amount", merchant: originalShop, amount: -249, occurredAt: testStatementTransferFirstOccurredAt},
+		{name: "date", merchant: originalShop, amount: -250, occurredAt: testStatementTransferSecondOccurredAt},
+	} {
+		mismatchedSourceDocumentID := createRefundDocument(mismatch.merchant, mismatch.amount, mismatch.occurredAt)
+		mismatchedCandidates, err := query.statementRefundCorrections(ctx, household.ID, mismatchedSourceDocumentID, "row:2", &pageSize, nil)
+		if err != nil || len(mismatchedCandidates.Edges) != 0 {
+			t.Fatalf("%s mismatch was offered as a source-backed candidate: candidates=%#v error=%v", mismatch.name, mismatchedCandidates, err)
+		}
+		if _, err := resolver.linkStatementRefundCorrection(ctx, model.LinkStatementRefundCorrectionInput{
+			HouseholdID: household.ID, CorrectionID: correctionID,
+			SourceDocumentID: mismatchedSourceDocumentID, SourceReference: "row:2",
+		}); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("%s-mismatched refund was linked to the existing correction: %v", mismatch.name, err)
+		}
+	}
 }

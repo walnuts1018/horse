@@ -78,6 +78,7 @@ type ResolverRoot interface {
 	SetPoolFundingRuleSuccess() SetPoolFundingRuleSuccessResolver
 	SettlementLine() SettlementLineResolver
 	SharedPool() SharedPoolResolver
+	StatementRefundCorrection() StatementRefundCorrectionResolver
 	Subscription() SubscriptionResolver
 	Tag() TagResolver
 	TransferHouseholdOwnerSuccess() TransferHouseholdOwnerSuccessResolver
@@ -628,6 +629,15 @@ type ComplexityRoot struct {
 		Message func(childComplexity int) int
 	}
 
+	LinkStatementRefundCorrectionSuccess struct {
+		Result func(childComplexity int) int
+	}
+
+	LinkStatementRefundCorrectionUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	LinkStatementTransferSuccess struct {
 		Result func(childComplexity int) int
 	}
@@ -725,6 +735,7 @@ type ComplexityRoot struct {
 		LeaveHousehold                func(childComplexity int, input model.LeaveHouseholdInput) int
 		LinkStatementAccountIncome    func(childComplexity int, input model.LinkStatementAccountIncomeInput) int
 		LinkStatementAccountMovement  func(childComplexity int, input model.LinkStatementAccountMovementInput) int
+		LinkStatementRefundCorrection func(childComplexity int, input model.LinkStatementRefundCorrectionInput) int
 		LinkStatementTransfer         func(childComplexity int, input model.LinkStatementTransferInput) int
 		PostPurchase                  func(childComplexity int, input model.PostPurchaseInput) int
 		RecordAccountMovement         func(childComplexity int, input model.RecordAccountMovementInput) int
@@ -969,33 +980,34 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		AccountBalanceAnalysis  func(childComplexity int, householdID string, accountID string, from model.YearMonth, to model.YearMonth, first *int, after *string) int
-		AccountBalances         func(childComplexity int, householdID string) int
-		AccountIncomes          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		AccountMovements        func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		AllocationRules         func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		Budgets                 func(childComplexity int, householdID string, period model.YearMonth, after *string, before *string, first *int, last *int) int
-		FundingSchedules        func(childComplexity int, householdID string, active *bool, after *string, before *string, first *int, last *int) int
-		HomeSummary             func(childComplexity int, householdID string) int
-		Household               func(childComplexity int, id string) int
-		HouseholdInvitations    func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		HouseholdMailForwarding func(childComplexity int, householdID string) int
-		Households              func(childComplexity int) int
-		Ledger                  func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		LoanBalances            func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		MonthlyCategorySpending func(childComplexity int, householdID string, from model.YearMonth, to model.YearMonth) int
-		MonthlyMemberSpending   func(childComplexity int, householdID string, from model.YearMonth, to model.YearMonth) int
-		Node                    func(childComplexity int, id string) int
-		Nodes                   func(childComplexity int, ids []string) int
-		ProductCatalog          func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
-		ProductSuggestions      func(childComplexity int, householdID string, query string, merchant *string, first int) int
-		PurchaseCorrections     func(childComplexity int, purchaseID string, first *int, after *string) int
-		Purchases               func(childComplexity int, filter model.PurchaseFilter, after *string, before *string, first *int, last *int) int
-		RecurringExpenses       func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
-		Settlement              func(childComplexity int, householdID string, period model.YearMonth) int
-		Tags                    func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
-		UnmatchedObservations   func(childComplexity int, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) int
-		Viewer                  func(childComplexity int) int
+		AccountBalanceAnalysis     func(childComplexity int, householdID string, accountID string, from model.YearMonth, to model.YearMonth, first *int, after *string) int
+		AccountBalances            func(childComplexity int, householdID string) int
+		AccountIncomes             func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
+		AccountMovements           func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
+		AllocationRules            func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
+		Budgets                    func(childComplexity int, householdID string, period model.YearMonth, after *string, before *string, first *int, last *int) int
+		FundingSchedules           func(childComplexity int, householdID string, active *bool, after *string, before *string, first *int, last *int) int
+		HomeSummary                func(childComplexity int, householdID string) int
+		Household                  func(childComplexity int, id string) int
+		HouseholdInvitations       func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
+		HouseholdMailForwarding    func(childComplexity int, householdID string) int
+		Households                 func(childComplexity int) int
+		Ledger                     func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
+		LoanBalances               func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
+		MonthlyCategorySpending    func(childComplexity int, householdID string, from model.YearMonth, to model.YearMonth) int
+		MonthlyMemberSpending      func(childComplexity int, householdID string, from model.YearMonth, to model.YearMonth) int
+		Node                       func(childComplexity int, id string) int
+		Nodes                      func(childComplexity int, ids []string) int
+		ProductCatalog             func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
+		ProductSuggestions         func(childComplexity int, householdID string, query string, merchant *string, first int) int
+		PurchaseCorrections        func(childComplexity int, purchaseID string, first *int, after *string) int
+		Purchases                  func(childComplexity int, filter model.PurchaseFilter, after *string, before *string, first *int, last *int) int
+		RecurringExpenses          func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
+		Settlement                 func(childComplexity int, householdID string, period model.YearMonth) int
+		StatementRefundCorrections func(childComplexity int, householdID string, sourceDocumentID string, sourceReference string, first *int, after *string) int
+		Tags                       func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
+		UnmatchedObservations      func(childComplexity int, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) int
+		Viewer                     func(childComplexity int) int
 	}
 
 	RecordAccountMovementSuccess struct {
@@ -1190,6 +1202,24 @@ type ComplexityRoot struct {
 		ID                 func(childComplexity int) int
 		Name               func(childComplexity int) int
 		SettlementPolicy   func(childComplexity int) int
+	}
+
+	StatementRefundCorrection struct {
+		AmountYen      func(childComplexity int) int
+		ID             func(childComplexity int) int
+		Merchant       func(childComplexity int) int
+		OccurredAt     func(childComplexity int) int
+		SourceFilename func(childComplexity int) int
+	}
+
+	StatementRefundCorrectionConnection struct {
+		Edges    func(childComplexity int) int
+		PageInfo func(childComplexity int) int
+	}
+
+	StatementRefundCorrectionEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
 	}
 
 	Subscription struct {
@@ -1471,6 +1501,7 @@ type MutationResolver interface {
 	SetFundingSchedule(ctx context.Context, input model.SetFundingScheduleInput) (model.SetFundingScheduleResult, error)
 	SetPoolFundingRule(ctx context.Context, input model.SetPoolFundingRuleInput) (model.SetPoolFundingRuleResult, error)
 	SetProductAlias(ctx context.Context, input model.SetProductAliasInput) (model.SetProductAliasResult, error)
+	LinkStatementRefundCorrection(ctx context.Context, input model.LinkStatementRefundCorrectionInput) (model.LinkStatementRefundCorrectionResult, error)
 	TransferHouseholdOwner(ctx context.Context, input model.TransferHouseholdOwnerInput) (model.TransferHouseholdOwnerResult, error)
 	UpdateBudget(ctx context.Context, input model.UpdateBudgetInput) (model.UpdateBudgetResult, error)
 	UpdatePurchaseItem(ctx context.Context, input model.UpdatePurchaseItemInput) (model.UpdatePurchaseItemResult, error)
@@ -1567,6 +1598,7 @@ type QueryResolver interface {
 	PurchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error)
 	RecurringExpenses(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
 	Settlement(ctx context.Context, householdID string, period model.YearMonth) (model.SettlementVariant, error)
+	StatementRefundCorrections(ctx context.Context, householdID string, sourceDocumentID string, sourceReference string, first *int, after *string) (*model.StatementRefundCorrectionConnection, error)
 	Tags(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.TagConnection, error)
 	Viewer(ctx context.Context) (*model.Viewer, error)
 }
@@ -1597,6 +1629,9 @@ type SharedPoolResolver interface {
 	ID(ctx context.Context, obj *model.SharedPool) (string, error)
 
 	SettlementPolicy(ctx context.Context, obj *model.SharedPool) (model.SharedPoolSettlementPolicy, error)
+}
+type StatementRefundCorrectionResolver interface {
+	ID(ctx context.Context, obj *model.StatementRefundCorrection) (string, error)
 }
 type SubscriptionResolver interface {
 	PurchaseChanges(ctx context.Context, householdID string, after *string) (<-chan *model.PurchaseChange, error)
@@ -3311,6 +3346,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.LinkStatementAccountMovementUserError.Message(childComplexity), true
 
+	case "LinkStatementRefundCorrectionSuccess.result":
+		if e.ComplexityRoot.LinkStatementRefundCorrectionSuccess.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LinkStatementRefundCorrectionSuccess.Result(childComplexity), true
+
+	case "LinkStatementRefundCorrectionUserError.code":
+		if e.ComplexityRoot.LinkStatementRefundCorrectionUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LinkStatementRefundCorrectionUserError.Code(childComplexity), true
+	case "LinkStatementRefundCorrectionUserError.message":
+		if e.ComplexityRoot.LinkStatementRefundCorrectionUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LinkStatementRefundCorrectionUserError.Message(childComplexity), true
+
 	case "LinkStatementTransferSuccess.result":
 		if e.ComplexityRoot.LinkStatementTransferSuccess.Result == nil {
 			break
@@ -3825,6 +3880,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.LinkStatementAccountMovement(childComplexity, args["input"].(model.LinkStatementAccountMovementInput)), true
+	case "Mutation.linkStatementRefundCorrection":
+		if e.ComplexityRoot.Mutation.LinkStatementRefundCorrection == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_linkStatementRefundCorrection_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.LinkStatementRefundCorrection(childComplexity, args["input"].(model.LinkStatementRefundCorrectionInput)), true
 	case "Mutation.linkStatementTransfer":
 		if e.ComplexityRoot.Mutation.LinkStatementTransfer == nil {
 			break
@@ -5193,6 +5259,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Settlement(childComplexity, args["householdId"].(string), args["period"].(model.YearMonth)), true
+	case "Query.statementRefundCorrections":
+		if e.ComplexityRoot.Query.StatementRefundCorrections == nil {
+			break
+		}
+
+		args, err := ec.field_Query_statementRefundCorrections_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.StatementRefundCorrections(childComplexity, args["householdId"].(string), args["sourceDocumentId"].(string), args["sourceReference"].(string), args["first"].(*int), args["after"].(*string)), true
 	case "Query.tags":
 		if e.ComplexityRoot.Query.Tags == nil {
 			break
@@ -5791,6 +5868,63 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.SharedPool.SettlementPolicy(childComplexity), true
 
+	case "StatementRefundCorrection.amountYen":
+		if e.ComplexityRoot.StatementRefundCorrection.AmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StatementRefundCorrection.AmountYen(childComplexity), true
+	case "StatementRefundCorrection.id":
+		if e.ComplexityRoot.StatementRefundCorrection.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StatementRefundCorrection.ID(childComplexity), true
+	case "StatementRefundCorrection.merchant":
+		if e.ComplexityRoot.StatementRefundCorrection.Merchant == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StatementRefundCorrection.Merchant(childComplexity), true
+	case "StatementRefundCorrection.occurredAt":
+		if e.ComplexityRoot.StatementRefundCorrection.OccurredAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StatementRefundCorrection.OccurredAt(childComplexity), true
+	case "StatementRefundCorrection.sourceFilename":
+		if e.ComplexityRoot.StatementRefundCorrection.SourceFilename == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StatementRefundCorrection.SourceFilename(childComplexity), true
+
+	case "StatementRefundCorrectionConnection.edges":
+		if e.ComplexityRoot.StatementRefundCorrectionConnection.Edges == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StatementRefundCorrectionConnection.Edges(childComplexity), true
+	case "StatementRefundCorrectionConnection.pageInfo":
+		if e.ComplexityRoot.StatementRefundCorrectionConnection.PageInfo == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StatementRefundCorrectionConnection.PageInfo(childComplexity), true
+
+	case "StatementRefundCorrectionEdge.cursor":
+		if e.ComplexityRoot.StatementRefundCorrectionEdge.Cursor == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StatementRefundCorrectionEdge.Cursor(childComplexity), true
+	case "StatementRefundCorrectionEdge.node":
+		if e.ComplexityRoot.StatementRefundCorrectionEdge.Node == nil {
+			break
+		}
+
+		return e.ComplexityRoot.StatementRefundCorrectionEdge.Node(childComplexity), true
+
 	case "Subscription.purchaseChanges":
 		if e.ComplexityRoot.Subscription.PurchaseChanges == nil {
 			break
@@ -6205,6 +6339,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputLeaveHouseholdInput,
 		ec.unmarshalInputLinkStatementAccountIncomeInput,
 		ec.unmarshalInputLinkStatementAccountMovementInput,
+		ec.unmarshalInputLinkStatementRefundCorrectionInput,
 		ec.unmarshalInputLinkStatementTransferInput,
 		ec.unmarshalInputPersonalPoolFundingRuleInput,
 		ec.unmarshalInputPoolFundingRuleConfigurationInput,
@@ -7966,10 +8101,14 @@ type RecordAccountMovementUserError implements MutationError {
 `, BuiltIn: false},
 	{Name: "../../graphql/record_external_income_mutation.graphql", Input: `extend type Mutation {
   recordExternalIncome(input: RecordExternalIncomeInput!): RecordExternalIncomeResult!
-  linkStatementAccountIncome(input: LinkStatementAccountIncomeInput!): LinkStatementAccountIncomeResult!
+  linkStatementAccountIncome(
+    input: LinkStatementAccountIncomeInput!
+  ): LinkStatementAccountIncomeResult!
 }
 
-union LinkStatementAccountIncomeResult = LinkStatementAccountIncomeSuccess | LinkStatementAccountIncomeUserError
+union LinkStatementAccountIncomeResult =
+  | LinkStatementAccountIncomeSuccess
+  | LinkStatementAccountIncomeUserError
 
 type LinkStatementAccountIncomeSuccess {
   result: AccountIncome!
@@ -8463,6 +8602,56 @@ type SettlementLine {
 
 extend type Query {
   settlement(householdId: ID! @nodeID(of: "Household"), period: YearMonth!): Settlement!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/statement_refund_correction.graphql", Input: `extend type Query {
+  statementRefundCorrections(
+    householdId: ID! @nodeID(of: "Household")
+    sourceDocumentId: ID!
+    sourceReference: String!
+    first: Int
+    after: String
+  ): StatementRefundCorrectionConnection!
+}
+
+type StatementRefundCorrection {
+  id: ID! @goField(forceResolver: true)
+  amountYen: Long!
+  occurredAt: DateTime!
+  merchant: String!
+  sourceFilename: String!
+}
+
+type StatementRefundCorrectionEdge {
+  cursor: String!
+  node: StatementRefundCorrection!
+}
+
+type StatementRefundCorrectionConnection {
+  edges: [StatementRefundCorrectionEdge!]!
+  pageInfo: PageInfo!
+}
+
+extend type Mutation {
+  linkStatementRefundCorrection(input: LinkStatementRefundCorrectionInput!): LinkStatementRefundCorrectionResult!
+}
+
+input LinkStatementRefundCorrectionInput {
+  householdId: ID! @nodeID(of: "Household")
+  correctionId: ID! @nodeID(of: "PurchaseCorrection")
+  sourceDocumentId: ID!
+  sourceReference: String!
+}
+
+union LinkStatementRefundCorrectionResult = LinkStatementRefundCorrectionSuccess | LinkStatementRefundCorrectionUserError
+
+type LinkStatementRefundCorrectionSuccess {
+  result: Purchase!
+}
+
+type LinkStatementRefundCorrectionUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/tag.graphql", Input: `type Tag implements Node {
@@ -9705,6 +9894,42 @@ func (ec *executionContext) childFields_SettlementLine(ctx context.Context, fiel
 	return nil, fmt.Errorf("no field named %q was found under type SettlementLine", field.Name)
 }
 
+func (ec *executionContext) childFields_StatementRefundCorrection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "id":
+		return ec.fieldContext_StatementRefundCorrection_id(ctx, field)
+	case "amountYen":
+		return ec.fieldContext_StatementRefundCorrection_amountYen(ctx, field)
+	case "occurredAt":
+		return ec.fieldContext_StatementRefundCorrection_occurredAt(ctx, field)
+	case "merchant":
+		return ec.fieldContext_StatementRefundCorrection_merchant(ctx, field)
+	case "sourceFilename":
+		return ec.fieldContext_StatementRefundCorrection_sourceFilename(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type StatementRefundCorrection", field.Name)
+}
+
+func (ec *executionContext) childFields_StatementRefundCorrectionConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "edges":
+		return ec.fieldContext_StatementRefundCorrectionConnection_edges(ctx, field)
+	case "pageInfo":
+		return ec.fieldContext_StatementRefundCorrectionConnection_pageInfo(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type StatementRefundCorrectionConnection", field.Name)
+}
+
+func (ec *executionContext) childFields_StatementRefundCorrectionEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "cursor":
+		return ec.fieldContext_StatementRefundCorrectionEdge_cursor(ctx, field)
+	case "node":
+		return ec.fieldContext_StatementRefundCorrectionEdge_node(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type StatementRefundCorrectionEdge", field.Name)
+}
+
 func (ec *executionContext) childFields_Tag(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "id":
@@ -10251,6 +10476,20 @@ func (ec *executionContext) field_Mutation_linkStatementAccountMovement_args(ctx
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.LinkStatementAccountMovementInput, error) {
 			return ec.unmarshalNLinkStatementAccountMovementInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementAccountMovementInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_linkStatementRefundCorrection_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.LinkStatementRefundCorrectionInput, error) {
+			return ec.unmarshalNLinkStatementRefundCorrectionInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementRefundCorrectionInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -12294,6 +12533,95 @@ func (ec *executionContext) field_Query_settlement_args(ctx context.Context, raw
 }
 
 func (ec *executionContext) field_Query_settlement_argsHouseholdID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["householdId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["householdId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Household")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
+}
+
+func (ec *executionContext) field_Query_statementRefundCorrections_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+
+	arg0, err := ec.field_Query_statementRefundCorrections_argsHouseholdID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "sourceDocumentId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["sourceDocumentId"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "sourceReference",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["sourceReference"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "first",
+		func(ctx context.Context, v any) (*int, error) {
+			return ec.unmarshalOInt2ᚖint(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg3
+	arg4, err := graphql.ProcessArgField(ctx, rawArgs, "after",
+		func(ctx context.Context, v any) (*string, error) {
+			return ec.unmarshalOString2ᚖstring(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg4
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_statementRefundCorrections_argsHouseholdID(
 	ctx context.Context,
 	rawArgs map[string]any,
 ) (string, error) {
@@ -19383,6 +19711,84 @@ func (ec *executionContext) fieldContext_LinkStatementAccountMovementUserError_m
 	return graphql.NewScalarFieldContext("LinkStatementAccountMovementUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _LinkStatementRefundCorrectionSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementRefundCorrectionSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LinkStatementRefundCorrectionSuccess_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Purchase) graphql.Marshaler {
+			return ec.marshalNPurchase2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchase(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LinkStatementRefundCorrectionSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "LinkStatementRefundCorrectionSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Purchase(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _LinkStatementRefundCorrectionUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementRefundCorrectionUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LinkStatementRefundCorrectionUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LinkStatementRefundCorrectionUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LinkStatementRefundCorrectionUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _LinkStatementRefundCorrectionUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementRefundCorrectionUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LinkStatementRefundCorrectionUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LinkStatementRefundCorrectionUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LinkStatementRefundCorrectionUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _LinkStatementTransferSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementTransferSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -22171,6 +22577,50 @@ func (ec *executionContext) fieldContext_Mutation_setProductAlias(ctx context.Co
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_setProductAlias_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_linkStatementRefundCorrection(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_linkStatementRefundCorrection(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().LinkStatementRefundCorrection(ctx, fc.Args["input"].(model.LinkStatementRefundCorrectionInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.LinkStatementRefundCorrectionResult) graphql.Marshaler {
+			return ec.marshalNLinkStatementRefundCorrectionResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementRefundCorrectionResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_linkStatementRefundCorrection(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type LinkStatementRefundCorrectionResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_linkStatementRefundCorrection_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -26953,6 +27403,50 @@ func (ec *executionContext) fieldContext_Query_settlement(ctx context.Context, f
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_statementRefundCorrections(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_statementRefundCorrections(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().StatementRefundCorrections(ctx, fc.Args["householdId"].(string), fc.Args["sourceDocumentId"].(string), fc.Args["sourceReference"].(string), fc.Args["first"].(*int), fc.Args["after"].(*string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.StatementRefundCorrectionConnection) graphql.Marshaler {
+			return ec.marshalNStatementRefundCorrectionConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐStatementRefundCorrectionConnection(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_statementRefundCorrections(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_StatementRefundCorrectionConnection(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_statementRefundCorrections_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_tags(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -29339,6 +29833,240 @@ func (ec *executionContext) _SharedPool_settlementPolicy(ctx context.Context, fi
 }
 func (ec *executionContext) fieldContext_SharedPool_settlementPolicy(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("SharedPool", field, true, true, errors.New("field of type SharedPoolSettlementPolicy does not have child fields"))
+}
+
+func (ec *executionContext) _StatementRefundCorrection_id(ctx context.Context, field graphql.CollectedField, obj *model.StatementRefundCorrection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StatementRefundCorrection_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.StatementRefundCorrection().ID(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StatementRefundCorrection_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StatementRefundCorrection", field, true, true, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _StatementRefundCorrection_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.StatementRefundCorrection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StatementRefundCorrection_amountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StatementRefundCorrection_amountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StatementRefundCorrection", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _StatementRefundCorrection_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.StatementRefundCorrection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StatementRefundCorrection_occurredAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.OccurredAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StatementRefundCorrection_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StatementRefundCorrection", field, false, false, errors.New("field of type DateTime does not have child fields"))
+}
+
+func (ec *executionContext) _StatementRefundCorrection_merchant(ctx context.Context, field graphql.CollectedField, obj *model.StatementRefundCorrection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StatementRefundCorrection_merchant(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Merchant, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StatementRefundCorrection_merchant(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StatementRefundCorrection", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _StatementRefundCorrection_sourceFilename(ctx context.Context, field graphql.CollectedField, obj *model.StatementRefundCorrection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StatementRefundCorrection_sourceFilename(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceFilename, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StatementRefundCorrection_sourceFilename(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StatementRefundCorrection", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _StatementRefundCorrectionConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.StatementRefundCorrectionConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StatementRefundCorrectionConnection_edges(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.StatementRefundCorrectionEdge) graphql.Marshaler {
+			return ec.marshalNStatementRefundCorrectionEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐStatementRefundCorrectionEdgeᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StatementRefundCorrectionConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StatementRefundCorrectionConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_StatementRefundCorrectionEdge(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StatementRefundCorrectionConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.StatementRefundCorrectionConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StatementRefundCorrectionConnection_pageInfo(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.PageInfo) graphql.Marshaler {
+			return ec.marshalNPageInfo2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPageInfo(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StatementRefundCorrectionConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StatementRefundCorrectionConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PageInfo(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StatementRefundCorrectionEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.StatementRefundCorrectionEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StatementRefundCorrectionEdge_cursor(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StatementRefundCorrectionEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("StatementRefundCorrectionEdge", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _StatementRefundCorrectionEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.StatementRefundCorrectionEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_StatementRefundCorrectionEdge_node(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.StatementRefundCorrection) graphql.Marshaler {
+			return ec.marshalNStatementRefundCorrection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐStatementRefundCorrection(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_StatementRefundCorrectionEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StatementRefundCorrectionEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_StatementRefundCorrection(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _Subscription_purchaseChanges(ctx context.Context, field graphql.CollectedField) (ret func(ctx context.Context) graphql.Marshaler) {
@@ -34475,6 +35203,97 @@ func (ec *executionContext) unmarshalInputLinkStatementAccountMovementInput(ctx 
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputLinkStatementRefundCorrectionInput(ctx context.Context, obj any) (model.LinkStatementRefundCorrectionInput, error) {
+	var it model.LinkStatementRefundCorrectionInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId", "correctionId", "sourceDocumentId", "sourceReference"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Household")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.HouseholdID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "correctionId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("correctionId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "PurchaseCorrection")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.CorrectionID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "sourceDocumentId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceDocumentId"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceDocumentID = data
+		case "sourceReference":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceReference"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceReference = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputLinkStatementTransferInput(ctx context.Context, obj any) (model.LinkStatementTransferInput, error) {
 	var it model.LinkStatementTransferInput
 	if obj == nil {
@@ -39057,6 +39876,33 @@ func (ec *executionContext) _LinkStatementAccountMovementResult(ctx context.Cont
 	}
 }
 
+func (ec *executionContext) _LinkStatementRefundCorrectionResult(ctx context.Context, sel ast.SelectionSet, obj model.LinkStatementRefundCorrectionResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.LinkStatementRefundCorrectionUserError:
+		return ec._LinkStatementRefundCorrectionUserError(ctx, sel, &obj)
+	case *model.LinkStatementRefundCorrectionUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LinkStatementRefundCorrectionUserError(ctx, sel, obj)
+	case model.LinkStatementRefundCorrectionSuccess:
+		return ec._LinkStatementRefundCorrectionSuccess(ctx, sel, &obj)
+	case *model.LinkStatementRefundCorrectionSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LinkStatementRefundCorrectionSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of LinkStatementRefundCorrectionResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _LinkStatementTransferResult(ctx context.Context, sel ast.SelectionSet, obj model.LinkStatementTransferResult) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -39235,6 +40081,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._LinkStatementTransferUserError(ctx, sel, obj)
+	case model.LinkStatementRefundCorrectionUserError:
+		return ec._LinkStatementRefundCorrectionUserError(ctx, sel, &obj)
+	case *model.LinkStatementRefundCorrectionUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LinkStatementRefundCorrectionUserError(ctx, sel, obj)
 	case model.LinkStatementAccountMovementUserError:
 		return ec._LinkStatementAccountMovementUserError(ctx, sel, &obj)
 	case *model.LinkStatementAccountMovementUserError:
@@ -46232,6 +47085,87 @@ func (ec *executionContext) _LinkStatementAccountMovementUserError(ctx context.C
 	return out
 }
 
+var linkStatementRefundCorrectionSuccessImplementors = []string{"LinkStatementRefundCorrectionSuccess", "LinkStatementRefundCorrectionResult"}
+
+func (ec *executionContext) _LinkStatementRefundCorrectionSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.LinkStatementRefundCorrectionSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, linkStatementRefundCorrectionSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LinkStatementRefundCorrectionSuccess")
+		case "result":
+			out.Values[i] = ec._LinkStatementRefundCorrectionSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var linkStatementRefundCorrectionUserErrorImplementors = []string{"LinkStatementRefundCorrectionUserError", "LinkStatementRefundCorrectionResult", "MutationError"}
+
+func (ec *executionContext) _LinkStatementRefundCorrectionUserError(ctx context.Context, sel ast.SelectionSet, obj *model.LinkStatementRefundCorrectionUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, linkStatementRefundCorrectionUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LinkStatementRefundCorrectionUserError")
+		case "code":
+			out.Values[i] = ec._LinkStatementRefundCorrectionUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._LinkStatementRefundCorrectionUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var linkStatementTransferSuccessImplementors = []string{"LinkStatementTransferSuccess", "LinkStatementTransferResult"}
 
 func (ec *executionContext) _LinkStatementTransferSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.LinkStatementTransferSuccess) graphql.Marshaler {
@@ -47293,6 +48227,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "setProductAlias":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_setProductAlias(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "linkStatementRefundCorrection":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_linkStatementRefundCorrection(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -50463,6 +51404,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "statementRefundCorrections":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_statementRefundCorrections(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "tags":
 			field := field
 
@@ -52517,6 +53480,183 @@ func (ec *executionContext) _SharedPool(ctx context.Context, sel ast.SelectionSe
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var statementRefundCorrectionImplementors = []string{"StatementRefundCorrection"}
+
+func (ec *executionContext) _StatementRefundCorrection(ctx context.Context, sel ast.SelectionSet, obj *model.StatementRefundCorrection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, statementRefundCorrectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("StatementRefundCorrection")
+		case "id":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._StatementRefundCorrection_id(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "amountYen":
+			out.Values[i] = ec._StatementRefundCorrection_amountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "occurredAt":
+			out.Values[i] = ec._StatementRefundCorrection_occurredAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "merchant":
+			out.Values[i] = ec._StatementRefundCorrection_merchant(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "sourceFilename":
+			out.Values[i] = ec._StatementRefundCorrection_sourceFilename(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var statementRefundCorrectionConnectionImplementors = []string{"StatementRefundCorrectionConnection"}
+
+func (ec *executionContext) _StatementRefundCorrectionConnection(ctx context.Context, sel ast.SelectionSet, obj *model.StatementRefundCorrectionConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, statementRefundCorrectionConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("StatementRefundCorrectionConnection")
+		case "edges":
+			out.Values[i] = ec._StatementRefundCorrectionConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._StatementRefundCorrectionConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var statementRefundCorrectionEdgeImplementors = []string{"StatementRefundCorrectionEdge"}
+
+func (ec *executionContext) _StatementRefundCorrectionEdge(ctx context.Context, sel ast.SelectionSet, obj *model.StatementRefundCorrectionEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, statementRefundCorrectionEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("StatementRefundCorrectionEdge")
+		case "cursor":
+			out.Values[i] = ec._StatementRefundCorrectionEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._StatementRefundCorrectionEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -55257,6 +56397,21 @@ func (ec *executionContext) marshalNLinkStatementAccountMovementResult2githubᚗ
 	return ec._LinkStatementAccountMovementResult(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNLinkStatementRefundCorrectionInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementRefundCorrectionInput(ctx context.Context, v any) (model.LinkStatementRefundCorrectionInput, error) {
+	res, err := ec.unmarshalInputLinkStatementRefundCorrectionInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNLinkStatementRefundCorrectionResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementRefundCorrectionResult(ctx context.Context, sel ast.SelectionSet, v model.LinkStatementRefundCorrectionResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._LinkStatementRefundCorrectionResult(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNLinkStatementTransferInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementTransferInput(ctx context.Context, v any) (model.LinkStatementTransferInput, error) {
 	res, err := ec.unmarshalInputLinkStatementTransferInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -56437,6 +57592,52 @@ func (ec *executionContext) marshalNSourceKind2ᚕgithubᚗcomᚋwalnuts1018ᚋh
 	}
 
 	return ret
+}
+
+func (ec *executionContext) marshalNStatementRefundCorrection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐStatementRefundCorrection(ctx context.Context, sel ast.SelectionSet, v *model.StatementRefundCorrection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._StatementRefundCorrection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNStatementRefundCorrectionConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐStatementRefundCorrectionConnection(ctx context.Context, sel ast.SelectionSet, v *model.StatementRefundCorrectionConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._StatementRefundCorrectionConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNStatementRefundCorrectionEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐStatementRefundCorrectionEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.StatementRefundCorrectionEdge) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNStatementRefundCorrectionEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐStatementRefundCorrectionEdge(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNStatementRefundCorrectionEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐStatementRefundCorrectionEdge(ctx context.Context, sel ast.SelectionSet, v *model.StatementRefundCorrectionEdge) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._StatementRefundCorrectionEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v any) (string, error) {

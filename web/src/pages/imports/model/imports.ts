@@ -167,6 +167,7 @@ export type DocumentReview = {
   confirmations?: Array<{
     sourceReference: string;
     purchaseId: string;
+    correctionId?: string;
     accountMovementId?: string;
     accountIncomeId?: string;
     transferId?: string;

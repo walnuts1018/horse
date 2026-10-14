@@ -53,6 +53,11 @@ export type { LinkStatementTransferMutation } from "./__generated__/LinkStatemen
 export type { LinkStatementAccountMovementMutation } from "./__generated__/LinkStatementAccountMovementMutation.graphql";
 export type { LinkStatementAccountIncomeMutation } from "./__generated__/LinkStatementAccountIncomeMutation.graphql";
 export type { StatementTransferCandidatesQuery } from "./__generated__/StatementTransferCandidatesQuery.graphql";
+export type {
+  StatementRefundCorrectionsQuery,
+  StatementRefundCorrectionsQuery$data,
+} from "./__generated__/StatementRefundCorrectionsQuery.graphql";
+export type { LinkStatementRefundCorrectionMutation } from "./__generated__/LinkStatementRefundCorrectionMutation.graphql";
 export type { CreateAccountMutation } from "./__generated__/CreateAccountMutation.graphql";
 export type { CreatePoolMutation } from "./__generated__/CreatePoolMutation.graphql";
 export type { SetPoolFundingRuleMutation } from "./__generated__/SetPoolFundingRuleMutation.graphql";

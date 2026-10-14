@@ -78,6 +78,7 @@ type documentAttachmentParent struct {
 type documentConfirmation struct {
 	SourceReference   string `json:"sourceReference"`
 	PurchaseID        string `json:"purchaseId"`
+	CorrectionID      string `json:"correctionId,omitempty"`
 	AccountMovementID string `json:"accountMovementId,omitempty"`
 	AccountIncomeID   string `json:"accountIncomeId,omitempty"`
 	TransferID        string `json:"transferId,omitempty"`
@@ -554,6 +555,7 @@ func (s *Server) loadDocumentConfirmations(ctx context.Context, document *docume
 	document.Confirmations = make([]documentConfirmation, 0)
 	for _, confirmation := range confirmations {
 		purchaseID := ""
+		correctionID := ""
 		accountMovementID := ""
 		accountIncomeID := ""
 		transferID := ""
@@ -565,6 +567,7 @@ func (s *Server) loadDocumentConfirmations(ctx context.Context, document *docume
 				return err
 			}
 			purchaseID = correction.PurchaseID.String()
+			correctionID = correction.ID.String()
 		} else if confirmation.AccountMovementID.Valid {
 			accountMovementID = confirmation.AccountMovementID.V.String()
 		} else if confirmation.AccountIncomeID.Valid {
@@ -573,7 +576,8 @@ func (s *Server) loadDocumentConfirmations(ctx context.Context, document *docume
 			transferID = confirmation.TransferID.V.String()
 		}
 		document.Confirmations = append(document.Confirmations, documentConfirmation{
-			SourceReference: confirmation.SourceReference, PurchaseID: purchaseID, AccountMovementID: accountMovementID, AccountIncomeID: accountIncomeID, TransferID: transferID,
+			SourceReference: confirmation.SourceReference, PurchaseID: purchaseID, CorrectionID: correctionID,
+			AccountMovementID: accountMovementID, AccountIncomeID: accountIncomeID, TransferID: transferID,
 		})
 	}
 	return nil
@@ -613,6 +617,186 @@ func loadDocumentEvidence(ctx context.Context, exec bob.Executor, documents ...*
 		}
 	}
 	return nil
+}
+
+func (s *Server) documentResponses(ctx context.Context, exec bob.Executor, documents []*models.SourceDocument) ([]documentResponse, error) {
+	if len(documents) == 0 {
+		return []documentResponse{}, nil
+	}
+
+	documentIDs := make([]bob.Expression, 0, len(documents))
+	responses := make([]documentResponse, len(documents))
+	responseByID := make(map[gofrsuuid.UUID]*documentResponse, len(documents))
+	for i, document := range documents {
+		documentIDs = append(documentIDs, psql.Arg(document.ID))
+		responses[i] = documentResponse{
+			ID: document.ID.String(), HouseholdID: document.HouseholdID.String(),
+			Name: document.SourceFilename.V, SHA256: document.Sha256, MIMEType: document.MimeType,
+			SourceKind: document.SourceKind, Status: documentStatusQueued, CreatedAt: document.CreatedAt,
+			Confirmations: make([]documentConfirmation, 0),
+		}
+		responseByID[document.ID] = &responses[i]
+	}
+
+	attachments, err := models.SourceDocumentAttachments.Query(
+		sm.Where(models.SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Arg(documents[0].HouseholdID))),
+		sm.Where(models.SourceDocumentAttachments.Columns.ParentDocumentID.In(documentIDs...)),
+		sm.OrderBy(models.SourceDocumentAttachments.Columns.ParentDocumentID),
+		sm.OrderBy(models.SourceDocumentAttachments.Columns.AttachmentIndex),
+	).All(ctx, exec)
+	if err != nil {
+		return nil, err
+	}
+	parents, err := models.SourceDocumentAttachments.Query(
+		sm.Where(models.SourceDocumentAttachments.Columns.HouseholdID.EQ(psql.Arg(documents[0].HouseholdID))),
+		sm.Where(models.SourceDocumentAttachments.Columns.ChildDocumentID.In(documentIDs...)),
+		sm.OrderBy(models.SourceDocumentAttachments.Columns.ChildDocumentID),
+		sm.OrderBy(models.SourceDocumentAttachments.Columns.ParentDocumentID),
+		sm.OrderBy(models.SourceDocumentAttachments.Columns.AttachmentIndex),
+	).All(ctx, exec)
+	if err != nil {
+		return nil, err
+	}
+
+	allDocumentIDs := make([]bob.Expression, 0, len(documents)+len(attachments)+len(parents))
+	allDocumentIDs = append(allDocumentIDs, documentIDs...)
+	seenDocumentIDs := make(map[gofrsuuid.UUID]struct{}, cap(allDocumentIDs))
+	for _, document := range documents {
+		seenDocumentIDs[document.ID] = struct{}{}
+	}
+	for _, relation := range attachments {
+		if _, ok := seenDocumentIDs[relation.ChildDocumentID]; !ok {
+			seenDocumentIDs[relation.ChildDocumentID] = struct{}{}
+			allDocumentIDs = append(allDocumentIDs, psql.Arg(relation.ChildDocumentID))
+		}
+	}
+	for _, relation := range parents {
+		if _, ok := seenDocumentIDs[relation.ParentDocumentID]; !ok {
+			seenDocumentIDs[relation.ParentDocumentID] = struct{}{}
+			allDocumentIDs = append(allDocumentIDs, psql.Arg(relation.ParentDocumentID))
+		}
+	}
+	relatedDocuments, err := models.SourceDocuments.Query(sm.Where(psql.And(
+		models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(documents[0].HouseholdID)),
+		models.SourceDocuments.Columns.ID.In(allDocumentIDs...),
+	))).All(ctx, exec)
+	if err != nil {
+		return nil, err
+	}
+	documentsByID := make(map[gofrsuuid.UUID]*models.SourceDocument, len(relatedDocuments))
+	for _, document := range relatedDocuments {
+		documentsByID[document.ID] = document
+	}
+
+	jobIDs := make([]bob.Expression, 0, len(documentsByID))
+	for id := range documentsByID {
+		jobIDs = append(jobIDs, psql.Arg(id))
+	}
+	jobs, err := models.ExtractionJobs.Query(
+		sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.In(jobIDs...)),
+		sm.OrderBy(models.ExtractionJobs.Columns.SourceDocumentID),
+		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
+	).All(ctx, exec)
+	if err != nil {
+		return nil, err
+	}
+	latestJobs := make(map[gofrsuuid.UUID]*models.ExtractionJob, len(documentsByID))
+	for _, job := range jobs {
+		if _, exists := latestJobs[job.SourceDocumentID]; !exists {
+			latestJobs[job.SourceDocumentID] = job
+		}
+	}
+	for _, document := range documents {
+		response := responseByID[document.ID]
+		if job := latestJobs[document.ID]; job != nil {
+			response.Status = job.Status
+			response.JobID = job.ID.String()
+			if job.Result.Valid {
+				var decoded any
+				if err := json.Unmarshal(job.Result.V.Val, &decoded); err == nil {
+					response.Result = decoded
+				}
+			}
+		}
+	}
+
+	for _, relation := range attachments {
+		parent := responseByID[relation.ParentDocumentID]
+		child := documentsByID[relation.ChildDocumentID]
+		if child == nil {
+			return nil, sql.ErrNoRows
+		}
+		attachment := documentAttachment{
+			ID: child.ID.String(), Name: child.SourceFilename.V, Filename: relation.Filename, MIMEType: relation.MimeType,
+		}
+		if job := latestJobs[child.ID]; job != nil {
+			attachment.Status = job.Status
+			attachment.JobID = job.ID.String()
+		}
+		parent.Attachments = append(parent.Attachments, attachment)
+	}
+	for _, relation := range parents {
+		response := responseByID[relation.ChildDocumentID]
+		if response.AttachmentParent != nil {
+			continue
+		}
+		parent := documentsByID[relation.ParentDocumentID]
+		if parent == nil {
+			return nil, sql.ErrNoRows
+		}
+		response.AttachmentParent = &documentAttachmentParent{
+			ID: parent.ID.String(), Name: parent.SourceFilename.V, Filename: relation.Filename, Index: relation.AttachmentIndex,
+		}
+	}
+
+	confirmations, err := models.DocumentConfirmations.Query(
+		sm.Where(models.DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(documents[0].HouseholdID))),
+		sm.Where(models.DocumentConfirmations.Columns.SourceDocumentID.In(documentIDs...)),
+		sm.OrderBy(models.DocumentConfirmations.Columns.SourceDocumentID),
+		sm.OrderBy(models.DocumentConfirmations.Columns.SourceReference),
+	).All(ctx, exec)
+	if err != nil {
+		return nil, err
+	}
+	correctionIDs := make([]bob.Expression, 0, len(confirmations))
+	for _, confirmation := range confirmations {
+		if confirmation.CorrectionID.Valid {
+			correctionIDs = append(correctionIDs, psql.Arg(confirmation.CorrectionID.V))
+		}
+	}
+	correctionsByID := make(map[gofrsuuid.UUID]*models.Correction, len(correctionIDs))
+	if len(correctionIDs) > 0 {
+		corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.ID.In(correctionIDs...))).All(ctx, exec)
+		if err != nil {
+			return nil, err
+		}
+		for _, correction := range corrections {
+			correctionsByID[correction.ID] = correction
+		}
+	}
+	for _, confirmation := range confirmations {
+		response := responseByID[confirmation.SourceDocumentID]
+		value := documentConfirmation{SourceReference: confirmation.SourceReference}
+		if confirmation.PurchaseID.Valid {
+			value.PurchaseID = confirmation.PurchaseID.V.String()
+		} else if confirmation.CorrectionID.Valid {
+			correction := correctionsByID[confirmation.CorrectionID.V]
+			if correction == nil {
+				return nil, sql.ErrNoRows
+			}
+			value.PurchaseID = correction.PurchaseID.String()
+			value.CorrectionID = correction.ID.String()
+		} else if confirmation.AccountMovementID.Valid {
+			value.AccountMovementID = confirmation.AccountMovementID.V.String()
+		} else if confirmation.AccountIncomeID.Valid {
+			value.AccountIncomeID = confirmation.AccountIncomeID.V.String()
+		} else if confirmation.TransferID.Valid {
+			value.TransferID = confirmation.TransferID.V.String()
+		}
+		response.Confirmations = append(response.Confirmations, value)
+	}
+
+	return responses, nil
 }
 
 func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
@@ -701,24 +885,10 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
 	}
-	result := make([]documentResponse, 0, limit+1)
-	for _, storedDocument := range storedDocuments {
-		item, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), storedDocument)
-		if err != nil {
-			http.Error(w, "document lookup failed", http.StatusInternalServerError)
-			return
-		}
-		if err := s.loadDocumentAttachments(r.Context(), bobpgx.NewPool(s.db), &item); err != nil {
-			http.Error(w, "document lookup failed", http.StatusInternalServerError)
-			return
-		}
-		result = append(result, item)
-	}
-	for i := range result {
-		if err := s.loadDocumentConfirmations(r.Context(), &result[i]); err != nil {
-			http.Error(w, "document confirmation lookup failed", http.StatusInternalServerError)
-			return
-		}
+	result, err := s.documentResponses(r.Context(), bobpgx.NewPool(s.db), storedDocuments)
+	if err != nil {
+		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		return
 	}
 	documentResults := make([]*documentResponse, len(result))
 	for i := range result {

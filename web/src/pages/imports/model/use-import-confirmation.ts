@@ -29,6 +29,7 @@ import {
   importIdempotencyKey,
   linkStatementTransfer as linkStatementTransferRequest,
   linkStatementAccountMovement as linkStatementAccountMovementRequest,
+  linkStatementRefundCorrection as linkStatementRefundCorrectionRequest,
   linkStatementAccountIncome as linkStatementAccountIncomeRequest,
   recordStatementAccountMovement,
   recordStatementExternalIncome,
@@ -448,6 +449,26 @@ export function useImportConfirmation({
     onAdded(true);
   };
 
+  const linkStatementRefundCorrection = async (
+    document: DocumentReview,
+    entry: StatementEntry,
+    correctionId: string,
+  ) => {
+    if (entry.kind !== "REFUND" || entry.amount >= 0) throw new Error("返金明細を選択してください");
+    const reference = statementSourceReference(entry);
+    const key = `${document.id}:${reference}`;
+    if (confirmedStatements.has(key)) return;
+    await linkStatementRefundCorrectionRequest({
+      householdId: household.id,
+      correctionId,
+      sourceDocumentId: document.id,
+      sourceReference: reference,
+    });
+    setConfirmedStatements((current) => new Set(current).add(key));
+    setHasUnsavedChanges(false);
+    onAdded(true);
+  };
+
   const confirmStatementTransfer = async (
     document: DocumentReview,
     entry: StatementEntry,
@@ -666,6 +687,7 @@ export function useImportConfirmation({
     confirm,
     confirmStatement,
     confirmStatementRefund,
+    linkStatementRefundCorrection,
     confirmStatementTransfer,
     confirmStatementLoan: (
       document: DocumentReview,

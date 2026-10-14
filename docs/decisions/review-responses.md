@@ -124,6 +124,10 @@ UXレビュー#14では、撮影後の画像確認、90度回転、矩形トリ�
 
 ## 2026年10月14日
 
+### 文書一覧の一括取得
+
+文書一覧は文書単位のjob・添付・確認取得をやめ、Bob DSLで一覧IDに対応する関連行をまとめて読み込みます。レスポンスは入力順に組み立て、添付順、確認順、最新job、親添付、訂正先を維持します。Testcontainersの`TestDocumentResponsesUseConstantQueryCount`で1件と50件の一覧組み立てがどちらも5回のDB読取で完了することを確認しました。認可と検索条件を含む`documents`ハンドラーの既存統合テストも成功しました。
+
 `docs/reviews/be-architecture.md`と`docs/reviews/be-architecture2.md`を現行コードに照合しました。購入更新で既存負担スナップショットを保持し、新規配賦には現在のルールからスナップショットを作成します。決済内訳の更新時は`purchasePayments`が支払元スナップショットを再作成し、不整合がある場合は処理を失敗させます。`TestPostedPurchaseUpdatesPreserveExistingSnapshotsAndCreateCurrentSnapshotsForNewAllocations`、`TestPurchaseRefundSettlementUsesOriginalFundingSnapshotAfterRuleChanges`、`TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeriod`で関連する更新後精算を検証しています。したがって、購入確定・更新・訂正の会計同期とスナップショット欠落を最優先課題としていた旧指摘をレビューから削除しました。
 
 精算の期間範囲は`calculatePeriodsAccounting`がまとめて読み込み、複数月プレビューで同じ基礎データを月ごとに再取得しません。`TestSettlementPreviewMatchesMonthlyCalculationsAfterClosedCarry`で締め済み期間からの繰越結果を検証しています。N+1とResolver配下に精算処理が残るという旧指摘を削除しました。
@@ -323,6 +327,10 @@ MAX_TOKENSや不正生成JSONでGemini呼び出しに失敗した場合も、応
 ### 2026年10月14日のImports REST cache
 
 ImportsのREST一覧はTanStack Queryの`useInfiniteQuery`、選択文書とプレビューはQueryの個別queryで取得します。RelayはGraphQLの正規化キャッシュを維持し、Blob URLだけを表示中のEffectで生成・解放します。これによりcursor、polling、詳細取得、preview Blobの再取得をQuery cacheへ集約しました。`pnpm typecheck`とVitest 32件が成功し、解決した取得管理の指摘を`docs/reviews/react.md`から削除しました。
+
+### 2026年10月14日の返金明細の異文書照合
+
+返金明細の異文書リンクは、既に別文書の返金明細から作成されたCorrectionだけを候補にし、利用者の選択後もサーバーで世帯、最新成功済み抽出行、負額、金額、日時、利用先を再検証します。確定時はDocumentConfirmationに新しい文書行と既存Correctionを記録します。CorrectionEvidenceLinkはCorrectionごとに一件の原本証拠を保持するため変更しません。金額・日時・利用先が一致する既存CorrectionをRelay cursorでページングし、Testcontainers統合テストで複数ページ、重複行の拒否、利用先不一致、Correctionと証拠リンクを追加作成しないことを確認しました。元の購入レシートへの返金登録は既存の訂正作成経路を維持します。
 
 ### Gemini SchemaとGo型の契約
 

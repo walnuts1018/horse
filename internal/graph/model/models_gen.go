@@ -127,6 +127,10 @@ type LinkStatementAccountMovementResult interface {
 	IsLinkStatementAccountMovementResult()
 }
 
+type LinkStatementRefundCorrectionResult interface {
+	IsLinkStatementRefundCorrectionResult()
+}
+
 type LinkStatementTransferResult interface {
 	IsLinkStatementTransferResult()
 }
@@ -1227,6 +1231,30 @@ func (LinkStatementAccountMovementUserError) IsMutationError()                {}
 func (this LinkStatementAccountMovementUserError) GetCode() MutationErrorCode { return this.Code }
 func (this LinkStatementAccountMovementUserError) GetMessage() string         { return this.Message }
 
+type LinkStatementRefundCorrectionInput struct {
+	HouseholdID      string `json:"householdId"`
+	CorrectionID     string `json:"correctionId"`
+	SourceDocumentID string `json:"sourceDocumentId"`
+	SourceReference  string `json:"sourceReference"`
+}
+
+type LinkStatementRefundCorrectionSuccess struct {
+	Result *Purchase `json:"result"`
+}
+
+func (LinkStatementRefundCorrectionSuccess) IsLinkStatementRefundCorrectionResult() {}
+
+type LinkStatementRefundCorrectionUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (LinkStatementRefundCorrectionUserError) IsLinkStatementRefundCorrectionResult() {}
+
+func (LinkStatementRefundCorrectionUserError) IsMutationError()                {}
+func (this LinkStatementRefundCorrectionUserError) GetCode() MutationErrorCode { return this.Code }
+func (this LinkStatementRefundCorrectionUserError) GetMessage() string         { return this.Message }
+
 type LinkStatementTransferInput struct {
 	HouseholdID      string `json:"householdId"`
 	LedgerEntryID    string `json:"ledgerEntryId"`
@@ -2122,6 +2150,24 @@ type SettlementLine struct {
 type SharedPoolFundingRuleInput struct {
 	FundingShares    []*PoolFundingShareInput   `json:"fundingShares"`
 	SettlementPolicy SharedPoolSettlementPolicy `json:"settlementPolicy"`
+}
+
+type StatementRefundCorrection struct {
+	ID             string   `json:"id"`
+	AmountYen      Long     `json:"amountYen"`
+	OccurredAt     DateTime `json:"occurredAt"`
+	Merchant       string   `json:"merchant"`
+	SourceFilename string   `json:"sourceFilename"`
+}
+
+type StatementRefundCorrectionConnection struct {
+	Edges    []*StatementRefundCorrectionEdge `json:"edges"`
+	PageInfo *PageInfo                        `json:"pageInfo"`
+}
+
+type StatementRefundCorrectionEdge struct {
+	Cursor string                     `json:"cursor"`
+	Node   *StatementRefundCorrection `json:"node"`
 }
 
 type Subscription struct {
