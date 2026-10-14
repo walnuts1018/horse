@@ -28,6 +28,31 @@ func TestHandlerPreservesGetRoutesForHeadRequests(t *testing.T) {
 	}
 }
 
+func TestAccessLogSkipsHealthProbes(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
+	handler := server.accessLog(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for _, path := range []string{"/healthz", "/readyz", "/documents"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK {
+			t.Errorf("GET %s status = %d, want %d", path, response.Code, http.StatusOK)
+		}
+	}
+
+	log := output.String()
+	if strings.Contains(log, "/healthz") || strings.Contains(log, "/readyz") {
+		t.Errorf("health probes were logged: %s", log)
+	}
+	if !strings.Contains(log, "path=/documents") {
+		t.Errorf("ordinary request was not logged: %s", log)
+	}
+}
+
 func TestLogGraphQLResolverFailureIncludesSafePostgresMetadata(t *testing.T) {
 	t.Parallel()
 	var output bytes.Buffer

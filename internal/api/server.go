@@ -378,8 +378,16 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
+		if IsHealthProbe(r) {
+			return
+		}
 		s.logger.InfoContext(r.Context(), "request completed", "method", r.Method, "path", r.URL.Path, "duration", time.Since(start).String())
 	})
+}
+
+// IsHealthProbeはリクエストがAPIのヘルスプローブ宛てかを返す。
+func IsHealthProbe(r *http.Request) bool {
+	return r.URL.Path == "/healthz" || r.URL.Path == "/readyz"
 }
 
 func writeUnauthenticatedGraphError(w http.ResponseWriter) {

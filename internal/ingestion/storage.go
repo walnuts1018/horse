@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/url"
@@ -126,8 +127,11 @@ func (s *ObjectStore) Put(ctx context.Context, householdID, mimeType string, dat
 	metadataKey := "sha256"
 	identity := hash
 	if mimeType == mimeTypeEmail {
-		if s.emailEncryptionKeyErr != nil || s.activeEmailKeyID == "" {
-			return "", "", errors.New("store original document failed")
+		if s.emailEncryptionKeyErr != nil {
+			return "", "", fmt.Errorf("store original document failed: email encryption key is unavailable: %w", s.emailEncryptionKeyErr)
+		}
+		if s.activeEmailKeyID == "" {
+			return "", "", errors.New("store original document failed: email encryption key is unavailable")
 		}
 		activeKey := s.emailEncryptionKeys[s.activeEmailKeyID]
 		identity = emailFingerprint(activeKey, data)
@@ -135,7 +139,7 @@ func (s *ObjectStore) Put(ctx context.Context, householdID, mimeType string, dat
 		var err error
 		storedData, err = encryptEmailBody(activeKey, key, data)
 		if err != nil {
-			return "", "", errors.New("store original document failed")
+			return "", "", fmt.Errorf("store original document failed: encrypt email body: %w", err)
 		}
 		metadata = map[string]string{"hmac-sha256": identity}
 		metadataKey = "hmac-sha256"
@@ -150,9 +154,11 @@ func (s *ObjectStore) Put(ctx context.Context, householdID, mimeType string, dat
 		if errors.As(err, &apiError) && apiError.ErrorCode() == "PreconditionFailed" {
 			if verifyErr := s.verifyExistingObject(ctx, key, mimeType, metadataKey, identity, len(storedData), data); verifyErr == nil {
 				return key, hash, nil
+			} else {
+				return "", "", errors.Join(fmt.Errorf("store original document failed: %w", err), fmt.Errorf("verify existing original document: %w", verifyErr))
 			}
 		}
-		return "", "", errors.New("store original document failed")
+		return "", "", fmt.Errorf("store original document failed: %w", err)
 	}
 	return key, hash, nil
 }
@@ -180,9 +186,11 @@ func (s *ObjectStore) PutAnalysis(ctx context.Context, householdID, documentID, 
 		if errors.As(err, &apiError) && apiError.ErrorCode() == "PreconditionFailed" {
 			if verifyErr := s.verifyExistingObject(ctx, key, mimeType, "sha256", hash, len(data), data); verifyErr == nil {
 				return key, hash, nil
+			} else {
+				return "", "", errors.Join(fmt.Errorf("store analysis document failed: %w", err), fmt.Errorf("verify existing analysis document: %w", verifyErr))
 			}
 		}
-		return "", "", errors.New("store analysis document failed")
+		return "", "", fmt.Errorf("store analysis document failed: %w", err)
 	}
 	return key, hash, nil
 }

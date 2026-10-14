@@ -72,7 +72,9 @@ func run(logger *slog.Logger) error {
 			PublicOrigin: app.Config.PublicOrigin, FrontendOrigin: app.Config.FrontendOrigin,
 			Store: app.ObjectStore, OCR: ingestion.OCR{Endpoint: app.Config.OCREndpoint}, Queue: app.Queue,
 			MailForwarding: mailForwardingConfig,
-		}).Handler(), "horse-api"),
+		}).Handler(), "horse-api", otelhttp.WithFilter(func(r *http.Request) bool {
+			return !api.IsHealthProbe(r)
+		})),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       5 * time.Minute,
 		WriteTimeout:      0,
