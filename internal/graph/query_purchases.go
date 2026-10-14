@@ -24,44 +24,66 @@ type purchaseAmountFilter struct {
 }
 
 func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after, before *string, first, last *int, amountFilters ...purchaseAmountFilter) (*model.PurchaseConnection, error) {
-	var minimumAmount, maximumAmount *model.Long
-	var amountTarget *model.PurchaseAmountTarget
-	if len(amountFilters) > 0 {
-		minimumAmount = amountFilters[0].minimum
-		maximumAmount = amountFilters[0].maximum
-		amountTarget = amountFilters[0].target
+	filter := model.PurchaseFilter{
+		HouseholdID: householdID, Origin: origin, HasEvidence: hasEvidence, Search: search,
+		CategoryID: categoryID, Uncategorized: uncategorized, TagID: tagID,
+		PaymentAccountID: paymentAccountID, PoolID: poolID,
 	}
-	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
+	if from != nil {
+		value := model.DateTime(*from)
+		filter.From = &value
+	}
+	if to != nil {
+		value := model.DateTime(*to)
+		filter.To = &value
+	}
+	if len(amountFilters) > 0 {
+		filter.MinimumAmount = amountFilters[0].minimum
+		filter.MaximumAmount = amountFilters[0].maximum
+		filter.AmountTarget = amountFilters[0].target
+	}
+	return r.purchasesPage(ctx, filter, purchasePagination{after: after, before: before, first: first, last: last})
+}
+
+type purchasePagination struct {
+	after  *string
+	before *string
+	first  *int
+	last   *int
+}
+
+func (r *queryResolver) purchasesPage(ctx context.Context, filter model.PurchaseFilter, page purchasePagination) (*model.PurchaseConnection, error) {
+	if _, err := requireMember(ctx, r.DB, filter.HouseholdID); err != nil {
 		return nil, err
 	}
-	if categoryID != nil && uncategorized != nil && *uncategorized {
+	if filter.CategoryID != nil && filter.Uncategorized != nil && *filter.Uncategorized {
 		return nil, fmt.Errorf("categoryId and uncategorized cannot both be set: %w", ErrBadInput)
 	}
-	pageSize, backward, err := pageDirection(first, last)
+	pageSize, backward, err := pageDirection(page.first, page.last)
 	if err != nil {
 		return nil, err
 	}
-	hhID, err := gofrsuuid.FromString(householdID)
+	hhID, err := gofrsuuid.FromString(filter.HouseholdID)
 	if err != nil {
 		return nil, fmt.Errorf("parse household id: %w", err)
 	}
 	filters := []bob.Expression{models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID))}
-	filterItemsByCriteria := amountTarget != nil && *amountTarget == model.PurchaseAmountTargetItem
+	filterItemsByCriteria := filter.AmountTarget != nil && *filter.AmountTarget == model.PurchaseAmountTargetItem
 	var itemFilters []bob.Expression
-	if minimumAmount != nil && maximumAmount != nil && *minimumAmount > *maximumAmount {
+	if filter.MinimumAmount != nil && filter.MaximumAmount != nil && *filter.MinimumAmount > *filter.MaximumAmount {
 		return nil, fmt.Errorf("minimumAmount cannot exceed maximumAmount: %w", ErrBadInput)
 	}
-	if minimumAmount != nil || maximumAmount != nil {
+	if filter.MinimumAmount != nil || filter.MaximumAmount != nil {
 		target := model.PurchaseAmountTargetPurchase
-		if amountTarget != nil {
-			target = *amountTarget
+		if filter.AmountTarget != nil {
+			target = *filter.AmountTarget
 		}
 		var amountFilter []bob.Expression
-		if minimumAmount != nil {
-			amountFilter = append(amountFilter, models.PurchaseItems.Columns.AmountYen.GTE(psql.Arg(int64(*minimumAmount))))
+		if filter.MinimumAmount != nil {
+			amountFilter = append(amountFilter, models.PurchaseItems.Columns.AmountYen.GTE(psql.Arg(int64(*filter.MinimumAmount))))
 		}
-		if maximumAmount != nil {
-			amountFilter = append(amountFilter, models.PurchaseItems.Columns.AmountYen.LTE(psql.Arg(int64(*maximumAmount))))
+		if filter.MaximumAmount != nil {
+			amountFilter = append(amountFilter, models.PurchaseItems.Columns.AmountYen.LTE(psql.Arg(int64(*filter.MaximumAmount))))
 		}
 		if target == model.PurchaseAmountTargetItem {
 			itemFilters = append(itemFilters, amountFilter...)
@@ -71,42 +93,42 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 				sm.From(models.PurchaseItems.NameAsExpr()),
 				sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(models.Purchases.Columns.ID)),
 			)
-			if minimumAmount != nil {
-				filters = append(filters, psql.Group(totalAmount).GTE(psql.Arg(int64(*minimumAmount))))
+			if filter.MinimumAmount != nil {
+				filters = append(filters, psql.Group(totalAmount).GTE(psql.Arg(int64(*filter.MinimumAmount))))
 			}
-			if maximumAmount != nil {
-				filters = append(filters, psql.Group(totalAmount).LTE(psql.Arg(int64(*maximumAmount))))
+			if filter.MaximumAmount != nil {
+				filters = append(filters, psql.Group(totalAmount).LTE(psql.Arg(int64(*filter.MaximumAmount))))
 			}
 		}
 	}
-	if origin != nil {
-		filters = append(filters, models.Purchases.Columns.Origin.EQ(psql.Arg(string(*origin))))
+	if filter.Origin != nil {
+		filters = append(filters, models.Purchases.Columns.Origin.EQ(psql.Arg(string(*filter.Origin))))
 	}
-	if hasEvidence != nil {
+	if filter.HasEvidence != nil {
 		evidenceLinkExists := models.SelectWhere.Purchases.R.HasEvidenceLinks().E
 		confirmationExists := models.SelectWhere.Purchases.R.HasDocumentConfirmations().E
-		if *hasEvidence {
+		if *filter.HasEvidence {
 			filters = append(filters, psql.Or(evidenceLinkExists, confirmationExists))
 		} else {
 			filters = append(filters, psql.Not(psql.Or(evidenceLinkExists, confirmationExists)))
 		}
 	}
-	if from != nil {
-		value, err := parseTime(*from)
+	if filter.From != nil {
+		value, err := parseTime(*filter.From)
 		if err != nil {
 			return nil, err
 		}
 		filters = append(filters, models.Purchases.Columns.OccurredAt.GTE(psql.Arg(value)))
 	}
-	if to != nil {
-		value, err := parseTime(*to)
+	if filter.To != nil {
+		value, err := parseTime(*filter.To)
 		if err != nil {
 			return nil, err
 		}
 		filters = append(filters, models.Purchases.Columns.OccurredAt.LT(psql.Arg(value)))
 	}
-	if search != nil && strings.TrimSpace(*search) != "" {
-		pattern := "%" + escapeLikePattern(strings.TrimSpace(*search)) + "%"
+	if filter.Search != nil && strings.TrimSpace(*filter.Search) != "" {
+		pattern := "%" + escapeLikePattern(strings.TrimSpace(*filter.Search)) + "%"
 		itemNameMatch := models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(
 			models.PurchaseItems.Columns.Name.ILike(psql.Arg(pattern)),
 		)).E
@@ -118,8 +140,8 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 			))
 		}
 	}
-	if categoryID != nil {
-		id, err := gofrsuuid.FromString(*categoryID)
+	if filter.CategoryID != nil {
+		id, err := gofrsuuid.FromString(*filter.CategoryID)
 		if err != nil {
 			return nil, fmt.Errorf("parse category id: %w", ErrBadInput)
 		}
@@ -129,7 +151,7 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		} else {
 			filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(categoryFilter)).E)
 		}
-	} else if uncategorized != nil && *uncategorized {
+	} else if filter.Uncategorized != nil && *filter.Uncategorized {
 		categoryFilter := models.PurchaseItems.Columns.CategoryID.IsNull()
 		if filterItemsByCriteria {
 			itemFilters = append(itemFilters, categoryFilter)
@@ -137,8 +159,8 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 			filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(categoryFilter)).E)
 		}
 	}
-	if tagID != nil {
-		id, err := gofrsuuid.FromString(*tagID)
+	if filter.TagID != nil {
+		id, err := gofrsuuid.FromString(*filter.TagID)
 		if err != nil {
 			return nil, fmt.Errorf("parse tag id: %w", ErrBadInput)
 		}
@@ -149,15 +171,15 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 			filters = append(filters, models.SelectWhere.Purchases.R.HasPurchaseItems(sm.Where(tagFilter)).E)
 		}
 	}
-	if paymentAccountID != nil {
-		id, err := gofrsuuid.FromString(*paymentAccountID)
+	if filter.PaymentAccountID != nil {
+		id, err := gofrsuuid.FromString(*filter.PaymentAccountID)
 		if err != nil {
 			return nil, fmt.Errorf("parse payment account id: %w", ErrBadInput)
 		}
 		filters = append(filters, models.SelectWhere.Purchases.R.HasPurchasePayments(sm.Where(models.PurchasePayments.Columns.AccountID.EQ(psql.Arg(id)))).E)
 	}
-	if poolID != nil {
-		id, err := gofrsuuid.FromString(*poolID)
+	if filter.PoolID != nil {
+		id, err := gofrsuuid.FromString(*filter.PoolID)
 		if err != nil {
 			return nil, fmt.Errorf("parse pool id: %w", ErrBadInput)
 		}
@@ -180,7 +202,7 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 	if err != nil {
 		return nil, err
 	}
-	if cursorID, err := cursorID(after, nodeTypePurchase); err != nil {
+	if cursorID, err := cursorID(page.after, nodeTypePurchase); err != nil {
 		return nil, err
 	} else if cursorID != nil {
 		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
@@ -196,7 +218,7 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		}
 		filters = append(filters, psql.Or(models.Purchases.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.Purchases.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.Purchases.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
-	if cursorID, err := cursorID(before, nodeTypePurchase); err != nil {
+	if cursorID, err := cursorID(page.before, nodeTypePurchase); err != nil {
 		return nil, err
 	} else if cursorID != nil {
 		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
@@ -230,10 +252,10 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		slices.Reverse(purchases)
 	}
 	pageInfo := &model.PageInfo{HasPreviousPage: backward && hasExtra, HasNextPage: !backward && hasExtra}
-	if !backward && after != nil && *after != "" {
+	if !backward && page.after != nil && *page.after != "" {
 		pageInfo.HasPreviousPage = true
 	}
-	if backward && before != nil && *before != "" {
+	if backward && page.before != nil && *page.before != "" {
 		pageInfo.HasNextPage = true
 	}
 	connection := &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0, len(purchases)), TotalCount: int(count), PageInfo: pageInfo, SyncCursor: strconv.FormatInt(syncCursor, 10)}
@@ -245,27 +267,27 @@ func (r *queryResolver) purchases(ctx context.Context, householdID string, from,
 		if filterItemsByCriteria && len(itemFilters) > 0 {
 			items := purchase.Items[:0]
 			for _, item := range purchase.Items {
-				if minimumAmount != nil && int64(item.AmountYen) < int64(*minimumAmount) {
+				if filter.MinimumAmount != nil && int64(item.AmountYen) < int64(*filter.MinimumAmount) {
 					continue
 				}
-				if maximumAmount != nil && int64(item.AmountYen) > int64(*maximumAmount) {
+				if filter.MaximumAmount != nil && int64(item.AmountYen) > int64(*filter.MaximumAmount) {
 					continue
 				}
-				if categoryID != nil && (item.CategoryID == nil || *item.CategoryID != *categoryID) {
+				if filter.CategoryID != nil && (item.CategoryID == nil || *item.CategoryID != *filter.CategoryID) {
 					continue
 				}
-				if uncategorized != nil && *uncategorized && item.CategoryID != nil {
+				if filter.Uncategorized != nil && *filter.Uncategorized && item.CategoryID != nil {
 					continue
 				}
-				if tagID != nil && !slices.ContainsFunc(item.Tags, func(tag *model.Tag) bool { return tag.ID == *tagID }) {
+				if filter.TagID != nil && !slices.ContainsFunc(item.Tags, func(tag *model.Tag) bool { return tag.ID == *filter.TagID }) {
 					continue
 				}
-				if poolID != nil && !slices.ContainsFunc(item.Allocations, func(allocation *model.PurchaseItemAllocation) bool { return allocation.PoolID == *poolID }) {
+				if filter.PoolID != nil && !slices.ContainsFunc(item.Allocations, func(allocation *model.PurchaseItemAllocation) bool { return allocation.PoolID == *filter.PoolID }) {
 					continue
 				}
-				if search != nil && strings.TrimSpace(*search) != "" &&
-					!strings.Contains(strings.ToLower(purchase.Merchant), strings.ToLower(strings.TrimSpace(*search))) &&
-					!strings.Contains(strings.ToLower(item.Name), strings.ToLower(strings.TrimSpace(*search))) {
+				if filter.Search != nil && strings.TrimSpace(*filter.Search) != "" &&
+					!strings.Contains(strings.ToLower(purchase.Merchant), strings.ToLower(strings.TrimSpace(*filter.Search))) &&
+					!strings.Contains(strings.ToLower(item.Name), strings.ToLower(strings.TrimSpace(*filter.Search))) {
 					continue
 				}
 				items = append(items, item)
