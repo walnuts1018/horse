@@ -337,6 +337,16 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if uploadedDocument.ObjectKey == uploadedDocument.AnalysisObjectKey.V || !strings.HasPrefix(uploadedDocument.AnalysisObjectKey.V, householdID+"/analysis/"+uploadedID+"/") || uploadedDocument.MimeType != "image/png" || !uploadedDocument.AnalysisObjectKey.Valid || uploadedDocument.AnalysisMimeType.V != "image/png" {
 		t.Fatalf("original and analysis objects were not stored separately: original=%q/%q analysis=%q/%q", uploadedDocument.ObjectKey, uploadedDocument.MimeType, uploadedDocument.AnalysisObjectKey.V, uploadedDocument.AnalysisMimeType.V)
 	}
+	interactiveJob, err := models.ExtractionJobs.Query(sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(uploadedUUID)))).One(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var interactiveRequest struct {
+		Purpose string `json:"purpose"`
+	}
+	if err := stdjson.Unmarshal(interactiveJob.Request.Val, &interactiveRequest); err != nil || interactiveRequest.Purpose != ingestion.JobPurposeInteractive {
+		t.Fatalf("default extraction purpose = %q, error=%v, want interactive", interactiveRequest.Purpose, err)
+	}
 	uploadedContentRequest := httptest.NewRequest(http.MethodGet, "/documents/"+uploadedID+"/content", nil)
 	uploadedContentRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	uploadedContentResponse := httptest.NewRecorder()
@@ -361,6 +371,9 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := emailUploadForm.WriteField("sourceKind", "email"); err != nil {
+		t.Fatal(err)
+	}
+	if err := emailUploadForm.WriteField("purpose", ingestion.JobPurposeBackground); err != nil {
 		t.Fatal(err)
 	}
 	emailFilePart, err := emailUploadForm.CreateFormFile("file", "order.eml")
@@ -430,6 +443,12 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		}
 		if job.Status != documentStatusQueued {
 			t.Fatalf("email document job status = %q, want queued", job.Status)
+		}
+		var request struct {
+			Purpose string `json:"purpose"`
+		}
+		if err := stdjson.Unmarshal(job.Request.Val, &request); err != nil || request.Purpose != ingestion.JobPurposeBackground {
+			t.Fatalf("email extraction purpose = %q, error=%v, want background", request.Purpose, err)
 		}
 		jobIDs[documentID] = job.ID
 	}

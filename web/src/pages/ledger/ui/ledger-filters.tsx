@@ -435,6 +435,29 @@ export function LedgerFilters({
               <span aria-hidden="true">×</span>
             </button>
           ))}
+          <button
+            className="text-button"
+            type="button"
+            onClick={() =>
+              updateFilters({
+                search: "",
+                fromMonth: "",
+                toMonth: "",
+                categoryFilter: "",
+                poolFilter: "",
+                accountFilter: "",
+                tagFilter: "",
+                originFilter: "",
+                evidenceFilter: "",
+                minimumAmount: "",
+                maximumAmount: "",
+                observationSourceFilter: "",
+                observationStateFilter: "UNMATCHED",
+              })
+            }
+          >
+            条件をすべて解除
+          </button>
         </div>
       )}
     </>

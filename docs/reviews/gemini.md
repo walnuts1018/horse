@@ -10,7 +10,7 @@ RPD予約は`America/Los_Angeles`の暦日で集計し、日次上限到達後�
 
 通常のアップロードと手動再解析はAPIがjob purposeとして`interactive`を保存します。Routerは空または`interactive`をStandard tierとして扱います。`background`が与えられれば、無料Projectでは引き続きStandardを使い、有料Projectに進んだ場合にFlex tierを指定します。Pro昇格も元jobのpurposeを引き継ぎます。
 
-現行APIには`background`を保存する経路がなく、通常jobからFlexを利用できません。RouterにはFlexに対応する分岐とFlex費用の推定がありますが、Batch APIのクライアント、job状態管理、結果取得経路はありません。メール一括取込や過去履歴の処理にFlexを使う案は、purposeをbackgroundに設定するjob経路の追加が必要です。Batchを選ぶ場合は、現在存在しない非同期Batch処理と結果回収も実装対象です。
+通常アップロードでは`purpose=background`を指定でき、メール添付にも同じpurposeを保存します。手動再解析jobは引き続き`interactive`を使います。Batch APIのクライアント、job状態管理、結果取得経路は未実装です。
 
 ## 3. source kindごとの品質評価とモデル別料金表
 

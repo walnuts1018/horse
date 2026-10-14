@@ -217,14 +217,14 @@ func (p *mailboxIngestor) registerMessage(ctx context.Context, executor bob.Exec
 	if err != nil {
 		return nil, err
 	}
-	attachmentJobIDs, err := p.registerEmailAttachments(ctx, executor, forwarding.HouseholdID, forwarding.CreatedBy, document.ID, householdKey, attachments)
+	attachmentJobIDs, err := p.registerEmailAttachments(ctx, executor, forwarding.HouseholdID, forwarding.CreatedBy, document.ID, householdKey, ingestion.JobPurposeInteractive, attachments)
 	if err != nil {
 		return nil, err
 	}
 	return append(queued, attachmentJobIDs...), nil
 }
 
-func (p *mailboxIngestor) registerEmailAttachments(ctx context.Context, executor bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, householdKey string, attachments []ingestion.EmailAttachment) ([]gofrsuuid.UUID, error) {
+func (p *mailboxIngestor) registerEmailAttachments(ctx context.Context, executor bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, householdKey, purpose string, attachments []ingestion.EmailAttachment) ([]gofrsuuid.UUID, error) {
 	queued := make([]gofrsuuid.UUID, 0, len(attachments))
 	seen := make(map[gofrsuuid.UUID]struct{}, len(attachments))
 	for index, attachment := range attachments {
@@ -232,7 +232,7 @@ func (p *mailboxIngestor) registerEmailAttachments(ctx context.Context, executor
 		if err != nil {
 			return nil, err
 		}
-		childID, jobID, err := insertAttachmentDocument(ctx, executor, householdID, memberID, attachment, key, hash)
+		childID, jobID, err := insertAttachmentDocument(ctx, executor, householdID, memberID, attachment, key, hash, purpose)
 		if err != nil {
 			return nil, err
 		}

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   loadPaymentAccountForMerchant,
   loadPurchaseDefaults,
+  orderPaymentAccountsByUsage,
   savePurchaseDefaults,
 } from "./purchase-defaults";
 
@@ -18,6 +19,25 @@ afterEach(() => {
 });
 
 describe("purchase defaults", () => {
+  it("prioritizes frequently used payment accounts without changing tie order", () => {
+    const accounts = [{ id: "account-1" }, { id: "account-2" }, { id: "account-3" }];
+    const history = [
+      { paymentAllocations: [{ paymentAccountId: "account-2" }] },
+      {
+        paymentAllocations: [{ paymentAccountId: "account-1" }, { paymentAccountId: "account-2" }],
+      },
+      {
+        paymentAllocations: [{ paymentAccountId: "account-1" }, { paymentAccountId: "account-2" }],
+      },
+    ];
+
+    expect(orderPaymentAccountsByUsage(accounts, history).map(({ id }) => id)).toEqual([
+      "account-2",
+      "account-1",
+      "account-3",
+    ]);
+  });
+
   it("leaves the account blank when several accounts exist without a saved choice", () => {
     vi.stubGlobal("window", { localStorage: storage });
 

@@ -325,6 +325,7 @@ function PurchaseCreatePageContent({
       >
         <EditPurchasePayments
           household={household}
+          history={recentPurchases}
           rows={paymentRows}
           autoTotal={paymentAutoTotal}
           itemTotal={itemTotal}

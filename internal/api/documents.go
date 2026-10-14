@@ -112,6 +112,11 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid source kind", http.StatusBadRequest)
 		return
 	}
+	purpose, ok := documentJobPurpose(r.FormValue("purpose"))
+	if !ok {
+		http.Error(w, "invalid extraction purpose", http.StatusBadRequest)
+		return
+	}
 	householdUUID, err := parseNodeIDOrUUID(householdID, "Household")
 	if err != nil {
 		http.Error(w, "household not found", http.StatusNotFound)
@@ -207,7 +212,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(emailAttachments) > 0 {
-			queuedJobIDs, attachmentErr := s.registerEmailAttachments(r.Context(), executor, householdUUID, memberID, existingDocument.ID, householdID, emailAttachments)
+			queuedJobIDs, attachmentErr := s.registerEmailAttachments(r.Context(), executor, householdUUID, memberID, existingDocument.ID, householdID, purpose, emailAttachments)
 			if attachmentErr != nil {
 				http.Error(w, "document registration failed", http.StatusInternalServerError)
 				return
@@ -285,12 +290,12 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	jobID, err := insertDocumentJob(r.Context(), executor, householdUUID, document.ID)
+	jobID, err := insertDocumentJobWithPurpose(r.Context(), executor, householdUUID, document.ID, purpose)
 	if err != nil {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
-	attachmentJobIDs, err := s.registerEmailAttachments(r.Context(), executor, householdUUID, memberID, document.ID, householdID, emailAttachments)
+	attachmentJobIDs, err := s.registerEmailAttachments(r.Context(), executor, householdUUID, memberID, document.ID, householdID, purpose, emailAttachments)
 	if err != nil {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
@@ -314,7 +319,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, result)
 }
 
-func (s *Server) registerEmailAttachments(ctx context.Context, exec bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, householdKey string, attachments []ingestion.EmailAttachment) ([]gofrsuuid.UUID, error) {
+func (s *Server) registerEmailAttachments(ctx context.Context, exec bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, householdKey, purpose string, attachments []ingestion.EmailAttachment) ([]gofrsuuid.UUID, error) {
 	queuedJobIDs := make([]gofrsuuid.UUID, 0, len(attachments))
 	seenChildren := make(map[gofrsuuid.UUID]struct{}, len(attachments))
 	for index, attachment := range attachments {
@@ -323,7 +328,7 @@ func (s *Server) registerEmailAttachments(ctx context.Context, exec bob.Executor
 			s.logger.ErrorContext(ctx, "email attachment storage failed", "error", err)
 			return nil, err
 		}
-		childID, childJobID, err := insertAttachmentDocument(ctx, exec, householdID, memberID, attachment, childKey, childHash)
+		childID, childJobID, err := insertAttachmentDocument(ctx, exec, householdID, memberID, attachment, childKey, childHash, purpose)
 		if err != nil {
 			return nil, err
 		}
@@ -357,11 +362,20 @@ func (s *Server) publishDocumentJobs(ctx context.Context, jobIDs []gofrsuuid.UUI
 }
 
 func insertDocumentJob(ctx context.Context, exec bob.Executor, householdID, documentID gofrsuuid.UUID) (gofrsuuid.UUID, error) {
+	return insertDocumentJobWithPurpose(ctx, exec, householdID, documentID, ingestion.JobPurposeInteractive)
+}
+
+func insertDocumentJobWithPurpose(ctx context.Context, exec bob.Executor, householdID, documentID gofrsuuid.UUID, purpose string) (gofrsuuid.UUID, error) {
+	if _, ok := documentJobPurpose(purpose); !ok {
+		return gofrsuuid.Nil, errors.New("invalid extraction purpose")
+	}
 	jobID, err := gofrsuuid.FromString(uuid.NewV7().String())
 	if err != nil {
 		return gofrsuuid.Nil, err
 	}
-	request, err := json.Marshal(map[string]any{"purpose": ingestion.JobPurposeInteractive})
+	request, err := json.Marshal(struct {
+		Purpose string `json:"purpose"`
+	}{Purpose: purpose})
 	if err != nil {
 		return gofrsuuid.Nil, err
 	}
@@ -383,7 +397,7 @@ func insertDocumentJob(ctx context.Context, exec bob.Executor, householdID, docu
 	return job.ID, nil
 }
 
-func insertAttachmentDocument(ctx context.Context, exec bob.Executor, householdID, memberID gofrsuuid.UUID, attachment ingestion.EmailAttachment, key, hash string) (gofrsuuid.UUID, *gofrsuuid.UUID, error) {
+func insertAttachmentDocument(ctx context.Context, exec bob.Executor, householdID, memberID gofrsuuid.UUID, attachment ingestion.EmailAttachment, key, hash, purpose string) (gofrsuuid.UUID, *gofrsuuid.UUID, error) {
 	id, err := gofrsuuid.FromString(uuid.NewV7().String())
 	if err != nil {
 		return gofrsuuid.Nil, nil, err
@@ -413,11 +427,23 @@ func insertAttachmentDocument(ctx context.Context, exec bob.Executor, householdI
 	if !errors.Is(err, sql.ErrNoRows) {
 		return gofrsuuid.Nil, nil, err
 	}
-	jobID, err := insertDocumentJob(ctx, exec, householdID, document.ID)
+	jobID, err := insertDocumentJobWithPurpose(ctx, exec, householdID, document.ID, purpose)
 	if err != nil {
 		return gofrsuuid.Nil, nil, err
 	}
 	return document.ID, &jobID, nil
+}
+
+func documentJobPurpose(value string) (string, bool) {
+	if value == "" {
+		return ingestion.JobPurposeInteractive, true
+	}
+	switch value {
+	case ingestion.JobPurposeInteractive, ingestion.JobPurposeBackground:
+		return value, true
+	default:
+		return "", false
+	}
 }
 
 func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, document *models.SourceDocument) (documentResponse, error) {

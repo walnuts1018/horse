@@ -1,7 +1,9 @@
 import { Plus, X } from "lucide-react";
 
-import type { Household } from "../../../shared/api";
+import type { Household, Purchase } from "../../../shared/api";
 import type { PaymentDraft } from "../model/purchase-payments";
+
+import { orderPaymentAccountsByUsage } from "../model/purchase-defaults";
 
 const yen = (amount: number) =>
   new Intl.NumberFormat("ja-JP", {
@@ -12,6 +14,7 @@ const yen = (amount: number) =>
 
 export function EditPurchasePayments({
   household,
+  history,
   rows,
   autoTotal,
   itemTotal,
@@ -22,6 +25,7 @@ export function EditPurchasePayments({
   onRemove,
 }: {
   household: Household;
+  history: Purchase[];
   rows: PaymentDraft[];
   autoTotal: boolean;
   itemTotal: number;
@@ -31,6 +35,7 @@ export function EditPurchasePayments({
   onPatch: (key: string, patch: Partial<PaymentDraft>) => void;
   onRemove: (key: string) => void;
 }) {
+  const accounts = orderPaymentAccountsByUsage(household.accounts, history);
   return (
     <div className="field-group payment-allocation-field">
       <span className="field-legend">決済内訳</span>
@@ -48,7 +53,7 @@ export function EditPurchasePayments({
                 onChange={(event) => onPatch(payment.key, { paymentAccountId: event.target.value })}
               >
                 <option value="">決済元を選択</option>
-                {household.accounts.map((account) => (
+                {accounts.map((account) => (
                   <option key={account.id} value={account.id}>
                     {account.name}
                   </option>

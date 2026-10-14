@@ -3,6 +3,33 @@ export type PurchaseDefaults = {
   paymentAccountId: string;
 };
 
+type PaymentAccountHistory = Array<{
+  paymentAllocations: Array<{ paymentAccountId: string }>;
+}>;
+
+export function orderPaymentAccountsByUsage<T extends { id: string }>(
+  accounts: T[],
+  history: PaymentAccountHistory,
+): T[] {
+  const usageCount = new Map<string, number>();
+  for (const purchase of history) {
+    for (const accountId of new Set(
+      purchase.paymentAllocations.map((payment) => payment.paymentAccountId),
+    )) {
+      usageCount.set(accountId, (usageCount.get(accountId) ?? 0) + 1);
+    }
+  }
+  const ordered: T[] = [];
+  for (const account of accounts) {
+    const usage = usageCount.get(account.id) ?? 0;
+    const position = ordered.findIndex((previous) => {
+      return usage > (usageCount.get(previous.id) ?? 0);
+    });
+    ordered.splice(position < 0 ? ordered.length : position, 0, account);
+  }
+  return ordered;
+}
+
 type StoredPurchaseDefaults = PurchaseDefaults & {
   paymentAccountIdsByMerchant?: Record<string, string>;
 };

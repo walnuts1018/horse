@@ -94,9 +94,12 @@ export function EditPurchaseItemAllocations({
                 </label>
               );
             })}
-            <button type="button" className="text-button" onClick={() => onChange([])}>
-              標準に戻す
-            </button>
+            {allocations.length > 0 &&
+              !areAllocationsEquivalent(allocations, defaultAllocations) && (
+                <button type="button" className="text-button" onClick={() => onChange([])}>
+                  標準に戻す
+                </button>
+              )}
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
