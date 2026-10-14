@@ -27,6 +27,7 @@ func (r *mutationResolver) createAccount(ctx context.Context, input model.Create
 	if err != nil {
 		return nil, err
 	}
+
 	return &model.Account{ID: created.ID, Name: created.Name, Kind: model.AccountKind(created.Kind), CardLast4: created.CardLast4, PoolID: created.PoolID}, nil
 }
 
@@ -41,6 +42,7 @@ func (r *mutationResolver) setAccountCardLast4(ctx context.Context, input model.
 	if err != nil {
 		return nil, err
 	}
+
 	return &model.Account{
 		ID: updated.ID, Name: updated.Name, Kind: model.AccountKind(updated.Kind),
 		CardLast4: updated.CardLast4, PoolID: updated.PoolID,
