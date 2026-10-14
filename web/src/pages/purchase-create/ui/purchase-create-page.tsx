@@ -18,6 +18,7 @@ import {
   type PurchaseItemsValue,
 } from "../model/purchase-items";
 import { resolveInitialPaymentAccountId, usePurchasePayments } from "../model/purchase-payments";
+import { usePurchaseDefaultHistory } from "../model/use-purchase-default-history";
 import { usePurchaseDraft } from "../model/use-purchase-draft";
 import { usePurchaseSubmission } from "../model/use-purchase-submission";
 import { EditPurchaseDetails } from "./edit-purchase-details";
@@ -66,7 +67,12 @@ function PurchaseCreatePageContent({
     () => loadPurchaseDefaults(memberId, household.id, accountIds),
     [memberId, household.id, accountIds],
   );
-  const [merchant, setMerchant] = useState(purchaseDefaults.merchant);
+  const purchaseDefaultHistory = usePurchaseDefaultHistory(household.id, accountIds);
+  const [merchantOverride, setMerchant] = useState<string | null>(null);
+  const merchant =
+    merchantOverride ??
+    (purchaseDefaults.merchant ||
+      (purchaseDefaultHistory.loaded ? purchaseDefaultHistory.initialDefaults.merchant : ""));
   const [occurredAt, setOccurredAt] = useState(localDateTime);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [itemsValue, setItemsValue] = useState<PurchaseItemsValue>(emptyPurchaseItemsValue);
@@ -130,18 +136,44 @@ function PurchaseCreatePageContent({
     markUnsaved,
     purchaseDefaults.paymentAccountId,
   );
+  useEffect(() => {
+    if (
+      !purchaseDefaultHistory.loaded ||
+      purchaseDefaults.merchant ||
+      merchantOverride !== null ||
+      !purchaseDefaultHistory.initialDefaults.merchant
+    ) {
+      return;
+    }
+    const paymentAccountId = purchaseDefaultHistory.initialDefaults.paymentAccountId;
+    if (
+      paymentAccountId &&
+      payments.rows.length === 1 &&
+      !payments.rows[0].paymentAccountId &&
+      !payments.rows[0].amountYen
+    ) {
+      payments.reset(paymentAccountId);
+    }
+  }, [
+    merchantOverride,
+    payments,
+    purchaseDefaultHistory.initialDefaults,
+    purchaseDefaultHistory.loaded,
+    purchaseDefaults.merchant,
+  ]);
   const updateMerchant = (value: string, useMerchantDefault = false, preserveRedo = false) => {
     if (!preserveRedo) itemsCommands.current?.invalidateRedo();
     markUnsaved();
     setMerchant(value);
     if (!useMerchantDefault || payments.rows.length !== 1) return;
-    const paymentAccountId = loadPaymentAccountForMerchant(
-      memberId,
-      household.id,
-      value,
-      accountIds,
-    );
-    if (paymentAccountId && paymentAccountId !== payments.rows[0].paymentAccountId) {
+    const serverPaymentAccountId = purchaseDefaultHistory.paymentAccountForMerchant(value);
+    const paymentAccountId =
+      serverPaymentAccountId ??
+      loadPaymentAccountForMerchant(memberId, household.id, value, accountIds);
+    if (
+      paymentAccountId !== payments.rows[0].paymentAccountId &&
+      (serverPaymentAccountId !== undefined || paymentAccountId)
+    ) {
       payments.patch(payments.rows[0].key, { paymentAccountId });
     }
   };
@@ -237,11 +269,11 @@ function PurchaseCreatePageContent({
   );
   const recentMerchants = useMemo(() => {
     const seen = new Set<string>();
-    return recentPurchases
-      .map((purchase) => purchase.merchant.trim())
+    return purchaseDefaultHistory.recentMerchants
+      .concat(recentPurchases.map((purchase) => purchase.merchant.trim()))
       .filter((name) => name && !seen.has(name) && Boolean(seen.add(name)))
       .slice(0, 5);
-  }, [recentPurchases]);
+  }, [purchaseDefaultHistory.recentMerchants, recentPurchases]);
   const paymentAmount = payments.amount;
   const paymentDifference = payments.difference;
   const submission = usePurchaseSubmission({

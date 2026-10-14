@@ -3,6 +3,13 @@ export type PurchaseDefaults = {
   paymentAccountId: string;
 };
 
+export type PurchaseDefaultHistory = {
+  merchant: string;
+  paymentAccountId: string;
+  purchaseCount: number;
+  lastUsedAt: string;
+};
+
 type PaymentAccountHistory = Array<{
   paymentAllocations: Array<{ paymentAccountId: string }>;
 }>;
@@ -78,6 +85,69 @@ export function loadPaymentAccountForMerchant(
   } catch {
     return fallback;
   }
+}
+
+export function initialPurchaseDefaultsFromHistory(
+  history: PurchaseDefaultHistory[],
+  accountIds: string[],
+): PurchaseDefaults {
+  const latest = history.reduce<PurchaseDefaultHistory | undefined>((current, candidate) => {
+    return !current || Date.parse(candidate.lastUsedAt) > Date.parse(current.lastUsedAt)
+      ? candidate
+      : current;
+  }, undefined);
+  if (!latest) return { merchant: "", paymentAccountId: uniqueAccountId(accountIds) };
+  return {
+    merchant: latest.merchant,
+    paymentAccountId: paymentAccountForHistory(history, latest.merchant, accountIds),
+  };
+}
+
+export function paymentAccountFromHistory(
+  history: PurchaseDefaultHistory[],
+  merchant: string,
+  accountIds: string[],
+): string | undefined {
+  const exactMerchantHistory = history.filter((entry) => entry.merchant === merchant);
+  if (exactMerchantHistory.length === 0) return undefined;
+  return paymentAccountForHistory(history, merchant, accountIds);
+}
+
+export function merchantsFromHistory(history: PurchaseDefaultHistory[]): string[] {
+  const latestByMerchant = new Map<string, string>();
+  for (const entry of history) {
+    if (!entry.merchant) continue;
+    const lastUsedAt = latestByMerchant.get(entry.merchant);
+    if (!lastUsedAt || Date.parse(entry.lastUsedAt) > Date.parse(lastUsedAt)) {
+      latestByMerchant.set(entry.merchant, entry.lastUsedAt);
+    }
+  }
+  const ordered: Array<[string, string]> = [];
+  for (const entry of latestByMerchant.entries()) {
+    const position = ordered.findIndex(
+      (previous) => Date.parse(entry[1]) > Date.parse(previous[1]),
+    );
+    ordered.splice(position < 0 ? ordered.length : position, 0, entry);
+  }
+  return ordered.map(([merchant]) => merchant);
+}
+
+function paymentAccountForHistory(
+  history: PurchaseDefaultHistory[],
+  merchant: string,
+  accountIds: string[],
+): string {
+  const entry = history.reduce<PurchaseDefaultHistory | undefined>((current, candidate) => {
+    if (candidate.merchant !== merchant) return current;
+    return !current ||
+      candidate.purchaseCount > current.purchaseCount ||
+      (candidate.purchaseCount === current.purchaseCount &&
+        Date.parse(candidate.lastUsedAt) > Date.parse(current.lastUsedAt))
+      ? candidate
+      : current;
+  }, undefined);
+  if (!entry) return uniqueAccountId(accountIds);
+  return accountIds.includes(entry.paymentAccountId) ? entry.paymentAccountId : "";
 }
 
 export function savePurchaseDefaults(

@@ -23,6 +23,7 @@ export type {
   AcceptHouseholdInvitationMutation$variables,
 } from "./__generated__/AcceptHouseholdInvitationMutation.graphql";
 export type { PurchaseListFragment$data } from "./__generated__/PurchaseListFragment.graphql";
+export type { PurchaseDefaultsQuery } from "./__generated__/PurchaseDefaultsQuery.graphql";
 export type { BulkDeletePurchaseItemsMutation } from "./__generated__/BulkDeletePurchaseItemsMutation.graphql";
 export type {
   PurchaseHistoryQuery,

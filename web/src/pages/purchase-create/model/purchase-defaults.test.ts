@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   loadPaymentAccountForMerchant,
   loadPurchaseDefaults,
+  initialPurchaseDefaultsFromHistory,
+  merchantsFromHistory,
   orderPaymentAccountsByUsage,
+  paymentAccountFromHistory,
   savePurchaseDefaults,
 } from "./purchase-defaults";
 
@@ -19,6 +22,58 @@ afterEach(() => {
 });
 
 describe("purchase defaults", () => {
+  it("uses the latest household merchant and the most-used exact merchant account", () => {
+    const history = [
+      {
+        merchant: "スーパーA",
+        paymentAccountId: "account-1",
+        purchaseCount: 2,
+        lastUsedAt: "2026-10-10T09:00:00Z",
+      },
+      {
+        merchant: "スーパーA",
+        paymentAccountId: "account-2",
+        purchaseCount: 5,
+        lastUsedAt: "2026-10-09T09:00:00Z",
+      },
+      {
+        merchant: "スーパーB",
+        paymentAccountId: "account-2",
+        purchaseCount: 1,
+        lastUsedAt: "2026-10-11T09:00:00Z",
+      },
+    ];
+
+    expect(initialPurchaseDefaultsFromHistory(history, ["account-1", "account-2"])).toEqual({
+      merchant: "スーパーB",
+      paymentAccountId: "account-2",
+    });
+    expect(paymentAccountFromHistory(history, "スーパーA", ["account-1", "account-2"])).toBe(
+      "account-2",
+    );
+  });
+
+  it("keeps unconfirmed merchant spellings separate and does not replace removed accounts", () => {
+    const history = [
+      {
+        merchant: "AEON",
+        paymentAccountId: "removed-account",
+        purchaseCount: 3,
+        lastUsedAt: "2026-10-10T09:00:00Z",
+      },
+      {
+        merchant: "イオン",
+        paymentAccountId: "account-1",
+        purchaseCount: 2,
+        lastUsedAt: "2026-10-09T09:00:00Z",
+      },
+    ];
+
+    expect(paymentAccountFromHistory(history, "AEON", ["account-1"])).toBe("");
+    expect(paymentAccountFromHistory(history, "AEON〇〇店", ["account-1"])).toBeUndefined();
+    expect(merchantsFromHistory(history)).toEqual(["AEON", "イオン"]);
+  });
+
   it("prioritizes frequently used payment accounts without changing tie order", () => {
     const accounts = [{ id: "account-1" }, { id: "account-2" }, { id: "account-3" }];
     const history = [
