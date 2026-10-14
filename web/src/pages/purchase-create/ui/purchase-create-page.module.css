@@ -67,6 +67,7 @@
 }
 
 .summaryMerchant {
+  display: none;
   font-weight: 700;
 }
 
@@ -227,37 +228,75 @@
 
   .detailsSummary {
     grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .summaryMerchant {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 6px;
     min-width: 0;
-    padding: 0;
-    border: 0;
-    background: none;
+    min-height: 44px;
+    padding: 0 8px;
+    border: 1px solid #dce5dd;
+    border-radius: 9px;
+    background: #fff;
     color: inherit;
     text-align: left;
     cursor: pointer;
   }
 
-  .detailsSummary > span {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .detailsSummary > span > span {
+  .summaryMerchant > span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .detailsSummary > svg {
+  .summaryMerchant > svg {
+    flex: none;
+    color: #5f6d65;
+  }
+
+  .detailsSummaryToggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 8px;
+    border: 1px solid #dce5dd;
+    border-radius: 9px;
+    background: #fff;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .detailsSummaryToggle > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detailsSummaryToggle > svg {
     flex: none;
     transition: transform 140ms ease;
   }
 
-  .details[data-expanded="true"] .detailsSummary > svg {
+  .summaryMerchant:focus-visible,
+  .detailsSummaryToggle:focus-visible {
+    outline: 3px solid #32704f;
+    outline-offset: 2px;
+  }
+
+  .details[data-expanded="true"] .detailsSummaryToggle > svg {
     transform: rotate(180deg);
   }
 

@@ -418,6 +418,17 @@ function PurchaseCreatePageContent({
 
   const copyPurchaseItems = (purchase: Purchase) => {
     itemsCommands.current?.copy(purchase);
+    requestAnimationFrame(() => {
+      const input = composerRef.current?.querySelector<HTMLInputElement>(
+        '[data-grid-row="0"][data-grid-column="name"]',
+      );
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      input.scrollIntoView({
+        block: "center",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      });
+    });
     updateMerchant(purchase.merchant, false, true);
     setCopiedPurchase({ ...purchase });
     setCopiedAt(Date.now());
@@ -497,12 +508,9 @@ function PurchaseCreatePageContent({
         copiedAt={copiedAt}
         occurredAtError={fieldError?.field === "occurredAt"}
         summary={
-          <>
-            <span className={styles.summaryMerchant}>{merchant.trim() || "店名未入力"}</span>
-            <span className={styles.summarySecondary}>
-              {dateSummary} · {paymentSummary}
-            </span>
-          </>
+          <span className={styles.summarySecondary}>
+            {dateSummary} · {paymentSummary}
+          </span>
         }
         detailsExpanded={detailsExpanded || Boolean(fieldError)}
         onToggleDetails={() => setDetailsExpanded((expanded) => !expanded)}
@@ -510,6 +518,8 @@ function PurchaseCreatePageContent({
           details: styles.details,
           history: styles.history,
           summary: styles.detailsSummary,
+          summaryMerchant: styles.summaryMerchant,
+          summaryToggle: styles.detailsSummaryToggle,
           detailsFields: styles.detailsFields,
         }}
         onMerchantChange={(value) => {

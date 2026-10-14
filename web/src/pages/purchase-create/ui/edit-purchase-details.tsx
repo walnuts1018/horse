@@ -1,5 +1,5 @@
-import { ChevronDown } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { ChevronDown, Pencil } from "lucide-react";
+import { useMemo, useRef, type ReactNode } from "react";
 
 import type { Purchase } from "../../../shared/api";
 
@@ -46,13 +46,21 @@ export function EditPurchaseDetails({
   summary: ReactNode;
   detailsExpanded: boolean;
   onToggleDetails: () => void;
-  classNames: { details: string; history: string; summary: string; detailsFields: string };
+  classNames: {
+    details: string;
+    history: string;
+    summary: string;
+    summaryMerchant: string;
+    summaryToggle: string;
+    detailsFields: string;
+  };
   onMerchantChange: (value: string) => void;
   onOccurredAtChange: (value: string) => void;
   onSelectMerchant: (value: string) => void;
   onCopyPurchase: (purchase: Purchase) => void;
   children?: ReactNode;
 }) {
+  const merchantInputRef = useRef<HTMLInputElement>(null);
   const recentPurchasesByMerchant = useMemo(
     () => indexRecentPurchasesByMerchant(recentPurchases),
     [recentPurchases],
@@ -70,6 +78,14 @@ export function EditPurchaseDetails({
       `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}T${time}`,
     );
   };
+  const editMerchant = () => {
+    if (detailsExpanded) {
+      merchantInputRef.current?.focus();
+      return;
+    }
+    onToggleDetails();
+    requestAnimationFrame(() => merchantInputRef.current?.focus());
+  };
 
   return (
     <>
@@ -77,20 +93,32 @@ export function EditPurchaseDetails({
         className={`panel purchase-meta-form ${classNames.details}`}
         data-expanded={detailsExpanded}
       >
-        <button
-          className={classNames.summary}
-          type="button"
-          aria-expanded={detailsExpanded}
-          aria-controls="purchase-details-fields"
-          onClick={onToggleDetails}
-        >
-          <span>{summary}</span>
-          <ChevronDown size={16} aria-hidden="true" />
-        </button>
+        <div className={classNames.summary}>
+          <button
+            className={classNames.summaryMerchant}
+            type="button"
+            onClick={editMerchant}
+            aria-label={`${merchant.trim() || "店名未入力"}を編集`}
+          >
+            <span>{merchant.trim() || "店名未入力"}</span>
+            <Pencil size={14} aria-hidden="true" />
+          </button>
+          <button
+            className={classNames.summaryToggle}
+            type="button"
+            aria-expanded={detailsExpanded}
+            aria-controls="purchase-details-fields"
+            onClick={onToggleDetails}
+          >
+            <span>{summary}</span>
+            <ChevronDown size={16} aria-hidden="true" />
+          </button>
+        </div>
         <div className={classNames.detailsFields} id="purchase-details-fields">
           <div className="field-group">
             <label htmlFor="merchant">店名</label>
             <input
+              ref={merchantInputRef}
               id="merchant"
               placeholder="例 スーパーいちば"
               value={merchant}
