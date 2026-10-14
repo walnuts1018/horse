@@ -5,6 +5,16 @@
 .playwright-mcp
 .buildkit-cache
 scratch
+**/node_modules
+**/.venv
+**/__pycache__
+**/.ruff_cache
+**/.tanstack
+**/.output
+**/dist
+**/coverage
+tmp
+*.log
 .env
 .env.*
 !.env.example
