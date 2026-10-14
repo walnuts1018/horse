@@ -28,6 +28,7 @@ export function PurchaseItemEntry({
   onCompositionEnd,
   onSelectHistorySuggestion,
   onSelectProductSuggestion,
+  onClearProductSelection,
   onSuggestionHover,
   onAmountChange,
   onAmountFocus,
@@ -59,6 +60,7 @@ export function PurchaseItemEntry({
   onCompositionEnd: () => void;
   onSelectHistorySuggestion: (name: string) => void;
   onSelectProductSuggestion: (candidate: ProductSuggestion) => void;
+  onClearProductSelection: () => void;
   onSuggestionHover: (index: number) => void;
   onAmountChange: (amount: string) => void;
   onAmountFocus: () => void;
@@ -165,7 +167,16 @@ export function PurchaseItemEntry({
               </div>
             )}
           {selectedProductVariantId && (
-            <small className="selected-product-label">商品を選択済み</small>
+            <div className="selected-product-label">
+              <span>商品を選択済み</span>
+              <button
+                type="button"
+                aria-label="選択した商品を解除"
+                onClick={onClearProductSelection}
+              >
+                商品を解除
+              </button>
+            </div>
           )}
         </div>
         <div className={`entry-input-wrap amount-wrap ${classNames.entryInputTarget}`}>

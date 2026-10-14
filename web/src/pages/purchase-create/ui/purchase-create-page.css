@@ -409,10 +409,22 @@
 }
 
 .selected-product-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 4px;
   color: #4b7a58;
   font-size: 8px;
+}
+
+.selected-product-label button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #4b7a58;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .composer-bottom {
@@ -671,6 +683,10 @@
   .product-suggestions button > small,
   .selected-product-label {
     font-size: 10px;
+  }
+
+  .selected-product-label button {
+    min-height: 44px;
   }
 }
 

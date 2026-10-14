@@ -450,6 +450,12 @@ export function EditPurchaseItems({
     amountRef.current?.focus();
     setFocused("amount");
   };
+  const clearProductSelection = () => {
+    markDirty();
+    patchDraft({ selectedProductVariantId: "" });
+    setFocused("name");
+    nameRef.current?.focus();
+  };
   const visibleSuggestionCount =
     productSuggestions.length > 0 && !selectedProductVariantId
       ? productSuggestions.length
@@ -817,6 +823,7 @@ export function EditPurchaseItems({
         }}
         onSelectHistorySuggestion={selectHistorySuggestion}
         onSelectProductSuggestion={selectProductSuggestion}
+        onClearProductSelection={clearProductSelection}
         onSuggestionHover={setActiveSuggestionIndex}
         onAmountChange={(amount) => {
           markDirty();
