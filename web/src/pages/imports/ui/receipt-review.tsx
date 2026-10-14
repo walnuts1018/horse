@@ -525,11 +525,9 @@ export function ReceiptReview({
             const provenance =
               item.verification === "MANUAL"
                 ? "手入力"
-                : item.printedName && item.printedName !== item.name
-                  ? "履歴候補"
-                  : item.region
-                    ? "原本抽出"
-                    : "原本位置なし";
+                : item.region
+                  ? "原本領域あり"
+                  : "原本領域なし";
             return (
               <div
                 className={`receipt-item-review ${amountDifferences.some((difference) => difference.index === index) ? "receipt-item-candidate-difference" : ""} ${evidenceSelection?.itemKey === item.key ? styles.receiptItemEvidenceSelected : ""}`}
@@ -572,10 +570,13 @@ export function ReceiptReview({
                       ? "手入力"
                       : `AI認識 ${item.verification} · ${Math.round(item.confidence * 100)}%`}
                   </small>
-                  <small className={styles.receiptItemProvenance}>
-                    {provenance}
-                    {item.verification === "UNRESOLVED" ? " · 未検証" : ""}
-                  </small>
+                  <small className={styles.receiptItemProvenance}>{provenance}</small>
+                  {item.printedName && item.printedName !== item.name && (
+                    <small className={styles.receiptItemProvenance}>印字名と異なる</small>
+                  )}
+                  {item.verification === "UNRESOLVED" && (
+                    <small className={styles.receiptItemProvenance}>税解釈未確定</small>
+                  )}
                   <fieldset className={styles.receiptItemReviewState}>
                     <legend>
                       {item.name || `品目${index + 1}`}の確認状況:{" "}
@@ -954,9 +955,7 @@ export function ReceiptReview({
           <b>{yen(receiptTotal(selectedDocument))}</b>
         </div>
         {uncategorizedItemCount > 0 && (
-          <small className={styles.uncategorizedNotice}>
-            未分類 {uncategorizedItemCount}品目
-          </small>
+          <small className={styles.uncategorizedNotice}>未分類 {uncategorizedItemCount}品目</small>
         )}
         <button
           type="button"
