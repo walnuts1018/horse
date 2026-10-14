@@ -195,6 +195,7 @@ func graphQLOperationName(ctx context.Context) string {
 	if operation == nil || operation.Name == "" || len(operation.Name) > maxGraphQLOperationNameLength {
 		return ""
 	}
+
 	return operation.Name
 }
 
