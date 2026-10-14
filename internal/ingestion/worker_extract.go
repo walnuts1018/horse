@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -65,80 +66,93 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if err != nil {
 		return Verification{}, fmt.Errorf("load receipt history hints: %w", err)
 	}
-	receipt, runs, err := router.Generate(ctx, j.SourceKind, document, hints, GeminiRouteOptions{Purpose: request.Purpose, Reason: geminiReasonInitialExtraction, Attempt: j.Attempt})
+	pipeline := extractionPipeline{router: router, job: j, document: document, hints: hints, lines: lines, ocrErr: ocrErr, transform: transform, page: transformPage}
+	initialOptions := GeminiRouteOptions{Purpose: request.Purpose, Reason: geminiReasonInitialExtraction, Attempt: j.Attempt}
+	verified, _, runs, err := pipeline.run(ctx, initialOptions, "map evidence regions to original image")
 	if err != nil {
-		return Verification{Runs: runs}, err
+		verified.Runs = runs
+		return verified, err
 	}
-	verified, err := verifyExtraction(j.SourceKind, receipt)
-	if err != nil {
-		return Verification{Receipt: receipt, Runs: runs}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "extraction_validation_failed"}
-	}
-	if isImageDocument(document.MIMEType) {
-		if ocrErr == nil {
-			if err := transformVerification(&verified, lines, transform, transformPage); err != nil {
-				return Verification{}, fmt.Errorf("map evidence regions to original image: %w", err)
-			}
-		} else if err := transformReceiptRegions(&verified, transform, transformPage); err != nil {
-			return Verification{}, fmt.Errorf("map evidence regions to original image: %w", err)
-		}
-	} else {
-		verified.Transform = transform
-		verified.TransformPage = transformPage
-	}
-	if requiresOCRCorroboration(document.MIMEType) {
-		verified.OCRLines = lines
-		applySourceOCRCorroboration(&verified, j.SourceKind, lines, ocrErr)
-	}
-	verified.Runs = annotateRuns(runs, receipt, verified.Issues)
 	if !verified.Balanced && len(verified.Runs) > 0 {
 		guidance := evidenceGuidance(verified.Issues, verified.OCRLines)
 		lastRun := latestSuccessfulRun(verified.Runs)
 		if lastRun != nil {
 			qualityOptions := router.QualityOptions(j.SourceKind, *lastRun, guidance)
 			qualityOptions.Attempt = j.Attempt
-			alternative, qualityRuns, qualityErr := router.Generate(ctx, j.SourceKind, document, hints, qualityOptions)
+			second, _, qualityRuns, qualityErr := pipeline.run(ctx, qualityOptions, "map reviewed evidence regions to original image")
+			var transformErr *extractionPipelineTransformError
+			if errors.As(qualityErr, &transformErr) {
+				return Verification{}, qualityErr
+			}
 			verified.Runs = append(verified.Runs, qualityRuns...)
-			if qualityErr == nil {
-				second, verifyErr := verifyExtraction(j.SourceKind, alternative)
-				if verifyErr == nil {
-					if err := transformReceiptRegionsForDocument(&second, document.MIMEType, transform, transformPage); err != nil {
-						return Verification{}, fmt.Errorf("map reviewed evidence regions to original image: %w", err)
-					}
-					second.OCRLines = verified.OCRLines
-					if requiresOCRCorroboration(document.MIMEType) {
-						applySourceOCRCorroboration(&second, j.SourceKind, second.OCRLines, ocrErr)
-					}
-					second.Runs = annotateRuns(qualityRuns, alternative, second.Issues)
-					if betterVerification(second, verified) {
-						verified.Receipt, verified.Statements, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = second.Receipt, second.Statements, second.Issues, second.ComputedTotal, second.Balanced, second.Candidates
-					}
-				}
+			if qualityErr == nil && betterVerification(second, verified) {
+				verified.Receipt, verified.Statements, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = second.Receipt, second.Statements, second.Issues, second.ComputedTotal, second.Balanced, second.Candidates
 			}
 		}
 		if !verified.Balanced && supportsProReview(document.MIMEType) && needsProReview(verified.Issues) && w.Router.Paid.APIKey != "" {
 			proOptions := router.ProOptions(request.Purpose, evidenceGuidance(verified.Issues, verified.OCRLines))
 			proOptions.Attempt = j.Attempt
-			proReceipt, proRuns, proErr := router.Generate(ctx, j.SourceKind, document, hints, proOptions)
+			proVerification, _, proRuns, proErr := pipeline.run(ctx, proOptions, "map reviewed evidence regions to original image")
+			var transformErr *extractionPipelineTransformError
+			if errors.As(proErr, &transformErr) {
+				return Verification{}, proErr
+			}
 			verified.Runs = append(verified.Runs, proRuns...)
-			if proErr == nil {
-				proVerification, verifyErr := verifyExtraction(j.SourceKind, proReceipt)
-				if verifyErr == nil {
-					if err := transformReceiptRegionsForDocument(&proVerification, document.MIMEType, transform, transformPage); err != nil {
-						return Verification{}, fmt.Errorf("map reviewed evidence regions to original image: %w", err)
-					}
-					proVerification.OCRLines = verified.OCRLines
-					if requiresOCRCorroboration(document.MIMEType) {
-						applySourceOCRCorroboration(&proVerification, j.SourceKind, proVerification.OCRLines, ocrErr)
-					}
-					proVerification.Runs = annotateRuns(proRuns, proReceipt, proVerification.Issues)
-					if betterVerification(proVerification, verified) {
-						verified.Receipt, verified.Statements, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = proVerification.Receipt, proVerification.Statements, proVerification.Issues, proVerification.ComputedTotal, proVerification.Balanced, proVerification.Candidates
-					}
-				}
+			if proErr == nil && betterVerification(proVerification, verified) {
+				verified.Receipt, verified.Statements, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = proVerification.Receipt, proVerification.Statements, proVerification.Issues, proVerification.ComputedTotal, proVerification.Balanced, proVerification.Candidates
 			}
 		}
 	}
 	return verified, nil
+}
+
+type extractionPipeline struct {
+	router    GeminiRouter
+	job       job
+	document  Document
+	hints     []HistoryHint
+	lines     []OCRLine
+	ocrErr    error
+	transform [9]float64
+	page      int
+}
+
+type extractionPipelineTransformError struct {
+	err error
+}
+
+func (e *extractionPipelineTransformError) Error() string { return e.err.Error() }
+
+func (e *extractionPipelineTransformError) Unwrap() error { return e.err }
+
+func (p extractionPipeline) run(ctx context.Context, options GeminiRouteOptions, transformError string) (Verification, Receipt, []ExtractionRun, error) {
+	receipt, runs, err := p.router.Generate(ctx, p.job.SourceKind, p.document, p.hints, options)
+	if err != nil {
+		return Verification{}, receipt, runs, err
+	}
+	verified, err := verifyExtraction(p.job.SourceKind, receipt)
+	if err != nil {
+		return Verification{Receipt: receipt}, receipt, runs, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "extraction_validation_failed"}
+	}
+	if isImageDocument(p.document.MIMEType) {
+		if p.ocrErr == nil {
+			err = transformVerification(&verified, p.lines, p.transform, p.page)
+		} else {
+			err = transformReceiptRegions(&verified, p.transform, p.page)
+		}
+		if err != nil {
+			return Verification{}, receipt, nil, &extractionPipelineTransformError{err: fmt.Errorf("%s: %w", transformError, err)}
+		}
+	} else {
+		verified.Transform = p.transform
+		verified.TransformPage = p.page
+	}
+	if requiresOCRCorroboration(p.document.MIMEType) {
+		verified.OCRLines = p.lines
+		applySourceOCRCorroboration(&verified, p.job.SourceKind, p.lines, p.ocrErr)
+	}
+	verified.Runs = annotateRuns(runs, receipt, verified.Issues)
+	return verified, receipt, runs, nil
 }
 
 func verifyExtraction(sourceKind string, receipt Receipt) (Verification, error) {
@@ -221,15 +235,6 @@ func isImageDocument(mimeType string) bool {
 
 func requiresOCRCorroboration(mimeType string) bool {
 	return isImageDocument(mimeType) || mimeType == mimeTypePDF
-}
-
-func transformReceiptRegionsForDocument(verification *Verification, mimeType string, transform [9]float64, page int) error {
-	if isImageDocument(mimeType) {
-		return transformReceiptRegions(verification, transform, page)
-	}
-	verification.Transform = transform
-	verification.TransformPage = page
-	return nil
 }
 
 func applyOCRCorroboration(verification *Verification, lines []OCRLine, ocrErr error) {
