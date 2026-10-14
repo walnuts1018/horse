@@ -20,6 +20,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	documentapp "github.com/walnuts1018/horse/internal/application/document"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/ingestion/mailbox"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -225,33 +226,15 @@ func (p *mailboxIngestor) registerMessage(ctx context.Context, executor bob.Exec
 }
 
 func (p *mailboxIngestor) registerEmailAttachments(ctx context.Context, executor bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, householdKey, purpose string, attachments []ingestion.EmailAttachment) ([]gofrsuuid.UUID, error) {
-	queued := make([]gofrsuuid.UUID, 0, len(attachments))
-	seen := make(map[gofrsuuid.UUID]struct{}, len(attachments))
-	for index, attachment := range attachments {
+	stored := make([]documentapp.StoredEmailAttachment, 0, len(attachments))
+	for _, attachment := range attachments {
 		key, hash, err := p.store.Put(ctx, householdKey, attachment.MIMEType, attachment.Data)
 		if err != nil {
 			return nil, err
 		}
-		childID, jobID, err := insertAttachmentDocument(ctx, executor, householdID, memberID, attachment, key, hash, purpose)
-		if err != nil {
-			return nil, err
-		}
-		if _, exists := seen[childID]; exists {
-			continue
-		}
-		seen[childID] = struct{}{}
-		attachmentIndex := int32(index)
-		if _, err := models.SourceDocumentAttachments.Insert(&models.SourceDocumentAttachmentSetter{
-			HouseholdID: &householdID, ParentDocumentID: &parentID, ChildDocumentID: &childID,
-			AttachmentIndex: &attachmentIndex, Filename: &attachment.Filename, MimeType: &attachment.MIMEType,
-		}, im.OnConflict("parent_document_id", "attachment_index").DoNothing()).Exec(ctx, executor); err != nil {
-			return nil, err
-		}
-		if jobID != nil {
-			queued = append(queued, *jobID)
-		}
+		stored = append(stored, documentapp.StoredEmailAttachment{Filename: attachment.Filename, MIMEType: attachment.MIMEType, ObjectKey: key, SHA256: hash})
 	}
-	return queued, nil
+	return documentapp.NewService(p.db).RegisterEmailAttachments(ctx, executor, householdID, memberID, parentID, purpose, stored)
 }
 
 func (p *mailboxIngestor) publishDocumentJobs(ctx context.Context, jobIDs []gofrsuuid.UUID) {

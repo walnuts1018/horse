@@ -317,34 +317,16 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) registerEmailAttachments(ctx context.Context, exec bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, householdKey, purpose string, attachments []ingestion.EmailAttachment) ([]gofrsuuid.UUID, error) {
-	queuedJobIDs := make([]gofrsuuid.UUID, 0, len(attachments))
-	seenChildren := make(map[gofrsuuid.UUID]struct{}, len(attachments))
-	for index, attachment := range attachments {
+	stored := make([]documentapp.StoredEmailAttachment, 0, len(attachments))
+	for _, attachment := range attachments {
 		childKey, childHash, err := s.cfg.Store.Put(ctx, householdKey, attachment.MIMEType, attachment.Data)
 		if err != nil {
 			s.logger.ErrorContext(ctx, "email attachment storage failed", "error", err)
 			return nil, err
 		}
-		childID, childJobID, err := insertAttachmentDocument(ctx, exec, householdID, memberID, attachment, childKey, childHash, purpose)
-		if err != nil {
-			return nil, err
-		}
-		if _, duplicate := seenChildren[childID]; duplicate {
-			continue
-		}
-		seenChildren[childID] = struct{}{}
-		attachmentIndex := int32(index)
-		if _, err := models.SourceDocumentAttachments.Insert(&models.SourceDocumentAttachmentSetter{
-			HouseholdID: &householdID, ParentDocumentID: &parentID, ChildDocumentID: &childID,
-			AttachmentIndex: &attachmentIndex, Filename: &attachment.Filename, MimeType: &attachment.MIMEType,
-		}, im.OnConflict("parent_document_id", "attachment_index").DoNothing()).Exec(ctx, exec); err != nil {
-			return nil, err
-		}
-		if childJobID != nil {
-			queuedJobIDs = append(queuedJobIDs, *childJobID)
-		}
+		stored = append(stored, documentapp.StoredEmailAttachment{Filename: attachment.Filename, MIMEType: attachment.MIMEType, ObjectKey: childKey, SHA256: childHash})
 	}
-	return queuedJobIDs, nil
+	return documentapp.NewService(s.db).RegisterEmailAttachments(ctx, exec, householdID, memberID, parentID, purpose, stored)
 }
 
 func (s *Server) publishDocumentJobs(ctx context.Context, jobIDs []gofrsuuid.UUID) {
@@ -363,72 +345,7 @@ func insertDocumentJob(ctx context.Context, exec bob.Executor, householdID, docu
 }
 
 func insertDocumentJobWithPurpose(ctx context.Context, exec bob.Executor, householdID, documentID gofrsuuid.UUID, purpose string) (gofrsuuid.UUID, error) {
-	if _, ok := documentJobPurpose(purpose); !ok {
-		return gofrsuuid.Nil, errors.New("invalid extraction purpose")
-	}
-	jobID, err := gofrsuuid.FromString(uuid.NewV7().String())
-	if err != nil {
-		return gofrsuuid.Nil, err
-	}
-	request, err := json.Marshal(struct {
-		Purpose string `json:"purpose"`
-	}{Purpose: purpose})
-	if err != nil {
-		return gofrsuuid.Nil, err
-	}
-	requestJSON := types.JSON[stdjson.RawMessage]{Val: request}
-	version := int32(1)
-	status := documentStatusQueued
-	job, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
-		ID: &jobID, HouseholdID: &householdID, SourceDocumentID: &documentID, Version: &version, Status: &status, Request: &requestJSON,
-	}, im.OnConflict("source_document_id", "version").DoNothing()).One(ctx, exec)
-	if errors.Is(err, sql.ErrNoRows) {
-		job, err = models.ExtractionJobs.Query(sm.Where(psql.And(
-			models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(documentID)),
-			models.ExtractionJobs.Columns.Version.EQ(psql.Arg(version)),
-		))).One(ctx, exec)
-	}
-	if err != nil {
-		return gofrsuuid.Nil, err
-	}
-	return job.ID, nil
-}
-
-func insertAttachmentDocument(ctx context.Context, exec bob.Executor, householdID, memberID gofrsuuid.UUID, attachment ingestion.EmailAttachment, key, hash, purpose string) (gofrsuuid.UUID, *gofrsuuid.UUID, error) {
-	id, err := gofrsuuid.FromString(uuid.NewV7().String())
-	if err != nil {
-		return gofrsuuid.Nil, nil, err
-	}
-	sourceKind := documentSourceKindReceipt
-	filename := sql.Null[string]{V: attachment.Filename, Valid: true}
-	document, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
-		ID: &id, HouseholdID: &householdID, Sha256: &hash, ObjectKey: &key, MimeType: &attachment.MIMEType,
-		SourceKind: &sourceKind, SourceFilename: &filename, CreatedBy: &memberID,
-	}, im.OnConflict("household_id", "sha256").DoNothing()).One(ctx, exec)
-	if errors.Is(err, sql.ErrNoRows) {
-		document, err = models.SourceDocuments.Query(sm.Where(psql.And(
-			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-			models.SourceDocuments.Columns.Sha256.EQ(psql.Arg(hash)),
-		))).One(ctx, exec)
-	}
-	if err != nil {
-		return gofrsuuid.Nil, nil, err
-	}
-	_, err = models.ExtractionJobs.Query(
-		sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID))),
-		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(), sm.Limit(1),
-	).One(ctx, exec)
-	if err == nil {
-		return document.ID, nil, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return gofrsuuid.Nil, nil, err
-	}
-	jobID, err := insertDocumentJobWithPurpose(ctx, exec, householdID, document.ID, purpose)
-	if err != nil {
-		return gofrsuuid.Nil, nil, err
-	}
-	return document.ID, &jobID, nil
+	return documentapp.NewService(nil).RegisterDocumentJob(ctx, exec, householdID, documentID, purpose)
 }
 
 func documentJobPurpose(value string) (string, bool) {
