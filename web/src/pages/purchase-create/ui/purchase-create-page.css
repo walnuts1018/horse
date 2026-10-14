@@ -638,7 +638,7 @@
 
   .composer-bottom {
     position: sticky;
-    bottom: 70px;
+    bottom: calc(70px + var(--purchase-keyboard-inset, 0px));
     z-index: 8;
     padding: 10px 11px;
     margin: 11px -2px 0;

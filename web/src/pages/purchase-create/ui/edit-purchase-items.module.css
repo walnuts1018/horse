@@ -57,6 +57,14 @@
   font-size: 12px;
 }
 
+.selectionName {
+  text-overflow: ellipsis;
+}
+
+.selectionName:focus {
+  text-overflow: clip;
+}
+
 .itemList .itemIndex {
   display: flex;
   align-items: center;

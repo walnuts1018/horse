@@ -71,11 +71,40 @@ function PurchaseCreatePageContent({
   const [itemsValue, setItemsValue] = useState<PurchaseItemsValue>(emptyPurchaseItemsValue);
   const [historyAvailability, setHistoryAvailability] = useState({ undo: false, redo: false });
   const itemsCommands = useRef<EditPurchaseItemsCommands>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const [history, setHistory] = useState<Purchase[]>([]);
   const markUnsavedRef = useRef<() => void>(() => {});
   const markUnsaved = useCallback(() => markUnsavedRef.current(), []);
   const [copiedPurchase, setCopiedPurchase] = useState<Purchase | null>(null);
   const [copiedAt, setCopiedAt] = useState<number | null>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const updateKeyboardInset = () => {
+      const activeElement = document.activeElement;
+      const editingText =
+        activeElement instanceof HTMLElement &&
+        activeElement.matches("input:not([type=checkbox]), textarea");
+      const inset =
+        window.matchMedia("(max-width: 760px)").matches && editingText
+          ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+          : 0;
+      composerRef.current?.style.setProperty("--purchase-keyboard-inset", `${inset}px`);
+    };
+    updateKeyboardInset();
+    viewport.addEventListener("resize", updateKeyboardInset);
+    viewport.addEventListener("scroll", updateKeyboardInset);
+    window.addEventListener("resize", updateKeyboardInset);
+    document.addEventListener("focusin", updateKeyboardInset);
+    document.addEventListener("focusout", updateKeyboardInset);
+    return () => {
+      viewport.removeEventListener("resize", updateKeyboardInset);
+      viewport.removeEventListener("scroll", updateKeyboardInset);
+      window.removeEventListener("resize", updateKeyboardInset);
+      document.removeEventListener("focusin", updateKeyboardInset);
+      document.removeEventListener("focusout", updateKeyboardInset);
+    };
+  }, []);
   const outbox = usePurchaseOutbox(memberId, household.id);
   const householdOutbox = outbox.entries.filter(
     (entry) => entry.input.householdId === household.id,
@@ -287,7 +316,7 @@ function PurchaseCreatePageContent({
       </main>
     );
   return (
-    <form className={`composer ${styles.composer}`} onSubmit={handleSubmit}>
+    <form ref={composerRef} className={`composer ${styles.composer}`} onSubmit={handleSubmit}>
       <div className={`composer-heading ${styles.heading}`}>
         <div>
           <button type="button" className="back-link" onClick={onBack}>
