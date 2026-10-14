@@ -26,7 +26,7 @@ require (
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/labstack/echo/v5 v5.3.1
+	github.com/labstack/echo/v5 v5.4.0
 	github.com/mazrean/kessoku v1.1.1
 	github.com/rabbitmq/amqp091-go v1.15.0
 	github.com/stephenafamo/bob v0.50.0
