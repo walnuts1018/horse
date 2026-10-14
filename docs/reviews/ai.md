@@ -1,0 +1,1 @@
+そもそもAI系は単一のRequest/Responseにするのが間違いなのでは？ChatGPTとかGeminiみたいな会話型AIの技術的な工夫とかを参考に工夫すべきで
