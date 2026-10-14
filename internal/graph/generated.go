@@ -750,6 +750,7 @@ type ComplexityRoot struct {
 		CreateProductVariant          func(childComplexity int, input model.CreateProductVariantInput) int
 		CreatePurchase                func(childComplexity int, input model.CreatePurchaseInput) int
 		CreateRecurringExpense        func(childComplexity int, input model.CreateRecurringExpenseInput) int
+		CreateSharedPurchaseDraft     func(childComplexity int, householdID string, payload string) int
 		CreateTag                     func(childComplexity int, input model.CreateTagInput) int
 		IssueHouseholdMailForwarding  func(childComplexity int, input model.HouseholdMailForwardingInput) int
 		LeaveHousehold                func(childComplexity int, input model.LeaveHouseholdInput) int
@@ -782,6 +783,7 @@ type ComplexityRoot struct {
 		UpdatePurchase                func(childComplexity int, input model.UpdatePurchaseInput) int
 		UpdatePurchaseItem            func(childComplexity int, input model.UpdatePurchaseItemInput) int
 		UpdateRecurringExpense        func(childComplexity int, input model.UpdateRecurringExpenseInput) int
+		UpdateSharedPurchaseDraft     func(childComplexity int, id string, expectedRevision int, payload string) int
 		UpdateTag                     func(childComplexity int, input model.UpdateTagInput) int
 	}
 
@@ -1041,6 +1043,7 @@ type ComplexityRoot struct {
 		Purchases                  func(childComplexity int, filter model.PurchaseFilter, after *string, before *string, first *int, last *int) int
 		RecurringExpenses          func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
 		Settlement                 func(childComplexity int, householdID string, period model.YearMonth) int
+		SharedPurchaseDraft        func(childComplexity int, id string) int
 		StatementRefundCorrections func(childComplexity int, householdID string, sourceDocumentID string, sourceReference string, first *int, after *string) int
 		Tags                       func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
 		UnmatchedObservations      func(childComplexity int, householdID string, from *model.YearMonth, to *model.YearMonth, sourceKind *model.SourceKind, state *model.UnmatchedObservationState, after *string, before *string, first *int, last *int) int
@@ -1259,6 +1262,15 @@ type ComplexityRoot struct {
 		SettlementPolicy   func(childComplexity int) int
 	}
 
+	SharedPurchaseDraft struct {
+		CreatedAt   func(childComplexity int) int
+		HouseholdID func(childComplexity int) int
+		ID          func(childComplexity int) int
+		Payload     func(childComplexity int) int
+		Revision    func(childComplexity int) int
+		UpdatedAt   func(childComplexity int) int
+	}
+
 	StatementRefundCorrection struct {
 		AmountYen      func(childComplexity int) int
 		ID             func(childComplexity int) int
@@ -1391,6 +1403,11 @@ type ComplexityRoot struct {
 	UpdateRecurringExpenseUserError struct {
 		Code    func(childComplexity int) int
 		Message func(childComplexity int) int
+	}
+
+	UpdateSharedPurchaseDraftPayload struct {
+		Conflict func(childComplexity int) int
+		Draft    func(childComplexity int) int
 	}
 
 	UpdateTagSuccess struct {
@@ -1569,6 +1586,8 @@ type MutationResolver interface {
 	SetFundingSchedule(ctx context.Context, input model.SetFundingScheduleInput) (model.SetFundingScheduleResult, error)
 	SetPoolFundingRule(ctx context.Context, input model.SetPoolFundingRuleInput) (model.SetPoolFundingRuleResult, error)
 	SetProductAlias(ctx context.Context, input model.SetProductAliasInput) (model.SetProductAliasResult, error)
+	CreateSharedPurchaseDraft(ctx context.Context, householdID string, payload string) (*model.SharedPurchaseDraft, error)
+	UpdateSharedPurchaseDraft(ctx context.Context, id string, expectedRevision int, payload string) (*model.UpdateSharedPurchaseDraftPayload, error)
 	LinkStatementRefundCorrection(ctx context.Context, input model.LinkStatementRefundCorrectionInput) (model.LinkStatementRefundCorrectionResult, error)
 	TransferHouseholdOwner(ctx context.Context, input model.TransferHouseholdOwnerInput) (model.TransferHouseholdOwnerResult, error)
 	UpdateBudget(ctx context.Context, input model.UpdateBudgetInput) (model.UpdateBudgetResult, error)
@@ -1668,6 +1687,7 @@ type QueryResolver interface {
 	PurchaseDefaults(ctx context.Context, householdID string) ([]*model.PurchaseDefault, error)
 	RecurringExpenses(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
 	Settlement(ctx context.Context, householdID string, period model.YearMonth) (model.SettlementVariant, error)
+	SharedPurchaseDraft(ctx context.Context, id string) (*model.SharedPurchaseDraft, error)
 	StatementRefundCorrections(ctx context.Context, householdID string, sourceDocumentID string, sourceReference string, first *int, after *string) (*model.StatementRefundCorrectionConnection, error)
 	Tags(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.TagConnection, error)
 	Viewer(ctx context.Context) (*model.Viewer, error)
@@ -3952,6 +3972,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.CreateRecurringExpense(childComplexity, args["input"].(model.CreateRecurringExpenseInput)), true
+	case "Mutation.createSharedPurchaseDraft":
+		if e.ComplexityRoot.Mutation.CreateSharedPurchaseDraft == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createSharedPurchaseDraft_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.CreateSharedPurchaseDraft(childComplexity, args["householdId"].(string), args["payload"].(string)), true
 	case "Mutation.createTag":
 		if e.ComplexityRoot.Mutation.CreateTag == nil {
 			break
@@ -4304,6 +4335,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.UpdateRecurringExpense(childComplexity, args["input"].(model.UpdateRecurringExpenseInput)), true
+	case "Mutation.updateSharedPurchaseDraft":
+		if e.ComplexityRoot.Mutation.UpdateSharedPurchaseDraft == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_updateSharedPurchaseDraft_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.UpdateSharedPurchaseDraft(childComplexity, args["id"].(string), args["expectedRevision"].(int), args["payload"].(string)), true
 	case "Mutation.updateTag":
 		if e.ComplexityRoot.Mutation.UpdateTag == nil {
 			break
@@ -5496,6 +5538,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.Settlement(childComplexity, args["householdId"].(string), args["period"].(model.YearMonth)), true
+	case "Query.sharedPurchaseDraft":
+		if e.ComplexityRoot.Query.SharedPurchaseDraft == nil {
+			break
+		}
+
+		args, err := ec.field_Query_sharedPurchaseDraft_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.SharedPurchaseDraft(childComplexity, args["id"].(string)), true
 	case "Query.statementRefundCorrections":
 		if e.ComplexityRoot.Query.StatementRefundCorrections == nil {
 			break
@@ -6145,6 +6198,43 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.SharedPool.SettlementPolicy(childComplexity), true
 
+	case "SharedPurchaseDraft.createdAt":
+		if e.ComplexityRoot.SharedPurchaseDraft.CreatedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SharedPurchaseDraft.CreatedAt(childComplexity), true
+	case "SharedPurchaseDraft.householdId":
+		if e.ComplexityRoot.SharedPurchaseDraft.HouseholdID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SharedPurchaseDraft.HouseholdID(childComplexity), true
+	case "SharedPurchaseDraft.id":
+		if e.ComplexityRoot.SharedPurchaseDraft.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SharedPurchaseDraft.ID(childComplexity), true
+	case "SharedPurchaseDraft.payload":
+		if e.ComplexityRoot.SharedPurchaseDraft.Payload == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SharedPurchaseDraft.Payload(childComplexity), true
+	case "SharedPurchaseDraft.revision":
+		if e.ComplexityRoot.SharedPurchaseDraft.Revision == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SharedPurchaseDraft.Revision(childComplexity), true
+	case "SharedPurchaseDraft.updatedAt":
+		if e.ComplexityRoot.SharedPurchaseDraft.UpdatedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SharedPurchaseDraft.UpdatedAt(childComplexity), true
+
 	case "StatementRefundCorrection.amountYen":
 		if e.ComplexityRoot.StatementRefundCorrection.AmountYen == nil {
 			break
@@ -6545,6 +6635,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.UpdateRecurringExpenseUserError.Message(childComplexity), true
+
+	case "UpdateSharedPurchaseDraftPayload.conflict":
+		if e.ComplexityRoot.UpdateSharedPurchaseDraftPayload.Conflict == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdateSharedPurchaseDraftPayload.Conflict(childComplexity), true
+	case "UpdateSharedPurchaseDraftPayload.draft":
+		if e.ComplexityRoot.UpdateSharedPurchaseDraftPayload.Draft == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdateSharedPurchaseDraftPayload.Draft(childComplexity), true
 
 	case "UpdateTagSuccess.result":
 		if e.ComplexityRoot.UpdateTagSuccess.Result == nil {
@@ -9018,6 +9121,29 @@ extend type Query {
   settlement(householdId: ID! @nodeID(of: "Household"), period: YearMonth!): Settlement!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/shared_purchase_draft.graphql", Input: `extend type Query {
+  sharedPurchaseDraft(id: ID!): SharedPurchaseDraft
+}
+
+extend type Mutation {
+  createSharedPurchaseDraft(householdId: ID!, payload: String!): SharedPurchaseDraft!
+  updateSharedPurchaseDraft(id: ID!, expectedRevision: Int!, payload: String!): UpdateSharedPurchaseDraftPayload!
+}
+
+type SharedPurchaseDraft {
+  id: ID!
+  householdId: ID!
+  revision: Int!
+  payload: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type UpdateSharedPurchaseDraftPayload {
+  draft: SharedPurchaseDraft!
+  conflict: Boolean!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/statement_refund_correction.graphql", Input: `extend type Query {
   statementRefundCorrections(
     householdId: ID! @nodeID(of: "Household")
@@ -10359,6 +10485,24 @@ func (ec *executionContext) childFields_SettlementLine(ctx context.Context, fiel
 	return nil, fmt.Errorf("no field named %q was found under type SettlementLine", field.Name)
 }
 
+func (ec *executionContext) childFields_SharedPurchaseDraft(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "id":
+		return ec.fieldContext_SharedPurchaseDraft_id(ctx, field)
+	case "householdId":
+		return ec.fieldContext_SharedPurchaseDraft_householdId(ctx, field)
+	case "revision":
+		return ec.fieldContext_SharedPurchaseDraft_revision(ctx, field)
+	case "payload":
+		return ec.fieldContext_SharedPurchaseDraft_payload(ctx, field)
+	case "createdAt":
+		return ec.fieldContext_SharedPurchaseDraft_createdAt(ctx, field)
+	case "updatedAt":
+		return ec.fieldContext_SharedPurchaseDraft_updatedAt(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SharedPurchaseDraft", field.Name)
+}
+
 func (ec *executionContext) childFields_StatementRefundCorrection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "id":
@@ -10453,6 +10597,16 @@ func (ec *executionContext) childFields_UnmatchedObservationEdge(ctx context.Con
 		return ec.fieldContext_UnmatchedObservationEdge_node(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type UnmatchedObservationEdge", field.Name)
+}
+
+func (ec *executionContext) childFields_UpdateSharedPurchaseDraftPayload(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "draft":
+		return ec.fieldContext_UpdateSharedPurchaseDraftPayload_draft(ctx, field)
+	case "conflict":
+		return ec.fieldContext_UpdateSharedPurchaseDraftPayload_conflict(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type UpdateSharedPurchaseDraftPayload", field.Name)
 }
 
 func (ec *executionContext) childFields_Viewer(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -10890,6 +11044,28 @@ func (ec *executionContext) field_Mutation_createRecurringExpense_args(ctx conte
 		return nil, err
 	}
 	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_createSharedPurchaseDraft_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "householdId",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "payload",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["payload"] = arg1
 	return args, nil
 }
 
@@ -11338,6 +11514,36 @@ func (ec *executionContext) field_Mutation_updateRecurringExpense_args(ctx conte
 		return nil, err
 	}
 	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_updateSharedPurchaseDraft_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "expectedRevision",
+		func(ctx context.Context, v any) (int, error) {
+			return ec.unmarshalNInt2int(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["expectedRevision"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "payload",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNString2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["payload"] = arg2
 	return args, nil
 }
 
@@ -13167,6 +13373,20 @@ func (ec *executionContext) field_Query_settlement_argsHouseholdID(
 		var zeroVal string
 		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
 	}
+}
+
+func (ec *executionContext) field_Query_sharedPurchaseDraft_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
 }
 
 func (ec *executionContext) field_Query_statementRefundCorrections_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
@@ -23521,6 +23741,94 @@ func (ec *executionContext) fieldContext_Mutation_setProductAlias(ctx context.Co
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_createSharedPurchaseDraft(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_createSharedPurchaseDraft(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateSharedPurchaseDraft(ctx, fc.Args["householdId"].(string), fc.Args["payload"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SharedPurchaseDraft) graphql.Marshaler {
+			return ec.marshalNSharedPurchaseDraft2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSharedPurchaseDraft(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_createSharedPurchaseDraft(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SharedPurchaseDraft(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createSharedPurchaseDraft_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_updateSharedPurchaseDraft(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_updateSharedPurchaseDraft(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().UpdateSharedPurchaseDraft(ctx, fc.Args["id"].(string), fc.Args["expectedRevision"].(int), fc.Args["payload"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.UpdateSharedPurchaseDraftPayload) graphql.Marshaler {
+			return ec.marshalNUpdateSharedPurchaseDraftPayload2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdateSharedPurchaseDraftPayload(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_updateSharedPurchaseDraft(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_UpdateSharedPurchaseDraftPayload(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_updateSharedPurchaseDraft_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_linkStatementRefundCorrection(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -28636,6 +28944,50 @@ func (ec *executionContext) fieldContext_Query_settlement(ctx context.Context, f
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_sharedPurchaseDraft(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_sharedPurchaseDraft(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().SharedPurchaseDraft(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SharedPurchaseDraft) graphql.Marshaler {
+			return ec.marshalOSharedPurchaseDraft2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSharedPurchaseDraft(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Query_sharedPurchaseDraft(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SharedPurchaseDraft(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_sharedPurchaseDraft_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_statementRefundCorrections(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -31224,6 +31576,144 @@ func (ec *executionContext) fieldContext_SharedPool_settlementPolicy(_ context.C
 	return graphql.NewScalarFieldContext("SharedPool", field, true, true, errors.New("field of type SharedPoolSettlementPolicy does not have child fields"))
 }
 
+func (ec *executionContext) _SharedPurchaseDraft_id(ctx context.Context, field graphql.CollectedField, obj *model.SharedPurchaseDraft) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SharedPurchaseDraft_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SharedPurchaseDraft_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SharedPurchaseDraft", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _SharedPurchaseDraft_householdId(ctx context.Context, field graphql.CollectedField, obj *model.SharedPurchaseDraft) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SharedPurchaseDraft_householdId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.HouseholdID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SharedPurchaseDraft_householdId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SharedPurchaseDraft", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _SharedPurchaseDraft_revision(ctx context.Context, field graphql.CollectedField, obj *model.SharedPurchaseDraft) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SharedPurchaseDraft_revision(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Revision, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SharedPurchaseDraft_revision(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SharedPurchaseDraft", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _SharedPurchaseDraft_payload(ctx context.Context, field graphql.CollectedField, obj *model.SharedPurchaseDraft) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SharedPurchaseDraft_payload(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Payload, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SharedPurchaseDraft_payload(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SharedPurchaseDraft", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _SharedPurchaseDraft_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.SharedPurchaseDraft) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SharedPurchaseDraft_createdAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SharedPurchaseDraft_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SharedPurchaseDraft", field, false, false, errors.New("field of type DateTime does not have child fields"))
+}
+
+func (ec *executionContext) _SharedPurchaseDraft_updatedAt(ctx context.Context, field graphql.CollectedField, obj *model.SharedPurchaseDraft) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SharedPurchaseDraft_updatedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.UpdatedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SharedPurchaseDraft_updatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SharedPurchaseDraft", field, false, false, errors.New("field of type DateTime does not have child fields"))
+}
+
 func (ec *executionContext) _StatementRefundCorrection_id(ctx context.Context, field graphql.CollectedField, obj *model.StatementRefundCorrection) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -32813,6 +33303,61 @@ func (ec *executionContext) _UpdateRecurringExpenseUserError_message(ctx context
 }
 func (ec *executionContext) fieldContext_UpdateRecurringExpenseUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("UpdateRecurringExpenseUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _UpdateSharedPurchaseDraftPayload_draft(ctx context.Context, field graphql.CollectedField, obj *model.UpdateSharedPurchaseDraftPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdateSharedPurchaseDraftPayload_draft(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Draft, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.SharedPurchaseDraft) graphql.Marshaler {
+			return ec.marshalNSharedPurchaseDraft2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSharedPurchaseDraft(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdateSharedPurchaseDraftPayload_draft(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UpdateSharedPurchaseDraftPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SharedPurchaseDraft(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UpdateSharedPurchaseDraftPayload_conflict(ctx context.Context, field graphql.CollectedField, obj *model.UpdateSharedPurchaseDraftPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdateSharedPurchaseDraftPayload_conflict(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Conflict, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdateSharedPurchaseDraftPayload_conflict(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UpdateSharedPurchaseDraftPayload", field, false, false, errors.New("field of type Boolean does not have child fields"))
 }
 
 func (ec *executionContext) _UpdateTagSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.UpdateTagSuccess) (ret graphql.Marshaler) {
@@ -50417,6 +50962,20 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "createSharedPurchaseDraft":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createSharedPurchaseDraft(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updateSharedPurchaseDraft":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_updateSharedPurchaseDraft(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "linkStatementRefundCorrection":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_linkStatementRefundCorrection(ctx, field)
@@ -53697,6 +54256,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "sharedPurchaseDraft":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_sharedPurchaseDraft(ctx, field)
+				if res == graphql.RequiredNull {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "statementRefundCorrections":
 			field := field
 
@@ -55956,6 +56537,69 @@ func (ec *executionContext) _SharedPool(ctx context.Context, sel ast.SelectionSe
 	return out
 }
 
+var sharedPurchaseDraftImplementors = []string{"SharedPurchaseDraft"}
+
+func (ec *executionContext) _SharedPurchaseDraft(ctx context.Context, sel ast.SelectionSet, obj *model.SharedPurchaseDraft) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, sharedPurchaseDraftImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SharedPurchaseDraft")
+		case "id":
+			out.Values[i] = ec._SharedPurchaseDraft_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "householdId":
+			out.Values[i] = ec._SharedPurchaseDraft_householdId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "revision":
+			out.Values[i] = ec._SharedPurchaseDraft_revision(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "payload":
+			out.Values[i] = ec._SharedPurchaseDraft_payload(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createdAt":
+			out.Values[i] = ec._SharedPurchaseDraft_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updatedAt":
+			out.Values[i] = ec._SharedPurchaseDraft_updatedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var statementRefundCorrectionImplementors = []string{"StatementRefundCorrection"}
 
 func (ec *executionContext) _StatementRefundCorrection(ctx context.Context, sel ast.SelectionSet, obj *model.StatementRefundCorrection) graphql.Marshaler {
@@ -57247,6 +57891,49 @@ func (ec *executionContext) _UpdateRecurringExpenseUserError(ctx context.Context
 			}
 		case "message":
 			out.Values[i] = ec._UpdateRecurringExpenseUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var updateSharedPurchaseDraftPayloadImplementors = []string{"UpdateSharedPurchaseDraftPayload"}
+
+func (ec *executionContext) _UpdateSharedPurchaseDraftPayload(ctx context.Context, sel ast.SelectionSet, obj *model.UpdateSharedPurchaseDraftPayload) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, updateSharedPurchaseDraftPayloadImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("UpdateSharedPurchaseDraftPayload")
+		case "draft":
+			out.Values[i] = ec._UpdateSharedPurchaseDraftPayload_draft(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "conflict":
+			out.Values[i] = ec._UpdateSharedPurchaseDraftPayload_conflict(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -60186,6 +60873,16 @@ func (ec *executionContext) marshalNSharedPoolSettlementPolicy2githubᚗcomᚋwa
 	return v
 }
 
+func (ec *executionContext) marshalNSharedPurchaseDraft2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSharedPurchaseDraft(ctx context.Context, sel ast.SelectionSet, v *model.SharedPurchaseDraft) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SharedPurchaseDraft(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNSourceKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx context.Context, v any) (model.SourceKind, error) {
 	var res model.SourceKind
 	err := res.UnmarshalGQL(v)
@@ -60547,6 +61244,16 @@ func (ec *executionContext) marshalNUpdateRecurringExpenseResult2githubᚗcomᚋ
 		return graphql.Null
 	}
 	return ec._UpdateRecurringExpenseResult(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNUpdateSharedPurchaseDraftPayload2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdateSharedPurchaseDraftPayload(ctx context.Context, sel ast.SelectionSet, v *model.UpdateSharedPurchaseDraftPayload) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._UpdateSharedPurchaseDraftPayload(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNUpdateTagInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdateTagInput(ctx context.Context, v any) (model.UpdateTagInput, error) {
@@ -61135,6 +61842,13 @@ func (ec *executionContext) unmarshalOSharedPoolFundingRuleInput2ᚖgithubᚗcom
 	}
 	res, err := ec.unmarshalInputSharedPoolFundingRuleInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOSharedPurchaseDraft2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSharedPurchaseDraft(ctx context.Context, sel ast.SelectionSet, v *model.SharedPurchaseDraft) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._SharedPurchaseDraft(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOSourceKind2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSourceKind(ctx context.Context, v any) (*model.SourceKind, error) {

@@ -2280,6 +2280,15 @@ type SharedPoolFundingRuleInput struct {
 	SettlementPolicy SharedPoolSettlementPolicy `json:"settlementPolicy"`
 }
 
+type SharedPurchaseDraft struct {
+	ID          string   `json:"id"`
+	HouseholdID string   `json:"householdId"`
+	Revision    int      `json:"revision"`
+	Payload     string   `json:"payload"`
+	CreatedAt   DateTime `json:"createdAt"`
+	UpdatedAt   DateTime `json:"updatedAt"`
+}
+
 type StatementRefundCorrection struct {
 	ID             string   `json:"id"`
 	AmountYen      Long     `json:"amountYen"`
@@ -2489,6 +2498,11 @@ func (UpdateRecurringExpenseUserError) IsUpdateRecurringExpenseResult() {}
 func (UpdateRecurringExpenseUserError) IsMutationError()                {}
 func (this UpdateRecurringExpenseUserError) GetCode() MutationErrorCode { return this.Code }
 func (this UpdateRecurringExpenseUserError) GetMessage() string         { return this.Message }
+
+type UpdateSharedPurchaseDraftPayload struct {
+	Draft    *SharedPurchaseDraft `json:"draft"`
+	Conflict bool                 `json:"conflict"`
+}
 
 type UpdateTagInput struct {
 	TagID        string `json:"tagId"`

@@ -78,6 +78,7 @@ type joins[Q dialect.Joinable] struct {
 	SettlementAdjustments           joinSet[settlementAdjustmentJoins[Q]]
 	SettlementLines                 joinSet[settlementLineJoins[Q]]
 	SettlementRuns                  joinSet[settlementRunJoins[Q]]
+	SharedPurchaseDrafts            joinSet[sharedPurchaseDraftJoins[Q]]
 	SourceDocumentAttachments       joinSet[sourceDocumentAttachmentJoins[Q]]
 	SourceDocuments                 joinSet[sourceDocumentJoins[Q]]
 	Tags                            joinSet[tagJoins[Q]]
@@ -142,6 +143,7 @@ func getJoins[Q dialect.Joinable]() joins[Q] {
 		SettlementAdjustments:           buildJoinSet[settlementAdjustmentJoins[Q]](SettlementAdjustments.Columns, buildSettlementAdjustmentJoins),
 		SettlementLines:                 buildJoinSet[settlementLineJoins[Q]](SettlementLines.Columns, buildSettlementLineJoins),
 		SettlementRuns:                  buildJoinSet[settlementRunJoins[Q]](SettlementRuns.Columns, buildSettlementRunJoins),
+		SharedPurchaseDrafts:            buildJoinSet[sharedPurchaseDraftJoins[Q]](SharedPurchaseDrafts.Columns, buildSharedPurchaseDraftJoins),
 		SourceDocumentAttachments:       buildJoinSet[sourceDocumentAttachmentJoins[Q]](SourceDocumentAttachments.Columns, buildSourceDocumentAttachmentJoins),
 		SourceDocuments:                 buildJoinSet[sourceDocumentJoins[Q]](SourceDocuments.Columns, buildSourceDocumentJoins),
 		Tags:                            buildJoinSet[tagJoins[Q]](Tags.Columns, buildTagJoins),

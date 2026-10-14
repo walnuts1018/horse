@@ -70,6 +70,7 @@ func Where[Q psql.Filterable]() struct {
 	SettlementAdjustments           settlementAdjustmentWhere[Q]
 	SettlementLines                 settlementLineWhere[Q]
 	SettlementRuns                  settlementRunWhere[Q]
+	SharedPurchaseDrafts            sharedPurchaseDraftWhere[Q]
 	SourceDocumentAttachments       sourceDocumentAttachmentWhere[Q]
 	SourceDocuments                 sourceDocumentWhere[Q]
 	Tags                            tagWhere[Q]
@@ -129,6 +130,7 @@ func Where[Q psql.Filterable]() struct {
 		SettlementAdjustments           settlementAdjustmentWhere[Q]
 		SettlementLines                 settlementLineWhere[Q]
 		SettlementRuns                  settlementRunWhere[Q]
+		SharedPurchaseDrafts            sharedPurchaseDraftWhere[Q]
 		SourceDocumentAttachments       sourceDocumentAttachmentWhere[Q]
 		SourceDocuments                 sourceDocumentWhere[Q]
 		Tags                            tagWhere[Q]
@@ -187,6 +189,7 @@ func Where[Q psql.Filterable]() struct {
 		SettlementAdjustments:           buildSettlementAdjustmentWhere[Q](SettlementAdjustments.Columns),
 		SettlementLines:                 buildSettlementLineWhere[Q](SettlementLines.Columns),
 		SettlementRuns:                  buildSettlementRunWhere[Q](SettlementRuns.Columns),
+		SharedPurchaseDrafts:            buildSharedPurchaseDraftWhere[Q](SharedPurchaseDrafts.Columns),
 		SourceDocumentAttachments:       buildSourceDocumentAttachmentWhere[Q](SourceDocumentAttachments.Columns),
 		SourceDocuments:                 buildSourceDocumentWhere[Q](SourceDocuments.Columns),
 		Tags:                            buildTagWhere[Q](Tags.Columns),

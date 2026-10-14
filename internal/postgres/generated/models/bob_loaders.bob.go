@@ -65,6 +65,7 @@ type preloaders struct {
 	SettlementAdjustment           settlementAdjustmentPreloader
 	SettlementLine                 settlementLinePreloader
 	SettlementRun                  settlementRunPreloader
+	SharedPurchaseDraft            sharedPurchaseDraftPreloader
 	SourceDocumentAttachment       sourceDocumentAttachmentPreloader
 	SourceDocument                 sourceDocumentPreloader
 	Tag                            tagPreloader
@@ -121,6 +122,7 @@ func getPreloaders() preloaders {
 		SettlementAdjustment:           buildSettlementAdjustmentPreloader(),
 		SettlementLine:                 buildSettlementLinePreloader(),
 		SettlementRun:                  buildSettlementRunPreloader(),
+		SharedPurchaseDraft:            buildSharedPurchaseDraftPreloader(),
 		SourceDocumentAttachment:       buildSourceDocumentAttachmentPreloader(),
 		SourceDocument:                 buildSourceDocumentPreloader(),
 		Tag:                            buildTagPreloader(),
@@ -183,6 +185,7 @@ type thenLoaders[Q orm.Loadable] struct {
 	SettlementAdjustment           settlementAdjustmentThenLoader[Q]
 	SettlementLine                 settlementLineThenLoader[Q]
 	SettlementRun                  settlementRunThenLoader[Q]
+	SharedPurchaseDraft            sharedPurchaseDraftThenLoader[Q]
 	SourceDocumentAttachment       sourceDocumentAttachmentThenLoader[Q]
 	SourceDocument                 sourceDocumentThenLoader[Q]
 	Tag                            tagThenLoader[Q]
@@ -239,6 +242,7 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		SettlementAdjustment:           buildSettlementAdjustmentThenLoader[Q](),
 		SettlementLine:                 buildSettlementLineThenLoader[Q](),
 		SettlementRun:                  buildSettlementRunThenLoader[Q](),
+		SharedPurchaseDraft:            buildSharedPurchaseDraftThenLoader[Q](),
 		SourceDocumentAttachment:       buildSourceDocumentAttachmentThenLoader[Q](),
 		SourceDocument:                 buildSourceDocumentThenLoader[Q](),
 		Tag:                            buildTagThenLoader[Q](),

@@ -79,6 +79,7 @@ type householdR struct {
 	RecurringExpenses        RecurringExpenseSlice        // recurring_expenses.recurring_expenses_household_id_fkey
 	SettlementAdjustments    SettlementAdjustmentSlice    // settlement_adjustments.settlement_adjustments_household_id_fkey
 	SettlementRuns           SettlementRunSlice           // settlement_runs.settlement_runs_household_id_fkey
+	SharedPurchaseDrafts     SharedPurchaseDraftSlice     // shared_purchase_drafts.shared_purchase_drafts_household_id_fkey
 	SourceDocuments          SourceDocumentSlice          // source_documents.source_documents_household_id_fkey
 	Tags                     TagSlice                     // tags.tags_household_id_fkey
 	Transfers                TransferSlice                // transfers.transfers_household_id_fkey
@@ -118,6 +119,7 @@ type householdRLoaded struct {
 	RecurringExpenses        bool // recurring_expenses.recurring_expenses_household_id_fkey
 	SettlementAdjustments    bool // settlement_adjustments.settlement_adjustments_household_id_fkey
 	SettlementRuns           bool // settlement_runs.settlement_runs_household_id_fkey
+	SharedPurchaseDrafts     bool // shared_purchase_drafts.shared_purchase_drafts_household_id_fkey
 	SourceDocuments          bool // source_documents.source_documents_household_id_fkey
 	Tags                     bool // tags.tags_household_id_fkey
 	Transfers                bool // transfers.transfers_household_id_fkey
@@ -1339,6 +1341,29 @@ func (os HouseholdSlice) SettlementRuns(mods ...bob.Mod[*dialect.SelectQuery]) S
 
 	return SettlementRuns.Query(append(mods,
 		sm.Where(SettlementRuns.Columns.HouseholdID.EQ(PKArgExpr)),
+	)...)
+}
+
+// SharedPurchaseDrafts starts a query for related objects on shared_purchase_drafts
+func (o *Household) SharedPurchaseDrafts(mods ...bob.Mod[*dialect.SelectQuery]) SharedPurchaseDraftsQuery {
+	return SharedPurchaseDrafts.Query(append(mods,
+		sm.Where(SharedPurchaseDrafts.Columns.HouseholdID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os HouseholdSlice) SharedPurchaseDrafts(mods ...bob.Mod[*dialect.SelectQuery]) SharedPurchaseDraftsQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return SharedPurchaseDrafts.Query(append(mods,
+		sm.Where(SharedPurchaseDrafts.Columns.HouseholdID.EQ(PKArgExpr)),
 	)...)
 }
 
@@ -3301,6 +3326,76 @@ func (household0 *Household) AttachSettlementRuns(ctx context.Context, exec bob.
 	return nil
 }
 
+func insertHouseholdSharedPurchaseDrafts0(ctx context.Context, exec bob.Executor, sharedPurchaseDrafts1 []*SharedPurchaseDraftSetter, household0 *Household) (SharedPurchaseDraftSlice, error) {
+	for i := range sharedPurchaseDrafts1 {
+		sharedPurchaseDrafts1[i].HouseholdID = func() *uuid.UUID { return &household0.ID }()
+	}
+
+	ret, err := SharedPurchaseDrafts.Insert(bob.ToMods(sharedPurchaseDrafts1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertHouseholdSharedPurchaseDrafts0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachHouseholdSharedPurchaseDrafts0(ctx context.Context, exec bob.Executor, count int, sharedPurchaseDrafts1 SharedPurchaseDraftSlice, household0 *Household) (SharedPurchaseDraftSlice, error) {
+	setter := &SharedPurchaseDraftSetter{
+		HouseholdID: func() *uuid.UUID { return &household0.ID }(),
+	}
+
+	err := sharedPurchaseDrafts1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachHouseholdSharedPurchaseDrafts0: %w", err)
+	}
+
+	return sharedPurchaseDrafts1, nil
+}
+
+func (household0 *Household) InsertSharedPurchaseDrafts(ctx context.Context, exec bob.Executor, related ...*SharedPurchaseDraftSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	sharedPurchaseDrafts1, err := insertHouseholdSharedPurchaseDrafts0(ctx, exec, related, household0)
+	if err != nil {
+		return err
+	}
+
+	household0.R.SharedPurchaseDrafts = append(household0.R.SharedPurchaseDrafts, sharedPurchaseDrafts1...)
+
+	for _, rel := range sharedPurchaseDrafts1 {
+		rel.R.Household = household0
+		rel.R.Loaded.Household = true
+	}
+	return nil
+}
+
+func (household0 *Household) AttachSharedPurchaseDrafts(ctx context.Context, exec bob.Executor, related ...*SharedPurchaseDraft) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	sharedPurchaseDrafts1 := SharedPurchaseDraftSlice(related)
+
+	_, err = attachHouseholdSharedPurchaseDrafts0(ctx, exec, len(related), sharedPurchaseDrafts1, household0)
+	if err != nil {
+		return err
+	}
+
+	household0.R.SharedPurchaseDrafts = append(household0.R.SharedPurchaseDrafts, sharedPurchaseDrafts1...)
+
+	for _, rel := range related {
+		rel.R.Household = household0
+		rel.R.Loaded.Household = true
+	}
+
+	return nil
+}
+
 func insertHouseholdSourceDocuments0(ctx context.Context, exec bob.Executor, sourceDocuments1 []*SourceDocumentSetter, household0 *Household) (SourceDocumentSlice, error) {
 	for i := range sourceDocuments1 {
 		sourceDocuments1[i].HouseholdID = func() *uuid.UUID { return &household0.ID }()
@@ -3938,6 +4033,20 @@ func (w householdWhereR[Q]) HasSettlementRuns(filters ...bob.Mod[*dialect.Select
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasSharedPurchaseDrafts filters parents that have a matching SharedPurchaseDrafts using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to SharedPurchaseDrafts).
+func (w householdWhereR[Q]) HasSharedPurchaseDrafts(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(SharedPurchaseDrafts.NameExpr()),
+		sm.Where(SharedPurchaseDrafts.Columns.HouseholdID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasSourceDocuments filters parents that have a matching SourceDocuments using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -4532,6 +4641,22 @@ func (o *Household) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "SharedPurchaseDrafts":
+		rels, ok := retrieved.(SharedPurchaseDraftSlice)
+		if !ok {
+			return fmt.Errorf("household cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.SharedPurchaseDrafts = rels
+		o.R.Loaded.SharedPurchaseDrafts = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Household = o
+				rel.R.Loaded.Household = true
+			}
+		}
+		return nil
 	case "SourceDocuments":
 		rels, ok := retrieved.(SourceDocumentSlice)
 		if !ok {
@@ -4620,6 +4745,7 @@ type householdThenLoader[Q orm.Loadable] struct {
 	RecurringExpenses        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SettlementAdjustments    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SettlementRuns           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SharedPurchaseDrafts     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SourceDocuments          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Tags                     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Transfers                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -4709,6 +4835,9 @@ func buildHouseholdThenLoader[Q orm.Loadable]() householdThenLoader[Q] {
 	}
 	type SettlementRunsLoadInterface interface {
 		LoadSettlementRuns(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type SharedPurchaseDraftsLoadInterface interface {
+		LoadSharedPurchaseDrafts(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type SourceDocumentsLoadInterface interface {
 		LoadSourceDocuments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -4887,6 +5016,12 @@ func buildHouseholdThenLoader[Q orm.Loadable]() householdThenLoader[Q] {
 			"SettlementRuns",
 			func(ctx context.Context, exec bob.Executor, retrieved SettlementRunsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadSettlementRuns(ctx, exec, mods...)
+			},
+		),
+		SharedPurchaseDrafts: thenLoadBuilder[Q](
+			"SharedPurchaseDrafts",
+			func(ctx context.Context, exec bob.Executor, retrieved SharedPurchaseDraftsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadSharedPurchaseDrafts(ctx, exec, mods...)
 			},
 		),
 		SourceDocuments: thenLoadBuilder[Q](
@@ -6982,6 +7117,80 @@ func (os HouseholdSlice) LoadSettlementRuns(ctx context.Context, exec bob.Execut
 	return nil
 }
 
+// LoadSharedPurchaseDrafts loads the household's SharedPurchaseDrafts into the .R struct
+func (o *Household) LoadSharedPurchaseDrafts(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.SharedPurchaseDrafts = nil
+	o.R.Loaded.SharedPurchaseDrafts = false
+
+	related, err := o.SharedPurchaseDrafts(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Household = o
+		rel.R.Loaded.Household = true
+	}
+
+	o.R.SharedPurchaseDrafts = related
+	o.R.Loaded.SharedPurchaseDrafts = true
+	return nil
+}
+
+// LoadSharedPurchaseDrafts loads the household's SharedPurchaseDrafts into the .R struct
+func (os HouseholdSlice) LoadSharedPurchaseDrafts(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	sharedPurchaseDrafts, err := os.SharedPurchaseDrafts(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.SharedPurchaseDrafts = nil
+		o.R.Loaded.SharedPurchaseDrafts = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	householdByKey := make(map[uuid.UUID][]*Household, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		householdByKey[o.ID] = append(householdByKey[o.ID], o)
+	}
+
+	for _, rel := range sharedPurchaseDrafts {
+
+		owners, ok := householdByKey[rel.HouseholdID]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			rel.R.Household = o
+			rel.R.Loaded.Household = true
+
+			o.R.SharedPurchaseDrafts = append(o.R.SharedPurchaseDrafts, rel)
+
+		}
+	}
+
+	return nil
+}
+
 // LoadSourceDocuments loads the household's SourceDocuments into the .R struct
 func (o *Household) LoadSourceDocuments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -7234,6 +7443,7 @@ type householdC struct {
 	RecurringExpenses        *int64
 	SettlementAdjustments    *int64
 	SettlementRuns           *int64
+	SharedPurchaseDrafts     *int64
 	SourceDocuments          *int64
 	Tags                     *int64
 	Transfers                *int64
@@ -7302,6 +7512,8 @@ func (o *Household) PreloadCount(name string, count int64) error {
 		o.C.SettlementAdjustments = &count
 	case "SettlementRuns":
 		o.C.SettlementRuns = &count
+	case "SharedPurchaseDrafts":
+		o.C.SharedPurchaseDrafts = &count
 	case "SourceDocuments":
 		o.C.SourceDocuments = &count
 	case "Tags":
@@ -7341,6 +7553,7 @@ type householdCountPreloader struct {
 	RecurringExpenses        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	SettlementAdjustments    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	SettlementRuns           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	SharedPurchaseDrafts     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	SourceDocuments          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	Tags                     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	Transfers                func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
@@ -7824,6 +8037,23 @@ func buildHouseholdCountPreloader() householdCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		SharedPurchaseDrafts: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Household]("SharedPurchaseDrafts", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Households.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(SharedPurchaseDrafts.NameAsExpr()),
+					sm.Where(psql.Quote(SharedPurchaseDrafts.Alias(), "household_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		SourceDocuments: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*Household]("SourceDocuments", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -7907,6 +8137,7 @@ type householdCountThenLoader[Q orm.Loadable] struct {
 	RecurringExpenses        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SettlementAdjustments    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SettlementRuns           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SharedPurchaseDrafts     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SourceDocuments          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Tags                     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Transfers                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -7996,6 +8227,9 @@ func buildHouseholdCountThenLoader[Q orm.Loadable]() householdCountThenLoader[Q]
 	}
 	type SettlementRunsCountInterface interface {
 		LoadCountSettlementRuns(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type SharedPurchaseDraftsCountInterface interface {
+		LoadCountSharedPurchaseDrafts(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type SourceDocumentsCountInterface interface {
 		LoadCountSourceDocuments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -8174,6 +8408,12 @@ func buildHouseholdCountThenLoader[Q orm.Loadable]() householdCountThenLoader[Q]
 			"SettlementRuns",
 			func(ctx context.Context, exec bob.Executor, retrieved SettlementRunsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountSettlementRuns(ctx, exec, mods...)
+			},
+		),
+		SharedPurchaseDrafts: countThenLoadBuilder[Q](
+			"SharedPurchaseDrafts",
+			func(ctx context.Context, exec bob.Executor, retrieved SharedPurchaseDraftsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountSharedPurchaseDrafts(ctx, exec, mods...)
 			},
 		),
 		SourceDocuments: countThenLoadBuilder[Q](
@@ -10409,6 +10649,85 @@ func (os HouseholdSlice) LoadCountSettlementRuns(ctx context.Context, exec bob.E
 	return nil
 }
 
+// LoadCountSharedPurchaseDrafts loads the count of SharedPurchaseDrafts into the C struct
+func (o *Household) LoadCountSharedPurchaseDrafts(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.SharedPurchaseDrafts(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.SharedPurchaseDrafts = &count
+	return nil
+}
+
+// LoadCountSharedPurchaseDrafts loads the count of SharedPurchaseDrafts for a slice in a single batch query
+func (os HouseholdSlice) LoadCountSharedPurchaseDrafts(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			SharedPurchaseDrafts.Columns.HouseholdID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(SharedPurchaseDrafts.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.Where(SharedPurchaseDrafts.Columns.HouseholdID.EQ(PKArgExpr)),
+		// GROUP BY fk columns
+		sm.GroupBy(SharedPurchaseDrafts.Columns.HouseholdID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Single-column FK: direct map lookup
+	countMap := make(map[uuid.UUID]int64, len(results))
+	for _, r := range results {
+		countMap[r.ID] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[o.ID]
+		o.C.SharedPurchaseDrafts = &count
+	}
+
+	return nil
+}
+
 // LoadCountSourceDocuments loads the count of SourceDocuments into the C struct
 func (o *Household) LoadCountSourceDocuments(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
@@ -10676,6 +10995,7 @@ type householdJoins[Q dialect.Joinable] struct {
 	RecurringExpenses        modAs[Q, recurringExpenseColumns]
 	SettlementAdjustments    modAs[Q, settlementAdjustmentColumns]
 	SettlementRuns           modAs[Q, settlementRunColumns]
+	SharedPurchaseDrafts     modAs[Q, sharedPurchaseDraftColumns]
 	SourceDocuments          modAs[Q, sourceDocumentColumns]
 	Tags                     modAs[Q, tagColumns]
 	Transfers                modAs[Q, transferColumns]
@@ -11073,6 +11393,20 @@ func buildHouseholdJoins[Q dialect.Joinable](cols householdColumns, typ string) 
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, SettlementRuns.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		SharedPurchaseDrafts: modAs[Q, sharedPurchaseDraftColumns]{
+			c: SharedPurchaseDrafts.Columns,
+			f: func(to sharedPurchaseDraftColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, SharedPurchaseDrafts.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.ID),
 					))
 				}
