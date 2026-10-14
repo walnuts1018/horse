@@ -11,7 +11,9 @@ import {
 import { errorMessage } from "../../../shared/lib/errors";
 import {
   cropCameraImage,
+  exifCameraImageTransform,
   identityCameraImageTransform,
+  readExifOrientation,
   rotateCameraImageClockwise,
   type CameraImageTransform,
 } from "../model/camera-image-transform";
@@ -111,11 +113,18 @@ export const CameraCapture = forwardRef<
     };
   }, [draftOpen]);
 
-  const reviewFile = (files: FileList | null) => {
+  const reviewFile = async (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
     if (!isSupportedCameraImage(file)) {
       onError("画像を選択してください");
+      return;
+    }
+    let orientation = 1;
+    try {
+      orientation = readExifOrientation(await file.arrayBuffer());
+    } catch (reason) {
+      onError(errorMessage(reason));
       return;
     }
     setCropMode(false);
@@ -126,7 +135,7 @@ export const CameraCapture = forwardRef<
       file,
       src: URL.createObjectURL(file),
       crop: null,
-      transform: identityCameraImageTransform,
+      transform: exifCameraImageTransform(orientation),
     });
   };
 
@@ -239,7 +248,7 @@ export const CameraCapture = forwardRef<
         capture="environment"
         hidden
         onChange={(event) => {
-          reviewFile(event.currentTarget.files);
+          void reviewFile(event.currentTarget.files);
           event.currentTarget.value = "";
         }}
       />
