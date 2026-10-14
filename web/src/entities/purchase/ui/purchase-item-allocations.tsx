@@ -8,27 +8,61 @@ import { areAllocationsEquivalent } from "../model/allocation-equivalence";
 
 import "./purchase-item-allocations.css";
 
+const formatYen = (value: bigint) => `¥${new Intl.NumberFormat("ja-JP").format(value)}`;
+
 export function EditPurchaseItemAllocations({
   allocations,
   defaultAllocations,
   pools,
+  amount,
   onChange,
 }: {
   allocations: PurchaseDraftItem["allocations"];
   defaultAllocations: PurchaseDraftItem["allocations"];
   pools: Household["pools"];
+  amount?: string;
   onChange: (allocations: PurchaseDraftItem["allocations"]) => void;
 }) {
+  const effectiveAllocations = allocations.length ? allocations : defaultAllocations;
+  const amountYen = amount && /^\d+$/.test(amount) ? BigInt(amount) : null;
+  const totalWeight = effectiveAllocations.reduce(
+    (sum, allocation) => sum + BigInt(allocation.weight),
+    0n,
+  );
+  const allocationAmounts = new Map<string, bigint>();
+  if (amountYen !== null && totalWeight > 0n) {
+    const remainders: Array<{ poolId: string; remainder: bigint }> = [];
+    let allocated = 0n;
+    for (const allocation of effectiveAllocations) {
+      const weight = BigInt(allocation.weight);
+      const numerator = amountYen * weight;
+      const baseAmount = numerator / totalWeight;
+      allocationAmounts.set(allocation.poolId, baseAmount);
+      allocated += baseAmount;
+      remainders.push({ poolId: allocation.poolId, remainder: numerator % totalWeight });
+    }
+    remainders.sort((a, b) => {
+      if (a.remainder !== b.remainder) return a.remainder > b.remainder ? -1 : 1;
+      if (a.poolId < b.poolId) return -1;
+      if (a.poolId > b.poolId) return 1;
+      return 0;
+    });
+    for (let index = 0; index < Number(amountYen - allocated); index++) {
+      const poolId = remainders[index]?.poolId;
+      if (!poolId) break;
+      allocationAmounts.set(poolId, (allocationAmounts.get(poolId) ?? 0n) + 1n);
+    }
+  }
   const allocationName = () => {
     if (allocations.length === 0 || areAllocationsEquivalent(allocations, defaultAllocations))
       return "標準";
     if (allocations.length === 1)
       return `${pools.find((pool) => pool.id === allocations[0].poolId)?.name ?? "口座"} 100%`;
-    const totalWeight = allocations.reduce((sum, allocation) => sum + allocation.weight, 0);
+    const labelWeight = allocations.reduce((sum, allocation) => sum + allocation.weight, 0);
     return allocations
       .map((allocation) => {
         const name = pools.find((pool) => pool.id === allocation.poolId)?.name ?? "口座";
-        const percentage = Math.round((allocation.weight / totalWeight) * 100);
+        const percentage = Math.round((allocation.weight / labelWeight) * 100);
         return `${name} ${percentage}%`;
       })
       .join(" / ");
@@ -64,12 +98,22 @@ export function EditPurchaseItemAllocations({
             </button>
             {pools.map((pool) => {
               const weight =
-                (allocations.length ? allocations : defaultAllocations).find(
-                  (allocation) => allocation.poolId === pool.id,
-                )?.weight ?? 0;
+                effectiveAllocations.find((allocation) => allocation.poolId === pool.id)?.weight ??
+                0;
+              const percentage =
+                totalWeight > 0n
+                  ? ((BigInt(weight) * 100n + totalWeight / 2n) / totalWeight).toString()
+                  : "0";
               return (
                 <label className="allocation-option" key={pool.id}>
-                  <span>{pool.name}</span>
+                  <span className="allocation-pool">
+                    <span>{pool.name}</span>
+                    {amountYen !== null && (
+                      <small>
+                        {percentage}% · {formatYen(allocationAmounts.get(pool.id) ?? 0n)}
+                      </small>
+                    )}
+                  </span>
                   <span className="number-field">
                     <input
                       aria-label={`${pool.name}の負担比率`}

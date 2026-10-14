@@ -45,6 +45,18 @@
   font-size: 12px;
 }
 
+.allocation-pool {
+  display: grid;
+  gap: 2px;
+}
+
+.allocation-pool small {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .allocation-popup .number-field {
   width: 78px;
 }

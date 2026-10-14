@@ -125,6 +125,7 @@ export function PurchaseItemsGrid({
                   allocations={item.allocations}
                   defaultAllocations={defaultAllocations}
                   pools={household.pools}
+                  amount={item.amount}
                   onChange={(allocations) => onPatch(item.key, { allocations })}
                 />
                 <button
