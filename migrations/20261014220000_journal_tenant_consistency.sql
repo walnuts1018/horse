@@ -9,6 +9,8 @@ SET household_id = journals.household_id
 FROM journals
 WHERE journals.id = entries.journal_id;
 
+SET CONSTRAINTS ALL IMMEDIATE;
+
 ALTER TABLE journal_entries
     ALTER COLUMN household_id SET NOT NULL;
 
