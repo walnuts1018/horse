@@ -608,7 +608,7 @@ export function ReceiptReview({
                 <div>
                   <input
                     id={`receipt-review-item-${encodeURIComponent(itemKey)}`}
-                    aria-label="品名"
+                    aria-label={`品目${index + 1}の品名（${item.name.trim() || "未入力"}）`}
                     ref={(element) => {
                       if (element) itemNameInputs.current.set(itemKey, element);
                       else itemNameInputs.current.delete(itemKey);
