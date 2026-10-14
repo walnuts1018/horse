@@ -1,10 +1,10 @@
-import { AlertCircle, Link2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Link2 } from "lucide-react";
+import { type SubmitEvent, useEffect, useState } from "react";
 
-import { readHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type Purchase, type UnmatchedObservation } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
+import { readLinkablePurchases } from "../api/read-linkable-purchases";
 
 type MatchCandidate = {
   documentId: string;
@@ -28,11 +28,15 @@ export function ObservationLinker({
   const observationId = `${observation.documentId}\u0000${observation.sourceReference}`;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [matches, setMatches] = useState<MatchCandidate[]>([]);
-  const [matchesTruncated, setMatchesTruncated] = useState(false);
+  const [purchaseSearch, setPurchaseSearch] = useState("");
+  const [purchaseSearchTerm, setPurchaseSearchTerm] = useState("");
+  const [purchaseAfter, setPurchaseAfter] = useState<string | null | undefined>(null);
+  const [purchaseHasNextPage, setPurchaseHasNextPage] = useState(false);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState("");
   const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
 
@@ -54,13 +58,12 @@ export function ObservationLinker({
     if (purchases.length || loading) return;
     setLoading(true);
     setError("");
-    setMatchesTruncated(false);
     try {
-      const [matchResponse, purchaseResult] = await Promise.all([
+      const [matchResponse, purchasePage] = await Promise.all([
         fetch(`/documents/${encodeURIComponent(observation.documentId)}/matches`, {
           credentials: "include",
         }),
-        readHouseholdPurchases(household.id, 100),
+        readLinkablePurchases(household.id, ""),
       ]);
       if (!matchResponse.ok)
         throw new Error(`照合候補を取得できませんでした (${matchResponse.status})`);
@@ -69,9 +72,7 @@ export function ObservationLinker({
         payload === null ||
         typeof payload !== "object" ||
         !("observations" in payload) ||
-        !Array.isArray(payload.observations) ||
-        !("truncated" in payload) ||
-        typeof payload.truncated !== "boolean"
+        !Array.isArray(payload.observations)
       )
         throw new Error("照合候補の形式が正しくありません");
       const matchesData = payload.observations.filter(
@@ -101,13 +102,43 @@ export function ObservationLinker({
         (entry) => entry.sourceReference === observation.sourceReference,
       );
       setMatches(sourceMatches?.matches ?? []);
-      setMatchesTruncated(payload.truncated);
-      setPurchases(purchaseResult);
+      setPurchases(purchasePage.purchases);
+      setPurchaseSearchTerm("");
+      setPurchaseAfter(purchasePage.after);
+      setPurchaseHasNextPage(purchasePage.hasNextPage);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
       setLoading(false);
     }
+  };
+
+  const searchPurchases = async (search: string, after?: string | null) => {
+    setPurchaseLoading(true);
+    setError("");
+    try {
+      const page = await readLinkablePurchases(household.id, search, after);
+      setPurchases((current) => {
+        if (!after) return page.purchases;
+        const existing = new Set(current.map(({ id }) => id));
+        return [...current, ...page.purchases.filter(({ id }) => !existing.has(id))];
+      });
+      setPurchaseAfter(page.after);
+      setPurchaseHasNextPage(page.hasNextPage);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setPurchaseLoading(false);
+    }
+  };
+
+  const submitPurchaseSearch = (event: SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const search = purchaseSearch.trim();
+    setPurchaseSearchTerm(search);
+    setSelectedPurchaseId("");
+    onDirtyChange(observationId, selectedMatches.size > 0);
+    void searchPurchases(search);
   };
 
   const confirm = async () => {
@@ -162,11 +193,6 @@ export function ObservationLinker({
             <span>読み込み中</span>
           ) : (
             <>
-              {matchesTruncated && (
-                <output>
-                  <AlertCircle aria-hidden size={14} /> 候補を直近100件に絞っています
-                </output>
-              )}
               {matches.length > 0 && (
                 <fieldset>
                   <legend>照合候補</legend>
@@ -195,6 +221,20 @@ export function ObservationLinker({
                   })}
                 </fieldset>
               )}
+              <form className="ledger-filters" onSubmit={submitPurchaseSearch}>
+                <label className="select-filter">
+                  <span>購入を検索</span>
+                  <input
+                    type="search"
+                    value={purchaseSearch}
+                    onChange={(event) => setPurchaseSearch(event.target.value)}
+                    placeholder="店舗名または品目名"
+                  />
+                </label>
+                <button className="button button-soft" type="submit" disabled={purchaseLoading}>
+                  検索
+                </button>
+              </form>
               <label className="select-filter">
                 <span>既存購入</span>
                 <select
@@ -217,6 +257,16 @@ export function ObservationLinker({
                   ))}
                 </select>
               </label>
+              {purchaseHasNextPage && (
+                <button
+                  className="button button-soft"
+                  type="button"
+                  disabled={purchaseLoading || !purchaseAfter}
+                  onClick={() => void searchPurchases(purchaseSearchTerm, purchaseAfter)}
+                >
+                  {purchaseLoading ? "読み込み中" : "購入候補をさらに読み込む"}
+                </button>
+              )}
               <button
                 className="button button-primary"
                 type="button"
