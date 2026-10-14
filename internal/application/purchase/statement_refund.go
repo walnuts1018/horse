@@ -60,6 +60,14 @@ func parseStatementRefundObservation(value types.JSON[stdjson.RawMessage]) (inge
 	return observation.Statement, nil
 }
 
+func parsePersistedStatementRefundCandidate(value types.JSON[stdjson.RawMessage]) (ingestion.StatementEntry, bool) {
+	statement, err := parseStatementRefundObservation(value)
+	if err != nil {
+		return ingestion.StatementEntry{}, false
+	}
+	return statement, true
+}
+
 func sameRefundStatement(left, right ingestion.StatementEntry) bool {
 	leftAt, leftErr := time.Parse(time.RFC3339, left.OccurredAt)
 	rightAt, rightErr := time.Parse(time.RFC3339, right.OccurredAt)
@@ -70,8 +78,8 @@ func statementRefundCorrection(ctx context.Context, executor bob.Executor, house
 	if link.SourceDocumentID == currentDocumentID {
 		return StatementRefundCorrection{}, false, nil
 	}
-	original, err := parseStatementRefundObservation(link.Observation)
-	if err != nil {
+	original, valid := parsePersistedStatementRefundCandidate(link.Observation)
+	if !valid {
 		return StatementRefundCorrection{}, false, nil
 	}
 	originalReference := original.SourceReference

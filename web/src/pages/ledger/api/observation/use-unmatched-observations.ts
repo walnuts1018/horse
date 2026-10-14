@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchQuery } from "react-relay";
+import { useCallback, useMemo, useState } from "react";
+import { useLazyLoadQuery, usePaginationFragment } from "react-relay";
 
-import {
-  getRelayEnvironment,
-  type SourceKind,
-  type UnmatchedObservationsQuery,
-  type UnmatchedObservationsQuery$data,
-  type UnmatchedObservation,
-  type UnmatchedObservationState,
+import type {
+  SourceKind,
+  UnmatchedObservation,
+  UnmatchedObservationState,
+  UnmatchedObservationsQuery,
 } from "../../../../shared/api";
-import { errorMessage } from "../../../../shared/lib";
-import { unmatchedObservationsQuery } from "./operations";
+import type {
+  UnmatchedObservationsFragment$data,
+  UnmatchedObservationsFragment$key,
+} from "../../../../shared/api/__generated__/UnmatchedObservationsFragment.graphql";
+
+import { unmatchedObservationsFragment, unmatchedObservationsQuery } from "./operations";
 
 type ObservationRecord =
-  UnmatchedObservationsQuery$data["unmatchedObservations"]["edges"][number]["node"];
+  UnmatchedObservationsFragment$data["unmatchedObservations"]["edges"][number]["node"];
 
 type Options = {
   enabled?: boolean;
@@ -25,158 +27,70 @@ type Options = {
 };
 
 export function useUnmatchedObservations(householdId: string, options: Options = {}) {
-  const [observations, setObservations] = useState<UnmatchedObservation[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState("");
+  const variables = useMemo(
+    () => ({
+      householdId,
+      from: options.from,
+      to: options.to,
+      sourceKind: options.sourceKind,
+      state: options.state,
+      first: options.enabled === false ? 0 : (options.first ?? 50),
+    }),
+    [
+      householdId,
+      options.enabled,
+      options.first,
+      options.from,
+      options.sourceKind,
+      options.state,
+      options.to,
+    ],
+  );
+  const query = useLazyLoadQuery<UnmatchedObservationsQuery>(
+    unmatchedObservationsQuery,
+    variables,
+    { fetchPolicy: "store-or-network" },
+  );
+  const { data, hasNext, isLoadingNext, loadNext, refetch } = usePaginationFragment<
+    UnmatchedObservationsQuery,
+    UnmatchedObservationsFragment$key
+  >(unmatchedObservationsFragment, query);
+  const [loading, setLoading] = useState(false);
   const [moreError, setMoreError] = useState("");
-  const [dataKey, setDataKey] = useState("");
-  const cursor = useRef<string | null>(null);
-  const generation = useRef(0);
-  const requestInProgress = useRef(false);
-  const queryKey = [
-    householdId,
-    options.from ?? "",
-    options.to ?? "",
-    options.sourceKind ?? "",
-    options.state ?? "",
-    options.first ?? 50,
-  ].join(":");
+  const [refreshError, setRefreshError] = useState("");
+  const page = data.unmatchedObservations;
+  const observations = page.edges.map(({ node }) => mapObservation(node));
 
-  const refresh = useCallback(async () => {
-    if (options.enabled === false) {
-      setLoading(false);
-      return;
-    }
-    const currentGeneration = ++generation.current;
-    cursor.current = null;
-    requestInProgress.current = true;
+  const refresh = useCallback(() => {
     setLoading(true);
-    setLoadingMore(false);
-    setError("");
+    setRefreshError("");
     setMoreError("");
-    try {
-      const result: UnmatchedObservationsQuery$data | undefined =
-        await fetchQuery<UnmatchedObservationsQuery>(
-          getRelayEnvironment(),
-          unmatchedObservationsQuery,
-          {
-            householdId,
-            from: options.from,
-            to: options.to,
-            sourceKind: options.sourceKind,
-            state: options.state,
-            first: options.first ?? 50,
-          },
-          { fetchPolicy: "network-only" },
-        ).toPromise();
-      if (!result) throw new Error("未照合候補を取得できませんでした");
-      if (generation.current !== currentGeneration) return;
-      const page = result.unmatchedObservations;
-      setObservations(page.edges.map(({ node }) => mapObservation(node)));
-      setTotalCount(page.totalCount);
-      setDataKey(queryKey);
-      cursor.current = page.pageInfo.endCursor ?? null;
-      setHasNextPage(page.pageInfo.hasNextPage && Boolean(cursor.current));
-    } catch (reason) {
-      if (generation.current === currentGeneration)
-        setError(errorMessage(reason) || "未照合候補を取得できませんでした");
-    } finally {
-      if (generation.current === currentGeneration) {
-        requestInProgress.current = false;
+    refetch(variables, {
+      fetchPolicy: "network-only",
+      onComplete: (error) => {
+        if (error) setRefreshError(error.message || "未照合候補を取得できませんでした");
         setLoading(false);
-      }
-    }
-  }, [
-    householdId,
-    options.enabled,
-    options.from,
-    options.to,
-    options.sourceKind,
-    options.state,
-    options.first,
-    queryKey,
-  ]);
-
-  const loadMore = useCallback(async () => {
-    const after = cursor.current;
-    if (options.enabled === false || !after || requestInProgress.current || !hasNextPage) return;
-    const currentGeneration = generation.current;
-    requestInProgress.current = true;
-    setLoadingMore(true);
-    setMoreError("");
-    try {
-      const result: UnmatchedObservationsQuery$data | undefined =
-        await fetchQuery<UnmatchedObservationsQuery>(
-          getRelayEnvironment(),
-          unmatchedObservationsQuery,
-          {
-            householdId,
-            from: options.from,
-            to: options.to,
-            sourceKind: options.sourceKind,
-            state: options.state,
-            after,
-            first: options.first ?? 50,
-          },
-          { fetchPolicy: "network-only" },
-        ).toPromise();
-      if (!result) throw new Error("未照合候補を取得できませんでした");
-      if (generation.current !== currentGeneration) return;
-      const page = result.unmatchedObservations;
-      setObservations((current) => [
-        ...current,
-        ...page.edges.map(({ node }) => mapObservation(node)),
-      ]);
-      setTotalCount(page.totalCount);
-      setDataKey(queryKey);
-      cursor.current = page.pageInfo.endCursor ?? null;
-      setHasNextPage(
-        page.pageInfo.hasNextPage && Boolean(cursor.current) && cursor.current !== after,
-      );
-    } catch (reason) {
-      if (generation.current === currentGeneration)
-        setMoreError(errorMessage(reason) || "未照合候補を取得できませんでした");
-    } finally {
-      if (generation.current === currentGeneration) {
-        requestInProgress.current = false;
-        setLoadingMore(false);
-      }
-    }
-  }, [
-    hasNextPage,
-    householdId,
-    options.enabled,
-    options.from,
-    options.to,
-    options.sourceKind,
-    options.state,
-    options.first,
-    queryKey,
-  ]);
-
-  useEffect(() => {
-    // effect本体での同期的なsetStateを避けるため、取得の開始を1tick遅延させる
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) void refresh();
+      },
     });
-    return () => {
-      cancelled = true;
-      generation.current += 1;
-      requestInProgress.current = false;
-    };
-  }, [refresh]);
+  }, [refetch, variables]);
+
+  const loadMore = useCallback(() => {
+    if (!hasNext || isLoadingNext) return;
+    setMoreError("");
+    loadNext(options.first ?? 50, {
+      onComplete: (error) => {
+        if (error) setMoreError(error.message || "未照合候補を取得できませんでした");
+      },
+    });
+  }, [hasNext, isLoadingNext, loadNext, options.first]);
 
   return {
-    observations: dataKey === queryKey ? observations : [],
-    totalCount: dataKey === queryKey ? totalCount : 0,
-    hasNextPage: dataKey === queryKey && hasNextPage,
+    observations: options.enabled === false ? [] : observations,
+    totalCount: options.enabled === false ? 0 : page.totalCount,
+    hasNextPage: options.enabled !== false && hasNext,
     loading,
-    loadingMore,
-    error,
+    loadingMore: isLoadingNext,
+    error: refreshError,
     moreError,
     refresh,
     loadMore,

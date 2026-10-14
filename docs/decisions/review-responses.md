@@ -348,6 +348,12 @@ ImportsのREST一覧はTanStack Queryの`useInfiniteQuery`、選択文書とプ�
 
 Testcontainers PostgreSQLで異なる複数品目の更新、期間変更、支払検証、rollbackをGraphQL mutation経由で確認しました。訂正履歴のRelay Global ID、旧cursor互換、金額集計とページ分割もTestcontainersで確認しました。FrontendはRelay codegen、TypeScript型検査、対象oxlintを実行し、`git diff --check`も成功しました。解決した購入入力と帳簿編集の指摘を`docs/reviews/ux.md`から削除しました。
 
+### 2026年10月14日の入力誤操作防止とRelay取得
+
+購入送信完了後の自動遷移は、送信キーが現在の入力と一致し、新規購入画面で未保存変更がない場合に限りました。空の品名欄のEnter送信を防ぎ、IME変換中は矢印キーとEscapeを商品候補操作に使わず、金額にカンマを含むTSVと引用符付きCSVを解析する純粋関数を追加しました。自動遷移のfocused test 2件、貼り付け解析テスト3件、対象oxlintとformat検査が成功しました。
+
+AnalysisとHomeのGraphQL取得を画面単位のRelay queryへまとめ、予算・定期支出と未照合ObservationのページングをRelay paginationへ移しました。予算と定期支出は従来どおり全件表示し、Observationは追加読込と再取得のエラーを画面に表示します。Relay生成、Frontend型検査、対象lint、format検査が成功しました。解決した項目を`docs/reviews/ux.md`と`docs/reviews/code.md`から削除しました。
+
 ### 2026年10月14日の未保存画面と取り込みURL
 
 世帯内の画面はTanStack Startのfile-based routingでpathを切り替え、取り込みフィルターはTanStack Routerのsearch stateから読み書きします。未保存状態は世帯とページをscopeとするregistryに集約し、画面遷移は`useBlocker`、ブラウザー離脱は`enableBeforeUnload`で確認します。モバイル幅では`html`とdrawerに`overscroll-behavior-y: none`を設定し、drawer背景はBase UI Dialogのmodal scroll lockで固定します。registryはページ内の複数フォームを個別登録しないため、共有callbackを使う画面は各フォームの状態を内部で集約します。route contextの対象test、型検査、対象oxlint、Steiger、format検査が成功しました。ブラウザー更新・タブ終了時の離脱確認は未解決です。

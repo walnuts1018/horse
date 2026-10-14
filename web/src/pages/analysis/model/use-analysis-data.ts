@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLazyLoadQuery, usePaginationFragment } from "react-relay";
 
 import type { Budget, RecurringExpense } from "../../../shared/api";
+import type { AnalysisBudgetsFragment$key } from "../../../shared/api/__generated__/AnalysisBudgetsFragment.graphql";
+import type { AnalysisDashboardQuery } from "../../../shared/api/__generated__/AnalysisDashboardQuery.graphql";
+import type { AnalysisRecurringExpensesFragment$key } from "../../../shared/api/__generated__/AnalysisRecurringExpensesFragment.graphql";
 import type { Dimension } from "./purchase-analytics";
 
-import { readBudgets } from "../../../entities/budget";
 import { useHouseholdPurchases } from "../../../entities/purchase";
-import { readRecurringExpenses } from "../../../entities/recurring-expense";
-import { errorMessage } from "../../../shared/lib";
 import {
-  readAnalysisCategorySpending,
-  readAnalysisMemberSpending,
-} from "../api/read-analysis-spending";
+  analysisBudgetsFragment,
+  analysisDashboardQuery,
+  analysisRecurringExpensesFragment,
+} from "../api/operations";
 import { exclusiveMonthEnd } from "./use-analysis-period";
 
 export function useAnalysisData(
@@ -20,6 +22,31 @@ export function useAnalysisData(
   currentMonth: string,
   dimension: Dimension,
 ) {
+  const variables = useMemo(
+    () => ({ householdId, from: fromMonth, to: toMonth, period: currentMonth }),
+    [currentMonth, fromMonth, householdId, toMonth],
+  );
+  const dashboard = useLazyLoadQuery<AnalysisDashboardQuery>(analysisDashboardQuery, variables, {
+    fetchPolicy: "network-only",
+  });
+  const {
+    data: budgetData,
+    hasNext: hasMoreBudgets,
+    isLoadingNext: loadingBudgets,
+    loadNext: loadNextBudgets,
+  } = usePaginationFragment<AnalysisDashboardQuery, AnalysisBudgetsFragment$key>(
+    analysisBudgetsFragment,
+    dashboard,
+  );
+  const {
+    data: recurringData,
+    hasNext: hasMoreRecurringExpenses,
+    isLoadingNext: loadingRecurringExpenses,
+    loadNext: loadNextRecurringExpenses,
+  } = usePaginationFragment<AnalysisDashboardQuery, AnalysisRecurringExpensesFragment$key>(
+    analysisRecurringExpensesFragment,
+    dashboard,
+  );
   const { purchases, loadingMore, moreError, hasNextPage, loadMore } = useHouseholdPurchases(
     householdId,
     100,
@@ -29,100 +56,98 @@ export function useAnalysisData(
       loadAll: true,
     },
   );
-  const [spending, setSpending] = useState<
-    Array<{
-      period: string;
-      categoryId?: string | null;
-      categoryName?: string | null;
-      amountYen: number;
-    }>
-  >([]);
-  const [spendingLoading, setSpendingLoading] = useState(true);
-  const [spendingError, setSpendingError] = useState("");
-  const [memberSpending, setMemberSpending] = useState<
-    Array<{ period: string; memberId: string; memberName: string; amountYen: number }>
-  >([]);
-  const [hasUnattributedPurchases, setHasUnattributedPurchases] = useState(false);
-  const [memberSpendingLoading, setMemberSpendingLoading] = useState(false);
-  const [memberSpendingError, setMemberSpendingError] = useState("");
-  const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [budgetError, setBudgetError] = useState("");
-  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
-  const [recurringError, setRecurringError] = useState("");
+  const requestKey = JSON.stringify(variables);
+  const [budgetErrorState, setBudgetErrorState] = useState<{ key: string; message: string } | null>(
+    null,
+  );
+  const [recurringErrorState, setRecurringErrorState] = useState<{
+    key: string;
+    message: string;
+  } | null>(null);
+  const budgetError = budgetErrorState?.key === requestKey ? budgetErrorState.message : "";
+  const recurringError = recurringErrorState?.key === requestKey ? recurringErrorState.message : "";
+
+  const spending = dashboard.monthlyCategorySpending.map((entry) => ({
+    period: entry.period,
+    categoryId: entry.categoryId,
+    categoryName: entry.categoryName,
+    amountYen: Number(entry.amountYen),
+  }));
+  const memberSpending =
+    dimension === "member"
+      ? dashboard.monthlyMemberSpending.items.map((entry) => ({
+          period: entry.period,
+          memberId: entry.memberId,
+          memberName: entry.memberName,
+          amountYen: Number(entry.amountYen),
+        }))
+      : [];
+  const hasUnattributedPurchases =
+    dimension === "member" && dashboard.monthlyMemberSpending.hasUnattributedPurchases;
 
   useEffect(() => {
-    let active = true;
-    //同期setStateはeffect直後ではなくマイクロタスクで走らせ、取得の再開も1tick遅延させる
-    queueMicrotask(() => {
-      if (!active) return;
-      setSpendingLoading(true);
-      setSpendingError("");
-      void readAnalysisCategorySpending(householdId, fromMonth, toMonth)
-        .then((result) => active && setSpending(result))
-        .catch((reason) => active && setSpendingError(errorMessage(reason)))
-        .finally(() => active && setSpendingLoading(false));
+    if (!hasMoreBudgets || loadingBudgets || budgetError) return;
+    loadNextBudgets(100, {
+      onComplete: (error) => {
+        if (error)
+          setBudgetErrorState({
+            key: requestKey,
+            message: error.message || "予算を取得できませんでした",
+          });
+      },
     });
-    return () => {
-      active = false;
-    };
-  }, [householdId, fromMonth, toMonth]);
+  }, [budgetError, hasMoreBudgets, loadNextBudgets, loadingBudgets, requestKey]);
 
   useEffect(() => {
-    let active = true;
-    //同期setStateはeffect直後ではなくマイクロタスクで走らせ、取得の再開も1tick遅延させる
-    queueMicrotask(() => {
-      if (!active) return;
-      if (dimension !== "member") {
-        setMemberSpendingLoading(false);
-        setMemberSpendingError("");
-        return;
-      }
-      setMemberSpendingLoading(true);
-      setMemberSpendingError("");
-      setHasUnattributedPurchases(false);
-      void readAnalysisMemberSpending(householdId, fromMonth, toMonth)
-        .then((result) => {
-          if (!active) return;
-          setMemberSpending(result.items);
-          setHasUnattributedPurchases(result.hasUnattributedPurchases);
-        })
-        .catch((reason) => active && setMemberSpendingError(errorMessage(reason)))
-        .finally(() => active && setMemberSpendingLoading(false));
+    if (!hasMoreRecurringExpenses || loadingRecurringExpenses || recurringError) return;
+    loadNextRecurringExpenses(100, {
+      onComplete: (error) => {
+        if (error)
+          setRecurringErrorState({
+            key: requestKey,
+            message: error.message || "定期支出を取得できませんでした",
+          });
+      },
     });
-    return () => {
-      active = false;
-    };
-  }, [dimension, householdId, fromMonth, toMonth]);
+  }, [
+    hasMoreRecurringExpenses,
+    loadNextRecurringExpenses,
+    loadingRecurringExpenses,
+    recurringError,
+    requestKey,
+  ]);
 
-  useEffect(() => {
-    let active = true;
-    //同期setStateはeffect直後ではなくマイクロタスクで走らせ、取得の再開も1tick遅延させる
-    queueMicrotask(() => {
-      if (!active) return;
-      setBudgetError("");
-      void readBudgets(householdId, currentMonth)
-        .then((result) => active && setBudgets(result))
-        .catch((reason) => active && setBudgetError(errorMessage(reason)));
-    });
-    return () => {
-      active = false;
-    };
-  }, [householdId, currentMonth]);
-
-  useEffect(() => {
-    let active = true;
-    //同期setStateはeffect直後ではなくマイクロタスクで走らせ、取得の再開も1tick遅延させる
-    queueMicrotask(() => {
-      if (!active) return;
-      setRecurringError("");
-      void readRecurringExpenses(householdId)
-        .then((expenses) => active && setRecurringExpenses(expenses))
-        .catch((reason) => active && setRecurringError(errorMessage(reason)));
-    });
-    return () => {
-      active = false;
-    };
-  }, [householdId]);
+  const budgets: Budget[] = budgetData.budgets.edges.map(({ node }) => ({
+    id: node.id,
+    householdId: node.householdId,
+    categoryId: node.categoryId,
+    name: node.name,
+    amountYen: Number(node.amountYen),
+    actualYen: Number(node.actualYen),
+    remainingYen: Number(node.remainingYen),
+    startsOn: node.startsOn,
+    endsOn: node.endsOn,
+    archived: node.archived,
+    revision: node.revision,
+  }));
+  const recurringExpenses: RecurringExpense[] = recurringData.recurringExpenses.edges.map(
+    ({ node }) => ({
+      id: node.id,
+      householdId: node.householdId,
+      name: node.name,
+      merchant: node.merchant,
+      amountYen: Number(node.amountYen),
+      currency: node.currency,
+      categoryId: node.categoryId,
+      paymentAccountId: node.paymentAccountId,
+      cadence: mapCadence(node.cadence),
+      startsOn: node.startsOn,
+      nextDueOn: node.nextDueOn,
+      endsOn: node.endsOn,
+      archived: node.archived,
+      revision: node.revision,
+    }),
+  );
 
   return {
     purchases,
@@ -131,15 +156,26 @@ export function useAnalysisData(
     hasNextPage,
     loadMore,
     spending,
-    spendingLoading,
-    spendingError,
+    spendingLoading: false,
+    spendingError: "",
     memberSpending,
     hasUnattributedPurchases,
-    memberSpendingLoading,
-    memberSpendingError,
+    memberSpendingLoading: false,
+    memberSpendingError: "",
     budgets,
     budgetError,
     recurringExpenses,
     recurringError,
   };
+}
+
+function mapCadence(cadence: string): RecurringExpense["cadence"] {
+  switch (cadence) {
+    case "WEEKLY":
+    case "MONTHLY":
+    case "YEARLY":
+      return cadence;
+    default:
+      throw new Error(`未対応の定期支出周期です: ${cadence}`);
+  }
 }

@@ -15,6 +15,7 @@ import type { PurchaseDraftItem } from "../../../shared/lib";
 
 import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
 import { type Household, type Purchase } from "../../../shared/api";
+import { parsePastedPurchaseItems } from "../model/pasted-purchase-items";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
 import { PurchaseItemEntry } from "./purchase-item-entry";
 import { PurchaseItemsGrid } from "./purchase-items-grid";
@@ -111,22 +112,16 @@ export function EditPurchaseItems({
     onChangeRef.current = onChange;
   });
 
-  const update = useCallback(
-    (next: PurchaseItemsValue) => {
-      draftRef.current = next;
-      setDraft(next);
-      onChangeRef.current(next);
-    },
-    [],
-  );
+  const update = useCallback((next: PurchaseItemsValue) => {
+    draftRef.current = next;
+    setDraft(next);
+    onChangeRef.current(next);
+  }, []);
   const patchDraft = useCallback(
     (patch: Partial<PurchaseItemsValue>) => update({ ...draftRef.current, ...patch }),
     [update],
   );
-  const updateCategory = useCallback(
-    (id: string) => patchDraft({ categoryId: id }),
-    [patchDraft],
-  );
+  const updateCategory = useCallback((id: string) => patchDraft({ categoryId: id }), [patchDraft]);
   const changeItemName = useCallback(
     (name: string) => {
       setSelectedProductVariantId("");
@@ -270,6 +265,11 @@ export function EditPurchaseItems({
       ? productSuggestions.length
       : suggestions.length;
   const onNameKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (
+      (event.key === "Escape" || event.key === "ArrowDown" || event.key === "ArrowUp") &&
+      (event.nativeEvent.isComposing || composing.current)
+    )
+      return;
     if (event.key === "Escape" && visibleSuggestionCount > 0) {
       event.preventDefault();
       setSuggestionsDismissed(true);
@@ -301,13 +301,9 @@ export function EditPurchaseItems({
       }
       return;
     }
-    if (
-      event.key === "Enter" &&
-      !event.nativeEvent.isComposing &&
-      !composing.current &&
-      draft.itemName.trim()
-    ) {
+    if (event.key === "Enter" && !event.nativeEvent.isComposing && !composing.current) {
       event.preventDefault();
+      if (!draft.itemName.trim()) return;
       amountRef.current?.focus();
       setFocused("amount");
     }
@@ -376,26 +372,30 @@ export function EditPurchaseItems({
   };
   const pasteRows = (event: ClipboardEvent<HTMLInputElement>) => {
     const text = event.clipboardData.getData("text");
-    if (!text.includes("\n") && !text.includes("\t")) return;
+    const parsed = parsePastedPurchaseItems(text);
+    if (!parsed.structured) return;
     event.preventDefault();
-    const parsed = text
-      .trim()
-      .split(/\r?\n/)
-      .map((line) => line.split(/\t|,(?=\s*\d)/).map((cell) => cell.trim()))
-      .filter((cells) => cells[0] && cells[1] && /^¥?[\d,]+$/.test(cells[1]));
-    if (!parsed.length) return;
+    if (parsed.invalidSyntax) {
+      window.alert("貼り付けたCSVの引用符を解析できませんでした。内容を確認してください。");
+      return;
+    }
+    if (parsed.invalidRowCount > 0) {
+      const message = `${parsed.invalidRowCount}行を品目として解析できませんでした。解析できた行だけ追加しますか？`;
+      if (!parsed.items.length || !window.confirm(message)) return;
+    }
+    if (!parsed.items.length) return;
     markDirty();
     rememberUndo(draft.items);
     replaceItems([
       ...draft.items,
-      ...parsed.map(([name, amount]) => {
+      ...parsed.items.map(({ name, amount }) => {
         const historyCategoryId = history
           .flatMap((purchase) => purchase.items)
           .find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.categoryId;
         return {
           key: crypto.randomUUID(),
           name,
-          amount: amount.replace(/[¥,]/g, ""),
+          amount,
           categoryId: draft.categoryId
             ? effectiveCategoryId
             : isEnabledCategory(historyCategoryId)

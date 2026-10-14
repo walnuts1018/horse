@@ -4,21 +4,7 @@
 
 ## 優先度の高い改善点
 
-### 1. P1: データ取得のための`useEffect`と独自stateを減らす
-
-対象: [`use-analysis-data.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/analysis/model/use-analysis-data.ts#L53-L129)、[`home-page.tsx`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/home/ui/home-page.tsx#L41-L72)、[`use-unmatched-observations.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/ledger/api/observation/use-unmatched-observations.ts#L27-L46)（`48-171`行目含む）
-
-Analysisには4つ、Homeには3つの取得Effectがあります。loading、error、取得結果、キャンセル判定まで各所で管理しており、ReactとRelayが本来提供する仕組みを重複して実装しています。
-
-特に`useUnmatchedObservations()`は、取得・ページングだけで複数のstateとrefを管理しています。
-
-改善方針は、取得元に合わせてライブラリを統一することです。
-
-GraphQLはRelayの`useLazyLoadQuery`、`usePreloadedQuery`、`usePaginationFragment`を基本にします。HomeやAnalysisは画面単位のGraphQL operationへの統合も検討してください。既に適切に使われているImportsのREST APIについては、TanStack Queryを維持します。
-
-また、各所の`queueMicrotask(() => setState(...))`はEffectのlintを回避するために使われていますが、複雑な非同期状態管理の根本的な解決にはなっていません。データ取得用のEffectそのものをなくす方向がよいです。
-
-### 2. P2: GraphQL Mutationの共通処理を統一する
+### 1. P2: GraphQL Mutationの共通処理を統一する
 
 対象: [`category-management.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/settings/api/category-management.ts)、[`imports/api/documents.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/imports/api/documents.ts)、[`commit-mutation.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/settings/api/commit-mutation.ts)
 
@@ -30,7 +16,7 @@ GraphQLはRelayの`useLazyLoadQuery`、`usePreloadedQuery`、`usePaginationFragm
 
 ただし、全Mutationを巨大な設定オブジェクトに押し込む必要はありません。呼び出し側が`createCategory(input)`のように読めるAPIは維持する方が簡潔です。
 
-### 3. P2: `App`に集中している責務を分離する
+### 2. P2: `App`に集中している責務を分離する
 
 対象: [`horse-app.tsx`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/app/horse-app.tsx)（認証・世帯一覧・世帯詳細取得の`240-259,267-295`行目含む）
 
@@ -44,7 +30,7 @@ GraphQLはRelayの`useLazyLoadQuery`、`usePreloadedQuery`、`usePaginationFragm
 
 認証・世帯データの取得は、TanStack Routerのloaderへの移行も有力です。ただしSSRを使う場合、Relay Environmentをサーバープロセスで共有せず、リクエスト単位に分離する設計が必要です。
 
-### 4. P2: 取り込み確定処理を純粋関数と実行処理に分ける
+### 3. P2: 取り込み確定処理を純粋関数と実行処理に分ける
 
 対象: [`use-import-confirmation.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/imports/model/use-import-confirmation.ts)
 
@@ -56,7 +42,7 @@ GraphQLはRelayの`useLazyLoadQuery`、`usePreloadedQuery`、`usePaginationFragm
 
 現在のテストは補助関数中心なので、分離した金額計算・返金・複数支払の入力生成も直接テストできるようにすると改善効果が大きいです。
 
-### 5. P2: IndexedDBの定型コードを`idb`へ置き換える
+### 4. P2: IndexedDBの定型コードを`idb`へ置き換える
 
 対象: [`purchase-storage.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/shared/lib/purchase-storage.ts)
 
@@ -68,19 +54,19 @@ GraphQLはRelayの`useLazyLoadQuery`、`usePreloadedQuery`、`usePaginationFragm
 
 ただし、購入送信のlease、冪等性キー、複数タブ間の排他、下書きとOutboxの同時更新は重要です。これらの原子性は維持し、`tx.done`でコミット完了を確認する実装にします。
 
-### 6. P2: ブラウザー離脱時の未保存確認
+### 5. P2: ブラウザー離脱時の未保存確認
 
 対象: [`horse-app.tsx:176-185`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/app/horse-app.tsx#L176-L185)
 
 画面遷移は`useBlocker`で確認し、ブラウザー離脱には`enableBeforeUnload`を設定しています。しかし公開環境で購入下書きから直接再読み込みした際に確認が表示されなかった記録があるため、ブラウザーでの更新・タブ終了時の動作は未解決です。
 
-### 7. P2: 商品catalogの取得とRelay cache利用
+### 6. P2: 商品catalogの取得とRelay cache利用
 
 対象: [`use-ledger-purchase-editor.ts:65-73`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/ledger/model/use-ledger-purchase-editor.ts#L65-L73)、[`product-variant-select.tsx:32-47`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/imports/ui/product-variant-select.tsx#L32-L47)、[`read-product-catalog.ts:17-31`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/entities/product/api/read-product-catalog.ts#L17-L31)、[`read-product-suggestions.ts:28-42`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/entities/product/api/read-product-suggestions.ts#L28-L42)
 
 商品catalogは`useLedgerPurchaseEditor`のEffectから全ページを`fetchQuery`で読み込み、候補検索も入力ごとに`fetchQuery`しています。両queryは`network-only`のため、再表示時に取得を繰り返します。Relayのquery cacheを再利用する読み込み方法へ整理してください。
 
-### 8. P3: Settingsのタブ状態をURLへ一本化する
+### 7. P3: Settingsのタブ状態をURLへ一本化する
 
 対象: [`settings-navigation.ts`](https://github.com/walnuts1018/horse/blob/b80a58f8de5cc072cffc8517630ce009c97d0a93/web/src/pages/settings/model/settings-navigation.ts)
 
@@ -92,8 +78,7 @@ TanStack Routerのsearch paramsを唯一の状態にすれば、`useState`、has
 
 | 順位 | 作業 | 主な効果 |
 | -- | ----------------------- | ------------------------ |
-| 1 | Relayによる取得状態の統一 | `useEffect`と独自stateの大幅削減 |
-| 2 | Mutation共通処理の統一 | 重複コード削減 |
-| 3 | Appと取り込みHookの責務分離 | 変更時の見通しを改善 |
-| 4 | 商品catalogのcache利用・未保存確認修正 | 不要な取得と誤離脱の防止 |
-| 5 | `idb`導入、SettingsのURL状態化 | ブラウザー側の定型コード削減 |
+| 1 | Mutation共通処理の統一 | 重複コード削減 |
+| 2 | Appと取り込みHookの責務分離 | 変更時の見通しを改善 |
+| 3 | 商品catalogのcache利用・未保存確認修正 | 不要な取得と誤離脱の防止 |
+| 4 | `idb`導入、SettingsのURL状態化 | ブラウザー側の定型コード削減 |

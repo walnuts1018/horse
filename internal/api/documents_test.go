@@ -11,8 +11,6 @@ import (
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob"
-	"github.com/stephenafamo/bob/dialect/psql"
-	"github.com/stephenafamo/bob/dialect/psql/dm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/scan"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -101,11 +99,14 @@ func TestDocumentMIMEUsesContentBeforeTextExtensionFallback(t *testing.T) {
 }
 
 func TestDocumentResponsesUseConstantQueryCount(t *testing.T) {
+	t.Parallel()
+
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("HORSE_TEST_DATABASE_URL is not set")
 	}
-	ctx := t.Context()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
 	db, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
@@ -114,21 +115,24 @@ func TestDocumentResponsesUseConstantQueryCount(t *testing.T) {
 	if err := db.Ping(ctx); err != nil {
 		t.Fatal(err)
 	}
-	executor := bobpgx.NewPool(db)
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tx.Rollback(t.Context()); err != nil {
+			t.Errorf("rollback test transaction: %v", err)
+		}
+	}()
+	executor := bobpgx.NewTx(tx, nil)
 	householdID, memberID := gofrsuuid.Must(gofrsuuid.NewV7()), gofrsuuid.Must(gofrsuuid.NewV7())
 	householdName, subject := "document response batch", "document-response-batch:"+memberID.String()
 	if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberID, OidcSubject: &subject, DisplayName: &subject}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberID)))).Exec(t.Context(), executor)
-	}()
 	if _, err := models.Households.Insert(&models.HouseholdSetter{ID: &householdID, Name: &householdName}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID)))).Exec(t.Context(), executor)
-	}()
 
 	documents := make([]*models.SourceDocument, 50)
 	for i := range documents {

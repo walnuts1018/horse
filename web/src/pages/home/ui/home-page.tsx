@@ -1,18 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { BookOpen, ChevronRight, Plus, Upload, Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import { useLazyLoadQuery } from "react-relay";
+
+import type { HomeDashboardQuery } from "../../../shared/api/__generated__/HomeDashboardQuery.graphql";
 
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type Purchase } from "../../../shared/api";
 import { japanMonth } from "../../../shared/lib";
 import { EmptyState } from "../../../shared/ui";
-import {
-  readHomeMonthlySpending,
-  readHomeSettlement,
-  readHomeSummary,
-  type HomeSettlement,
-  type HomeSummary,
-} from "../api/read-home-dashboard";
+import { homeDashboardQuery } from "../api/home-summary";
 import { SetupGuidance } from "./setup-guidance";
 
 import "./home-page.css";
@@ -24,6 +21,10 @@ const yen = (amount = 0) =>
     maximumFractionDigits: 0,
   }).format(amount);
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
+type HomeSummary = {
+  dailySpending: Array<{ date: string; amountYen: number }>;
+  monthlyItemCount: number;
+};
 
 export function HomePage({
   household,
@@ -35,50 +36,32 @@ export function HomePage({
   const { purchases, totalCount } = useHouseholdPurchases(household.id, 8);
   const [currentMonth] = useState(() => japanMonth(new Date()));
   const [today] = useState(() => new Date());
-  const [monthTotal, setMonthTotal] = useState<number | null>(null);
-  const [homeSummary, setHomeSummary] = useState<HomeSummary | null>(null);
-  const [settlement, setSettlement] = useState<HomeSettlement | null>(null);
-  useEffect(() => {
-    let active = true;
-    void readHomeSummary(household.id)
-      .then((summary) => {
-        if (active) setHomeSummary(summary);
-      })
-      .catch(() => active && setHomeSummary(null));
-    return () => {
-      active = false;
-    };
-  }, [household.id]);
-  useEffect(() => {
-    let active = true;
-    void readHomeMonthlySpending(household.id, currentMonth)
-      .then((monthlyCategorySpending) => {
-        if (active)
-          setMonthTotal(
-            sum(
-              monthlyCategorySpending
-                .filter((entry) => entry.period === currentMonth)
-                .map((entry) => entry.amountYen),
-            ),
-          );
-      })
-      .catch(() => active && setMonthTotal(null));
-    return () => {
-      active = false;
-    };
-  }, [household.id, currentMonth]);
-  useEffect(() => {
-    let active = true;
-    void readHomeSettlement(household.id, currentMonth)
-      .then((result) => {
-        if (active) setSettlement(result);
-      })
-      .catch(() => active && setSettlement(null));
-    return () => {
-      active = false;
-    };
-  }, [household.id, currentMonth]);
-  const nextDue = sum(settlement?.lines.map((line) => line.amountDueYen) ?? []);
+  const dashboardVariables = useMemo(
+    () => ({
+      householdId: household.id,
+      from: currentMonth,
+      to: currentMonth,
+      period: currentMonth,
+    }),
+    [currentMonth, household.id],
+  );
+  const dashboard = useLazyLoadQuery<HomeDashboardQuery>(homeDashboardQuery, dashboardVariables, {
+    fetchPolicy: "network-only",
+  });
+  const homeSummary = {
+    dailySpending: dashboard.homeSummary.dailySpending.map((day) => ({
+      date: day.date,
+      amountYen: Number(day.amountYen),
+    })),
+    monthlyItemCount: Number(dashboard.homeSummary.monthlyItemCount),
+  };
+  const monthTotal = sum(
+    dashboard.monthlyCategorySpending
+      .filter((entry) => entry.period === currentMonth)
+      .map((entry) => Number(entry.amountYen)),
+  );
+  const settlement = dashboard.settlement;
+  const nextDue = sum(settlement.lines.map((line) => Number(line.amountDueYen)));
   return (
     <div className="home-page">
       <div className="welcome-row">
@@ -113,14 +96,14 @@ export function HomePage({
           <div className="panel-heading">
             <div>
               <span className="eyebrow">今月の支出</span>
-              <h2>{monthTotal === null ? "—" : yen(monthTotal)}</h2>
+              <h2>{yen(monthTotal)}</h2>
             </div>
             <span className="period-chip">{Number(currentMonth.slice(5))}月</span>
           </div>
-          <MiniBars dailySpending={homeSummary?.dailySpending ?? []} />
+          <MiniBars dailySpending={homeSummary.dailySpending} />
           <div className="spend-footer">
             <span>
-              品目 <b>{homeSummary?.monthlyItemCount ?? "—"}</b>
+              品目 <b>{homeSummary.monthlyItemCount}</b>
             </span>
             <Link
               className="text-button"
@@ -144,11 +127,7 @@ export function HomePage({
           </div>
           <div className="settle-line">
             <span className="status-dot" />
-            {settlement
-              ? settlement.__typename === "ClosedSettlement"
-                ? "締め済み"
-                : "今月分の精算"
-              : "精算情報を取得できません"}
+            {settlement.__typename === "ClosedSettlement" ? "締め済み" : "今月分の精算"}
           </div>
           <Link
             className="button button-soft"

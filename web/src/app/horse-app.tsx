@@ -82,6 +82,19 @@ function getServerMobileViewport(): null {
 const pendingInvitationStorageKey = "horse:pending-household-invitation";
 const pendingInvitationChangeEvent = "horse:pending-household-invitation-change";
 
+export function shouldAutoNavigateAfterPurchase(input: {
+  queuedKey: string | null;
+  completedKey: string;
+  currentPage: AppPage;
+  hasUnsavedChanges: boolean;
+}) {
+  return (
+    input.queuedKey === input.completedKey &&
+    input.currentPage === "new" &&
+    !input.hasUnsavedChanges
+  );
+}
+
 function subscribeToPendingInvitation(onStoreChange: () => void) {
   window.addEventListener(pendingInvitationChangeEvent, onStoreChange);
   window.addEventListener("storage", onStoreChange);
@@ -186,7 +199,10 @@ export function App() {
 
   const unsavedChangesRegistrationId = `household:${householdId ?? "none"}:page:${page}`;
   const reportUnsavedChanges = useCallback(
-    (unsaved: boolean) => unsavedChangesRegistry.report(unsavedChangesRegistrationId, unsaved),
+    (unsaved: boolean) => {
+      unsavedChangesRegistry.report(unsavedChangesRegistrationId, unsaved);
+      if (unsaved && currentPage.current === "new") autoNavigateKey.current = null;
+    },
     [unsavedChangesRegistrationId, unsavedChangesRegistry],
   );
   useEffect(
@@ -342,7 +358,14 @@ export function App() {
             await refreshHousehold(request.input.householdId);
             showNotice("買い物を帳簿に追加しました", "success");
           }
-          if (autoNavigateKey.current === key && currentPage.current === "new") {
+          if (
+            shouldAutoNavigateAfterPurchase({
+              queuedKey: autoNavigateKey.current,
+              completedKey: key,
+              currentPage: currentPage.current,
+              hasUnsavedChanges: unsavedChangesRegistry.hasUnsavedChanges(),
+            })
+          ) {
             autoNavigateKey.current = null;
             navigateToPage("ledger");
           }
@@ -379,6 +402,7 @@ export function App() {
     navigateToPage,
     refreshHousehold,
     showNotice,
+    unsavedChangesRegistry,
   ]);
   const currentOutbox = outbox.entries.filter(
     (entry) => entry.input.householdId === activeHousehold?.id,
