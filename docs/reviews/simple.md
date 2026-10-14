@@ -173,7 +173,7 @@ GraphQLなどの公開API
 | [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、`Do()`にはDB操作、権限確認、ロック、冪等性処理などが残る | ユースケース処理の責務と順序を整理する |
 | [Gemini Router](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/router.go#L81-L199) | ルート候補の生成はデータ化され、共通ループで試行する形に改善された。一方、候補の実行条件、次候補の探索、フォールバック理由の記録が`Generate()`に残る | 候補選択とフォールバック状態の扱いを分離し、ルーティングの条件を追いやすくする |
 | [抽出Worker](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/worker_extract.go#L10-L141) | 初回抽出、品質再実行、Pro再検証は共通pipelineで実行され、抽出結果の検証、座標変換、OCR照合も共通化された。一方、`extract()`には再実行条件、候補結果の比較・採用、実行履歴の集約が残る | 再実行ポリシーと候補結果の選択を独立した調整処理へ分ける |
-| [Geminiクライアント](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/gemini.go#L74-L313) | HTTPクライアント設定、プロンプト、API呼び出し、Quota、応答解釈が同じメソッドにある | Provider Adapter、Prompt、Response Decoder、Usage計測に分離 |
+| [Geminiクライアント](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/gemini.go#L74-L313) | JSON応答の復号とusage抽出は純粋なdecoderへ分離されたが、HTTPクライアント設定、Prompt、API呼び出し、Quota処理は`ExtractRun()`に残る | Provider、Prompt、Quota処理の責務を整理する |
 
 ### 小さな自前ユーティリティも整理する
 

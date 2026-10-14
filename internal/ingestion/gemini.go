@@ -263,48 +263,23 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		}
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureTemporary, Code: "transport_error"})
 	}
-	if result != nil && result.UsageMetadata != nil {
-		run.InputTokens = int64(result.UsageMetadata.PromptTokenCount)
-		run.OutputTokens = int64(result.UsageMetadata.CandidatesTokenCount + result.UsageMetadata.ThoughtsTokenCount)
-		usageAvailable = true
-	}
+	usage := decodeGeminiUsage(result)
+	run.InputTokens = usage.inputTokens
+	run.OutputTokens = usage.outputTokens
+	usageAvailable = usage.available
 	if settleQuota != nil && usageAvailable {
 		if err := settleQuota(ctx, run.InputTokens); err != nil {
 			return finish(Receipt{}, fmt.Errorf("settle Gemini quota reservation: %w", err))
 		}
 	}
-	if result == nil || len(result.Candidates) == 0 || result.Candidates[0] == nil || result.Candidates[0].FinishReason != genai.FinishReasonStop {
-		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "incomplete_generation"})
-	}
-	var text strings.Builder
-	if content := result.Candidates[0].Content; content != nil {
-		for _, part := range content.Parts {
-			if part != nil && !part.Thought {
-				text.WriteString(part.Text)
-			}
-		}
-	}
-	var receipt Receipt
-	if statementSource {
-		var extraction statementExtraction
-		if err := json.Unmarshal([]byte(text.String()), &extraction); err != nil {
-			return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "invalid_statement_json"})
-		}
-		verified, err := VerifyStatements(options.SourceKind, extraction.Transactions, extraction.Warnings)
-		if err != nil {
-			return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "statement_validation_failed"})
-		}
-		receipt.Statements = verified.Statements
-		receipt.Warnings = extraction.Warnings
-	} else if err := json.Unmarshal([]byte(text.String()), &receipt); err != nil {
-		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "invalid_receipt_json"})
+	receipt, err := decodeGeminiResponse(result, options.SourceKind)
+	if err != nil {
+		return finish(Receipt{}, err)
 	}
 	receipt.Model = g.Model
 	receipt.PromptVersion = PromptVersion
-	if result.UsageMetadata != nil {
-		receipt.InputTokens = int64(result.UsageMetadata.PromptTokenCount)
-		receipt.OutputTokens = int64(result.UsageMetadata.CandidatesTokenCount + result.UsageMetadata.ThoughtsTokenCount)
-	}
+	receipt.InputTokens = usage.inputTokens
+	receipt.OutputTokens = usage.outputTokens
 	if emailHasUnparsedAttachments {
 		receipt.Warnings = append(receipt.Warnings, emailAttachmentReviewWarning)
 	}
@@ -423,11 +398,6 @@ func receiptSchema() map[string]any {
 	interpretation := object(map[string]any{"id": str, schemaItemsKey: array(itemInterpretation), "groups": array(groupInterpretation)}, "id", schemaItemsKey, "groups")
 	payment := object(map[string]any{"method": str, schemaCardLast4Key: str, schemaAmountKey: integer}, "method", schemaCardLast4Key, schemaAmountKey)
 	return object(map[string]any{schemaMerchantKey: str, "purchasedAt": str, schemaOrderIDKey: str, statementFieldTransactionID: str, "currency": str, schemaItemsKey: array(item), "taxGroups": array(group), receiptDiscountKey: integer, "total": integer, "payments": array(payment), schemaWarningsKey: array(str), "interpretations": array(interpretation)}, schemaMerchantKey, "purchasedAt", "currency", schemaItemsKey, "taxGroups", receiptDiscountKey, "total", "payments", schemaWarningsKey)
-}
-
-type statementExtraction struct {
-	Transactions []StatementEntry `json:"transactions"`
-	Warnings     []string         `json:"warnings"`
 }
 
 func statementPrompt(sourceKind string) string {
