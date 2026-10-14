@@ -173,12 +173,12 @@ GraphQLなどの公開API
 | [GraphQL Node解決](https://github.com/walnuts1018/horse/blob/main/internal/graph/nodes.go#L22-L106) | バッチ対応Nodeだけを取得する場合は世帯参照にとどめるよう改善された。その他のNode種別では世帯一覧をロードして探索する経路が残る | 残るNode種別も種別とIDに応じて直接取得し、世帯スコープを確認する |
 | [購入一覧クエリ](https://github.com/walnuts1018/horse/blob/main/internal/graph/query_purchases.go#L26) | GraphQL APIは`PurchaseFilter`入力を受け取り、ページネーションも専用構造体に整理された。一方、resolverから内部の`purchases()`へ各フィールドを再展開し、金額条件だけ別の可変長引数で渡している | `PurchaseFilter`を内部クエリまで維持し、フィルタ変換の重複と可変長引数をなくす |
 | [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、`Do()`にはDB操作、権限確認、ロック、冪等性処理などが残る | ユースケース処理の責務と順序を整理する |
-| [GraphQLエラー変換](https://github.com/walnuts1018/horse/blob/main/internal/graph/errors.go) | Transferは`apperror`を利用する一方、Fundingなど一部のApplicationには独自エラーが残り、GraphQL側で機能別に列挙して分類している | 残るApplicationのエラーを`apperror`へ統一し、GraphQL側の互換判定を整理する |
+| [GraphQLエラー変換](https://github.com/walnuts1018/horse/blob/main/internal/graph/errors.go) | Purchase、Funding、Settlement、Transferのエラーは`apperror`へ統一されたが、`ApplicationErrorKind()`には`KindOf()`と重複するPurchase固有の判定が残る | Purchase固有の互換判定を削除し、共通エラー分類に一本化する |
 | [Gemini Router](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/router.go#L81-L199) | ルート候補の生成はデータ化され、共通ループで試行する形に改善された。一方、候補の実行条件、次候補の探索、フォールバック理由の記録が`Generate()`に残る | 候補選択とフォールバック状態の扱いを分離し、ルーティングの条件を追いやすくする |
 | [抽出Worker](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/worker_extract.go#L10-L141) | 初回抽出、品質再実行、Pro再検証は共通pipelineで実行され、抽出結果の検証、座標変換、OCR照合も共通化された。一方、`extract()`には再実行条件、候補結果の比較・採用、実行履歴の集約が残る | 再実行ポリシーと候補結果の選択を独立した調整処理へ分ける |
 | [Geminiクライアント](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/gemini.go#L74-L313) | HTTPクライアント設定、プロンプト、API呼び出し、Quota、応答解釈が同じメソッドにある | Provider Adapter、Prompt、Response Decoder、Usage計測に分離 |
 
-Application共通エラーの利用はTransferなどで進みましたが、Fundingなどには独自エラーが残り、GraphQLの`ApplicationErrorKind()`にも互換判定が残っています。残存する独自エラーを`apperror`に統一し、互換判定を段階的に削除する余地があります。
+Purchase、Funding、Settlement、Transferのエラーsentinelは`apperror`へ統一されました。GraphQLの`ApplicationErrorKind()`は共通の`KindOf()`で分類した後にPurchaseのsentinelを個別判定していますが、Purchaseのsentinelも共通エラーの別名なので、この分岐は重複しています。個別判定を削除できます。入力検証は別の課題として残ります。
 
 ### 小さな自前ユーティリティも整理する
 
@@ -204,7 +204,7 @@ func checkedAdd(left, right int64) (int64, bool) {
 
 | ライブラリ・技術 | 判断 | 理由 |
 | ----------------------------- | --------- | --------------------------------------------------------------------- |
-| 既存の `go-playground/validator` | 利用範囲を広げる | PurchaseやTransferにも共通する入力形式・長さの検証を集約できる。現在の`inputvalidation.Check`を活用 |
+| 既存の `go-playground/validator` | Purchaseの入力検証に利用を広げる | `inputvalidation.Check`はPurchaseで使われず、商品名・購入名・入力件数などの形式や長さをApplication内で個別に検証している。共通化できる構文検証を集約し、金額や配賦などの業務不変条件はDomainに残す |
 | 既存の `gqlgen` | より積極的に活用 | Field Resolverで必要なデータだけロードできる |
 | 既存の `Bob` | 維持・活用 | 型付きDBアクセスとリレーション一括ロードがすでに利用可能。ORMを変える必要はない |
 | dataloadgen | 条件付きで導入 | gqlgenのフィールド単位ロードでN+1が発生する箇所に有効。既存のBobの一括ロードで足りる部分では不要 |
@@ -262,7 +262,7 @@ Horseで重要なのは、ビジネスルールを読もうとしたときにSQL
 | P0 | `updateItem()`・`create()`・`Correct()`の責務分離 | 最も複雑なコードの理解と保守が容易になる |
 | P0 | Document登録処理のサービス化、メール取り込みとの共通化 | 重複処理とHTTP依存を解消 |
 | P1 | GraphQLの巨大ローダー、残るNode解決の最適化 | 可読性だけでなくDBアクセスも改善 |
-| P1 | エラー・入力検証・数量の扱いを統一 | 小規模な重複コードを継続的に減らせる |
+| P1 | Purchaseの入力形式・長さ検証を共通化 | 入力チェックの重複を減らし、境界条件を一貫させる |
 | P1 | Gemini Routerの実行計画とProvider処理を分離 | フォールバックロジックが追いやすくなる |
 | P2 | Transfer・Settlementの残る業務調整を整理する | 複雑な会計処理の理解と拡張が容易になる |
 | P2 | Riverなどによるジョブ基盤の置き換えを評価 | 自前の非同期処理基盤を縮小できる可能性 |
