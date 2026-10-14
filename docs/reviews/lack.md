@@ -23,7 +23,7 @@ P1
 
 ## 3. 運用設定
 
-通常Workerの`GEMINI_ENABLED`は`false`です。この設定では通常の取り込みで画像・PDFのAI解析jobを処理しません。Geminiを通常利用する場合は、Spend Capを維持したうえでWorker設定を有効にする必要があります。
+Infra mainでは500円のSpend Capを前提に通常WorkerのGemini処理を有効にしました。未登録のメール資格情報を参照するExternalSecretが同期エラーとなり、Argo CDの同期が完了せず、実環境のWorkerはまだ`GEMINI_ENABLED=false`です。メール資格情報の登録後に同期と合成原本の処理を確認します。
 
 ## 4. 現状維持でよい部分
 
