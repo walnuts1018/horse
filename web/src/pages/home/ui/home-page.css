@@ -2,14 +2,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 0 20px;
+  gap: 16px;
+  margin: 0 0 18px;
 }
 
 .home-page .welcome-row h1 {
   font-family: "Noto Sans JP Variable", "Noto Sans JP", sans-serif;
-  font-size: 25px;
-  letter-spacing: -0.025em;
-  margin: 7px 0 4px;
+  font-size: 24px;
+  letter-spacing: -0.035em;
+  margin: 5px 0 0;
   color: var(--ink);
   text-wrap: balance;
 }
@@ -21,30 +22,43 @@
 }
 
 .home-page .welcome-row > .button {
-  margin-top: 9px;
+  min-height: 44px;
+  margin-top: 12px;
+  flex: none;
 }
 
 .home-page .overview-grid {
   display: grid;
   grid-template-columns: 1.2fr 0.8fr;
-  gap: 12px;
+  gap: 0;
+  overflow: hidden;
 }
 
 .home-page .spend-panel,
 .home-page .settle-card {
-  min-height: 0;
-  padding: 18px;
+  min-width: 0;
+  padding: 20px;
+}
+
+.home-page .spend-panel .panel-heading h2,
+.home-page .settle-card .panel-heading h2 {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+}
+
+.home-page .spend-panel .panel-heading h2 {
+  font-size: 24px;
 }
 
 .home-page .mini-chart {
-  margin: 14px 0 0;
+  margin: 18px 0 0;
 }
 
 .home-page .mini-bars {
-  height: 91px;
+  height: 92px;
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 9px;
 }
 
 .home-page .bar-track {
@@ -52,129 +66,134 @@
   height: 100%;
   display: flex;
   align-items: flex-end;
-  background: linear-gradient(to top, #f2f6f1 1px, transparent 1px);
-  border-radius: 6px 6px 2px 2px;
+  background: repeating-linear-gradient(
+    to top,
+    transparent 0 calc(33.333% - 1px),
+    var(--line) calc(33.333% - 1px) 33.333%
+  );
+  border-radius: 4px 4px 0 0;
 }
 
 .home-page .bar-track i {
   display: block;
   width: 100%;
-  min-height: 3px;
-  border-radius: 5px 5px 2px 2px;
+  min-height: 4px;
+  border-radius: 3px 3px 0 0;
   background: #b7d7c3;
 }
 
 .home-page .bar-track i.bar-current {
-  background: #59a483;
+  background: var(--green);
 }
 
 .home-page .chart-labels {
   display: flex;
   justify-content: space-between;
-  margin-top: 7px;
+  margin-top: 8px;
   font-size: 11px;
-  color: #5f6d65;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .home-page .spend-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 15px;
-  padding-top: 11px;
-  border-top: 1px solid #f0f2ef;
-  color: #5f6d65;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
   font-size: 12px;
 }
 
 .home-page .spend-footer b {
-  color: #53655b;
+  color: var(--ink);
   margin-left: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 .home-page .settle-card {
-  background: #f5f8f2;
-  border-color: #e8eee3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border-left: 1px solid var(--line);
+  background: #f2f6f1;
 }
 
 .home-page .settle-icon {
   width: 32px;
   height: 32px;
-  background: #e7efe0;
-  color: #70905c;
-  border-radius: 10px;
+  background: #e4eee3;
+  color: var(--green-dark);
+  border-radius: 8px;
   display: grid;
   place-items: center;
 }
 
 .home-page .settle-line {
-  margin-top: 21px;
+  margin-top: auto;
+  padding-top: 22px;
   display: flex;
   align-items: center;
   gap: 9px;
-  color: #5f6d65;
-  font-size: max(12px, 1em);
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .home-page .settle-line .status-dot {
   width: 6px;
   height: 6px;
   box-shadow: none;
-  background: #9da871;
+  background: var(--green);
 }
 
 .home-page .settle-card .button {
-  margin-top: 13px;
+  margin-top: 12px;
   height: 44px;
   font-size: 13px;
-  background: #e7efe1;
+  background: #e4eee3;
 }
 
 .home-page .quick-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 360px);
-  gap: 0;
-  margin: 14px 0 18px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  display: flex;
+  margin: 12px 0 18px;
 }
 
 .home-page .quick-card {
   min-width: 0;
-  height: 56px;
+  min-height: 48px;
   border: 0;
+  border-left: 2px solid #a8cbb8;
   background: transparent;
-  border-radius: 0;
+  border-radius: 0 8px 8px 0;
   box-shadow: none;
   display: flex;
   align-items: center;
   text-align: left;
-  padding: 0 10px;
-  gap: 10px;
+  padding: 6px 12px;
+  gap: 9px;
   cursor: pointer;
-  transition:
-    color 140ms ease,
-    background-color 140ms ease;
+  transition: background-color 140ms ease;
 }
 
 .home-page .quick-card:hover {
   transform: none;
-  background: var(--green-wash);
+  background: #edf4ef;
   box-shadow: none;
 }
 
 .home-page .quick-card > svg {
   margin-left: auto;
-  color: #a7b1ab;
+  color: var(--muted);
   width: 16px;
   flex: none;
 }
 
 .home-page .quick-icon {
-  width: 28px;
-  height: 28px;
-  background: transparent;
-  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  background: #edf4ef;
+  border-radius: 7px;
   display: grid;
   place-items: center;
   color: var(--green-dark);
@@ -198,30 +217,27 @@
 }
 
 .home-page .quick-card small {
-  font-size: 10px;
-  color: #5f6d65;
-  margin-top: 5px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
 }
 
 .home-page .recent-panel {
-  padding: 0 15px;
+  padding: 0 16px;
 }
 
 @media (width <= 760px) {
   .home-page .welcome-row {
-    align-items: center;
-    gap: 8px;
+    align-items: flex-end;
+    gap: 10px;
   }
 
   .home-page .welcome-row > .button {
-    width: 44px;
-    min-width: 44px;
-    height: 37px;
-    overflow: hidden;
-    gap: 20px;
-    padding: 0 13px;
-    font-size: 0;
-    margin-top: 22px;
+    min-height: 44px;
+    padding-inline: 12px;
+    margin: 0 0 1px;
+    font-size: 12px;
+    gap: 7px;
   }
 
   .home-page .overview-grid {
@@ -230,34 +246,35 @@
 
   .home-page .spend-panel,
   .home-page .settle-card {
-    padding: 15px;
+    padding: 16px;
   }
 
-  .home-page .quick-actions {
-    grid-template-columns: minmax(0, 1fr);
+  .home-page .settle-card {
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
 
   .home-page .quick-card {
-    height: 54px;
-    padding-inline: 6px;
-    gap: 5px;
+    min-height: 48px;
+    padding-inline: 10px;
+    gap: 9px;
   }
 
   .home-page .quick-card > svg {
-    width: 13px;
+    width: 16px;
   }
 
   .home-page .spend-panel .mini-chart {
-    margin-top: 9px;
+    margin-top: 14px;
   }
 
   .home-page .mini-bars {
-    height: 67px;
-    gap: 7px;
+    height: 74px;
+    gap: 8px;
   }
 
   .home-page .spend-footer {
-    margin-top: 10px;
+    margin-top: 12px;
     padding-top: 9px;
   }
 
@@ -266,11 +283,12 @@
   }
 
   .home-page .settle-line {
-    margin-top: 11px;
+    margin-top: auto;
+    padding-top: 16px;
   }
 
   .home-page .settle-card .button {
-    margin-top: 9px;
+    margin-top: 10px;
   }
 
   .home-page .section-heading {
@@ -283,32 +301,18 @@
 }
 
 @media (width <= 380px) {
-  .home-page .quick-card {
-    gap: 6px;
-    padding: 0 7px;
-  }
-
-  .home-page .quick-card b {
-    font-size: 8px;
-  }
-
-  .home-page .quick-card small {
-    font-size: 7px;
-  }
-
-  .home-page .quick-icon {
-    width: 28px;
-    height: 28px;
+  .home-page .welcome-row h1 {
+    font-size: 19px;
   }
 
   .home-page .welcome-row > .button {
-    font-size: 8px;
+    padding-inline: 9px;
+    font-size: 11px;
   }
 }
 
 @media (width <= 760px) {
   .home-page .welcome-row p,
-  .home-page .welcome-row > .button,
   .home-page .quick-card b,
   .home-page .quick-card small {
     font-size: max(var(--mobile-font-supporting), 1em);
@@ -332,6 +336,21 @@
 
 .home-page .purchase-row:last-child {
   border: 0;
+}
+
+.home-page .purchase-row:hover,
+.home-page .purchase-row:focus-visible {
+  background: #f7faf7;
+}
+
+.home-page .purchase-row:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+
+.home-page .purchase-description b,
+.home-page .purchase-meta b {
+  font-variant-numeric: tabular-nums;
 }
 
 @media (width <= 760px) {

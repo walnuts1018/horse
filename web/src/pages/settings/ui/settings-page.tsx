@@ -93,11 +93,7 @@ export function SettingsPage({
           household={household}
           balances={balances.balances}
           hidden={activeTab !== "accounts"}
-          onRefresh={onRefresh}
-          onRefreshBalances={balances.refresh}
-          onNotice={onNotice}
-          onFormClean={changes.markFormClean}
-          pending={accountSettings.pending}
+          model={accountSettings}
         />
         <ViewAccountBalanceHistory
           householdId={household.id}

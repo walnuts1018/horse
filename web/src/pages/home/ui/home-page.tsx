@@ -134,8 +134,8 @@ export function HomePage({
         purchaseCount={totalCount}
         onNavigateToPurchase={onNavigateToPurchase}
       />
-      <div className="overview-grid">
-        <section className="panel spend-panel">
+      <section className="panel overview-grid" aria-label="今月の家計">
+        <section className="spend-panel">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">今月の支出</span>
@@ -158,7 +158,7 @@ export function HomePage({
             </Link>
           </div>
         </section>
-        <section className="panel settle-card">
+        <section className="settle-card">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">次回の入金</span>
@@ -181,7 +181,7 @@ export function HomePage({
             精算を確認 <ChevronRight size={16} />
           </Link>
         </section>
-      </div>
+      </section>
       <div className="quick-actions">
         <Link
           className="quick-card import-card"
@@ -201,8 +201,7 @@ export function HomePage({
       </div>
       <div className="section-heading">
         <div>
-          <span className="eyebrow">最近の記録</span>
-          <h2>買い物</h2>
+          <h2>最近の買い物</h2>
         </div>
         <Link
           className="text-button"
@@ -210,7 +209,7 @@ export function HomePage({
           params={{ householdId: household.id }}
           search
         >
-          帳簿を開く <ChevronRight size={15} />
+          帳簿を見る <ChevronRight size={15} />
         </Link>
       </div>
       <section className="panel recent-panel">
@@ -259,7 +258,7 @@ function MiniBars({ dailySpending }: { dailySpending: HomeSummary["dailySpending
     .join("、");
   return (
     <figure className="mini-chart" aria-label={`直近7日の支出。${spendingSummary}`}>
-      <div className="mini-bars">
+      <div className="mini-bars" aria-hidden="true">
         {dailySpending.map((day, index) => (
           <div key={day.date} className="bar-track" title={`${day.date}: ${yen(day.amountYen)}`}>
             <i

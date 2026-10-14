@@ -7,7 +7,7 @@ import {
   type Household,
 } from "../../../shared/api";
 import { isOneOf } from "../../../shared/lib/guard";
-import { useAccountSettings } from "../model/account-settings";
+import type { useAccountSettings } from "../model/account-settings";
 
 import styles from "./settings-page.module.css";
 
@@ -22,29 +22,13 @@ export function ManageAccountSettings({
   household,
   balances,
   hidden,
-  onRefresh,
-  onRefreshBalances,
-  onNotice,
-  onFormClean,
-  pending: _pending,
+  model,
 }: {
   household: Household;
   balances: AccountBalance[];
   hidden: boolean;
-  onRefresh: () => Promise<void>;
-  onRefreshBalances: () => Promise<void>;
-  onNotice: (message: string, kind?: "success" | "error" | "warning" | "info") => void;
-  onFormClean: (formID: string) => void;
-  pending: boolean;
+  model: ReturnType<typeof useAccountSettings>;
 }) {
-  const model = useAccountSettings({
-    household,
-    onRefresh,
-    onRefreshBalances,
-    onNotice,
-    onFormClean,
-  });
-
   return (
     <>
       <section
