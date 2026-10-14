@@ -168,6 +168,10 @@ export function ImportsPage({
       try {
         const body = new FormData();
         body.set("file", file);
+        if (entry.analysisFile && entry.analysisTransform) {
+          body.set("analysisFile", entry.analysisFile);
+          body.set("analysisTransform", JSON.stringify(entry.analysisTransform));
+        }
         body.set("householdId", household.id);
         body.set("sourceKind", entry.sourceKind);
         const response = await fetch("/documents", {
@@ -393,13 +397,15 @@ export function ImportsPage({
       <CameraCapture
         ref={cameraRef}
         onError={setMessage}
-        onAdd={(file) => {
+        onAdd={({ originalFile, analysisFile, analysisTransform }) => {
           markUnsaved();
           setMessage("");
           const upload: PendingUpload = {
             id: crypto.randomUUID(),
-            file,
-            sourceKind: defaultUploadSourceKind(file),
+            file: originalFile,
+            analysisFile,
+            analysisTransform,
+            sourceKind: defaultUploadSourceKind(originalFile),
             status: "queued",
           };
           setFiles((current) => [...current, upload]);

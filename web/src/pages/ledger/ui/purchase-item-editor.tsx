@@ -3,6 +3,7 @@ import type { LedgerItemDraft } from "../model/purchase-item-draft";
 
 import { EditPurchaseItemAllocations } from "../../../entities/purchase";
 import { isOneOf } from "../../../shared/lib";
+import { LedgerProductVariantSelect } from "./ledger-product-variant-select";
 
 function allocationsInPoolOrder<T extends { poolId: string }>(
   allocations: T[],
@@ -21,6 +22,7 @@ export function PurchaseItemEditor({
   item,
   draft,
   household,
+  merchant,
   categories,
   catalog,
   onChange,
@@ -28,6 +30,7 @@ export function PurchaseItemEditor({
   item: PurchaseItem;
   draft?: LedgerItemDraft;
   household: Household;
+  merchant: string;
   categories: Array<{ id: string; name: string; archived: boolean }>;
   catalog: ProductConcept[];
   onChange: (updates: Partial<LedgerItemDraft>) => void;
@@ -65,31 +68,19 @@ export function PurchaseItemEditor({
             </option>
           ))}
       </select>
-      <select
-        aria-label="正規商品"
+      <LedgerProductVariantSelect
+        householdId={household.id}
+        itemName={draft?.name ?? item.name}
+        merchant={merchant}
         value={draft?.productVariantId ?? item.productVariantId ?? ""}
-        onChange={(event) => {
-          const productVariantId = event.target.value;
+        catalog={catalog}
+        onChange={(productVariantId, variantName) => {
           onChange({
             productVariantId,
-            variantName:
-              catalog
-                .flatMap((concept) => concept.variants)
-                .find((variant) => variant.id === productVariantId)?.name ?? "",
+            variantName,
           });
         }}
-      >
-        <option value="">商品未選択</option>
-        {catalog.flatMap((concept) =>
-          concept.variants
-            .filter((variant) => !variant.archived)
-            .map((variant) => (
-              <option key={variant.id} value={variant.id}>
-                {concept.name} · {variant.name}
-              </option>
-            )),
-        )}
-      </select>
+      />
       <EditPurchaseItemAllocations
         allocations={allocations}
         defaultAllocations={normalizedDefaultAllocations}

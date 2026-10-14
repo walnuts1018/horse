@@ -3,6 +3,7 @@ package ingestion
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	stdjson "encoding/json"
 	"io"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -96,6 +98,38 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 			t.Fatal(err)
 		}
 		return jobID
+	}
+
+	analysisDocumentID, analysisJobID := testUUID(t), testUUID(t)
+	analysisDocumentUUID, analysisJobUUID := parseTestUUID(t, analysisDocumentID), parseTestUUID(t, analysisJobID)
+	analysisHash, originalKey, analysisKey := testUUID(t), "original-image", "analysis-image"
+	imageMIME, analysisMIME, sourceKind := mimeTypeJPEG, mimeTypePNG, "receipt"
+	analysisTransform := sql.Null[types.JSON[stdjson.RawMessage]]{
+		V:     types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`[0.5,0,0.25,0,0.5,0.25,0,0,1]`)},
+		Valid: true,
+	}
+	analysisObject := sql.Null[string]{V: analysisKey, Valid: true}
+	analysisMIMEValue := sql.Null[string]{V: analysisMIME, Valid: true}
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
+		ID: &analysisDocumentUUID, HouseholdID: &householdUUID, Sha256: &analysisHash, ObjectKey: &originalKey,
+		MimeType: &imageMIME, SourceKind: &sourceKind, CreatedBy: &memberUUID,
+		AnalysisObjectKey: &analysisObject, AnalysisMimeType: &analysisMIMEValue, AnalysisTransform: &analysisTransform,
+	}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	queued := extractionStatusQueued
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
+		ID: &analysisJobUUID, HouseholdID: &householdUUID, SourceDocumentID: &analysisDocumentUUID, Status: &queued,
+	}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	analysisWorker := Worker{DB: db, GeminiEnabled: true}
+	claimedJob, claimed, err := analysisWorker.claim(ctx, analysisJobID)
+	if err != nil || !claimed {
+		t.Fatalf("camera analysis job was not claimed: claimed=%t error=%v", claimed, err)
+	}
+	if claimedJob.ObjectKey != originalKey || claimedJob.AnalysisObjectKey != analysisKey || claimedJob.MIMEType != imageMIME || claimedJob.AnalysisMIMEType != analysisMIME || claimedJob.AnalysisTransform == nil || *claimedJob.AnalysisTransform != [9]float64{0.5, 0, 0.25, 0, 0.5, 0.25, 0, 0, 1} {
+		t.Fatalf("worker claim mixed or omitted original and analysis metadata: %+v", claimedJob)
 	}
 
 	free := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

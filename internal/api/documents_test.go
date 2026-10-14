@@ -98,6 +98,29 @@ func TestDocumentMIMEUsesContentBeforeTextExtensionFallback(t *testing.T) {
 	}
 }
 
+func TestValidateAnalysisTransform(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		transform [9]float64
+		valid     bool
+	}{
+		{name: "identity", transform: [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}, valid: true},
+		{name: "clockwise rotation", transform: [9]float64{0, 1, 0, -1, 0, 1, 0, 0, 1}, valid: true},
+		{name: "crop", transform: [9]float64{0.5, 0, 0.25, 0, 0.5, 0.25, 0, 0, 1}, valid: true},
+		{name: "singular", transform: [9]float64{0, 0, 0, 0, 1, 0, 0, 0, 1}},
+		{name: "outside original", transform: [9]float64{1, 0, 0.1, 0, 1, 0, 0, 0, 1}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateAnalysisTransform(test.transform)
+			if (err == nil) != test.valid {
+				t.Fatalf("validateAnalysisTransform(%v) error = %v, valid=%t", test.transform, err, test.valid)
+			}
+		})
+	}
+}
+
 func TestDocumentResponsesUseConstantQueryCount(t *testing.T) {
 	t.Parallel()
 

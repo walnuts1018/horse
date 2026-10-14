@@ -22,7 +22,7 @@
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--paper);
   color: var(--ink);
   font: inherit;
   font-size: 14px;
@@ -67,7 +67,7 @@
   padding: 11px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--paper);
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -75,7 +75,7 @@
 }
 
 .transfer-kind-option:has(input:checked) {
-  border-color: #39715a;
+  border-color: var(--green);
   background: var(--green-wash);
 }
 
@@ -84,11 +84,11 @@
   height: 18px;
   flex: 0 0 18px;
   margin: 1px 0 0;
-  accent-color: var(--green);
+  accent-color: var(--green-dark);
 }
 
 .transfer-kind-option input:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--green-dark);
   outline-offset: 3px;
 }
 

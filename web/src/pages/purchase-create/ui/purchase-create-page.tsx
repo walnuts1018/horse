@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, Undo2 } from "lucide-react";
+import { Check, ChevronLeft, Redo2, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 
 import type { EditPurchaseItemsCommands } from "./edit-purchase-items";
@@ -69,7 +69,7 @@ function PurchaseCreatePageContent({
   const [merchant, setMerchant] = useState(purchaseDefaults.merchant);
   const [occurredAt, setOccurredAt] = useState(localDateTime);
   const [itemsValue, setItemsValue] = useState<PurchaseItemsValue>(emptyPurchaseItemsValue);
-  const [undoAvailable, setUndoAvailable] = useState(false);
+  const [historyAvailability, setHistoryAvailability] = useState({ undo: false, redo: false });
   const itemsCommands = useRef<EditPurchaseItemsCommands>(null);
   const [history, setHistory] = useState<Purchase[]>([]);
   const markUnsavedRef = useRef<() => void>(() => {});
@@ -98,7 +98,8 @@ function PurchaseCreatePageContent({
     markUnsaved,
     purchaseDefaults.paymentAccountId,
   );
-  const updateMerchant = (value: string, useMerchantDefault = false) => {
+  const updateMerchant = (value: string, useMerchantDefault = false, preserveRedo = false) => {
+    if (!preserveRedo) itemsCommands.current?.invalidateRedo();
     markUnsaved();
     setMerchant(value);
     if (!useMerchantDefault || payments.rows.length !== 1) return;
@@ -263,9 +264,9 @@ function PurchaseCreatePageContent({
       : "入力待ち";
 
   const copyPurchaseItems = (purchase: Purchase) => {
-    updateMerchant(purchase.merchant);
-    setCopiedPurchase({ ...purchase });
     itemsCommands.current?.copy(purchase);
+    updateMerchant(purchase.merchant, false, true);
+    setCopiedPurchase({ ...purchase });
     setMessage("");
   };
   if (!storageReady)
@@ -324,6 +325,7 @@ function PurchaseCreatePageContent({
       <PurchaseItemsComposer
         householdId={household.id}
         merchant={merchant}
+        copiedPurchase={copiedPurchase}
         household={household}
         history={history}
         value={itemsValue}
@@ -344,16 +346,38 @@ function PurchaseCreatePageContent({
         }}
         onChange={setItemsValue}
         onDirty={markUnsaved}
-        onUndoAvailabilityChange={setUndoAvailable}
+        onHistoryAvailabilityChange={setHistoryAvailability}
       >
-        {undoAvailable && (
+        {historyAvailability.undo && (
           <button
             type="button"
             className="button button-soft"
-            onClick={() => itemsCommands.current?.undo()}
+            onClick={() => {
+              const snapshot = itemsCommands.current?.undo();
+              if (snapshot && Object.hasOwn(snapshot, "merchant"))
+                setMerchant(snapshot.merchant ?? "");
+              if (snapshot && Object.hasOwn(snapshot, "copiedPurchase"))
+                setCopiedPurchase(snapshot.copiedPurchase ?? null);
+            }}
           >
             <Undo2 size={16} />
             元に戻す
+          </button>
+        )}
+        {historyAvailability.redo && (
+          <button
+            type="button"
+            className="button button-soft"
+            onClick={() => {
+              const snapshot = itemsCommands.current?.redo();
+              if (snapshot && Object.hasOwn(snapshot, "merchant"))
+                setMerchant(snapshot.merchant ?? "");
+              if (snapshot && Object.hasOwn(snapshot, "copiedPurchase"))
+                setCopiedPurchase(snapshot.copiedPurchase ?? null);
+            }}
+          >
+            <Redo2 size={16} />
+            やり直す
           </button>
         )}
         <button

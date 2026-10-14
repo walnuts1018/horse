@@ -16,6 +16,52 @@ func (s attachmentOnlyStore) Get(context.Context, string, string) (Document, err
 	return s.document, nil
 }
 
+type recordingDocumentStore struct {
+	document Document
+	keys     []string
+	mimeType []string
+}
+
+func (s *recordingDocumentStore) Get(_ context.Context, key, mimeType string) (Document, error) {
+	s.keys = append(s.keys, key)
+	s.mimeType = append(s.mimeType, mimeType)
+	document := s.document
+	document.MIMEType = mimeType
+	return document, nil
+}
+
+func TestWorkerExtractionSelectsAnalysisObjectExceptForOriginalBasedCrop(t *testing.T) {
+	t.Parallel()
+	transform := identityTransform()
+	tests := []struct {
+		name         string
+		request      string
+		analysisKey  string
+		analysisMIME string
+		transform    *[9]float64
+		wantKey      string
+		wantMIME     string
+	}{
+		{name: "saved analysis object", request: `{}`, analysisKey: "analysis", analysisMIME: mimeTypePNG, transform: &transform, wantKey: "analysis", wantMIME: mimeTypePNG},
+		{name: "manual crop uses original coordinates", request: `{"crop":{"page":0,"top":0.1,"left":0.1,"bottom":0.9,"right":0.9}}`, analysisKey: "analysis", analysisMIME: mimeTypePNG, transform: &transform, wantKey: "original", wantMIME: mimeTypeJPEG},
+		{name: "legacy job uses original", request: `{}`, wantKey: "original", wantMIME: mimeTypeJPEG},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			store := &recordingDocumentStore{document: Document{Data: []byte("invalid image")}}
+			worker := Worker{Store: store}
+			_, _ = worker.extract(t.Context(), job{
+				ObjectKey: "original", MIMEType: mimeTypeJPEG, AnalysisObjectKey: test.analysisKey,
+				AnalysisMIMEType: test.analysisMIME, AnalysisTransform: test.transform, SourceKind: "receipt", Request: []byte(test.request),
+			})
+			if len(store.keys) != 1 || store.keys[0] != test.wantKey || store.mimeType[0] != test.wantMIME {
+				t.Fatalf("worker loaded the wrong image: keys=%v mimeTypes=%v", store.keys, store.mimeType)
+			}
+		})
+	}
+}
+
 func TestWorkerExtractionSkipsGeminiForAttachmentOnlyEmail(t *testing.T) {
 	t.Parallel()
 	pdf := base64.StdEncoding.EncodeToString([]byte("%PDF-1.4 synthetic receipt"))

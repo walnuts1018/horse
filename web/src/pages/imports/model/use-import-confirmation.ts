@@ -1,7 +1,10 @@
 import { useEffect, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 
 import type { Household } from "../../../shared/api";
-import type { ImportReceiptConfirmationState } from "../../../shared/lib/purchase-storage";
+import type {
+  ImportReceiptConfirmationState,
+  ImportReceiptItemReviewState,
+} from "../../../shared/lib/purchase-storage";
 import type {
   DocumentReview,
   ExtractedItem,
@@ -15,6 +18,7 @@ import {
   effectiveReceiptItemAmount,
   uniqueConsistentReceiptCandidate,
 } from "./receipt-confirmation";
+import { receiptItemsNeedingReview } from "./receipt-item-review";
 import { receiptPaymentAccountId } from "./receipt-payment-account";
 import {
   addManualReceiptItem as appendManualReceiptItem,
@@ -40,6 +44,7 @@ import {
 function normalizeName(name: string) {
   return name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ja-JP");
 }
+
 import {
   importIdempotencyKey,
   linkStatementTransfer as linkStatementTransferRequest,
@@ -58,6 +63,13 @@ import {
   statementConfirmationIssue,
   statementSourceReference,
 } from "./imports";
+
+export const manualAmountOverrideReasonOptions = [
+  "OCRの読み間違い",
+  "割引・税の修正",
+  "レシートの印字が不明瞭",
+  "その他",
+] as const;
 
 type ReceiptItemAllocation = { poolId: string; weight: number };
 
@@ -132,6 +144,9 @@ export function useImportConfirmation({
   const manualAmountOverrides = selectedDocument
     ? { [selectedDocument.id]: confirmationState?.manualAmountOverrides ?? {} }
     : {};
+  const receiptItemReviewStates = selectedDocument
+    ? { [selectedDocument.id]: confirmationState?.receiptItemReviewStates ?? {} }
+    : {};
   const manualAmountOverrideReasons = selectedDocument
     ? { [selectedDocument.id]: confirmationState?.manualAmountOverrideReason }
     : {};
@@ -203,6 +218,19 @@ export function useImportConfirmation({
       const { manualAmountOverrideReason: _reason, ...rest } = state;
       return next[document.id] !== undefined
         ? { ...rest, manualAmountOverrideReason: next[document.id] }
+        : rest;
+    });
+  };
+  const setReceiptItemReviewStatesPersisted: Dispatch<
+    SetStateAction<Record<string, Record<string, ImportReceiptItemReviewState>>>
+  > = (action) => {
+    if (!selectedDocument) return;
+    updateReceiptConfirmationState(selectedDocument.id, (state, document) => {
+      const current = { [document.id]: state.receiptItemReviewStates ?? {} };
+      const next = typeof action === "function" ? action(current) : action;
+      const { receiptItemReviewStates: _receiptItemReviewStates, ...rest } = state;
+      return Object.keys(next[document.id] ?? {}).length > 0
+        ? { ...rest, receiptItemReviewStates: next[document.id] }
         : rest;
     });
   };
@@ -290,17 +318,14 @@ export function useImportConfirmation({
 
   const reviewTargets: ReviewTarget[] = selectedDocument?.result?.receipt?.items
     ? [
-        ...selectedDocument.result.receipt.items.flatMap((item, index) =>
-          item.verification.toUpperCase() === "UNRESOLVED" || item.confidence < 0.8
-            ? [
-                {
-                  key: `item:${index}`,
-                  label: `品目 ${index + 1}`,
-                  elementId: `receipt-review-item-${index}`,
-                },
-              ]
-            : [],
-        ),
+        ...receiptItemsNeedingReview(
+          selectedDocument.result.receipt.items,
+          receiptItemReviewStates[selectedDocument.id],
+        ).map(({ item, index }) => ({
+          key: `item:${item.key}`,
+          label: item.name.trim() || `品目 ${index + 1}`,
+          elementId: `receipt-review-item-${encodeURIComponent(item.key ?? `item-${index}`)}`,
+        })),
         ...(() => {
           const needsPurchaseDate = !receiptOccurredAt(
             selectedDocument.result.receipt.purchasedAt,
@@ -347,12 +372,13 @@ export function useImportConfirmation({
         })(),
       ]
     : [];
-  const activeReviewIndex = Math.min(reviewTargetIndex, Math.max(0, reviewTargets.length - 1));
+  const activeReviewIndex = Math.min(reviewTargetIndex, reviewTargets.length);
   const activeReviewTarget = reviewTargets.at(activeReviewIndex);
   const activeReviewTargetKey = activeReviewTarget?.key;
   const activeReviewTargetElementId = activeReviewTarget?.elementId;
   useEffect(() => {
     if (!activeReviewTargetKey || !activeReviewTargetElementId) return;
+    if (document.activeElement?.closest(".receipt-item-review")) return;
     const element = document.getElementById(activeReviewTargetElementId);
     element?.scrollIntoView({ block: "center", behavior: "smooth" });
     if (element instanceof HTMLElement) element.focus({ preventScroll: true });
@@ -375,6 +401,9 @@ export function useImportConfirmation({
     if (originalItems) {
       const keyedItems = ensureReceiptItemKeys(originalItems);
       const survivingKeys = new Set(keyedItems.flatMap((item) => (item.key ? [item.key] : [])));
+      const editedItem = keyedItems[index];
+      const editChangesItem =
+        JSON.stringify(editedItem) !== JSON.stringify({ ...editedItem, ...patch });
       updateReceiptConfirmationState(documentId, (state) => {
         const rekeyedManualAmountOverrides = rekeyReceiptItemValues(
           state.manualAmountOverrides,
@@ -388,12 +417,23 @@ export function useImportConfirmation({
           keyedItems,
           survivingKeys,
         );
+        const rekeyedReviewStates = rekeyReceiptItemValues(
+          state.receiptItemReviewStates,
+          originalItems,
+          keyedItems,
+          survivingKeys,
+        );
+        const nextReviewStates =
+          editChangesItem && editedItem.key
+            ? { ...rekeyedReviewStates, [editedItem.key]: "CORRECTED" as const }
+            : rekeyedReviewStates;
         return {
           ...state,
           ...(rekeyedManualAmountOverrides
             ? { manualAmountOverrides: rekeyedManualAmountOverrides }
             : {}),
           ...(rekeyedItemAllocations ? { itemAllocations: rekeyedItemAllocations } : {}),
+          ...(nextReviewStates ? { receiptItemReviewStates: nextReviewStates } : {}),
         };
       });
     }
@@ -860,6 +900,8 @@ export function useImportConfirmation({
     setReviewTargetIndex,
     manualAmountOverrides,
     setManualAmountOverrides: setManualAmountOverridesPersisted,
+    receiptItemReviewStates,
+    setReceiptItemReviewStates: setReceiptItemReviewStatesPersisted,
     manualAmountOverrideReasons,
     setManualAmountOverrideReasons: setManualAmountOverrideReasonsPersisted,
     receiptPayments,

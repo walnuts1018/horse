@@ -12,7 +12,18 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if w.DB != nil && router.RateControl == nil {
 		router.RateControl = postgresGeminiRateControl{db: w.DB}
 	}
-	document, err := w.Store.Get(ctx, j.ObjectKey, j.MIMEType)
+	var request struct {
+		Crop    *Region `json:"crop,omitempty"`
+		Purpose string  `json:"purpose,omitempty"`
+	}
+	if err := json.Unmarshal(j.Request, &request); err != nil {
+		return Verification{}, fmt.Errorf("decode extraction request: %w", err)
+	}
+	objectKey, mimeType := j.ObjectKey, j.MIMEType
+	if request.Crop == nil && j.AnalysisObjectKey != "" && j.AnalysisMIMEType != "" {
+		objectKey, mimeType = j.AnalysisObjectKey, j.AnalysisMIMEType
+	}
+	document, err := w.Store.Get(ctx, objectKey, mimeType)
 	if err != nil {
 		return Verification{}, err
 	}
@@ -30,15 +41,14 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		}
 		return Verification{Statements: entries, Balanced: true}, nil
 	}
-	var request struct {
-		Crop    *Region `json:"crop,omitempty"`
-		Purpose string  `json:"purpose,omitempty"`
-	}
-	if err := json.Unmarshal(j.Request, &request); err != nil {
-		return Verification{}, fmt.Errorf("decode extraction request: %w", err)
-	}
 	transform := identityTransform()
 	transformPage := 0
+	if request.Crop == nil && j.AnalysisTransform != nil {
+		transform = *j.AnalysisTransform
+		if _, err := transformRegion(Region{Top: 0, Left: 0, Bottom: 1, Right: 1}, transform); err != nil {
+			return Verification{}, fmt.Errorf("validate analysis coordinate transform: %w", err)
+		}
+	}
 	if request.Crop != nil {
 		transformPage = request.Crop.Page
 		document, transform, err = w.OCR.Crop(ctx, document, *request.Crop)

@@ -105,6 +105,33 @@ var SourceDocuments = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		AnalysisObjectKey: column{
+			Name:      "analysis_object_key",
+			DBType:    "text",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
+		AnalysisMimeType: column{
+			Name:      "analysis_mime_type",
+			DBType:    "text",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
+		AnalysisTransform: column{
+			Name:      "analysis_transform",
+			DBType:    "jsonb",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: sourceDocumentIndexes{
 		SourceDocumentsPkey: index{
@@ -122,6 +149,23 @@ var SourceDocuments = Table[
 			NullsFirst:    []bool{false},
 			NullsDistinct: false,
 			Where:         "",
+			Include:       []string{},
+		},
+		SourceDocumentsAnalysisObjectKeyKey: index{
+			Type: "btree",
+			Name: "source_documents_analysis_object_key_key",
+			Columns: []indexColumn{
+				{
+					Name:         "analysis_object_key",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        true,
+			Comment:       "",
+			NullsFirst:    []bool{false},
+			NullsDistinct: false,
+			Where:         "(analysis_object_key IS NOT NULL)",
 			Include:       []string{},
 		},
 		SourceDocumentsHouseholdIDIDKey: index{
@@ -229,6 +273,14 @@ var SourceDocuments = Table[
 		},
 	},
 	Checks: sourceDocumentChecks{
+		SourceDocumentsAnalysisObjectPair: check{
+			constraint: constraint{
+				Name:    "source_documents_analysis_object_pair",
+				Columns: []string{"analysis_object_key", "analysis_mime_type", "analysis_transform"},
+				Comment: "",
+			},
+			Expression: "(((analysis_object_key IS NULL) AND (analysis_mime_type IS NULL) AND (analysis_transform IS NULL)) OR ((analysis_object_key IS NOT NULL) AND (analysis_mime_type IS NOT NULL) AND (analysis_transform IS NOT NULL)))",
+		},
 		SourceDocumentsSourceKindCheck: check{
 			constraint: constraint{
 				Name:    "source_documents_source_kind_check",
@@ -242,26 +294,30 @@ var SourceDocuments = Table[
 }
 
 type sourceDocumentColumns struct {
-	ID             column
-	HouseholdID    column
-	Sha256         column
-	ObjectKey      column
-	MimeType       column
-	SourceKind     column
-	Metadata       column
-	CreatedBy      column
-	CreatedAt      column
-	SourceFilename column
+	ID                column
+	HouseholdID       column
+	Sha256            column
+	ObjectKey         column
+	MimeType          column
+	SourceKind        column
+	Metadata          column
+	CreatedBy         column
+	CreatedAt         column
+	SourceFilename    column
+	AnalysisObjectKey column
+	AnalysisMimeType  column
+	AnalysisTransform column
 }
 
 func (c sourceDocumentColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.Sha256, c.ObjectKey, c.MimeType, c.SourceKind, c.Metadata, c.CreatedBy, c.CreatedAt, c.SourceFilename,
+		c.ID, c.HouseholdID, c.Sha256, c.ObjectKey, c.MimeType, c.SourceKind, c.Metadata, c.CreatedBy, c.CreatedAt, c.SourceFilename, c.AnalysisObjectKey, c.AnalysisMimeType, c.AnalysisTransform,
 	}
 }
 
 type sourceDocumentIndexes struct {
 	SourceDocumentsPkey                 index
+	SourceDocumentsAnalysisObjectKeyKey index
 	SourceDocumentsHouseholdIDIDKey     index
 	SourceDocumentsHouseholdIDSha256Key index
 	SourceDocumentsObjectKeyKey         index
@@ -269,7 +325,7 @@ type sourceDocumentIndexes struct {
 
 func (i sourceDocumentIndexes) AsSlice() []index {
 	return []index{
-		i.SourceDocumentsPkey, i.SourceDocumentsHouseholdIDIDKey, i.SourceDocumentsHouseholdIDSha256Key, i.SourceDocumentsObjectKeyKey,
+		i.SourceDocumentsPkey, i.SourceDocumentsAnalysisObjectKeyKey, i.SourceDocumentsHouseholdIDIDKey, i.SourceDocumentsHouseholdIDSha256Key, i.SourceDocumentsObjectKeyKey,
 	}
 }
 
@@ -297,11 +353,12 @@ func (u sourceDocumentUniques) AsSlice() []constraint {
 }
 
 type sourceDocumentChecks struct {
-	SourceDocumentsSourceKindCheck check
+	SourceDocumentsAnalysisObjectPair check
+	SourceDocumentsSourceKindCheck    check
 }
 
 func (c sourceDocumentChecks) AsSlice() []check {
 	return []check{
-		c.SourceDocumentsSourceKindCheck,
+		c.SourceDocumentsAnalysisObjectPair, c.SourceDocumentsSourceKindCheck,
 	}
 }

@@ -7,6 +7,29 @@
   margin-top: 16px;
 }
 
+.amountReasonOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.receiptItemReviewState {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .attachmentGroup {
   display: grid;
   gap: 8px;

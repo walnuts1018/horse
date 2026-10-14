@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ImportReceiptDraft } from "../../../shared/lib/purchase-storage";
 import type { DocumentReview } from "./imports";
 
+import { receiptItemsNeedingReview } from "./receipt-item-review";
 import {
   addManualReceiptItem,
   deleteReceiptItemByKey,
@@ -208,6 +209,24 @@ describe("receipt item structure changes", () => {
     expect(added[1].region).toBeUndefined();
   });
 
+  it("品目追加後も既存の人確認状態を保ち、追加品目を未確認にする", () => {
+    const original = [item("パン", 100, 100)];
+    const keyed = ensureReceiptItemKeys(original);
+    const added = addManualReceiptItem(keyed, "manual:new");
+    const existingKey = keyed[0].key!;
+    const state = rekeyReceiptConfirmationAfterStructureChange(
+      { receiptItemReviewStates: { [existingKey]: "CONFIRMED" } },
+      original,
+      keyed,
+      added,
+    );
+
+    expect(state.receiptItemReviewStates).toEqual({ [existingKey]: "CONFIRMED" });
+    expect(receiptItemsNeedingReview(added, state.receiptItemReviewStates)).toEqual([
+      { item: added[1], index: 1, state: "UNREVIEWED" },
+    ]);
+  });
+
   it("削除品目の金額・配賦・訂正理由を破棄し、残存keyと決済だけを保つ", () => {
     const original = [item("パン", 100, 100), item("牛乳", 200, 200)];
     const keyed = ensureReceiptItemKeys(original);
@@ -225,6 +244,10 @@ describe("receipt item structure changes", () => {
         },
         manualAmountOverrides: { [removedKey]: 101, [retainedKey]: 201 },
         manualAmountOverrideReason: "OCRの読み間違い",
+        receiptItemReviewStates: {
+          [removedKey]: "UNRESOLVED",
+          [retainedKey]: "CONFIRMED",
+        },
         itemAllocations: {
           [removedKey]: [{ poolId: "pool-1", weight: 100 }],
           [retainedKey]: [{ poolId: "pool-2", weight: 100 }],
@@ -239,6 +262,7 @@ describe("receipt item structure changes", () => {
     expect(state).toEqual({
       manualAmountOverrides: { [retainedKey]: 201 },
       itemAllocations: { [retainedKey]: [{ poolId: "pool-2", weight: 100 }] },
+      receiptItemReviewStates: { [retainedKey]: "CONFIRMED" },
       payments: [{ key: "payment", paymentAccountId: "account-1", amountYen: 300 }],
     });
   });
@@ -274,6 +298,7 @@ describe("reconcileReceiptConfirmationState", () => {
       manualAmountOverrideReason: "印字額を確認",
       payments: [{ key: "manual", paymentAccountId: "account-1", amountYen: 331 }],
       itemAllocations: { "item-1": [{ poolId: "pool-1", weight: 100 }] },
+      receiptItemReviewStates: { "item-0": "CORRECTED", "item-1": "UNRESOLVED" },
     });
 
     const keyedLatestItems = ensureReceiptItemKeys(latestResult.receipt.items);
@@ -283,6 +308,10 @@ describe("reconcileReceiptConfirmationState", () => {
       manualAmountOverrideReason: "印字額を確認",
       payments: [{ key: "manual", paymentAccountId: "account-1", amountYen: 331 }],
       itemAllocations: { [keyedLatestItems[0].key!]: [{ poolId: "pool-1", weight: 100 }] },
+      receiptItemReviewStates: {
+        [keyedLatestItems[1].key!]: "CORRECTED",
+        [keyedLatestItems[0].key!]: "UNRESOLVED",
+      },
     });
     expect(reconciled.conflicts).toEqual([]);
   });

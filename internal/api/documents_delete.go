@@ -117,6 +117,14 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if document.AnalysisObjectKey.Valid {
+		if err := store.Delete(r.Context(), document.AnalysisObjectKey.V); err != nil {
+			s.logger.ErrorContext(r.Context(), "analysis image deletion failed", "error", err)
+			http.Error(w, "document deletion failed", http.StatusBadGateway)
+
+			return
+		}
+	}
 	if err := store.Delete(r.Context(), document.ObjectKey); err != nil {
 		s.logger.ErrorContext(r.Context(), "document deletion failed", "error", err)
 		http.Error(w, "document deletion failed", http.StatusBadGateway)

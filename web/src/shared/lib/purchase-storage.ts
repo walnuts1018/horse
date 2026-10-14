@@ -63,6 +63,7 @@ export type ImportReceiptConfirmationState = {
   };
   manualAmountOverrides?: Record<string, number>;
   manualAmountOverrideReason?: string;
+  receiptItemReviewStates?: Record<string, ImportReceiptItemReviewState>;
   payments?: Array<{
     key: string;
     method?: string;
@@ -72,6 +73,8 @@ export type ImportReceiptConfirmationState = {
   }>;
   itemAllocations?: Record<string, Array<{ poolId: string; weight: number }>>;
 };
+
+export type ImportReceiptItemReviewState = "UNREVIEWED" | "CONFIRMED" | "CORRECTED" | "UNRESOLVED";
 
 function isPurchaseDraft(
   value: unknown,
@@ -387,6 +390,18 @@ function isImportReceiptConfirmationState(value: unknown): value is ImportReceip
   if (
     value.manualAmountOverrideReason !== undefined &&
     typeof value.manualAmountOverrideReason !== "string"
+  )
+    return false;
+  if (
+    value.receiptItemReviewStates !== undefined &&
+    (!isRecord(value.receiptItemReviewStates) ||
+      !Object.values(value.receiptItemReviewStates).every(
+        (state) =>
+          state === "UNREVIEWED" ||
+          state === "CONFIRMED" ||
+          state === "CORRECTED" ||
+          state === "UNRESOLVED",
+      ))
   )
     return false;
   if (

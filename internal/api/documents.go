@@ -9,7 +9,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -98,11 +97,14 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document storage is unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, ingestion.MaxDocumentBytes+(1<<20))
+	r.Body = http.MaxBytesReader(w, r.Body, 2*ingestion.MaxDocumentBytes+(1<<20))
 	// #nosec G120 -- MaxBytesReaderでmultipart全体を上限付きで読み取る。
 	if err := r.ParseMultipartForm(ingestion.MaxDocumentBytes); err != nil {
 		http.Error(w, "invalid document upload", http.StatusBadRequest)
 		return
+	}
+	if r.MultipartForm != nil {
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 	}
 	householdID := r.FormValue("householdId")
 	sourceKind := r.FormValue("sourceKind")
@@ -134,8 +136,8 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = file.Close() }()
-	data, err := io.ReadAll(io.LimitReader(file, ingestion.MaxDocumentBytes+1))
-	if err != nil || len(data) == 0 || len(data) > ingestion.MaxDocumentBytes {
+	data, err := readDocumentPart(file)
+	if err != nil {
 		http.Error(w, "invalid document size", http.StatusBadRequest)
 		return
 	}
@@ -144,6 +146,20 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	if !validDocumentMIME(mimeType) {
 		http.Error(w, "unsupported document type", http.StatusUnsupportedMediaType)
 		return
+	}
+	analysisData, analysisFilename, analysisTransform, err := readAnalysisUpload(r)
+	if err != nil {
+		http.Error(w, "invalid analysis image", http.StatusBadRequest)
+		return
+	}
+	var analysisKey, analysisMIME string
+	if len(analysisData) > 0 {
+		analysisMIME = documentMIME(analysisFilename, analysisData)
+		if (mimeType != documentMIMEJPEG && mimeType != documentMIMEPNG && mimeType != documentMIMEWebP) ||
+			(analysisMIME != documentMIMEJPEG && analysisMIME != documentMIMEPNG && analysisMIME != documentMIMEWebP) {
+			http.Error(w, "unsupported analysis image type", http.StatusUnsupportedMediaType)
+			return
+		}
 	}
 	var emailAttachments []ingestion.EmailAttachment
 	if mimeType == documentMIMEEmail {
@@ -225,6 +241,32 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
+	}
+	if len(analysisData) > 0 {
+		analysisKey, _, err = s.cfg.Store.Put(r.Context(), householdID, analysisMIME, analysisData)
+		if err != nil {
+			s.logger.ErrorContext(r.Context(), "analysis image storage failed", "error", err)
+			http.Error(w, "analysis image storage failed", http.StatusBadGateway)
+			return
+		}
+		analysisObjectKey := sql.Null[string]{V: analysisKey, Valid: true}
+		analysisMIMEType := sql.Null[string]{V: analysisMIME, Valid: true}
+		transformJSON, err := json.Marshal(analysisTransform)
+		if err != nil {
+			http.Error(w, "document registration failed", http.StatusInternalServerError)
+			return
+		}
+		analysisTransformValue := sql.Null[types.JSON[stdjson.RawMessage]]{
+			V:     types.JSON[stdjson.RawMessage]{Val: transformJSON},
+			Valid: true,
+		}
+		setter := &models.SourceDocumentSetter{
+			AnalysisObjectKey: &analysisObjectKey, AnalysisMimeType: &analysisMIMEType, AnalysisTransform: &analysisTransformValue,
+		}
+		if err := document.Update(r.Context(), executor, setter); err != nil {
+			http.Error(w, "document registration failed", http.StatusInternalServerError)
+			return
+		}
 	}
 	jobID, err := insertDocumentJob(r.Context(), executor, householdUUID, document.ID)
 	if err != nil {

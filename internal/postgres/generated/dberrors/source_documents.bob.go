@@ -32,6 +32,13 @@ var SourceDocumentErrors = &sourceDocumentErrors{
 		s:       "source_documents_object_key_key",
 	},
 
+	ErrCheckSourceDocumentsAnalysisObjectPair: &CheckConstraintError{
+		schema:  "",
+		table:   "source_documents",
+		columns: []string{"analysis_object_key", "analysis_mime_type", "analysis_transform"},
+		s:       "source_documents_analysis_object_pair",
+	},
+
 	ErrCheckSourceDocumentsSourceKindCheck: &CheckConstraintError{
 		schema:  "",
 		table:   "source_documents",
@@ -48,6 +55,8 @@ type sourceDocumentErrors struct {
 	ErrUniqueSourceDocumentsHouseholdIdSha256Key *UniqueConstraintError
 
 	ErrUniqueSourceDocumentsObjectKeyKey *UniqueConstraintError
+
+	ErrCheckSourceDocumentsAnalysisObjectPair *CheckConstraintError
 
 	ErrCheckSourceDocumentsSourceKindCheck *CheckConstraintError
 }

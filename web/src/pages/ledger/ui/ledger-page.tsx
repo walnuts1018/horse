@@ -667,6 +667,7 @@ export function LedgerPage({
                             item={item}
                             draft={itemDrafts[item.id]}
                             household={household}
+                            merchant={purchase.merchant}
                             categories={household.categories}
                             catalog={catalog}
                             onChange={(updates) => updateItemDraft(item.id, updates)}

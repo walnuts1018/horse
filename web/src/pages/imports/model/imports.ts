@@ -277,6 +277,8 @@ export function canDeleteDocument(document: DocumentReview) {
 export type PendingUpload = {
   id: string;
   file: File;
+  analysisFile?: File;
+  analysisTransform?: [number, number, number, number, number, number, number, number, number];
   sourceKind: UploadSourceKind;
   status: "queued" | "uploading" | "failed";
   error?: string;

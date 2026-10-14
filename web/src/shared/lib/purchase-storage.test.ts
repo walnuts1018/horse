@@ -241,6 +241,10 @@ describe("import receipt draft storage", () => {
         },
         manualAmountOverrides: { "item-0": 111 },
         manualAmountOverrideReason: "印字額を確認",
+        receiptItemReviewStates: {
+          "source:milk": "CONFIRMED" as const,
+          "manual:new": "UNRESOLVED" as const,
+        },
         payments: [{ key: "manual", paymentAccountId: "account-1", amountYen: 111 }],
         itemAllocations: { "item-0": [{ poolId: "pool-1", weight: 100 }] },
       },

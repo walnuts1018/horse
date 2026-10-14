@@ -105,6 +105,26 @@ describe("createReceiptPurchaseInput", () => {
     expect(input.items.reduce((total, item) => total + item.amountYen, 0)).toBe(315);
   });
 
+  it("選択式の金額訂正理由を購入Mutation inputへ保存する", () => {
+    const input = createReceiptPurchaseInput({
+      document,
+      householdId: "household-1",
+      occurredAt: "2026-10-14T03:00:00.000Z",
+      candidateId: "candidate-1",
+      requiresCandidateSelection: false,
+      requiresOverrideReason: true,
+      overrideReason: "OCRの読み間違い",
+      paymentDraft: [],
+      accountCount: 0,
+      manualAmounts: { "item-1": 205 },
+      allocations: undefined,
+      suggestedCategoryIds: [],
+    });
+
+    expect(input.manualAmountOverrideReason).toBe("OCRの読み間違い");
+    expect(input.items[0]?.amountYen).toBe(205);
+  });
+
   it("決済合計が補正後の品目合計と一致しない場合は拒否する", () => {
     expect(() =>
       createReceiptPurchaseInput({

@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -90,6 +91,19 @@ func (w *Worker) claim(ctx context.Context, jobID string) (job, bool, error) {
 		ID: candidate.ID.String(), HouseholdID: candidate.HouseholdID.String(), SourceID: candidate.SourceDocumentID.String(),
 		ObjectKey: document.ObjectKey, MIMEType: document.MimeType, SourceKind: document.SourceKind,
 		Request: candidate.Request.Val, Attempt: int(candidate.Attempt), FailureCount: int(candidate.FailureCount), Version: int64(candidate.Version),
+	}
+	if document.AnalysisObjectKey.Valid {
+		j.AnalysisObjectKey = document.AnalysisObjectKey.V
+	}
+	if document.AnalysisMimeType.Valid {
+		j.AnalysisMIMEType = document.AnalysisMimeType.V
+	}
+	if document.AnalysisTransform.Valid {
+		var transform [9]float64
+		if err := json.Unmarshal(document.AnalysisTransform.V.Val, &transform); err != nil {
+			return job{}, false, fmt.Errorf("decode analysis coordinate transform: %w", err)
+		}
+		j.AnalysisTransform = &transform
 	}
 	if candidate.Result.Valid {
 		j.Previous = candidate.Result.V.Val

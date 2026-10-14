@@ -1,0 +1,102 @@
+.bulkActions {
+  gap: 9px;
+  padding: 12px;
+  margin: 0 0 12px;
+}
+
+.selectionPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "count clear"
+    "actions actions"
+    "settings settings"
+    "apply apply";
+  align-items: start;
+}
+
+.selectionCount {
+  grid-area: count;
+  align-self: center;
+  color: #526258;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.actionList {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actionList legend {
+  margin-bottom: 8px;
+  color: #526258;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.actionButton {
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.activeAction {
+  border-color: var(--green);
+  background: var(--green-wash);
+  color: var(--green-dark);
+}
+
+.settings {
+  grid-area: settings;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.settings > label {
+  min-width: min(240px, 100%);
+  flex: 1 1 240px;
+}
+
+.settings .allocations {
+  flex: 1 1 100%;
+}
+
+.applyButton {
+  grid-area: apply;
+  justify-self: end;
+}
+
+.clearButton {
+  grid-area: clear;
+  justify-self: end;
+}
+
+@media (width <= 760px) {
+  .selectionPanel {
+    align-items: stretch;
+  }
+
+  .applyButton {
+    justify-self: stretch;
+  }
+
+  .actionList {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .actionButton {
+    min-height: 44px;
+  }
+}

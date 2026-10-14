@@ -48,6 +48,7 @@ const (
 type previewTestStore struct {
 	document        ingestion.Document
 	gets            int
+	getKeys         []string
 	putHouseholdIDs []string
 	deletes         []string
 	deleteFailures  int
@@ -59,8 +60,9 @@ func (s *previewTestStore) Put(_ context.Context, householdID, _ string, data []
 	return householdID + "/originals/" + hash, hash, nil
 }
 
-func (s *previewTestStore) Get(_ context.Context, _ string, mimeType string) (ingestion.Document, error) {
+func (s *previewTestStore) Get(_ context.Context, key, mimeType string) (ingestion.Document, error) {
 	s.gets++
+	s.getKeys = append(s.getKeys, key)
 	s.document.MIMEType = mimeType
 	return s.document, nil
 }
@@ -284,6 +286,20 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if _, err := filePart.Write(previewPNG.Bytes()); err != nil {
 		t.Fatal(err)
 	}
+	var analysisPNG bytes.Buffer
+	if err := png.Encode(&analysisPNG, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	analysisPart, err := uploadForm.CreateFormFile("analysisFile", "receipt-analysis.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := analysisPart.Write(analysisPNG.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := uploadForm.WriteField("analysisTransform", `[0.5,0,0.25,0,0.5,0.25,0,0,1]`); err != nil {
+		t.Fatal(err)
+	}
 	if err := uploadForm.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +312,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if uploadResponse.Code != http.StatusAccepted || !strings.Contains(uploadResponse.Body.String(), `"householdId":"`+householdID+`"`) || !strings.Contains(uploadResponse.Body.String(), `"name":"receipt.png"`) {
 		t.Fatalf("household global ID document upload failed: status=%d body=%s", uploadResponse.Code, uploadResponse.Body.String())
 	}
-	if len(store.putHouseholdIDs) != 1 || store.putHouseholdIDs[0] != householdID {
+	if len(store.putHouseholdIDs) != 2 || store.putHouseholdIDs[0] != householdID || store.putHouseholdIDs[1] != householdID {
 		t.Fatalf("document storage received non-canonical household ID: %v", store.putHouseholdIDs)
 	}
 	var uploaded map[string]any
@@ -306,6 +322,21 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	uploadedID, ok := uploaded["id"].(string)
 	if !ok || uploadedID == "" {
 		t.Fatalf("uploaded document ID missing: %s", uploadResponse.Body.String())
+	}
+	uploadedUUID := mustIntegrationUUID(t, uploadedID)
+	uploadedDocument, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(uploadedUUID)))).One(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploadedDocument.ObjectKey == uploadedDocument.AnalysisObjectKey.V || uploadedDocument.MimeType != "image/png" || !uploadedDocument.AnalysisObjectKey.Valid || uploadedDocument.AnalysisMimeType.V != "image/png" {
+		t.Fatalf("original and analysis objects were not stored separately: original=%q/%q analysis=%q/%q", uploadedDocument.ObjectKey, uploadedDocument.MimeType, uploadedDocument.AnalysisObjectKey.V, uploadedDocument.AnalysisMimeType.V)
+	}
+	uploadedContentRequest := httptest.NewRequest(http.MethodGet, "/documents/"+uploadedID+"/content", nil)
+	uploadedContentRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	uploadedContentResponse := httptest.NewRecorder()
+	server.ServeHTTP(uploadedContentResponse, uploadedContentRequest)
+	if uploadedContentResponse.Code != http.StatusOK || len(store.getKeys) != 1 || store.getKeys[0] != uploadedDocument.ObjectKey {
+		t.Fatalf("document content did not read the original object: status=%d keys=%v", uploadedContentResponse.Code, store.getKeys)
 	}
 	documentsRequest = httptest.NewRequest(http.MethodGet, "/documents?householdId="+householdID, nil)
 	documentsRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
@@ -445,6 +476,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if err != nil || len(attachmentJobs) != 2 || attachmentJobs[0].Version != 1 || attachmentJobs[1].Version != 2 || attachmentJobs[1].ID.String() != completedRetry[jobIDJSONKey] {
 		t.Fatalf("reclassification retry history is incorrect: jobs=%#v error=%v", attachmentJobs, err)
 	}
+	store.gets = 0
 	invalidPreviewRequest := httptest.NewRequest(http.MethodGet, "/documents/"+documentID+"/preview?page=-1", nil)
 	invalidPreviewRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	invalidPreviewResponse := httptest.NewRecorder()
@@ -496,8 +528,12 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	unconfirmedDocumentID, unconfirmedJobID := uuid.NewV7().String(), uuid.NewV7().String()
 	unconfirmedDocumentUUID := mustIntegrationUUID(t, unconfirmedDocumentID)
 	unconfirmedJobUUID := mustIntegrationUUID(t, unconfirmedJobID)
-	unconfirmedHash, unconfirmedObjectKey := "access-test:"+unconfirmedDocumentID, householdID+"/originals/"+unconfirmedDocumentID
-	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &unconfirmedDocumentUUID, HouseholdID: &householdUUID, Sha256: &unconfirmedHash, ObjectKey: &unconfirmedObjectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &ownerUUID}).Exec(ctx, executor); err != nil {
+	unconfirmedHash, unconfirmedObjectKey, unconfirmedAnalysisKey := "access-test:"+unconfirmedDocumentID, householdID+"/originals/"+unconfirmedDocumentID, householdID+"/analysis/"+unconfirmedDocumentID
+	analysisMIME := "image/png"
+	analysisObject := sql.Null[string]{V: unconfirmedAnalysisKey, Valid: true}
+	analysisMIMEValue := sql.Null[string]{V: analysisMIME, Valid: true}
+	analysisTransform := sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`[1,0,0,0,1,0,0,0,1]`)}, Valid: true}
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &unconfirmedDocumentUUID, HouseholdID: &householdUUID, Sha256: &unconfirmedHash, ObjectKey: &unconfirmedObjectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &ownerUUID, AnalysisObjectKey: &analysisObject, AnalysisMimeType: &analysisMIMEValue, AnalysisTransform: &analysisTransform}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
 	unconfirmedStatus := "failed"
@@ -510,7 +546,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	deleteRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	deleteResponse = httptest.NewRecorder()
 	server.ServeHTTP(deleteResponse, deleteRequest)
-	if deleteResponse.Code != http.StatusBadGateway || len(store.deletes) != 1 || store.deletes[0] != unconfirmedObjectKey {
+	if deleteResponse.Code != http.StatusBadGateway || len(store.deletes) != 1 || store.deletes[0] != unconfirmedAnalysisKey {
 		t.Fatalf("failed object deletion did not preserve retry state: status=%d object deletions=%v body=%s", deleteResponse.Code, store.deletes, deleteResponse.Body.String())
 	}
 	pendingDocument, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(unconfirmedDocumentUUID)))).One(ctx, executor)
@@ -522,7 +558,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	deleteRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	deleteResponse = httptest.NewRecorder()
 	server.ServeHTTP(deleteResponse, deleteRequest)
-	if deleteResponse.Code != http.StatusNoContent || len(store.deletes) != 2 || store.deletes[1] != unconfirmedObjectKey {
+	if deleteResponse.Code != http.StatusNoContent || len(store.deletes) != 3 || store.deletes[1] != unconfirmedAnalysisKey || store.deletes[2] != unconfirmedObjectKey {
 		t.Fatalf("unconfirmed source document deletion failed: status=%d object deletions=%v body=%s", deleteResponse.Code, store.deletes, deleteResponse.Body.String())
 	}
 	if _, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(unconfirmedDocumentUUID)))).One(ctx, executor); !errors.Is(err, sql.ErrNoRows) {

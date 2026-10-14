@@ -9,6 +9,7 @@ import { EditPurchaseItems, type EditPurchaseItemsCommands } from "./edit-purcha
 export function PurchaseItemsComposer({
   householdId,
   merchant,
+  copiedPurchase,
   household,
   history,
   value,
@@ -20,11 +21,12 @@ export function PurchaseItemsComposer({
   classNames,
   onChange,
   onDirty,
-  onUndoAvailabilityChange,
+  onHistoryAvailabilityChange,
   children,
 }: {
   householdId: string;
   merchant: string;
+  copiedPurchase: Purchase | null;
   household: Household;
   history: Purchase[];
   value: PurchaseItemsValue;
@@ -45,7 +47,7 @@ export function PurchaseItemsComposer({
   };
   onChange: (value: PurchaseItemsValue) => void;
   onDirty: () => void;
-  onUndoAvailabilityChange: (available: boolean) => void;
+  onHistoryAvailabilityChange: (availability: { undo: boolean; redo: boolean }) => void;
   children: ReactNode;
 }) {
   const items: PurchaseDraftItem[] = value.items;
@@ -56,6 +58,7 @@ export function PurchaseItemsComposer({
         <EditPurchaseItems
           householdId={householdId}
           merchant={merchant}
+          copiedPurchase={copiedPurchase}
           household={household}
           history={history}
           value={value}
@@ -70,7 +73,7 @@ export function PurchaseItemsComposer({
           }}
           onChange={onChange}
           onDirty={onDirty}
-          onUndoAvailabilityChange={onUndoAvailabilityChange}
+          onHistoryAvailabilityChange={onHistoryAvailabilityChange}
         />
       </section>
       <div className={`composer-bottom ${classNames.bottom}`}>

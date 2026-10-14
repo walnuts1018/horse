@@ -23,6 +23,10 @@ import {
   selectReceiptEvidenceItem,
   subscribeReceiptEvidenceSelection,
 } from "../model/receipt-evidence-selection";
+import {
+  receiptItemReviewStateLabels,
+  type ReceiptItemReviewState,
+} from "../model/receipt-item-review";
 import { addReceiptPayment, updateReceiptPaymentAmount } from "../model/receipt-payment-split";
 import { parseReceiptReviewAmountDraft } from "../model/receipt-review-amount";
 import { ensureReceiptItemKeys } from "../model/receipt-review-draft";
@@ -31,7 +35,10 @@ import {
   candidateAmountForItem,
   candidateInterpretationLabels,
 } from "../model/tax-candidate-explanation";
-import { effectiveReceiptItemAmount } from "../model/use-import-confirmation";
+import {
+  effectiveReceiptItemAmount,
+  manualAmountOverrideReasonOptions,
+} from "../model/use-import-confirmation";
 import { ProductVariantSelect } from "./product-variant-select";
 
 import styles from "./imports-page.module.css";
@@ -70,6 +77,10 @@ type ReceiptReviewProps = {
   setSelectedCandidates: Dispatch<SetStateAction<Record<string, string>>>;
   manualAmountOverrides: Record<string, Record<string, number>>;
   setManualAmountOverrides: Dispatch<SetStateAction<Record<string, Record<string, number>>>>;
+  receiptItemReviewStates: Record<string, Record<string, ReceiptItemReviewState>>;
+  setReceiptItemReviewStates: Dispatch<
+    SetStateAction<Record<string, Record<string, ReceiptItemReviewState>>>
+  >;
   manualAmountOverrideReasons: Record<string, string | undefined>;
   setManualAmountOverrideReasons: Dispatch<SetStateAction<Record<string, string | undefined>>>;
   pending: boolean;
@@ -100,6 +111,8 @@ export function ReceiptReview({
   setSelectedCandidates,
   manualAmountOverrides,
   setManualAmountOverrides,
+  receiptItemReviewStates,
+  setReceiptItemReviewStates,
   manualAmountOverrideReasons,
   setManualAmountOverrideReasons,
   pending,
@@ -144,6 +157,35 @@ export function ReceiptReview({
           poolId: pool.id,
           weight: pool.defaultShareWeight || 1,
         }));
+  const manualAmountOverrideReason = manualAmountOverrideReasons[selectedDocument.id] ?? "";
+  const selectedManualAmountOverrideReason = manualAmountOverrideReasonOptions.some(
+    (reason) => reason === manualAmountOverrideReason,
+  )
+    ? manualAmountOverrideReason
+    : manualAmountOverrideReason
+      ? "その他"
+      : "";
+  const otherManualAmountOverrideReason =
+    selectedManualAmountOverrideReason === "その他" && manualAmountOverrideReason !== "その他"
+      ? manualAmountOverrideReason
+      : "";
+  const setManualAmountOverrideReason = (reason: string) => {
+    markUnsaved();
+    setManualAmountOverrideReasons((current) => ({
+      ...current,
+      [selectedDocument.id]: reason,
+    }));
+  };
+  const setReceiptItemReviewState = (itemKey: string, state: ReceiptItemReviewState) => {
+    markUnsaved();
+    setReceiptItemReviewStates((current) => ({
+      ...current,
+      [selectedDocument.id]: {
+        ...current[selectedDocument.id],
+        [itemKey]: state,
+      },
+    }));
+  };
   const updateAmountDraftKeys = (previousItems: ExtractedItem[], nextItems: ExtractedItem[]) => {
     const previousKeys = ensureReceiptItemKeys(previousItems);
     const nextKeys = ensureReceiptItemKeys(nextItems);
@@ -167,13 +209,15 @@ export function ReceiptReview({
   };
   return (
     <div className="receipt-review">
-      {reviewTargets.length > 0 && (
+      {(receiptItems.length > 0 || reviewTargets.length > 0) && (
         <section className="panel-heading" aria-label="確認順">
           <div aria-live="polite">
             <span className="eyebrow">
-              確認 {activeReviewIndex + 1}/{reviewTargets.length}
+              {activeReviewTarget
+                ? `確認 ${activeReviewIndex + 1}/${reviewTargets.length}`
+                : `${receiptItems.length}品目を確認しました`}
             </span>
-            <h3>{activeReviewTarget?.label}</h3>
+            <h3>{activeReviewTarget?.label ?? "未確認項目はありません"}</h3>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -328,247 +372,277 @@ export function ReceiptReview({
           </small>
         </div>
         {!receiptItems.length && <p className="receipt-items-empty">品目がありません。</p>}
-        {receiptItems.map((item, index) => (
-          <div
-            className={`receipt-item-review ${amountDifferences.some((difference) => difference.index === index) ? "receipt-item-candidate-difference" : ""} ${evidenceSelection?.itemKey === item.key ? styles.receiptItemEvidenceSelected : ""}`}
-            key={item.key}
-            onFocusCapture={() =>
-              selectReceiptEvidenceItem(selectedDocument.id, {
-                itemKey: item.key ?? `item-${index}`,
-                index,
-                focusEditor: false,
-              })
-            }
-          >
-            <div>
-              <input
-                id={`receipt-review-item-${index}`}
-                aria-label="品名"
-                ref={(element) => {
-                  const itemKey = item.key ?? `item-${index}`;
-                  if (element) itemNameInputs.current.set(itemKey, element);
-                  else itemNameInputs.current.delete(itemKey);
-                  if (item.verification !== "MANUAL" || index !== receiptItems.length - 1) return;
-                  if (!element || !focusNewItem.current) return;
-                  focusNewItem.current = false;
-                  element.focus();
-                }}
-                value={item.name}
-                onChange={(event) =>
-                  editItem(selectedDocument.id, index, { name: event.target.value })
-                }
-              />
-              <small>
-                {item.verification === "MANUAL"
-                  ? "手入力"
-                  : `${item.verification} · ${Math.round(item.confidence * 100)}%`}
-              </small>
-              {amountDifferences.some((difference) => difference.index === index) && (
-                <small className="candidate-difference-label">候補差あり</small>
-              )}
-              <select
-                aria-label={`${item.name}のカテゴリ`}
-                value={item.categoryId != null ? item.categoryId : suggestedCategoryId(item)}
-                onChange={(event) =>
-                  editItem(selectedDocument.id, index, {
-                    categoryId: event.target.value,
-                  })
-                }
-              >
-                <option value="">カテゴリを確認</option>
-                {household.categories
-                  .filter((category) => !category.archived)
-                  .map((category) => (
-                    <option value={category.id} key={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-              </select>
-              <ProductVariantSelect
-                householdId={household.id}
-                itemName={item.name}
-                merchant={selectedDocument.result?.receipt?.merchant ?? ""}
-                value={item.productVariantId ?? ""}
-                onChange={(productVariantId) =>
-                  editItem(selectedDocument.id, index, {
-                    productVariantId: productVariantId || null,
-                  })
-                }
-              />
-              <EditPurchaseItemAllocations
-                allocations={itemAllocationsFor(selectedDocument.id, item.key ?? `item-${index}`)}
-                defaultAllocations={defaultAllocations}
-                pools={household.pools}
-                onChange={(allocations) =>
-                  editItemAllocations(selectedDocument.id, item.key ?? `item-${index}`, allocations)
-                }
-              />
-            </div>
-            <label>
-              帳簿に登録する金額
-              <small>レシート印字額 {yen(item.printedAmount)}</small> ¥
-              {(() => {
-                const itemKey = item.key ?? `item-${index}`;
-                const amount = effectiveReceiptItemAmount(
-                  item,
+        {receiptItems.map((item, index) => {
+          const itemKey = item.key ?? `item-${index}`;
+          const reviewState =
+            receiptItemReviewStates[selectedDocument.id]?.[itemKey] ?? "UNREVIEWED";
+          return (
+            <div
+              className={`receipt-item-review ${amountDifferences.some((difference) => difference.index === index) ? "receipt-item-candidate-difference" : ""} ${evidenceSelection?.itemKey === item.key ? styles.receiptItemEvidenceSelected : ""}`}
+              key={item.key}
+              onFocusCapture={() =>
+                selectReceiptEvidenceItem(selectedDocument.id, {
+                  itemKey: item.key ?? `item-${index}`,
                   index,
-                  selectedDocument.result?.candidates?.find(
-                    (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
-                  )?.amounts,
-                  manualAmountOverrides[selectedDocument.id],
-                );
-                const hasDraft = Object.hasOwn(amountDrafts[selectedDocument.id] ?? {}, itemKey);
-                const draft = amountDrafts[selectedDocument.id]?.[itemKey];
-                return (
-                  <input
-                    aria-label={`${item.name}の帳簿に登録する金額`}
-                    inputMode="numeric"
-                    value={hasDraft ? draft : String(amount)}
-                    onChange={(event) => {
-                      markUnsaved();
-                      setAmountDrafts((current) => ({
-                        ...current,
-                        [selectedDocument.id]: {
-                          ...current[selectedDocument.id],
-                          [itemKey]: event.target.value,
-                        },
-                      }));
-                    }}
-                    onBlur={() => {
-                      if (!hasDraft) return;
-                      const nextAmount = parseReceiptReviewAmountDraft(draft);
-                      if (nextAmount !== null) {
-                        setManualAmountOverrides((current) => ({
+                  focusEditor: false,
+                })
+              }
+            >
+              <div>
+                <input
+                  id={`receipt-review-item-${encodeURIComponent(itemKey)}`}
+                  aria-label="品名"
+                  ref={(element) => {
+                    if (element) itemNameInputs.current.set(itemKey, element);
+                    else itemNameInputs.current.delete(itemKey);
+                    if (item.verification !== "MANUAL" || index !== receiptItems.length - 1) return;
+                    if (!element || !focusNewItem.current) return;
+                    focusNewItem.current = false;
+                    element.focus();
+                  }}
+                  value={item.name}
+                  onChange={(event) =>
+                    editItem(selectedDocument.id, index, { name: event.target.value })
+                  }
+                />
+                <small>
+                  {item.verification === "MANUAL"
+                    ? "手入力"
+                    : `AI認識 ${item.verification} · ${Math.round(item.confidence * 100)}%`}
+                </small>
+                <fieldset className={styles.receiptItemReviewState}>
+                  <legend>
+                    {item.name || `品目${index + 1}`}の確認状況:{" "}
+                    {receiptItemReviewStateLabels[reviewState]}
+                  </legend>
+                  {(reviewState === "UNREVIEWED" || reviewState === "UNRESOLVED") && (
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      onClick={() => setReceiptItemReviewState(itemKey, "CONFIRMED")}
+                    >
+                      {reviewState === "UNRESOLVED" ? "確認済みにする" : "一致を確認"}
+                    </button>
+                  )}
+                  {reviewState !== "UNRESOLVED" && (
+                    <button
+                      type="button"
+                      className="button button-soft"
+                      onClick={() => setReceiptItemReviewState(itemKey, "UNRESOLVED")}
+                    >
+                      未解決にする
+                    </button>
+                  )}
+                </fieldset>
+                {amountDifferences.some((difference) => difference.index === index) && (
+                  <small className="candidate-difference-label">候補差あり</small>
+                )}
+                <select
+                  aria-label={`${item.name}のカテゴリ`}
+                  value={item.categoryId != null ? item.categoryId : suggestedCategoryId(item)}
+                  onChange={(event) =>
+                    editItem(selectedDocument.id, index, {
+                      categoryId: event.target.value,
+                    })
+                  }
+                >
+                  <option value="">カテゴリを確認</option>
+                  {household.categories
+                    .filter((category) => !category.archived)
+                    .map((category) => (
+                      <option value={category.id} key={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                </select>
+                <ProductVariantSelect
+                  householdId={household.id}
+                  itemName={item.name}
+                  merchant={selectedDocument.result?.receipt?.merchant ?? ""}
+                  value={item.productVariantId ?? ""}
+                  onChange={(productVariantId) =>
+                    editItem(selectedDocument.id, index, {
+                      productVariantId: productVariantId || null,
+                    })
+                  }
+                />
+                <EditPurchaseItemAllocations
+                  allocations={itemAllocationsFor(selectedDocument.id, item.key ?? `item-${index}`)}
+                  defaultAllocations={defaultAllocations}
+                  pools={household.pools}
+                  onChange={(allocations) =>
+                    editItemAllocations(
+                      selectedDocument.id,
+                      item.key ?? `item-${index}`,
+                      allocations,
+                    )
+                  }
+                />
+              </div>
+              <label>
+                帳簿に登録する金額
+                <small>レシート印字額 {yen(item.printedAmount)}</small> ¥
+                {(() => {
+                  const amount = effectiveReceiptItemAmount(
+                    item,
+                    index,
+                    selectedDocument.result?.candidates?.find(
+                      (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
+                    )?.amounts,
+                    manualAmountOverrides[selectedDocument.id],
+                  );
+                  const hasDraft = Object.hasOwn(amountDrafts[selectedDocument.id] ?? {}, itemKey);
+                  const draft = amountDrafts[selectedDocument.id]?.[itemKey];
+                  return (
+                    <input
+                      aria-label={`${item.name}の帳簿に登録する金額`}
+                      inputMode="numeric"
+                      value={hasDraft ? draft : String(amount)}
+                      onChange={(event) => {
+                        markUnsaved();
+                        setAmountDrafts((current) => ({
                           ...current,
                           [selectedDocument.id]: {
                             ...current[selectedDocument.id],
-                            [itemKey]: nextAmount,
+                            [itemKey]: event.target.value,
                           },
                         }));
-                        editItem(selectedDocument.id, index, {
-                          grossAmount: nextAmount,
+                      }}
+                      onBlur={() => {
+                        if (!hasDraft) return;
+                        const nextAmount = parseReceiptReviewAmountDraft(draft);
+                        if (nextAmount !== null) {
+                          setManualAmountOverrides((current) => ({
+                            ...current,
+                            [selectedDocument.id]: {
+                              ...current[selectedDocument.id],
+                              [itemKey]: nextAmount,
+                            },
+                          }));
+                          editItem(selectedDocument.id, index, {
+                            grossAmount: nextAmount,
+                          });
+                        }
+                        setAmountDrafts((current) => {
+                          const documentDrafts = { ...current[selectedDocument.id] };
+                          delete documentDrafts[itemKey];
+                          return { ...current, [selectedDocument.id]: documentDrafts };
                         });
-                      }
-                      setAmountDrafts((current) => {
-                        const documentDrafts = { ...current[selectedDocument.id] };
-                        delete documentDrafts[itemKey];
-                        return { ...current, [selectedDocument.id]: documentDrafts };
-                      });
-                    }}
+                      }}
+                    />
+                  );
+                })()}
+                {item.verification === "MANUAL" && item.grossAmount < 1 && (
+                  <small role="alert">1円以上を入力してください。</small>
+                )}
+              </label>
+              <details className="receipt-measure-details">
+                <summary>数量・印字単価</summary>
+                <label>
+                  数量の分子
+                  <input
+                    inputMode="numeric"
+                    value={item.quantityNumerator ?? ""}
+                    onChange={(event) =>
+                      editItem(selectedDocument.id, index, {
+                        quantityNumerator: event.target.value || null,
+                      })
+                    }
                   />
-                );
-              })()}
-              {item.verification === "MANUAL" && item.grossAmount < 1 && (
-                <small role="alert">1円以上を入力してください。</small>
-              )}
-            </label>
-            <details className="receipt-measure-details">
-              <summary>数量・印字単価</summary>
-              <label>
-                数量の分子
-                <input
-                  inputMode="numeric"
-                  value={item.quantityNumerator ?? ""}
-                  onChange={(event) =>
-                    editItem(selectedDocument.id, index, {
-                      quantityNumerator: event.target.value || null,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                数量の分母
-                <input
-                  inputMode="numeric"
-                  value={item.quantityDenominator ?? ""}
-                  onChange={(event) =>
-                    editItem(selectedDocument.id, index, {
-                      quantityDenominator: event.target.value || null,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                数量単位
-                <input
-                  value={item.quantityUnit ?? ""}
-                  onChange={(event) =>
-                    editItem(selectedDocument.id, index, {
-                      quantityUnit: event.target.value || null,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                印字単価
-                <input
-                  inputMode="numeric"
-                  value={item.printedUnitPriceYen ?? ""}
-                  onChange={(event) =>
-                    editItem(selectedDocument.id, index, {
-                      printedUnitPriceYen: event.target.value
-                        ? Number(event.target.value.replace(/\D/g, ""))
-                        : null,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                基準量の分子
-                <input
-                  inputMode="numeric"
-                  value={item.printedUnitPriceQuantityNumerator ?? ""}
-                  onChange={(event) =>
-                    editItem(selectedDocument.id, index, {
-                      printedUnitPriceQuantityNumerator: event.target.value || null,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                基準量の分母
-                <input
-                  inputMode="numeric"
-                  value={item.printedUnitPriceQuantityDenominator ?? ""}
-                  onChange={(event) =>
-                    editItem(selectedDocument.id, index, {
-                      printedUnitPriceQuantityDenominator: event.target.value || null,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                印字単位
-                <input
-                  value={item.printedUnitPriceUnit ?? ""}
-                  onChange={(event) =>
-                    editItem(selectedDocument.id, index, {
-                      printedUnitPriceUnit: event.target.value || null,
-                    })
-                  }
-                />
-              </label>
-            </details>
-            <button
-              className="text-button receipt-item-delete"
-              type="button"
-              aria-label={`${item.name || `品目${index + 1}`}を削除`}
-              onClick={() => {
-                const itemKey = item.key ?? `item-${index}`;
-                const keyedItems = ensureReceiptItemKeys(receiptItems);
-                const stableItemKey = keyedItems[index]?.key ?? itemKey;
-                updateAmountDraftKeys(
-                  receiptItems,
-                  keyedItems.filter((entry) => entry.key !== stableItemKey),
-                );
-                deleteItem(selectedDocument.id, stableItemKey);
-              }}
-            >
-              <X size={16} />
-              品目を削除
-            </button>
-          </div>
-        ))}
+                </label>
+                <label>
+                  数量の分母
+                  <input
+                    inputMode="numeric"
+                    value={item.quantityDenominator ?? ""}
+                    onChange={(event) =>
+                      editItem(selectedDocument.id, index, {
+                        quantityDenominator: event.target.value || null,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  数量単位
+                  <input
+                    value={item.quantityUnit ?? ""}
+                    onChange={(event) =>
+                      editItem(selectedDocument.id, index, {
+                        quantityUnit: event.target.value || null,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  印字単価
+                  <input
+                    inputMode="numeric"
+                    value={item.printedUnitPriceYen ?? ""}
+                    onChange={(event) =>
+                      editItem(selectedDocument.id, index, {
+                        printedUnitPriceYen: event.target.value
+                          ? Number(event.target.value.replace(/\D/g, ""))
+                          : null,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  基準量の分子
+                  <input
+                    inputMode="numeric"
+                    value={item.printedUnitPriceQuantityNumerator ?? ""}
+                    onChange={(event) =>
+                      editItem(selectedDocument.id, index, {
+                        printedUnitPriceQuantityNumerator: event.target.value || null,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  基準量の分母
+                  <input
+                    inputMode="numeric"
+                    value={item.printedUnitPriceQuantityDenominator ?? ""}
+                    onChange={(event) =>
+                      editItem(selectedDocument.id, index, {
+                        printedUnitPriceQuantityDenominator: event.target.value || null,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  印字単位
+                  <input
+                    value={item.printedUnitPriceUnit ?? ""}
+                    onChange={(event) =>
+                      editItem(selectedDocument.id, index, {
+                        printedUnitPriceUnit: event.target.value || null,
+                      })
+                    }
+                  />
+                </label>
+              </details>
+              <button
+                className="text-button receipt-item-delete"
+                type="button"
+                aria-label={`${item.name || `品目${index + 1}`}を削除`}
+                onClick={() => {
+                  const keyedItems = ensureReceiptItemKeys(receiptItems);
+                  const stableItemKey = keyedItems[index]?.key ?? itemKey;
+                  updateAmountDraftKeys(
+                    receiptItems,
+                    keyedItems.filter((entry) => entry.key !== stableItemKey),
+                  );
+                  deleteItem(selectedDocument.id, stableItemKey);
+                }}
+              >
+                <X size={16} />
+                品目を削除
+              </button>
+            </div>
+          );
+        })}
         <button
           type="button"
           className="text-button receipt-item-add"
@@ -674,20 +748,35 @@ export function ReceiptReview({
                 (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
               )?.consistent
             : !result.balanced)) && (
-          <label className="field-group" id="receipt-review-amount-reason" tabIndex={-1}>
-            金額の訂正理由
-            <input
-              maxLength={500}
-              value={manualAmountOverrideReasons[selectedDocument.id] ?? ""}
-              onChange={(event) => {
-                markUnsaved();
-                setManualAmountOverrideReasons((current) => ({
-                  ...current,
-                  [selectedDocument.id]: event.target.value,
-                }));
-              }}
-            />
-          </label>
+          <div className="field-group" id="receipt-review-amount-reason" tabIndex={-1}>
+            <fieldset className={styles.amountReasonOptions}>
+              <legend>金額の訂正理由</legend>
+              {manualAmountOverrideReasonOptions.map((reason) => (
+                <button
+                  className={`button ${selectedManualAmountOverrideReason === reason ? "button-primary" : "button-soft"}`}
+                  type="button"
+                  aria-pressed={selectedManualAmountOverrideReason === reason}
+                  key={reason}
+                  onClick={() => setManualAmountOverrideReason(reason)}
+                >
+                  {reason}
+                </button>
+              ))}
+            </fieldset>
+            {selectedManualAmountOverrideReason === "その他" && (
+              <label>
+                その他の内容
+                <input
+                  maxLength={500}
+                  value={otherManualAmountOverrideReason}
+                  placeholder="補足を入力（任意）"
+                  onChange={(event) =>
+                    setManualAmountOverrideReason(event.target.value || "その他")
+                  }
+                />
+              </label>
+            )}
+          </div>
         )}
         <div className="review-total">
           <span>帳簿に登録する金額の合計</span>

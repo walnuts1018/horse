@@ -29,16 +29,19 @@ import (
 
 // SourceDocument is an object representing the database table.
 type SourceDocument struct {
-	ID             uuid.UUID                   `db:"id,pk" `
-	HouseholdID    uuid.UUID                   `db:"household_id" `
-	Sha256         string                      `db:"sha256" `
-	ObjectKey      string                      `db:"object_key" `
-	MimeType       string                      `db:"mime_type" `
-	SourceKind     string                      `db:"source_kind" `
-	Metadata       types.JSON[json.RawMessage] `db:"metadata" `
-	CreatedBy      uuid.UUID                   `db:"created_by" `
-	CreatedAt      time.Time                   `db:"created_at" `
-	SourceFilename sql.Null[string]            `db:"source_filename" `
+	ID                uuid.UUID                             `db:"id,pk" `
+	HouseholdID       uuid.UUID                             `db:"household_id" `
+	Sha256            string                                `db:"sha256" `
+	ObjectKey         string                                `db:"object_key" `
+	MimeType          string                                `db:"mime_type" `
+	SourceKind        string                                `db:"source_kind" `
+	Metadata          types.JSON[json.RawMessage]           `db:"metadata" `
+	CreatedBy         uuid.UUID                             `db:"created_by" `
+	CreatedAt         time.Time                             `db:"created_at" `
+	SourceFilename    sql.Null[string]                      `db:"source_filename" `
+	AnalysisObjectKey sql.Null[string]                      `db:"analysis_object_key" `
+	AnalysisMimeType  sql.Null[string]                      `db:"analysis_mime_type" `
+	AnalysisTransform sql.Null[types.JSON[json.RawMessage]] `db:"analysis_transform" `
 
 	R sourceDocumentR `db:"-" `
 
@@ -85,7 +88,7 @@ type sourceDocumentRLoaded struct {
 
 func buildSourceDocumentColumns(tableName string) sourceDocumentColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "sha256", "object_key", "mime_type", "source_kind", "metadata", "created_by", "created_at", "source_filename",
+		"id", "household_id", "sha256", "object_key", "mime_type", "source_kind", "metadata", "created_by", "created_at", "source_filename", "analysis_object_key", "analysis_mime_type", "analysis_transform",
 	)
 
 	if tableName != "" {
@@ -93,34 +96,40 @@ func buildSourceDocumentColumns(tableName string) sourceDocumentColumns {
 	}
 
 	return sourceDocumentColumns{
-		ColumnsExpr:    columnsExpr,
-		tableAlias:     tableName,
-		ID:             buildSourceDocumentColumn(tableName, "id"),
-		HouseholdID:    buildSourceDocumentColumn(tableName, "household_id"),
-		Sha256:         buildSourceDocumentColumn(tableName, "sha256"),
-		ObjectKey:      buildSourceDocumentColumn(tableName, "object_key"),
-		MimeType:       buildSourceDocumentColumn(tableName, "mime_type"),
-		SourceKind:     buildSourceDocumentColumn(tableName, "source_kind"),
-		Metadata:       buildSourceDocumentColumn(tableName, "metadata"),
-		CreatedBy:      buildSourceDocumentColumn(tableName, "created_by"),
-		CreatedAt:      buildSourceDocumentColumn(tableName, "created_at"),
-		SourceFilename: buildSourceDocumentColumn(tableName, "source_filename"),
+		ColumnsExpr:       columnsExpr,
+		tableAlias:        tableName,
+		ID:                buildSourceDocumentColumn(tableName, "id"),
+		HouseholdID:       buildSourceDocumentColumn(tableName, "household_id"),
+		Sha256:            buildSourceDocumentColumn(tableName, "sha256"),
+		ObjectKey:         buildSourceDocumentColumn(tableName, "object_key"),
+		MimeType:          buildSourceDocumentColumn(tableName, "mime_type"),
+		SourceKind:        buildSourceDocumentColumn(tableName, "source_kind"),
+		Metadata:          buildSourceDocumentColumn(tableName, "metadata"),
+		CreatedBy:         buildSourceDocumentColumn(tableName, "created_by"),
+		CreatedAt:         buildSourceDocumentColumn(tableName, "created_at"),
+		SourceFilename:    buildSourceDocumentColumn(tableName, "source_filename"),
+		AnalysisObjectKey: buildSourceDocumentColumn(tableName, "analysis_object_key"),
+		AnalysisMimeType:  buildSourceDocumentColumn(tableName, "analysis_mime_type"),
+		AnalysisTransform: buildSourceDocumentColumn(tableName, "analysis_transform"),
 	}
 }
 
 type sourceDocumentColumns struct {
 	expr.ColumnsExpr
-	tableAlias     string
-	ID             sourceDocumentColumn
-	HouseholdID    sourceDocumentColumn
-	Sha256         sourceDocumentColumn
-	ObjectKey      sourceDocumentColumn
-	MimeType       sourceDocumentColumn
-	SourceKind     sourceDocumentColumn
-	Metadata       sourceDocumentColumn
-	CreatedBy      sourceDocumentColumn
-	CreatedAt      sourceDocumentColumn
-	SourceFilename sourceDocumentColumn
+	tableAlias        string
+	ID                sourceDocumentColumn
+	HouseholdID       sourceDocumentColumn
+	Sha256            sourceDocumentColumn
+	ObjectKey         sourceDocumentColumn
+	MimeType          sourceDocumentColumn
+	SourceKind        sourceDocumentColumn
+	Metadata          sourceDocumentColumn
+	CreatedBy         sourceDocumentColumn
+	CreatedAt         sourceDocumentColumn
+	SourceFilename    sourceDocumentColumn
+	AnalysisObjectKey sourceDocumentColumn
+	AnalysisMimeType  sourceDocumentColumn
+	AnalysisTransform sourceDocumentColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -166,20 +175,23 @@ func (c sourceDocumentColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type SourceDocumentSetter struct {
-	ID             *uuid.UUID                   `db:"id,pk" `
-	HouseholdID    *uuid.UUID                   `db:"household_id" `
-	Sha256         *string                      `db:"sha256" `
-	ObjectKey      *string                      `db:"object_key" `
-	MimeType       *string                      `db:"mime_type" `
-	SourceKind     *string                      `db:"source_kind" `
-	Metadata       *types.JSON[json.RawMessage] `db:"metadata" `
-	CreatedBy      *uuid.UUID                   `db:"created_by" `
-	CreatedAt      *time.Time                   `db:"created_at" `
-	SourceFilename *sql.Null[string]            `db:"source_filename" `
+	ID                *uuid.UUID                             `db:"id,pk" `
+	HouseholdID       *uuid.UUID                             `db:"household_id" `
+	Sha256            *string                                `db:"sha256" `
+	ObjectKey         *string                                `db:"object_key" `
+	MimeType          *string                                `db:"mime_type" `
+	SourceKind        *string                                `db:"source_kind" `
+	Metadata          *types.JSON[json.RawMessage]           `db:"metadata" `
+	CreatedBy         *uuid.UUID                             `db:"created_by" `
+	CreatedAt         *time.Time                             `db:"created_at" `
+	SourceFilename    *sql.Null[string]                      `db:"source_filename" `
+	AnalysisObjectKey *sql.Null[string]                      `db:"analysis_object_key" `
+	AnalysisMimeType  *sql.Null[string]                      `db:"analysis_mime_type" `
+	AnalysisTransform *sql.Null[types.JSON[json.RawMessage]] `db:"analysis_transform" `
 }
 
 func (s SourceDocumentSetter) SetColumns() []string {
-	vals := make([]string, 0, 10)
+	vals := make([]string, 0, 13)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -209,6 +221,15 @@ func (s SourceDocumentSetter) SetColumns() []string {
 	}
 	if s.SourceFilename != nil {
 		vals = append(vals, "source_filename")
+	}
+	if s.AnalysisObjectKey != nil {
+		vals = append(vals, "analysis_object_key")
+	}
+	if s.AnalysisMimeType != nil {
+		vals = append(vals, "analysis_mime_type")
+	}
+	if s.AnalysisTransform != nil {
+		vals = append(vals, "analysis_transform")
 	}
 	return vals
 }
@@ -292,6 +313,33 @@ func (s SourceDocumentSetter) Overwrite(t *SourceDocument) {
 				return *new(sql.Null[string])
 			}
 			v := s.SourceFilename
+			return *v
+		}()
+	}
+	if s.AnalysisObjectKey != nil {
+		t.AnalysisObjectKey = func() sql.Null[string] {
+			if s.AnalysisObjectKey == nil {
+				return *new(sql.Null[string])
+			}
+			v := s.AnalysisObjectKey
+			return *v
+		}()
+	}
+	if s.AnalysisMimeType != nil {
+		t.AnalysisMimeType = func() sql.Null[string] {
+			if s.AnalysisMimeType == nil {
+				return *new(sql.Null[string])
+			}
+			v := s.AnalysisMimeType
+			return *v
+		}()
+	}
+	if s.AnalysisTransform != nil {
+		t.AnalysisTransform = func() sql.Null[types.JSON[json.RawMessage]] {
+			if s.AnalysisTransform == nil {
+				return *new(sql.Null[types.JSON[json.RawMessage]])
+			}
+			v := s.AnalysisTransform
 			return *v
 		}()
 	}
@@ -404,6 +452,39 @@ func (s *SourceDocumentSetter) Apply(q *dialect.InsertQuery) {
 				v := s.SourceFilename
 				return *v
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.AnalysisObjectKey == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[string] {
+				if s.AnalysisObjectKey == nil {
+					return *new(sql.Null[string])
+				}
+				v := s.AnalysisObjectKey
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.AnalysisMimeType == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[string] {
+				if s.AnalysisMimeType == nil {
+					return *new(sql.Null[string])
+				}
+				v := s.AnalysisMimeType
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.AnalysisTransform == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[types.JSON[json.RawMessage]] {
+				if s.AnalysisTransform == nil {
+					return *new(sql.Null[types.JSON[json.RawMessage]])
+				}
+				v := s.AnalysisTransform
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -412,7 +493,7 @@ func (s SourceDocumentSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s SourceDocumentSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 10)
+	exprs := make([]bob.Expression, 0, 13)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -484,6 +565,27 @@ func (s SourceDocumentSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.AnalysisObjectKey != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "analysis_object_key")...),
+			psql.Arg(s.AnalysisObjectKey),
+		}})
+	}
+
+	if s.AnalysisMimeType != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "analysis_mime_type")...),
+			psql.Arg(s.AnalysisMimeType),
+		}})
+	}
+
+	if s.AnalysisTransform != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "analysis_transform")...),
+			psql.Arg(s.AnalysisTransform),
+		}})
+	}
+
 	return exprs
 }
 
@@ -494,7 +596,7 @@ func sourceDocumentScanMapper(ctx context.Context, cols []string) (scan.BeforeFu
 		idx int
 		dst func(o *SourceDocument) any
 	}
-	targets := make([]target, 0, 10)
+	targets := make([]target, 0, 13)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -517,6 +619,12 @@ func sourceDocumentScanMapper(ctx context.Context, cols []string) (scan.BeforeFu
 			targets = append(targets, target{i, func(o *SourceDocument) any { return &o.CreatedAt }})
 		case "source_filename":
 			targets = append(targets, target{i, func(o *SourceDocument) any { return &o.SourceFilename }})
+		case "analysis_object_key":
+			targets = append(targets, target{i, func(o *SourceDocument) any { return &o.AnalysisObjectKey }})
+		case "analysis_mime_type":
+			targets = append(targets, target{i, func(o *SourceDocument) any { return &o.AnalysisMimeType }})
+		case "analysis_transform":
+			targets = append(targets, target{i, func(o *SourceDocument) any { return &o.AnalysisTransform }})
 		}
 	}
 
@@ -1465,18 +1573,21 @@ func (sourceDocument0 *SourceDocument) AttachHousehold(ctx context.Context, exec
 }
 
 type sourceDocumentWhere[Q psql.Filterable] struct {
-	cols           sourceDocumentColumns
-	ID             psql.WhereMod[Q, uuid.UUID]
-	HouseholdID    psql.WhereMod[Q, uuid.UUID]
-	Sha256         psql.WhereMod[Q, string]
-	ObjectKey      psql.WhereMod[Q, string]
-	MimeType       psql.WhereMod[Q, string]
-	SourceKind     psql.WhereMod[Q, string]
-	Metadata       psql.WhereMod[Q, types.JSON[json.RawMessage]]
-	CreatedBy      psql.WhereMod[Q, uuid.UUID]
-	CreatedAt      psql.WhereMod[Q, time.Time]
-	SourceFilename psql.WhereNullMod[Q, string]
-	R              sourceDocumentWhereR[Q]
+	cols              sourceDocumentColumns
+	ID                psql.WhereMod[Q, uuid.UUID]
+	HouseholdID       psql.WhereMod[Q, uuid.UUID]
+	Sha256            psql.WhereMod[Q, string]
+	ObjectKey         psql.WhereMod[Q, string]
+	MimeType          psql.WhereMod[Q, string]
+	SourceKind        psql.WhereMod[Q, string]
+	Metadata          psql.WhereMod[Q, types.JSON[json.RawMessage]]
+	CreatedBy         psql.WhereMod[Q, uuid.UUID]
+	CreatedAt         psql.WhereMod[Q, time.Time]
+	SourceFilename    psql.WhereNullMod[Q, string]
+	AnalysisObjectKey psql.WhereNullMod[Q, string]
+	AnalysisMimeType  psql.WhereNullMod[Q, string]
+	AnalysisTransform psql.WhereNullMod[Q, types.JSON[json.RawMessage]]
+	R                 sourceDocumentWhereR[Q]
 }
 
 func (sourceDocumentWhere[Q]) AliasedAs(alias string) sourceDocumentWhere[Q] {
@@ -1485,18 +1596,21 @@ func (sourceDocumentWhere[Q]) AliasedAs(alias string) sourceDocumentWhere[Q] {
 
 func buildSourceDocumentWhere[Q psql.Filterable](cols sourceDocumentColumns) sourceDocumentWhere[Q] {
 	return sourceDocumentWhere[Q]{
-		cols:           cols,
-		ID:             psql.Where[Q, uuid.UUID](cols.ID.Expression),
-		HouseholdID:    psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
-		Sha256:         psql.Where[Q, string](cols.Sha256.Expression),
-		ObjectKey:      psql.Where[Q, string](cols.ObjectKey.Expression),
-		MimeType:       psql.Where[Q, string](cols.MimeType.Expression),
-		SourceKind:     psql.Where[Q, string](cols.SourceKind.Expression),
-		Metadata:       psql.Where[Q, types.JSON[json.RawMessage]](cols.Metadata.Expression),
-		CreatedBy:      psql.Where[Q, uuid.UUID](cols.CreatedBy.Expression),
-		CreatedAt:      psql.Where[Q, time.Time](cols.CreatedAt.Expression),
-		SourceFilename: psql.WhereNull[Q, string](cols.SourceFilename.Expression),
-		R:              sourceDocumentWhereR[Q]{cols: cols},
+		cols:              cols,
+		ID:                psql.Where[Q, uuid.UUID](cols.ID.Expression),
+		HouseholdID:       psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		Sha256:            psql.Where[Q, string](cols.Sha256.Expression),
+		ObjectKey:         psql.Where[Q, string](cols.ObjectKey.Expression),
+		MimeType:          psql.Where[Q, string](cols.MimeType.Expression),
+		SourceKind:        psql.Where[Q, string](cols.SourceKind.Expression),
+		Metadata:          psql.Where[Q, types.JSON[json.RawMessage]](cols.Metadata.Expression),
+		CreatedBy:         psql.Where[Q, uuid.UUID](cols.CreatedBy.Expression),
+		CreatedAt:         psql.Where[Q, time.Time](cols.CreatedAt.Expression),
+		SourceFilename:    psql.WhereNull[Q, string](cols.SourceFilename.Expression),
+		AnalysisObjectKey: psql.WhereNull[Q, string](cols.AnalysisObjectKey.Expression),
+		AnalysisMimeType:  psql.WhereNull[Q, string](cols.AnalysisMimeType.Expression),
+		AnalysisTransform: psql.WhereNull[Q, types.JSON[json.RawMessage]](cols.AnalysisTransform.Expression),
+		R:                 sourceDocumentWhereR[Q]{cols: cols},
 	}
 }
 
@@ -1626,16 +1740,19 @@ func (w sourceDocumentWhereR[Q]) HasHousehold(filters ...bob.Mod[*dialect.Select
 // on a LEFT JOIN miss every column comes back NULL, so each field uses the
 // nullable version of the column type even when the column itself is NOT NULL.
 type sourceDocumentPreloadBuf struct {
-	ID             sql.Null[uuid.UUID]
-	HouseholdID    sql.Null[uuid.UUID]
-	Sha256         sql.Null[string]
-	ObjectKey      sql.Null[string]
-	MimeType       sql.Null[string]
-	SourceKind     sql.Null[string]
-	Metadata       sql.Null[types.JSON[json.RawMessage]]
-	CreatedBy      sql.Null[uuid.UUID]
-	CreatedAt      sql.Null[time.Time]
-	SourceFilename sql.Null[string]
+	ID                sql.Null[uuid.UUID]
+	HouseholdID       sql.Null[uuid.UUID]
+	Sha256            sql.Null[string]
+	ObjectKey         sql.Null[string]
+	MimeType          sql.Null[string]
+	SourceKind        sql.Null[string]
+	Metadata          sql.Null[types.JSON[json.RawMessage]]
+	CreatedBy         sql.Null[uuid.UUID]
+	CreatedAt         sql.Null[time.Time]
+	SourceFilename    sql.Null[string]
+	AnalysisObjectKey sql.Null[string]
+	AnalysisMimeType  sql.Null[string]
+	AnalysisTransform sql.Null[types.JSON[json.RawMessage]]
 }
 
 // sourceDocumentScanMapperNullable maps the preloaded sourceDocument
@@ -1650,7 +1767,7 @@ func sourceDocumentScanMapperNullable(prefix string) scan.Mapper[*SourceDocument
 			idx int
 			dst func(b *sourceDocumentPreloadBuf) any
 		}
-		targets := make([]target, 0, 10)
+		targets := make([]target, 0, 13)
 		for i, col := range cols {
 			name, ok := strings.CutPrefix(col, prefix)
 			if !ok {
@@ -1677,6 +1794,12 @@ func sourceDocumentScanMapperNullable(prefix string) scan.Mapper[*SourceDocument
 				targets = append(targets, target{i, func(b *sourceDocumentPreloadBuf) any { return &b.CreatedAt }})
 			case "source_filename":
 				targets = append(targets, target{i, func(b *sourceDocumentPreloadBuf) any { return &b.SourceFilename }})
+			case "analysis_object_key":
+				targets = append(targets, target{i, func(b *sourceDocumentPreloadBuf) any { return &b.AnalysisObjectKey }})
+			case "analysis_mime_type":
+				targets = append(targets, target{i, func(b *sourceDocumentPreloadBuf) any { return &b.AnalysisMimeType }})
+			case "analysis_transform":
+				targets = append(targets, target{i, func(b *sourceDocumentPreloadBuf) any { return &b.AnalysisTransform }})
 			}
 		}
 
@@ -1708,7 +1831,10 @@ func sourceDocumentScanMapperNullable(prefix string) scan.Mapper[*SourceDocument
 					!(buf.Metadata.Valid) &&
 					!(buf.CreatedBy.Valid) &&
 					!(buf.CreatedAt.Valid) &&
-					!(buf.SourceFilename.Valid) {
+					!(buf.SourceFilename.Valid) &&
+					!(buf.AnalysisObjectKey.Valid) &&
+					!(buf.AnalysisMimeType.Valid) &&
+					!(buf.AnalysisTransform.Valid) {
 					return nil, nil
 				}
 
@@ -1741,6 +1867,9 @@ func sourceDocumentScanMapperNullable(prefix string) scan.Mapper[*SourceDocument
 					o.CreatedAt = buf.CreatedAt.V
 				}
 				o.SourceFilename = buf.SourceFilename
+				o.AnalysisObjectKey = buf.AnalysisObjectKey
+				o.AnalysisMimeType = buf.AnalysisMimeType
+				o.AnalysisTransform = buf.AnalysisTransform
 				return o, nil
 			}
 	}

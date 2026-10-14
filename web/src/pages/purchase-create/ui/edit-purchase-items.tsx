@@ -17,6 +17,14 @@ import { readProductSuggestions, type ProductSuggestion } from "../../../entitie
 import { type Household, type Purchase } from "../../../shared/api";
 import { parsePastedPurchaseItems } from "../model/pasted-purchase-items";
 import { productSuggestionsForQuery } from "../model/product-suggestions";
+import {
+  emptyPurchaseEditHistory,
+  recordPurchaseEdit,
+  redoPurchaseEdit,
+  undoPurchaseEdit,
+  type PurchaseEditHistory,
+  type PurchaseEditSnapshot,
+} from "../model/purchase-edit-history";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
 import { PurchaseItemEntry } from "./purchase-item-entry";
 import { PurchaseItemsGrid } from "./purchase-items-grid";
@@ -30,7 +38,9 @@ const purchaseItemSchema = z.object({
 
 export type EditPurchaseItemsCommands = {
   reset: () => void;
-  undo: () => void;
+  undo: () => PurchaseEditSnapshot | null;
+  redo: () => PurchaseEditSnapshot | null;
+  invalidateRedo: () => void;
   copy: (purchase: Purchase) => void;
   prepareForSubmit: () => PurchaseDraftItem[] | null;
 };
@@ -38,6 +48,7 @@ export type EditPurchaseItemsCommands = {
 export function EditPurchaseItems({
   householdId,
   merchant,
+  copiedPurchase,
   household,
   history,
   value,
@@ -45,10 +56,11 @@ export function EditPurchaseItems({
   classNames,
   onChange,
   onDirty,
-  onUndoAvailabilityChange,
+  onHistoryAvailabilityChange,
 }: {
   householdId: string;
   merchant: string;
+  copiedPurchase: Purchase | null;
   household: Household;
   history: Purchase[];
   value: PurchaseItemsValue;
@@ -63,10 +75,11 @@ export function EditPurchaseItems({
   };
   onChange: (value: PurchaseItemsValue) => void;
   onDirty: () => void;
-  onUndoAvailabilityChange: (available: boolean) => void;
+  onHistoryAvailabilityChange: (availability: { undo: boolean; redo: boolean }) => void;
 }) {
   const [draft, setDraft] = useState(value);
   const draftRef = useRef(draft);
+  const allocationUndoGroup = useRef<{ key: string; timer: number } | null>(null);
   const onChangeRef = useRef(onChange);
   const selectedProductVariantId = draft.selectedProductVariantId;
   const [productSuggestionResponse, setProductSuggestionResponse] = useState<{
@@ -76,7 +89,7 @@ export function EditPurchaseItems({
   const productSuggestions = productSuggestionsForQuery(draft.itemName, productSuggestionResponse);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
-  const [undoItems, setUndoItems] = useState<PurchaseDraftItem[] | null>(null);
+  const historyRef = useRef<PurchaseEditHistory>(emptyPurchaseEditHistory());
   const [selectedItemKeys, setSelectedItemKeys] = useState<Set<string>>(() => new Set());
   const [mobileSelectionMode, setMobileSelectionMode] = useState(false);
   const [bulkCategory, setBulkCategory] = useState("");
@@ -102,6 +115,10 @@ export function EditPurchaseItems({
           })),
     [household.defaultAllocation, household.pools],
   );
+  const clearAllocationUndoGroup = useCallback(() => {
+    if (allocationUndoGroup.current) window.clearTimeout(allocationUndoGroup.current.timer);
+    allocationUndoGroup.current = null;
+  }, []);
   const isEnabledCategory = useCallback(
     (id: string | null | undefined): id is string =>
       Boolean(id && enabledCategories.some((category) => category.id === id)),
@@ -126,11 +143,21 @@ export function EditPurchaseItems({
     onChangeRef.current = onChange;
   });
 
-  const update = useCallback((next: PurchaseItemsValue) => {
-    draftRef.current = next;
-    setDraft(next);
-    onChangeRef.current(next);
-  }, []);
+  const invalidateRedo = useCallback(() => {
+    if (!historyRef.current.future.length) return;
+    historyRef.current = { ...historyRef.current, future: [] };
+    onHistoryAvailabilityChange({ undo: historyRef.current.past.length > 0, redo: false });
+  }, [onHistoryAvailabilityChange]);
+  const update = useCallback(
+    (next: PurchaseItemsValue, preserveRedo = false, preserveAllocationGroup = false) => {
+      if (!preserveAllocationGroup) clearAllocationUndoGroup();
+      if (!preserveRedo) invalidateRedo();
+      draftRef.current = next;
+      setDraft(next);
+      onChangeRef.current(next);
+    },
+    [clearAllocationUndoGroup, invalidateRedo],
+  );
   const patchDraft = useCallback(
     (patch: Partial<PurchaseItemsValue>) => update({ ...draftRef.current, ...patch }),
     [update],
@@ -152,26 +179,94 @@ export function EditPurchaseItems({
     (items: PurchaseDraftItem[]) => patchDraft({ items }),
     [patchDraft],
   );
-  const rememberUndo = useCallback(
-    (items: PurchaseDraftItem[] | null) => {
-      setUndoItems(items);
-      onUndoAvailabilityChange(Boolean(items));
+  const updateHistory = useCallback(
+    (nextHistory: PurchaseEditHistory) => {
+      historyRef.current = nextHistory;
+      onHistoryAvailabilityChange({
+        undo: nextHistory.past.length > 0,
+        redo: nextHistory.future.length > 0,
+      });
     },
-    [onUndoAvailabilityChange],
+    [onHistoryAvailabilityChange],
+  );
+  const recordUndo = useCallback(
+    (snapshot: PurchaseEditSnapshot) => {
+      clearAllocationUndoGroup();
+      updateHistory(recordPurchaseEdit(historyRef.current, snapshot));
+    },
+    [clearAllocationUndoGroup, updateHistory],
+  );
+  const recordAllocationUndo = useCallback(
+    (key: string, snapshot: PurchaseEditSnapshot) => {
+      const group = allocationUndoGroup.current;
+      if (!group || group.key !== key) {
+        clearAllocationUndoGroup();
+        updateHistory(recordPurchaseEdit(historyRef.current, snapshot));
+      } else {
+        window.clearTimeout(group.timer);
+      }
+      allocationUndoGroup.current = {
+        key,
+        timer: window.setTimeout(() => {
+          allocationUndoGroup.current = null;
+        }, 1000),
+      };
+    },
+    [clearAllocationUndoGroup, updateHistory],
   );
   const reset = useCallback(() => {
     const empty = emptyPurchaseItemsValue();
-    rememberUndo(null);
+    clearAllocationUndoGroup();
+    updateHistory(emptyPurchaseEditHistory());
     setProductSuggestionResponse(null);
     update(empty);
-  }, [rememberUndo, update]);
+  }, [clearAllocationUndoGroup, updateHistory, update]);
   const undo = useCallback(() => {
-    const previousItems = undoItems;
-    if (!previousItems) return;
+    clearAllocationUndoGroup();
+    const transition = undoPurchaseEdit(historyRef.current, {
+      items: draftRef.current.items,
+      categoryId: draftRef.current.categoryId,
+      merchant,
+      copiedPurchase,
+    });
+    if (!transition) return null;
     markDirty();
-    replaceItems(previousItems);
-    rememberUndo(null);
-  }, [undoItems, markDirty, replaceItems, rememberUndo]);
+    updateHistory(transition.history);
+    update(
+      {
+        ...draftRef.current,
+        items: transition.snapshot.items,
+        ...(Object.hasOwn(transition.snapshot, "categoryId")
+          ? { categoryId: transition.snapshot.categoryId ?? "" }
+          : {}),
+      },
+      true,
+    );
+    return transition.snapshot;
+  }, [clearAllocationUndoGroup, markDirty, updateHistory, update, merchant, copiedPurchase]);
+  const redo = useCallback(() => {
+    clearAllocationUndoGroup();
+    const transition = redoPurchaseEdit(historyRef.current, {
+      items: draftRef.current.items,
+      categoryId: draftRef.current.categoryId,
+      merchant,
+      copiedPurchase,
+    });
+    if (!transition) return null;
+    markDirty();
+    updateHistory(transition.history);
+    update(
+      {
+        ...draftRef.current,
+        items: transition.snapshot.items,
+        ...(Object.hasOwn(transition.snapshot, "categoryId")
+          ? { categoryId: transition.snapshot.categoryId ?? "" }
+          : {}),
+      },
+      true,
+    );
+    return transition.snapshot;
+  }, [clearAllocationUndoGroup, markDirty, updateHistory, update, merchant, copiedPurchase]);
   const copy = useCallback(
     (purchase: Purchase) => {
       markDirty();
@@ -189,10 +284,15 @@ export function EditPurchaseItems({
             }
           : {}),
       }));
-      rememberUndo(draftRef.current.items);
+      recordUndo({
+        items: draftRef.current.items,
+        categoryId: draftRef.current.categoryId,
+        merchant,
+        copiedPurchase,
+      });
       update({ ...draftRef.current, items, categoryId: "" });
     },
-    [markDirty, isEnabledCategory, rememberUndo, update],
+    [markDirty, isEnabledCategory, recordUndo, update, merchant, copiedPurchase],
   );
   const prepareForSubmit = useCallback(() => {
     const current = draftRef.current;
@@ -231,12 +331,19 @@ export function EditPurchaseItems({
       },
     ];
   }, [effectiveCategoryId]);
-  useImperativeHandle(commandsRef, () => ({ reset, undo, copy, prepareForSubmit }), [
-    reset,
-    undo,
-    copy,
-    prepareForSubmit,
-  ]);
+  useImperativeHandle(
+    commandsRef,
+    () => ({
+      reset,
+      undo,
+      redo,
+      invalidateRedo,
+      copy,
+      prepareForSubmit,
+    }),
+    [reset, undo, redo, invalidateRedo, copy, prepareForSubmit],
+  );
+  useEffect(() => () => clearAllocationUndoGroup(), [clearAllocationUndoGroup]);
 
   useEffect(() => {
     const query = draft.itemName.trim();
@@ -288,7 +395,7 @@ export function EditPurchaseItems({
       ...(selectedProductVariantId ? { productVariantId: selectedProductVariantId } : {}),
       allocations: [],
     };
-    rememberUndo(draft.items);
+    recordUndo({ items: draft.items });
     update({
       ...draft,
       items: [...draft.items, item],
@@ -446,7 +553,7 @@ export function EditPurchaseItems({
     }
     if (!parsed.items.length) return;
     markDirty();
-    rememberUndo(draft.items);
+    recordUndo({ items: draft.items });
     replaceItems([
       ...draft.items,
       ...parsed.items.map(({ name, amount }) => {
@@ -468,13 +575,29 @@ export function EditPurchaseItems({
     ]);
   };
   const patchItem = (key: string, patch: Partial<PurchaseDraftItem>) => {
+    const currentItem = draft.items.find((item) => item.key === key);
+    if (!currentItem) return;
+    const allocationChanged =
+      patch.allocations !== undefined &&
+      JSON.stringify(patch.allocations) !== JSON.stringify(currentItem.allocations);
+    const categoryChanged =
+      patch.categoryId !== undefined && patch.categoryId !== currentItem.categoryId;
+    if (allocationChanged) recordAllocationUndo(key, { items: draft.items });
+    else if (categoryChanged) recordUndo({ items: draft.items });
     markDirty();
-    replaceItems(draft.items.map((item) => (item.key === key ? { ...item, ...patch } : item)));
+    update(
+      {
+        ...draftRef.current,
+        items: draft.items.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+      },
+      false,
+      allocationChanged,
+    );
   };
   const removeItem = (key: string) => {
     if (!draft.items.some((item) => item.key === key)) return;
     markDirty();
-    rememberUndo(draft.items);
+    recordUndo({ items: draft.items });
     replaceItems(draft.items.filter((item) => item.key !== key));
   };
   const selectedItems = draft.items.filter((item) => selectedItemKeys.has(item.key));
@@ -505,7 +628,7 @@ export function EditPurchaseItems({
   ) => {
     if (!selectedItems.length) return;
     markDirty();
-    rememberUndo(draft.items);
+    recordUndo({ items: draft.items });
     const selectedKeys = new Set(selectedItems.map((item) => item.key));
     replaceItems(
       draft.items.map((item) =>
@@ -537,7 +660,7 @@ export function EditPurchaseItems({
     if (!selectedItems.length) return;
     if (!window.confirm(`選択した${selectedItems.length}品目を削除しますか？`)) return;
     markDirty();
-    rememberUndo(draft.items);
+    recordUndo({ items: draft.items });
     const selectedKeys = new Set(selectedItems.map((item) => item.key));
     replaceItems(draft.items.filter((item) => !selectedKeys.has(item.key)));
     clearSelection();

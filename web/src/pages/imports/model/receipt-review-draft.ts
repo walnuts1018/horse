@@ -131,11 +131,18 @@ export function rekeyReceiptConfirmationAfterStructureChange(
     keyedItems,
     survivingKeys,
   );
+  const receiptItemReviewStates = rekeyReceiptItemValues(
+    state.receiptItemReviewStates,
+    originalItems,
+    keyedItems,
+    survivingKeys,
+  );
   const {
     selectedCandidate: _selectedCandidate,
     manualAmountOverrides: _manualAmountOverrides,
     itemAllocations: _itemAllocations,
     manualAmountOverrideReason: _manualAmountOverrideReason,
+    receiptItemReviewStates: _receiptItemReviewStates,
     ...rest
   } = state;
   return {
@@ -144,6 +151,9 @@ export function rekeyReceiptConfirmationAfterStructureChange(
       ? { manualAmountOverrides }
       : {}),
     ...(itemAllocations && Object.keys(itemAllocations).length ? { itemAllocations } : {}),
+    ...(receiptItemReviewStates && Object.keys(receiptItemReviewStates).length
+      ? { receiptItemReviewStates }
+      : {}),
   };
 }
 
@@ -423,6 +433,9 @@ export function reconcileReceiptConfirmationState(
         : {}),
       ...(state.payments ? { payments: state.payments } : {}),
       ...(state.itemAllocations ? { itemAllocations: mapItemKeys(state.itemAllocations) } : {}),
+      ...(state.receiptItemReviewStates
+        ? { receiptItemReviewStates: mapItemKeys(state.receiptItemReviewStates) }
+        : {}),
     },
     conflicts,
   };

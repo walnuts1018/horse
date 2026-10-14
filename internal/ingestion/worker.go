@@ -24,17 +24,20 @@ type DocumentStore interface {
 }
 
 type job struct {
-	ID           string
-	HouseholdID  string
-	SourceID     string
-	ObjectKey    string
-	MIMEType     string
-	SourceKind   string
-	Request      []byte
-	Previous     []byte
-	Attempt      int
-	FailureCount int
-	Version      int64
+	ID                string
+	HouseholdID       string
+	SourceID          string
+	ObjectKey         string
+	MIMEType          string
+	AnalysisObjectKey string
+	AnalysisMIMEType  string
+	AnalysisTransform *[9]float64
+	SourceKind        string
+	Request           []byte
+	Previous          []byte
+	Attempt           int
+	FailureCount      int
+	Version           int64
 }
 
 // RunOneは期限切れの実行も引き継ぎ、attemptをフェンスとして遅延したWorkerの結果上書きを防ぐ。

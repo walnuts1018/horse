@@ -9,12 +9,24 @@ import {
 } from "react";
 
 import { errorMessage } from "../../../shared/lib/errors";
+import {
+  cropCameraImage,
+  identityCameraImageTransform,
+  rotateCameraImageClockwise,
+  type CameraImageTransform,
+} from "../model/camera-image-transform";
 import { isSupportedFile } from "../model/imports";
 
 import "./camera-capture.css";
 
 type Crop = { left: number; top: number; right: number; bottom: number };
-type CameraDraft = { file: File; src: string; crop: Crop | null };
+type CameraDraft = {
+  originalFile: File;
+  file: File;
+  src: string;
+  crop: Crop | null;
+  transform: CameraImageTransform;
+};
 type Point = { x: number; y: number };
 
 const supportedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -28,7 +40,14 @@ export type CameraCaptureHandle = { open: () => void };
 
 export const CameraCapture = forwardRef<
   CameraCaptureHandle,
-  { onAdd: (file: File) => void; onError: (message: string) => void }
+  {
+    onAdd: (upload: {
+      originalFile: File;
+      analysisFile?: File;
+      analysisTransform?: CameraImageTransform;
+    }) => void;
+    onError: (message: string) => void;
+  }
 >(function CameraCapture({ onAdd, onError }, ref) {
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -102,7 +121,13 @@ export const CameraCapture = forwardRef<
     setCropMode(false);
     setZoom(1);
     setPan({ x: 0, y: 0 });
-    setDraft({ file, src: URL.createObjectURL(file), crop: null });
+    setDraft({
+      originalFile: file,
+      file,
+      src: URL.createObjectURL(file),
+      crop: null,
+      transform: identityCameraImageTransform,
+    });
   };
 
   const rotate = async () => {
@@ -125,7 +150,8 @@ export const CameraCapture = forwardRef<
         type,
         lastModified: draft.file.lastModified,
       });
-      setDraft({ file, src: URL.createObjectURL(file), crop: null });
+      const transform = rotateCameraImageClockwise(draft.transform);
+      setDraft({ ...draft, file, src: URL.createObjectURL(file), crop: null, transform });
       setZoom(1);
       setPan({ x: 0, y: 0 });
     } catch (reason) {
@@ -170,7 +196,8 @@ export const CameraCapture = forwardRef<
   const add = async () => {
     if (!draft) return;
     try {
-      let file = draft.file;
+      let analysisFile: File | undefined;
+      let analysisTransform: CameraImageTransform | undefined;
       if (draft.crop) {
         const image = await loadImage(draft.src);
         const { left, top, right, bottom } = draft.crop;
@@ -185,12 +212,18 @@ export const CameraCapture = forwardRef<
         if (!context) throw new Error("画像を切り抜けませんでした");
         context.drawImage(image, x, y, width, height, 0, 0, width, height);
         const blob = await canvasBlob(canvas, draft.file.type || "image/jpeg");
-        file = new File([blob], draft.file.name, {
+        analysisFile = new File([blob], draft.file.name, {
           type: blob.type,
           lastModified: draft.file.lastModified,
         });
+        analysisTransform = cropCameraImage(draft.transform, draft.crop);
+      } else if (
+        draft.transform.some((value, index) => value !== identityCameraImageTransform[index])
+      ) {
+        analysisFile = draft.file;
+        analysisTransform = draft.transform;
       }
-      onAdd(file);
+      onAdd({ originalFile: draft.originalFile, analysisFile, analysisTransform });
       setDraft(null);
     } catch (reason) {
       onError(errorMessage(reason));

@@ -151,6 +151,8 @@ export function ImportDocumentReview({
               setSelectedCandidates={review.setSelectedCandidates}
               manualAmountOverrides={review.manualAmountOverrides}
               setManualAmountOverrides={review.setManualAmountOverrides}
+              receiptItemReviewStates={review.receiptItemReviewStates}
+              setReceiptItemReviewStates={review.setReceiptItemReviewStates}
               manualAmountOverrideReasons={review.manualAmountOverrideReasons}
               setManualAmountOverrideReasons={review.setManualAmountOverrideReasons}
               pending={pending}
