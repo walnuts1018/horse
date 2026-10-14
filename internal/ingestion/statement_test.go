@@ -40,6 +40,25 @@ func TestStatementCSV(t *testing.T) {
 	}
 }
 
+func TestBankExternalIncomeRequiresPositiveAmount(t *testing.T) {
+	t.Parallel()
+	entries, err := ParseStatementCSV([]byte("date,merchant,amount,type\n2026-10-12,給与,300000,給与\n"), statementSourceBank)
+	if err != nil || len(entries) != 1 || entries[0].Kind != statementKindExternalIncome {
+		t.Fatalf("external income was not classified: entries=%+v err=%v", entries, err)
+	}
+	region := Region{Page: 1, Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
+	entry := entries[0]
+	entry.OccurredAt = "2026-10-12T12:00:00+09:00"
+	entry.Region = &region
+	if _, err := VerifyStatements(statementSourceBank, []StatementEntry{entry}, nil); err != nil {
+		t.Fatalf("positive external income rejected: %v", err)
+	}
+	entry.Amount = -entry.Amount
+	if _, err := VerifyStatements(statementSourceBank, []StatementEntry{entry}, nil); err == nil {
+		t.Fatal("negative external income was accepted")
+	}
+}
+
 func TestStatementSourceReferencesAreStableAndUnique(t *testing.T) {
 	t.Parallel()
 	data := []byte("date,merchant,amount,transactionId\n2026-10-12,店,100,duplicate\n2026-10-12,店,100,duplicate\n")

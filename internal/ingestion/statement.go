@@ -16,6 +16,7 @@ const (
 	statementKindUnclassified    = "UNCLASSIFIED"
 	statementKindAccountTransfer = "ACCOUNT_TRANSFER"
 	statementKindCardBillPayment = "CARD_BILL_PAYMENT"
+	statementKindExternalIncome  = "EXTERNAL_INCOME"
 	statementFieldKind           = "kind"
 	statementFieldTransactionID  = "transactionId"
 	statementFieldOrderID        = "orderId"
@@ -64,6 +65,8 @@ func VerifyStatements(sourceKind string, entries []StatementEntry, warnings []st
 			}
 		} else if !validBankStatementKind(entry.Kind) {
 			return Verification{}, fmt.Errorf("invalid bank transaction kind at index %d", i)
+		} else if entry.Kind == statementKindExternalIncome && entry.Amount <= 0 {
+			return Verification{}, fmt.Errorf("external income must have a positive amount at index %d", i)
 		} else if entry.Kind == statementKindUnclassified {
 			warnings = append(warnings, fmt.Sprintf("取引%dの種別が未確定です。", i+1))
 		}
@@ -77,7 +80,7 @@ func VerifyStatements(sourceKind string, entries []StatementEntry, warnings []st
 
 func validBankStatementKind(kind string) bool {
 	switch kind {
-	case statementKindPayment, statementKindCardBillPayment, statementKindAccountTransfer, statementKindRefund, statementKindUnclassified:
+	case statementKindPayment, statementKindCardBillPayment, statementKindAccountTransfer, statementKindExternalIncome, statementKindRefund, statementKindUnclassified:
 		return true
 	default:
 		return false
@@ -191,6 +194,8 @@ func bankTransactionKind(value string) string {
 		return statementKindPayment
 	case statementKindCardBillPayment, "CARD_PAYMENT", "クレジットカード引落", "カード利用代金":
 		return statementKindCardBillPayment
+	case statementKindExternalIncome, "INCOME", "給与", "賞与", "利息", "還付金", "配当金":
+		return statementKindExternalIncome
 	case statementKindAccountTransfer, "TRANSFER", "振込", "振替":
 		return statementKindAccountTransfer
 	case statementKindRefund, "返金", "払い戻し":
