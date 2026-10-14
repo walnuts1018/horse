@@ -9,11 +9,19 @@ import {
 } from "react";
 
 import { errorMessage } from "../../../shared/lib/errors";
+import { isSupportedFile } from "../model/imports";
 
 import "./camera-capture.css";
 
 type Crop = { left: number; top: number; right: number; bottom: number };
 type CameraDraft = { file: File; src: string; crop: Crop | null };
+
+const supportedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const supportedImageExtensions = /\.(jpe?g|png|webp)$/i;
+
+const isSupportedCameraImage = (file: File) =>
+  isSupportedFile(file) &&
+  (supportedImageTypes.has(file.type) || supportedImageExtensions.test(file.name));
 
 export type CameraCaptureHandle = { open: () => void };
 
@@ -84,7 +92,7 @@ export const CameraCapture = forwardRef<
   const reviewFile = (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/") || !/\.(jpe?g|png|webp)$/i.test(file.name)) {
+    if (!isSupportedCameraImage(file)) {
       onError("画像を選択してください");
       return;
     }
@@ -176,7 +184,7 @@ export const CameraCapture = forwardRef<
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
         capture="environment"
         hidden
         onChange={(event) => {

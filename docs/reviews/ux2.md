@@ -42,22 +42,6 @@ P1 — 意図しない情報変更
 
 日時全体を変更したい場合だけ、時刻編集も開けるようにします。
 
-### 1-9. カード末尾番号を取得しているのに、決済元の自動判別に使っていない
-
-P1 — 毎回の決済元選択を減らせる
-
-対象：[use-import-confirmation.ts:133–160](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/model/use-import-confirmation.ts#L133-L160)
-
-レシートから`cardLast4`を取得しており、UIにも末尾4桁が表示されます。
-
-しかし、決済口座の自動判別では、口座名または口座種別の文字列一致しか使っていません。
-
-そのため、同じ種類のクレジットカードが複数ある場合、末尾番号が認識されていても自動的に選択できません。
-
-改善方法： 決済手段のマスタにカード識別情報を持たせ、末尾4桁・ブランド・発行会社・過去の紐付け実績から候補を決定します。
-
-一度ユーザーが確認した対応関係を次回以降に再利用します。ただし末尾番号だけで複数のカードが一致する場合は、自動確定せず確認を求めます。
-
 ### 1-10. 税計算候補が、何を意味する候補なのか理解しにくい
 
 P1 — 確認に必要な思考・操作を減らす
@@ -82,20 +66,15 @@ P1 — 確認に必要な思考・操作を減らす
 
 | 優先度 | 新しい指摘 | 改善方法 |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| P1 | 商品名変更直後も、前の検索語の商品候補が残る。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/purchase-create/ui/edit-purchase-items.tsx#L130-L137) | 入力変更と同時に旧候補を無効化し、検索語と一致するレスポンスだけ表示する。古い候補を誤選択させない |
 | P1 | 過去の購入をコピーすると、最初の商品カテゴリが次の新規品目へ引き継がれる。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/purchase-create/ui/edit-purchase-items.tsx#L165-L187) | コピー後に新しい商品を追加するときはカテゴリを商品名から再推定する。先頭商品のカテゴリを無関係な品目に使わない |
 | P1 | レシート金額欄を空にすると`0`が即座に入る。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/receipt-review.tsx#L284-L299) | 入力中は文字列として保持して空欄を許可し、フォーカス終了時や確定時に数値検証する |
 | P2 | AIの原本一覧がファイル名と処理状態中心で、どの買い物か判別しにくい。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/import-document-list.tsx#L173-L196) | 店舗・購入日・合計額・品目数を優先表示する。自動生成ファイル名は補助情報へ |
-| P2 | カメラのファイル選択では`image/*`を許可するのに、選択後はJPEG/PNG/WebP以外を拒否する。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/camera-capture.tsx#L84-L92) | 選択可能形式と処理可能形式を一致させる。HEICなどは対応変換を用意するか、最初から適切に案内する |
 | P2 | 撮影画像を触ると、切り抜きモードを明示的に選んでいなくても範囲選択が始まる。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/camera-capture.tsx#L226-L260) | 通常時は拡大・移動を優先し、切り抜きモードを選択したときだけ範囲選択を有効にする |
 | P2 | 既存購入の決済行が口座IDをReactのkeyに使い、口座変更で行が再マウントされる。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/ledger/ui/purchase-edit-form.tsx#L47-L55) | 決済行に編集セッション内の安定IDを持たせ、口座変更しても入力フォーカスと行状態を維持する |
 | P2 | 取り込み画面のエラーメッセージが2か所に重複表示される。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/imports-page.tsx#L525-L528) | 一か所に統一し、修正すべき入力欄・原本への移動を提供する |
 | P2 | ホーム画面の「今日」と「今月」は初回マウント時に固定される。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/home/ui/home-page.tsx#L35-L40) | 日付変更時やタブ復帰時に更新する。月が変わった場合は当月の集計も更新する |
-| P2 | 負担割合ルールの一覧から既存ルールを編集できず、別フォームで再指定する必要がある。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/settings/ui/manage-allocation-catalog.tsx#L37-L76) | ルール行から編集を開き、現在の対象・割合をそのまま編集開始状態にする |
-| P2 | カテゴリ管理UIには追加と非表示しかなく、カテゴリ名の修正ができない。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/settings/ui/manage-categories-section.tsx#L38-L68) | インラインの名前変更を追加し、カテゴリIDと既存の購入への紐付けを維持する |
-| P3 | 現在のデフォルト割合と数学的に同じ比率でも、配列の順序や重みの表現が異なると標準扱いされない。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/purchase-create/ui/edit-purchase-item-allocations.tsx#L18-L29) | 比率を正規化して比較する。3:2と6:4、配列順序の違いを意味的に同一とみなす |
 
-とくに、候補の古さ、決済行の不安定なkey、カメラの意図しない切り抜きは、画面を見ただけでは分かりにくい問題です。しかし、実際の操作中にユーザーが「なぜこうなった？」と感じる原因になります。
+とくに、決済行の不安定なkeyやカメラの意図しない切り抜きは、画面を見ただけでは分かりにくく、操作中の混乱につながります。
 
 ## 3. 追加で改善したい入力UIの設計
 
