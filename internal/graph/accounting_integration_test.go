@@ -24,6 +24,11 @@ import (
 )
 
 const (
+	testApplicationPDF = "application/pdf"
+	testCardSourceKind = "card"
+)
+
+const (
 	loanTransferLedgerEntryType      = "LoanTransferLedgerEntry"
 	repaymentTransferLedgerEntryType = "RepaymentTransferLedgerEntry"
 	testMerchant                     = "Shop"
@@ -457,11 +462,11 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	const statementOccurredAt = "2026-04-20T12:01:00Z"
 	statementDocumentID := uuid.NewV7().String()
 	statementDocumentUUID, _ := gofrsuuid.FromString(statementDocumentID)
-	statementHash, statementObjectKey, statementMimeType, statementSourceKind := "hash-"+statementDocumentID, householdID+"/originals/"+statementDocumentID, "application/pdf", "card"
+	statementHash, statementObjectKey, statementMimeType, statementSourceKind := "hash-"+statementDocumentID, householdID+"/originals/"+statementDocumentID, testApplicationPDF, testCardSourceKind
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &statementDocumentUUID, HouseholdID: &householdUUID, Sha256: &statementHash, ObjectKey: &statementObjectKey, MimeType: &statementMimeType, SourceKind: &statementSourceKind, CreatedBy: &memberAUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	statementObservations := ingestion.SourceObservations(statementDocumentID, statementHash, "card", ingestion.Verification{Statements: []ingestion.StatementEntry{
+	statementObservations := ingestion.SourceObservations(statementDocumentID, statementHash, testCardSourceKind, ingestion.Verification{Statements: []ingestion.StatementEntry{
 		{Row: 2, TransactionID: statementTransactionID, Merchant: statementRowDescription, Amount: 1, OccurredAt: statementOccurredAt},
 		{Row: 3, TransactionID: statementTransactionID, Merchant: statementRowDescription, Amount: 1, OccurredAt: statementOccurredAt},
 	}})

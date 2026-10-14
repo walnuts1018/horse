@@ -23,6 +23,8 @@ func (tx *rollbackTransaction) Rollback(ctx context.Context) error {
 }
 
 func TestRollbackUsesUncancelledContextAndLogsFailure(t *testing.T) {
+	t.Parallel()
+
 	rollbackErr := errors.New("rollback failed")
 	tx := &rollbackTransaction{err: rollbackErr}
 	ctx, cancel := context.WithCancel(t.Context())

@@ -22,6 +22,8 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+const testAccountTransferDescription = "Reserve transfer"
+
 func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testing.T) {
 	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
@@ -78,7 +80,7 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 	movement, err := mutation.recordAccountMovement(ctx, model.RecordAccountMovementInput{
 		HouseholdID: household.ID, Kind: model.AccountMovementKindTransfer,
 		FromAccountID: fromAccount.ID, ToAccountID: toAccount.ID, AmountYen: 250,
-		OccurredAt: "2026-06-10T12:00:00Z", Description: "Reserve transfer", IdempotencyKey: uuid.NewV7().String(),
+		OccurredAt: "2026-06-10T12:00:00Z", Description: testAccountTransferDescription, IdempotencyKey: uuid.NewV7().String(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +97,7 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 			break
 		}
 	}
-	if queriedMovement == nil || queriedMovement.AmountYen != 250 || queriedMovement.Description != "Reserve transfer" {
+	if queriedMovement == nil || queriedMovement.AmountYen != 250 || queriedMovement.Description != testAccountTransferDescription {
 		t.Fatalf("account movement query did not return the transfer: movement=%#v connection=%#v", queriedMovement, movements)
 	}
 

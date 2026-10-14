@@ -83,14 +83,14 @@ func TestCorrectPurchaseFromStatementKeepsRowEvidenceAtomic(t *testing.T) {
 	documentID := uuid.NewV7().String()
 	documentUUID := generatedUUID(documentID)
 	householdUUID := generatedUUID(household.ID)
-	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, household.ID+"/originals/"+documentID, "application/pdf", "card"
+	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, household.ID+"/originals/"+documentID, testApplicationPDF, testCardSourceKind
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
 	region := ingestion.Region{Page: 0, Top: 0.2, Left: 0.1, Bottom: 0.3, Right: 0.8}
 	verified, err := stdjson.Marshal(ingestion.Verification{Statements: []ingestion.StatementEntry{
-		{Row: 2, SourceReference: refundRow, Kind: "REFUND", OccurredAt: "2026-10-02T12:00:00Z", Merchant: originalShop, Amount: -250, Region: &region},
-		{Row: 3, SourceReference: excessRow, Kind: "REFUND", OccurredAt: "2026-10-02T12:01:00Z", Merchant: originalShop, Amount: -900, Region: &region},
+		{Row: 2, SourceReference: refundRow, Kind: "REFUND", OccurredAt: testStatementTransferFirstOccurredAt, Merchant: originalShop, Amount: -250, Region: &region},
+		{Row: 3, SourceReference: excessRow, Kind: "REFUND", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: originalShop, Amount: -900, Region: &region},
 		{Row: 4, SourceReference: "row:4", Kind: "CARD_PURCHASE", OccurredAt: "2026-10-02T12:02:00Z", Merchant: originalShop, Amount: -100, Region: &region},
 	}})
 	if err != nil {

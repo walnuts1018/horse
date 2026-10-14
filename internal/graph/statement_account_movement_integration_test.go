@@ -21,6 +21,11 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+const (
+	testStatementTransferFirstOccurredAt  = "2026-10-02T12:00:00Z"
+	testStatementTransferSecondOccurredAt = "2026-10-02T12:01:00Z"
+)
+
 func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T) {
 	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
@@ -62,7 +67,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 
 	documentID := uuid.NewV7().String()
 	documentUUID, householdUUID := generatedUUID(documentID), generatedUUID(household.ID)
-	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, household.ID+"/originals/"+documentID, "application/pdf", "bank"
+	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, household.ID+"/originals/"+documentID, testApplicationPDF, "bank"
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
 		ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &objectKey,
 		MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberUUID,
@@ -71,7 +76,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 	}
 	cardDocumentID := uuid.NewV7().String()
 	cardDocumentUUID := generatedUUID(cardDocumentID)
-	cardSourceKind := "card"
+	cardSourceKind := testCardSourceKind
 	cardHash, cardObjectKey := "hash-"+cardDocumentID, household.ID+"/originals/"+cardDocumentID
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
 		ID: &cardDocumentUUID, HouseholdID: &householdUUID, Sha256: &cardHash, ObjectKey: &cardObjectKey,
@@ -81,8 +86,8 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 	}
 	region := ingestion.Region{Page: 0, Top: 0.2, Left: 0.1, Bottom: 0.3, Right: 0.8}
 	verified, err := stdjson.Marshal(ingestion.Verification{Statements: []ingestion.StatementEntry{
-		{Row: 2, SourceReference: "row:2", Kind: "ACCOUNT_TRANSFER", OccurredAt: "2026-10-02T12:00:00Z", Merchant: "Reserve transfer", Amount: -250, Region: &region},
-		{Row: 3, SourceReference: "row:3", Kind: "ACCOUNT_TRANSFER", OccurredAt: "2026-10-02T12:01:00Z", Merchant: "Reserve transfer", Amount: -300, Region: &region},
+		{Row: 2, SourceReference: "row:2", Kind: "ACCOUNT_TRANSFER", OccurredAt: testStatementTransferFirstOccurredAt, Merchant: testAccountTransferDescription, Amount: -250, Region: &region},
+		{Row: 3, SourceReference: "row:3", Kind: "ACCOUNT_TRANSFER", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: testAccountTransferDescription, Amount: -300, Region: &region},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +104,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 	input := model.RecordAccountMovementInput{
 		HouseholdID: household.ID, Kind: model.AccountMovementKindTransfer,
 		FromAccountID: fromAccount.ID, ToAccountID: toAccount.ID, AmountYen: 250,
-		OccurredAt: "2026-10-02T12:00:00Z", Description: "Reserve transfer", IdempotencyKey: uuid.NewV7().String(),
+		OccurredAt: testStatementTransferFirstOccurredAt, Description: testAccountTransferDescription, IdempotencyKey: uuid.NewV7().String(),
 		SourceDocumentID: &sourceDocumentID, SourceReference: &sourceReference, SourceAccountID: &sourceAccountID,
 	}
 	created, err := resolver.recordAccountMovement(ctx, input)
@@ -118,7 +123,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 	badAmount := input
 	badAmount.SourceReference = new("row:3")
 	badAmount.AmountYen = 301
-	badAmount.OccurredAt = "2026-10-02T12:01:00Z"
+	badAmount.OccurredAt = testStatementTransferSecondOccurredAt
 	badAmount.IdempotencyKey = uuid.NewV7().String()
 	if _, err := resolver.recordAccountMovement(ctx, badAmount); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("statement amount mismatch was not rejected: %v", err)
