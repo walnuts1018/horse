@@ -9,6 +9,7 @@ const ledgerKindLabels: Record<string, string> = {
   FUNDING: "入金",
   ADVANCE: "立て替え",
   LOAN: "貸付",
+  REPAYMENT: "返済",
   GIFT: "贈与",
 };
 
