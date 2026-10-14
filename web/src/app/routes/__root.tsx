@@ -5,6 +5,7 @@ import { RelayEnvironmentProvider } from "react-relay";
 
 import { getRelayEnvironment } from "../../shared/api";
 import { App } from "../horse-app";
+import { QueryProvider } from "../providers/query-provider";
 
 import "../styles/global.css";
 
@@ -22,9 +23,11 @@ export const Route = createRootRoute({
 function Root() {
   return (
     <RootDocument>
-      <RelayEnvironmentProvider environment={getRelayEnvironment()}>
-        <App />
-      </RelayEnvironmentProvider>
+      <QueryProvider>
+        <RelayEnvironmentProvider environment={getRelayEnvironment()}>
+          <App />
+        </RelayEnvironmentProvider>
+      </QueryProvider>
     </RootDocument>
   );
 }
