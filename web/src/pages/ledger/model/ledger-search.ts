@@ -20,6 +20,36 @@ export type LedgerSearch = {
   maximumAmount: string;
 };
 
+export type LedgerMonthPreset = "thisMonth" | "lastMonth" | "lastThreeMonths";
+
+function formatLedgerMonth(monthIndex: number): string {
+  const year = Math.floor(monthIndex / 12);
+  const month = (monthIndex % 12) + 1;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
+}
+
+export function getLedgerMonthPresetRange(
+  preset: LedgerMonthPreset,
+  now = new Date(),
+): Pick<LedgerSearch, "fromMonth" | "toMonth"> {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(now);
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+  const currentMonth = year * 12 + month - 1;
+  const offset = preset === "lastMonth" ? 1 : preset === "lastThreeMonths" ? 2 : 0;
+  const fromMonthIndex = currentMonth - offset;
+  const toMonthIndex = preset === "lastMonth" ? fromMonthIndex : currentMonth;
+
+  return {
+    fromMonth: formatLedgerMonth(fromMonthIndex),
+    toMonth: formatLedgerMonth(toMonthIndex),
+  };
+}
+
 export const defaultLedgerSearch: LedgerSearch = {
   purchaseId: "",
   recordMode: "purchases",

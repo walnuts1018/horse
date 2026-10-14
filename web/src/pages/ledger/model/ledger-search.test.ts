@@ -1,7 +1,12 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { defaultLedgerSearch, parseLedgerSearch, serializeLedgerSearch } from "./ledger-search";
+import {
+  defaultLedgerSearch,
+  getLedgerMonthPresetRange,
+  parseLedgerSearch,
+  serializeLedgerSearch,
+} from "./ledger-search";
 
 const arbitraryUnknown = fc.oneof(
   fc.string({ maxLength: 240 }),
@@ -49,6 +54,23 @@ const arbitrarySearch = fc.record({
 });
 
 describe("ledger search", () => {
+  it("東京の現在月を基準に月範囲プリセットを計算する", () => {
+    const now = new Date("2025-12-31T15:00:00.000Z");
+
+    expect(getLedgerMonthPresetRange("thisMonth", now)).toEqual({
+      fromMonth: "2026-01",
+      toMonth: "2026-01",
+    });
+    expect(getLedgerMonthPresetRange("lastMonth", now)).toEqual({
+      fromMonth: "2025-12",
+      toMonth: "2025-12",
+    });
+    expect(getLedgerMonthPresetRange("lastThreeMonths", now)).toEqual({
+      fromMonth: "2025-11",
+      toMonth: "2026-01",
+    });
+  });
+
   it("parseとserializeの往復で検索条件を保持する", () => {
     fc.assert(
       fc.property(arbitrarySearch, (search) => {

@@ -11,6 +11,46 @@
   max-width: 440px;
 }
 
+.dateFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.monthPresets {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.monthPresets legend {
+  margin-bottom: 3px;
+  color: #5f6d65;
+  font-size: 10px;
+}
+
+.monthPresets button {
+  min-height: 34px;
+  padding: 5px 9px;
+  border: 1px solid #d9e2dc;
+  border-radius: 999px;
+  background: #fff;
+  color: #43564a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.monthPresets button[aria-pressed="true"] {
+  border-color: #335943;
+  background: #e6eee8;
+  color: #244432;
+}
+
 .commonFilters {
   display: flex;
   flex-wrap: wrap;
@@ -120,6 +160,15 @@
   }
 
   .controls > .select-filter {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 130px;
+  }
+
+  .dateFilters {
+    flex: 1 1 100%;
+  }
+
+  .dateFilters > .select-filter {
     flex: 1 1 calc(50% - 8px);
     min-width: 130px;
   }

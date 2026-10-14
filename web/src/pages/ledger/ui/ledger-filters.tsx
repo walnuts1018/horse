@@ -2,9 +2,13 @@ import { Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { Household, Tag } from "../../../shared/api";
-import type { LedgerSearch } from "../model/ledger-search";
 
 import { isOneOf } from "../../../shared/lib";
+import {
+  getLedgerMonthPresetRange,
+  type LedgerMonthPreset,
+  type LedgerSearch,
+} from "../model/ledger-search";
 
 import styles from "./ledger-search.module.css";
 
@@ -108,6 +112,15 @@ export function LedgerFilters({
       ? [accountFilter, tagFilter, originFilter, evidenceFilter, minimumAmount, maximumAmount]
       : [observationSourceFilter]
   ).filter(Boolean).length;
+  const monthPresets: { key: LedgerMonthPreset; label: string }[] = [
+    { key: "thisMonth", label: "今月" },
+    { key: "lastMonth", label: "先月" },
+    { key: "lastThreeMonths", label: "過去3か月" },
+  ];
+  const activeMonthPreset = monthPresets.find(({ key }) => {
+    const range = getLedgerMonthPresetRange(key);
+    return fromMonth === range.fromMonth && toMonth === range.toMonth;
+  })?.key;
   const activeFilters: { label: string; clear: () => void }[] = [];
   const addActiveFilter = (label: string, clear: () => void) =>
     activeFilters.push({ label, clear });
@@ -194,24 +207,39 @@ export function LedgerFilters({
             />
           </label>
         )}
-        <label className="select-filter">
-          <span>開始</span>
-          <input
-            aria-label="開始月"
-            type="month"
-            value={fromMonth}
-            onChange={(event) => updateFilters({ fromMonth: event.target.value })}
-          />
-        </label>
-        <label className="select-filter">
-          <span>終了</span>
-          <input
-            aria-label="終了月"
-            type="month"
-            value={toMonth}
-            onChange={(event) => updateFilters({ toMonth: event.target.value })}
-          />
-        </label>
+        <div className={styles.dateFilters}>
+          <fieldset className={styles.monthPresets}>
+            <legend>期間</legend>
+            {monthPresets.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={activeMonthPreset === key}
+                onClick={() => updateFilters(getLedgerMonthPresetRange(key))}
+              >
+                {label}
+              </button>
+            ))}
+          </fieldset>
+          <label className="select-filter">
+            <span>開始</span>
+            <input
+              aria-label="開始月"
+              type="month"
+              value={fromMonth}
+              onChange={(event) => updateFilters({ fromMonth: event.target.value })}
+            />
+          </label>
+          <label className="select-filter">
+            <span>終了</span>
+            <input
+              aria-label="終了月"
+              type="month"
+              value={toMonth}
+              onChange={(event) => updateFilters({ toMonth: event.target.value })}
+            />
+          </label>
+        </div>
         <div className="record-count">{recordCount}</div>
       </div>
       <div className={styles.commonFilters}>
