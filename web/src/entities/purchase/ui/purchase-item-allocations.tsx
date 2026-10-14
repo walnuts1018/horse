@@ -4,6 +4,8 @@ import { ChevronDown } from "lucide-react";
 import type { Household } from "../../../shared/api";
 import type { PurchaseDraftItem } from "../../../shared/lib";
 
+import { areAllocationsEquivalent } from "../model/allocation-equivalence";
+
 import "./purchase-item-allocations.css";
 
 export function EditPurchaseItemAllocations({
@@ -18,10 +20,7 @@ export function EditPurchaseItemAllocations({
   onChange: (allocations: PurchaseDraftItem["allocations"]) => void;
 }) {
   const allocationName = () => {
-    if (
-      allocations.length === 0 ||
-      JSON.stringify(allocations) === JSON.stringify(defaultAllocations)
-    )
+    if (allocations.length === 0 || areAllocationsEquivalent(allocations, defaultAllocations))
       return "標準";
     if (allocations.length === 1)
       return `${pools.find((pool) => pool.id === allocations[0].poolId)?.name ?? "口座"} 100%`;
