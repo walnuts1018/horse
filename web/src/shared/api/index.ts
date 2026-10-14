@@ -82,6 +82,10 @@ export type {
   SetCategoryArchivedMutation$variables,
 } from "./__generated__/SetCategoryArchivedMutation.graphql";
 export type {
+  UpdateCategoryNameMutation,
+  UpdateCategoryNameMutation$variables,
+} from "./__generated__/UpdateCategoryNameMutation.graphql";
+export type {
   SetDefaultAllocationMutation,
   SetDefaultAllocationMutation$variables,
 } from "./__generated__/SetDefaultAllocationMutation.graphql";

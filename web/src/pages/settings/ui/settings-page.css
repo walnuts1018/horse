@@ -11,6 +11,19 @@
   gap: 8px;
 }
 
+.category-management-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.category-management-row .category-tag {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border-radius: 50%;
+  flex: none;
+}
+
 .category-archived {
   opacity: 0.5;
 }

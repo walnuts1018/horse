@@ -1,0 +1,19 @@
+extend type Mutation {
+  updateCategoryName(input: UpdateCategoryNameInput!): UpdateCategoryNameResult!
+}
+
+union UpdateCategoryNameResult = UpdateCategoryNameSuccess | UpdateCategoryNameUserError
+
+type UpdateCategoryNameSuccess {
+  result: Category!
+}
+
+input UpdateCategoryNameInput {
+  categoryId: ID! @nodeID(of: "Category")
+  name: String!
+}
+
+type UpdateCategoryNameUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

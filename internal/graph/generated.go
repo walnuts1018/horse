@@ -766,6 +766,7 @@ type ComplexityRoot struct {
 		SetProductAlias               func(childComplexity int, input model.SetProductAliasInput) int
 		TransferHouseholdOwner        func(childComplexity int, input model.TransferHouseholdOwnerInput) int
 		UpdateBudget                  func(childComplexity int, input model.UpdateBudgetInput) int
+		UpdateCategoryName            func(childComplexity int, input model.UpdateCategoryNameInput) int
 		UpdatePurchase                func(childComplexity int, input model.UpdatePurchaseInput) int
 		UpdatePurchaseItem            func(childComplexity int, input model.UpdatePurchaseItemInput) int
 		UpdateRecurringExpense        func(childComplexity int, input model.UpdateRecurringExpenseInput) int
@@ -1326,6 +1327,15 @@ type ComplexityRoot struct {
 		Message func(childComplexity int) int
 	}
 
+	UpdateCategoryNameSuccess struct {
+		Result func(childComplexity int) int
+	}
+
+	UpdateCategoryNameUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	UpdatePurchaseItemSuccess struct {
 		Result func(childComplexity int) int
 	}
@@ -1530,6 +1540,7 @@ type MutationResolver interface {
 	LinkStatementRefundCorrection(ctx context.Context, input model.LinkStatementRefundCorrectionInput) (model.LinkStatementRefundCorrectionResult, error)
 	TransferHouseholdOwner(ctx context.Context, input model.TransferHouseholdOwnerInput) (model.TransferHouseholdOwnerResult, error)
 	UpdateBudget(ctx context.Context, input model.UpdateBudgetInput) (model.UpdateBudgetResult, error)
+	UpdateCategoryName(ctx context.Context, input model.UpdateCategoryNameInput) (model.UpdateCategoryNameResult, error)
 	UpdatePurchaseItem(ctx context.Context, input model.UpdatePurchaseItemInput) (model.UpdatePurchaseItemResult, error)
 	UpdatePurchase(ctx context.Context, input model.UpdatePurchaseInput) (model.UpdatePurchaseResult, error)
 	UpdateRecurringExpense(ctx context.Context, input model.UpdateRecurringExpenseInput) (model.UpdateRecurringExpenseResult, error)
@@ -4168,6 +4179,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.UpdateBudget(childComplexity, args["input"].(model.UpdateBudgetInput)), true
+	case "Mutation.updateCategoryName":
+		if e.ComplexityRoot.Mutation.UpdateCategoryName == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_updateCategoryName_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.UpdateCategoryName(childComplexity, args["input"].(model.UpdateCategoryNameInput)), true
 	case "Mutation.updatePurchase":
 		if e.ComplexityRoot.Mutation.UpdatePurchase == nil {
 			break
@@ -6301,6 +6323,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.UpdateBudgetUserError.Message(childComplexity), true
 
+	case "UpdateCategoryNameSuccess.result":
+		if e.ComplexityRoot.UpdateCategoryNameSuccess.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdateCategoryNameSuccess.Result(childComplexity), true
+
+	case "UpdateCategoryNameUserError.code":
+		if e.ComplexityRoot.UpdateCategoryNameUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdateCategoryNameUserError.Code(childComplexity), true
+	case "UpdateCategoryNameUserError.message":
+		if e.ComplexityRoot.UpdateCategoryNameUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UpdateCategoryNameUserError.Message(childComplexity), true
+
 	case "UpdatePurchaseItemSuccess.result":
 		if e.ComplexityRoot.UpdatePurchaseItemSuccess.Result == nil {
 			break
@@ -6485,6 +6527,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputSharedPoolFundingRuleInput,
 		ec.unmarshalInputTransferHouseholdOwnerInput,
 		ec.unmarshalInputUpdateBudgetInput,
+		ec.unmarshalInputUpdateCategoryNameInput,
 		ec.unmarshalInputUpdatePurchaseInput,
 		ec.unmarshalInputUpdatePurchaseItemAllocationInput,
 		ec.unmarshalInputUpdatePurchaseItemInput,
@@ -7533,9 +7576,7 @@ extend type Query {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/household_mail_forwarding.graphql", Input: `extend type Query {
-  householdMailForwarding(
-    householdId: ID! @nodeID(of: "Household")
-  ): HouseholdMailForwardingStatus
+  householdMailForwarding(householdId: ID! @nodeID(of: "Household")): HouseholdMailForwardingStatus
 }
 
 extend type Mutation {
@@ -8192,10 +8233,14 @@ extend type Subscription {
 `, BuiltIn: false},
 	{Name: "../../graphql/record_account_movement_mutation.graphql", Input: `extend type Mutation {
   recordAccountMovement(input: RecordAccountMovementInput!): RecordAccountMovementResult!
-  linkStatementAccountMovement(input: LinkStatementAccountMovementInput!): LinkStatementAccountMovementResult!
+  linkStatementAccountMovement(
+    input: LinkStatementAccountMovementInput!
+  ): LinkStatementAccountMovementResult!
 }
 
-union LinkStatementAccountMovementResult = LinkStatementAccountMovementSuccess | LinkStatementAccountMovementUserError
+union LinkStatementAccountMovementResult =
+  | LinkStatementAccountMovementSuccess
+  | LinkStatementAccountMovementUserError
 
 type LinkStatementAccountMovementSuccess {
   result: AccountMovement!
@@ -8795,7 +8840,9 @@ type StatementRefundCorrectionConnection {
 }
 
 extend type Mutation {
-  linkStatementRefundCorrection(input: LinkStatementRefundCorrectionInput!): LinkStatementRefundCorrectionResult!
+  linkStatementRefundCorrection(
+    input: LinkStatementRefundCorrectionInput!
+  ): LinkStatementRefundCorrectionResult!
 }
 
 input LinkStatementRefundCorrectionInput {
@@ -8805,7 +8852,9 @@ input LinkStatementRefundCorrectionInput {
   sourceReference: String!
 }
 
-union LinkStatementRefundCorrectionResult = LinkStatementRefundCorrectionSuccess | LinkStatementRefundCorrectionUserError
+union LinkStatementRefundCorrectionResult =
+  | LinkStatementRefundCorrectionSuccess
+  | LinkStatementRefundCorrectionUserError
 
 type LinkStatementRefundCorrectionSuccess {
   result: Purchase!
@@ -8945,6 +8994,26 @@ input UpdateBudgetInput {
 }
 
 type UpdateBudgetUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/update_category_name_mutation.graphql", Input: `extend type Mutation {
+  updateCategoryName(input: UpdateCategoryNameInput!): UpdateCategoryNameResult!
+}
+
+union UpdateCategoryNameResult = UpdateCategoryNameSuccess | UpdateCategoryNameUserError
+
+type UpdateCategoryNameSuccess {
+  result: Category!
+}
+
+input UpdateCategoryNameInput {
+  categoryId: ID! @nodeID(of: "Category")
+  name: String!
+}
+
+type UpdateCategoryNameUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
@@ -10954,6 +11023,20 @@ func (ec *executionContext) field_Mutation_updateBudget_args(ctx context.Context
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.UpdateBudgetInput, error) {
 			return ec.unmarshalNUpdateBudgetInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdateBudgetInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_updateCategoryName_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.UpdateCategoryNameInput, error) {
+			return ec.unmarshalNUpdateCategoryNameInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdateCategoryNameInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -23079,6 +23162,50 @@ func (ec *executionContext) fieldContext_Mutation_updateBudget(ctx context.Conte
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_updateCategoryName(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_updateCategoryName(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().UpdateCategoryName(ctx, fc.Args["input"].(model.UpdateCategoryNameInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.UpdateCategoryNameResult) graphql.Marshaler {
+			return ec.marshalNUpdateCategoryNameResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdateCategoryNameResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_updateCategoryName(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type UpdateCategoryNameResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_updateCategoryName_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_updatePurchaseItem(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -31648,6 +31775,84 @@ func (ec *executionContext) fieldContext_UpdateBudgetUserError_message(_ context
 	return graphql.NewScalarFieldContext("UpdateBudgetUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _UpdateCategoryNameSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.UpdateCategoryNameSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdateCategoryNameSuccess_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Category) graphql.Marshaler {
+			return ec.marshalNCategory2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCategory(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdateCategoryNameSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UpdateCategoryNameSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Category(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UpdateCategoryNameUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.UpdateCategoryNameUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdateCategoryNameUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdateCategoryNameUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UpdateCategoryNameUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _UpdateCategoryNameUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.UpdateCategoryNameUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UpdateCategoryNameUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UpdateCategoryNameUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UpdateCategoryNameUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _UpdatePurchaseItemSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.UpdatePurchaseItemSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -39016,6 +39221,63 @@ func (ec *executionContext) unmarshalInputUpdateBudgetInput(ctx context.Context,
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputUpdateCategoryNameInput(ctx context.Context, obj any) (model.UpdateCategoryNameInput, error) {
+	var it model.UpdateCategoryNameInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"categoryId", "name"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "categoryId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("categoryId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Category")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.CategoryID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "name":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Name = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputUpdatePurchaseInput(ctx context.Context, obj any) (model.UpdatePurchaseInput, error) {
 	var it model.UpdatePurchaseInput
 	if obj == nil {
@@ -40705,6 +40967,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._UpdatePurchaseItemUserError(ctx, sel, obj)
+	case model.UpdateCategoryNameUserError:
+		return ec._UpdateCategoryNameUserError(ctx, sel, &obj)
+	case *model.UpdateCategoryNameUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._UpdateCategoryNameUserError(ctx, sel, obj)
 	case model.UpdateBudgetUserError:
 		return ec._UpdateBudgetUserError(ctx, sel, &obj)
 	case *model.UpdateBudgetUserError:
@@ -42011,6 +42280,33 @@ func (ec *executionContext) _UpdateBudgetResult(ctx context.Context, sel ast.Sel
 			return typedObj
 		} else {
 			panic(fmt.Errorf("unexpected type %T; non-generated variants of UpdateBudgetResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _UpdateCategoryNameResult(ctx context.Context, sel ast.SelectionSet, obj model.UpdateCategoryNameResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.UpdateCategoryNameUserError:
+		return ec._UpdateCategoryNameUserError(ctx, sel, &obj)
+	case *model.UpdateCategoryNameUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._UpdateCategoryNameUserError(ctx, sel, obj)
+	case model.UpdateCategoryNameSuccess:
+		return ec._UpdateCategoryNameSuccess(ctx, sel, &obj)
+	case *model.UpdateCategoryNameSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._UpdateCategoryNameSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of UpdateCategoryNameResult must implement graphql.Marshaler", obj))
 		}
 	}
 }
@@ -49131,6 +49427,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "updateCategoryName":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_updateCategoryName(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "updatePurchaseItem":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_updatePurchaseItem(ctx, field)
@@ -55472,6 +55775,87 @@ func (ec *executionContext) _UpdateBudgetUserError(ctx context.Context, sel ast.
 	return out
 }
 
+var updateCategoryNameSuccessImplementors = []string{"UpdateCategoryNameSuccess", "UpdateCategoryNameResult"}
+
+func (ec *executionContext) _UpdateCategoryNameSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.UpdateCategoryNameSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, updateCategoryNameSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("UpdateCategoryNameSuccess")
+		case "result":
+			out.Values[i] = ec._UpdateCategoryNameSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var updateCategoryNameUserErrorImplementors = []string{"UpdateCategoryNameUserError", "UpdateCategoryNameResult", "MutationError"}
+
+func (ec *executionContext) _UpdateCategoryNameUserError(ctx context.Context, sel ast.SelectionSet, obj *model.UpdateCategoryNameUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, updateCategoryNameUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("UpdateCategoryNameUserError")
+		case "code":
+			out.Values[i] = ec._UpdateCategoryNameUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._UpdateCategoryNameUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var updatePurchaseItemSuccessImplementors = []string{"UpdatePurchaseItemSuccess", "UpdatePurchaseItemResult"}
 
 func (ec *executionContext) _UpdatePurchaseItemSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.UpdatePurchaseItemSuccess) graphql.Marshaler {
@@ -58831,6 +59215,21 @@ func (ec *executionContext) marshalNUpdateBudgetResult2githubᚗcomᚋwalnuts101
 		return graphql.Null
 	}
 	return ec._UpdateBudgetResult(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNUpdateCategoryNameInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdateCategoryNameInput(ctx context.Context, v any) (model.UpdateCategoryNameInput, error) {
+	res, err := ec.unmarshalInputUpdateCategoryNameInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNUpdateCategoryNameResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdateCategoryNameResult(ctx context.Context, sel ast.SelectionSet, v model.UpdateCategoryNameResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._UpdateCategoryNameResult(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNUpdatePurchaseInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseInput(ctx context.Context, v any) (model.UpdatePurchaseInput, error) {

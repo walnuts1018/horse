@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "react";
 
-import type { AllocationRule, Household, ProductConcept } from "../../../shared/api";
+import type { Household, ProductConcept } from "../../../shared/api";
+import type { CatalogAllocationRule } from "../api/allocation-catalog";
 
 import { errorMessage } from "../../../shared/lib";
 import {
@@ -11,6 +12,43 @@ import {
   readCatalog,
   setAllocationRule,
 } from "../api/allocation-catalog";
+
+type AllocationRuleDraft = {
+  scope: "CATEGORY" | "MERCHANT" | "PRODUCT" | "PRODUCT_VARIANT";
+  categoryId: string;
+  merchant: string;
+  productId: string;
+  variantId: string;
+  weights: Record<string, string>;
+};
+
+export function createAllocationRuleDraft(
+  rule: CatalogAllocationRule,
+  pools: Household["pools"],
+): AllocationRuleDraft | null {
+  const target = rule.target;
+  if (target.__typename !== "MerchantAllocationRuleTarget" && !target.id) return null;
+  return {
+    scope:
+      target.__typename === "Category"
+        ? "CATEGORY"
+        : target.__typename === "MerchantAllocationRuleTarget"
+          ? "MERCHANT"
+          : target.__typename === "ProductConcept"
+            ? "PRODUCT"
+            : "PRODUCT_VARIANT",
+    categoryId: target.__typename === "Category" ? (target.id ?? "") : "",
+    merchant: target.__typename === "MerchantAllocationRuleTarget" ? target.name : "",
+    productId: target.__typename === "ProductConcept" ? (target.id ?? "") : "",
+    variantId: target.__typename === "ProductVariant" ? (target.id ?? "") : "",
+    weights: Object.fromEntries(
+      pools.map((pool) => [
+        pool.id,
+        String(rule.allocations.find((allocation) => allocation.poolId === pool.id)?.weight ?? 0),
+      ]),
+    ),
+  };
+}
 
 export function useAllocationCatalog({
   household,
@@ -23,7 +61,7 @@ export function useAllocationCatalog({
 }) {
   const onNoticeRef = useRef(onNotice);
   const onFormCleanRef = useRef(onFormClean);
-  const [allocationRules, setAllocationRules] = useState<AllocationRule[]>([]);
+  const [allocationRules, setAllocationRules] = useState<CatalogAllocationRule[]>([]);
   const [allocationRulesCount, setAllocationRulesCount] = useState(0);
   const [allocationRulesCursor, setAllocationRulesCursor] = useState<string | null>(null);
   const [allocationRulesHasNextPage, setAllocationRulesHasNextPage] = useState(false);
@@ -60,6 +98,7 @@ export function useAllocationCatalog({
   const [aliasName, setAliasName] = useState("");
   const [ruleProductId, setRuleProductId] = useState("");
   const [ruleVariantId, setRuleVariantId] = useState("");
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -103,6 +142,28 @@ export function useAllocationCatalog({
     }
   };
 
+  const editRule = (rule: CatalogAllocationRule) => {
+    const draft = createAllocationRuleDraft(rule, household.pools);
+    if (!draft) return;
+    setRuleScope(draft.scope);
+    setRuleCategoryId(draft.categoryId);
+    setRuleMerchant(draft.merchant);
+    setRuleProductId(draft.productId);
+    setRuleVariantId(draft.variantId);
+    setRuleWeights(draft.weights);
+    setEditingRuleId(rule.id);
+  };
+
+  const cancelRuleEdit = () => {
+    setEditingRuleId(null);
+    setRuleScope("CATEGORY");
+    setRuleCategoryId("");
+    setRuleMerchant("");
+    setRuleProductId("");
+    setRuleVariantId("");
+    setRuleWeights({});
+  };
+
   const saveRule = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const allocations = household.pools
@@ -132,8 +193,11 @@ export function useAllocationCatalog({
       await setAllocationRule({ householdId: household.id, target, allocations });
       onFormCleanRef.current("allocation-rule");
       await refreshRules();
-      onNoticeRef.current("負担ルールを保存しました", "success");
-      setRuleMerchant("");
+      onNoticeRef.current(
+        editingRuleId ? "負担ルールを更新しました" : "負担ルールを保存しました",
+        "success",
+      );
+      cancelRuleEdit();
     } catch (reason) {
       onNoticeRef.current(errorMessage(reason), "error");
     } finally {
@@ -244,8 +308,11 @@ export function useAllocationCatalog({
     setRuleProductId,
     ruleVariantId,
     setRuleVariantId,
+    editingRuleId,
     pending,
     loadMoreRules,
+    editRule,
+    cancelRuleEdit,
     saveRule,
     createConcept,
     createVariant,

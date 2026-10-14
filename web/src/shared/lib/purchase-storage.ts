@@ -50,6 +50,27 @@ export type ImportReceiptDraft = {
   documentId: string;
   baseResult: Record<string, unknown>;
   editedResult: Record<string, unknown>;
+  confirmationState?: ImportReceiptConfirmationState;
+};
+
+export type ImportReceiptConfirmationState = {
+  selectedCandidate?: {
+    id: string;
+    amounts: number[];
+    computedTotal: number;
+    consistent: boolean;
+    issues: string[];
+  };
+  manualAmountOverrides?: Record<string, number>;
+  manualAmountOverrideReason?: string;
+  payments?: Array<{
+    key: string;
+    method?: string;
+    cardLast4?: string;
+    paymentAccountId: string;
+    amountYen: number;
+  }>;
+  itemAllocations?: Record<string, Array<{ poolId: string; weight: number }>>;
 };
 
 function isPurchaseDraft(
@@ -337,7 +358,67 @@ export async function loadImportReceiptDraft(householdId: string, documentId: st
     documentId,
     baseResult: value.baseResult,
     editedResult: value.editedResult,
+    ...(isImportReceiptConfirmationState(value.confirmationState)
+      ? { confirmationState: value.confirmationState }
+      : {}),
   } satisfies ImportReceiptDraft;
+}
+
+function isImportReceiptConfirmationState(value: unknown): value is ImportReceiptConfirmationState {
+  if (!isRecord(value)) return false;
+  if (
+    value.selectedCandidate !== undefined &&
+    (!isRecord(value.selectedCandidate) ||
+      typeof value.selectedCandidate.id !== "string" ||
+      !Array.isArray(value.selectedCandidate.amounts) ||
+      !value.selectedCandidate.amounts.every(Number.isSafeInteger) ||
+      typeof value.selectedCandidate.computedTotal !== "number" ||
+      typeof value.selectedCandidate.consistent !== "boolean" ||
+      !Array.isArray(value.selectedCandidate.issues) ||
+      !value.selectedCandidate.issues.every((issue) => typeof issue === "string"))
+  )
+    return false;
+  if (
+    value.manualAmountOverrides !== undefined &&
+    (!isRecord(value.manualAmountOverrides) ||
+      !Object.values(value.manualAmountOverrides).every(Number.isSafeInteger))
+  )
+    return false;
+  if (
+    value.manualAmountOverrideReason !== undefined &&
+    typeof value.manualAmountOverrideReason !== "string"
+  )
+    return false;
+  if (
+    value.payments !== undefined &&
+    (!Array.isArray(value.payments) ||
+      !value.payments.every(
+        (payment) =>
+          isRecord(payment) &&
+          typeof payment.key === "string" &&
+          (payment.method === undefined || typeof payment.method === "string") &&
+          (payment.cardLast4 === undefined || typeof payment.cardLast4 === "string") &&
+          typeof payment.paymentAccountId === "string" &&
+          Number.isSafeInteger(payment.amountYen),
+      ))
+  )
+    return false;
+  if (
+    value.itemAllocations !== undefined &&
+    (!isRecord(value.itemAllocations) ||
+      !Object.values(value.itemAllocations).every(
+        (allocations) =>
+          Array.isArray(allocations) &&
+          allocations.every(
+            (allocation) =>
+              isRecord(allocation) &&
+              typeof allocation.poolId === "string" &&
+              typeof allocation.weight === "number",
+          ),
+      ))
+  )
+    return false;
+  return true;
 }
 
 export function saveImportReceiptDraft(draft: ImportReceiptDraft) {

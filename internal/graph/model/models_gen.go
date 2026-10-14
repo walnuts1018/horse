@@ -246,6 +246,10 @@ type UpdateBudgetResult interface {
 	IsUpdateBudgetResult()
 }
 
+type UpdateCategoryNameResult interface {
+	IsUpdateCategoryNameResult()
+}
+
 type UpdatePurchaseItemResult interface {
 	IsUpdatePurchaseItemResult()
 }
@@ -2314,6 +2318,28 @@ func (UpdateBudgetUserError) IsUpdateBudgetResult() {}
 func (UpdateBudgetUserError) IsMutationError()                {}
 func (this UpdateBudgetUserError) GetCode() MutationErrorCode { return this.Code }
 func (this UpdateBudgetUserError) GetMessage() string         { return this.Message }
+
+type UpdateCategoryNameInput struct {
+	CategoryID string `json:"categoryId"`
+	Name       string `json:"name"`
+}
+
+type UpdateCategoryNameSuccess struct {
+	Result *Category `json:"result"`
+}
+
+func (UpdateCategoryNameSuccess) IsUpdateCategoryNameResult() {}
+
+type UpdateCategoryNameUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (UpdateCategoryNameUserError) IsUpdateCategoryNameResult() {}
+
+func (UpdateCategoryNameUserError) IsMutationError()                {}
+func (this UpdateCategoryNameUserError) GetCode() MutationErrorCode { return this.Code }
+func (this UpdateCategoryNameUserError) GetMessage() string         { return this.Message }
 
 type UpdatePurchaseInput struct {
 	PurchaseID   string         `json:"purchaseId"`

@@ -27,6 +27,9 @@ export const allocationRulesQuery = graphql`
           target {
             __typename
             name
+            ... on Node {
+              id
+            }
           }
           revision
           allocations {
@@ -130,6 +133,24 @@ export const createCategoryMutation = graphql`
       ... on CreateCategorySuccess {
         result {
           id
+        }
+      }
+      ... on MutationError {
+        code
+        message
+      }
+    }
+  }
+`;
+
+export const updateCategoryNameMutation = graphql`
+  mutation UpdateCategoryNameMutation($input: UpdateCategoryNameInput!) {
+    updateCategoryName(input: $input) {
+      __typename
+      ... on UpdateCategoryNameSuccess {
+        result {
+          id
+          name
         }
       }
       ... on MutationError {

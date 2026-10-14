@@ -20,6 +20,10 @@ import {
 } from "../../../shared/api";
 import { allocationRulesQuery, setAllocationRuleMutation } from "./operations";
 
+export type CatalogAllocationRule = Omit<AllocationRule, "target"> & {
+  target: AllocationRule["target"] & { id?: string };
+};
+
 export async function readAllocationRules(householdId: string, after?: string) {
   const data = await fetchQuery<AllocationRulesQuery>(
     getRelayEnvironment(),
@@ -44,11 +48,11 @@ function mapAllocationRules(page: AllocationRulesQuery$data["allocationRules"]) 
 
 function mapAllocationRule(
   rule: AllocationRulesQuery$data["allocationRules"]["edges"][number]["node"],
-): AllocationRule {
+): CatalogAllocationRule {
   return {
     id: rule.id,
     householdId: rule.householdId,
-    target: mapAllocationRuleTarget(rule.target.__typename, rule.target.name),
+    target: mapAllocationRuleTarget(rule.target.__typename, rule.target.name, rule.target.id),
     revision: rule.revision,
     allocations: rule.allocations.map((allocation) => ({
       poolId: allocation.poolId,
@@ -58,13 +62,17 @@ function mapAllocationRule(
   };
 }
 
-function mapAllocationRuleTarget(typename: string, name: string): AllocationRule["target"] {
+function mapAllocationRuleTarget(
+  typename: string,
+  name: string,
+  id?: string,
+): CatalogAllocationRule["target"] {
   switch (typename) {
     case "Category":
     case "ProductConcept":
     case "ProductVariant":
     case "MerchantAllocationRuleTarget":
-      return { __typename: typename, name };
+      return { __typename: typename, name, ...(id ? { id } : {}) };
     default:
       throw new Error("負担ルールの対象種別を判別できません");
   }

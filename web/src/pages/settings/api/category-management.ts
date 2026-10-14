@@ -5,12 +5,15 @@ import {
   type CreateCategoryMutation$variables,
   type SetCategoryArchivedMutation,
   type SetCategoryArchivedMutation$variables,
+  type UpdateCategoryNameMutation,
+  type UpdateCategoryNameMutation$variables,
   type SetDefaultAllocationMutation,
   type SetDefaultAllocationMutation$variables,
 } from "../../../shared/api";
 import {
   createCategoryMutation,
   setCategoryArchivedMutation,
+  updateCategoryNameMutation,
   setDefaultAllocationMutation,
 } from "./operations";
 
@@ -41,6 +44,23 @@ export function setCategoryArchived(
         "SetCategoryArchivedSuccess",
         "カテゴリを更新できませんでした",
         "未対応のカテゴリ更新結果です",
+      );
+    },
+  );
+}
+
+export function updateCategoryName(
+  input: UpdateCategoryNameMutation$variables["input"],
+): Promise<void> {
+  return commitGraphQLMutation<UpdateCategoryNameMutation, void>(
+    updateCategoryNameMutation,
+    { input },
+    (response) => {
+      readGraphQLMutationResult(
+        response.updateCategoryName,
+        "UpdateCategoryNameSuccess",
+        "カテゴリ名を更新できませんでした",
+        "未対応のカテゴリ名更新結果です",
       );
     },
   );

@@ -6,6 +6,7 @@ import { errorMessage } from "../../../shared/lib";
 import {
   createCategory as createCategoryMutation,
   setCategoryArchived as setCategoryArchivedMutation,
+  updateCategoryName as updateCategoryNameMutation,
   setDefaultAllocation as setDefaultAllocationMutation,
 } from "../api/category-management";
 
@@ -83,10 +84,26 @@ export function useSettingsMutations({
     }
   };
 
+  const renameCategory = async (categoryId: string, name: string): Promise<boolean> => {
+    setPending("settings", true);
+    try {
+      await updateCategoryNameMutation({ categoryId, name });
+      await onRefresh();
+      onNotice("カテゴリ名を保存しました", "success");
+      return true;
+    } catch (reason) {
+      onNotice(errorMessage(reason), "error");
+      return false;
+    } finally {
+      setPending("settings", false);
+    }
+  };
+
   return {
     addCategory,
     archiveCategory,
     categoryName,
+    renameCategory,
     saveAllocation,
     setCategoryName,
     setShareWeights,

@@ -1,6 +1,5 @@
-import type { SubmitEvent } from "react";
-
 import { Plus } from "lucide-react";
+import { useState, type SubmitEvent } from "react";
 
 import type { Household } from "../../../shared/api";
 
@@ -15,6 +14,9 @@ export function ManageCategoriesSection({
   onCategoryNameChange,
   onAdd,
   onArchive,
+  onRename,
+  onFormDirty,
+  onFormClean,
 }: {
   categories: Household["categories"];
   categoryName: string;
@@ -23,7 +25,12 @@ export function ManageCategoriesSection({
   onCategoryNameChange: (value: string) => void;
   onAdd: (event: SubmitEvent<HTMLFormElement>) => void;
   onArchive: (categoryId: string, archived: boolean) => void;
+  onRename: (categoryId: string, name: string) => Promise<boolean>;
+  onFormDirty: (formID: string) => void;
+  onFormClean: (formID: string) => void;
 }) {
+  const [categoryNames, setCategoryNames] = useState<Record<string, string>>({});
+  const [pendingCategoryId, setPendingCategoryId] = useState<string | null>(null);
   return (
     <section className={`panel ${styles.settingsSection}`} hidden={hidden}>
       <div className={`panel-heading ${styles.panelHeading}`}>
@@ -38,15 +45,57 @@ export function ManageCategoriesSection({
       <div className="category-management">
         {categories.map((category, index) => (
           <div className="category-management-row" key={category.id}>
-            <span
-              className={`category-tag swatch-bg-${index % 6} ${category.archived ? "category-archived" : ""}`}
-            >
-              {category.name}
-            </span>
+            <span className={`category-tag swatch-bg-${index % 6}`} aria-hidden="true" />
+            <input
+              aria-label={`${category.name}のカテゴリ名`}
+              value={categoryNames[category.id] ?? category.name}
+              maxLength={120}
+              disabled={disabled}
+              onChange={(event) => {
+                const name = event.target.value;
+                setCategoryNames((current) => ({ ...current, [category.id]: name }));
+                if (name === category.name) onFormClean(`category:${category.id}`);
+                else onFormDirty(`category:${category.id}`);
+              }}
+            />
             <button
               type="button"
               className="text-button"
-              disabled={disabled}
+              disabled={
+                disabled ||
+                !(categoryNames[category.id] ?? category.name).trim() ||
+                (categoryNames[category.id] ?? category.name).trim() === category.name
+              }
+              onClick={() => {
+                const name = (categoryNames[category.id] ?? category.name).trim();
+                setPendingCategoryId(category.id);
+                void onRename(category.id, name).then((saved) => {
+                  if (saved) {
+                    setCategoryNames((current) => ({ ...current, [category.id]: name }));
+                    onFormClean(`category:${category.id}`);
+                  }
+                  setPendingCategoryId(null);
+                });
+              }}
+            >
+              保存
+            </button>
+            {(categoryNames[category.id] ?? category.name) !== category.name && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setCategoryNames((current) => ({ ...current, [category.id]: category.name }));
+                  onFormClean(`category:${category.id}`);
+                }}
+              >
+                取消
+              </button>
+            )}
+            <button
+              type="button"
+              className="text-button"
+              disabled={disabled || pendingCategoryId === category.id}
               onClick={() => onArchive(category.id, !category.archived)}
             >
               {category.archived ? "再表示" : "非表示"}

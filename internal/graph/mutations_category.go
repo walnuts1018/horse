@@ -34,3 +34,17 @@ func (r *mutationResolver) setCategoryArchived(ctx context.Context, categoryID s
 	}
 	return &model.Category{ID: updated.ID, Name: updated.Name, ParentID: updated.ParentID, Archived: updated.Archived}, nil
 }
+
+func (r *mutationResolver) updateCategoryName(ctx context.Context, categoryID, name string) (*model.Category, error) {
+	user, err := principal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := categoryapp.NewService(r.DB).UpdateName(ctx, categoryapp.UpdateNameCommand{
+		ActorID: user.MemberID, CategoryID: categoryID, Name: name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &model.Category{ID: updated.ID, Name: updated.Name, ParentID: updated.ParentID, Archived: updated.Archived}, nil
+}

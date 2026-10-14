@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type Dispatch,
   type RefObject,
@@ -8,6 +9,7 @@ import {
 } from "react";
 
 import type { Household } from "../../../shared/api";
+import type { ImportReceiptConfirmationState } from "../../../shared/lib/purchase-storage";
 import type {
   DocumentReview,
   ExtractedItem,
@@ -109,7 +111,93 @@ export function useImportConfirmation({
     Record<string, Record<string, ReceiptItemAllocation[]>>
   >({});
   const [manualPurchaseDates, setManualPurchaseDates] = useState<Record<string, string>>({});
+  const receiptConfirmationStates = useRef<Record<string, ImportReceiptConfirmationState>>({});
   const selectedDocumentId = selectedDocument?.id ?? "";
+  useEffect(() => {
+    if (!selectedDocument) return;
+    const documentId = selectedDocument.id;
+    const state = selectedDocument.receiptConfirmationState;
+    receiptConfirmationStates.current[documentId] = state ?? {};
+    setSelectedCandidates((current) => ({
+      ...current,
+      ...(state?.selectedCandidate
+        ? { [documentId]: state.selectedCandidate.id }
+        : { [documentId]: "" }),
+    }));
+    setManualAmountOverrides((current) => ({
+      ...current,
+      [documentId]: state?.manualAmountOverrides ?? {},
+    }));
+    setManualAmountOverrideReasons((current) => ({
+      ...current,
+      [documentId]: state?.manualAmountOverrideReason,
+    }));
+    setReceiptPayments((current) => ({
+      ...current,
+      [documentId]: state?.payments,
+    }));
+    setReceiptItemAllocations((current) => ({
+      ...current,
+      [documentId]: state?.itemAllocations ?? {},
+    }));
+  }, [selectedDocument?.id, selectedDocument?.receiptConfirmationState]);
+  const persistReceiptConfirmationState = (
+    documentId: string,
+    patch: Partial<ImportReceiptConfirmationState>,
+  ) => {
+    const next = { ...(receiptConfirmationStates.current[documentId] ?? {}), ...patch };
+    for (const key of Object.keys(patch) as Array<keyof ImportReceiptConfirmationState>) {
+      if (patch[key] === undefined) delete next[key];
+    }
+    receiptConfirmationStates.current[documentId] = next;
+    setDocuments((current) =>
+      current.map((document) =>
+        document.id === documentId ? { ...document, receiptConfirmationState: next } : document,
+      ),
+    );
+  };
+  const setSelectedCandidatesPersisted: Dispatch<SetStateAction<Record<string, string>>> = (
+    action,
+  ) => {
+    const next = typeof action === "function" ? action(selectedCandidates) : action;
+    setSelectedCandidates(next);
+    if (!selectedDocument) return;
+    const selectedId = next[selectedDocument.id];
+    const candidate = selectedDocument.result?.candidates?.find((entry) => entry.id === selectedId);
+    persistReceiptConfirmationState(selectedDocument.id, {
+      selectedCandidate: candidate ? { ...candidate } : undefined,
+    });
+  };
+  const setManualAmountOverridesPersisted: Dispatch<
+    SetStateAction<Record<string, Record<string, number>>>
+  > = (action) => {
+    const next = typeof action === "function" ? action(manualAmountOverrides) : action;
+    setManualAmountOverrides(next);
+    if (!selectedDocument) return;
+    persistReceiptConfirmationState(selectedDocument.id, {
+      manualAmountOverrides: next[selectedDocument.id],
+    });
+  };
+  const setManualAmountOverrideReasonsPersisted: Dispatch<
+    SetStateAction<Record<string, string | undefined>>
+  > = (action) => {
+    const next = typeof action === "function" ? action(manualAmountOverrideReasons) : action;
+    setManualAmountOverrideReasons(next);
+    if (!selectedDocument) return;
+    persistReceiptConfirmationState(selectedDocument.id, {
+      manualAmountOverrideReason: next[selectedDocument.id],
+    });
+  };
+  const setReceiptPaymentsPersisted: Dispatch<
+    SetStateAction<Record<string, ReceiptPaymentDraft[] | undefined>>
+  > = (action) => {
+    const next = typeof action === "function" ? action(receiptPayments) : action;
+    setReceiptPayments(next);
+    if (!selectedDocument) return;
+    persistReceiptConfirmationState(selectedDocument.id, {
+      payments: next[selectedDocument.id],
+    });
+  };
   // 文書が切り替わった直後は前の文書の確認位置を引き継がない
   const reviewTargetIndex =
     reviewTargetState.documentId === selectedDocumentId ? reviewTargetState.index : 0;
@@ -295,6 +383,11 @@ export function useImportConfirmation({
       ...current,
       [documentId]: { ...current[documentId], [itemKey]: allocations },
     }));
+    const nextAllocations = {
+      ...(receiptConfirmationStates.current[documentId]?.itemAllocations ?? {}),
+      [itemKey]: allocations,
+    };
+    persistReceiptConfirmationState(documentId, { itemAllocations: nextAllocations });
   };
 
   const editMerchant = (documentId: string, merchant: string) => {
@@ -667,18 +760,18 @@ export function useImportConfirmation({
     confirmedStatements,
     setConfirmedStatements,
     selectedCandidates,
-    setSelectedCandidates,
+    setSelectedCandidates: setSelectedCandidatesPersisted,
     reviewTargetIndex,
     reviewTargets,
     activeReviewIndex,
     activeReviewTarget,
     setReviewTargetIndex,
     manualAmountOverrides,
-    setManualAmountOverrides,
+    setManualAmountOverrides: setManualAmountOverridesPersisted,
     manualAmountOverrideReasons,
-    setManualAmountOverrideReasons,
+    setManualAmountOverrideReasons: setManualAmountOverrideReasonsPersisted,
     receiptPayments,
-    setReceiptPayments,
+    setReceiptPayments: setReceiptPaymentsPersisted,
     itemAllocationsFor: (documentId: string, itemKey: string) =>
       receiptItemAllocations[documentId]?.[itemKey] ?? [],
     editReceiptItemAllocations,

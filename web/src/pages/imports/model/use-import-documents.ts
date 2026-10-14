@@ -25,7 +25,11 @@ import {
   type DocumentFilters,
   type DocumentReview,
 } from "./imports";
-import { createImportReceiptDraft, reconcileReceiptReviewDraft } from "./receipt-review-draft";
+import {
+  createImportReceiptDraft,
+  reconcileReceiptConfirmationState,
+  reconcileReceiptReviewDraft,
+} from "./receipt-review-draft";
 
 type DocumentPage = {
   documents: DocumentReview[];
@@ -133,13 +137,26 @@ export function useImportDocuments(
           if (draft) {
             editedReceiptDocuments.current.add(document.id);
             if (!document.result) {
-              return withDocumentName({ ...document, result: draft.editedResult }, existing);
+              return withDocumentName(
+                {
+                  ...document,
+                  result: draft.editedResult,
+                  receiptConfirmationState: draft.confirmationState,
+                },
+                existing,
+              );
             }
             const reconciled = reconcileReceiptReviewDraft(document, draft);
-            if (reconciled.conflicts.length && !notifiedDraftConflicts.current.has(document.id)) {
+            const confirmation = reconcileReceiptConfirmationState(
+              draft.baseResult,
+              document.result,
+              draft.confirmationState,
+            );
+            const conflicts = [...reconciled.conflicts, ...confirmation.conflicts];
+            if (conflicts.length && !notifiedDraftConflicts.current.has(document.id)) {
               notifiedDraftConflicts.current.add(document.id);
               onError(
-                `${document.name ?? "レシート"}のAI解析結果が更新され、${reconciled.conflicts.join("・")}の修正を自動復元できませんでした。品目を確認してください。`,
+                `${document.name ?? "レシート"}のAI解析結果が更新され、${conflicts.join("・")}の修正を自動復元できませんでした。品目を確認してください。`,
               );
             }
             const rebasedDraft = createImportReceiptDraft(
@@ -147,6 +164,7 @@ export function useImportDocuments(
               document.id,
               document.result,
               reconciled.document.result,
+              confirmation.state,
             );
             if (rebasedDraft) {
               receiptDrafts.current.set(document.id, rebasedDraft);
@@ -155,7 +173,10 @@ export function useImportDocuments(
               receiptDrafts.current.delete(document.id);
               await deleteImportReceiptDraft(householdId, document.id);
             }
-            return withDocumentName(reconciled.document, existing);
+            return withDocumentName(
+              { ...reconciled.document, receiptConfirmationState: confirmation.state },
+              existing,
+            );
           }
           return {
             ...withDocumentName(document, existing),
@@ -223,16 +244,26 @@ export function useImportDocuments(
         );
         for (const document of currentDocuments) {
           const next = nextByID.get(document.id);
-          if (
-            !next ||
-            !editedReceiptDocuments.current.has(document.id) ||
-            !document.result ||
-            !next.result ||
-            JSON.stringify(document.result) === JSON.stringify(next.result)
-          )
-            continue;
+          if (!next) continue;
+          const resultChanged =
+            editedReceiptDocuments.current.has(document.id) &&
+            !!document.result &&
+            !!next.result &&
+            JSON.stringify(document.result) !== JSON.stringify(next.result);
+          const confirmationChanged =
+            JSON.stringify(document.receiptConfirmationState) !==
+            JSON.stringify(next.receiptConfirmationState);
+          if (!resultChanged && !confirmationChanged) continue;
           const baseResult = receiptDrafts.current.get(document.id)?.baseResult ?? document.result;
-          const draft = createImportReceiptDraft(householdId, document.id, baseResult, next.result);
+          const editedResult = next.result ?? document.result;
+          if (!baseResult || !editedResult) continue;
+          const draft = createImportReceiptDraft(
+            householdId,
+            document.id,
+            baseResult,
+            editedResult,
+            next.receiptConfirmationState,
+          );
           if (draft) {
             receiptDrafts.current.set(document.id, draft);
             changedDrafts.push(draft);

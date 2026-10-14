@@ -1,4 +1,4 @@
-import { Check, Plus } from "lucide-react";
+import { Check, Pencil, Plus } from "lucide-react";
 
 import type { Household } from "../../../shared/api";
 
@@ -23,6 +23,7 @@ export function ManageAllocationCatalog({
   pending: boolean;
 }) {
   const model = useAllocationCatalog({ household, onNotice, onFormClean });
+  const editingRule = model.allocationRules.find((rule) => rule.id === model.editingRuleId);
 
   return (
     <>
@@ -57,6 +58,15 @@ export function ManageAllocationCatalog({
                     .join(" / ")}
                 </small>
               </div>
+              <button
+                className="text-button"
+                type="button"
+                aria-label={`${rule.target.name}を編集`}
+                onClick={() => model.editRule(rule)}
+              >
+                <Pencil size={14} />
+                編集
+              </button>
             </div>
           ))}
         </div>
@@ -95,6 +105,14 @@ export function ManageAllocationCatalog({
               required
             >
               <option value="">カテゴリを選択</option>
+              {editingRule?.target.__typename === "Category" &&
+                !household.categories.some(
+                  (category) => category.id === model.ruleCategoryId && !category.archived,
+                ) && (
+                  <option value={model.ruleCategoryId}>
+                    {editingRule.target.name}（アーカイブ済み）
+                  </option>
+                )}
               {household.categories
                 .filter((category) => !category.archived)
                 .map((category) => (
@@ -117,6 +135,14 @@ export function ManageAllocationCatalog({
               required
             >
               <option value="">商品を選択</option>
+              {editingRule?.target.__typename === "ProductConcept" &&
+                !model.catalog.some(
+                  (product) => product.id === model.ruleProductId && !product.archived,
+                ) && (
+                  <option value={model.ruleProductId}>
+                    {editingRule.target.name}（アーカイブ済み）
+                  </option>
+                )}
               {model.catalog
                 .filter((product) => !product.archived)
                 .map((product) => (
@@ -132,6 +158,16 @@ export function ManageAllocationCatalog({
               required
             >
               <option value="">バリエーションを選択</option>
+              {editingRule?.target.__typename === "ProductVariant" &&
+                !model.catalog.some((product) =>
+                  product.variants.some(
+                    (variant) => variant.id === model.ruleVariantId && !variant.archived,
+                  ),
+                ) && (
+                  <option value={model.ruleVariantId}>
+                    {editingRule.target.name}（アーカイブ済み）
+                  </option>
+                )}
               {model.catalog.flatMap((product) =>
                 product.variants
                   .filter((variant) => !variant.archived)
@@ -165,8 +201,18 @@ export function ManageAllocationCatalog({
           </div>
           <button type="submit" className="button button-primary" disabled={model.pending}>
             <Check size={16} />
-            ルールを保存
+            {model.editingRuleId ? "変更を保存" : "ルールを保存"}
           </button>
+          {model.editingRuleId && (
+            <button
+              className="text-button"
+              type="button"
+              onClick={model.cancelRuleEdit}
+              disabled={model.pending}
+            >
+              編集をやめる
+            </button>
+          )}
         </form>
       </section>
       <section className={`panel ${styles.settingsSection}`} hidden={catalogHidden}>

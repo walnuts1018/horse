@@ -1,4 +1,7 @@
-import type { ImportReceiptDraft } from "../../../shared/lib/purchase-storage";
+import type {
+  ImportReceiptConfirmationState,
+  ImportReceiptDraft,
+} from "../../../shared/lib/purchase-storage";
 import type { DocumentReview } from "./imports";
 
 import { isRecord } from "../../../shared/lib/guard";
@@ -121,6 +124,91 @@ export function reconcileReceiptReviewDraft(
   return { document: { ...document, result }, conflicts };
 }
 
+export function reconcileReceiptConfirmationState(
+  baseResult: ImportReceiptDraft["baseResult"],
+  latestResult: DocumentReview["result"],
+  state: ImportReceiptConfirmationState | undefined,
+): { state: ImportReceiptConfirmationState | undefined; conflicts: string[] } {
+  if (!state) return { state, conflicts: [] };
+  const conflicts: string[] = [];
+  const baseItems = receiptItems(baseResult);
+  const latestItems = receiptItems(latestResult);
+  const mapItemKeys = <T>(values: Record<string, T> | undefined) => {
+    if (!values) return undefined;
+    const mapped: Record<string, T> = {};
+    for (const [key, value] of Object.entries(values)) {
+      const match = /^item-(\d+)$/.exec(key);
+      const baseItem = match ? baseItems[Number(match[1])] : undefined;
+      if (!baseItem) continue;
+      const matches = latestItems.flatMap((item, index) =>
+        item.printedAmount === baseItem.printedAmount ? [index] : [],
+      );
+      const matchedIndex = matches.at(0);
+      if (matches.length !== 1 || matchedIndex === undefined) {
+        conflicts.push(`品目${Number(match?.[1] ?? 0) + 1}の確認状態`);
+        continue;
+      }
+      const targetItem = latestItems[matchedIndex];
+      const targetKey =
+        typeof targetItem.key === "string" ? targetItem.key : `item-${matchedIndex}`;
+      mapped[targetKey] = value;
+    }
+    return mapped;
+  };
+  let selectedCandidate = state.selectedCandidate;
+  if (selectedCandidate) {
+    const candidates = latestResult?.candidates ?? [];
+    const remappedAmounts = selectedCandidate.amounts.map((amount, baseIndex) => {
+      const baseItem = baseItems[baseIndex];
+      if (!baseItem) return undefined;
+      const indexes = latestItems.flatMap((item, index) =>
+        item.printedAmount === baseItem.printedAmount ? [index] : [],
+      );
+      return indexes.length === 1 ? { index: indexes[0], amount } : undefined;
+    });
+    const amountsInLatestOrder =
+      remappedAmounts.length === latestItems.length && remappedAmounts.every(Boolean)
+        ? latestItems.map(
+            (_, index) => remappedAmounts.find((entry) => entry?.index === index)?.amount,
+          )
+        : selectedCandidate.amounts;
+    const matches = candidates.filter(
+      (candidate) =>
+        candidate.computedTotal === selectedCandidate?.computedTotal &&
+        candidate.amounts.length === amountsInLatestOrder.length &&
+        candidate.amounts.every((amount, index) => amount === amountsInLatestOrder[index]),
+    );
+    const sameID = candidates.filter((candidate) => candidate.id === selectedCandidate?.id);
+    const candidate =
+      matches.length === 1 ? matches[0] : sameID.length === 1 ? sameID[0] : undefined;
+    if (candidate) selectedCandidate = { ...candidate };
+    else {
+      conflicts.push("税額候補の選択");
+      selectedCandidate = undefined;
+    }
+  }
+  return {
+    state: {
+      ...(selectedCandidate ? { selectedCandidate } : {}),
+      ...(state.manualAmountOverrides
+        ? { manualAmountOverrides: mapItemKeys(state.manualAmountOverrides) }
+        : {}),
+      ...(state.manualAmountOverrideReason !== undefined
+        ? { manualAmountOverrideReason: state.manualAmountOverrideReason }
+        : {}),
+      ...(state.payments ? { payments: state.payments } : {}),
+      ...(state.itemAllocations ? { itemAllocations: mapItemKeys(state.itemAllocations) } : {}),
+    },
+    conflicts,
+  };
+}
+
+function receiptItems(value: unknown) {
+  return isRecord(value) && isRecord(value.receipt) && Array.isArray(value.receipt.items)
+    ? value.receipt.items.filter(isReceiptItem)
+    : [];
+}
+
 function isDocumentResult(value: unknown): value is NonNullable<DocumentReview["result"]> {
   if (!isRecord(value)) return false;
   if (value.receipt !== undefined && !isRecord(value.receipt)) return false;
@@ -138,6 +226,7 @@ export function createImportReceiptDraft(
   documentId: string,
   baseResult: DocumentReview["result"],
   editedResult: DocumentReview["result"],
+  confirmationState?: ImportReceiptConfirmationState,
 ): ImportReceiptDraft | undefined {
   if (!baseResult || !editedResult) return undefined;
   return {
@@ -145,5 +234,6 @@ export function createImportReceiptDraft(
     documentId,
     baseResult,
     editedResult,
+    ...(confirmationState ? { confirmationState } : {}),
   };
 }

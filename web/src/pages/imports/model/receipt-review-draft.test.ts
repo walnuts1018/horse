@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { ImportReceiptDraft } from "../../../shared/lib/purchase-storage";
 import type { DocumentReview } from "./imports";
 
-import { reconcileReceiptReviewDraft } from "./receipt-review-draft";
+import {
+  reconcileReceiptConfirmationState,
+  reconcileReceiptReviewDraft,
+} from "./receipt-review-draft";
 
 function item(name: string, printedAmount: number, grossAmount: number, confidence = 0.9) {
   return { name, printedAmount, grossAmount, confidence, verification: "UNRESOLVED" };
@@ -112,5 +115,71 @@ describe("reconcileReceiptReviewDraft", () => {
 
     expect(reconciled.document.result?.receipt?.items?.[0]?.name).toBe("ヨーグルト");
     expect(reconciled.conflicts).toEqual(["品目1"]);
+  });
+});
+
+describe("reconcileReceiptConfirmationState", () => {
+  it("再解析で品目順と候補IDが変わっても税候補・金額・配賦を同じ品目へ戻す", () => {
+    const baseResult = {
+      receipt: { items: [item("牛乳", 100, 110), item("パン", 200, 220)] },
+    };
+    const latestResult = {
+      receipt: { items: [item("パン", 200, 220), item("牛乳", 100, 110)] },
+      candidates: [
+        {
+          id: "candidate-new",
+          amounts: [220, 110],
+          computedTotal: 330,
+          consistent: true,
+          issues: [],
+        },
+      ],
+    };
+
+    const reconciled = reconcileReceiptConfirmationState(baseResult, latestResult, {
+      selectedCandidate: {
+        id: "candidate-old",
+        amounts: [110, 220],
+        computedTotal: 330,
+        consistent: true,
+        issues: [],
+      },
+      manualAmountOverrides: { "item-0": 111 },
+      manualAmountOverrideReason: "印字額を確認",
+      payments: [{ key: "manual", paymentAccountId: "account-1", amountYen: 331 }],
+      itemAllocations: { "item-1": [{ poolId: "pool-1", weight: 100 }] },
+    });
+
+    expect(reconciled.state).toEqual({
+      selectedCandidate: latestResult.candidates[0],
+      manualAmountOverrides: { "item-1": 111 },
+      manualAmountOverrideReason: "印字額を確認",
+      payments: [{ key: "manual", paymentAccountId: "account-1", amountYen: 331 }],
+      itemAllocations: { "item-0": [{ poolId: "pool-1", weight: 100 }] },
+    });
+    expect(reconciled.conflicts).toEqual([]);
+  });
+
+  it("一意に対応しない品目や候補選択を復元せず競合として返す", () => {
+    const baseResult = { receipt: { items: [item("牛乳", 100, 110)] } };
+    const latestResult = {
+      receipt: { items: [item("別商品", 101, 110)] },
+      candidates: [],
+    };
+
+    const reconciled = reconcileReceiptConfirmationState(baseResult, latestResult, {
+      selectedCandidate: {
+        id: "candidate-old",
+        amounts: [110],
+        computedTotal: 110,
+        consistent: false,
+        issues: [],
+      },
+      manualAmountOverrides: { "item-0": 111 },
+      itemAllocations: { "item-0": [{ poolId: "pool-1", weight: 100 }] },
+    });
+
+    expect(reconciled.state).toEqual({ manualAmountOverrides: {}, itemAllocations: {} });
+    expect(reconciled.conflicts).toEqual(["税額候補の選択", "品目1の確認状態", "品目1の確認状態"]);
   });
 });

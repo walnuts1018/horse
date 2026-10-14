@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<08fa1e8cfa3ac93aecb74baf19894be4>>
+ * @generated SignedSource<<e9643afab12c84df287f78b0589b27da>>
  * @lightSyntaxTransform
  */
 
@@ -28,6 +28,7 @@ export type AllocationRulesQuery$data = {
         readonly revision: number;
         readonly target: {
           readonly __typename: string;
+          readonly id?: string;
           readonly name: string;
         };
       };
@@ -60,129 +61,183 @@ v2 = {
   "kind": "LocalArgument",
   "name": "householdId"
 },
-v3 = [
-  {
-    "kind": "Variable",
-    "name": "after",
-    "variableName": "after"
-  },
-  {
-    "kind": "Variable",
-    "name": "first",
-    "variableName": "first"
-  },
-  {
-    "kind": "Variable",
-    "name": "householdId",
-    "variableName": "householdId"
-  }
-],
-v4 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "cursor",
-  "storageKey": null
-},
-v5 = {
+v3 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v6 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "householdId",
-  "storageKey": null
-},
-v7 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "__typename",
-  "storageKey": null
-},
-v8 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "name",
-  "storageKey": null
-},
-v9 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "revision",
-  "storageKey": null
-},
-v10 = {
-  "alias": null,
-  "args": null,
-  "concreteType": "Allocation",
-  "kind": "LinkedField",
-  "name": "allocations",
-  "plural": true,
-  "selections": [
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "poolId",
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "poolName",
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "weight",
-      "storageKey": null
-    }
-  ],
-  "storageKey": null
-},
-v11 = {
-  "alias": null,
-  "args": null,
-  "concreteType": "PageInfo",
-  "kind": "LinkedField",
-  "name": "pageInfo",
-  "plural": false,
-  "selections": [
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "endCursor",
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "hasNextPage",
-      "storageKey": null
-    }
-  ],
-  "storageKey": null
-},
-v12 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "totalCount",
-  "storageKey": null
-};
+v4 = [
+  {
+    "alias": null,
+    "args": [
+      {
+        "kind": "Variable",
+        "name": "after",
+        "variableName": "after"
+      },
+      {
+        "kind": "Variable",
+        "name": "first",
+        "variableName": "first"
+      },
+      {
+        "kind": "Variable",
+        "name": "householdId",
+        "variableName": "householdId"
+      }
+    ],
+    "concreteType": "AllocationRuleConnection",
+    "kind": "LinkedField",
+    "name": "allocationRules",
+    "plural": false,
+    "selections": [
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "AllocationRuleEdge",
+        "kind": "LinkedField",
+        "name": "edges",
+        "plural": true,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "cursor",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "AllocationRule",
+            "kind": "LinkedField",
+            "name": "node",
+            "plural": false,
+            "selections": [
+              (v3/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "householdId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": null,
+                "kind": "LinkedField",
+                "name": "target",
+                "plural": false,
+                "selections": [
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "__typename",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "name",
+                    "storageKey": null
+                  },
+                  {
+                    "kind": "InlineFragment",
+                    "selections": [
+                      (v3/*:: as any*/)
+                    ],
+                    "type": "Node",
+                    "abstractKey": "__isNode"
+                  }
+                ],
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "revision",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": "Allocation",
+                "kind": "LinkedField",
+                "name": "allocations",
+                "plural": true,
+                "selections": [
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "poolId",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "poolName",
+                    "storageKey": null
+                  },
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "weight",
+                    "storageKey": null
+                  }
+                ],
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "PageInfo",
+        "kind": "LinkedField",
+        "name": "pageInfo",
+        "plural": false,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "endCursor",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "hasNextPage",
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "totalCount",
+        "storageKey": null
+      }
+    ],
+    "storageKey": null
+  }
+];
 return {
   "fragment": {
     "argumentDefinitions": [
@@ -193,61 +248,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "AllocationRulesQuery",
-    "selections": [
-      {
-        "alias": null,
-        "args": (v3/*:: as any*/),
-        "concreteType": "AllocationRuleConnection",
-        "kind": "LinkedField",
-        "name": "allocationRules",
-        "plural": false,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "AllocationRuleEdge",
-            "kind": "LinkedField",
-            "name": "edges",
-            "plural": true,
-            "selections": [
-              (v4/*:: as any*/),
-              {
-                "alias": null,
-                "args": null,
-                "concreteType": "AllocationRule",
-                "kind": "LinkedField",
-                "name": "node",
-                "plural": false,
-                "selections": [
-                  (v5/*:: as any*/),
-                  (v6/*:: as any*/),
-                  {
-                    "alias": null,
-                    "args": null,
-                    "concreteType": null,
-                    "kind": "LinkedField",
-                    "name": "target",
-                    "plural": false,
-                    "selections": [
-                      (v7/*:: as any*/),
-                      (v8/*:: as any*/)
-                    ],
-                    "storageKey": null
-                  },
-                  (v9/*:: as any*/),
-                  (v10/*:: as any*/)
-                ],
-                "storageKey": null
-              }
-            ],
-            "storageKey": null
-          },
-          (v11/*:: as any*/),
-          (v12/*:: as any*/)
-        ],
-        "storageKey": null
-      }
-    ],
+    "selections": (v4/*:: as any*/),
     "type": "Query",
     "abstractKey": null
   },
@@ -260,69 +261,7 @@ return {
     ],
     "kind": "Operation",
     "name": "AllocationRulesQuery",
-    "selections": [
-      {
-        "alias": null,
-        "args": (v3/*:: as any*/),
-        "concreteType": "AllocationRuleConnection",
-        "kind": "LinkedField",
-        "name": "allocationRules",
-        "plural": false,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "AllocationRuleEdge",
-            "kind": "LinkedField",
-            "name": "edges",
-            "plural": true,
-            "selections": [
-              (v4/*:: as any*/),
-              {
-                "alias": null,
-                "args": null,
-                "concreteType": "AllocationRule",
-                "kind": "LinkedField",
-                "name": "node",
-                "plural": false,
-                "selections": [
-                  (v5/*:: as any*/),
-                  (v6/*:: as any*/),
-                  {
-                    "alias": null,
-                    "args": null,
-                    "concreteType": null,
-                    "kind": "LinkedField",
-                    "name": "target",
-                    "plural": false,
-                    "selections": [
-                      (v7/*:: as any*/),
-                      (v8/*:: as any*/),
-                      {
-                        "kind": "InlineFragment",
-                        "selections": [
-                          (v5/*:: as any*/)
-                        ],
-                        "type": "Node",
-                        "abstractKey": "__isNode"
-                      }
-                    ],
-                    "storageKey": null
-                  },
-                  (v9/*:: as any*/),
-                  (v10/*:: as any*/)
-                ],
-                "storageKey": null
-              }
-            ],
-            "storageKey": null
-          },
-          (v11/*:: as any*/),
-          (v12/*:: as any*/)
-        ],
-        "storageKey": null
-      }
-    ]
+    "selections": (v4/*:: as any*/)
   },
   "params": {
     "cacheID": "aa6c25d874995ea433fb242b6c7cd0e6",
@@ -335,6 +274,6 @@ return {
 };
 })();
 
-(node as any).hash = "8c6af558011dfb4349f2ecc14c388ca4";
+(node as any).hash = "d25f7fd4777fb813c4a979c971d77ebc";
 
 export default node;

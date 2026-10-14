@@ -113,6 +113,9 @@ export function SettingsPage({
           onCategoryNameChange={mutations.setCategoryName}
           onAdd={mutations.addCategory}
           onArchive={(categoryId, archived) => void mutations.archiveCategory(categoryId, archived)}
+          onRename={mutations.renameCategory}
+          onFormDirty={changes.markFormDirty}
+          onFormClean={changes.markFormClean}
         />
         <ManageDefaultAllocationSection
           pools={household.pools}

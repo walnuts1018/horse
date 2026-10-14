@@ -116,6 +116,69 @@ type SetArchivedCommand struct {
 	Archived   bool
 }
 
+type UpdateNameCommand struct {
+	ActorID    string
+	CategoryID string
+	Name       string `validate:"notblank,max=120"`
+}
+
+func (s *Service) UpdateName(ctx context.Context, command UpdateNameCommand) (Category, error) {
+	command.Name = strings.TrimSpace(command.Name)
+	if err := inputvalidation.Check(command); err != nil {
+		return Category{}, err
+	}
+	actorID, err := parseID(command.ActorID, "actor")
+	if err != nil {
+		return Category{}, err
+	}
+	categoryID, err := parseID(command.CategoryID, "category")
+	if err != nil {
+		return Category{}, err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Category{}, err
+	}
+	defer txcleanup.Rollback(ctx, tx)
+	executor := bobpgx.NewTx(tx, nil)
+	category, err := models.Categories.Query(sm.Where(models.Categories.Columns.ID.EQ(psql.Arg(categoryID))), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Category{}, apperror.ErrNotFound
+	} else if err != nil {
+		return Category{}, err
+	}
+	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(category.HouseholdID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+	))).Exists(ctx, executor)
+	if err != nil {
+		return Category{}, err
+	}
+	if !member {
+		return Category{}, apperror.ErrNotFound
+	}
+	if category.Name != command.Name {
+		if _, err := models.Categories.Update((&models.CategorySetter{Name: &command.Name}).UpdateMod(), um.Where(psql.And(
+			models.Categories.Columns.ID.EQ(psql.Arg(categoryID)),
+			models.Categories.Columns.HouseholdID.EQ(psql.Arg(category.HouseholdID)),
+		))).Exec(ctx, executor); err != nil {
+			return Category{}, err
+		}
+		if err := accounting.RecordEvent(ctx, executor, category.HouseholdID, categoryID, "category.name_updated", 1, []string{"name"}, actorID); err != nil {
+			return Category{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Category{}, err
+	}
+	var parentID *string
+	if category.ParentID.Valid {
+		parent := category.ParentID.V.String()
+		parentID = &parent
+	}
+	return Category{ID: category.ID.String(), Name: command.Name, ParentID: parentID, Archived: category.Archived}, nil
+}
+
 func (s *Service) SetArchived(ctx context.Context, command SetArchivedCommand) (Category, error) {
 	actorID, err := parseID(command.ActorID, "actor")
 	if err != nil {

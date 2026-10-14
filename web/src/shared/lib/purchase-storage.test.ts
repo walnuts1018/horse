@@ -231,6 +231,19 @@ describe("import receipt draft storage", () => {
       documentId: "document-1",
       baseResult: { receipt: { merchant: "AI店舗" } },
       editedResult: { receipt: { merchant: "修正店舗" } },
+      confirmationState: {
+        selectedCandidate: {
+          id: "candidate-1",
+          amounts: [110],
+          computedTotal: 110,
+          consistent: true,
+          issues: [],
+        },
+        manualAmountOverrides: { "item-0": 111 },
+        manualAmountOverrideReason: "印字額を確認",
+        payments: [{ key: "manual", paymentAccountId: "account-1", amountYen: 111 }],
+        itemAllocations: { "item-0": [{ poolId: "pool-1", weight: 100 }] },
+      },
     };
     await saveImportReceiptDraft(draft);
 
