@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Household, ProductConcept, Tag } from "../../../shared/api";
 import type { useLedgerItemBulkEdit } from "../model/ledger-item-bulk-edit";
@@ -25,15 +25,27 @@ export function LedgerItemBulkActions({
 }) {
   const { selectedCount, pending } = edit;
   const [activeAction, setActiveAction] = useState<BulkAction | null>(null);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const deleteDialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = deleteDialogRef.current;
+    if (!dialog) return;
+    if (deleteConfirmationOpen && !dialog.open) dialog.showModal();
+    if (!deleteConfirmationOpen && dialog.open) dialog.close();
+  }, [deleteConfirmationOpen]);
 
   return (
     <>
       {selectedCount > 0 && (
         <section
           className={`panel ledger-bulk-actions ${styles.bulkActions} ${styles.selectionPanel}`}
-          aria-label="選択品目の一括編集"
+          aria-label="選択品目の一括操作"
         >
           <span className={styles.selectionCount}>{selectedCount}品目を選択中</span>
+          {selectedCount > 100 && (
+            <output className={styles.selectionLimit}>一括操作は100品目までです</output>
+          )}
           <fieldset className={styles.actionList} disabled={pending || disabled}>
             <legend>変更する項目</legend>
             {(
@@ -189,6 +201,7 @@ export function LedgerItemBulkActions({
             disabled={
               pending ||
               disabled ||
+              selectedCount > 100 ||
               (!edit.category && !edit.allocationsActive && !edit.variantId && !edit.tagsActive) ||
               (edit.allocationsActive &&
                 Object.values(edit.allocations).some(
@@ -200,6 +213,14 @@ export function LedgerItemBulkActions({
             {pending ? "更新中" : "一括変更"}
           </button>
           <button
+            className={`button ${styles.deleteButton}`}
+            type="button"
+            disabled={pending || disabled || selectedCount === 0 || selectedCount > 100}
+            onClick={() => setDeleteConfirmationOpen(true)}
+          >
+            {pending ? "処理中" : `${selectedCount}品目を削除`}
+          </button>
+          <button
             className={`text-button ${styles.clearButton}`}
             type="button"
             disabled={pending}
@@ -207,6 +228,35 @@ export function LedgerItemBulkActions({
           >
             選択解除
           </button>
+          <dialog
+            ref={deleteDialogRef}
+            className={`panel ${styles.deleteDialog}`}
+            aria-labelledby="ledger-item-delete-title"
+            onClose={() => setDeleteConfirmationOpen(false)}
+          >
+            <h2 id="ledger-item-delete-title">品目の削除</h2>
+            <p>選択した{selectedCount}品目を削除します。この操作は取り消せません。</p>
+            <div className={styles.deleteDialogActions}>
+              <button
+                className="button button-soft"
+                type="button"
+                onClick={() => setDeleteConfirmationOpen(false)}
+              >
+                キャンセル
+              </button>
+              <button
+                className={`button ${styles.deleteButton}`}
+                type="button"
+                disabled={pending || disabled || selectedCount === 0 || selectedCount > 100}
+                onClick={() => {
+                  setDeleteConfirmationOpen(false);
+                  void edit.deleteSelected();
+                }}
+              >
+                削除する
+              </button>
+            </div>
+          </dialog>
         </section>
       )}
       {edit.undo && (

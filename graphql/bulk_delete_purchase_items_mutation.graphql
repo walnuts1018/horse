@@ -1,0 +1,20 @@
+extend type Mutation {
+  bulkDeletePurchaseItems(input: BulkDeletePurchaseItemsInput!): BulkDeletePurchaseItemsResult!
+}
+
+union BulkDeletePurchaseItemsResult =
+  | BulkDeletePurchaseItemsSuccess
+  | BulkDeletePurchaseItemsUserError
+
+type BulkDeletePurchaseItemsSuccess {
+  deletedItemIds: [ID!]!
+}
+
+input BulkDeletePurchaseItemsInput {
+  targets: [PurchaseItemTargetInput!]!
+}
+
+type BulkDeletePurchaseItemsUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

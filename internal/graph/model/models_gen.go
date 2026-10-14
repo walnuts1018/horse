@@ -36,6 +36,10 @@ type ArchiveTagResult interface {
 	IsArchiveTagResult()
 }
 
+type BulkDeletePurchaseItemsResult interface {
+	IsBulkDeletePurchaseItemsResult()
+}
+
 type BulkUpdatePurchaseItemsResult interface {
 	IsBulkUpdatePurchaseItemsResult()
 }
@@ -563,6 +567,27 @@ type BudgetEdge struct {
 	Cursor string  `json:"cursor"`
 	Node   *Budget `json:"node"`
 }
+
+type BulkDeletePurchaseItemsInput struct {
+	Targets []*PurchaseItemTargetInput `json:"targets"`
+}
+
+type BulkDeletePurchaseItemsSuccess struct {
+	DeletedItemIds []string `json:"deletedItemIds"`
+}
+
+func (BulkDeletePurchaseItemsSuccess) IsBulkDeletePurchaseItemsResult() {}
+
+type BulkDeletePurchaseItemsUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (BulkDeletePurchaseItemsUserError) IsBulkDeletePurchaseItemsResult() {}
+
+func (BulkDeletePurchaseItemsUserError) IsMutationError()                {}
+func (this BulkDeletePurchaseItemsUserError) GetCode() MutationErrorCode { return this.Code }
+func (this BulkDeletePurchaseItemsUserError) GetMessage() string         { return this.Message }
 
 type BulkPurchaseItemPatch struct {
 	CategoryID       graphql.Omittable[*string]            `json:"categoryId,omitempty"`

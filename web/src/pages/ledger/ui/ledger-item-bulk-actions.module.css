@@ -9,9 +9,10 @@
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     "count clear"
+    "limit limit"
     "actions actions"
     "settings settings"
-    "apply apply";
+    "apply delete";
   align-items: start;
 }
 
@@ -21,6 +22,12 @@
   color: #526258;
   font-size: 12px;
   font-weight: 650;
+}
+
+.selectionLimit {
+  grid-area: limit;
+  color: #9d352d;
+  font-size: 12px;
 }
 
 .actionList {
@@ -77,6 +84,38 @@
   justify-self: end;
 }
 
+.deleteButton {
+  grid-area: delete;
+  justify-self: end;
+  border-color: #c76b63;
+  color: #9d352d;
+}
+
+.deleteDialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 20px;
+  border: 0;
+  color: inherit;
+}
+
+.deleteDialog::backdrop {
+  background: rgb(20 30 24 / 0.68);
+}
+
+.deleteDialog h2 {
+  margin: 0 0 12px;
+}
+
+.deleteDialog p {
+  margin: 0 0 20px;
+}
+
+.deleteDialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .clearButton {
   grid-area: clear;
   justify-self: end;
@@ -89,6 +128,15 @@
 
   .applyButton {
     justify-self: stretch;
+  }
+
+  .deleteButton {
+    justify-self: stretch;
+  }
+
+  .deleteDialogActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .actionList {

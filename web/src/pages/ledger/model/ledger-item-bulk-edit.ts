@@ -7,6 +7,7 @@ import {
   type BulkUpdatePurchaseItemsMutation$variables,
 } from "../../../entities/purchase";
 import { errorMessage } from "../../../shared/lib";
+import { useBulkDeletePurchaseItemsMutation } from "../api/bulk-delete-purchase-items";
 import { selectableLedgerItemIds } from "./ledger-item-selection";
 
 type LedgerItemBulkPatch = BulkUpdatePurchaseItemsMutation$variables["input"]["patch"];
@@ -49,6 +50,7 @@ export function useLedgerItemBulkEdit({
   refresh: () => void | Promise<void>;
 }) {
   const { mutate: mutateBulkUpdatePurchaseItems } = useBulkUpdatePurchaseItemsMutation();
+  const { mutate: mutateBulkDeletePurchaseItems } = useBulkDeletePurchaseItemsMutation();
   const selectionScope = `${householdId}\u0000${selectionKey}`;
   const [selection, setSelection] = useState<LedgerItemSelectionState>(() => ({
     scope: selectionScope,
@@ -118,7 +120,7 @@ export function useLedgerItemBulkEdit({
     const selectableRange = range?.filter((targetId) => selectableItemIds.has(targetId)) ?? null;
     const additions = selectableRange?.filter((targetId) => !selectedItems.has(targetId)) ?? [];
     if (selectedItems.size + additions.length > 100) {
-      patchSession({ error: "一括変更は100品目までです" });
+      patchSession({ error: "一括操作は100品目までです" });
       return;
     }
     const next = new Set(selectedItems);
@@ -192,6 +194,40 @@ export function useLedgerItemBulkEdit({
     }
   };
 
+  const deleteSelected = async () => {
+    const targets = purchases.flatMap((purchase) =>
+      purchase.items
+        .filter((item) => selectedItems.has(item.id))
+        .map((item) => ({ itemId: item.id, baseRevision: item.revision })),
+    );
+    if (!targets.length || targets.length > 100) return;
+    setPending(true);
+    patchSession({ error: "" });
+    try {
+      await mutateBulkDeletePurchaseItems({ input: { targets } });
+    } catch (reason) {
+      const mutationError = errorMessage(reason);
+      try {
+        await refresh();
+        patchSession({ error: mutationError });
+      } catch {
+        patchSession({ error: `${mutationError}（最新の状態を再取得できませんでした）` });
+      }
+      setPending(false);
+      return;
+    }
+    clearSelection();
+    try {
+      await refresh();
+    } catch (reason) {
+      patchSession({
+        error: `品目は削除されましたが、一覧を更新できませんでした。${errorMessage(reason)}`,
+      });
+    } finally {
+      setPending(false);
+    }
+  };
+
   const undoChanges = async () => {
     const undoEntries = currentSession.undo;
     if (!undoEntries?.length) return;
@@ -249,6 +285,7 @@ export function useLedgerItemBulkEdit({
     setError,
     undo: currentSession.undo,
     apply,
+    deleteSelected,
     undoChanges,
   };
 }
