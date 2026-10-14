@@ -74,7 +74,7 @@ func parseEmailEncryptionKeys(configuration string) (map[string][]byte, string, 
 	}
 	keys := make(map[string][]byte)
 	activeKeyID := ""
-	for _, entry := range strings.Split(configuration, ",") {
+	for entry := range strings.SplitSeq(configuration, ",") {
 		keyID, encodedKey, ok := strings.Cut(entry, ":")
 		if !ok || !validEmailKeyID(keyID) || encodedKey == "" {
 			return nil, "", errors.New("invalid email body encryption keyring")

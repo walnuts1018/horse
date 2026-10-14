@@ -37,6 +37,8 @@ type AccountIncome struct {
 	CreatedAt   time.Time `db:"created_at" `
 
 	R accountIncomeR `db:"-" `
+
+	C accountIncomeC `db:"-" `
 }
 
 // AccountIncomeSlice is an alias for a slice of pointers to AccountIncome.
@@ -51,9 +53,10 @@ type AccountIncomesQuery = *psql.ViewQuery[*AccountIncome, AccountIncomeSlice]
 
 // accountIncomeR is where relationships are stored.
 type accountIncomeR struct {
-	Account   *Account   // account_incomes.account_incomes_household_id_account_id_fkey
-	Household *Household // account_incomes.account_incomes_household_id_fkey
-	Journal   *Journal   // account_incomes.account_incomes_journal_id_fkey
+	Account               *Account                  // account_incomes.account_incomes_household_id_account_id_fkey
+	Household             *Household                // account_incomes.account_incomes_household_id_fkey
+	Journal               *Journal                  // account_incomes.account_incomes_journal_id_fkey
+	DocumentConfirmations DocumentConfirmationSlice // document_confirmations.document_confirmations_account_income_fk
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -62,9 +65,10 @@ type accountIncomeR struct {
 
 // accountIncomeRLoaded tracks which relationships on AccountIncome have been loaded.
 type accountIncomeRLoaded struct {
-	Account   bool // account_incomes.account_incomes_household_id_account_id_fkey
-	Household bool // account_incomes.account_incomes_household_id_fkey
-	Journal   bool // account_incomes.account_incomes_journal_id_fkey
+	Account               bool // account_incomes.account_incomes_household_id_account_id_fkey
+	Household             bool // account_incomes.account_incomes_household_id_fkey
+	Journal               bool // account_incomes.account_incomes_journal_id_fkey
+	DocumentConfirmations bool // document_confirmations.document_confirmations_account_income_fk
 }
 
 func buildAccountIncomeColumns(tableName string) accountIncomeColumns {
@@ -790,6 +794,35 @@ func (os AccountIncomeSlice) Journal(mods ...bob.Mod[*dialect.SelectQuery]) Jour
 	)...)
 }
 
+// DocumentConfirmations starts a query for related objects on document_confirmations
+func (o *AccountIncome) DocumentConfirmations(mods ...bob.Mod[*dialect.SelectQuery]) DocumentConfirmationsQuery {
+	return DocumentConfirmations.Query(append(mods,
+		sm.Where(DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(DocumentConfirmations.Columns.AccountIncomeID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os AccountIncomeSlice) DocumentConfirmations(mods ...bob.Mod[*dialect.SelectQuery]) DocumentConfirmationsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return DocumentConfirmations.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "AccountIncomeID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "AccountIncomeID"),
+		)).As("bob_rel_keys").On(DocumentConfirmations.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), DocumentConfirmations.Columns.AccountIncomeID.EQ(psql.Quote("bob_rel_keys", "AccountIncomeID"))),
+	)...)
+}
+
 func attachAccountIncomeAccount0(ctx context.Context, exec bob.Executor, count int, accountIncome0 *AccountIncome, account1 *Account) (*AccountIncome, error) {
 	setter := &AccountIncomeSetter{
 		HouseholdID: func() *uuid.UUID { return &account1.HouseholdID }(),
@@ -943,6 +976,78 @@ func (accountIncome0 *AccountIncome) AttachJournal(ctx context.Context, exec bob
 	return nil
 }
 
+func insertAccountIncomeDocumentConfirmations0(ctx context.Context, exec bob.Executor, documentConfirmations1 []*DocumentConfirmationSetter, accountIncome0 *AccountIncome) (DocumentConfirmationSlice, error) {
+	for i := range documentConfirmations1 {
+		documentConfirmations1[i].HouseholdID = func() *uuid.UUID { return &accountIncome0.HouseholdID }()
+		documentConfirmations1[i].AccountIncomeID = func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: accountIncome0.ID, Valid: true}; return &v }()
+	}
+
+	ret, err := DocumentConfirmations.Insert(bob.ToMods(documentConfirmations1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertAccountIncomeDocumentConfirmations0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachAccountIncomeDocumentConfirmations0(ctx context.Context, exec bob.Executor, count int, documentConfirmations1 DocumentConfirmationSlice, accountIncome0 *AccountIncome) (DocumentConfirmationSlice, error) {
+	setter := &DocumentConfirmationSetter{
+		HouseholdID:     func() *uuid.UUID { return &accountIncome0.HouseholdID }(),
+		AccountIncomeID: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: accountIncome0.ID, Valid: true}; return &v }(),
+	}
+
+	err := documentConfirmations1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachAccountIncomeDocumentConfirmations0: %w", err)
+	}
+
+	return documentConfirmations1, nil
+}
+
+func (accountIncome0 *AccountIncome) InsertDocumentConfirmations(ctx context.Context, exec bob.Executor, related ...*DocumentConfirmationSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	documentConfirmations1, err := insertAccountIncomeDocumentConfirmations0(ctx, exec, related, accountIncome0)
+	if err != nil {
+		return err
+	}
+
+	accountIncome0.R.DocumentConfirmations = append(accountIncome0.R.DocumentConfirmations, documentConfirmations1...)
+
+	for _, rel := range documentConfirmations1 {
+		rel.R.AccountIncome = accountIncome0
+		rel.R.Loaded.AccountIncome = true
+	}
+	return nil
+}
+
+func (accountIncome0 *AccountIncome) AttachDocumentConfirmations(ctx context.Context, exec bob.Executor, related ...*DocumentConfirmation) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	documentConfirmations1 := DocumentConfirmationSlice(related)
+
+	_, err = attachAccountIncomeDocumentConfirmations0(ctx, exec, len(related), documentConfirmations1, accountIncome0)
+	if err != nil {
+		return err
+	}
+
+	accountIncome0.R.DocumentConfirmations = append(accountIncome0.R.DocumentConfirmations, documentConfirmations1...)
+
+	for _, rel := range related {
+		rel.R.AccountIncome = accountIncome0
+		rel.R.Loaded.AccountIncome = true
+	}
+
+	return nil
+}
+
 type accountIncomeWhere[Q psql.Filterable] struct {
 	cols        accountIncomeColumns
 	ID          psql.WhereMod[Q, uuid.UUID]
@@ -1020,6 +1125,21 @@ func (w accountIncomeWhereR[Q]) HasJournal(filters ...bob.Mod[*dialect.SelectQue
 		sm.Columns(psql.Raw("1")),
 		sm.From(Journals.NameExpr()),
 		sm.Where(Journals.Columns.ID.EQ(w.cols.JournalID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasDocumentConfirmations filters parents that have a matching DocumentConfirmations using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to DocumentConfirmations).
+func (w accountIncomeWhereR[Q]) HasDocumentConfirmations(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(DocumentConfirmations.NameExpr()),
+		sm.Where(DocumentConfirmations.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(DocumentConfirmations.Columns.AccountIncomeID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -1183,6 +1303,22 @@ func (o *AccountIncome) Preload(name string, retrieved any) error {
 			rel.R.Loaded.AccountIncome = true
 		}
 		return nil
+	case "DocumentConfirmations":
+		rels, ok := retrieved.(DocumentConfirmationSlice)
+		if !ok {
+			return fmt.Errorf("accountIncome cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.DocumentConfirmations = rels
+		o.R.Loaded.DocumentConfirmations = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.AccountIncome = o
+				rel.R.Loaded.AccountIncome = true
+			}
+		}
+		return nil
 	default:
 		return fmt.Errorf("accountIncome has no relationship %q", name)
 	}
@@ -1239,9 +1375,10 @@ func buildAccountIncomePreloader() accountIncomePreloader {
 }
 
 type accountIncomeThenLoader[Q orm.Loadable] struct {
-	Account   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Household func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Journal   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Account               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Household             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Journal               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildAccountIncomeThenLoader[Q orm.Loadable]() accountIncomeThenLoader[Q] {
@@ -1253,6 +1390,9 @@ func buildAccountIncomeThenLoader[Q orm.Loadable]() accountIncomeThenLoader[Q] {
 	}
 	type JournalLoadInterface interface {
 		LoadJournal(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type DocumentConfirmationsLoadInterface interface {
+		LoadDocumentConfirmations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return accountIncomeThenLoader[Q]{
@@ -1272,6 +1412,12 @@ func buildAccountIncomeThenLoader[Q orm.Loadable]() accountIncomeThenLoader[Q] {
 			"Journal",
 			func(ctx context.Context, exec bob.Executor, retrieved JournalLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadJournal(ctx, exec, mods...)
+			},
+		),
+		DocumentConfirmations: thenLoadBuilder[Q](
+			"DocumentConfirmations",
+			func(ctx context.Context, exec bob.Executor, retrieved DocumentConfirmationsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadDocumentConfirmations(ctx, exec, mods...)
 			},
 		),
 	}
@@ -1495,11 +1641,258 @@ func (os AccountIncomeSlice) LoadJournal(ctx context.Context, exec bob.Executor,
 	return nil
 }
 
+// LoadDocumentConfirmations loads the accountIncome's DocumentConfirmations into the .R struct
+func (o *AccountIncome) LoadDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.DocumentConfirmations = nil
+	o.R.Loaded.DocumentConfirmations = false
+
+	related, err := o.DocumentConfirmations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.AccountIncome = o
+		rel.R.Loaded.AccountIncome = true
+	}
+
+	o.R.DocumentConfirmations = related
+	o.R.Loaded.DocumentConfirmations = true
+	return nil
+}
+
+// LoadDocumentConfirmations loads the accountIncome's DocumentConfirmations into the .R struct
+func (os AccountIncomeSlice) LoadDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	documentConfirmations, err := os.DocumentConfirmations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.DocumentConfirmations = nil
+		o.R.Loaded.DocumentConfirmations = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range documentConfirmations {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !rel.AccountIncomeID.Valid {
+				continue
+			}
+			if !(rel.AccountIncomeID.Valid && o.ID == rel.AccountIncomeID.V) {
+				continue
+			}
+
+			rel.R.AccountIncome = o
+			rel.R.Loaded.AccountIncome = true
+
+			o.R.DocumentConfirmations = append(o.R.DocumentConfirmations, rel)
+		}
+	}
+
+	return nil
+}
+
+// accountIncomeC is where relationship counts are stored.
+type accountIncomeC struct {
+	DocumentConfirmations *int64
+}
+
+// PreloadCount sets a count in the C struct by name
+func (o *AccountIncome) PreloadCount(name string, count int64) error {
+	if o == nil {
+		return nil
+	}
+
+	switch name {
+	case "DocumentConfirmations":
+		o.C.DocumentConfirmations = &count
+	}
+	return nil
+}
+
+type accountIncomeCountPreloader struct {
+	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+}
+
+func buildAccountIncomeCountPreloader() accountIncomeCountPreloader {
+	return accountIncomeCountPreloader{
+		DocumentConfirmations: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*AccountIncome]("DocumentConfirmations", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = AccountIncomes.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(DocumentConfirmations.NameAsExpr()),
+					sm.Where(psql.Quote(DocumentConfirmations.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(DocumentConfirmations.Alias(), "account_income_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+	}
+}
+
+type accountIncomeCountThenLoader[Q orm.Loadable] struct {
+	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+}
+
+func buildAccountIncomeCountThenLoader[Q orm.Loadable]() accountIncomeCountThenLoader[Q] {
+	type DocumentConfirmationsCountInterface interface {
+		LoadCountDocumentConfirmations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+
+	return accountIncomeCountThenLoader[Q]{
+		DocumentConfirmations: countThenLoadBuilder[Q](
+			"DocumentConfirmations",
+			func(ctx context.Context, exec bob.Executor, retrieved DocumentConfirmationsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountDocumentConfirmations(ctx, exec, mods...)
+			},
+		),
+	}
+}
+
+// LoadCountDocumentConfirmations loads the count of DocumentConfirmations into the C struct
+func (o *AccountIncome) LoadCountDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.DocumentConfirmations(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.DocumentConfirmations = &count
+	return nil
+}
+
+// LoadCountDocumentConfirmations loads the count of DocumentConfirmations for a slice in a single batch query
+func (os AccountIncomeSlice) LoadCountDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			DocumentConfirmations.Columns.HouseholdID.As("household_id"),
+			DocumentConfirmations.Columns.AccountIncomeID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(DocumentConfirmations.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "AccountIncomeID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "AccountIncomeID"),
+		)).As("bob_rel_keys").On(
+			DocumentConfirmations.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			DocumentConfirmations.Columns.AccountIncomeID.EQ(psql.Quote("bob_rel_keys", "AccountIncomeID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(DocumentConfirmations.Columns.HouseholdID),
+		sm.GroupBy(DocumentConfirmations.Columns.AccountIncomeID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.DocumentConfirmations = &count
+	}
+
+	return nil
+}
+
 type accountIncomeJoins[Q dialect.Joinable] struct {
-	typ       string
-	Account   modAs[Q, accountColumns]
-	Household modAs[Q, householdColumns]
-	Journal   modAs[Q, journalColumns]
+	typ                   string
+	Account               modAs[Q, accountColumns]
+	Household             modAs[Q, householdColumns]
+	Journal               modAs[Q, journalColumns]
+	DocumentConfirmations modAs[Q, documentConfirmationColumns]
 }
 
 func (j accountIncomeJoins[Q]) aliasedAs(alias string) accountIncomeJoins[Q] {
@@ -1545,6 +1938,20 @@ func buildAccountIncomeJoins[Q dialect.Joinable](cols accountIncomeColumns, typ 
 				{
 					mods = append(mods, dialect.Join[Q](typ, Journals.NameExpr().As(to.Alias())).On(
 						to.ID.EQ(cols.JournalID),
+					))
+				}
+
+				return mods
+			},
+		},
+		DocumentConfirmations: modAs[Q, documentConfirmationColumns]{
+			c: DocumentConfirmations.Columns,
+			f: func(to documentConfirmationColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, DocumentConfirmations.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.AccountIncomeID.EQ(cols.ID),
 					))
 				}
 

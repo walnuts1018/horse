@@ -91,7 +91,7 @@ func TestCorrectPurchaseFromStatementKeepsRowEvidenceAtomic(t *testing.T) {
 	verified, err := stdjson.Marshal(ingestion.Verification{Statements: []ingestion.StatementEntry{
 		{Row: 2, SourceReference: refundRow, Kind: "REFUND", OccurredAt: testStatementTransferFirstOccurredAt, Merchant: originalShop, Amount: -250, Region: &region},
 		{Row: 3, SourceReference: excessRow, Kind: "REFUND", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: originalShop, Amount: -900, Region: &region},
-		{Row: 4, SourceReference: "row:4", Kind: "CARD_PURCHASE", OccurredAt: "2026-10-02T12:02:00Z", Merchant: originalShop, Amount: -100, Region: &region},
+		{Row: 4, SourceReference: testStatementRow4Reference, Kind: "CARD_PURCHASE", OccurredAt: "2026-10-02T12:02:00Z", Merchant: originalShop, Amount: -100, Region: &region},
 	}})
 	if err != nil {
 		t.Fatal(err)

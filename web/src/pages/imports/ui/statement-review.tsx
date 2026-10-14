@@ -66,6 +66,8 @@ export function StatementReview({
         };
         const isRefund = entry.kind === "REFUND";
         const isTransfer = entry.kind === "ACCOUNT_TRANSFER";
+        const isCardBillPayment = entry.kind === "CARD_BILL_PAYMENT";
+        const isExternalIncome = entry.kind === "EXTERNAL_INCOME";
         return (
           <div
             className="statement-row"
@@ -85,9 +87,13 @@ export function StatementReview({
                   ? "返品・返金"
                   : isTransfer
                     ? "口座間振替"
-                    : entry.kind === "CARD_PURCHASE"
-                      ? "カード利用"
-                      : entry.kind}
+                    : isCardBillPayment
+                      ? "カード引落し"
+                      : isExternalIncome
+                        ? "外部入金"
+                        : entry.kind === "CARD_PURCHASE"
+                          ? "カード利用"
+                          : entry.kind}
                 {entry.cardLast4 ? ` · •••• ${entry.cardLast4}` : ""}
               </small>
             </div>
@@ -165,15 +171,21 @@ export function StatementReview({
                     </button>
                   </>
                 )
-              ) : isTransfer ? (
+              ) : isTransfer || isCardBillPayment ? (
                 issue ? (
                   <small>{issue}</small>
                 ) : confirmed ? (
-                  <small>振替登録済み</small>
+                  <small>{isCardBillPayment ? "カード引落し登録済み" : "振替登録済み"}</small>
                 ) : (
                   <>
                     <label>
-                      <span>{entry.amount < 0 ? "振替元の明細口座" : "振替先の明細口座"}</span>
+                      <span>
+                        {isCardBillPayment
+                          ? "引落口座"
+                          : entry.amount < 0
+                            ? "振替元の明細口座"
+                            : "振替先の明細口座"}
+                      </span>
                       <select
                         value={transferAccounts.statementAccountId}
                         disabled={pending}
@@ -186,7 +198,9 @@ export function StatementReview({
                       >
                         <option value="">口座を選択</option>
                         {accounts
-                          .filter((account) => account.kind !== "CARD")
+                          .filter((account) =>
+                            isCardBillPayment ? account.kind === "BANK" : account.kind !== "CARD",
+                          )
                           .map((account) => (
                             <option key={account.id} value={account.id}>
                               {account.name}
@@ -195,7 +209,13 @@ export function StatementReview({
                       </select>
                     </label>
                     <label>
-                      <span>{entry.amount < 0 ? "振替先" : "振替元"}</span>
+                      <span>
+                        {isCardBillPayment
+                          ? "引落対象のカード"
+                          : entry.amount < 0
+                            ? "振替先"
+                            : "振替元"}
+                      </span>
                       <select
                         value={transferAccounts.otherAccountId}
                         disabled={pending || !transferAccounts.statementAccountId}
@@ -210,7 +230,9 @@ export function StatementReview({
                         {accounts
                           .filter(
                             (account) =>
-                              account.kind !== "CARD" &&
+                              (isCardBillPayment
+                                ? account.kind === "CARD"
+                                : account.kind !== "CARD") &&
                               account.id !== transferAccounts.statementAccountId,
                           )
                           .map((account) => (
@@ -236,20 +258,20 @@ export function StatementReview({
                         )
                       }
                     >
-                      振替を記録
+                      {isCardBillPayment ? "カード引落しを記録" : "振替を記録"}
                     </button>
                   </>
                 )
               ) : (
-                entry.kind === "CARD_PURCHASE" &&
+                (entry.kind === "CARD_PURCHASE" || isExternalIncome) &&
                 (issue ? (
                   <small>{issue}</small>
                 ) : confirmed ? (
-                  <small>追加済み</small>
+                  <small>{isExternalIncome ? "入金登録済み" : "追加済み"}</small>
                 ) : (
                   <>
                     <label>
-                      <span>決済口座</span>
+                      <span>{isExternalIncome ? "入金先の銀行口座" : "決済口座"}</span>
                       <select
                         value={paymentAccountId}
                         disabled={pending}
@@ -261,11 +283,13 @@ export function StatementReview({
                         }
                       >
                         <option value="">口座を選択</option>
-                        {accounts.map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.name}
-                          </option>
-                        ))}
+                        {accounts
+                          .filter((account) => !isExternalIncome || account.kind === "BANK")
+                          .map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
                       </select>
                     </label>
                     <button
@@ -274,7 +298,7 @@ export function StatementReview({
                       disabled={pending || !paymentAccountId}
                       onClick={() => onConfirm(entry, paymentAccountId)}
                     >
-                      購入に追加
+                      {isExternalIncome ? "入金を記録" : "購入に追加"}
                     </button>
                   </>
                 ))

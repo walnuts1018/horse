@@ -63,7 +63,7 @@ func TestAccountTransferFlowsThroughAccountMovementsAndBalanceAnalysis(t *testin
 
 	openingAt := model.DateTime("2026-05-01T00:00:00Z")
 	fromAccount, err := mutation.createAccount(ctx, model.CreateAccountInput{
-		HouseholdID: household.ID, Name: "Operating", Kind: model.AccountKindBank,
+		HouseholdID: household.ID, Name: testOperatingAccountName, Kind: model.AccountKindBank,
 		OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(1000), At: openingAt},
 	})
 	if err != nil {

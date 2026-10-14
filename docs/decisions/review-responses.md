@@ -258,6 +258,10 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 
 カード明細CSVの各行にサーバーが`row:N`形式の`sourceReference`を付け、照合結果と確定Mutationで同じ値を使います。取引番号が重複するCSVでも行ごとの識別を維持します。確認画面は選択中の文書から永続化済みの`document_confirmations`を読み込み、成功後の確認状態と合わせて再読み込み後も追加済み行を表示します。関連するGo統合テストとImportsのVitest 9件が成功し、修正済み項目を`docs/reviews/all2.md`から削除しました。
 
+### 2026年10月14日のカード引落しと外部入金の明細確認
+
+銀行明細の`CARD_BILL_PAYMENT`は既存の口座移動Mutationを使い、銀行口座からカード口座への記帳として確定します。`EXTERNAL_INCOME`は明細行の正額、日時、銀行口座を既存の外部入金Mutationへ渡します。どちらも最新の成功済み抽出結果をサーバーで再読込し、明細確認、会計記録、仕訳、冪等キーを同じDB transactionで保存します。`document_confirmations`の複合主キーで同じ文書行の二重記帳を拒否します。Testcontainersで成功、同じキーの再送、別キー重複、金額・日時不一致、均衡仕訳を検証し、Importsの対象Vitest、型検査、Steiger、Relay検証、lintが成功しました。異なる文書に記載された同一取引の重複と貸付・返済の明細記帳は未対応です。
+
 ### オフライン購入データの利用者分離
 
 購入下書きとOutboxの保存キーに`memberId`と`householdId`を含め、enqueue、claim、再送、完了、失敗、破棄で同じscopeを検証します。送信時は現在の利用者が対象家庭に所属することを確認し、ログイン利用者が変わった直後に前利用者のOutboxを表示しません。所有者が記録されていない旧v2データは削除も引継ぎもせず、旧storeに保持して送信対象から除外します。IndexedDBテスト3件とFrontend型検査が成功したため、該当指摘を`docs/reviews/all2.md`から削除しました。

@@ -2,8 +2,15 @@ import { commitMutation } from "react-relay";
 
 import type { DocumentFilters, DocumentReview } from "../model/imports";
 
-import { recordAccountMovementMutation } from "../../../entities/ledger";
-import { getRelayEnvironment, type RecordAccountMovementMutation } from "../../../shared/api";
+import {
+  recordAccountMovementMutation,
+  recordExternalIncomeMutation,
+} from "../../../entities/ledger";
+import {
+  getRelayEnvironment,
+  type RecordAccountMovementMutation,
+  type RecordExternalIncomeMutation,
+} from "../../../shared/api";
 import { asRecord } from "../model/imports";
 
 export const documentListURL = (householdId: string, filters: DocumentFilters, after?: string) => {
@@ -47,7 +54,7 @@ export const importIdempotencyKey = async (documentId: string, sourceReference: 
   return `import:${hash}`;
 };
 
-export function recordStatementTransfer(
+export function recordStatementAccountMovement(
   input: RecordAccountMovementMutation["variables"]["input"],
 ) {
   return new Promise<void>((resolve, reject) =>
@@ -65,6 +72,30 @@ export function recordStatementTransfer(
           return;
         }
         reject(new Error(result.message || "口座間振替を記録できませんでした"));
+      },
+      onError: reject,
+    }),
+  );
+}
+
+export function recordStatementExternalIncome(
+  input: RecordExternalIncomeMutation["variables"]["input"],
+) {
+  return new Promise<void>((resolve, reject) =>
+    commitMutation<RecordExternalIncomeMutation>(getRelayEnvironment(), {
+      mutation: recordExternalIncomeMutation,
+      variables: { input },
+      onCompleted: (response, errors) => {
+        if (errors?.length) {
+          reject(new Error(errors[0].message));
+          return;
+        }
+        const result = response.recordExternalIncome;
+        if (result.__typename === "RecordExternalIncomeSuccess") {
+          resolve();
+          return;
+        }
+        reject(new Error(result.message || "外部入金を記録できませんでした"));
       },
       onError: reject,
     }),

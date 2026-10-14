@@ -83,6 +83,24 @@ export function statementConfirmationIssue(entry: StatementEntry): string | unde
     }
     return undefined;
   }
+  if (entry.kind === "CARD_BILL_PAYMENT") {
+    if (!Number.isSafeInteger(entry.amount) || entry.amount >= 0) {
+      return "カード引落額を確認してください";
+    }
+    if (!entry.occurredAt || Number.isNaN(new Date(entry.occurredAt).getTime())) {
+      return "カード引落日を確認してください";
+    }
+    return undefined;
+  }
+  if (entry.kind === "EXTERNAL_INCOME") {
+    if (!Number.isSafeInteger(entry.amount) || entry.amount <= 0) {
+      return "入金額を確認してください";
+    }
+    if (!entry.occurredAt || Number.isNaN(new Date(entry.occurredAt).getTime())) {
+      return "入金日を確認してください";
+    }
+    return undefined;
+  }
   if (entry.kind === "REFUND") {
     if (!Number.isSafeInteger(entry.amount) || entry.amount >= 0) {
       return "返金額を確認してください";

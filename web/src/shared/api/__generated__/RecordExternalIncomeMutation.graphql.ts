@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4ffff0d993aeea0268bacc0229845bce>>
+ * @generated SignedSource<<d8f9e25765f7b5b2750b99e34143c3f1>>
  * @lightSyntaxTransform
  */
 
@@ -16,6 +16,8 @@ export type RecordExternalIncomeInput = {
   householdId: string;
   idempotencyKey: string;
   occurredAt: string;
+  sourceDocumentId?: string | null | undefined;
+  sourceReference?: string | null | undefined;
 };
 export type RecordExternalIncomeMutation$variables = {
   input: RecordExternalIncomeInput;

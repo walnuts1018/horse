@@ -7832,6 +7832,8 @@ input RecordExternalIncomeInput {
   occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
+  sourceDocumentId: ID
+  sourceReference: String
 }
 
 type RecordExternalIncomeUserError implements MutationError {
@@ -34716,7 +34718,7 @@ func (ec *executionContext) unmarshalInputRecordExternalIncomeInput(ctx context.
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "accountId", "amountYen", "occurredAt", "description", "idempotencyKey"}
+	fieldsInOrder := [...]string{"householdId", "accountId", "amountYen", "occurredAt", "description", "idempotencyKey", "sourceDocumentId", "sourceReference"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -34805,6 +34807,20 @@ func (ec *executionContext) unmarshalInputRecordExternalIncomeInput(ctx context.
 				return it, err
 			}
 			it.IdempotencyKey = data
+		case "sourceDocumentId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceDocumentId"))
+			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceDocumentID = data
+		case "sourceReference":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceReference"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceReference = data
 		}
 	}
 	return it, nil

@@ -2,13 +2,13 @@ import { useEffect } from "react";
 
 import type { Household } from "../../../shared/api";
 
-import { MailForwardingAddress } from "../../../features/mail-forwarding";
 import { useSettingsAccountBalances } from "../model/account-balances";
 import { useAccountSettings } from "../model/account-settings";
 import { useAllocationCatalog } from "../model/allocation-catalog";
 import { useSettingsChangeTracking } from "../model/settings-change-tracking";
 import { useSettingsMutations } from "../model/settings-mutations";
 import { useSettingsNavigation } from "../model/settings-navigation";
+import { MailForwardingAddress } from "./mail-forwarding-address";
 import { ManageAccountActivity } from "./manage-account-activity";
 import { ManageAccountSettings } from "./manage-account-settings";
 import { ManageAllocationCatalog } from "./manage-allocation-catalog";

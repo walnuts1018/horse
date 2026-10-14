@@ -86,6 +86,16 @@ func (r *mutationResolver) recordExternalIncome(ctx context.Context, input model
 	if description == "" {
 		description = "External income"
 	}
+	sourceDocumentID, sourceReference := "", ""
+	if input.SourceDocumentID != nil {
+		sourceDocumentID = *input.SourceDocumentID
+	}
+	if input.SourceReference != nil {
+		sourceReference = *input.SourceReference
+	}
+	if (sourceDocumentID == "") != (sourceReference == "") {
+		return nil, fmt.Errorf("%w: statement source is incomplete", ErrBadInput)
+	}
 	fingerprint, err := mutationRequestFingerprint(input)
 	if err != nil {
 		return nil, err
@@ -93,7 +103,7 @@ func (r *mutationResolver) recordExternalIncome(ctx context.Context, input model
 	result, err := accountmovement.New(r.DB).RecordIncome(ctx, accountmovement.IncomeCommand{
 		ActorID: user.MemberID, HouseholdID: input.HouseholdID, AccountID: input.AccountID, OccurredAt: occurredAt,
 		AmountYen: int64(input.AmountYen), Description: description, IdempotencyKey: input.IdempotencyKey,
-		RequestFingerprint: fingerprint,
+		RequestFingerprint: fingerprint, SourceDocumentID: sourceDocumentID, SourceReference: sourceReference,
 	})
 	if err != nil {
 		return nil, err

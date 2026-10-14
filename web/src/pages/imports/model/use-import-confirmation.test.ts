@@ -73,6 +73,46 @@ describe("statement purchase confirmation", () => {
     ).toBe("振替金額を確認してください");
   });
 
+  it("accepts negative card bill payments and rejects invalid amount or date", () => {
+    expect(
+      statementConfirmationIssue({ ...entry, kind: "CARD_BILL_PAYMENT", amount: -100 }),
+    ).toBeUndefined();
+    expect(statementConfirmationIssue({ ...entry, kind: "CARD_BILL_PAYMENT", amount: 100 })).toBe(
+      "カード引落額を確認してください",
+    );
+    expect(statementConfirmationIssue({ ...entry, kind: "CARD_BILL_PAYMENT", amount: 0 })).toBe(
+      "カード引落額を確認してください",
+    );
+    expect(
+      statementConfirmationIssue({
+        ...entry,
+        kind: "CARD_BILL_PAYMENT",
+        amount: -100,
+        occurredAt: "invalid-date",
+      }),
+    ).toBe("カード引落日を確認してください");
+  });
+
+  it("accepts positive external income and rejects invalid amount or date", () => {
+    expect(
+      statementConfirmationIssue({ ...entry, kind: "EXTERNAL_INCOME", amount: 100 }),
+    ).toBeUndefined();
+    expect(statementConfirmationIssue({ ...entry, kind: "EXTERNAL_INCOME", amount: -100 })).toBe(
+      "入金額を確認してください",
+    );
+    expect(statementConfirmationIssue({ ...entry, kind: "EXTERNAL_INCOME", amount: 0 })).toBe(
+      "入金額を確認してください",
+    );
+    expect(
+      statementConfirmationIssue({
+        ...entry,
+        kind: "EXTERNAL_INCOME",
+        amount: 100,
+        occurredAt: "invalid-date",
+      }),
+    ).toBe("入金日を確認してください");
+  });
+
   it("allows negative refund rows and rejects non-negative refund rows", () => {
     expect(statementConfirmationIssue({ ...entry, kind: "REFUND", amount: -100 })).toBeUndefined();
     expect(statementConfirmationIssue({ ...entry, kind: "REFUND", amount: 100 })).toBe(

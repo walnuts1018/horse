@@ -1642,12 +1642,14 @@ func (this RecordAccountMovementUserError) GetCode() MutationErrorCode { return 
 func (this RecordAccountMovementUserError) GetMessage() string         { return this.Message }
 
 type RecordExternalIncomeInput struct {
-	HouseholdID    string   `json:"householdId"`
-	AccountID      string   `json:"accountId"`
-	AmountYen      Long     `json:"amountYen"`
-	OccurredAt     DateTime `json:"occurredAt"`
-	Description    string   `json:"description"`
-	IdempotencyKey string   `json:"idempotencyKey"`
+	HouseholdID      string   `json:"householdId"`
+	AccountID        string   `json:"accountId"`
+	AmountYen        Long     `json:"amountYen"`
+	OccurredAt       DateTime `json:"occurredAt"`
+	Description      string   `json:"description"`
+	IdempotencyKey   string   `json:"idempotencyKey"`
+	SourceDocumentID *string  `json:"sourceDocumentId,omitempty"`
+	SourceReference  *string  `json:"sourceReference,omitempty"`
 }
 
 type RecordExternalIncomeSuccess struct {

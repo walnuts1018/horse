@@ -25,7 +25,11 @@ import {
 function normalizeName(name: string) {
   return name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ja-JP");
 }
-import { importIdempotencyKey, recordStatementTransfer } from "../api/documents";
+import {
+  importIdempotencyKey,
+  recordStatementAccountMovement,
+  recordStatementExternalIncome,
+} from "../api/documents";
 import {
   receiptDateInputValue,
   receiptOccurredAt,
@@ -357,15 +361,36 @@ export function useImportConfirmation({
     entry: StatementEntry,
     paymentAccountId: string,
   ) => {
-    if (!document.result || entry.kind !== "CARD_PURCHASE") return;
+    if (!document.result || (entry.kind !== "CARD_PURCHASE" && entry.kind !== "EXTERNAL_INCOME"))
+      return;
     const issue = statementConfirmationIssue(entry);
     if (issue) throw new Error(issue);
-    if (!household.accounts.some((account) => account.id === paymentAccountId)) {
-      throw new Error("決済口座を選択してください");
+    const account = household.accounts.find((candidate) => candidate.id === paymentAccountId);
+    const isExternalIncome = entry.kind === "EXTERNAL_INCOME";
+    if (!account || (isExternalIncome ? account.kind !== "BANK" : false)) {
+      throw new Error(
+        isExternalIncome ? "入金先の銀行口座を選択してください" : "決済口座を選択してください",
+      );
     }
     const reference = statementSourceReference(entry);
     const key = `${document.id}:${reference}`;
     if (confirmedStatements.has(key)) return;
+    if (isExternalIncome) {
+      await recordStatementExternalIncome({
+        householdId: household.id,
+        accountId: account.id,
+        amountYen: entry.amount,
+        occurredAt: new Date(entry.occurredAt).toISOString(),
+        description: entry.merchant,
+        idempotencyKey: await importIdempotencyKey(document.id, reference),
+        sourceDocumentId: document.id,
+        sourceReference: reference,
+      });
+      setConfirmedStatements((current) => new Set(current).add(key));
+      setHasUnsavedChanges(false);
+      onAdded(true);
+      return;
+    }
     await createAndPostPurchase({
       idempotencyKey: await importIdempotencyKey(document.id, reference),
       householdId: household.id,
@@ -424,30 +449,35 @@ export function useImportConfirmation({
     statementAccountId: string,
     otherAccountId: string,
   ) => {
-    if (entry.kind !== "ACCOUNT_TRANSFER") throw new Error("口座間振替の明細を選択してください");
+    if (entry.kind !== "ACCOUNT_TRANSFER" && entry.kind !== "CARD_BILL_PAYMENT") {
+      throw new Error("口座移動の明細を選択してください");
+    }
     const issue = statementConfirmationIssue(entry);
     if (issue) throw new Error(issue);
     const statementAccount = household.accounts.find(
       (account) => account.id === statementAccountId,
     );
     const otherAccount = household.accounts.find((account) => account.id === otherAccountId);
-    if (
-      !statementAccount ||
-      !otherAccount ||
-      statementAccount.kind === "CARD" ||
-      otherAccount.kind === "CARD" ||
-      statementAccount.id === otherAccount.id
-    ) {
+    const isCardBillPayment = entry.kind === "CARD_BILL_PAYMENT";
+    if (!statementAccount || !otherAccount || statementAccount.id === otherAccount.id) {
       throw new Error("振替元と振替先の口座を選択してください");
+    }
+    if (
+      (isCardBillPayment && (statementAccount.kind === "CARD" || otherAccount.kind !== "CARD")) ||
+      (!isCardBillPayment && (statementAccount.kind === "CARD" || otherAccount.kind === "CARD"))
+    ) {
+      throw new Error("明細の口座種別に合う口座を選択してください");
     }
     const reference = statementSourceReference(entry);
     const key = `${document.id}:${reference}`;
     if (confirmedStatements.has(key)) return;
-    const fromAccountId = entry.amount < 0 ? statementAccount.id : otherAccount.id;
-    const toAccountId = entry.amount < 0 ? otherAccount.id : statementAccount.id;
-    await recordStatementTransfer({
+    const fromAccountId =
+      isCardBillPayment || entry.amount < 0 ? statementAccount.id : otherAccount.id;
+    const toAccountId =
+      isCardBillPayment || entry.amount < 0 ? otherAccount.id : statementAccount.id;
+    await recordStatementAccountMovement({
       householdId: household.id,
-      kind: "TRANSFER",
+      kind: isCardBillPayment ? "CARD_BILL_PAYMENT" : "TRANSFER",
       fromAccountId,
       toAccountId,
       amountYen: Math.abs(entry.amount),

@@ -27,9 +27,10 @@ import (
 const maxMoney int64 = 1_000_000_000_000
 
 const (
-	movementOperation = "recordAccountMovement"
-	incomeOperation   = "recordExternalIncome"
-	transferKind      = "TRANSFER"
+	movementOperation   = "recordAccountMovement"
+	incomeOperation     = "recordExternalIncome"
+	transferKind        = "TRANSFER"
+	cardBillPaymentKind = "CARD_BILL_PAYMENT"
 )
 
 type Service struct {
@@ -67,6 +68,8 @@ type IncomeCommand struct {
 	Description        string
 	IdempotencyKey     string
 	RequestFingerprint [sha256.Size]byte
+	SourceDocumentID   string
+	SourceReference    string
 }
 
 type MovementResult struct {
@@ -83,12 +86,12 @@ func (s *Service) RecordMovement(ctx context.Context, command MovementCommand) (
 	if command.AmountYen <= 0 || command.AmountYen > maxMoney || strings.TrimSpace(command.IdempotencyKey) == "" || len(command.IdempotencyKey) > 200 || command.OccurredAt.IsZero() {
 		return MovementResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid account movement"))
 	}
-	if command.Kind != transferKind && command.Kind != "CARD_BILL_PAYMENT" {
+	if command.Kind != transferKind && command.Kind != cardBillPaymentKind {
 		return MovementResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid account movement kind"))
 	}
 	statementProvided := command.SourceDocumentID != "" || command.SourceReference != "" || command.SourceAccountID != ""
-	if statementProvided && (command.SourceDocumentID == "" || command.SourceReference == "" || command.SourceAccountID == "" || command.Kind != transferKind || len(command.SourceReference) > 256) {
-		return MovementResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid statement transfer source"))
+	if statementProvided && (command.SourceDocumentID == "" || command.SourceReference == "" || command.SourceAccountID == "" || command.Kind != transferKind && command.Kind != cardBillPaymentKind || len(command.SourceReference) > 256) {
+		return MovementResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid statement movement source"))
 	}
 	if len(command.Description) > 240 || command.FromAccountID == command.ToAccountID {
 		return MovementResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid account movement"))
@@ -159,9 +162,9 @@ func (s *Service) RecordMovement(ctx context.Context, command MovementCommand) (
 	if err != nil {
 		return MovementResult{}, err
 	}
-	var statementEvidence *statementTransferEvidence
+	var statementEvidence *statementMovementEvidence
 	if statementProvided {
-		statementEvidence, err = loadStatementTransferEvidence(ctx, executor, householdID, command.SourceDocumentID, command.SourceReference)
+		statementEvidence, err = loadStatementMovementEvidence(ctx, executor, householdID, command.SourceDocumentID, command.SourceReference, command.Kind)
 		if err != nil {
 			return MovementResult{}, err
 		}
@@ -169,7 +172,7 @@ func (s *Service) RecordMovement(ctx context.Context, command MovementCommand) (
 		if parseErr != nil {
 			return MovementResult{}, parseErr
 		}
-		if err := validateStatementTransfer(statementEvidence.Entry, statementAccountID, fromID, toID, command.AmountYen, command.OccurredAt); err != nil {
+		if err := validateStatementMovement(statementEvidence.Entry, command.Kind, statementAccountID, fromID, toID, command.AmountYen, command.OccurredAt); err != nil {
 			return MovementResult{}, err
 		}
 	}
@@ -237,6 +240,10 @@ func (s *Service) RecordIncome(ctx context.Context, command IncomeCommand) (Inco
 	if command.AmountYen <= 0 || command.AmountYen > maxMoney || strings.TrimSpace(command.IdempotencyKey) == "" || len(command.IdempotencyKey) > 200 || command.OccurredAt.IsZero() || len(command.Description) > 240 {
 		return IncomeResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid external income"))
 	}
+	statementProvided := command.SourceDocumentID != "" || command.SourceReference != ""
+	if statementProvided && (command.SourceDocumentID == "" || command.SourceReference == "" || len(command.SourceReference) > 256) {
+		return IncomeResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid statement income source"))
+	}
 	householdID, err := parseID(command.HouseholdID, "household")
 	if err != nil {
 		return IncomeResult{}, err
@@ -273,10 +280,25 @@ func (s *Service) RecordIncome(ctx context.Context, command IncomeCommand) (Inco
 		if err != nil {
 			return IncomeResult{}, err
 		}
+		if statementProvided {
+			if err := requireStatementIncomeConfirmation(ctx, bobpgx.NewPool(s.db), householdID, row.ID, command.SourceDocumentID, command.SourceReference); err != nil {
+				return IncomeResult{}, err
+			}
+		}
 		return incomeResult(row), nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return IncomeResult{}, err
+	}
+	var evidence *statementIncomeEvidence
+	if statementProvided {
+		evidence, err = loadStatementIncomeEvidence(ctx, executor, householdID, command.SourceDocumentID, command.SourceReference)
+		if err != nil {
+			return IncomeResult{}, err
+		}
+		if err := validateStatementIncome(evidence.Entry, accountID, command.AmountYen, command.OccurredAt); err != nil {
+			return IncomeResult{}, err
+		}
 	}
 	account, err := loadAccount(ctx, executor, householdID, accountID)
 	if err != nil {
@@ -318,6 +340,15 @@ func (s *Service) RecordIncome(ctx context.Context, command IncomeCommand) (Inco
 	}
 	if err := saveIdempotency(ctx, executor, householdID, incomeID, command.IdempotencyKey, incomeOperation, command.RequestFingerprint); err != nil {
 		return IncomeResult{}, err
+	}
+	if statementProvided {
+		_, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{
+			SourceDocumentID: &evidence.DocumentID, SourceReference: &command.SourceReference,
+			HouseholdID: &householdID, AccountIncomeID: &sql.Null[gofrsuuid.UUID]{V: incomeID, Valid: true}, CreatedBy: &actorID,
+		}).Exec(ctx, executor)
+		if err != nil {
+			return IncomeResult{}, err
+		}
 	}
 	if err := writeEvent(ctx, tx, householdID, "account.income.recorded", incomeID, 1, []string{"amountYen", "accountId", "occurredAt"}, actorID); err != nil {
 		return IncomeResult{}, err
