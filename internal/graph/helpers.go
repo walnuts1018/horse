@@ -82,14 +82,6 @@ func datePointer(value *string) *model.Date {
 	return &result
 }
 
-func dateTimePointer(value *model.DateTime) *string {
-	if value == nil {
-		return nil
-	}
-	result := string(*value)
-	return &result
-}
-
 func yearMonthPointer(value *model.YearMonth) *string {
 	if value == nil {
 		return nil

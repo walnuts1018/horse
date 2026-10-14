@@ -36,7 +36,7 @@ func (r *purchaseResolver) Corrections(ctx context.Context, obj *model.Purchase,
 
 // Purchases is the resolver for the purchases field.
 func (r *queryResolver) Purchases(ctx context.Context, filter model.PurchaseFilter, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error) {
-	return r.purchases(ctx, filter.HouseholdID, dateTimePointer(filter.From), dateTimePointer(filter.To), filter.Origin, filter.HasEvidence, filter.Search, filter.CategoryID, filter.Uncategorized, filter.TagID, filter.PaymentAccountID, filter.PoolID, after, before, first, last, purchaseAmountFilter{minimum: filter.MinimumAmount, maximum: filter.MaximumAmount, target: filter.AmountTarget})
+	return r.purchases(ctx, filter, purchasePagination{after: after, before: before, first: first, last: last})
 }
 
 // Purchase returns PurchaseResolver implementation.

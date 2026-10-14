@@ -17,34 +17,6 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-type purchaseAmountFilter struct {
-	minimum *model.Long
-	maximum *model.Long
-	target  *model.PurchaseAmountTarget
-}
-
-func (r *queryResolver) purchases(ctx context.Context, householdID string, from, to *string, origin *model.PurchaseOrigin, hasEvidence *bool, search *string, categoryID *string, uncategorized *bool, tagID *string, paymentAccountID *string, poolID *string, after, before *string, first, last *int, amountFilters ...purchaseAmountFilter) (*model.PurchaseConnection, error) {
-	filter := model.PurchaseFilter{
-		HouseholdID: householdID, Origin: origin, HasEvidence: hasEvidence, Search: search,
-		CategoryID: categoryID, Uncategorized: uncategorized, TagID: tagID,
-		PaymentAccountID: paymentAccountID, PoolID: poolID,
-	}
-	if from != nil {
-		value := model.DateTime(*from)
-		filter.From = &value
-	}
-	if to != nil {
-		value := model.DateTime(*to)
-		filter.To = &value
-	}
-	if len(amountFilters) > 0 {
-		filter.MinimumAmount = amountFilters[0].minimum
-		filter.MaximumAmount = amountFilters[0].maximum
-		filter.AmountTarget = amountFilters[0].target
-	}
-	return r.purchasesPage(ctx, filter, purchasePagination{after: after, before: before, first: first, last: last})
-}
-
 type purchasePagination struct {
 	after  *string
 	before *string
@@ -52,7 +24,7 @@ type purchasePagination struct {
 	last   *int
 }
 
-func (r *queryResolver) purchasesPage(ctx context.Context, filter model.PurchaseFilter, page purchasePagination) (*model.PurchaseConnection, error) {
+func (r *queryResolver) purchases(ctx context.Context, filter model.PurchaseFilter, page purchasePagination) (*model.PurchaseConnection, error) {
 	if _, err := requireMember(ctx, r.DB, filter.HouseholdID); err != nil {
 		return nil, err
 	}

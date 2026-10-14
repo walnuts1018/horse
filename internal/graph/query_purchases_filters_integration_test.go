@@ -192,7 +192,10 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 		}
 		return ids
 	}
-	first, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, new("appl"), nil, nil, nil, nil, nil, nil, nil, new(1), nil)
+	queryPurchases := func(filter model.PurchaseFilter, after *string, first *int) (*model.PurchaseConnection, error) {
+		return query.purchases(ctx, filter, purchasePagination{after: after, first: first})
+	}
+	first, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, Search: new("appl")}, nil, new(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,52 +205,52 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	if !first.PageInfo.HasNextPage || first.PageInfo.EndCursor == nil {
 		t.Fatal("search filter must retain pagination after database filtering")
 	}
-	second, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, new("appl"), nil, nil, nil, nil, nil, first.PageInfo.EndCursor, nil, new(1), nil)
+	second, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, Search: new("appl")}, first.PageInfo.EndCursor, new(1))
 	if err != nil || second.TotalCount != 2 || len(second.Edges) != 1 || second.Edges[0].Node.ID != matched.ID || second.PageInfo.HasNextPage {
 		t.Fatalf("second filtered page returned %#v, error %v", second, err)
 	}
 
-	categoryResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, &category.ID, nil, nil, nil, nil, nil, nil, new(10), nil)
+	categoryResult, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, CategoryID: &category.ID}, nil, new(10))
 	if err != nil || categoryResult.TotalCount != 5 || !slices.Equal(purchaseIDs(categoryResult), []string{disjointSearchPurchase.ID, amountPurchase.ID, alignedPurchase.ID, matchedLater.ID, matched.ID}) {
 		t.Fatalf("category filter returned %#v, error %v", categoryResult, err)
 	}
-	uncategorizedResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, new(true), nil, nil, nil, nil, nil, new(10), nil)
+	uncategorizedResult, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, Uncategorized: new(true)}, nil, new(10))
 	if err != nil || uncategorizedResult.TotalCount != 4 || !slices.Equal(purchaseIDs(uncategorizedResult), []string{belowMinimum.ID, disjointSearchPurchase.ID, amountPurchase.ID, unmatched.ID}) {
 		t.Fatalf("uncategorized filter returned %#v, error %v", uncategorizedResult, err)
 	}
-	tagResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, &tag.ID, nil, nil, nil, nil, new(10), nil)
+	tagResult, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, TagID: &tag.ID}, nil, new(10))
 	if err != nil || tagResult.TotalCount != 4 || !slices.Equal(purchaseIDs(tagResult), []string{disjointSearchPurchase.ID, amountPurchase.ID, alignedPurchase.ID, matched.ID}) {
 		t.Fatalf("tag filter returned %#v, error %v", tagResult, err)
 	}
-	accountResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, &account.ID, nil, nil, nil, new(10), nil)
+	accountResult, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, PaymentAccountID: &account.ID}, nil, new(10))
 	if err != nil || accountResult.TotalCount != 1 || accountResult.Edges[0].Node.ID != matched.ID {
 		t.Fatalf("payment account filter returned %#v, error %v", accountResult, err)
 	}
-	dateResult, err := query.purchases(ctx, household.ID, new("2026-04-01T00:00:00Z"), new("2026-04-15T00:00:00Z"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, new(10), nil)
+	dateResult, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, From: new(model.DateTime("2026-04-01T00:00:00Z")), To: new(model.DateTime("2026-04-15T00:00:00Z"))}, nil, new(10))
 	if err != nil || dateResult.TotalCount != 1 || dateResult.Edges[0].Node.ID != matched.ID {
 		t.Fatalf("date filter returned %#v, error %v", dateResult, err)
 	}
-	poolResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, nil, &pool.ID, nil, nil, new(10), nil)
+	poolResult, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, PoolID: &pool.ID}, nil, new(10))
 	if err != nil || poolResult.TotalCount != 5 || !slices.Equal(purchaseIDs(poolResult), []string{belowMinimum.ID, disjointSearchPurchase.ID, amountPurchase.ID, alignedPurchase.ID, matched.ID}) {
 		t.Fatalf("pool filter returned %#v, error %v", poolResult, err)
 	}
 	minimumAmount := model.Long(150)
 	purchaseAmountTarget := model.PurchaseAmountTargetPurchase
-	purchaseAmountResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, new(1), nil, purchaseAmountFilter{minimum: &minimumAmount, target: &purchaseAmountTarget})
+	purchaseAmountResult, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, MinimumAmount: &minimumAmount, AmountTarget: &purchaseAmountTarget}, nil, new(1))
 	if err != nil || purchaseAmountResult.TotalCount != 3 || len(purchaseAmountResult.Edges) != 1 || purchaseAmountResult.Edges[0].Node.ID != disjointSearchPurchase.ID || purchaseAmountResult.Edges[0].Node.TotalYen != 300 {
 		t.Fatalf("purchase amount filter returned %#v, error %v", purchaseAmountResult, err)
 	}
 	itemAmountTarget := model.PurchaseAmountTargetItem
-	itemAmountResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, new(1), nil, purchaseAmountFilter{minimum: &minimumAmount, target: &itemAmountTarget})
+	itemAmountResult, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, MinimumAmount: &minimumAmount, AmountTarget: &itemAmountTarget}, nil, new(1))
 	if err != nil || itemAmountResult.TotalCount != 3 || len(itemAmountResult.Edges) != 1 || itemAmountResult.Edges[0].Node.ID != disjointSearchPurchase.ID || len(itemAmountResult.Edges[0].Node.Items) != 1 || itemAmountResult.Edges[0].Node.Items[0].Name != expensiveItemName {
 		t.Fatalf("item amount filter returned %#v, error %v", itemAmountResult, err)
 	}
-	itemAttributeResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, &category.ID, nil, &tag.ID, nil, &pool.ID, nil, nil, new(10), nil, purchaseAmountFilter{minimum: &minimumAmount, target: &itemAmountTarget})
+	itemAttributeResult, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, CategoryID: &category.ID, TagID: &tag.ID, PoolID: &pool.ID, MinimumAmount: &minimumAmount, AmountTarget: &itemAmountTarget}, nil, new(10))
 	if err != nil || itemAttributeResult.TotalCount != 2 || len(itemAttributeResult.Edges) != 2 || itemAttributeResult.Edges[0].Node.ID != disjointSearchPurchase.ID || itemAttributeResult.Edges[1].Node.ID != alignedPurchase.ID || len(itemAttributeResult.Edges[0].Node.Items) != 1 || itemAttributeResult.Edges[0].Node.Items[0].Name != expensiveItemName || len(itemAttributeResult.Edges[1].Node.Items) != 1 || itemAttributeResult.Edges[1].Node.Items[0].Name != alignedItemName {
 		t.Fatalf("combined item amount and attributes returned %#v, error %v", itemAttributeResult, err)
 	}
 	searchTerm := "Wanted"
-	itemSearchResult, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, &searchTerm, &category.ID, nil, &tag.ID, nil, &pool.ID, nil, nil, new(10), nil, purchaseAmountFilter{minimum: &minimumAmount, target: &itemAmountTarget})
+	itemSearchResult, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, Search: &searchTerm, CategoryID: &category.ID, TagID: &tag.ID, PoolID: &pool.ID, MinimumAmount: &minimumAmount, AmountTarget: &itemAmountTarget}, nil, new(10))
 	if err != nil || itemSearchResult.TotalCount != 1 || len(itemSearchResult.Edges) != 1 || itemSearchResult.Edges[0].Node.ID != alignedPurchase.ID || len(itemSearchResult.Edges[0].Node.Items) != 1 || itemSearchResult.Edges[0].Node.Items[0].Name != alignedItemName {
 		t.Fatalf("combined item search, amount, and attributes returned %#v, error %v", itemSearchResult, err)
 	}
@@ -258,7 +261,7 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	if err != nil || trimmedItemSearchResult.TotalCount != 1 || len(trimmedItemSearchResult.Edges) != 1 || trimmedItemSearchResult.Edges[0].Node.ID != alignedPurchase.ID || len(trimmedItemSearchResult.Edges[0].Node.Items) != 1 || trimmedItemSearchResult.Edges[0].Node.Items[0].Name != alignedItemName {
 		t.Fatalf("trimmed item search returned %#v, error %v", trimmedItemSearchResult, err)
 	}
-	if _, err := query.purchases(ctx, household.ID, nil, nil, nil, nil, nil, &category.ID, new(true), nil, nil, nil, nil, nil, new(10), nil); !errors.Is(err, ErrBadInput) {
+	if _, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, CategoryID: &category.ID, Uncategorized: new(true)}, nil, new(10)); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("simultaneous category and uncategorized filters returned %v; want bad input", err)
 	}
 }
