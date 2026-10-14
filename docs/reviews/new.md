@@ -10,60 +10,9 @@
 
 | 重要度 | 新規指摘 | 影響 |
 | --- | ------------------------------------ | --------------------- |
-| P1 | 分析画面が訂正仕訳を一部の集計から除外 | カテゴリ別と店舗・商品別の支出額が食い違う |
 | P1 | 口座残高分析でページング前に全取引を解決 | 取引が増えるほど応答が遅くなる |
-| P1 | 分析画面で不要な購入履歴を全件ロード | 通信量・DB負荷・メモリ使用量が増える |
 
 以下、コード上の根拠と修正方法を具体的に説明します。
-
-## 1. P1：支出分析で、訂正・返金が正しく反映されない
-
-該当コード
-
-- [purchase-analytics.ts](https://github.com/walnuts1018/horse/blob/main/web/src/pages/analysis/model/purchase-analytics.ts)
-- [monthly_spending.go](https://github.com/walnuts1018/horse/blob/main/internal/postgres/query/monthly_spending.go)
-
-カテゴリ別支出と、店舗・商品・プール・決済元別支出で、集計元が異なっています。
-
-カテゴリ別支出では、SQLで次の2つを合算しています。
-
-```
-purchase_items
-+
-corrections.amount_delta_yen
-```
-
-一方、フロントの `purchaseDimensions()` では、次のデータだけを合算しています。
-
-```
-purchase.totalYen
-item.amountYen
-allocation.amountYen
-payment.amountYen
-```
-
-訂正仕訳を参照していません。
-
-例えば、スーパーで1,000円購入した商品を後日全額返品した場合、次のような不整合が生じます。
-
-| 集計 | 表示される可能性がある金額 |
-| ----- | ------------- |
-| カテゴリ別 | ¥0 |
-| 店舗別 | ¥1,000 |
-| 商品別 | ¥1,000 |
-| プール別 | ¥1,000 |
-
-※元取引を維持し、返金を訂正仕訳に記録したケースです。
-
-改善方法
-
-購入履歴の生データをフロントで再集計するのではなく、すべての分析ディメンションで共通の会計イベントを集計する設計にします。
-
-PostgreSQL側で `purchase_items + corrections` を共通の集計元にし、カテゴリ・店舗・商品・プール・メンバーなどにグループ化します。
-
-決済元別集計は支出額ではなく資金流出額を表すため、訂正時の決済口座への返金も正しく反映する別の集計にする必要があります。
-
-これにより、集計軸を切り替えても数字の意味が一貫します。
 
 ## 1. P1：口座残高分析はページング前に全取引を解決している
 
@@ -116,41 +65,6 @@ SUM(delta_yen) OVER (
 
 全履歴をメモリに読み込んでからページングする必要はありません。
 
-## 1. P1：分析画面で不要な購入履歴を全件読み込んでいる
-
-該当コード
-
-- [use-analysis-data.ts](https://github.com/walnuts1018/horse/blob/main/web/src/pages/analysis/model/use-analysis-data.ts#L43-L51)
-- [analysis-page.tsx](https://github.com/walnuts1018/horse/blob/main/web/src/pages/analysis/ui/analysis-page.tsx#L65-L77)
-
-現在、`useAnalysisData()` は、選択したディメンションに関係なく、
-
-```
-useHouseholdPurchases(householdId, 100, {
-  from: `${fromMonth}-01T00:00:00+09:00`,
-  to: exclusiveMonthEnd(toMonth),
-  loadAll: true,
-});
-```
-
-を実行します。
-
-ところが、カテゴリ別とメンバー別の集計はGraphQLの集計Queryから取得しています。
-
-そのため、カテゴリ別の月次推移を表示したいだけでも、同期間の購入履歴を100件ずつ、最終ページまでロードすることになります。
-
-これは明確に無駄です。
-
-さらに、各購入に品目や負担情報が含まれるため、単純な購入件数以上に通信量とメモリを消費します。
-
-改善方法
-
-根本的には前項の集計API統一が適切です。
-
-フロント側で集計する必要がある場合も、必要なディメンションに限って履歴を取得し、集計専用の軽量フィールドだけを要求します。
-
-ページングを使って全件取得する構成自体はなくなりませんが、必要な場合にしか実行しないことが重要です。
-
 ## 1. P1：購入Subscriptionのたびに一覧を再取得している
 
 該当コード：[use-household-purchases.ts](https://github.com/walnuts1018/horse/blob/main/web/src/entities/purchase/api/use-household-purchases.ts#L193-L226)
@@ -170,8 +84,6 @@ const refresh = useCallback(() => {
 第一に、品名1文字の更新でも購入一覧を再取得することです。
 
 第二に、`setCorrectionPages({})` によって別途読み込んだ訂正履歴の状態もクリアしてしまいます。
-
-その後、分析画面では `loadAll: true` によって追加ページが再取得される可能性もあります。
 
 同じ購入を複数人が頻繁に編集する場合、通知が増えるほど不要なデータ取得が発生します。
 
@@ -227,44 +139,6 @@ existing, err := reconciliationObservations(
 APIは原本の全行を一括処理する方式ではなく、安定したカーソルと `sourceReference` による行単位検索にも対応させます。
 
 これにより、大量のカード明細を取り込んでも照合処理を実用的な負荷に抑えられます。
-
-## 1. P1：OCRでEXIF回転の扱いが統一されていない
-
-該当コード：[services/ocr/app.py](https://github.com/walnuts1018/horse/blob/main/services/ocr/app.py)
-
-この問題はレシート撮影時に影響します。
-
-`crop_document()` では画像に対して、
-
-```
-source = ImageOps.exif_transpose(source).convert("RGB")
-```
-
-を適用しています。
-
-一方、OCR用の `extract_lines()` では、
-
-```
-with Image.open(io.BytesIO(data)) as image:    width, height = image.size    pixels = np.array(image.convert("RGB"))
-```
-
-となっており、EXIF Orientationに基づく回転が適用されていません。
-
-その結果、スマートフォンで撮影した一部のJPEG画像について、以下の問題が起きる可能性があります。
-
-- OCRが回転した状態の文字を読むことになる。
-- OCRの検出領域と画像プレビューの座標系が一致しない。
-- レシートの該当箇所をタップしたとき、異なる場所がハイライトされる。
-
-既存テストにはEXIF回転を考慮したクロップのテストがありますが、OCR経路との座標一致は検証されていません。
-
-改善方法
-
-画像デコードとEXIF方向補正を共通関数にまとめます。
-
-`extract_lines()` と `crop_document()` が同じ正規化画像・同じ座標系を参照するようにし、EXIF Orientationの全パターンについてテストします。
-
-原本画像はそのまま保存し、正規化画像との座標変換行列も保持するのが適切です。
 
 ## 1. P2：オフライン送信成功後の画面更新失敗が、送信エラーと混同される
 
@@ -331,14 +205,12 @@ style={{
 
 | 優先度 | 対象 | 新規指摘と推奨修正 |
 | --- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| P2 | [OCR PDFクロップ](https://github.com/walnuts1018/horse/blob/main/services/ocr/app.py) | PDFクロップ処理で`PdfDocument`、`PdfPage`、レンダリングBitmapの明示的なcloseがありません。`try/finally`などでネイティブリソースを確実に解放する |
 | P2 | [CI](https://github.com/walnuts1018/horse/blob/main/.github/workflows/ci.yaml) | OCRのLintは実行していますが、`services/ocr/test_app.py`の単体テストを実行するステップがありません。PythonのテストもCIに組み込む |
 | P2 | [照合判定](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/reconcile.go#L42-L87) | `TransactionID`の一致を強く評価していますが、取引IDの発行元が一致しているかは検証していません。異なる決済事業者が同じIDを使用した場合に備え、発行元・識別子の名前空間を管理する。現状は自動統合ではなく候補提示なので、影響は誤った一致評価が中心 |
 | P2 | [Subscription](https://github.com/walnuts1018/horse/blob/main/internal/graph/purchase_subscription.resolvers.go) | 接続ごとに1秒間隔で所属確認とイベント検索を行っています。同時接続数に比例してDBクエリが増えるため、通知ベースの起床と定期的な権限再検証を組み合わせる |
 | P2 | [分析画面の日付](https://github.com/walnuts1018/horse/blob/main/web/src/pages/analysis/ui/analysis-page.tsx#L180-L190) | `today`を`useState`の初期値として一度しか計算していません。画面を開いたまま日付が変わると、定期支出の有効・無効判定が更新されない |
 | P3 | [sorted()](https://github.com/walnuts1018/horse/blob/main/web/src/pages/analysis/ui/analysis-page.tsx#L19-L28) | ソートを挿入ソートとして自前実装しています。`toSorted(compare)`に置き換えればコードが短くなり、一般的な実装に任せられる |
 | P3 | [sortBy()](https://github.com/walnuts1018/horse/blob/main/web/src/pages/analysis/ui/item-price-panel.tsx#L18-L26) | 上記と同じ挿入ソートが別名で再実装されています。両方ともネイティブのソートへ置き換え可能 |
-| P3 | [purchaseDimensions()](https://github.com/walnuts1018/horse/blob/main/web/src/pages/analysis/model/purchase-analytics.ts) | 決済元の名前を求めるため、購入の支払行ごとに`household.accounts.find()`を実行しています。事前に`Map`を構築すれば不要な線形探索を減らせる |
 | P3 | [generatedUUID()](https://github.com/walnuts1018/horse/blob/main/internal/graph/mutation_support.go#L29-L32) | UUID変換エラーを無視してNil UUIDを返すヘルパーがあります。エラーを返すか、妥当性が保証された入力に用途を限定した型・命名に変更する |
 | P3 | [lint:changed](https://github.com/walnuts1018/horse/blob/main/mise.toml) | CIのGo Lintは`--new-from-rev`を使用しています。差分Lint自体は合理的ですが、全体Lintも定期的に実行することで、既存コードや生成物に残った問題を検出できる |
 
@@ -356,12 +228,10 @@ GitHub Changelog
 
 | テスト対象 | 検証するケース |
 | -------------------- | ------------------------------------ |
-| 分析 | 全額返金・部分返金後のカテゴリ別と店舗別の一致 |
 | 口座分析 | 10,000件の履歴でも20件だけ表示対象を解決する |
 | Subscription + Relay | 複数更新の受信で訂正履歴が不必要に消去されない |
 | Outbox | 購入確定成功後に一覧の再取得だけ失敗する |
 | 明細照合 | 100行を超えるCSVでも特定行の候補を取得できる |
-| OCR | EXIF Orientation 1〜8で認識領域とプレビュー領域が一致 |
 | 日付 | 分析画面を開いたまま日付・月が変わる |
 | 月別グラフ | 月間支出が負になった場合の表示 |
 
@@ -373,21 +243,15 @@ GitHub Changelog
 
 01
 
-分析の集計モデル統一
-
-訂正仕訳を含む集計元を共通化します。同時にフロントでの購入全件ロードを減らします。
-
-02
-
 大量データへの対応
 
 口座分析のDBページング、照合候補のSQL絞り込み、Relay Subscriptionの再取得を最適化します。
 
-03
+02
 
 OCR・Outbox・小規模コード品質改善
 
-EXIF座標の統一、Outboxの失敗境界、CIテスト、不要な独自ソートや線形探索を修正します。
+Outboxの失敗境界、CIテスト、不要な独自ソートや線形探索を修正します。
 
 ## 総評
 
@@ -395,9 +259,7 @@ EXIF座標の統一、Outboxの失敗境界、CIテスト、不要な独自ソ�
 
 特に重要なのは、個々の関数が正しく動いていても、コンポーネントをまたいだときに整合性や性能が崩れることです。
 
-例えば、会計処理自体は仕訳として整合していても、分析画面が訂正仕訳を含めずに独自集計すれば数字が食い違います。
-
-今回のレビューでは、既存レビューにない12の主な指摘を抽出しました。
+今回のレビューでは、既存レビューにない複数の主な指摘を抽出しました。
 
 一方、コードベースは1,270ファイル規模であり、今回の調査はGitHub上のソースコードを中心とした静的レビューです。全ファイルの逐行検査や、実際のKubernetes環境での負荷・動作テストまで完了したものではありません。
 

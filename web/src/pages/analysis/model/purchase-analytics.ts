@@ -18,6 +18,7 @@ export function purchaseDimensions(purchases: Purchase[], household: Household) 
     pool: new Map(),
     account: new Map(),
   };
+  const accountNames = new Map(household.accounts.map((account) => [account.id, account.name]));
   const monthly: Record<PurchaseDimension, MonthlyEntry[]> = {
     merchant: [],
     item: [],
@@ -41,21 +42,25 @@ export function purchaseDimensions(purchases: Purchase[], household: Household) 
   for (const purchase of purchases) {
     if (purchase.status !== "POSTED" && purchase.status !== "CLOSED") continue;
     const month = japanMonth(new Date(purchase.occurredAt));
+    const correctionId = "__correction__";
     add(
       "merchant",
       purchase.merchant || "__unknown",
       purchase.merchant || "店舗未入力",
-      purchase.totalYen,
+      purchase.totalYen + purchase.correctionAmountYen,
       month,
       purchase.occurredAt,
     );
+    let itemCorrectionAmount = 0;
     for (const item of purchase.items) {
       const itemId = itemAnalysisId(item);
+      const itemCorrection = item.remainingRefundableAmountYen - item.amountYen;
+      itemCorrectionAmount += itemCorrection;
       add(
         "item",
         itemId,
         `${item.name}${item.quantityUnit ? ` · ${item.quantityUnit}` : " · 単位不明"}`,
-        item.amountYen,
+        item.remainingRefundableAmountYen,
         month,
         purchase.occurredAt,
       );
@@ -70,15 +75,43 @@ export function purchaseDimensions(purchases: Purchase[], household: Household) 
         );
       }
     }
-    for (const payment of purchase.paymentAllocations) {
-      const account = household.accounts.find(
-        (candidate) => candidate.id === payment.paymentAccountId,
+    const purchaseWideCorrection = purchase.correctionAmountYen - itemCorrectionAmount;
+    if (purchaseWideCorrection !== 0) {
+      add(
+        "item",
+        correctionId,
+        "購入全体の訂正",
+        purchaseWideCorrection,
+        month,
+        purchase.occurredAt,
       );
+    }
+    if (purchase.correctionAmountYen !== 0) {
+      add(
+        "pool",
+        correctionId,
+        "プール未配賦の訂正",
+        purchase.correctionAmountYen,
+        month,
+        purchase.occurredAt,
+      );
+    }
+    for (const payment of purchase.paymentAllocations) {
       add(
         "account",
         payment.paymentAccountId,
-        account?.name ?? "決済元",
+        accountNames.get(payment.paymentAccountId) ?? "決済元",
         payment.amountYen,
+        month,
+        purchase.occurredAt,
+      );
+    }
+    if (purchase.correctionAmountYen !== 0) {
+      add(
+        "account",
+        correctionId,
+        "決済元未配賦の訂正",
+        purchase.correctionAmountYen,
         month,
         purchase.occurredAt,
       );

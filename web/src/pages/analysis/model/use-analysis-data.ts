@@ -56,7 +56,7 @@ export function useAnalysisData(
     {
       from: `${fromMonth}-01T00:00:00+09:00`,
       to: exclusiveMonthEnd(toMonth),
-      loadAll: true,
+      loadAll: dimension !== "category" && dimension !== "member",
     },
   );
   const requestKey = JSON.stringify(variables);
