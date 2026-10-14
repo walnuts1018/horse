@@ -1,5 +1,7 @@
 import { Check, ChevronRight, Plus, Wallet } from "lucide-react";
 
+import type { useAccountSettings } from "../model/account-settings";
+
 import {
   isPersonalPool,
   isSharedPool,
@@ -7,7 +9,6 @@ import {
   type Household,
 } from "../../../shared/api";
 import { isOneOf } from "../../../shared/lib/guard";
-import type { useAccountSettings } from "../model/account-settings";
 
 import styles from "./settings-page.module.css";
 

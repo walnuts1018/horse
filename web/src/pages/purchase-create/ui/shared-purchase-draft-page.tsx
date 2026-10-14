@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchQuery, requestSubscription, useLazyLoadQuery } from "react-relay";
 
-import type { Household } from "../../../shared/api";
-import type { SharedPurchaseDraftChangesSubscription } from "../../../shared/api/__generated__/SharedPurchaseDraftChangesSubscription.graphql";
-import type { SharedPurchaseDraftQuery } from "../../../shared/api/__generated__/SharedPurchaseDraftQuery.graphql";
-
-import { getRelayEnvironment } from "../../../shared/api";
+import {
+  getRelayEnvironment,
+  type Household,
+  type SharedPurchaseDraftChangesSubscription,
+  type SharedPurchaseDraftQuery,
+} from "../../../shared/api";
 import {
   updateSharedPurchaseDraft,
   type SharedPurchaseDraftRecord,

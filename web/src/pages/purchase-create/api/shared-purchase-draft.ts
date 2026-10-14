@@ -1,7 +1,8 @@
-import type { CreateSharedPurchaseDraftMutation } from "../../../shared/api/__generated__/CreateSharedPurchaseDraftMutation.graphql";
-import type { UpdateSharedPurchaseDraftMutation } from "../../../shared/api/__generated__/UpdateSharedPurchaseDraftMutation.graphql";
-
-import { commitGraphQLMutation } from "../../../shared/api";
+import {
+  commitGraphQLMutation,
+  type CreateSharedPurchaseDraftMutation,
+  type UpdateSharedPurchaseDraftMutation,
+} from "../../../shared/api";
 import {
   createSharedPurchaseDraftMutation,
   updateSharedPurchaseDraftMutation,
