@@ -11,6 +11,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/graph/model"
@@ -99,6 +100,28 @@ func TestHouseholdMemberOffboarding(t *testing.T) {
 	if _, err := resolver.setPoolFundingRule(ownerContext, model.SetPoolFundingRuleInput{
 		HouseholdID: household.ID, PoolID: pool.ID, Configuration: personalPoolFundingConfiguration(secondOwnerID), ExpectedVersion: 2,
 	}); err != nil {
+		t.Fatal(err)
+	}
+	fundingScheduleID, poolID := generatedUUID(newID()), generatedUUID(pool.ID)
+	amount, cadence, startsOn := int64(1000), "MONTHLY", time.Now().UTC().Truncate(24*time.Hour).AddDate(0, -1, 0)
+	if _, err := models.FundingSchedules.Insert(&models.FundingScheduleSetter{
+		ID: &fundingScheduleID, HouseholdID: &householdID, MemberID: &initialMemberID, PoolID: &poolID,
+		AmountYen: &amount, Cadence: &cadence, StartsOn: &startsOn,
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	scheduledLeave, err := resolver.LeaveHousehold(initialMemberContext, model.LeaveHouseholdInput{HouseholdID: household.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, ok := scheduledLeave.(*model.LeaveHouseholdUserError); !ok || result.Code != model.MutationErrorCodeConflict {
+		t.Fatalf("leaving with an active funding schedule = %#v, want CONFLICT", scheduledLeave)
+	}
+	endedOn := sql.Null[time.Time]{V: time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -1), Valid: true}
+	if _, err := models.FundingSchedules.Update(
+		um.Where(models.FundingSchedules.Columns.ID.EQ(psql.Arg(fundingScheduleID))),
+		um.SetCol("ends_on").To(psql.Arg(endedOn)),
+	).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
 	journalID, sourceID := generatedUUID(newID()), generatedUUID(newID())
