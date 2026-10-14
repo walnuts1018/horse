@@ -314,29 +314,13 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 	}
 	purchaseItemUUIDs := make([]gofrsuuid.UUID, 0, len(input.Items))
 	for _, item := range input.Items {
-		if strings.TrimSpace(item.Name) == "" || len(item.Name) > 240 || item.AmountYen < 0 || item.AmountYen > maxMoney {
-			return CreateResult{}, fmt.Errorf("%w: invalid purchase item", ErrBadInput)
-		}
-		measure, err := measureFromCommand(item)
+		plan, err := prepareCreateItem(item)
 		if err != nil {
-			return CreateResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
+			return CreateResult{}, err
 		}
-		var categoryUUID, variantUUID *gofrsuuid.UUID
-		if item.CategoryID != nil {
-			id, parseErr := parseUUID(*item.CategoryID, "category")
-			if parseErr != nil {
-				return CreateResult{}, parseErr
-			}
-			categoryUUID = &id
-		}
-		if item.ProductVariantID != nil {
-			id, parseErr := parseUUID(*item.ProductVariantID, "product variant")
-			if parseErr != nil {
-				return CreateResult{}, parseErr
-			}
-			variantUUID = &id
+		if plan.variantID != nil {
 			variant, err := models.ProductVariants.Query(sm.Where(psql.And(
-				models.ProductVariants.Columns.ID.EQ(psql.Arg(id)),
+				models.ProductVariants.Columns.ID.EQ(psql.Arg(*plan.variantID)),
 				models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 			))).One(ctx, executor)
 			if errors.Is(err, sql.ErrNoRows) || err == nil && variant.Archived {
@@ -355,26 +339,14 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 			if err != nil {
 				return CreateResult{}, err
 			}
-			if categoryUUID == nil && concept.CategoryID.Valid {
+			if plan.categoryID == nil && concept.CategoryID.Valid {
 				id := concept.CategoryID.V
-				categoryUUID = &id
+				plan.categoryID = &id
 			}
 		}
 		weights, appliedRuleID, appliedRuleVersion := defaults, (*gofrsuuid.UUID)(nil), ruleVersion
-		allocationOverride := len(item.Allocations) > 0
-		if allocationOverride {
-			weights = make([]domain.Weight, 0, len(item.Allocations))
-			for _, allocation := range item.Allocations {
-				if allocation.PoolID == "" || allocation.Weight <= 0 {
-					return CreateResult{}, fmt.Errorf("%w: allocation weights must be positive", ErrBadInput)
-				}
-				weights = append(weights, domain.Weight{PoolID: allocation.PoolID, Value: allocation.Weight})
-			}
-			if _, err := domain.Allocate(1, weights); err != nil {
-				return CreateResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
-			}
-		} else {
-			ruleWeights, ruleID, revision, err := allocationRuleWeights(ctx, tx, householdUUID, categoryUUID, variantUUID, merchantRuleKey)
+		if !plan.allocationOverride {
+			ruleWeights, ruleID, revision, err := allocationRuleWeights(ctx, tx, householdUUID, plan.categoryID, plan.variantID, merchantRuleKey)
 			if err != nil {
 				return CreateResult{}, err
 			}
@@ -382,41 +354,40 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 				weights, appliedRuleID, appliedRuleVersion = ruleWeights, ruleID, revision
 			}
 		}
-		allocated, err := domain.Allocate(item.AmountYen, weights)
+		plan, err = allocateCreateItem(plan, weights, appliedRuleID, appliedRuleVersion)
 		if err != nil {
-			return CreateResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
+			return CreateResult{}, err
 		}
 		itemUUID := newUUID()
-		itemName, itemAmount := strings.TrimSpace(item.Name), item.AmountYen
 		var categoryValue, variantValue sql.Null[gofrsuuid.UUID]
-		if categoryUUID != nil {
-			categoryValue = sql.Null[gofrsuuid.UUID]{V: *categoryUUID, Valid: true}
+		if plan.categoryID != nil {
+			categoryValue = sql.Null[gofrsuuid.UUID]{V: *plan.categoryID, Valid: true}
 		}
-		if variantUUID != nil {
-			variantValue = sql.Null[gofrsuuid.UUID]{V: *variantUUID, Valid: true}
+		if plan.variantID != nil {
+			variantValue = sql.Null[gofrsuuid.UUID]{V: *plan.variantID, Valid: true}
 		}
 		if _, err := models.PurchaseItems.Insert(&models.PurchaseItemSetter{
-			ID: &itemUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, Name: &itemName,
-			AmountYen: &itemAmount, CategoryID: &categoryValue, ProductVariantID: &variantValue, AllocationOverride: &allocationOverride,
-			QuantityNumerator: &measure.quantityNumerator, QuantityDenominator: &measure.quantityDenominator, QuantityUnit: &measure.quantityUnit,
-			PrintedUnitPriceYen: &measure.printedUnitPriceYen, PrintedUnitPriceQuantityNumerator: &measure.printedUnitPriceQuantityNumerator,
-			PrintedUnitPriceQuantityDenominator: &measure.printedUnitPriceQuantityDenominator, PrintedUnitPriceUnit: &measure.printedUnitPriceUnit,
+			ID: &itemUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, Name: &plan.name,
+			AmountYen: &plan.amountYen, CategoryID: &categoryValue, ProductVariantID: &variantValue, AllocationOverride: &plan.allocationOverride,
+			QuantityNumerator: &plan.measure.quantityNumerator, QuantityDenominator: &plan.measure.quantityDenominator, QuantityUnit: &plan.measure.quantityUnit,
+			PrintedUnitPriceYen: &plan.measure.printedUnitPriceYen, PrintedUnitPriceQuantityNumerator: &plan.measure.printedUnitPriceQuantityNumerator,
+			PrintedUnitPriceQuantityDenominator: &plan.measure.printedUnitPriceQuantityDenominator, PrintedUnitPriceUnit: &plan.measure.printedUnitPriceUnit,
 		}).Exec(ctx, executor); err != nil {
 			return CreateResult{}, err
 		}
 		purchaseItemUUIDs = append(purchaseItemUUIDs, itemUUID)
-		for _, allocation := range allocated {
+		for _, allocation := range plan.allocations {
 			poolUUID, err := parseUUID(allocation.PoolID, "allocation pool")
 			if err != nil {
 				return CreateResult{}, err
 			}
 			var ruleUUID sql.Null[gofrsuuid.UUID]
-			if appliedRuleID != nil {
-				ruleUUID = sql.Null[gofrsuuid.UUID]{V: *appliedRuleID, Valid: true}
+			if plan.ruleID != nil {
+				ruleUUID = sql.Null[gofrsuuid.UUID]{V: *plan.ruleID, Valid: true}
 			}
 			if _, err := models.ItemAllocations.Insert(&models.ItemAllocationSetter{
 				HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, ItemID: &itemUUID, PoolID: &poolUUID,
-				Weight: &allocation.Weight, AmountYen: &allocation.Amount, RuleVersion: &appliedRuleVersion, RuleID: &ruleUUID,
+				Weight: &allocation.Weight, AmountYen: &allocation.Amount, RuleVersion: &plan.ruleVersion, RuleID: &ruleUUID,
 			}).Exec(ctx, executor); err != nil {
 				return CreateResult{}, err
 			}
@@ -453,6 +424,77 @@ type itemMeasure struct {
 	quantityNumerator, quantityDenominator                                                      sql.Null[int64]
 	quantityUnit, printedUnitPriceUnit                                                          sql.Null[string]
 	printedUnitPriceYen, printedUnitPriceQuantityNumerator, printedUnitPriceQuantityDenominator sql.Null[int64]
+}
+
+type createItemPlan struct {
+	name               string
+	amountYen          int64
+	categoryID         *gofrsuuid.UUID
+	variantID          *gofrsuuid.UUID
+	allocationOverride bool
+	measure            itemMeasure
+	weights            []domain.Weight
+	ruleID             *gofrsuuid.UUID
+	ruleVersion        int64
+	allocations        []domain.AllocationAmount
+}
+
+func prepareCreateItem(item Item) (createItemPlan, error) {
+	if strings.TrimSpace(item.Name) == "" || len(item.Name) > 240 || item.AmountYen < 0 || item.AmountYen > maxMoney {
+		return createItemPlan{}, fmt.Errorf("%w: invalid purchase item", ErrBadInput)
+	}
+	measure, err := measureFromCommand(item)
+	if err != nil {
+		return createItemPlan{}, fmt.Errorf("%w: %w", ErrBadInput, err)
+	}
+	var categoryID, variantID *gofrsuuid.UUID
+	if item.CategoryID != nil {
+		id, err := parseUUID(*item.CategoryID, "category")
+		if err != nil {
+			return createItemPlan{}, err
+		}
+		categoryID = &id
+	}
+	if item.ProductVariantID != nil {
+		id, err := parseUUID(*item.ProductVariantID, "product variant")
+		if err != nil {
+			return createItemPlan{}, err
+		}
+		variantID = &id
+	}
+	allocationOverride := len(item.Allocations) > 0
+	var weights []domain.Weight
+	if allocationOverride {
+		weights = make([]domain.Weight, 0, len(item.Allocations))
+		for _, allocation := range item.Allocations {
+			if allocation.PoolID == "" || allocation.Weight <= 0 {
+				return createItemPlan{}, fmt.Errorf("%w: allocation weights must be positive", ErrBadInput)
+			}
+			weights = append(weights, domain.Weight{PoolID: allocation.PoolID, Value: allocation.Weight})
+		}
+	}
+	return createItemPlan{
+		name: strings.TrimSpace(item.Name), amountYen: item.AmountYen,
+		categoryID: categoryID, variantID: variantID, allocationOverride: allocationOverride,
+		measure: measure, weights: weights,
+	}, nil
+}
+
+func allocateCreateItem(plan createItemPlan, selectedWeights []domain.Weight, ruleID *gofrsuuid.UUID, ruleVersion int64) (createItemPlan, error) {
+	if plan.allocationOverride {
+		selectedWeights, ruleID = plan.weights, nil
+		if _, err := domain.Allocate(1, selectedWeights); err != nil {
+			return createItemPlan{}, fmt.Errorf("%w: %w", ErrBadInput, err)
+		}
+	}
+	allocations, err := domain.Allocate(plan.amountYen, selectedWeights)
+	if err != nil {
+		return createItemPlan{}, fmt.Errorf("%w: %w", ErrBadInput, err)
+	}
+	plan.ruleID = ruleID
+	plan.ruleVersion = ruleVersion
+	plan.allocations = allocations
+	return plan, nil
 }
 
 func measureFromCommand(item Item) (itemMeasure, error) {

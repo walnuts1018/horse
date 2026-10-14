@@ -410,20 +410,6 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 	}).Exec(ctx, executor); err != nil {
 		return CorrectionResult{}, err
 	}
-	postings := make([]accounting.Posting, 0, len(shares)+len(input.PaymentAllocations)+1)
-	for _, share := range shares {
-		if share.Amount == 0 {
-			continue
-		}
-		poolUUID := mustCorrectionUUID(share.PoolID)
-		posting := accounting.Posting{PoolID: &poolUUID, AmountYen: share.Amount, Memo: input.Reason}
-		if delta > 0 {
-			posting.Side = accounting.Debit
-		} else {
-			posting.Side = accounting.Credit
-		}
-		postings = append(postings, posting)
-	}
 	var payments []Payment
 	if len(input.PaymentAllocations) > 0 {
 		payments, err = validateCorrectionPayments(ctx, executor, householdUUID, input.PaymentAllocations)
@@ -476,26 +462,7 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 			}
 		}
 	}
-	if len(payments) == 0 {
-		posting := accounting.Posting{AmountYen: abs(delta), Memo: "Correction offset"}
-		if delta > 0 {
-			posting.Side = accounting.Credit
-		} else {
-			posting.Side = accounting.Debit
-		}
-		postings = append(postings, posting)
-	} else {
-		for _, payment := range payments {
-			accountUUID := mustCorrectionUUID(payment.AccountID)
-			posting := accounting.Posting{AccountID: &accountUUID, AmountYen: payment.AmountYen, Memo: "Correction payment"}
-			if delta > 0 {
-				posting.Side = accounting.Credit
-			} else {
-				posting.Side = accounting.Debit
-			}
-			postings = append(postings, posting)
-		}
-	}
+	postings := buildCorrectionPostings(shares, delta, input.Reason, payments)
 	entries, err := accounting.BuildEntries(postings)
 	if err != nil {
 		return CorrectionResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
@@ -602,6 +569,29 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 		return CorrectionResult{}, err
 	}
 	return CorrectionResult{PurchaseID: purchaseID}, nil
+}
+
+func buildCorrectionPostings(shares []domain.AllocationAmount, delta int64, reason string, payments []Payment) []accounting.Posting {
+	postings := make([]accounting.Posting, 0, len(shares)+len(payments)+1)
+	poolSide, paymentSide := accounting.Credit, accounting.Debit
+	if delta > 0 {
+		poolSide, paymentSide = accounting.Debit, accounting.Credit
+	}
+	for _, share := range shares {
+		if share.Amount == 0 {
+			continue
+		}
+		poolUUID := mustCorrectionUUID(share.PoolID)
+		postings = append(postings, accounting.Posting{PoolID: &poolUUID, Side: poolSide, AmountYen: share.Amount, Memo: reason})
+	}
+	if len(payments) == 0 {
+		return append(postings, accounting.Posting{Side: paymentSide, AmountYen: abs(delta), Memo: "Correction offset"})
+	}
+	for _, payment := range payments {
+		accountUUID := mustCorrectionUUID(payment.AccountID)
+		postings = append(postings, accounting.Posting{AccountID: &accountUUID, Side: paymentSide, AmountYen: payment.AmountYen, Memo: "Correction payment"})
+	}
+	return postings
 }
 
 func lockCorrectionAccountingPeriods(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, periods ...string) error {
