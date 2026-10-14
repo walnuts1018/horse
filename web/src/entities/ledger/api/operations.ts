@@ -80,6 +80,62 @@ export const loanBalancesQuery = graphql`
   }
 `;
 
+export const statementTransferCandidatesQuery = graphql`
+  query StatementTransferCandidatesQuery($householdId: ID!, $first: Int, $after: String) {
+    ledger(householdId: $householdId, first: $first, after: $after) {
+      edges {
+        node {
+          __typename
+          id
+          occurredAt
+          description
+          amountYen
+          ... on LoanTransferLedgerEntry {
+            fromMember {
+              id
+              displayName
+            }
+            toMember {
+              id
+              displayName
+            }
+          }
+          ... on RepaymentTransferLedgerEntry {
+            fromMember {
+              id
+              displayName
+            }
+            toMember {
+              id
+              displayName
+            }
+          }
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+    }
+  }
+`;
+
+export const linkStatementTransferMutation = graphql`
+  mutation LinkStatementTransferMutation($input: LinkStatementTransferInput!) {
+    linkStatementTransfer(input: $input) {
+      __typename
+      ... on LinkStatementTransferSuccess {
+        result {
+          ...LedgerEntryFields
+        }
+      }
+      ... on LinkStatementTransferUserError {
+        message
+      }
+    }
+  }
+`;
+
 export const recordFundingMutation = graphql`
   mutation RecordFundingMutation($input: RecordFundingInput!) {
     recordFunding(input: $input) {

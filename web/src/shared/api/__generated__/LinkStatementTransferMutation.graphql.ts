@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ef2e8bd88e73455e7f5b3a99c9d57439>>
+ * @generated SignedSource<<33a5ccacbd0ed070abb455e220b6a844>>
  * @lightSyntaxTransform
  */
 
@@ -11,10 +11,10 @@ import type { ConcreteRequest } from 'relay-runtime';
 import type { FragmentRefs } from "relay-runtime";
 export type LinkStatementTransferInput = {
   householdId: string;
+  ledgerEntryId: string;
   sourceAccountId: string;
   sourceDocumentId: string;
   sourceReference: string;
-  transferId: string;
 };
 export type LinkStatementTransferMutation$variables = {
   input: LinkStatementTransferInput;

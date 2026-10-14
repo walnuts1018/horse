@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e04478dadaff59211e94cdbea221c286>>
+ * @generated SignedSource<<c96602056cbc7a5c5b53f885be295007>>
  * @lightSyntaxTransform
  */
 
@@ -9,6 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type StatementTransferCandidatesQuery$variables = {
+  after?: string | null | undefined;
   first?: number | null | undefined;
   householdId: string;
 };
@@ -46,22 +47,27 @@ const node: ConcreteRequest = (function(){
 var v0 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "first"
+  "name": "after"
 },
 v1 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "householdId"
+  "name": "first"
 },
 v2 = {
+  "defaultValue": null,
+  "kind": "LocalArgument",
+  "name": "householdId"
+},
+v3 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v3 = [
-  (v2/*:: as any*/),
+v4 = [
+  (v3/*:: as any*/),
   {
     "alias": null,
     "args": null,
@@ -70,7 +76,7 @@ v3 = [
     "storageKey": null
   }
 ],
-v4 = [
+v5 = [
   {
     "alias": null,
     "args": null,
@@ -78,7 +84,7 @@ v4 = [
     "kind": "LinkedField",
     "name": "fromMember",
     "plural": false,
-    "selections": (v3/*:: as any*/),
+    "selections": (v4/*:: as any*/),
     "storageKey": null
   },
   {
@@ -88,14 +94,19 @@ v4 = [
     "kind": "LinkedField",
     "name": "toMember",
     "plural": false,
-    "selections": (v3/*:: as any*/),
+    "selections": (v4/*:: as any*/),
     "storageKey": null
   }
 ],
-v5 = [
+v6 = [
   {
     "alias": null,
     "args": [
+      {
+        "kind": "Variable",
+        "name": "after",
+        "variableName": "after"
+      },
       {
         "kind": "Variable",
         "name": "first",
@@ -135,7 +146,7 @@ v5 = [
                 "name": "__typename",
                 "storageKey": null
               },
-              (v2/*:: as any*/),
+              (v3/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -159,13 +170,13 @@ v5 = [
               },
               {
                 "kind": "InlineFragment",
-                "selections": (v4/*:: as any*/),
+                "selections": (v5/*:: as any*/),
                 "type": "LoanTransferLedgerEntry",
                 "abstractKey": null
               },
               {
                 "kind": "InlineFragment",
-                "selections": (v4/*:: as any*/),
+                "selections": (v5/*:: as any*/),
                 "type": "RepaymentTransferLedgerEntry",
                 "abstractKey": null
               }
@@ -208,36 +219,38 @@ return {
   "fragment": {
     "argumentDefinitions": [
       (v0/*:: as any*/),
-      (v1/*:: as any*/)
+      (v1/*:: as any*/),
+      (v2/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "StatementTransferCandidatesQuery",
-    "selections": (v5/*:: as any*/),
+    "selections": (v6/*:: as any*/),
     "type": "Query",
     "abstractKey": null
   },
   "kind": "Request",
   "operation": {
     "argumentDefinitions": [
+      (v2/*:: as any*/),
       (v1/*:: as any*/),
       (v0/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "StatementTransferCandidatesQuery",
-    "selections": (v5/*:: as any*/)
+    "selections": (v6/*:: as any*/)
   },
   "params": {
-    "cacheID": "4a4209c2456053747220bbe409e1e6fd",
+    "cacheID": "1f5bcca560c1d12bf264bfc72a0b3013",
     "id": null,
     "metadata": {},
     "name": "StatementTransferCandidatesQuery",
     "operationKind": "query",
-    "text": "query StatementTransferCandidatesQuery(\n  $householdId: ID!\n  $first: Int\n) {\n  ledger(householdId: $householdId, first: $first) {\n    edges {\n      node {\n        __typename\n        id\n        occurredAt\n        description\n        amountYen\n        ... on LoanTransferLedgerEntry {\n          fromMember {\n            id\n            displayName\n          }\n          toMember {\n            id\n            displayName\n          }\n        }\n        ... on RepaymentTransferLedgerEntry {\n          fromMember {\n            id\n            displayName\n          }\n          toMember {\n            id\n            displayName\n          }\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
+    "text": "query StatementTransferCandidatesQuery(\n  $householdId: ID!\n  $first: Int\n  $after: String\n) {\n  ledger(householdId: $householdId, first: $first, after: $after) {\n    edges {\n      node {\n        __typename\n        id\n        occurredAt\n        description\n        amountYen\n        ... on LoanTransferLedgerEntry {\n          fromMember {\n            id\n            displayName\n          }\n          toMember {\n            id\n            displayName\n          }\n        }\n        ... on RepaymentTransferLedgerEntry {\n          fromMember {\n            id\n            displayName\n          }\n          toMember {\n            id\n            displayName\n          }\n        }\n      }\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "b1c70a7266d5463d26f63db41d793b20";
+(node as any).hash = "ad996816e7e2b9e1997a86d3c968815b";
 
 export default node;

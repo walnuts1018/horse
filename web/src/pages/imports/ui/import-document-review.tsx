@@ -36,6 +36,7 @@ export function ImportDocumentReview({
   onConfirmRefund,
   onConfirmTransfer,
   onConfirmLoan,
+  onLinkExistingTransfer,
   onError,
   onLinked,
   onSelectDocument,
@@ -60,7 +61,14 @@ export function ImportDocumentReview({
     statementAccountId: string,
     otherAccountId: string,
   ) => void;
-  onConfirmLoan: (entry: StatementEntry, accountId: string, fromMemberId: string, toMemberId: string, loanId?: string) => void;
+  onConfirmLoan: (
+    entry: StatementEntry,
+    accountId: string,
+    fromMemberId: string,
+    toMemberId: string,
+    loanId?: string,
+  ) => void;
+  onLinkExistingTransfer: (entry: StatementEntry, accountId: string, transferId: string) => void;
   onError: (message: string) => void;
   onLinked: () => Promise<void> | void;
   onSelectDocument: (id: string) => void;
@@ -165,6 +173,7 @@ export function ImportDocumentReview({
         onConfirmRefund={onConfirmRefund}
         onConfirmTransfer={onConfirmTransfer}
         onConfirmLoan={onConfirmLoan}
+        onLinkExistingTransfer={onLinkExistingTransfer}
         onSelectRegion={(entry) => {
           if (entry.region)
             selectStatementRegion(statementSourceReference(entry), entry.region.page);

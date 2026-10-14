@@ -143,6 +143,61 @@ func TestStatementLoanConfirmationIsAtomicAndIdempotent(t *testing.T) {
 	if _, err := resolver.recordTransfer(ctx, badAccount); !errors.Is(err, transferapp.ErrBadInput) {
 		t.Fatalf("statement selected-account mismatch was accepted: %v", err)
 	}
+	secondDocumentID := uuid.NewV7().String()
+	secondDocumentUUID := generatedUUID(secondDocumentID)
+	secondHash, secondObjectKey := "hash-"+secondDocumentID, household.ID+"/originals/"+secondDocumentID
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &secondDocumentUUID, HouseholdID: &householdUUID, Sha256: &secondHash, ObjectKey: &secondObjectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	linkEvidence, err := stdjson.Marshal(ingestion.Verification{Statements: []ingestion.StatementEntry{
+		{Row: 2, SourceReference: "row:2", Kind: "LOAN", OccurredAt: testStatementTransferFirstOccurredAt, Merchant: "貸付", Amount: -250},
+		{Row: 3, SourceReference: "row:3", Kind: "LOAN", OccurredAt: testStatementTransferFirstOccurredAt, Merchant: "貸付", Amount: 250},
+		{Row: 4, SourceReference: "row:4", Kind: "LOAN", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: "貸付", Amount: -250},
+		{Row: 5, SourceReference: "row:5", Kind: "REPAYMENT", OccurredAt: testStatementTransferFirstOccurredAt, Merchant: "返済", Amount: -250},
+		{Row: 6, SourceReference: "row:6", Kind: "LOAN", OccurredAt: testStatementTransferFirstOccurredAt, Merchant: "貸付", Amount: -250},
+		{Row: 7, SourceReference: "row:7", Kind: "REPAYMENT", OccurredAt: "2026-10-03T12:00:00Z", Merchant: "返済", Amount: -100},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkJobID, linkVersion := generatedUUID(uuid.NewV7().String()), int32(1)
+	linkResult := sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: linkEvidence}, Valid: true}
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &linkJobID, HouseholdID: &householdUUID, SourceDocumentID: &secondDocumentUUID, Version: &linkVersion, Status: &status, Result: &linkResult}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	linkInput := model.LinkStatementTransferInput{HouseholdID: household.ID, LedgerEntryID: created.ID, SourceDocumentID: secondDocumentID, SourceReference: "row:2", SourceAccountID: account.ID}
+	linked, err := resolver.linkStatementTransfer(ctx, linkInput)
+	if err != nil || linked.ID != created.ID {
+		t.Fatalf("existing statement transfer was not linked: result=%#v error=%v", linked, err)
+	}
+	linkedConfirmation, err := models.DocumentConfirmations.Query(sm.Where(psql.And(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(secondDocumentUUID)), models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg("row:2"))))).One(ctx, bobpgx.NewPool(db))
+	if err != nil || !linkedConfirmation.TransferID.Valid || linkedConfirmation.TransferID.V != generatedUUID(*created.TransferID) {
+		t.Fatalf("linked document confirmation points to wrong transfer: confirmation=%#v error=%v", linkedConfirmation, err)
+	}
+	if _, err := resolver.linkStatementTransfer(ctx, linkInput); !errors.Is(err, transferapp.ErrConflict) {
+		t.Fatalf("confirmed statement row was linked more than once: %v", err)
+	}
+	wrongSign := linkInput
+	wrongSign.SourceReference = "row:3"
+	if _, err := resolver.linkStatementTransfer(ctx, wrongSign); !errors.Is(err, transferapp.ErrBadInput) {
+		t.Fatalf("statement with opposite bank-account direction was linked: %v", err)
+	}
+	wrongDate := linkInput
+	wrongDate.SourceReference = "row:4"
+	if _, err := resolver.linkStatementTransfer(ctx, wrongDate); !errors.Is(err, transferapp.ErrBadInput) {
+		t.Fatalf("statement with a different date was linked: %v", err)
+	}
+	wrongKind := linkInput
+	wrongKind.SourceReference = "row:5"
+	if _, err := resolver.linkStatementTransfer(ctx, wrongKind); !errors.Is(err, transferapp.ErrBadInput) {
+		t.Fatalf("statement with a different transfer kind was linked: %v", err)
+	}
+	wrongBankAccount := linkInput
+	wrongBankAccount.SourceReference = "row:6"
+	wrongBankAccount.SourceAccountID = otherAccount.ID
+	if _, err := resolver.linkStatementTransfer(ctx, wrongBankAccount); !errors.Is(err, transferapp.ErrBadInput) {
+		t.Fatalf("statement from a different bank account was linked: %v", err)
+	}
 	foreignHousehold, err := resolver.createHousehold(ctx, model.CreateHouseholdInput{Name: "Foreign statement household"})
 	if err != nil {
 		t.Fatal(err)
@@ -163,6 +218,12 @@ func TestStatementLoanConfirmationIsAtomicAndIdempotent(t *testing.T) {
 	if _, err := resolver.recordTransfer(ctx, foreignDocumentInput); !errors.Is(err, transferapp.ErrNotFound) {
 		t.Fatalf("statement from another household was accepted: %v", err)
 	}
+	foreignLink := linkInput
+	foreignLink.SourceDocumentID = foreignDocumentID
+	foreignLink.SourceReference = "row:2"
+	if _, err := resolver.linkStatementTransfer(ctx, foreignLink); !errors.Is(err, transferapp.ErrNotFound) {
+		t.Fatalf("statement from another household was linked to a transfer: %v", err)
+	}
 	loan, err := resolver.recordTransfer(ctx, model.RecordTransferInput{HouseholdID: household.ID, FromMemberID: memberID, ToMemberID: borrowerID, Kind: model.TransferInputKindLoan, AmountYen: 100, OccurredAt: "2026-09-01T12:00:00Z", Description: "既存貸付", IdempotencyKey: uuid.NewV7().String()})
 	if err != nil || loan.TransferID == nil {
 		t.Fatalf("repayment fixture loan failed: result=%#v error=%v", loan, err)
@@ -175,6 +236,15 @@ func TestStatementLoanConfirmationIsAtomicAndIdempotent(t *testing.T) {
 	confirmation, err := models.DocumentConfirmations.Query(sm.Where(psql.And(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)), models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg("row:3"))))).One(ctx, bobpgx.NewPool(db))
 	if err != nil || !confirmation.TransferID.Valid || confirmation.TransferID.V != generatedUUID(*repaid.TransferID) {
 		t.Fatalf("repayment confirmation points to wrong transfer: confirmation=%#v error=%v", confirmation, err)
+	}
+	repaymentLink := model.LinkStatementTransferInput{HouseholdID: household.ID, LedgerEntryID: repaid.ID, SourceDocumentID: secondDocumentID, SourceReference: "row:7", SourceAccountID: account.ID}
+	linkedRepayment, err := resolver.linkStatementTransfer(ctx, repaymentLink)
+	if err != nil || linkedRepayment.ID != repaid.ID {
+		t.Fatalf("existing repayment was not linked: result=%#v error=%v", linkedRepayment, err)
+	}
+	linkedRepaymentConfirmation, err := models.DocumentConfirmations.Query(sm.Where(psql.And(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(secondDocumentUUID)), models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg("row:7"))))).One(ctx, bobpgx.NewPool(db))
+	if err != nil || !linkedRepaymentConfirmation.TransferID.Valid || linkedRepaymentConfirmation.TransferID.V != generatedUUID(*repaid.TransferID) {
+		t.Fatalf("linked repayment confirmation points to wrong transfer: confirmation=%#v error=%v", linkedRepaymentConfirmation, err)
 	}
 	transfers, err := models.Transfers.Query(sm.Where(models.Transfers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, bobpgx.NewPool(db))
 	if err != nil || len(transfers) != 3 {

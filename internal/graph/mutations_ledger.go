@@ -11,6 +11,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	transferapp "github.com/walnuts1018/horse/internal/application/transfer"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -104,4 +105,19 @@ func (r *mutationResolver) recordRepayment(ctx context.Context, input model.Reco
 		OccurredAt: string(input.OccurredAt), Description: input.Description, IdempotencyKey: input.IdempotencyKey,
 		SourceDocumentID: input.SourceDocumentID, SourceReference: input.SourceReference, SourceAccountID: input.SourceAccountID,
 	})
+}
+
+func (r *mutationResolver) linkStatementTransfer(ctx context.Context, input model.LinkStatementTransferInput) (*model.LedgerEntryData, error) {
+	user, err := requireMember(ctx, r.DB, input.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := transferapp.New(r.DB).LinkStatement(ctx, transferapp.LinkStatementCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, LedgerEntryID: input.LedgerEntryID,
+		SourceDocumentID: input.SourceDocumentID, SourceReference: input.SourceReference, SourceAccountID: input.SourceAccountID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return loadLedgerEntry(ctx, r.DB, result.LedgerEntryID)
 }

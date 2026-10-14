@@ -27,6 +27,7 @@ function normalizeName(name: string) {
 }
 import {
   importIdempotencyKey,
+  linkStatementTransfer as linkStatementTransferRequest,
   recordStatementAccountMovement,
   recordStatementExternalIncome,
   recordStatementLoan,
@@ -503,10 +504,16 @@ export function useImportConfirmation({
     toMemberId: string,
     loanId?: string,
   ) => {
-    if (entry.kind !== "LOAN" && entry.kind !== "REPAYMENT") throw new Error("貸付または返済の明細を選択してください");
+    if (entry.kind !== "LOAN" && entry.kind !== "REPAYMENT")
+      throw new Error("貸付または返済の明細を選択してください");
     const issue = statementConfirmationIssue(entry);
     if (issue) throw new Error(issue);
-    if (!household.accounts.some((account) => account.id === statementAccountId && account.kind === "BANK")) throw new Error("銀行口座を選択してください");
+    if (
+      !household.accounts.some(
+        (account) => account.id === statementAccountId && account.kind === "BANK",
+      )
+    )
+      throw new Error("銀行口座を選択してください");
     const reference = statementSourceReference(entry);
     const key = `${document.id}:${reference}`;
     if (confirmedStatements.has(key)) return;
@@ -521,7 +528,9 @@ export function useImportConfirmation({
       sourceDocumentId: document.id,
       sourceReference: reference,
       sourceAccountId: statementAccountId,
-      ...(entry.amount < 0 ? { paymentAccountId: statementAccountId } : { destinationAccountId: statementAccountId }),
+      ...(entry.amount < 0
+        ? { paymentAccountId: statementAccountId }
+        : { destinationAccountId: statementAccountId }),
     };
     if (entry.kind === "LOAN") {
       await recordStatementLoan({ ...input, kind: "LOAN" });
@@ -529,6 +538,37 @@ export function useImportConfirmation({
       if (!loanId) throw new Error("返済対象の貸付を選択してください");
       await recordStatementRepayment({ ...input, loanId });
     }
+    setConfirmedStatements((current) => new Set(current).add(key));
+    setHasUnsavedChanges(false);
+    onAdded(true);
+  };
+
+  const linkStatementTransfer = async (
+    document: DocumentReview,
+    entry: StatementEntry,
+    statementAccountId: string,
+    transferId: string,
+  ) => {
+    if (entry.kind !== "LOAN" && entry.kind !== "REPAYMENT")
+      throw new Error("貸付または返済の明細を選択してください");
+    const issue = statementConfirmationIssue(entry);
+    if (issue) throw new Error(issue);
+    if (
+      !household.accounts.some(
+        (account) => account.id === statementAccountId && account.kind === "BANK",
+      )
+    )
+      throw new Error("銀行口座を選択してください");
+    const reference = statementSourceReference(entry);
+    const key = `${document.id}:${reference}`;
+    if (confirmedStatements.has(key)) return;
+    await linkStatementTransferRequest({
+      householdId: household.id,
+      ledgerEntryId: transferId,
+      sourceDocumentId: document.id,
+      sourceReference: reference,
+      sourceAccountId: statementAccountId,
+    });
     setConfirmedStatements((current) => new Set(current).add(key));
     setHasUnsavedChanges(false);
     onAdded(true);
@@ -564,6 +604,19 @@ export function useImportConfirmation({
     confirmStatement,
     confirmStatementRefund,
     confirmStatementTransfer,
-    confirmStatementLoan: (document: DocumentReview, entry: StatementEntry, accountId: string, fromMemberId: string, toMemberId: string, loanId?: string) => confirmStatementLoan(document, entry, accountId, fromMemberId, toMemberId, loanId),
+    confirmStatementLoan: (
+      document: DocumentReview,
+      entry: StatementEntry,
+      accountId: string,
+      fromMemberId: string,
+      toMemberId: string,
+      loanId?: string,
+    ) => confirmStatementLoan(document, entry, accountId, fromMemberId, toMemberId, loanId),
+    linkStatementTransfer: (
+      document: DocumentReview,
+      entry: StatementEntry,
+      accountId: string,
+      transferId: string,
+    ) => linkStatementTransfer(document, entry, accountId, transferId),
   };
 }

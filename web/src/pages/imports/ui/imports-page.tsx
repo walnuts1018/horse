@@ -472,7 +472,17 @@ export function ImportsPage({
                 )
               }
               onConfirmLoan={(entry, accountId, fromMemberId, toMemberId, loanId) =>
-                void review.confirmStatementLoan(selectedDocument, entry, accountId, fromMemberId, toMemberId, loanId)
+                void review.confirmStatementLoan(
+                  selectedDocument,
+                  entry,
+                  accountId,
+                  fromMemberId,
+                  toMemberId,
+                  loanId,
+                )
+              }
+              onLinkExistingTransfer={(entry, accountId, transferId) =>
+                void review.linkStatementTransfer(selectedDocument, entry, accountId, transferId)
               }
               onError={setMessage}
               onLinked={async () => {

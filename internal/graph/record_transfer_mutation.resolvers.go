@@ -26,3 +26,19 @@ func (r *mutationResolver) RecordTransfer(ctx context.Context, input model.Recor
 	}
 	return &model.RecordTransferSuccess{Result: entry}, nil
 }
+
+// LinkStatementTransfer is the resolver for the linkStatementTransfer field.
+func (r *mutationResolver) LinkStatementTransfer(ctx context.Context, input model.LinkStatementTransferInput) (model.LinkStatementTransferResult, error) {
+	result, err := r.linkStatementTransfer(ctx, input)
+	if err != nil {
+		if result, ok := mutationErrorResult(err); ok {
+			return &model.LinkStatementTransferUserError{Code: result.Code, Message: result.Message}, nil
+		}
+		return nil, err
+	}
+	entry, err := ledgerEntryVariant(ctx, r.DB, result)
+	if err != nil {
+		return nil, err
+	}
+	return &model.LinkStatementTransferSuccess{Result: entry}, nil
+}

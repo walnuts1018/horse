@@ -610,6 +610,15 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	LinkStatementTransferSuccess struct {
+		Result func(childComplexity int) int
+	}
+
+	LinkStatementTransferUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	LoanBalance struct {
 		BalanceYen       func(childComplexity int) int
 		BorrowerMemberID func(childComplexity int) int
@@ -696,6 +705,7 @@ type ComplexityRoot struct {
 		CreateTag                     func(childComplexity int, input model.CreateTagInput) int
 		IssueHouseholdMailForwarding  func(childComplexity int, input model.HouseholdMailForwardingInput) int
 		LeaveHousehold                func(childComplexity int, input model.LeaveHouseholdInput) int
+		LinkStatementTransfer         func(childComplexity int, input model.LinkStatementTransferInput) int
 		PostPurchase                  func(childComplexity int, input model.PostPurchaseInput) int
 		RecordAccountMovement         func(childComplexity int, input model.RecordAccountMovementInput) int
 		RecordExternalIncome          func(childComplexity int, input model.RecordExternalIncomeInput) int
@@ -1430,6 +1440,7 @@ type MutationResolver interface {
 	RecordFunding(ctx context.Context, input model.RecordFundingInput) (model.RecordFundingResult, error)
 	RecordRepayment(ctx context.Context, input model.RecordRepaymentInput) (model.RecordRepaymentResult, error)
 	RecordTransfer(ctx context.Context, input model.RecordTransferInput) (model.RecordTransferResult, error)
+	LinkStatementTransfer(ctx context.Context, input model.LinkStatementTransferInput) (model.LinkStatementTransferResult, error)
 	RemoveHouseholdMember(ctx context.Context, input model.RemoveHouseholdMemberInput) (model.RemoveHouseholdMemberResult, error)
 	RevokeHouseholdInvitation(ctx context.Context, input model.RevokeHouseholdInvitationInput) (model.RevokeHouseholdInvitationResult, error)
 	SetAllocationRule(ctx context.Context, input model.SetAllocationRuleInput) (model.SetAllocationRuleResult, error)
@@ -3238,6 +3249,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.LedgerEdge.Node(childComplexity), true
 
+	case "LinkStatementTransferSuccess.result":
+		if e.ComplexityRoot.LinkStatementTransferSuccess.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LinkStatementTransferSuccess.Result(childComplexity), true
+
+	case "LinkStatementTransferUserError.code":
+		if e.ComplexityRoot.LinkStatementTransferUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LinkStatementTransferUserError.Code(childComplexity), true
+	case "LinkStatementTransferUserError.message":
+		if e.ComplexityRoot.LinkStatementTransferUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LinkStatementTransferUserError.Message(childComplexity), true
+
 	case "LoanBalance.balanceYen":
 		if e.ComplexityRoot.LoanBalance.BalanceYen == nil {
 			break
@@ -3710,6 +3741,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.LeaveHousehold(childComplexity, args["input"].(model.LeaveHouseholdInput)), true
+	case "Mutation.linkStatementTransfer":
+		if e.ComplexityRoot.Mutation.LinkStatementTransfer == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_linkStatementTransfer_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.LinkStatementTransfer(childComplexity, args["input"].(model.LinkStatementTransferInput)), true
 	case "Mutation.postPurchase":
 		if e.ComplexityRoot.Mutation.PostPurchase == nil {
 			break
@@ -6077,6 +6119,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputCreateTagInput,
 		ec.unmarshalInputHouseholdMailForwardingInput,
 		ec.unmarshalInputLeaveHouseholdInput,
+		ec.unmarshalInputLinkStatementTransferInput,
 		ec.unmarshalInputPersonalPoolFundingRuleInput,
 		ec.unmarshalInputPoolFundingRuleConfigurationInput,
 		ec.unmarshalInputPoolFundingShareInput,
@@ -7900,6 +7943,26 @@ type RecordRepaymentUserError implements MutationError {
 `, BuiltIn: false},
 	{Name: "../../graphql/record_transfer_mutation.graphql", Input: `extend type Mutation {
   recordTransfer(input: RecordTransferInput!): RecordTransferResult!
+  linkStatementTransfer(input: LinkStatementTransferInput!): LinkStatementTransferResult!
+}
+
+union LinkStatementTransferResult = LinkStatementTransferSuccess | LinkStatementTransferUserError
+
+type LinkStatementTransferSuccess {
+  result: LedgerEntry!
+}
+
+input LinkStatementTransferInput {
+  householdId: ID! @nodeID(of: "Household")
+  ledgerEntryId: ID! @nodeID(of: "LedgerEntry")
+  sourceDocumentId: ID!
+  sourceReference: String!
+  sourceAccountId: ID! @nodeID(of: "Account")
+}
+
+type LinkStatementTransferUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 
 union RecordTransferResult = RecordTransferSuccess | RecordTransferUserError
@@ -10034,6 +10097,20 @@ func (ec *executionContext) field_Mutation_leaveHousehold_args(ctx context.Conte
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.LeaveHouseholdInput, error) {
 			return ec.unmarshalNLeaveHouseholdInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLeaveHouseholdInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_linkStatementTransfer_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.LinkStatementTransferInput, error) {
+			return ec.unmarshalNLinkStatementTransferInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementTransferInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -18996,6 +19073,84 @@ func (ec *executionContext) fieldContext_LedgerEdge_node(_ context.Context, fiel
 	return fc, nil
 }
 
+func (ec *executionContext) _LinkStatementTransferSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementTransferSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LinkStatementTransferSuccess_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.LedgerEntry) graphql.Marshaler {
+			return ec.marshalNLedgerEntry2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLedgerEntry(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LinkStatementTransferSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "LinkStatementTransferSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("FieldContext.Child cannot be called on type INTERFACE")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _LinkStatementTransferUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementTransferUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LinkStatementTransferUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LinkStatementTransferUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LinkStatementTransferUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _LinkStatementTransferUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementTransferUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LinkStatementTransferUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LinkStatementTransferUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LinkStatementTransferUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _LoanBalance_id(ctx context.Context, field graphql.CollectedField, obj *model.LoanBalance) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -21222,6 +21377,50 @@ func (ec *executionContext) fieldContext_Mutation_recordTransfer(ctx context.Con
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_recordTransfer_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_linkStatementTransfer(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_linkStatementTransfer(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().LinkStatementTransfer(ctx, fc.Args["input"].(model.LinkStatementTransferInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.LinkStatementTransferResult) graphql.Marshaler {
+			return ec.marshalNLinkStatementTransferResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementTransferResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_linkStatementTransfer(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type LinkStatementTransferResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_linkStatementTransfer_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -33642,6 +33841,124 @@ func (ec *executionContext) unmarshalInputLeaveHouseholdInput(ctx context.Contex
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputLinkStatementTransferInput(ctx context.Context, obj any) (model.LinkStatementTransferInput, error) {
+	var it model.LinkStatementTransferInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId", "ledgerEntryId", "sourceDocumentId", "sourceReference", "sourceAccountId"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Household")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.HouseholdID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "ledgerEntryId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("ledgerEntryId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "LedgerEntry")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.LedgerEntryID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "sourceDocumentId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceDocumentId"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceDocumentID = data
+		case "sourceReference":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceReference"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceReference = data
+		case "sourceAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.SourceAccountID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputPersonalPoolFundingRuleInput(ctx context.Context, obj any) (model.PersonalPoolFundingRuleInput, error) {
 	var it model.PersonalPoolFundingRuleInput
 	if obj == nil {
@@ -38052,6 +38369,33 @@ func (ec *executionContext) _LedgerEntry(ctx context.Context, sel ast.SelectionS
 	}
 }
 
+func (ec *executionContext) _LinkStatementTransferResult(ctx context.Context, sel ast.SelectionSet, obj model.LinkStatementTransferResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.LinkStatementTransferUserError:
+		return ec._LinkStatementTransferUserError(ctx, sel, &obj)
+	case *model.LinkStatementTransferUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LinkStatementTransferUserError(ctx, sel, obj)
+	case model.LinkStatementTransferSuccess:
+		return ec._LinkStatementTransferSuccess(ctx, sel, &obj)
+	case *model.LinkStatementTransferSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LinkStatementTransferSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of LinkStatementTransferResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _MutationError(ctx context.Context, sel ast.SelectionSet, obj model.MutationError) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -38196,6 +38540,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._PostPurchaseUserError(ctx, sel, obj)
+	case model.LinkStatementTransferUserError:
+		return ec._LinkStatementTransferUserError(ctx, sel, &obj)
+	case *model.LinkStatementTransferUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LinkStatementTransferUserError(ctx, sel, obj)
 	case model.LeaveHouseholdUserError:
 		return ec._LeaveHouseholdUserError(ctx, sel, &obj)
 	case *model.LeaveHouseholdUserError:
@@ -45017,6 +45368,87 @@ func (ec *executionContext) _LedgerEdge(ctx context.Context, sel ast.SelectionSe
 	return out
 }
 
+var linkStatementTransferSuccessImplementors = []string{"LinkStatementTransferSuccess", "LinkStatementTransferResult"}
+
+func (ec *executionContext) _LinkStatementTransferSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.LinkStatementTransferSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, linkStatementTransferSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LinkStatementTransferSuccess")
+		case "result":
+			out.Values[i] = ec._LinkStatementTransferSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var linkStatementTransferUserErrorImplementors = []string{"LinkStatementTransferUserError", "LinkStatementTransferResult", "MutationError"}
+
+func (ec *executionContext) _LinkStatementTransferUserError(ctx context.Context, sel ast.SelectionSet, obj *model.LinkStatementTransferUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, linkStatementTransferUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LinkStatementTransferUserError")
+		case "code":
+			out.Values[i] = ec._LinkStatementTransferUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._LinkStatementTransferUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var loanBalanceImplementors = []string{"LoanBalance", "Node"}
 
 func (ec *executionContext) _LoanBalance(ctx context.Context, sel ast.SelectionSet, obj *model.LoanBalance) graphql.Marshaler {
@@ -45920,6 +46352,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "recordTransfer":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_recordTransfer(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "linkStatementTransfer":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_linkStatementTransfer(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -53908,6 +54347,21 @@ func (ec *executionContext) marshalNLedgerEntry2githubᚗcomᚋwalnuts1018ᚋhor
 		return graphql.Null
 	}
 	return ec._LedgerEntry(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNLinkStatementTransferInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementTransferInput(ctx context.Context, v any) (model.LinkStatementTransferInput, error) {
+	res, err := ec.unmarshalInputLinkStatementTransferInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNLinkStatementTransferResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementTransferResult(ctx context.Context, sel ast.SelectionSet, v model.LinkStatementTransferResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._LinkStatementTransferResult(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNLoanBalance2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLoanBalance(ctx context.Context, sel ast.SelectionSet, v *model.LoanBalance) graphql.Marshaler {
