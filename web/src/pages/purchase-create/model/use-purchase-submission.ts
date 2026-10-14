@@ -12,6 +12,10 @@ type SubmissionOverrides = {
   paymentDifference: number;
 };
 
+type SubmissionFieldError =
+  | { field: "occurredAt" }
+  | { field: "paymentAccount" | "paymentAmount"; paymentKey: string };
+
 export function usePurchaseSubmission({
   memberId,
   household,
@@ -19,6 +23,7 @@ export function usePurchaseSubmission({
   occurredAt,
   items,
   paymentRows,
+  paymentAutoTotal,
   paymentAmount,
   paymentDifference,
   cancelScheduledSave,
@@ -31,6 +36,7 @@ export function usePurchaseSubmission({
   occurredAt: string;
   items: PurchaseDraftItem[];
   paymentRows: PaymentDraft[];
+  paymentAutoTotal: boolean;
   paymentAmount: (payment: PaymentDraft) => number;
   paymentDifference: number;
   cancelScheduledSave: () => void;
@@ -39,6 +45,7 @@ export function usePurchaseSubmission({
 }) {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
+  const [fieldError, setFieldError] = useState<SubmissionFieldError | null>(null);
   const saving = useRef(false);
 
   const submit = async (event: SyntheticEvent, overrides?: SubmissionOverrides) => {
@@ -47,6 +54,7 @@ export function usePurchaseSubmission({
     const submittedItems = overrides?.items ?? items;
     const submittedPaymentAmount = overrides?.paymentAmount ?? paymentAmount;
     const submittedPaymentDifference = overrides?.paymentDifference ?? paymentDifference;
+    setFieldError(null);
     if (!memberId.trim()) {
       setMessage("ログイン中のメンバーを確認できません");
       return;
@@ -59,17 +67,41 @@ export function usePurchaseSubmission({
       setMessage("品目を1つ以上追加してください");
       return;
     }
+    if (!Number.isFinite(new Date(occurredAt).getTime())) {
+      setFieldError({ field: "occurredAt" });
+      setMessage("");
+      return;
+    }
     if (!household.accounts.length) {
       setMessage("設定で決済元を登録してください");
       return;
     }
-    if (
-      !paymentRows.length ||
-      paymentRows.some(
-        (payment) => !payment.paymentAccountId || submittedPaymentAmount(payment) < 1,
-      ) ||
-      submittedPaymentDifference !== 0
-    ) {
+    const missingPaymentAccount = paymentRows.find((payment) => !payment.paymentAccountId);
+    if (missingPaymentAccount) {
+      setFieldError({ field: "paymentAccount", paymentKey: missingPaymentAccount.key });
+      setMessage("");
+      return;
+    }
+    const autoRemainderKey = paymentAutoTotal ? paymentRows.at(-1)?.key : undefined;
+    const invalidPaymentAmount = paymentRows.find(
+      (payment) => payment.key !== autoRemainderKey && submittedPaymentAmount(payment) < 1,
+    );
+    if (invalidPaymentAmount) {
+      setFieldError({ field: "paymentAmount", paymentKey: invalidPaymentAmount.key });
+      setMessage("");
+      return;
+    }
+    if (submittedPaymentDifference !== 0) {
+      const editablePayments = paymentRows.filter((payment) => payment.key !== autoRemainderKey);
+      if (editablePayments.length === 1) {
+        setFieldError({ field: "paymentAmount", paymentKey: editablePayments[0].key });
+        setMessage("");
+        return;
+      }
+      setMessage("決済元と金額を確認してください");
+      return;
+    }
+    if (!paymentRows.length) {
       setMessage("決済元と金額を確認してください");
       return;
     }
@@ -105,5 +137,14 @@ export function usePurchaseSubmission({
     }
   };
 
-  return { pending, message, setMessage, submit };
+  const clearFieldError = (field: SubmissionFieldError["field"], paymentKey?: string) => {
+    setFieldError((current) =>
+      current?.field === field &&
+      (current.field === "occurredAt" || current.paymentKey === paymentKey)
+        ? null
+        : current,
+    );
+  };
+
+  return { pending, message, setMessage, fieldError, clearFieldError, submit };
 }

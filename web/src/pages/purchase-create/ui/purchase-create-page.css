@@ -76,6 +76,10 @@
   gap: 8px;
 }
 
+.payment-allocation-row > .entry-error {
+  grid-column: 1 / -1;
+}
+
 .payment-allocation-row > select {
   height: 36px;
   min-width: 0;

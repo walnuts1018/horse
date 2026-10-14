@@ -23,6 +23,7 @@ export function EditPurchaseDetails({
   recentPurchases,
   copiedPurchase,
   copiedAt,
+  occurredAtError,
   classNames,
   onMerchantChange,
   onOccurredAtChange,
@@ -37,6 +38,7 @@ export function EditPurchaseDetails({
   recentPurchases: Purchase[];
   copiedPurchase: Purchase | null;
   copiedAt: number | null;
+  occurredAtError: boolean;
   classNames: { details: string; history: string };
   onMerchantChange: (value: string) => void;
   onOccurredAtChange: (value: string) => void;
@@ -104,8 +106,15 @@ export function EditPurchaseDetails({
             id="occurred"
             type="datetime-local"
             value={occurredAt}
+            aria-invalid={occurredAtError}
+            aria-describedby={occurredAtError ? "purchase-occurred-at-error" : undefined}
             onChange={(event) => onOccurredAtChange(event.target.value)}
           />
+          {occurredAtError && (
+            <small className="entry-error" id="purchase-occurred-at-error" role="alert">
+              購入日時を確認してください
+            </small>
+          )}
           <div className="purchase-history-actions" aria-label="日時のクイック選択">
             <button className="text-button" type="button" onClick={() => setDate(0)}>
               今日

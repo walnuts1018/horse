@@ -249,6 +249,7 @@ function PurchaseCreatePageContent({
     occurredAt,
     items,
     paymentRows,
+    paymentAutoTotal,
     paymentAmount,
     paymentDifference,
     cancelScheduledSave,
@@ -267,7 +268,7 @@ function PurchaseCreatePageContent({
       itemsCommands.current?.reset();
     },
   });
-  const { pending, message, setMessage, submit } = submission;
+  const { pending, message, setMessage, fieldError, clearFieldError, submit } = submission;
   const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     const submittedItems = itemsCommands.current?.prepareForSubmit();
     if (!submittedItems) {
@@ -338,12 +339,14 @@ function PurchaseCreatePageContent({
         recentPurchases={recentPurchases}
         copiedPurchase={copiedPurchase}
         copiedAt={copiedAt}
+        occurredAtError={fieldError?.field === "occurredAt"}
         classNames={{ details: styles.details, history: styles.history }}
         onMerchantChange={(value) => {
           updateMerchant(value, recentMerchants.includes(value));
         }}
         onOccurredAtChange={(value) => {
           markUnsaved();
+          clearFieldError("occurredAt");
           setOccurredAt(value);
         }}
         onSelectMerchant={(value) => {
@@ -356,16 +359,27 @@ function PurchaseCreatePageContent({
           household={household}
           history={recentPurchases}
           rows={paymentRows}
+          fieldError={fieldError?.field === "occurredAt" ? null : fieldError}
           autoTotal={paymentAutoTotal}
           itemTotal={itemTotal}
           difference={paymentDifference}
           onSetAutoTotal={(enabled, amount) => {
             markUnsaved();
+            const lastPaymentKey = paymentRows.at(-1)?.key;
+            if (lastPaymentKey) clearFieldError("paymentAmount", lastPaymentKey);
             payments.setAutoTotal(enabled, amount);
           }}
           onAdd={payments.add}
-          onPatch={payments.patch}
-          onRemove={payments.remove}
+          onPatch={(key, patch) => {
+            if (patch.paymentAccountId !== undefined) clearFieldError("paymentAccount", key);
+            if (patch.amountYen !== undefined) clearFieldError("paymentAmount", key);
+            payments.patch(key, patch);
+          }}
+          onRemove={(key) => {
+            clearFieldError("paymentAccount", key);
+            clearFieldError("paymentAmount", key);
+            payments.remove(key);
+          }}
         />
       </EditPurchaseDetails>
       <PurchaseItemsComposer

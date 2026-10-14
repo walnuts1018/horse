@@ -16,6 +16,7 @@ export function EditPurchasePayments({
   household,
   history,
   rows,
+  fieldError,
   autoTotal,
   itemTotal,
   difference,
@@ -27,6 +28,7 @@ export function EditPurchasePayments({
   household: Household;
   history: Purchase[];
   rows: PaymentDraft[];
+  fieldError: { field: "paymentAccount" | "paymentAmount"; paymentKey: string } | null;
   autoTotal: boolean;
   itemTotal: number;
   difference: number;
@@ -49,6 +51,14 @@ export function EditPurchasePayments({
             <div className="payment-allocation-row" key={payment.key}>
               <select
                 aria-label={`決済元 ${index + 1}`}
+                aria-invalid={
+                  fieldError?.field === "paymentAccount" && fieldError.paymentKey === payment.key
+                }
+                aria-describedby={
+                  fieldError?.field === "paymentAccount" && fieldError.paymentKey === payment.key
+                    ? `purchase-payment-account-error-${payment.key}`
+                    : undefined
+                }
                 value={payment.paymentAccountId}
                 onChange={(event) => onPatch(payment.key, { paymentAccountId: event.target.value })}
               >
@@ -64,6 +74,14 @@ export function EditPurchasePayments({
                   <span>¥</span>
                   <input
                     aria-label={`決済額 ${index + 1}`}
+                    aria-invalid={
+                      fieldError?.field === "paymentAmount" && fieldError.paymentKey === payment.key
+                    }
+                    aria-describedby={
+                      fieldError?.field === "paymentAmount" && fieldError.paymentKey === payment.key
+                        ? `purchase-payment-amount-error-${payment.key}`
+                        : undefined
+                    }
                     inputMode="numeric"
                     readOnly={isAutoRemainder}
                     value={isAutoRemainder ? String(autoAmount) : payment.amountYen}
@@ -94,6 +112,21 @@ export function EditPurchasePayments({
               >
                 <X size={15} />
               </button>
+              {fieldError?.paymentKey === payment.key && (
+                <small
+                  className="entry-error"
+                  id={
+                    fieldError.field === "paymentAccount"
+                      ? `purchase-payment-account-error-${payment.key}`
+                      : `purchase-payment-amount-error-${payment.key}`
+                  }
+                  role="alert"
+                >
+                  {fieldError.field === "paymentAccount"
+                    ? "決済元を選択してください"
+                    : "決済額を確認してください"}
+                </small>
+              )}
             </div>
           );
         })}
