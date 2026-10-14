@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   receiptDateInputValue,
   receiptOccurredAt,
+  receiptTimeInputValue,
   persistedStatementConfirmationKeys,
   statementConfirmationIssue,
   statementSourceReference,
@@ -18,14 +19,27 @@ describe("receipt purchase date confirmation", () => {
     expect(receiptDateInputValue("2025-04-01T00:30:00+09:00")).toBe("2025-04-01");
   });
 
-  it("turns an explicit date into noon in Japan", () => {
-    expect(receiptOccurredAt(undefined, "2025-04-01")).toBe("2025-04-01T03:00:00.000Z");
+  it("does not invent a time when only a date is available", () => {
+    expect(receiptOccurredAt(undefined, "2025-04-01")).toBeNull();
+    expect(receiptOccurredAt("2025-04-01", "2025-04-01")).toBeNull();
+    expect(receiptTimeInputValue("2025-04-01")).toBe("");
+  });
+
+  it("uses an explicitly entered time in Japan", () => {
+    expect(receiptOccurredAt(undefined, "2025-04-01", "09:15")).toBe("2025-04-01T00:15:00.000Z");
   });
 
   it("preserves the extracted purchase time when correcting its date", () => {
     expect(receiptOccurredAt("2025-03-31T16:45:12.345Z", "2025-04-02")).toBe(
       "2025-04-01T16:45:12.345Z",
     );
+    expect(receiptOccurredAt("2025-04-01T08:30:00+09:00", undefined, "09:15")).toBe(
+      "2025-04-01T00:15:00.000Z",
+    );
+  });
+
+  it("shows extracted time in Japan for the time input", () => {
+    expect(receiptTimeInputValue("2025-03-31T16:45:12.345Z")).toBe("01:45");
   });
 
   it("rejects invalid manual dates and malformed extracted dates", () => {

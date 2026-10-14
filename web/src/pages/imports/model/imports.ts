@@ -60,7 +60,31 @@ export function receiptDateInputValue(purchasedAt?: string): string {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
-export function receiptOccurredAt(purchasedAt?: string, manualDate?: string): string | null {
+export function receiptTimeInputValue(purchasedAt?: string): string {
+  if (!purchasedAt || !/[T ]\d{2}:\d{2}/.test(purchasedAt)) return "";
+  const date = new Date(purchasedAt);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en", {
+      timeZone: "Asia/Tokyo",
+      hour: "2-digit",
+      hourCycle: "h23",
+      minute: "2-digit",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.hour}:${parts.minute}`;
+}
+
+export function receiptOccurredAt(
+  purchasedAt?: string,
+  manualDate?: string,
+  manualTime?: string,
+): string | null {
+  if (manualDate === undefined && manualTime !== undefined) {
+    return receiptOccurredAt(purchasedAt, receiptDateInputValue(purchasedAt), manualTime);
+  }
   if (manualDate !== undefined) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(manualDate)) return null;
     const calendarDate = new Date(`${manualDate}T00:00:00.000Z`);
@@ -70,7 +94,12 @@ export function receiptOccurredAt(purchasedAt?: string, manualDate?: string): st
     ) {
       return null;
     }
-    const extractedDate = purchasedAt ? new Date(purchasedAt) : null;
+    if (manualTime !== undefined) {
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(manualTime)) return null;
+      return new Date(`${manualDate}T${manualTime}:00+09:00`).toISOString();
+    }
+    const extractedDate =
+      purchasedAt && /[T ]\d{2}:\d{2}/.test(purchasedAt) ? new Date(purchasedAt) : null;
     if (extractedDate && !Number.isNaN(extractedDate.getTime())) {
       const timeParts = Object.fromEntries(
         new Intl.DateTimeFormat("en", {
@@ -88,9 +117,9 @@ export function receiptOccurredAt(purchasedAt?: string, manualDate?: string): st
         `${manualDate}T${timeParts.hour}:${timeParts.minute}:${timeParts.second}.${milliseconds}+09:00`,
       ).toISOString();
     }
-    return new Date(`${manualDate}T12:00:00+09:00`).toISOString();
+    return null;
   }
-  if (!purchasedAt) return null;
+  if (!purchasedAt || !/[T ]\d{2}:\d{2}/.test(purchasedAt)) return null;
   const date = new Date(purchasedAt);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }

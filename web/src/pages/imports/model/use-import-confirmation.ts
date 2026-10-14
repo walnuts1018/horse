@@ -59,6 +59,7 @@ import {
 import {
   receiptDateInputValue,
   receiptOccurredAt,
+  receiptTimeInputValue,
   persistedStatementConfirmationKeys,
   statementConfirmationIssue,
   statementSourceReference,
@@ -122,6 +123,7 @@ export function useImportConfirmation({
     index: number;
   }>({ documentId: "", index: 0 });
   const [manualPurchaseDates, setManualPurchaseDates] = useState<Record<string, string>>({});
+  const [manualPurchaseTimes, setManualPurchaseTimes] = useState<Record<string, string>>({});
   const selectedDocumentId = selectedDocument?.id ?? "";
   const confirmationState = selectedDocument?.receiptConfirmationState;
   const defaultCandidate = selectedDocument
@@ -316,6 +318,13 @@ export function useImportConfirmation({
     ];
   }
 
+  const purchaseOccurredAtFor = (document: DocumentReview) =>
+    receiptOccurredAt(
+      document.result?.receipt?.purchasedAt,
+      manualPurchaseDates[document.id],
+      manualPurchaseTimes[document.id],
+    );
+
   const reviewTargets: ReviewTarget[] = selectedDocument?.result?.receipt?.items
     ? [
         ...receiptItemsNeedingReview(
@@ -327,10 +336,7 @@ export function useImportConfirmation({
           elementId: `receipt-review-item-${encodeURIComponent(item.key ?? `item-${index}`)}`,
         })),
         ...(() => {
-          const needsPurchaseDate = !receiptOccurredAt(
-            selectedDocument.result.receipt.purchasedAt,
-            manualPurchaseDates[selectedDocument.id],
-          );
+          const needsPurchaseDate = !purchaseOccurredAtFor(selectedDocument);
           const selectedCandidate = selectedDocument.result.candidates?.find(
             (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
           );
@@ -531,6 +537,10 @@ export function useImportConfirmation({
     manualPurchaseDates[document.id] ??
     receiptDateInputValue(document.result?.receipt?.purchasedAt);
 
+  const purchaseTimeFor = (document: DocumentReview) =>
+    manualPurchaseTimes[document.id] ??
+    receiptTimeInputValue(document.result?.receipt?.purchasedAt);
+
   const editPurchaseDate = (documentId: string, date: string) => {
     editedReceiptDocuments.current.add(documentId);
     markUnsaved();
@@ -538,7 +548,37 @@ export function useImportConfirmation({
     setDocuments((current) =>
       current.map((document) => {
         if (document.id !== documentId || !document.result) return document;
-        const purchasedAt = receiptOccurredAt(document.result.receipt?.purchasedAt, date);
+        const purchasedAt = receiptOccurredAt(
+          document.result.receipt?.purchasedAt,
+          date,
+          manualPurchaseTimes[documentId],
+        );
+        return purchasedAt
+          ? {
+              ...document,
+              result: {
+                ...document.result,
+                receipt: { ...document.result.receipt, purchasedAt },
+              },
+            }
+          : document;
+      }),
+    );
+  };
+
+  const editPurchaseTime = (documentId: string, time: string) => {
+    editedReceiptDocuments.current.add(documentId);
+    markUnsaved();
+    setManualPurchaseTimes((current) => ({ ...current, [documentId]: time }));
+    setDocuments((current) =>
+      current.map((document) => {
+        if (document.id !== documentId || !document.result) return document;
+        const purchasedAt = receiptOccurredAt(
+          document.result.receipt?.purchasedAt,
+          manualPurchaseDates[documentId] ??
+            receiptDateInputValue(document.result.receipt?.purchasedAt),
+          time,
+        );
         return purchasedAt
           ? {
               ...document,
@@ -554,7 +594,7 @@ export function useImportConfirmation({
 
   const confirm = async (document: DocumentReview) => {
     const receipt = document.result?.receipt;
-    const occurredAt = receiptOccurredAt(receipt?.purchasedAt, manualPurchaseDates[document.id]);
+    const occurredAt = purchaseOccurredAtFor(document);
     const items = receipt?.items ?? [];
     const candidateID = selectedCandidates[document.id] ?? "";
     const candidate = document.result?.candidates?.find((item) => item.id === candidateID);
@@ -910,7 +950,10 @@ export function useImportConfirmation({
       receiptItemAllocations[documentId]?.[itemKey] ?? [],
     editReceiptItemAllocations,
     purchaseDateFor,
+    purchaseTimeFor,
+    purchaseOccurredAtFor,
     editPurchaseDate,
+    editPurchaseTime,
     suggestedCategoryId,
     receiptItemAmount,
     receiptTotal,

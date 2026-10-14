@@ -17,6 +17,20 @@
   padding: 0;
 }
 
+.purchaseTimeEditor summary {
+  width: fit-content;
+  margin-top: 6px;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.purchaseTimeEditor label {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 .receiptItemReviewState {
   display: flex;
   flex-wrap: wrap;

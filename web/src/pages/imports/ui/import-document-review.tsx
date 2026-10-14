@@ -136,6 +136,7 @@ export function ImportDocumentReview({
               paymentDraftFor={review.paymentDraftFor}
               receiptTotal={review.receiptTotal}
               purchaseDate={review.purchaseDateFor(document)}
+              purchaseTime={review.purchaseTimeFor(document)}
               markUnsaved={onDirty}
               setReviewTargetIndex={review.setReviewTargetIndex}
               setReceiptPayments={review.setReceiptPayments}
@@ -145,6 +146,7 @@ export function ImportDocumentReview({
               itemAllocationsFor={review.itemAllocationsFor}
               editItemAllocations={review.editReceiptItemAllocations}
               onPurchaseDateChange={(date) => review.editPurchaseDate(document.id, date)}
+              onPurchaseTimeChange={(time) => review.editPurchaseTime(document.id, time)}
               onMerchantChange={(merchant) => review.editMerchant(document.id, merchant)}
               suggestedCategoryId={review.suggestedCategoryId}
               selectedCandidates={review.selectedCandidates}

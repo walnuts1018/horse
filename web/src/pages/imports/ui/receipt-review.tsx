@@ -52,6 +52,7 @@ type ReceiptReviewProps = {
   paymentDraftFor: (document: DocumentReview) => ReceiptPaymentDraft[];
   receiptTotal: (document: DocumentReview) => number;
   purchaseDate: string;
+  purchaseTime: string;
   markUnsaved: () => void;
   setReviewTargetIndex: Dispatch<SetStateAction<number>>;
   setReceiptPayments: Dispatch<SetStateAction<Record<string, ReceiptPaymentDraft[] | undefined>>>;
@@ -71,6 +72,7 @@ type ReceiptReviewProps = {
     allocations: Array<{ poolId: string; weight: number }>,
   ) => void;
   onPurchaseDateChange: (date: string) => void;
+  onPurchaseTimeChange: (time: string) => void;
   onMerchantChange: (merchant: string) => void;
   suggestedCategoryId: (item: ExtractedItem) => string;
   selectedCandidates: Record<string, string>;
@@ -96,6 +98,7 @@ export function ReceiptReview({
   paymentDraftFor,
   receiptTotal,
   purchaseDate,
+  purchaseTime,
   markUnsaved,
   setReviewTargetIndex,
   setReceiptPayments,
@@ -105,6 +108,7 @@ export function ReceiptReview({
   itemAllocationsFor,
   editItemAllocations,
   onPurchaseDateChange,
+  onPurchaseTimeChange,
   onMerchantChange,
   suggestedCategoryId,
   selectedCandidates,
@@ -260,6 +264,18 @@ export function ReceiptReview({
               onChange={(event) => onPurchaseDateChange(event.target.value)}
             />
           </label>
+          {!purchaseTime && <small>時刻を入力してください</small>}
+          <details className={styles.purchaseTimeEditor}>
+            <summary>{purchaseTime ? "時刻を編集" : "時刻を入力"}</summary>
+            <label>
+              購入時刻
+              <input
+                type="time"
+                value={purchaseTime}
+                onChange={(event) => onPurchaseTimeChange(event.target.value)}
+              />
+            </label>
+          </details>
         </div>
         <div className="field-group" id="receipt-review-payments" tabIndex={-1}>
           <span>決済内訳</span>
@@ -785,7 +801,7 @@ export function ReceiptReview({
         <button
           type="button"
           className="button button-primary button-wide"
-          disabled={pending || !purchaseDate || !validReceiptItems}
+          disabled={pending || !purchaseDate || !purchaseTime || !validReceiptItems}
           onClick={() => onConfirm()}
         >
           <Check size={16} />
