@@ -5,7 +5,9 @@ import { errorMessage, japanMonth } from "../../../shared/lib";
 import { recordSettlementFunding } from "../api/settlement-mutations";
 import {
   clearFundingIntent,
+  getFundingAccountDefaults,
   getFundingIntent,
+  saveFundingAccountDefaults,
   saveFundingIntent,
   type FundingIntent,
 } from "./pending-ledger-mutations";
@@ -26,14 +28,21 @@ export function useSettlementFunding({
   setSuccess: (success: string) => void;
   onRecorded: () => Promise<void>;
 }) {
+  const [initialAccountDefaults] = useState(() => getValidFundingAccountDefaults(household));
   const [pendingFunding, setPendingFunding] = useState<Record<string, FundingIntent>>({});
   const [fundingAmounts, setFundingAmounts] = useState<Partial<Record<string, string>>>({});
-  const [fundingSourceAccounts, setFundingSourceAccounts] = useState<Record<string, string>>({});
-  const [fundingDestinationAccountId, setFundingDestinationAccountId] = useState("");
+  const [fundingSourceAccounts, setFundingSourceAccounts] = useState<Record<string, string>>(
+    initialAccountDefaults.sourceAccountIdsByMember,
+  );
+  const [fundingDestinationAccountId, setFundingDestinationAccountId] = useState(
+    initialAccountDefaults.destinationAccountId,
+  );
   const [savedFundingSourceAccounts, setSavedFundingSourceAccounts] = useState<
     Record<string, string>
-  >({});
-  const [savedFundingDestinationAccountId, setSavedFundingDestinationAccountId] = useState("");
+  >(initialAccountDefaults.sourceAccountIdsByMember);
+  const [savedFundingDestinationAccountId, setSavedFundingDestinationAccountId] = useState(
+    initialAccountDefaults.destinationAccountId,
+  );
   const hasUnsavedFunding =
     household.members.some(
       (member) =>
@@ -62,6 +71,15 @@ export function useSettlementFunding({
       }
     });
   }, [household.id, household.members, setError]);
+
+  useEffect(() => {
+    const defaults = getValidFundingAccountDefaults(household);
+    setFundingSourceAccounts(defaults.sourceAccountIdsByMember);
+    setSavedFundingSourceAccounts(defaults.sourceAccountIdsByMember);
+    setFundingDestinationAccountId(defaults.destinationAccountId);
+    setSavedFundingDestinationAccountId(defaults.destinationAccountId);
+    setFundingAmounts({});
+  }, [household]);
 
   const record = async (memberId: string) => {
     const line = settlement?.lines.find((row) => row.memberId === memberId);
@@ -127,6 +145,13 @@ export function useSettlementFunding({
         [memberId]: intent.input.sourceAccountId ?? "",
       }));
       setSavedFundingDestinationAccountId(intent.input.destinationAccountId ?? "");
+      saveFundingAccountDefaults(household.id, {
+        sourceAccountIdsByMember: {
+          ...savedFundingSourceAccounts,
+          [memberId]: intent.input.sourceAccountId ?? "",
+        },
+        destinationAccountId: intent.input.destinationAccountId ?? "",
+      });
       const memberName = household.members.find((member) => member.id === memberId)?.displayName;
       setSuccess(
         `${memberName ?? "メンバー"}の入金${formatSettlementYen(intent.input.amountYen)}を${japanMonth(new Date(intent.input.occurredAt))}分として記録しました`,
@@ -165,5 +190,37 @@ export function useSettlementFunding({
     setFundingDestinationAccountId,
     setFundingAmounts,
     setFundingSourceAccounts,
+  };
+}
+
+function getValidFundingAccountDefaults(household: Household) {
+  const stored = getFundingAccountDefaults(household.id);
+  const sharedPoolIds = new Set(
+    household.pools
+      .filter(
+        (pool) => pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool",
+      )
+      .map((pool) => pool.id),
+  );
+  const sourceAccountIdsByMember: Record<string, string> = {};
+  for (const member of household.members) {
+    const accountId = stored?.sourceAccountIdsByMember[member.id];
+    if (!accountId) continue;
+    const account = household.accounts.find((candidate) => candidate.id === accountId);
+    const pool = household.pools.find((candidate) => candidate.id === account?.poolId);
+    if (pool?.__typename === "PersonalPool" && pool.ownerMemberId === member.id) {
+      sourceAccountIdsByMember[member.id] = accountId;
+    }
+  }
+  const destination = household.accounts.find(
+    (account) =>
+      account.id === stored?.destinationAccountId &&
+      account.poolId != null &&
+      sharedPoolIds.has(account.poolId) &&
+      account.kind !== "CARD",
+  );
+  return {
+    sourceAccountIdsByMember,
+    destinationAccountId: destination?.id ?? "",
   };
 }

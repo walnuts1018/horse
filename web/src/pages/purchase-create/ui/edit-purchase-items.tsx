@@ -21,6 +21,8 @@ import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purch
 import { PurchaseItemEntry } from "./purchase-item-entry";
 import { PurchaseItemsGrid } from "./purchase-items-grid";
 
+import styles from "./edit-purchase-items.module.css";
+
 const purchaseItemSchema = z.object({
   name: z.string().trim().min(1),
   amount: z.string().regex(/^[1-9]\d*$/),
@@ -75,6 +77,11 @@ export function EditPurchaseItems({
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const [undoItems, setUndoItems] = useState<PurchaseDraftItem[] | null>(null);
+  const [selectedItemKeys, setSelectedItemKeys] = useState<Set<string>>(() => new Set());
+  const [mobileSelectionMode, setMobileSelectionMode] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkAllocation, setBulkAllocation] = useState("");
+  const selectionAnchorKey = useRef<string | null>(null);
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
   const [invalidEntryField, setInvalidEntryField] = useState<"name" | "amount" | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -470,6 +477,71 @@ export function EditPurchaseItems({
     rememberUndo(draft.items);
     replaceItems(draft.items.filter((item) => item.key !== key));
   };
+  const selectedItems = draft.items.filter((item) => selectedItemKeys.has(item.key));
+  const clearSelection = () => {
+    setSelectedItemKeys(new Set());
+    selectionAnchorKey.current = null;
+    setMobileSelectionMode(false);
+  };
+  const changeSelection = (key: string, shiftKey: boolean) => {
+    const currentIndex = draft.items.findIndex((item) => item.key === key);
+    const anchorIndex = draft.items.findIndex((item) => item.key === selectionAnchorKey.current);
+    if (shiftKey && anchorIndex >= 0 && currentIndex >= 0) {
+      const start = Math.min(anchorIndex, currentIndex);
+      const end = Math.max(anchorIndex, currentIndex);
+      setSelectedItemKeys(new Set(draft.items.slice(start, end + 1).map((item) => item.key)));
+      return;
+    }
+    selectionAnchorKey.current = key;
+    setSelectedItemKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const applyBulkPatch = (
+    patchForItem: (item: PurchaseDraftItem) => Partial<PurchaseDraftItem>,
+  ) => {
+    if (!selectedItems.length) return;
+    markDirty();
+    rememberUndo(draft.items);
+    const selectedKeys = new Set(selectedItems.map((item) => item.key));
+    replaceItems(
+      draft.items.map((item) =>
+        selectedKeys.has(item.key) ? { ...item, ...patchForItem(item) } : item,
+      ),
+    );
+    clearSelection();
+    setBulkCategory("");
+    setBulkAllocation("");
+  };
+  const applyBulkCategory = () => {
+    if (!bulkCategory) return;
+    const categoryId = bulkCategory === "__uncategorized" ? "" : bulkCategory;
+    if (categoryId && !isEnabledCategory(categoryId)) return;
+    applyBulkPatch(() => ({ categoryId }));
+  };
+  const applyBulkAllocation = () => {
+    if (!bulkAllocation) return;
+    const allocations =
+      bulkAllocation === "__default"
+        ? []
+        : household.pools.some((pool) => pool.id === bulkAllocation)
+          ? [{ poolId: bulkAllocation, weight: 1 }]
+          : null;
+    if (!allocations) return;
+    applyBulkPatch(() => ({ allocations }));
+  };
+  const removeSelectedItems = () => {
+    if (!selectedItems.length) return;
+    if (!window.confirm(`選択した${selectedItems.length}品目を削除しますか？`)) return;
+    markDirty();
+    rememberUndo(draft.items);
+    const selectedKeys = new Set(selectedItems.map((item) => item.key));
+    replaceItems(draft.items.filter((item) => !selectedKeys.has(item.key)));
+    clearSelection();
+  };
   return (
     <>
       <div className={`panel-heading entry-heading ${classNames.itemHeading}`}>
@@ -477,18 +549,88 @@ export function EditPurchaseItems({
           <span className="eyebrow">品目</span>
           <h2>買ったもの</h2>
         </div>
-        <span className="entry-default">
-          負担 <b>{household.pools.map((pool) => pool.name.slice(0, 1)).join(" / ") || "標準"}</b>
-        </span>
+        <div className={styles.selectionHeadingActions}>
+          <button
+            className={`button button-soft ${styles.mobileSelectionToggle}`}
+            type="button"
+            aria-pressed={mobileSelectionMode}
+            onClick={() => {
+              if (mobileSelectionMode) clearSelection();
+              else setMobileSelectionMode(true);
+            }}
+          >
+            {mobileSelectionMode ? "選択を終了" : "選択"}
+          </button>
+          <span className="entry-default">
+            負担 <b>{household.pools.map((pool) => pool.name.slice(0, 1)).join(" / ") || "標準"}</b>
+          </span>
+        </div>
       </div>
+      {selectedItems.length > 0 && (
+        <div className={styles.bulkActions} aria-label="選択した品目の一括操作">
+          <span className={styles.selectionCount}>{selectedItems.length}品目を選択中</span>
+          <label>
+            <span>カテゴリ</span>
+            <select value={bulkCategory} onChange={(event) => setBulkCategory(event.target.value)}>
+              <option value="">変更なし</option>
+              <option value="__uncategorized">未分類</option>
+              {enabledCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="button button-soft"
+            type="button"
+            disabled={!bulkCategory}
+            onClick={applyBulkCategory}
+          >
+            カテゴリ変更
+          </button>
+          <label>
+            <span>負担</span>
+            <select
+              value={bulkAllocation}
+              onChange={(event) => setBulkAllocation(event.target.value)}
+            >
+              <option value="">変更なし</option>
+              <option value="__default">標準に戻す</option>
+              {household.pools.map((pool) => (
+                <option key={pool.id} value={pool.id}>
+                  {pool.name}が全額負担
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="button button-soft"
+            type="button"
+            disabled={!bulkAllocation}
+            onClick={applyBulkAllocation}
+          >
+            負担変更
+          </button>
+          <button className="button button-soft" type="button" onClick={removeSelectedItems}>
+            削除
+          </button>
+          <button className="text-button" type="button" onClick={clearSelection}>
+            選択解除
+          </button>
+        </div>
+      )}
       <PurchaseItemsGrid
         items={draft.items}
         household={household}
         defaultAllocations={defaultAllocations}
         enabledCategories={enabledCategories}
         classNames={{ itemTable: classNames.itemTable, itemList: classNames.itemList }}
+        selectedKeys={selectedItemKeys}
+        mobileSelectionMode={mobileSelectionMode}
         gridRef={itemGridRef}
         onKeyDown={onItemGridKey}
+        onSelectionChange={changeSelection}
         onPatch={patchItem}
         onRemove={removeItem}
       />

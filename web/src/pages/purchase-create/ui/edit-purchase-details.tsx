@@ -1,6 +1,11 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import type { Purchase } from "../../../shared/api";
+
+import {
+  indexRecentPurchasesByMerchant,
+  purchaseMerchantKey,
+} from "../model/recent-purchase-by-merchant";
 
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
@@ -36,6 +41,12 @@ export function EditPurchaseDetails({
   onCopyPurchase: (purchase: Purchase) => void;
   children?: ReactNode;
 }) {
+  const recentPurchasesByMerchant = useMemo(
+    () => indexRecentPurchasesByMerchant(recentPurchases),
+    [recentPurchases],
+  );
+  const merchantPurchase = recentPurchasesByMerchant.get(purchaseMerchantKey(merchant));
+
   return (
     <>
       <section className={`panel purchase-meta-form ${classNames.details}`}>
@@ -58,6 +69,19 @@ export function EditPurchaseDetails({
                 </option>
               ))}
           </datalist>
+          {merchantPurchase && (
+            <div className="field-group" aria-label={`${merchantPurchase.merchant}の前回購入`}>
+              <span>{merchantPurchase.merchant}の前回購入</span>
+              <button
+                className="text-button"
+                type="button"
+                onClick={() => onCopyPurchase(merchantPurchase)}
+              >
+                買い物をコピー · {new Date(merchantPurchase.occurredAt).toLocaleDateString("ja-JP")}{" "}
+                · {yen(merchantPurchase.totalYen)}
+              </button>
+            </div>
+          )}
         </div>
         <div className="field-group">
           <label htmlFor="occurred">日時</label>

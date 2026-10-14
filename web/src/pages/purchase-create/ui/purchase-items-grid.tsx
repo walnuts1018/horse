@@ -1,11 +1,12 @@
-import type { KeyboardEvent, RefObject } from "react";
-
 import { ReceiptJapaneseYen, X } from "lucide-react";
+import { useRef, type KeyboardEvent, type RefObject } from "react";
 
 import type { Household } from "../../../shared/api";
 import type { PurchaseDraftItem } from "../../../shared/lib";
 
 import { EditPurchaseItemAllocations } from "./edit-purchase-item-allocations";
+
+import styles from "./edit-purchase-items.module.css";
 
 export function PurchaseItemsGrid({
   items,
@@ -13,8 +14,11 @@ export function PurchaseItemsGrid({
   defaultAllocations,
   enabledCategories,
   classNames,
+  selectedKeys,
+  mobileSelectionMode,
   gridRef,
   onKeyDown,
+  onSelectionChange,
   onPatch,
   onRemove,
 }: {
@@ -23,15 +27,20 @@ export function PurchaseItemsGrid({
   defaultAllocations: PurchaseDraftItem["allocations"];
   enabledCategories: Household["categories"];
   classNames: { itemTable: string; itemList: string };
+  selectedKeys: ReadonlySet<string>;
+  mobileSelectionMode: boolean;
   gridRef: RefObject<HTMLDivElement | null>;
   onKeyDown: (
     event: KeyboardEvent<HTMLInputElement>,
     row: number,
     column: "name" | "amount",
   ) => void;
+  onSelectionChange: (key: string, shiftKey: boolean) => void;
   onPatch: (key: string, patch: Partial<PurchaseDraftItem>) => void;
   onRemove: (key: string) => void;
 }) {
+  const selectionShiftKey = useRef(false);
+
   return (
     <>
       <div className={`item-table-head ${classNames.itemTable}`}>
@@ -41,12 +50,31 @@ export function PurchaseItemsGrid({
         <span>負担</span>
         <span />
       </div>
-      <div className={`item-list ${classNames.itemList}`} ref={gridRef}>
+      <div
+        className={`item-list ${classNames.itemList} ${styles.itemList}${mobileSelectionMode ? ` ${styles.mobileSelectionMode}` : ""}`}
+        ref={gridRef}
+      >
         {items.map((item, index) => (
-          <div className="item-entry" key={item.key}>
+          <div className={`item-entry ${styles.itemEntry}`} key={item.key}>
             <div className="item-edit-row">
-              <span className="item-index">{String(index + 1).padStart(2, "0")}</span>
+              <span className={`item-index ${styles.itemIndex}`}>
+                <input
+                  className={styles.selectionCheckbox}
+                  type="checkbox"
+                  aria-label={`${item.name || "品目"}を選択`}
+                  checked={selectedKeys.has(item.key)}
+                  onClick={(event) => {
+                    selectionShiftKey.current = event.shiftKey;
+                  }}
+                  onChange={() => {
+                    onSelectionChange(item.key, selectionShiftKey.current);
+                    selectionShiftKey.current = false;
+                  }}
+                />
+                <span>{String(index + 1).padStart(2, "0")}</span>
+              </span>
               <input
+                className={styles.selectionName}
                 aria-label="品名"
                 data-grid-row={index}
                 data-grid-column="name"
@@ -69,6 +97,7 @@ export function PurchaseItemsGrid({
                 />
               </div>
               <select
+                className={styles.selectionCategory}
                 aria-label="カテゴリ"
                 value={item.categoryId}
                 onChange={(event) => onPatch(item.key, { categoryId: event.target.value })}

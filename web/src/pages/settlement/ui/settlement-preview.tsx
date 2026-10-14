@@ -74,28 +74,35 @@ export function SettlementPreview({
             {settlement?.__typename === "ClosedSettlement" ? "締め済み" : "未締め"}
           </span>
         </div>
-        <label className="settlement-account-select">
-          <span>共通入金先</span>
-          <select
-            value={fundingDestinationAccountId}
-            disabled={pending || Object.keys(pendingFunding).length > 0}
-            onChange={(event) => onFundingDestinationChange(event.target.value)}
-          >
-            <option value="">未指定</option>
-            {household.accounts
-              .filter(
-                (account) =>
-                  account.poolId != null &&
-                  sharedPoolIds.has(account.poolId) &&
-                  account.kind !== "CARD",
-              )
-              .map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-          </select>
-        </label>
+        <details className="settlement-account-select">
+          <summary>
+            共通入金先:{" "}
+            {household.accounts.find((account) => account.id === fundingDestinationAccountId)
+              ?.name ?? "未指定"}
+          </summary>
+          <label className="settlement-account-select">
+            <span>共通入金先</span>
+            <select
+              value={fundingDestinationAccountId}
+              disabled={pending || Object.keys(pendingFunding).length > 0}
+              onChange={(event) => onFundingDestinationChange(event.target.value)}
+            >
+              <option value="">未指定</option>
+              {household.accounts
+                .filter(
+                  (account) =>
+                    account.poolId != null &&
+                    sharedPoolIds.has(account.poolId) &&
+                    account.kind !== "CARD",
+                )
+                .map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+        </details>
         {!settlement ? (
           <div className="skeleton-list">
             <i />
@@ -142,31 +149,44 @@ export function SettlementPreview({
                     {formatSettlementYen(line.amountDueYen)}
                   </b>
                   <small>次回精算残高</small>
-                  <label className="settlement-account-select">
-                    <span>拠出元</span>
-                    <select
-                      value={fundingSourceAccounts[line.memberId] ?? ""}
-                      disabled={pending || Boolean(pendingIntent)}
-                      onChange={(event) => onFundingSourceChange(line.memberId, event.target.value)}
-                    >
-                      <option value="">口座外</option>
-                      {household.accounts
-                        .filter((account) => {
-                          const pool = household.pools.find(
-                            (candidate) => candidate.id === account.poolId,
-                          );
-                          return (
-                            pool?.__typename === "PersonalPool" &&
-                            pool.ownerMemberId === line.memberId
-                          );
-                        })
-                        .map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
+                  <details className="settlement-account-select">
+                    <summary>
+                      {household.accounts.find(
+                        (account) => account.id === fundingSourceAccounts[line.memberId],
+                      )?.name ?? "口座外"}
+                      {" → "}
+                      {household.accounts.find(
+                        (account) => account.id === fundingDestinationAccountId,
+                      )?.name ?? "未指定"}
+                    </summary>
+                    <label className="settlement-account-select">
+                      <span>拠出元</span>
+                      <select
+                        value={fundingSourceAccounts[line.memberId] ?? ""}
+                        disabled={pending || Boolean(pendingIntent)}
+                        onChange={(event) =>
+                          onFundingSourceChange(line.memberId, event.target.value)
+                        }
+                      >
+                        <option value="">口座外</option>
+                        {household.accounts
+                          .filter((account) => {
+                            const pool = household.pools.find(
+                              (candidate) => candidate.id === account.poolId,
+                            );
+                            return (
+                              pool?.__typename === "PersonalPool" &&
+                              pool.ownerMemberId === line.memberId
+                            );
+                          })
+                          .map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  </details>
                   <label className="settlement-account-select">
                     <span>今回の入金額</span>
                     <input

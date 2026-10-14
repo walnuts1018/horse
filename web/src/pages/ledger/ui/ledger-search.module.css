@@ -2,14 +2,54 @@
   display: flex;
   align-items: center;
   gap: 11px;
-  margin-bottom: 13px;
+  margin-bottom: 10px;
+}
+
+.search {
+  flex: 1 1 260px;
+  min-width: min(240px, 100%);
+  max-width: 440px;
+}
+
+.commonFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.details {
+  margin: 0 0 8px;
+}
+
+.details summary {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  color: #5f6d65;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  list-style-position: inside;
+}
+
+.details summary span {
+  display: inline-grid;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  border-radius: 999px;
+  background: #e6eee8;
+  color: #335943;
+  font-size: 10px;
 }
 
 .filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: -9px 0 16px;
+  margin: 2px 0 12px;
 }
 
 .filters .select-filter select,
@@ -29,6 +69,39 @@
   font-size: 10px;
 }
 
+.activeFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+
+.filterChip {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  border: 1px solid #d9e2dc;
+  border-radius: 999px;
+  background: #f5f8f6;
+  color: #43564a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.filterChip:hover {
+  border-color: #aabbb0;
+  background: #edf3ef;
+}
+
+.filterChip span {
+  color: #75847a;
+  font-size: 14px;
+  line-height: 1;
+}
+
 .more {
   display: flex;
   justify-content: center;
@@ -37,11 +110,23 @@
 
 @media (width <= 760px) {
   .controls {
+    flex-wrap: wrap;
     gap: 7px;
   }
 
-  .filters {
-    margin-top: -4px;
+  .search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  .controls > .select-filter {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 130px;
+  }
+
+  .commonFilters > .select-filter {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 130px;
   }
 
   .filters .select-filter {

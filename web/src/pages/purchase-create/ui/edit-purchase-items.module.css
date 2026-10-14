@@ -1,0 +1,130 @@
+.selectionHeadingActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobileSelectionToggle {
+  display: none;
+}
+
+.bulkActions {
+  grid-area: bulk-actions;
+  position: sticky;
+  z-index: 2;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px;
+  border: 1px solid #e6ece5;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 5px 20px rgb(30 50 38 / 0.1);
+}
+
+.bulkActions > label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #5f6d65;
+  font-size: 10px;
+}
+
+.bulkActions select {
+  min-width: 118px;
+  height: 34px;
+  padding: 0 24px 0 8px;
+  border: 1px solid #dfe7df;
+  border-radius: 7px;
+  background: #fff;
+  color: #35463b;
+  font-size: 11px;
+}
+
+.selectionCount {
+  color: #35463b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.itemList .itemIndex {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.itemList .selectionCheckbox {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: #39745a;
+}
+
+@media (width <= 760px) {
+  .mobileSelectionToggle {
+    display: inline-flex;
+  }
+
+  .bulkActions {
+    position: sticky;
+    bottom: 0;
+    gap: 6px;
+    margin: 0 -12px 8px;
+    padding: 9px 12px;
+    border-radius: 0;
+  }
+
+  .selectionCount {
+    flex-basis: 100%;
+  }
+
+  .bulkActions > label {
+    flex: 1 1 44%;
+    min-width: 0;
+  }
+
+  .bulkActions select {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    font-size: 10px;
+  }
+
+  .itemList .itemIndex {
+    display: none;
+  }
+
+  .itemList .selectionCheckbox {
+    display: none;
+  }
+
+  .itemList.mobileSelectionMode .itemEntry {
+    position: relative;
+  }
+
+  .itemList.mobileSelectionMode .itemIndex {
+    position: absolute;
+    z-index: 1;
+    top: 13px;
+    left: 0;
+    display: block;
+  }
+
+  .itemList.mobileSelectionMode .itemIndex > span {
+    display: none;
+  }
+
+  .itemList.mobileSelectionMode .selectionCheckbox {
+    display: block;
+    width: 18px;
+    height: 18px;
+  }
+
+  .itemList.mobileSelectionMode .selectionName,
+  .itemList.mobileSelectionMode .selectionCategory {
+    padding-left: 26px;
+  }
+}

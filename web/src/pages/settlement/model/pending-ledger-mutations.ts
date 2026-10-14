@@ -34,6 +34,11 @@ export type TransferIntent = {
   input: TransferIntentInput;
 };
 
+export type FundingAccountDefaults = {
+  sourceAccountIdsByMember: Record<string, string>;
+  destinationAccountId: string;
+};
+
 function storageKey(householdId: string, operation: string, subjectId = "") {
   return `horse:settlement:${operation}:${encodeURIComponent(householdId)}:${encodeURIComponent(subjectId)}`;
 }
@@ -51,6 +56,44 @@ function readIntent(key: string): unknown {
 
 function writeIntent(key: string, intent: FundingIntent | TransferIntent) {
   window.localStorage.setItem(key, JSON.stringify(intent));
+}
+
+export function getFundingAccountDefaults(householdId: string): FundingAccountDefaults | null {
+  try {
+    const value = readIntent(storageKey(householdId, "funding-account-defaults"));
+    if (!isFundingAccountDefaults(value)) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+export function saveFundingAccountDefaults(householdId: string, defaults: FundingAccountDefaults) {
+  try {
+    window.localStorage.setItem(
+      storageKey(householdId, "funding-account-defaults"),
+      JSON.stringify(defaults),
+    );
+  } catch {
+    return;
+  }
+}
+
+function isFundingAccountDefaults(value: unknown): value is FundingAccountDefaults {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!("destinationAccountId" in value) || typeof value.destinationAccountId !== "string") {
+    return false;
+  }
+  if (!("sourceAccountIdsByMember" in value)) return false;
+  const sourceAccountIdsByMember = value.sourceAccountIdsByMember;
+  return (
+    sourceAccountIdsByMember !== null &&
+    typeof sourceAccountIdsByMember === "object" &&
+    !Array.isArray(sourceAccountIdsByMember) &&
+    Object.entries(sourceAccountIdsByMember).every(
+      ([memberId, accountId]) => memberId.length > 0 && typeof accountId === "string",
+    )
+  );
 }
 
 function isFundingIntent(value: unknown): value is FundingIntent {
