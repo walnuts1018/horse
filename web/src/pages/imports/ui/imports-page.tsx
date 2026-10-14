@@ -19,12 +19,19 @@ import {
   type StatementEntry,
   type StatementSourceKind,
 } from "../model/imports";
+import {
+  nextReceiptToReview,
+  receiptReviewProgress,
+  reviewableReceipts,
+} from "../model/receipt-sequential-review";
 import { useDocumentEvidence } from "../model/use-document-evidence";
 import { useImportConfirmation } from "../model/use-import-confirmation";
 import { useImportDocuments } from "../model/use-import-documents";
 import { CameraCapture, type CameraCaptureHandle } from "./camera-capture";
 import { ImportDocumentList } from "./import-document-list";
 import { ImportDocumentReview } from "./import-document-review";
+
+const noCompletedReceipts = new Set<string>();
 
 export function ImportsPage({
   household,
@@ -47,6 +54,7 @@ export function ImportsPage({
   // 親への未保存通知は effect で状態を push せず、変化したイベントから直接行う
   const onUnsavedChangesRef = useRef(onUnsavedChanges);
   const reportedUnsavedChanges = useRef(false);
+  const hasUnsavedChanges = useRef(false);
   useEffect(() => {
     onUnsavedChangesRef.current = onUnsavedChanges;
   }, [onUnsavedChanges]);
@@ -58,6 +66,7 @@ export function ImportsPage({
   const setHasUnsavedChanges = useCallback((unsaved: boolean) => {
     if (reportedUnsavedChanges.current === unsaved) return;
     reportedUnsavedChanges.current = unsaved;
+    hasUnsavedChanges.current = unsaved;
     onUnsavedChangesRef.current(unsaved);
   }, []);
   const [documentFilterDraftState, setDocumentFilterDraftState] = useState({
@@ -69,6 +78,14 @@ export function ImportsPage({
       ? documentFilterDraftState.filters
       : documentFilters;
   const documentFilterScope = JSON.stringify(documentFilters);
+  const [completedReceiptState, setCompletedReceiptState] = useState<{
+    scope: string;
+    ids: Set<string>;
+  }>(() => ({ scope: documentFilterScope, ids: new Set() }));
+  const completedReceiptIDs =
+    completedReceiptState.scope === documentFilterScope
+      ? completedReceiptState.ids
+      : noCompletedReceipts;
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
   const {
@@ -84,6 +101,22 @@ export function ImportsPage({
     loadOlderDocuments,
   } = useImportDocuments(household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
+  const selectedDocumentID = useRef(selected);
+  useEffect(() => {
+    selectedDocumentID.current = selected;
+  }, [selected]);
+  const handleSelectDocument = (documentID: string) => {
+    if (documentID === selected) return;
+    if (
+      hasUnsavedChanges.current &&
+      !window.confirm("未確定の確認内容があります。別のレシートへ移動しますか？")
+    ) {
+      return;
+    }
+    if (hasUnsavedChanges.current) setHasUnsavedChanges(false);
+    selectedDocumentID.current = documentID;
+    setSelected(documentID);
+  };
   const listedDocument = documents.find((document) => document.id === selected);
   const selectedDocumentQuery = useQuery({
     queryKey: ["import-document-detail", household.id, selected],
@@ -96,6 +129,11 @@ export function ImportsPage({
       (selectedDocumentQuery.data ? withStableEvidenceKeys(selectedDocumentQuery.data) : undefined),
     [listedDocument, selectedDocumentQuery.data],
   );
+  const receiptProgress = useMemo(
+    () => receiptReviewProgress(documents, completedReceiptIDs),
+    [completedReceiptIDs, documents],
+  );
+  const selectedReceipt = documents.find((document) => document.id === selected);
   useEffect(() => {
     if (!listedDocument && selectedDocumentQuery.error) {
       setMessage(errorMessage(selectedDocumentQuery.error));
@@ -110,6 +148,7 @@ export function ImportsPage({
     markUnsaved: () => setHasUnsavedChanges(true),
     onError: setMessage,
   });
+  const confirmingReceipt = useRef(false);
   const review = useImportConfirmation({
     household,
     selectedDocument,
@@ -118,7 +157,7 @@ export function ImportsPage({
     clearReceiptDraft,
     markUnsaved: () => setHasUnsavedChanges(true),
     setHasUnsavedChanges,
-    onAdded,
+    onAdded: (keepOpen) => onAdded(keepOpen ?? confirmingReceipt.current),
   });
   const markUnsaved = () => setHasUnsavedChanges(true);
   const setDocumentFilterDraft = (filters: DocumentFilters) =>
@@ -286,11 +325,26 @@ export function ImportsPage({
   const confirmReceipt = async (document: DocumentReview) => {
     setPending(true);
     setMessage("");
+    confirmingReceipt.current = true;
     try {
       await review.confirm(document);
+      setCompletedReceiptState((current) => ({
+        scope: documentFilterScope,
+        ids: new Set([...(current.scope === documentFilterScope ? current.ids : []), document.id]),
+      }));
+      const receipts = reviewableReceipts(
+        documents,
+        new Set([...completedReceiptIDs, document.id]),
+      );
+      const nextReceipt = nextReceiptToReview(receipts, document.id);
+      if (nextReceipt && selectedDocumentID.current === document.id) {
+        selectedDocumentID.current = nextReceipt.id;
+        setSelected(nextReceipt.id);
+      }
     } catch (reason) {
       setMessage(errorMessage(reason));
     } finally {
+      confirmingReceipt.current = false;
       setPending(false);
     }
   };
@@ -462,6 +516,13 @@ export function ImportsPage({
             files={files}
             documents={documents}
             selected={selected}
+            reviewableReceiptCount={receiptProgress.receipts.length}
+            completedReceiptCount={receiptProgress.completedCount}
+            selectedReceiptName={selectedReceipt?.name}
+            onNextReceipt={() => {
+              const nextReceipt = nextReceiptToReview(receiptProgress.receipts, selected ?? "");
+              if (nextReceipt) handleSelectDocument(nextReceipt.id);
+            }}
             filters={documentFilterDraft}
             onFiltersChange={setDocumentFilterDraft}
             onSearch={() => onApplyDocumentFilters(documentFilterDraft)}
@@ -475,7 +536,7 @@ export function ImportsPage({
               markUnsaved();
               setFiles((current) => current.filter((entry) => entry.id !== id));
             }}
-            onSelectDocument={setSelected}
+            onSelectDocument={handleSelectDocument}
             onRetryDocument={(document) => void retryDocument(document)}
             onDeleteDocument={(document) => void removeDocument(document)}
             onReclassifyAttachment={(document, kind) => void reclassifyAttachment(document, kind)}
@@ -548,7 +609,7 @@ export function ImportsPage({
                 await refreshDocuments(true);
                 onAdded(true);
               }}
-              onSelectDocument={setSelected}
+              onSelectDocument={handleSelectDocument}
             />
           )}
           {message && <InlineError message={message} />}

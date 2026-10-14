@@ -1,3 +1,33 @@
+.receiptSequence {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.receiptSequence > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.receiptSequence strong {
+  font-size: 13px;
+}
+
+.receiptSequence span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .evidenceReviewLayout {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -244,6 +274,14 @@
 }
 
 @media (width < 900px) {
+  .receiptSequence {
+    align-items: flex-start;
+  }
+
+  .receiptSequence > button {
+    flex: none;
+  }
+
   .evidenceReviewLayout {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:

@@ -19,10 +19,16 @@ import {
   type UploadSourceKind,
 } from "../model/imports";
 
+import styles from "./imports-page.module.css";
+
 export function ImportDocumentList({
   files,
   documents,
   selected,
+  reviewableReceiptCount,
+  completedReceiptCount,
+  selectedReceiptName,
+  onNextReceipt,
   filters,
   onFiltersChange,
   onSearch,
@@ -41,6 +47,10 @@ export function ImportDocumentList({
   files: PendingUpload[];
   documents: DocumentReview[];
   selected: string | null;
+  reviewableReceiptCount: number;
+  completedReceiptCount: number;
+  selectedReceiptName?: string;
+  onNextReceipt: () => void;
   filters: DocumentFilters;
   onFiltersChange: (filters: DocumentFilters) => void;
   onSearch: () => void;
@@ -61,6 +71,26 @@ export function ImportDocumentList({
 
   return (
     <>
+      <div className={styles.receiptSequence} aria-live="polite">
+        <div>
+          <strong>
+            {reviewableReceiptCount + completedReceiptCount === 0
+              ? "確認対象なし"
+              : reviewableReceiptCount === 0
+                ? "すべて確認しました"
+                : `確認済み ${completedReceiptCount} / ${reviewableReceiptCount + completedReceiptCount}`}
+          </strong>
+          {selectedReceiptName && <span>選択中: {selectedReceiptName}</span>}
+        </div>
+        <button
+          type="button"
+          className="button button-soft"
+          disabled={reviewableReceiptCount === 0}
+          onClick={onNextReceipt}
+        >
+          次のレシート
+        </button>
+      </div>
       <form
         className="ledger-filters"
         onSubmit={(event) => {
