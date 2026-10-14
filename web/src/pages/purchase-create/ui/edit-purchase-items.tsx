@@ -125,6 +125,12 @@ export function EditPurchaseItems({
     [enabledCategories],
   );
 
+  useEffect(() => {
+    if (window.matchMedia("(min-width: 761px) and (pointer: fine)").matches) {
+      nameRef.current?.focus({ preventScroll: true });
+    }
+  }, []);
+
   // 実効カテゴリ：ユーザー明示選択 > 自動推測 > 空
   const suggestedCategoryFromHistory = useMemo(() => {
     const query = draft.itemName.trim();
