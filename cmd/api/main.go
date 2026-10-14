@@ -74,7 +74,7 @@ func run(logger *slog.Logger) error {
 			MailForwarding: mailForwardingConfig,
 		}).Handler(), "horse-api"),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
+		ReadTimeout:       5 * time.Minute,
 		WriteTimeout:      0,
 		IdleTimeout:       60 * time.Second,
 	}
