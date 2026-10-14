@@ -108,12 +108,13 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	got, err := (&queryResolver{Resolver: &Resolver{DB: db}}).nodes(ownerContext, []string{
 		globalID("Tag", ownedTag.ID), globalID("Household", ownedHousehold.ID), globalID("Account", ownedAccount.ID),
 		globalID("Tag", ownedTag.ID), globalID("Account", foreignAccount.ID), globalID("Account", newID()),
+		globalID(nodeTypeMember, memberID), globalID(nodeTypePool, pool.ID),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 6 {
-		t.Fatalf("nodes returned %d values, want 6", len(got))
+	if len(got) != 8 {
+		t.Fatalf("nodes returned %d values, want 8", len(got))
 	}
 	if value, ok := got[0].(*model.Tag); !ok || value.ID != ownedTag.ID {
 		t.Fatalf("nodes[0] = %#v, want owned tag", got[0])
@@ -129,6 +130,12 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	}
 	if got[4] != nil || got[5] != nil {
 		t.Fatalf("nodes[4:6] = %#v, want nil for foreign and missing household accounts", got[4:6])
+	}
+	if value, ok := got[6].(*model.Member); !ok || value.ID != memberID {
+		t.Fatalf("nodes[6] = %#v, want authorized member", got[6])
+	}
+	if value, ok := got[7].(model.PoolVariant); !ok || value.GetID() != pool.ID {
+		t.Fatalf("nodes[7] = %#v, want authorized pool", got[7])
 	}
 
 	purchaseID := globalID(nodeTypePurchase, ownedPurchase.ID)

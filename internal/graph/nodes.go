@@ -5,16 +5,17 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
-	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/graph/model"
+	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 	"github.com/walnuts1018/horse/internal/relayid"
 )
@@ -94,7 +95,7 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 
 	if hasBatchLoadedNode {
 		var err error
-		if hasUnbatchedNode || hasLoadedHouseholdNode {
+		if hasLoadedHouseholdNode {
 			households, err = r.households(ctx)
 		} else {
 			households, err = r.householdReferences(ctx)
@@ -111,18 +112,11 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 		}
 	}
 	if hasUnbatchedNode {
-		if !hasBatchLoadedNode {
-			var err error
-			households, err = r.households(ctx)
-			if err != nil {
-				return nil, err
-			}
-		}
 		for index, nodeID := range decoded {
 			if isBatchLoadedNodeKind(nodeID.kind) || nodeID.kind == nodeTypeUnmatchedObservation || nodeID.kind == nodeTypeSettlement {
 				continue
 			}
-			node, err := r.findNodeInHouseholds(ctx, households, nodeID.kind, nodeID.rawID)
+			node, err := r.findNode(ctx, nodeID.kind, nodeID.rawID)
 			if err != nil {
 				return nil, err
 			}
@@ -234,307 +228,128 @@ func decodeSettlementNodeID(payload string) (string, string, error) {
 }
 
 func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.Node, error) {
-	households, err := r.households(ctx)
+	households, err := r.householdReferences(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return r.findNodeInHouseholds(ctx, households, kind, id)
-}
-
-func (r *queryResolver) findNodeInHouseholds(ctx context.Context, households []*model.Household, kind, id string) (model.Node, error) {
-	var err error
+	householdIDs := make([]bob.Expression, 0, len(households))
 	for _, household := range households {
-		if kind == nodeTypeHousehold && household.ID == id {
-			return household, nil
-		}
-		if kind == nodeTypeAccountOpeningBalance {
-			account := findValue(household.Accounts, func(value *model.Account) bool { return value.ID == id })
-			if account == nil {
-				continue
-			}
-			openingBalance, err := models.Journals.Query(sm.Where(psql.And(
-				models.Journals.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
-				models.Journals.Columns.SourceKind.EQ(psql.Arg(sourceKindAccountOpeningBalance)),
-				models.Journals.Columns.SourceID.EQ(psql.Arg(mustUUID(id))),
-			))).One(ctx, queryExecutor(r.DB))
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			globalID, err := encodeNodeID(nodeTypeAccountOpeningBalance, openingBalance.SourceID.String())
-			if err != nil {
-				return nil, err
-			}
-			return &model.AccountOpeningBalance{ID: globalID, Account: account}, nil
-		}
-		if kind == nodeTypeMember {
-			if value := findValue(household.Members, func(value *model.Member) bool { return value.ID == id }); value != nil {
-				return value, nil
-			}
-		}
-		if kind == nodeTypePool {
-			if value := findValue(household.PoolVariants, func(value model.PoolVariant) bool { return poolData(value).ID == id }); value != nil {
-				return value, nil
-			}
-		}
-		if kind == nodeTypeAccount {
-			if value := findValue(household.Accounts, func(value *model.Account) bool { return value.ID == id }); value != nil {
-				return value, nil
-			}
-		}
-		if kind == nodeTypeLoanBalance {
-			parsedID, _ := uuid.FromString(id)
-			loan, err := models.Transfers.Query(sm.Where(psql.And(
-				models.Transfers.Columns.ID.EQ(psql.Arg(parsedID)),
-				models.Transfers.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
-				models.Transfers.Columns.Kind.EQ(psql.Arg(transferKindLoan)),
-			))).One(ctx, queryExecutor(r.DB))
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			return loadLoanBalance(ctx, queryExecutor(r.DB), loan)
-		}
-		if kind == nodeTypeFundingSchedule {
-			parsedID, _ := uuid.FromString(id)
-			row, err := models.FundingSchedules.Query(sm.Where(psql.And(
-				models.FundingSchedules.Columns.ID.EQ(psql.Arg(parsedID)),
-				models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
-			))).One(ctx, queryExecutor(r.DB))
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			return fundingScheduleModel(row), nil
-		}
-		if kind == nodeTypeCategory {
-			if value := findValue(household.Categories, func(value *model.Category) bool { return value.ID == id }); value != nil {
-				return value, nil
-			}
-		}
-		if kind == nodeTypePurchase {
-			purchase, err := loadPurchase(ctx, r.DB, id)
-			if errors.Is(err, ErrNotFound) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			if purchase.HouseholdID != household.ID {
-				continue
-			}
-			return purchase, nil
-		}
-		if kind == nodeTypePurchaseItem || kind == nodeTypePurchaseCorrection {
-			parsedID, err := uuid.FromString(id)
-			if err != nil {
-				continue
-			}
-			var purchaseID uuid.UUID
-			if kind == nodeTypePurchaseItem {
-				row, err := models.PurchaseItems.Query(sm.Where(psql.And(
-					models.PurchaseItems.Columns.ID.EQ(psql.Arg(parsedID)),
-					models.PurchaseItems.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
-				))).One(ctx, queryExecutor(r.DB))
-				if errors.Is(err, sql.ErrNoRows) {
-					continue
-				}
+		householdIDs = append(householdIDs, psql.Arg(mustUUID(household.ID)))
+	}
+	if len(householdIDs) == 0 {
+		return nil, nil
+	}
+	executor := queryExecutor(r.DB)
+	parsedID, err := uuid.FromString(id)
+	if err != nil {
+		return nil, nil
+	}
+	switch kind {
+	case nodeTypeHousehold:
+		for _, household := range households {
+			if household.ID == id {
+				rows, err := loadHouseholdSummaries(ctx, r.DB, []uuid.UUID{mustUUID(id)})
 				if err != nil {
 					return nil, err
 				}
-				purchaseID = row.PurchaseID
-			} else {
-				row, err := models.Corrections.Query(sm.Where(psql.And(
-					models.Corrections.Columns.ID.EQ(psql.Arg(parsedID)),
-					models.Corrections.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
-				))).One(ctx, queryExecutor(r.DB))
-				if errors.Is(err, sql.ErrNoRows) {
-					continue
-				}
-				if err != nil {
-					return nil, err
-				}
-				purchaseID = row.PurchaseID
-			}
-			purchase, err := loadPurchase(ctx, r.DB, purchaseID.String())
-			if errors.Is(err, ErrNotFound) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			if purchase.HouseholdID != household.ID {
-				continue
-			}
-			if kind == nodeTypePurchaseItem {
-				if value := findValue(purchase.Items, func(value *model.PurchaseItem) bool { return value.ID == id }); value != nil {
-					return value, nil
-				}
-			} else {
-				correction, err := models.Corrections.Query(sm.Where(psql.And(
-					models.Corrections.Columns.ID.EQ(psql.Arg(parsedID)),
-					models.Corrections.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
-				))).One(ctx, queryExecutor(r.DB))
-				if errors.Is(err, sql.ErrNoRows) {
-					continue
-				}
-				if err != nil {
-					return nil, err
-				}
-				edges, err := purchaseCorrectionEdges(ctx, r.DB, purchaseID, models.CorrectionSlice{correction})
-				if err != nil {
-					return nil, err
-				}
-				if len(edges) == 1 {
-					return edges[0].Node, nil
-				}
+				return rows[mustUUID(id)], nil
 			}
 		}
-		if kind == nodeTypeAllocationRule {
-			value, err := loadAllocationRule(ctx, r.DB, id)
-			if errors.Is(err, ErrNotFound) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			if value.HouseholdID == household.ID {
-				return value, nil
-			}
+	case nodeTypeAccount:
+		row, err := models.Accounts.Query(sm.Where(psql.And(
+			models.Accounts.Columns.ID.EQ(psql.Arg(parsedID)),
+			models.Accounts.Columns.HouseholdID.In(householdIDs...),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
 		}
-		if kind == nodeTypeProductConcept || kind == nodeTypeProductVariant || kind == nodeTypeProductAlias {
-			var value model.Node
-			switch kind {
-			case nodeTypeProductConcept:
-				value, err = loadProductConcept(ctx, bobpgx.NewPool(r.DB), id)
-			case nodeTypeProductVariant:
-				value, err = loadProductVariant(ctx, bobpgx.NewPool(r.DB), id)
-			case nodeTypeProductAlias:
-				value, err = loadProductAlias(ctx, bobpgx.NewPool(r.DB), id)
-			}
-			if errors.Is(err, ErrNotFound) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			if nodeHouseholdID(value) == household.ID {
-				return value, nil
-			}
+		if err != nil {
+			return nil, err
 		}
-		if kind == nodeTypeHouseholdInvitation {
-			user, err := principal(ctx)
-			if err != nil {
-				return nil, err
-			}
-			executor := bobpgx.NewPool(r.DB)
-			if err := requireHouseholdOwner(ctx, executor, household.ID, user.MemberID); err != nil {
-				return nil, err
-			}
-			invitationID, err := uuid.FromString(id)
-			if err != nil {
-				return nil, ErrNotFound
-			}
-			row, err := models.HouseholdInvitations.Query(sm.Where(psql.And(
-				models.HouseholdInvitations.Columns.ID.EQ(psql.Arg(invitationID)),
-				models.HouseholdInvitations.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
-			))).One(ctx, executor)
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			return householdInvitationModel(row, time.Now()), nil
+		return graphAccount(row), nil
+	case nodeTypeCategory:
+		row, err := models.Categories.Query(sm.Where(psql.And(
+			models.Categories.Columns.ID.EQ(psql.Arg(parsedID)),
+			models.Categories.Columns.HouseholdID.In(householdIDs...),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
 		}
-		if kind == nodeTypeTag {
-			values, err := r.tags(ctx, household.ID, true)
-			if err != nil {
-				return nil, err
-			}
-			if value := findValue(values, func(value *model.Tag) bool { return value.ID == id }); value != nil {
-				return value, nil
-			}
+		if err != nil {
+			return nil, err
 		}
-		if kind == nodeTypeRecurringExpense {
-			values, err := r.recurringExpenses(ctx, household.ID, true)
-			if err != nil {
-				return nil, err
-			}
-			if value := findValue(values, func(value *model.RecurringExpense) bool { return value.ID == id }); value != nil {
-				return value, nil
-			}
+		category := &model.Category{ID: row.ID.String(), Name: row.Name, Archived: row.Archived}
+		if row.ParentID.Valid {
+			parentID := row.ParentID.V.String()
+			category.ParentID = &parentID
 		}
-		if kind == nodeTypeAccountMovement {
-			parsedID, _ := uuid.FromString(id)
-			row, err := models.AccountMovements.Query(sm.Where(psql.And(models.AccountMovements.Columns.ID.EQ(psql.Arg(parsedID)), models.AccountMovements.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID)))))).One(ctx, queryExecutor(r.DB))
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			return accountMovementModel(row), nil
+		return category, nil
+	case nodeTypeMember:
+		memberships, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+			models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(parsedID)),
+			models.HouseholdMembers.Columns.HouseholdID.In(householdIDs...),
+		)), sm.OrderBy(models.HouseholdMembers.Columns.JoinedAt)).All(ctx, executor)
+		if err != nil {
+			return nil, err
 		}
-		if kind == nodeTypeLedgerEntry {
-			parsedID, _ := uuid.FromString(id)
-			row, err := models.LedgerEntries.Query(sm.Where(psql.And(models.LedgerEntries.Columns.ID.EQ(psql.Arg(parsedID)), models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID)))))).One(ctx, queryExecutor(r.DB))
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			entry, err := loadLedgerEntry(ctx, r.DB, row.ID.String())
-			if err != nil {
-				return nil, err
-			}
-			return ledgerEntryVariant(ctx, r.DB, entry)
+		if len(memberships) == 0 {
+			return nil, nil
 		}
-		if kind == nodeTypeAccountIncome {
-			parsedID, _ := uuid.FromString(id)
-			row, err := models.AccountIncomes.Query(sm.Where(psql.And(models.AccountIncomes.Columns.ID.EQ(psql.Arg(parsedID)), models.AccountIncomes.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID)))))).One(ctx, queryExecutor(r.DB))
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			return accountIncomeModel(row), nil
+		membership := memberships[0]
+		if err := membership.LoadMember(ctx, executor); err != nil {
+			return nil, err
 		}
-		if kind == nodeTypeBudget {
-			parsedID, _ := uuid.FromString(id)
-			row, err := models.Budgets.Query(sm.Where(psql.And(models.Budgets.Columns.ID.EQ(psql.Arg(parsedID)), models.Budgets.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID)))))).One(ctx, queryExecutor(r.DB))
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			month := time.Now().UTC()
-			return budgetModel(ctx, r.DB, row, &month)
+		return &model.Member{ID: membership.MemberID.String(), DisplayName: membership.R.Member.DisplayName, Role: model.MemberRole(membership.Role)}, nil
+	case nodeTypePool:
+		row, err := models.Pools.Query(sm.Where(psql.And(
+			models.Pools.Columns.ID.EQ(psql.Arg(parsedID)),
+			models.Pools.Columns.HouseholdID.In(householdIDs...),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
 		}
+		if err != nil {
+			return nil, err
+		}
+		household, err := loadHousehold(ctx, r.DB, row.HouseholdID.String())
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		return findValue(household.PoolVariants, func(value model.PoolVariant) bool { return value.GetID() == id }), nil
+	case nodeTypeAccountOpeningBalance:
+		account, err := models.Accounts.Query(sm.Where(psql.And(
+			models.Accounts.Columns.ID.EQ(psql.Arg(parsedID)),
+			models.Accounts.Columns.HouseholdID.In(householdIDs...),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		journal, err := models.Journals.Query(sm.Where(psql.And(
+			models.Journals.Columns.HouseholdID.EQ(psql.Arg(account.HouseholdID)),
+			models.Journals.Columns.SourceKind.EQ(psql.Arg(sourceKindAccountOpeningBalance)),
+			models.Journals.Columns.SourceID.EQ(psql.Arg(parsedID)),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		globalID, err := encodeNodeID(nodeTypeAccountOpeningBalance, journal.SourceID.String())
+		if err != nil {
+			return nil, err
+		}
+		return &model.AccountOpeningBalance{ID: globalID, Account: graphAccount(account)}, nil
+	default:
+		return nil, nil
 	}
 	return nil, nil
-}
-
-func nodeHouseholdID(node model.Node) string {
-	switch value := node.(type) {
-	case *model.ProductConcept:
-		return value.HouseholdID
-	case *model.ProductVariant:
-		return value.HouseholdID
-	case *model.ProductAlias:
-		return value.HouseholdID
-	default:
-		return ""
-	}
 }
 
 func findValue[T any, S ~[]T](values S, match func(T) bool) T {
@@ -556,28 +371,104 @@ func mustUUID(value string) uuid.UUID {
 }
 
 func (r *queryResolver) findUnmatchedObservation(ctx context.Context, documentID, sourceReference string) (model.Node, error) {
-	households, err := r.households(ctx)
+	households, err := r.householdReferences(ctx)
 	if err != nil {
 		return nil, err
 	}
-	first := 100
+	documentUUID, err := uuid.FromString(documentID)
+	if err != nil {
+		return nil, nil
+	}
+	householdIDs := make([]bob.Expression, 0, len(households))
 	for _, household := range households {
-		var after *string
-		for {
-			connection, err := r.unmatchedObservations(ctx, household.ID, nil, nil, nil, nil, after, nil, &first, nil)
-			if err != nil {
-				return nil, err
-			}
-			if value := findValue(connection.Edges, func(edge *model.UnmatchedObservationEdge) bool {
-				return edge.Node.GetDocumentID() == documentID && edge.Node.GetSourceReference() == sourceReference
-			}); value != nil {
-				return value.Node, nil
-			}
-			if !connection.PageInfo.HasNextPage || connection.PageInfo.EndCursor == nil {
-				break
-			}
-			after = connection.PageInfo.EndCursor
+		householdIDs = append(householdIDs, psql.Arg(mustUUID(household.ID)))
+	}
+	if len(householdIDs) == 0 {
+		return nil, nil
+	}
+	executor := queryExecutor(r.DB)
+	document, err := models.SourceDocuments.Query(sm.Where(psql.And(
+		models.SourceDocuments.Columns.ID.EQ(psql.Arg(documentUUID)),
+		models.SourceDocuments.Columns.HouseholdID.In(householdIDs...),
+	))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	job, err := models.ExtractionJobs.Query(
+		sm.Where(psql.And(
+			models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
+			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
+		)),
+		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
+	).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !job.Result.Valid {
+		return nil, nil
+	}
+	var verification ingestion.Verification
+	if err := json.Unmarshal(job.Result.V.Val, &verification); err != nil {
+		return nil, fmt.Errorf("decode extraction result: %w", err)
+	}
+	observations := ingestion.SourceObservations(document.ID.String(), document.Sha256, document.SourceKind, verification)
+	var observation ingestion.Observation
+	observationFound := false
+	for _, candidate := range observations {
+		if candidate.SourceReference == sourceReference {
+			observation = candidate
+			observationFound = true
+			break
 		}
 	}
-	return nil, nil
+	if !observationFound {
+		return nil, nil
+	}
+	kind := model.SourceKind(strings.ToUpper(document.SourceKind))
+	fields := &model.ObservationFields{
+		DocumentID: document.ID.String(), SourceReference: observation.SourceReference, SourceKind: kind,
+		Merchant: observation.Merchant, AmountYen: graphLong(observation.Amount),
+		OrderID: observation.OrderID, TransactionID: observation.TransactionID,
+	}
+	if !observation.OccurredAt.IsZero() {
+		occurredAt := timeString(observation.OccurredAt)
+		fields.OccurredAt = &occurredAt
+	}
+	confirmation, err := models.DocumentConfirmations.Query(sm.Where(psql.And(
+		models.DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+		models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
+		models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(sourceReference)),
+	))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return &model.UnmatchedObservation{ObservationFields: fields}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	purchaseID := ""
+	if confirmation.PurchaseID.Valid {
+		purchaseID = confirmation.PurchaseID.V.String()
+	} else if confirmation.CorrectionID.Valid {
+		correction, err := models.Corrections.Query(sm.Where(psql.And(
+			models.Corrections.Columns.ID.EQ(psql.Arg(confirmation.CorrectionID.V)),
+			models.Corrections.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		purchaseID = correction.PurchaseID.String()
+	} else {
+		return &model.UnmatchedObservation{ObservationFields: fields}, nil
+	}
+	return &model.ConfirmedObservation{ObservationFields: fields, PurchaseID: purchaseID}, nil
 }
