@@ -303,3 +303,9 @@ MAX_TOKENSや不正生成JSONでGemini呼び出しに失敗した場合も、応
 ### 2026年10月14日の未保存画面と取り込みURL
 
 世帯内の画面はTanStack Startのfile-based routingでpathを切り替え、取り込みフィルターはTanStack Routerのsearch stateから読み書きします。未保存状態は世帯とページをscopeとするregistryに集約し、画面遷移は`useBlocker`、ブラウザー終了は`enableBeforeUnload`で確認します。モバイル幅では`html`とdrawerに`overscroll-behavior-y: none`を設定し、drawer背景はBase UI Dialogのmodal scroll lockで固定します。registryはページ内の複数フォームを個別登録しないため、共有callbackを使う画面は各フォームの状態を内部で集約します。route contextの対象test、型検査、対象oxlint、Steiger、format検査が成功しました。iOS・Android実機のpull-to-refreshと未保存状態のブラウザー終了確認は未実施です。
+
+### 2026年10月14日の購入メール転送
+
+購入メールの取り込みには、世帯ごとに発行・失効できるHorse専用転送先を使います。転送先tokenのhashだけをDBへ保存し、平文のtokenと完全な転送先アドレスは発行・交換時にだけ返します。再表示できないため、転送先を失った場合は交換します。IMAPS接続はread-onlyで行い、mailboxの既読状態やメッセージを変更しません。mailboxの`UIDVALIDITY`と`UID`をDBへ保存し、原本・添付文書・抽出jobの登録とcursor更新を同一DB transactionで確定します。SeaweedFSへの原本・添付保存はDB transaction外の操作なので、DB rollback時に孤立objectが残る可能性があります。メール本文はアプリケーション側でAES-GCM暗号化して保存し、本文のSHA-256ではなく暗号化用keyによるHMACをobject識別値として使います。workerは新旧key ID付き暗号形式を読み取ります。
+
+転送先の検証では、`Delivered-To`が1件だけ存在し、設定済みの専用mailbox base addressに世帯tokenのtagを付けた形式であることを要求します。本文の`To`は転送時に欠落・変更され得るうえ、送信者が指定できるため、宛先の認証には使いません。復号したtokenからhashを計算し、有効な転送先だけを世帯へ対応付けます。`UIDVALIDITY`が変わったときはcursorを再初期化して再走査し、文書hashの一意制約で重複登録を防ぎます。合成メールによるStalwartの`Delivered-To`とplus-tag保持、および実環境でのIMAPS経路は未確認です。IMAPS資格情報の設定、メール本文・原本のretentionと削除も未完了です。これらのレビュー項目は検証・実装が終わるまで未解決のまま残します。
