@@ -55,6 +55,10 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	cashAccount, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Statement income cash", Kind: model.AccountKindCash})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	documentID, occurredAt, reference := uuid.NewV7().String(), testStatementTransferFirstOccurredAt, testStatementRow2Reference
 	documentUUID, householdUUID := generatedUUID(documentID), generatedUUID(household.ID)
@@ -97,6 +101,12 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 	wrongDate.IdempotencyKey = uuid.NewV7().String()
 	if _, err := resolver.recordExternalIncome(ctx, wrongDate); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("statement date mismatch was not rejected: %v", err)
+	}
+	wrongAccount := input
+	wrongAccount.AccountID = cashAccount.ID
+	wrongAccount.IdempotencyKey = uuid.NewV7().String()
+	if _, err := resolver.recordExternalIncome(ctx, wrongAccount); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("bank statement income was accepted for a cash account: %v", err)
 	}
 	created, err := resolver.recordExternalIncome(ctx, input)
 	if err != nil {

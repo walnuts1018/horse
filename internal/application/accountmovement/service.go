@@ -38,6 +38,7 @@ type Service struct {
 }
 
 const cardAccountKind = "CARD"
+const bankAccountKind = "BANK"
 
 func New(db *pgxpool.Pool) *Service {
 	return &Service{db: db}
@@ -303,6 +304,9 @@ func (s *Service) RecordIncome(ctx context.Context, command IncomeCommand) (Inco
 	account, err := loadAccount(ctx, executor, householdID, accountID)
 	if err != nil {
 		return IncomeResult{}, err
+	}
+	if statementProvided && account.Kind != bankAccountKind {
+		return IncomeResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("bank statement income requires a bank account"))
 	}
 	if account.Kind == cardAccountKind {
 		return IncomeResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("external income requires a bank, cash, or other account"))
