@@ -1,0 +1,10 @@
+type PurchaseDefault {
+  merchant: String!
+  paymentAccountId: ID!
+  purchaseCount: Int!
+  lastUsedAt: DateTime!
+}
+
+extend type Query {
+  purchaseDefaults(householdId: ID! @nodeID(of: "Household")): [PurchaseDefault!]!
+}

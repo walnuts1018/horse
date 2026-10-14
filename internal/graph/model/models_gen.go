@@ -1624,6 +1624,13 @@ type PurchaseCorrectionPurchaseTargetInput struct {
 	PurchaseID string `json:"purchaseId"`
 }
 
+type PurchaseDefault struct {
+	Merchant         string   `json:"merchant"`
+	PaymentAccountID string   `json:"paymentAccountId"`
+	PurchaseCount    int      `json:"purchaseCount"`
+	LastUsedAt       DateTime `json:"lastUsedAt"`
+}
+
 type PurchaseEdge struct {
 	Cursor string    `json:"cursor"`
 	Node   *Purchase `json:"node"`

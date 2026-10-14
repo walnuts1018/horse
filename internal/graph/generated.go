@@ -938,6 +938,13 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	PurchaseDefault struct {
+		LastUsedAt       func(childComplexity int) int
+		Merchant         func(childComplexity int) int
+		PaymentAccountID func(childComplexity int) int
+		PurchaseCount    func(childComplexity int) int
+	}
+
 	PurchaseEdge struct {
 		Cursor func(childComplexity int) int
 		Node   func(childComplexity int) int
@@ -1029,6 +1036,7 @@ type ComplexityRoot struct {
 		ProductCatalog             func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		ProductSuggestions         func(childComplexity int, householdID string, query string, merchant *string, first int) int
 		PurchaseCorrections        func(childComplexity int, purchaseID string, first *int, after *string) int
+		PurchaseDefaults           func(childComplexity int, householdID string) int
 		Purchases                  func(childComplexity int, filter model.PurchaseFilter, after *string, before *string, first *int, last *int) int
 		RecurringExpenses          func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
 		Settlement                 func(childComplexity int, householdID string, period model.YearMonth) int
@@ -1656,6 +1664,7 @@ type QueryResolver interface {
 	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first int) ([]*model.ProductSuggestion, error)
 	Purchases(ctx context.Context, filter model.PurchaseFilter, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
 	PurchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error)
+	PurchaseDefaults(ctx context.Context, householdID string) ([]*model.PurchaseDefault, error)
 	RecurringExpenses(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
 	Settlement(ctx context.Context, householdID string, period model.YearMonth) (model.SettlementVariant, error)
 	StatementRefundCorrections(ctx context.Context, householdID string, sourceDocumentID string, sourceReference string, first *int, after *string) (*model.StatementRefundCorrectionConnection, error)
@@ -4906,6 +4915,31 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.PurchaseCorrectionEdge.Node(childComplexity), true
 
+	case "PurchaseDefault.lastUsedAt":
+		if e.ComplexityRoot.PurchaseDefault.LastUsedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseDefault.LastUsedAt(childComplexity), true
+	case "PurchaseDefault.merchant":
+		if e.ComplexityRoot.PurchaseDefault.Merchant == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseDefault.Merchant(childComplexity), true
+	case "PurchaseDefault.paymentAccountId":
+		if e.ComplexityRoot.PurchaseDefault.PaymentAccountID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseDefault.PaymentAccountID(childComplexity), true
+	case "PurchaseDefault.purchaseCount":
+		if e.ComplexityRoot.PurchaseDefault.PurchaseCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseDefault.PurchaseCount(childComplexity), true
+
 	case "PurchaseEdge.cursor":
 		if e.ComplexityRoot.PurchaseEdge.Cursor == nil {
 			break
@@ -5411,6 +5445,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.PurchaseCorrections(childComplexity, args["purchaseId"].(string), args["first"].(*int), args["after"].(*string)), true
+	case "Query.purchaseDefaults":
+		if e.ComplexityRoot.Query.PurchaseDefaults == nil {
+			break
+		}
+
+		args, err := ec.field_Query_purchaseDefaults_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.PurchaseDefaults(childComplexity, args["householdId"].(string)), true
 	case "Query.purchases":
 		if e.ComplexityRoot.Query.Purchases == nil {
 			break
@@ -8269,6 +8314,17 @@ extend type Query {
   ): PurchaseCorrectionConnection!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/purchase_defaults.graphql", Input: `type PurchaseDefault {
+  merchant: String!
+  paymentAccountId: ID!
+  purchaseCount: Int!
+  lastUsedAt: DateTime!
+}
+
+extend type Query {
+  purchaseDefaults(householdId: ID! @nodeID(of: "Household")): [PurchaseDefault!]!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/purchase_item.graphql", Input: `type PurchaseItem implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
@@ -10109,6 +10165,20 @@ func (ec *executionContext) childFields_PurchaseCorrectionEdge(ctx context.Conte
 		return ec.fieldContext_PurchaseCorrectionEdge_node(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type PurchaseCorrectionEdge", field.Name)
+}
+
+func (ec *executionContext) childFields_PurchaseDefault(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "merchant":
+		return ec.fieldContext_PurchaseDefault_merchant(ctx, field)
+	case "paymentAccountId":
+		return ec.fieldContext_PurchaseDefault_paymentAccountId(ctx, field)
+	case "purchaseCount":
+		return ec.fieldContext_PurchaseDefault_purchaseCount(ctx, field)
+	case "lastUsedAt":
+		return ec.fieldContext_PurchaseDefault_lastUsedAt(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type PurchaseDefault", field.Name)
 }
 
 func (ec *executionContext) childFields_PurchaseEdge(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -12792,6 +12862,63 @@ func (ec *executionContext) field_Query_purchaseCorrections_argsPurchaseID(
 
 	directive1 := func(ctx context.Context) (any, error) {
 		of, err := ec.unmarshalNString2string(ctx, "Purchase")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
+}
+
+func (ec *executionContext) field_Query_purchaseDefaults_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+
+	arg0, err := ec.field_Query_purchaseDefaults_argsHouseholdID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_purchaseDefaults_argsHouseholdID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["householdId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["householdId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Household")
 		if err != nil {
 			var zeroVal string
 			return zeroVal, err
@@ -26119,6 +26246,98 @@ func (ec *executionContext) fieldContext_PurchaseCorrectionEdge_node(_ context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _PurchaseDefault_merchant(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseDefault) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseDefault_merchant(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Merchant, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseDefault_merchant(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseDefault", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseDefault_paymentAccountId(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseDefault) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseDefault_paymentAccountId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PaymentAccountID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseDefault_paymentAccountId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseDefault", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseDefault_purchaseCount(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseDefault) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseDefault_purchaseCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PurchaseCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseDefault_purchaseCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseDefault", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseDefault_lastUsedAt(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseDefault) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseDefault_lastUsedAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.LastUsedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseDefault_lastUsedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseDefault", field, false, false, errors.New("field of type DateTime does not have child fields"))
+}
+
 func (ec *executionContext) _PurchaseEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseEdge) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -28238,6 +28457,50 @@ func (ec *executionContext) fieldContext_Query_purchaseCorrections(ctx context.C
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_purchaseCorrections_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_purchaseDefaults(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_purchaseDefaults(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().PurchaseDefaults(ctx, fc.Args["householdId"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.PurchaseDefault) graphql.Marshaler {
+			return ec.marshalNPurchaseDefault2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDefaultᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_purchaseDefaults(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PurchaseDefault(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_purchaseDefaults_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -51936,6 +52199,59 @@ func (ec *executionContext) _PurchaseCorrectionEdge(ctx context.Context, sel ast
 	return out
 }
 
+var purchaseDefaultImplementors = []string{"PurchaseDefault"}
+
+func (ec *executionContext) _PurchaseDefault(ctx context.Context, sel ast.SelectionSet, obj *model.PurchaseDefault) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, purchaseDefaultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("PurchaseDefault")
+		case "merchant":
+			out.Values[i] = ec._PurchaseDefault_merchant(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "paymentAccountId":
+			out.Values[i] = ec._PurchaseDefault_paymentAccountId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "purchaseCount":
+			out.Values[i] = ec._PurchaseDefault_purchaseCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "lastUsedAt":
+			out.Values[i] = ec._PurchaseDefault_lastUsedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var purchaseEdgeImplementors = []string{"PurchaseEdge"}
 
 func (ec *executionContext) _PurchaseEdge(ctx context.Context, sel ast.SelectionSet, obj *model.PurchaseEdge) graphql.Marshaler {
@@ -53236,6 +53552,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_purchaseCorrections(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "purchaseDefaults":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_purchaseDefaults(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -59157,6 +59495,32 @@ func (ec *executionContext) marshalNPurchaseCorrectionEdge2ᚖgithubᚗcomᚋwal
 		return graphql.Null
 	}
 	return ec._PurchaseCorrectionEdge(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNPurchaseDefault2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDefaultᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.PurchaseDefault) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNPurchaseDefault2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDefault(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNPurchaseDefault2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDefault(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseDefault) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._PurchaseDefault(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNPurchaseEdge2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.PurchaseEdge) graphql.Marshaler {
