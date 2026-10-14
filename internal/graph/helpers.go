@@ -15,6 +15,7 @@ import (
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
@@ -100,6 +101,28 @@ func yearMonthPointer(value *model.YearMonth) *string {
 func newID() string { return uuid.NewV7().String() }
 
 func graphLong(value int64) model.Long { return model.Long(value) }
+
+func loadHouseholdSummaries(ctx context.Context, db *pgxpool.Pool, householdIDs []gofrsuuid.UUID) (map[gofrsuuid.UUID]*model.Household, error) {
+	result := make(map[gofrsuuid.UUID]*model.Household, len(householdIDs))
+	if len(householdIDs) == 0 {
+		return result, nil
+	}
+	ids := make([]bob.Expression, len(householdIDs))
+	for i, id := range householdIDs {
+		ids[i] = psql.Arg(id)
+	}
+	households, err := models.Households.Query(sm.Where(models.Households.Columns.ID.In(ids...))).All(ctx, queryExecutor(db))
+	if err != nil {
+		return nil, err
+	}
+	for _, household := range households {
+		result[household.ID] = &model.Household{
+			ID: household.ID.String(), Name: household.Name, Revision: int(household.Revision),
+			CreatedAt: timeString(household.CreatedAt), UpdatedAt: timeString(household.UpdatedAt),
+		}
+	}
+	return result, nil
+}
 
 func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*model.Household, error) {
 	id, err := gofrsuuid.FromString(householdID)

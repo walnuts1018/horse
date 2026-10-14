@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/99designs/gqlgen/graphql"
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
@@ -26,12 +27,29 @@ func (r *queryResolver) viewer(ctx context.Context) (*model.Viewer, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, membership := range memberships {
-		household, err := loadHousehold(ctx, r.DB, membership.HouseholdID.String())
+	householdIDs := make([]gofrsuuid.UUID, len(memberships))
+	for i, membership := range memberships {
+		householdIDs[i] = membership.HouseholdID
+	}
+	loadDetails := graphql.FieldRequested(ctx, "households.members") || graphql.FieldRequested(ctx, "households.pools") || graphql.FieldRequested(ctx, "households.accounts") || graphql.FieldRequested(ctx, "households.categories") || graphql.FieldRequested(ctx, "households.defaultAllocation")
+	var households map[gofrsuuid.UUID]*model.Household
+	if !loadDetails {
+		households, err = loadHouseholdSummaries(ctx, r.DB, householdIDs)
 		if err != nil {
 			return nil, err
 		}
-		result.Households = append(result.Households, household)
+	}
+	for _, membership := range memberships {
+		household := households[membership.HouseholdID]
+		if loadDetails {
+			household, err = loadHousehold(ctx, r.DB, membership.HouseholdID.String())
+			if err != nil {
+				return nil, err
+			}
+		}
+		if household != nil {
+			result.Households = append(result.Households, household)
+		}
 	}
 	return result, nil
 }
@@ -49,13 +67,30 @@ func (r *queryResolver) households(ctx context.Context) ([]*model.Household, err
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*model.Household, 0, len(memberships))
-	for _, membership := range memberships {
-		household, err := loadHousehold(ctx, r.DB, membership.HouseholdID.String())
+	householdIDs := make([]gofrsuuid.UUID, len(memberships))
+	for i, membership := range memberships {
+		householdIDs[i] = membership.HouseholdID
+	}
+	loadDetails := graphql.FieldRequested(ctx, "members") || graphql.FieldRequested(ctx, "pools") || graphql.FieldRequested(ctx, "accounts") || graphql.FieldRequested(ctx, "categories") || graphql.FieldRequested(ctx, "defaultAllocation")
+	var households map[gofrsuuid.UUID]*model.Household
+	if !loadDetails {
+		households, err = loadHouseholdSummaries(ctx, r.DB, householdIDs)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, household)
+	}
+	result := make([]*model.Household, 0, len(memberships))
+	for _, membership := range memberships {
+		household := households[membership.HouseholdID]
+		if loadDetails {
+			household, err = loadHousehold(ctx, r.DB, membership.HouseholdID.String())
+			if err != nil {
+				return nil, err
+			}
+		}
+		if household != nil {
+			result = append(result, household)
+		}
 	}
 	return result, nil
 }
