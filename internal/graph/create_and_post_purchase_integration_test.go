@@ -28,6 +28,8 @@ const testReceiptSourceKind = "receipt"
 
 const extractionJobSucceededStatus = "succeeded"
 
+const testSplitBreadItemName = "Bread"
+
 func TestCreateAndPostPurchaseIsAtomicAndIdempotent(t *testing.T) {
 	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
@@ -148,7 +150,7 @@ func TestCreateAndPostPurchaseIsAtomicAndIdempotent(t *testing.T) {
 		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: testPurchaseTime, Merchant: "Split purchase",
 		SourceDocumentID:   &splitDocumentID,
 		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 120}},
-		Items:              []*model.PurchaseItemInput{{Name: "Milk", AmountYen: 45}, {Name: "Bread", AmountYen: 75}},
+		Items:              []*model.PurchaseItemInput{{Name: "Milk", AmountYen: 45}, {Name: testSplitBreadItemName, AmountYen: 75}},
 	}
 	splitPurchase, err := resolver.createAndPostPurchase(ctx, splitInput)
 	if err != nil {
@@ -384,7 +386,7 @@ func assertReceiptSplitEvidence(t *testing.T, ctx context.Context, db *pgxpool.P
 	if observation.JobID != extractionID.String() || observation.Receipt.Total != 120 || observation.ConfirmedTotal != 120 || len(observation.Receipt.Items) != 1 {
 		t.Fatalf("original receipt evidence = %#v", observation)
 	}
-	if len(observation.ConfirmedItems) != 2 || observation.ConfirmedItems[0].Name != "Milk" || observation.ConfirmedItems[0].AmountYen != 45 || observation.ConfirmedItems[1].Name != "Bread" || observation.ConfirmedItems[1].AmountYen != 75 {
+	if len(observation.ConfirmedItems) != 2 || observation.ConfirmedItems[0].Name != "Milk" || observation.ConfirmedItems[0].AmountYen != 45 || observation.ConfirmedItems[1].Name != testSplitBreadItemName || observation.ConfirmedItems[1].AmountYen != 75 {
 		t.Fatalf("confirmed split evidence = %#v", observation.ConfirmedItems)
 	}
 }
