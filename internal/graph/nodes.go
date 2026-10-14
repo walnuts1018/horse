@@ -39,7 +39,7 @@ func (r *queryResolver) node(ctx context.Context, id string) (model.Node, error)
 		}
 		return r.settlement(ctx, householdID, period)
 	}
-	if isBatchLoadedNodeKind(kind) && !requiresLoadedHouseholdNodeData(kind) {
+	if isBatchLoadedNodeKind(kind) {
 		nodes, err := r.nodes(ctx, []string{id})
 		if err != nil {
 			return nil, err
