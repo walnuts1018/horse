@@ -240,6 +240,7 @@ export function LedgerPage({
     correctionTarget,
     editError,
     editing,
+    itemUndo,
     itemDrafts,
     postDraftPurchase,
     postingPurchase,
@@ -253,6 +254,7 @@ export function LedgerPage({
     updateItemDraft,
     updatePurchaseDraft,
     cancelEditing,
+    undoItemFields,
   } = purchaseEditor;
   const [highlightedEvidenceItem, setHighlightedEvidenceItem] = useState<string | null>(null);
   useEffect(() => {
@@ -428,12 +430,21 @@ export function LedgerPage({
                           type="button"
                           disabled={purchaseSaveState === "saving"}
                           onClick={() => {
-                            setInlineEditingItem(null);
-                            cancelEditing();
+                            if (cancelEditing()) setInlineEditingItem(null);
                           }}
                         >
                           編集を終了
                         </button>
+                        {itemUndo && (
+                          <button
+                            className="button button-soft"
+                            type="button"
+                            disabled={purchaseSaveState !== "saved"}
+                            onClick={() => void undoItemFields()}
+                          >
+                            元に戻す
+                          </button>
+                        )}
                         <button
                           className="button button-primary"
                           type="button"
@@ -475,7 +486,7 @@ export function LedgerPage({
                           }
                           onClick={() => {
                             setInlineEditingItem(item.id);
-                            startEditing(purchase);
+                            startEditing(purchase, item.id);
                           }}
                         >
                           品目を編集

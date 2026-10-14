@@ -18,8 +18,15 @@ import {
   type PurchaseItem,
   type PurchasePaymentInput,
 } from "../../../shared/api";
-import { errorMessage, formatQuantity, parseQuantity } from "../../../shared/lib";
+import { errorMessage, parseQuantity } from "../../../shared/lib";
 import { readLedgerPurchase } from "../api/read-ledger-purchase";
+import {
+  createLedgerItemDraft,
+  ledgerItemFieldPatch,
+  rebaseLedgerItemDraft,
+  reverseLedgerItemFieldPatch,
+  type LedgerItemFieldPatch,
+} from "./ledger-item-autosave";
 import { createPurchaseDraft, type PurchaseDraft } from "./purchase-draft";
 import { isLedgerPurchaseEditorDirty, ledgerPurchaseEditorSnapshot } from "./purchase-editor-dirty";
 
@@ -31,8 +38,21 @@ type PurchaseConflict = {
   discard: () => Promise<void>;
 };
 
+type LedgerItemUndo = {
+  purchaseId: string;
+  itemId: string;
+  patch: LedgerItemFieldPatch;
+};
+
 const sameNullableString = (left?: string | null, right?: string | null) =>
   (left ?? "") === (right ?? "");
+
+function createLedgerItemDraftMap(purchase: Purchase) {
+  return purchase.items.reduce<Record<string, LedgerItemDraft | undefined>>((drafts, item) => {
+    drafts[item.id] = createLedgerItemDraft(item);
+    return drafts;
+  }, {});
+}
 
 export function useLedgerPurchaseEditor({
   household,
@@ -58,9 +78,38 @@ export function useLedgerPurchaseEditor({
     itemId: string;
   } | null>(null);
   const [conflict, setConflict] = useState<PurchaseConflict | null>(null);
+  const conflictRef = useRef<PurchaseConflict | null>(null);
+  const [itemUndo, setItemUndo] = useState<LedgerItemUndo | null>(null);
   const initialDraftSnapshot = useRef<string | null>(null);
   const latestPurchaseDraft = useRef<PurchaseDraft | null>(null);
   const latestItemDrafts = useRef(itemDrafts);
+  const baselinePurchaseRef = useRef<Purchase | null>(null);
+  const baselinePurchaseDraftRef = useRef<PurchaseDraft | null>(null);
+  const baselineItemDraftsRef = useRef<Record<string, LedgerItemDraft | undefined>>({});
+  const inlineItemIdRef = useRef<string | null>(null);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingPurchaseRef = useRef(false);
+
+  const changeConflict = (next: PurchaseConflict | null) => {
+    conflictRef.current = next;
+    setConflict(next);
+  };
+
+  const updateDirtyState = () => {
+    const nextDirty = isLedgerPurchaseEditorDirty(
+      initialDraftSnapshot.current,
+      latestPurchaseDraft.current,
+      latestItemDrafts.current,
+    );
+    setDirty(nextDirty);
+    onDirtyChange(nextDirty);
+    return nextDirty;
+  };
+
+  const clearAutoSaveTimer = () => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = null;
+  };
 
   const reportDirty = (nextPurchaseDraft = purchaseDraft, nextItemDrafts = itemDrafts) => {
     latestPurchaseDraft.current = nextPurchaseDraft;
@@ -92,6 +141,13 @@ export function useLedgerPurchaseEditor({
     };
   }, [household.id]);
 
+  useEffect(
+    () => () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    },
+    [],
+  );
+
   const postDraftPurchase = async (purchase: Purchase) => {
     setPostingPurchase(purchase.id);
     setEditError("");
@@ -113,40 +169,219 @@ export function useLedgerPurchaseEditor({
   };
 
   const latestPurchase = (purchaseId: string) => readLedgerPurchase(household.id, purchaseId);
-  const startEditing = (purchase: Purchase) => {
-    const nextPurchaseDraft = createPurchaseDraft(purchase);
-    const nextItemDrafts = Object.fromEntries(
-      purchase.items.map((item) => [
-        item.id,
-        {
-          name: item.name,
-          amountYen: String(item.amountYen),
-          quantity: formatQuantity(item.quantityNumerator, item.quantityDenominator),
-          quantityUnit: item.quantityUnit ?? "",
-          printedUnitPriceYen:
-            item.printedUnitPriceYen == null ? "" : String(item.printedUnitPriceYen),
-          printedBasisQuantity: formatQuantity(
-            item.printedUnitPriceQuantityNumerator,
-            item.printedUnitPriceQuantityDenominator,
-          ),
-          printedUnitPriceUnit: item.printedUnitPriceUnit ?? "",
-          categoryId: item.categoryId ?? "",
-          productVariantId: item.productVariantId ?? "",
-          allocations: item.allocations.map(({ poolId, weight }) => ({ poolId, weight })),
-          productLearning: "ITEM_ONLY" as const,
-          variantName: "",
+  const installServerBaseline = (purchase: Purchase, serverPurchaseDraft: PurchaseDraft | null) => {
+    baselinePurchaseRef.current = purchase;
+    if (serverPurchaseDraft) baselinePurchaseDraftRef.current = serverPurchaseDraft;
+    baselineItemDraftsRef.current = createLedgerItemDraftMap(purchase);
+    if (baselinePurchaseDraftRef.current)
+      initialDraftSnapshot.current = ledgerPurchaseEditorSnapshot(
+        baselinePurchaseDraftRef.current,
+        baselineItemDraftsRef.current,
+      );
+  };
+
+  const saveItemFields = async () => {
+    const purchase = baselinePurchaseRef.current;
+    const itemId = inlineItemIdRef.current;
+    if (!purchase || !itemId || savingPurchaseRef.current || conflictRef.current) return;
+    const baselineItem = baselineItemDraftsRef.current[itemId];
+    const submittedDraft = latestItemDrafts.current[itemId];
+    if (!baselineItem || !submittedDraft) return;
+    const patch = ledgerItemFieldPatch(baselineItem, submittedDraft);
+    if (!Object.keys(patch).length) return;
+    if (!submittedDraft.name.trim()) {
+      setEditError("品名を入力してください");
+      return;
+    }
+    const item = purchase.items.find((candidate) => candidate.id === itemId);
+    if (!item || purchase.status === "CLOSED") return;
+    const input = mapUpdatePurchaseItemInput({
+      itemId,
+      baseRevision: item.revision,
+      ...patch,
+    });
+    const latestItemDraftsAtStart = { ...latestItemDrafts.current };
+    savingPurchaseRef.current = true;
+    setSavingPurchase(true);
+    setEditError("");
+    let failed = false;
+    try {
+      await mutateSavePurchaseItemEdits({
+        input: {
+          purchaseId: purchase.id,
+          purchaseBaseRevision: purchase.revision,
+          items: [input],
         },
-      ]),
+      });
+      const latest = await latestPurchase(purchase.id);
+      if (!latest) throw new Error("保存後の購入記録を取得できませんでした");
+      await refresh();
+      const currentDrafts = latestItemDrafts.current;
+      const rebasedDrafts = createLedgerItemDraftMap(latest);
+      for (const latestItem of latest.items) {
+        const previousBaseline = baselineItemDraftsRef.current[latestItem.id];
+        const submitted = latestItemDraftsAtStart[latestItem.id];
+        const current = currentDrafts[latestItem.id];
+        const serverDraft = rebasedDrafts[latestItem.id];
+        if (previousBaseline && submitted && current && serverDraft)
+          rebasedDrafts[latestItem.id] = rebaseLedgerItemDraft(
+            current,
+            submitted,
+            previousBaseline,
+            serverDraft,
+          );
+      }
+      installServerBaseline(latest, baselinePurchaseDraftRef.current);
+      latestItemDrafts.current = rebasedDrafts;
+      setItemDrafts(rebasedDrafts);
+      updateDirtyState();
+      const inversePatch = reverseLedgerItemFieldPatch(patch, baselineItem);
+      setItemUndo({ purchaseId: purchase.id, itemId, patch: inversePatch });
+      changeConflict(null);
+      setEditError("");
+    } catch (reason) {
+      failed = true;
+      if (
+        (reason instanceof ApiError && reason.code === "CONFLICT") ||
+        errorMessage(reason).toLowerCase().includes("conflict")
+      ) {
+        try {
+          const latest = await latestPurchase(purchase.id);
+          await refresh();
+          if (latest) {
+            installServerBaseline(latest, baselinePurchaseDraftRef.current);
+            updateDirtyState();
+            const serverItem = latest.items.find((candidate) => candidate.id === itemId);
+            const serverDraft = serverItem ? createLedgerItemDraft(serverItem) : null;
+            changeConflict({
+              label: item.name,
+              localValue: [patch.name, patch.categoryId]
+                .filter((value) => value !== undefined)
+                .join(" · "),
+              serverValue: serverDraft
+                ? [serverDraft.name, serverDraft.categoryId || "未分類"].join(" · ")
+                : "記録なし",
+              retry: async () => {
+                changeConflict(null);
+                setEditError("");
+                await saveItemFields();
+              },
+              discard: async () => {
+                clearAutoSaveTimer();
+                changeConflict(null);
+                setEditing(null);
+                inlineItemIdRef.current = null;
+                initialDraftSnapshot.current = null;
+                latestPurchaseDraft.current = null;
+                setDirty(false);
+                onDirtyChange(false);
+              },
+            });
+          } else setEditError(errorMessage(reason));
+        } catch {
+          setEditError(`${errorMessage(reason)}（最新の記録を取得できませんでした）`);
+        }
+      } else setEditError(errorMessage(reason));
+    } finally {
+      savingPurchaseRef.current = false;
+      setSavingPurchase(false);
+      const pendingPatch = ledgerItemFieldPatch(
+        baselineItemDraftsRef.current[itemId] ?? baselineItem,
+        latestItemDrafts.current[itemId] ?? submittedDraft,
+      );
+      if (!failed && (pendingPatch.name || pendingPatch.categoryId !== undefined))
+        scheduleItemAutoSave();
+    }
+  };
+
+  function scheduleItemAutoSave() {
+    if (!inlineItemIdRef.current || conflictRef.current) return;
+    clearAutoSaveTimer();
+    autoSaveTimer.current = setTimeout(() => {
+      autoSaveTimer.current = null;
+      void saveItemFields();
+    }, 650);
+  }
+
+  const undoItemFields = async () => {
+    const undo = itemUndo;
+    const purchase = baselinePurchaseRef.current;
+    const hasUnsavedChanges = isLedgerPurchaseEditorDirty(
+      initialDraftSnapshot.current,
+      latestPurchaseDraft.current,
+      latestItemDrafts.current,
     );
+    if (!undo || !purchase || hasUnsavedChanges || savingPurchaseRef.current || conflictRef.current)
+      return;
+    const item = purchase.items.find((candidate) => candidate.id === undo.itemId);
+    if (!item || purchase.id !== undo.purchaseId || purchase.status === "CLOSED") return;
+    const submittedDrafts = latestItemDrafts.current;
+    const baselineBefore = baselineItemDraftsRef.current;
+    savingPurchaseRef.current = true;
+    setSavingPurchase(true);
+    setEditError("");
+    try {
+      await mutateSavePurchaseItemEdits({
+        input: {
+          purchaseId: purchase.id,
+          purchaseBaseRevision: purchase.revision,
+          items: [
+            mapUpdatePurchaseItemInput({
+              itemId: item.id,
+              baseRevision: item.revision,
+              ...undo.patch,
+            }),
+          ],
+        },
+      });
+      const latest = await latestPurchase(purchase.id);
+      if (!latest) throw new Error("保存後の購入記録を取得できませんでした");
+      await refresh();
+      const rebasedDrafts = createLedgerItemDraftMap(latest);
+      for (const latestItem of latest.items) {
+        const before = baselineBefore[latestItem.id];
+        const submitted = submittedDrafts[latestItem.id];
+        const current = latestItemDrafts.current[latestItem.id];
+        const server = rebasedDrafts[latestItem.id];
+        if (before && submitted && current && server)
+          rebasedDrafts[latestItem.id] = rebaseLedgerItemDraft(current, submitted, before, server);
+      }
+      installServerBaseline(latest, baselinePurchaseDraftRef.current);
+      latestItemDrafts.current = rebasedDrafts;
+      setItemDrafts(rebasedDrafts);
+      setItemUndo(null);
+      updateDirtyState();
+    } catch (reason) {
+      setEditError(errorMessage(reason));
+      try {
+        await refresh();
+      } catch {
+        setEditError(`${errorMessage(reason)}（最新の記録を取得できませんでした）`);
+      }
+    } finally {
+      savingPurchaseRef.current = false;
+      setSavingPurchase(false);
+    }
+  };
+
+  const startEditing = (purchase: Purchase, inlineItemId?: string) => {
+    clearAutoSaveTimer();
+    const nextPurchaseDraft = createPurchaseDraft(purchase);
+    const nextItemDrafts = createLedgerItemDraftMap(purchase);
+    installServerBaseline(purchase, nextPurchaseDraft);
     initialDraftSnapshot.current = ledgerPurchaseEditorSnapshot(nextPurchaseDraft, nextItemDrafts);
     latestPurchaseDraft.current = nextPurchaseDraft;
     latestItemDrafts.current = nextItemDrafts;
+    baselineItemDraftsRef.current = nextItemDrafts;
+    baselinePurchaseDraftRef.current = nextPurchaseDraft;
+    inlineItemIdRef.current = inlineItemId ?? null;
+    setItemUndo(null);
     setDirty(false);
     onDirtyChange(false);
     setEditing(purchase.id);
     setPurchaseDraft(nextPurchaseDraft);
     setItemDrafts(nextItemDrafts);
-    setConflict(null);
+    changeConflict(null);
     setEditError("");
   };
 
@@ -161,14 +396,31 @@ export function useLedgerPurchaseEditor({
     const nextDrafts = { ...itemDrafts, [itemId]: { ...draft, ...updates } };
     setItemDrafts(nextDrafts);
     reportDirty(purchaseDraft, nextDrafts);
+    if (inlineItemIdRef.current === itemId && ("name" in updates || "categoryId" in updates)) {
+      scheduleItemAutoSave();
+    }
   };
 
   const cancelEditing = () => {
+    if (savingPurchaseRef.current) return false;
+    const hasUnsavedChanges = isLedgerPurchaseEditorDirty(
+      initialDraftSnapshot.current,
+      latestPurchaseDraft.current,
+      latestItemDrafts.current,
+    );
+    if (hasUnsavedChanges && !window.confirm("未保存の変更を破棄しますか？")) return false;
+    clearAutoSaveTimer();
+    inlineItemIdRef.current = null;
     setEditing(null);
     initialDraftSnapshot.current = null;
     latestPurchaseDraft.current = null;
+    baselinePurchaseRef.current = null;
+    baselinePurchaseDraftRef.current = null;
+    baselineItemDraftsRef.current = {};
+    setItemUndo(null);
     setDirty(false);
     onDirtyChange(false);
+    return true;
   };
 
   const startCorrection = (purchase: Purchase, item: PurchaseItem) => {
@@ -298,7 +550,9 @@ export function useLedgerPurchaseEditor({
   };
 
   const savePurchase = async (purchase: Purchase) => {
-    if (!purchaseDraft || savingPurchase) return;
+    if (!purchaseDraft || savingPurchaseRef.current) return;
+    clearAutoSaveTimer();
+    if (baselinePurchaseRef.current?.id === purchase.id) purchase = baselinePurchaseRef.current;
     const paymentAllocations: PurchasePaymentInput[] = purchaseDraft.paymentAllocations.map(
       (payment) => ({
         paymentAccountId: payment.paymentAccountId,
@@ -351,11 +605,13 @@ export function useLedgerPurchaseEditor({
       initialDraftSnapshot.current = null;
       setDirty(false);
       onDirtyChange(false);
-      setConflict(null);
+      changeConflict(null);
       setEditError("");
       return;
     }
+    savingPurchaseRef.current = true;
     setSavingPurchase(true);
+    let failed = false;
     try {
       await mutateSavePurchaseItemEdits({
         input: {
@@ -366,6 +622,8 @@ export function useLedgerPurchaseEditor({
         },
       });
       await refresh();
+      const latest = await latestPurchase(purchase.id);
+      if (latest) installServerBaseline(latest, purchaseDraft);
       const savedSnapshot = ledgerPurchaseEditorSnapshot(purchaseDraft, itemDrafts);
       initialDraftSnapshot.current = savedSnapshot;
       const hasLaterChanges = isLedgerPurchaseEditorDirty(
@@ -375,9 +633,11 @@ export function useLedgerPurchaseEditor({
       );
       setDirty(hasLaterChanges);
       onDirtyChange(hasLaterChanges);
-      setConflict(null);
+      changeConflict(null);
+      setItemUndo(null);
       setEditError("");
     } catch (reason) {
+      failed = true;
       if (
         (reason instanceof ApiError && reason.code === "CONFLICT") ||
         errorMessage(reason).toLowerCase().includes("conflict")
@@ -385,7 +645,7 @@ export function useLedgerPurchaseEditor({
         const latest = await latestPurchase(purchase.id);
         await refresh();
         if (latest)
-          setConflict({
+          changeConflict({
             label: "買い物と品目",
             localValue: `${patch.merchant} · ${purchaseOccurredAtLabel(patch.occurredAt, purchase.datePrecision)}`,
             serverValue: `${latest.merchant} · ${purchaseOccurredAtLabel(latest.occurredAt, latest.datePrecision)}`,
@@ -394,6 +654,7 @@ export function useLedgerPurchaseEditor({
                 latest.items.map((item) => [item.id, item.revision]),
               );
               setSavingPurchase(true);
+              savingPurchaseRef.current = true;
               try {
                 await mutateSavePurchaseItemEdits({
                   input: {
@@ -408,6 +669,8 @@ export function useLedgerPurchaseEditor({
                   },
                 });
                 await refresh();
+                const refreshed = await latestPurchase(latest.id);
+                if (refreshed) installServerBaseline(refreshed, purchaseDraft);
                 const savedSnapshot = ledgerPurchaseEditorSnapshot(purchaseDraft, itemDrafts);
                 initialDraftSnapshot.current = savedSnapshot;
                 const hasLaterChanges = isLedgerPurchaseEditorDirty(
@@ -416,25 +679,43 @@ export function useLedgerPurchaseEditor({
                   latestItemDrafts.current,
                 );
                 setDirty(hasLaterChanges);
-                setConflict(null);
+                changeConflict(null);
                 onDirtyChange(hasLaterChanges);
               } finally {
+                savingPurchaseRef.current = false;
                 setSavingPurchase(false);
               }
             },
             discard: async () => {
               await refresh();
-              setConflict(null);
+              changeConflict(null);
               setEditing(null);
+              inlineItemIdRef.current = null;
               initialDraftSnapshot.current = null;
               latestPurchaseDraft.current = null;
+              baselinePurchaseRef.current = null;
+              baselinePurchaseDraftRef.current = null;
+              baselineItemDraftsRef.current = {};
               setDirty(false);
               onDirtyChange(false);
             },
           });
       } else setEditError(errorMessage(reason));
     } finally {
+      savingPurchaseRef.current = false;
       setSavingPurchase(false);
+      if (inlineItemIdRef.current) {
+        const itemId = inlineItemIdRef.current;
+        const baseline = baselineItemDraftsRef.current[itemId];
+        const draft = latestItemDrafts.current[itemId];
+        const pendingPatch = baseline && draft ? ledgerItemFieldPatch(baseline, draft) : {};
+        if (
+          !failed &&
+          !conflictRef.current &&
+          (pendingPatch.name !== undefined || pendingPatch.categoryId !== undefined)
+        )
+          scheduleItemAutoSave();
+      }
     }
   };
 
@@ -444,13 +725,14 @@ export function useLedgerPurchaseEditor({
     correctionTarget,
     editError,
     editing,
+    itemUndo,
     itemDrafts,
     postDraftPurchase,
     postingPurchase,
     purchaseSaveState,
     purchaseDraft,
     savePurchase,
-    setConflict,
+    setConflict: changeConflict,
     setCorrectionTarget,
     setEditError,
     setEditing,
@@ -461,5 +743,6 @@ export function useLedgerPurchaseEditor({
     updateItemDraft,
     updatePurchaseDraft,
     cancelEditing,
+    undoItemFields,
   };
 }
