@@ -186,7 +186,13 @@ func (p *Poller) pollSelected(ctx context.Context, cursor Cursor, session imapSe
 	if maxMessages < 1 {
 		maxMessages = defaultMaxMessages
 	}
-	searchLastUID := uint32(min(uint64(lastUID), uint64(firstUID)+uint64(maxMessages)-1))
+	searchLastUID := firstUID
+	for range maxMessages - 1 {
+		if searchLastUID == lastUID {
+			break
+		}
+		searchLastUID++
+	}
 	uids, err := session.UIDSearch(firstUID, searchLastUID)
 	if err != nil {
 		return nil, cursor, pollError(ctx, "mailbox UID search failed")
