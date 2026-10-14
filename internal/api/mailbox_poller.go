@@ -10,14 +10,12 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-	"uuid"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
-	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	documentapp "github.com/walnuts1018/horse/internal/application/document"
@@ -114,7 +112,6 @@ func (p *mailboxIngestor) poll(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	queuedJobIDs := make([]gofrsuuid.UUID, 0, len(messages))
 	for _, message := range messages {
 		if message.Rejected {
 			continue
@@ -126,14 +123,14 @@ func (p *mailboxIngestor) poll(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		jobIDs, err := p.registerMessage(ctx, executor, forwarding, message.RFC822)
+		jobIDs, err := p.registerMessage(ctx, forwarding, message.RFC822)
 		if errors.Is(err, errRejectedMailboxMessage) {
 			continue
 		}
 		if err != nil {
 			return err
 		}
-		queuedJobIDs = append(queuedJobIDs, jobIDs...)
+		p.publishDocumentJobs(ctx, jobIDs)
 	}
 	validity, uid := int64(next.UIDValidity), int64(next.UID)
 	updatedAt := time.Now().UTC()
@@ -143,7 +140,6 @@ func (p *mailboxIngestor) poll(ctx context.Context) error {
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	p.publishDocumentJobs(ctx, queuedJobIDs)
 	return nil
 }
 
@@ -182,59 +178,19 @@ func forwardingTokenHash(address, base string) ([]byte, bool) {
 	return hash[:], true
 }
 
-func (p *mailboxIngestor) registerMessage(ctx context.Context, executor bob.Executor, forwarding *models.HouseholdMailForwarding, raw []byte) ([]gofrsuuid.UUID, error) {
+func (p *mailboxIngestor) registerMessage(ctx context.Context, forwarding *models.HouseholdMailForwarding, raw []byte) ([]gofrsuuid.UUID, error) {
 	attachments, err := ingestion.ParseEmailAttachments(raw)
 	if err != nil {
 		return nil, errRejectedMailboxMessage
 	}
-	householdKey := forwarding.HouseholdID.String()
-	key, hash, err := p.store.Put(ctx, householdKey, documentMIMEEmail, raw)
+	registration, err := documentapp.NewService(p.db).Register(ctx, p.store, documentapp.RegisterCommand{
+		HouseholdID: forwarding.HouseholdID, MemberID: forwarding.CreatedBy, MIMEType: documentMIMEEmail, SourceKind: "email",
+		Purpose: ingestion.JobPurposeInteractive, Data: raw, Attachments: attachments,
+	})
 	if err != nil {
 		return nil, err
 	}
-	documentID, err := gofrsuuid.FromString(uuid.NewV7().String())
-	if err != nil {
-		return nil, err
-	}
-	sourceKind := "email"
-	filename := sql.Null[string]{}
-	document, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
-		ID: &documentID, HouseholdID: &forwarding.HouseholdID, Sha256: &hash, ObjectKey: &key,
-		MimeType: new(documentMIMEEmail), SourceKind: &sourceKind, SourceFilename: &filename, CreatedBy: &forwarding.CreatedBy,
-	}, im.OnConflict("household_id", "sha256").DoNothing()).One(ctx, executor)
-	var queued []gofrsuuid.UUID
-	if errors.Is(err, sql.ErrNoRows) {
-		document, err = models.SourceDocuments.Query(sm.Where(psql.And(
-			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(forwarding.HouseholdID)),
-			models.SourceDocuments.Columns.Sha256.EQ(psql.Arg(hash)),
-		))).One(ctx, executor)
-	} else if err == nil {
-		jobID, jobErr := insertDocumentJob(ctx, executor, forwarding.HouseholdID, document.ID)
-		if jobErr != nil {
-			return nil, jobErr
-		}
-		queued = append(queued, jobID)
-	}
-	if err != nil {
-		return nil, err
-	}
-	attachmentJobIDs, err := p.registerEmailAttachments(ctx, executor, forwarding.HouseholdID, forwarding.CreatedBy, document.ID, householdKey, ingestion.JobPurposeInteractive, attachments)
-	if err != nil {
-		return nil, err
-	}
-	return append(queued, attachmentJobIDs...), nil
-}
-
-func (p *mailboxIngestor) registerEmailAttachments(ctx context.Context, executor bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, householdKey, purpose string, attachments []ingestion.EmailAttachment) ([]gofrsuuid.UUID, error) {
-	stored := make([]documentapp.StoredEmailAttachment, 0, len(attachments))
-	for _, attachment := range attachments {
-		key, hash, err := p.store.Put(ctx, householdKey, attachment.MIMEType, attachment.Data)
-		if err != nil {
-			return nil, err
-		}
-		stored = append(stored, documentapp.StoredEmailAttachment{Filename: attachment.Filename, MIMEType: attachment.MIMEType, ObjectKey: key, SHA256: hash})
-	}
-	return documentapp.NewService(p.db).RegisterEmailAttachments(ctx, executor, householdID, memberID, parentID, purpose, stored)
+	return registration.JobIDs, nil
 }
 
 func (p *mailboxIngestor) publishDocumentJobs(ctx context.Context, jobIDs []gofrsuuid.UUID) {

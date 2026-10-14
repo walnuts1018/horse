@@ -154,7 +154,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid analysis image", http.StatusBadRequest)
 		return
 	}
-	var analysisKey, analysisMIME string
+	var analysisMIME string
 	if len(analysisData) > 0 {
 		analysisMIME = documentMIME(analysisFilename, analysisData)
 		if (mimeType != documentMIMEJPEG && mimeType != documentMIMEPNG && mimeType != documentMIMEWebP) ||
@@ -171,140 +171,26 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	householdID = householdUUID.String()
-	key, hash, err := s.cfg.Store.Put(r.Context(), householdID, mimeType, data)
-	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document storage failed", "error", err)
-		http.Error(w, "document storage failed", http.StatusBadGateway)
-		return
-	}
-	tx, err := s.db.Begin(r.Context())
-	if err != nil {
-		http.Error(w, "document registration failed", http.StatusInternalServerError)
-		return
-	}
-	defer func(ctx context.Context) { _ = tx.Rollback(ctx) }(context.WithoutCancel(r.Context()))
-	id, err := gofrsuuid.FromString(uuid.NewV7().String())
-	if err != nil {
-		http.Error(w, "document registration failed", http.StatusInternalServerError)
-		return
-	}
-	executor := bobpgx.NewTx(tx, nil)
-	document, err := models.SourceDocuments.Insert(
-		&models.SourceDocumentSetter{ID: &id, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &key, MimeType: &mimeType, SourceKind: &sourceKind, SourceFilename: &filename, CreatedBy: &memberID},
-		im.OnConflict("household_id", "sha256").DoNothing(),
-	).One(r.Context(), executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		existingDocument, lookupErr := models.SourceDocuments.Query(sm.Where(psql.And(
-			models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-			models.SourceDocuments.Columns.Sha256.EQ(psql.Arg(hash)),
-		))).One(r.Context(), executor)
-		var existing documentResponse
-		if lookupErr == nil {
-			existing, lookupErr = s.documentResponse(r.Context(), executor, existingDocument)
-		}
-		err = lookupErr
-		if err != nil {
-			http.Error(w, "document lookup failed", http.StatusInternalServerError)
-			return
-		}
-		if len(emailAttachments) > 0 {
-			queuedJobIDs, attachmentErr := s.registerEmailAttachments(r.Context(), executor, householdUUID, memberID, existingDocument.ID, householdID, purpose, emailAttachments)
-			if attachmentErr != nil {
-				http.Error(w, "document registration failed", http.StatusInternalServerError)
-				return
-			}
-			if err := tx.Commit(r.Context()); err != nil {
-				http.Error(w, "document registration failed", http.StatusInternalServerError)
-				return
-			}
-			s.publishDocumentJobs(r.Context(), queuedJobIDs)
-			existing, err = s.documentResponse(r.Context(), bobpgx.NewPool(s.db), existingDocument)
-			if err == nil {
-				err = s.loadDocumentAttachments(r.Context(), bobpgx.NewPool(s.db), &existing)
-			}
-			if err != nil {
-				http.Error(w, "document lookup failed", http.StatusInternalServerError)
-				return
-			}
-			existing.Duplicate = true
-			writeJSON(w, http.StatusOK, existing)
-			return
-		}
-		if err := s.loadDocumentAttachments(r.Context(), executor, &existing); err != nil {
-			http.Error(w, "document lookup failed", http.StatusInternalServerError)
-			return
-		}
-		existing.Duplicate = true
-		_ = tx.Rollback(context.WithoutCancel(r.Context()))
-		writeJSON(w, http.StatusOK, existing)
-		return
-	}
-	if err != nil {
-		http.Error(w, "document registration failed", http.StatusInternalServerError)
-		return
-	}
-	var analysisStored bool
-	var transactionCommitted bool
-	defer func() {
-		if !analysisStored || transactionCommitted {
-			return
-		}
-		_ = tx.Rollback(context.WithoutCancel(r.Context()))
-		store, ok := s.cfg.Store.(documentDeleter)
-		if !ok {
-			s.logger.WarnContext(r.Context(), "analysis image compensation failed", "error", errors.New("document storage does not support deletion"))
-			return
-		}
-		if err := s.deleteDocumentObjectIfUnreferenced(context.WithoutCancel(r.Context()), store, analysisKey, gofrsuuid.Nil); err != nil {
-			s.logger.WarnContext(r.Context(), "analysis image compensation failed", "error", err)
-		}
-	}()
+	var analysisTransformJSON []byte
 	if len(analysisData) > 0 {
-		analysisKey, _, err = s.cfg.Store.PutAnalysis(r.Context(), householdID, document.ID.String(), analysisMIME, analysisData)
-		if err != nil {
-			s.logger.ErrorContext(r.Context(), "analysis image storage failed", "error", err)
-			http.Error(w, "analysis image storage failed", http.StatusBadGateway)
-			return
-		}
-		analysisStored = true
-		analysisObjectKey := sql.Null[string]{V: analysisKey, Valid: true}
-		analysisMIMEType := sql.Null[string]{V: analysisMIME, Valid: true}
-		transformJSON, err := json.Marshal(analysisTransform)
+		analysisTransformJSON, err = json.Marshal(analysisTransform)
 		if err != nil {
 			http.Error(w, "document registration failed", http.StatusInternalServerError)
 			return
 		}
-		analysisTransformValue := sql.Null[types.JSON[stdjson.RawMessage]]{
-			V:     types.JSON[stdjson.RawMessage]{Val: transformJSON},
-			Valid: true,
-		}
-		setter := &models.SourceDocumentSetter{
-			AnalysisObjectKey: &analysisObjectKey, AnalysisMimeType: &analysisMIMEType, AnalysisTransform: &analysisTransformValue,
-		}
-		if err := document.Update(r.Context(), executor, setter); err != nil {
-			http.Error(w, "document registration failed", http.StatusInternalServerError)
-			return
-		}
 	}
-	jobID, err := insertDocumentJobWithPurpose(r.Context(), executor, householdUUID, document.ID, purpose)
+	registration, err := documentapp.NewService(s.db).Register(r.Context(), s.cfg.Store, documentapp.RegisterCommand{
+		HouseholdID: householdUUID, MemberID: memberID, MIMEType: mimeType, SourceKind: sourceKind, Filename: filename.V,
+		Purpose: purpose, Data: data, Attachments: emailAttachments, AnalysisData: analysisData, AnalysisMIMEType: analysisMIME,
+		AnalysisTransform: analysisTransformJSON,
+	})
 	if err != nil {
+		s.logger.ErrorContext(r.Context(), "document registration failed", "error", err)
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
-	attachmentJobIDs, err := s.registerEmailAttachments(r.Context(), executor, householdUUID, memberID, document.ID, householdID, purpose, emailAttachments)
-	if err != nil {
-		http.Error(w, "document registration failed", http.StatusInternalServerError)
-		return
-	}
-	queuedJobIDs := append([]gofrsuuid.UUID{jobID}, attachmentJobIDs...)
-	if err := tx.Commit(r.Context()); err != nil {
-		http.Error(w, "document registration failed", http.StatusInternalServerError)
-		return
-	}
-	transactionCommitted = true
-	s.publishDocumentJobs(r.Context(), queuedJobIDs)
-	result, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), document)
+	s.publishDocumentJobs(r.Context(), registration.JobIDs)
+	result, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), registration.Document)
 	if err != nil {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
@@ -313,20 +199,12 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document lookup failed", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, result)
-}
-
-func (s *Server) registerEmailAttachments(ctx context.Context, exec bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, householdKey, purpose string, attachments []ingestion.EmailAttachment) ([]gofrsuuid.UUID, error) {
-	stored := make([]documentapp.StoredEmailAttachment, 0, len(attachments))
-	for _, attachment := range attachments {
-		childKey, childHash, err := s.cfg.Store.Put(ctx, householdKey, attachment.MIMEType, attachment.Data)
-		if err != nil {
-			s.logger.ErrorContext(ctx, "email attachment storage failed", "error", err)
-			return nil, err
-		}
-		stored = append(stored, documentapp.StoredEmailAttachment{Filename: attachment.Filename, MIMEType: attachment.MIMEType, ObjectKey: childKey, SHA256: childHash})
+	result.Duplicate = registration.Duplicate
+	status := http.StatusAccepted
+	if registration.Duplicate {
+		status = http.StatusOK
 	}
-	return documentapp.NewService(s.db).RegisterEmailAttachments(ctx, exec, householdID, memberID, parentID, purpose, stored)
+	writeJSON(w, status, result)
 }
 
 func (s *Server) publishDocumentJobs(ctx context.Context, jobIDs []gofrsuuid.UUID) {
