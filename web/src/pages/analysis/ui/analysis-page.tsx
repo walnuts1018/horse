@@ -52,6 +52,7 @@ export function AnalysisPage({ household }: { household: Household }) {
     moreError,
     hasNextPage,
     loadMore,
+    refreshPurchases,
     spending,
     spendingLoading,
     spendingError,
@@ -211,8 +212,12 @@ export function AnalysisPage({ household }: { household: Household }) {
       />
       {loadError && <InlineError message={loadError} />}
       {aggregateError && <InlineError message={aggregateError} />}
-      {usesPurchases && moreError && hasNextPage && (
-        <button className="text-button" type="button" onClick={loadMore}>
+      {usesPurchases && moreError && (
+        <button
+          className="text-button"
+          type="button"
+          onClick={hasNextPage ? loadMore : refreshPurchases}
+        >
           再試行
         </button>
       )}

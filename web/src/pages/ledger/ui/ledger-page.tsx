@@ -817,6 +817,13 @@ export function LedgerPage({
         </section>
       )}
       {recordMode === "purchases" && moreError && <InlineError message={moreError} />}
+      {recordMode === "purchases" && viewMode === "purchases" && moreError && !hasNextPage && (
+        <div className={styles.more}>
+          <button className="button button-soft" type="button" onClick={refresh}>
+            取得を再試行
+          </button>
+        </div>
+      )}
       {recordMode === "purchases" && hasNextPage && !moreError && (
         <div className={styles.more}>
           <button

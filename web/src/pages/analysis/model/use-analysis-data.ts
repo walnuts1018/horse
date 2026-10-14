@@ -50,15 +50,12 @@ export function useAnalysisData(
     analysisRecurringExpensesFragment,
     dashboard,
   );
-  const { purchases, loadingMore, moreError, hasNextPage, loadMore } = useHouseholdPurchases(
-    householdId,
-    100,
-    {
+  const { purchases, loadingMore, moreError, hasNextPage, loadMore, refresh } =
+    useHouseholdPurchases(householdId, 100, {
       from: `${fromMonth}-01T00:00:00+09:00`,
       to: exclusiveMonthEnd(toMonth),
       loadAll: dimension !== "category" && dimension !== "member",
-    },
-  );
+    });
   const requestKey = JSON.stringify(variables);
   const [budgetErrorState, setBudgetErrorState] = useState<{ key: string; message: string } | null>(
     null,
@@ -158,6 +155,7 @@ export function useAnalysisData(
     moreError,
     hasNextPage,
     loadMore,
+    refreshPurchases: refresh,
     spending,
     spendingLoading: false,
     spendingError: "",
