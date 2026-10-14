@@ -31,6 +31,7 @@ func (b *nodeBatch) loadPurchaseNodes(ctx context.Context) error {
 		}
 	}
 	childPurchaseIDs := make(map[uuid.UUID]struct{})
+	correctionsByPurchase := make(map[uuid.UUID]models.CorrectionSlice)
 	if values := idsByKind[nodeTypePurchaseItem]; len(values) > 0 {
 		rows, err := models.PurchaseItems.Query(sm.Where(psql.And(
 			models.PurchaseItems.Columns.HouseholdID.In(householdArgs...), models.PurchaseItems.Columns.ID.In(args(nodeTypePurchaseItem)...),
@@ -51,6 +52,7 @@ func (b *nodeBatch) loadPurchaseNodes(ctx context.Context) error {
 		}
 		for _, row := range rows {
 			childPurchaseIDs[row.PurchaseID] = struct{}{}
+			correctionsByPurchase[row.PurchaseID] = append(correctionsByPurchase[row.PurchaseID], row)
 		}
 	}
 	if len(childPurchaseIDs) > 0 {
@@ -72,8 +74,12 @@ func (b *nodeBatch) loadPurchaseNodes(ctx context.Context) error {
 			for _, item := range purchase.Items {
 				set(nodeTypePurchaseItem, item.ID, item)
 			}
-			for _, correction := range purchaseCorrectionNodes(purchase) {
-				set(nodeTypePurchaseCorrection, correction.GetID(), correction)
+			edges, err := purchaseCorrectionEdges(ctx, r.DB, mustUUID(purchase.ID), correctionsByPurchase[mustUUID(purchase.ID)])
+			if err != nil {
+				return err
+			}
+			for _, edge := range edges {
+				set(nodeTypePurchaseCorrection, edge.Node.GetID(), edge.Node)
 			}
 		}
 	}

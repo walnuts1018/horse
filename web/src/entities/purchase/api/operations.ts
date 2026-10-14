@@ -31,34 +31,9 @@ export const purchaseHistoryQuery = graphql`
             ...PurchaseItemFields @relay(mask: false)
           }
           totalYen
-          corrections(first: 100) {
-            edges {
-              cursor
-              node {
-                __typename
-                id
-                ... on PurchaseItemCorrection {
-                  itemId
-                }
-                amountDeltaYen
-                reason
-                occurredAt
-                settlementMonth
-                paymentAllocations {
-                  paymentAccountId
-                  amountYen
-                  account {
-                    id
-                    name
-                  }
-                }
-              }
-            }
-            pageInfo {
-              endCursor
-              hasNextPage
-            }
-          }
+          correctionAmountYen
+          correctionCount
+          remainingRefundableAmountYen
           revision
           status
           createdAt
@@ -142,34 +117,9 @@ export const purchaseListFragment = graphql`
             ...PurchaseItemFields @relay(mask: false)
           }
           totalYen
-          corrections(first: 100) {
-            edges {
-              cursor
-              node {
-                __typename
-                id
-                ... on PurchaseItemCorrection {
-                  itemId
-                }
-                amountDeltaYen
-                reason
-                occurredAt
-                settlementMonth
-                paymentAllocations {
-                  paymentAccountId
-                  amountYen
-                  account {
-                    id
-                    name
-                  }
-                }
-              }
-            }
-            pageInfo {
-              endCursor
-              hasNextPage
-            }
-          }
+          correctionAmountYen
+          correctionCount
+          remainingRefundableAmountYen
           revision
           status
           createdAt
@@ -318,6 +268,23 @@ export const updatePurchaseItemMutation = graphql`
   }
 `;
 
+export const savePurchaseItemEditsMutation = graphql`
+  mutation SavePurchaseItemEditsMutation($input: SavePurchaseItemEditsInput!) {
+    savePurchaseItemEdits(input: $input) {
+      __typename
+      ... on SavePurchaseItemEditsSuccess {
+        items {
+          ...PurchaseItemFields @relay(mask: false)
+        }
+      }
+      ... on SavePurchaseItemEditsUserError {
+        code
+        message
+      }
+    }
+  }
+`;
+
 export const correctPurchaseMutation = graphql`
   mutation CorrectPurchaseMutation($input: CorrectPurchaseInput!) {
     correctPurchase(input: $input) {
@@ -376,6 +343,7 @@ export const purchaseItemFields = graphql`
     id
     name
     amountYen
+    remainingRefundableAmountYen
     currency
     quantity {
       numerator

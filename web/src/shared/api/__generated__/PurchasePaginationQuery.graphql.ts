@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<fec1b97d37a27d1ba7af6d8c86b16d7b>>
+ * @generated SignedSource<<dd2c155cb26b83eb8f19023985504e8e>>
  * @lightSyntaxTransform
  */
 
@@ -79,84 +79,45 @@ v2 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "cursor",
+  "name": "id",
   "storageKey": null
 },
 v3 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "id",
+  "name": "householdId",
   "storageKey": null
 },
 v4 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "householdId",
+  "name": "amountYen",
   "storageKey": null
 },
 v5 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "occurredAt",
+  "name": "name",
   "storageKey": null
 },
 v6 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "amountYen",
+  "name": "remainingRefundableAmountYen",
   "storageKey": null
 },
 v7 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
-  "name": "name",
-  "storageKey": null
-},
-v8 = {
-  "alias": null,
-  "args": null,
-  "concreteType": "PurchasePayment",
-  "kind": "LinkedField",
-  "name": "paymentAllocations",
-  "plural": true,
-  "selections": [
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "paymentAccountId",
-      "storageKey": null
-    },
-    (v6/*:: as any*/),
-    {
-      "alias": null,
-      "args": null,
-      "concreteType": "Account",
-      "kind": "LinkedField",
-      "name": "account",
-      "plural": false,
-      "selections": [
-        (v3/*:: as any*/),
-        (v7/*:: as any*/)
-      ],
-      "storageKey": null
-    }
-  ],
-  "storageKey": null
-},
-v9 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
   "name": "denominator",
   "storageKey": null
 },
-v10 = [
+v8 = [
   {
     "alias": null,
     "args": null,
@@ -164,7 +125,7 @@ v10 = [
     "name": "numerator",
     "storageKey": null
   },
-  (v9/*:: as any*/),
+  (v7/*:: as any*/),
   {
     "alias": null,
     "args": null,
@@ -173,32 +134,11 @@ v10 = [
     "storageKey": null
   }
 ],
-v11 = {
+v9 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "revision",
-  "storageKey": null
-},
-v12 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "__typename",
-  "storageKey": null
-},
-v13 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "endCursor",
-  "storageKey": null
-},
-v14 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "hasNextPage",
   "storageKey": null
 };
 return {
@@ -239,7 +179,13 @@ return {
             "name": "edges",
             "plural": true,
             "selections": [
-              (v2/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "cursor",
+                "storageKey": null
+              },
               {
                 "alias": null,
                 "args": null,
@@ -248,9 +194,15 @@ return {
                 "name": "node",
                 "plural": false,
                 "selections": [
+                  (v2/*:: as any*/),
                   (v3/*:: as any*/),
-                  (v4/*:: as any*/),
-                  (v5/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "occurredAt",
+                    "storageKey": null
+                  },
                   {
                     "alias": null,
                     "args": null,
@@ -279,7 +231,38 @@ return {
                     "name": "sourceKinds",
                     "storageKey": null
                   },
-                  (v8/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "concreteType": "PurchasePayment",
+                    "kind": "LinkedField",
+                    "name": "paymentAllocations",
+                    "plural": true,
+                    "selections": [
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "paymentAccountId",
+                        "storageKey": null
+                      },
+                      (v4/*:: as any*/),
+                      {
+                        "alias": null,
+                        "args": null,
+                        "concreteType": "Account",
+                        "kind": "LinkedField",
+                        "name": "account",
+                        "plural": false,
+                        "selections": [
+                          (v2/*:: as any*/),
+                          (v5/*:: as any*/)
+                        ],
+                        "storageKey": null
+                      }
+                    ],
+                    "storageKey": null
+                  },
                   {
                     "alias": null,
                     "args": null,
@@ -288,8 +271,9 @@ return {
                     "name": "items",
                     "plural": true,
                     "selections": [
-                      (v3/*:: as any*/),
-                      (v7/*:: as any*/),
+                      (v2/*:: as any*/),
+                      (v5/*:: as any*/),
+                      (v4/*:: as any*/),
                       (v6/*:: as any*/),
                       {
                         "alias": null,
@@ -305,7 +289,7 @@ return {
                         "kind": "LinkedField",
                         "name": "quantity",
                         "plural": false,
-                        "selections": (v10/*:: as any*/),
+                        "selections": (v8/*:: as any*/),
                         "storageKey": null
                       },
                       {
@@ -316,7 +300,7 @@ return {
                         "name": "printedUnitPrice",
                         "plural": false,
                         "selections": [
-                          (v6/*:: as any*/),
+                          (v4/*:: as any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -324,7 +308,7 @@ return {
                             "kind": "LinkedField",
                             "name": "basis",
                             "plural": false,
-                            "selections": (v10/*:: as any*/),
+                            "selections": (v8/*:: as any*/),
                             "storageKey": null
                           }
                         ],
@@ -345,11 +329,11 @@ return {
                             "name": "numeratorYen",
                             "storageKey": null
                           },
-                          (v9/*:: as any*/)
+                          (v7/*:: as any*/)
                         ],
                         "storageKey": null
                       },
-                      (v11/*:: as any*/),
+                      (v9/*:: as any*/),
                       {
                         "alias": null,
                         "args": null,
@@ -393,7 +377,7 @@ return {
                             "name": "weight",
                             "storageKey": null
                           },
-                          (v6/*:: as any*/)
+                          (v4/*:: as any*/)
                         ],
                         "storageKey": null
                       },
@@ -405,9 +389,9 @@ return {
                         "name": "tags",
                         "plural": true,
                         "selections": [
+                          (v2/*:: as any*/),
                           (v3/*:: as any*/),
-                          (v4/*:: as any*/),
-                          (v7/*:: as any*/),
+                          (v5/*:: as any*/),
                           {
                             "alias": null,
                             "args": null,
@@ -415,7 +399,7 @@ return {
                             "name": "archived",
                             "storageKey": null
                           },
-                          (v11/*:: as any*/)
+                          (v9/*:: as any*/)
                         ],
                         "storageKey": null
                       }
@@ -431,97 +415,20 @@ return {
                   },
                   {
                     "alias": null,
-                    "args": [
-                      {
-                        "kind": "Literal",
-                        "name": "first",
-                        "value": 100
-                      }
-                    ],
-                    "concreteType": "PurchaseCorrectionConnection",
-                    "kind": "LinkedField",
-                    "name": "corrections",
-                    "plural": false,
-                    "selections": [
-                      {
-                        "alias": null,
-                        "args": null,
-                        "concreteType": "PurchaseCorrectionEdge",
-                        "kind": "LinkedField",
-                        "name": "edges",
-                        "plural": true,
-                        "selections": [
-                          (v2/*:: as any*/),
-                          {
-                            "alias": null,
-                            "args": null,
-                            "concreteType": null,
-                            "kind": "LinkedField",
-                            "name": "node",
-                            "plural": false,
-                            "selections": [
-                              (v12/*:: as any*/),
-                              (v3/*:: as any*/),
-                              {
-                                "kind": "InlineFragment",
-                                "selections": [
-                                  {
-                                    "alias": null,
-                                    "args": null,
-                                    "kind": "ScalarField",
-                                    "name": "itemId",
-                                    "storageKey": null
-                                  }
-                                ],
-                                "type": "PurchaseItemCorrection",
-                                "abstractKey": null
-                              },
-                              {
-                                "alias": null,
-                                "args": null,
-                                "kind": "ScalarField",
-                                "name": "amountDeltaYen",
-                                "storageKey": null
-                              },
-                              {
-                                "alias": null,
-                                "args": null,
-                                "kind": "ScalarField",
-                                "name": "reason",
-                                "storageKey": null
-                              },
-                              (v5/*:: as any*/),
-                              {
-                                "alias": null,
-                                "args": null,
-                                "kind": "ScalarField",
-                                "name": "settlementMonth",
-                                "storageKey": null
-                              },
-                              (v8/*:: as any*/)
-                            ],
-                            "storageKey": null
-                          }
-                        ],
-                        "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "concreteType": "PageInfo",
-                        "kind": "LinkedField",
-                        "name": "pageInfo",
-                        "plural": false,
-                        "selections": [
-                          (v13/*:: as any*/),
-                          (v14/*:: as any*/)
-                        ],
-                        "storageKey": null
-                      }
-                    ],
-                    "storageKey": "corrections(first:100)"
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "correctionAmountYen",
+                    "storageKey": null
                   },
-                  (v11/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "correctionCount",
+                    "storageKey": null
+                  },
+                  (v6/*:: as any*/),
+                  (v9/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -543,7 +450,13 @@ return {
                     "name": "updatedAt",
                     "storageKey": null
                   },
-                  (v12/*:: as any*/)
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "__typename",
+                    "storageKey": null
+                  }
                 ],
                 "storageKey": null
               }
@@ -565,8 +478,20 @@ return {
                 "name": "startCursor",
                 "storageKey": null
               },
-              (v13/*:: as any*/),
-              (v14/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "endCursor",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "hasNextPage",
+                "storageKey": null
+              },
               {
                 "alias": null,
                 "args": null,
@@ -608,16 +533,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "557b384c602decb8d5b49237a2ec09c1",
+    "cacheID": "6d410894bd80a084d79c499a4743a890",
     "id": null,
     "metadata": {},
     "name": "PurchasePaginationQuery",
     "operationKind": "query",
-    "text": "query PurchasePaginationQuery(\n  $after: String\n  $filter: PurchaseFilter!\n  $first: Int = 100\n) {\n  ...PurchaseListFragment_G9cLv\n}\n\nfragment PurchaseListFragment_G9cLv on Query {\n  purchases(filter: $filter, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        corrections(first: 100) {\n          edges {\n            cursor\n            node {\n              __typename\n              id\n              ... on PurchaseItemCorrection {\n                itemId\n              }\n              amountDeltaYen\n              reason\n              occurredAt\n              settlementMonth\n              paymentAllocations {\n                paymentAccountId\n                amountYen\n                account {\n                  id\n                  name\n                }\n              }\n            }\n          }\n          pageInfo {\n            endCursor\n            hasNextPage\n          }\n        }\n        revision\n        status\n        createdAt\n        updatedAt\n        __typename\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
+    "text": "query PurchasePaginationQuery(\n  $after: String\n  $filter: PurchaseFilter!\n  $first: Int = 100\n) {\n  ...PurchaseListFragment_G9cLv\n}\n\nfragment PurchaseListFragment_G9cLv on Query {\n  purchases(filter: $filter, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          remainingRefundableAmountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        correctionAmountYen\n        correctionCount\n        remainingRefundableAmountYen\n        revision\n        status\n        createdAt\n        updatedAt\n        __typename\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "bc6a7409d6b32192ff77524f22daac61";
+(node as any).hash = "3f6af73ab1a72fceb4dab78a82c46a6c";
 
 export default node;

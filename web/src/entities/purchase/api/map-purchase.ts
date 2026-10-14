@@ -1,6 +1,5 @@
 import type {
   Purchase,
-  PurchaseCorrection,
   PurchaseHistoryQuery$data,
   PurchaseOrigin,
 } from "../../../shared/api";
@@ -14,36 +13,13 @@ export function mapPurchase(record: PurchaseHistoryRecord): Purchase {
     ...record,
     sourceKinds: [...record.sourceKinds],
     origin: mapPurchaseOrigin(record.origin),
-    corrections: record.corrections.edges.map(({ node }) => mapPurchaseCorrection(node)),
+    corrections: [],
     items: record.items.map(mapPurchaseItem),
     paymentAllocations: record.paymentAllocations.map((payment) => ({
       paymentAccountId: payment.paymentAccountId,
       amountYen: payment.amountYen,
       account: payment.account,
     })),
-  };
-}
-
-function mapPurchaseCorrection(
-  correction: PurchaseHistoryRecord["corrections"]["edges"][number]["node"],
-): PurchaseCorrection {
-  const fields = {
-    id: correction.id,
-    amountDeltaYen: correction.amountDeltaYen,
-    reason: correction.reason,
-    occurredAt: correction.occurredAt,
-    settlementMonth: correction.settlementMonth,
-    paymentAllocations: correction.paymentAllocations.map((payment) => ({
-      paymentAccountId: payment.paymentAccountId,
-      amountYen: payment.amountYen,
-      account: payment.account,
-    })),
-  };
-  if (correction.itemId === undefined) return { ...fields, __typename: "PurchaseWideCorrection" };
-  return {
-    ...fields,
-    __typename: "PurchaseItemCorrection",
-    itemId: correction.itemId,
   };
 }
 

@@ -1,23 +1,49 @@
-import type { ProductConcept, PurchaseItem } from "../../../shared/api";
+import type { Household, ProductConcept, PurchaseItem } from "../../../shared/api";
 import type { LedgerItemDraft } from "../model/purchase-item-draft";
 
+import { EditPurchaseItemAllocations } from "../../../entities/purchase";
 import { isOneOf } from "../../../shared/lib";
+
+function allocationsInPoolOrder<T extends { poolId: string }>(
+  allocations: T[],
+  pools: Household["pools"],
+) {
+  const poolIDs = pools.map((pool) => pool.id);
+  return [
+    ...poolIDs.flatMap((poolId) =>
+      allocations.filter((allocation) => allocation.poolId === poolId),
+    ),
+    ...allocations.filter((allocation) => !poolIDs.includes(allocation.poolId)),
+  ];
+}
 
 export function PurchaseItemEditor({
   item,
   draft,
+  household,
   categories,
   catalog,
   onChange,
-  onSave,
 }: {
   item: PurchaseItem;
   draft?: LedgerItemDraft;
+  household: Household;
   categories: Array<{ id: string; name: string; archived: boolean }>;
   catalog: ProductConcept[];
   onChange: (updates: Partial<LedgerItemDraft>) => void;
-  onSave: () => void;
 }) {
+  const defaultAllocations =
+    household.defaultAllocation.length > 0
+      ? household.defaultAllocation.map(({ poolId, weight }) => ({ poolId, weight }))
+      : household.pools.map((pool) => ({
+          poolId: pool.id,
+          weight: pool.defaultShareWeight || 1,
+        }));
+  const allocations = allocationsInPoolOrder(
+    draft?.allocations ?? item.allocations,
+    household.pools,
+  );
+  const normalizedDefaultAllocations = allocationsInPoolOrder(defaultAllocations, household.pools);
   return (
     <>
       <input
@@ -64,6 +90,12 @@ export function PurchaseItemEditor({
             )),
         )}
       </select>
+      <EditPurchaseItemAllocations
+        allocations={allocations}
+        defaultAllocations={normalizedDefaultAllocations}
+        pools={household.pools}
+        onChange={(next) => onChange({ allocations: next })}
+      />
       {draft?.productVariantId !== (item.productVariantId ?? "") && draft?.productVariantId && (
         <>
           <select
@@ -146,9 +178,6 @@ export function PurchaseItemEditor({
           />
         </label>
       </details>
-      <button className="text-button" type="button" onClick={onSave}>
-        品目を保存
-      </button>
     </>
   );
 }

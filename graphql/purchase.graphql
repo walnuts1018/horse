@@ -16,6 +16,9 @@ type Purchase implements Node {
   sourceKinds: [SourceKind!]!
   paymentAllocations: [PurchasePayment!]!
   items: [PurchaseItem!]!
+  correctionAmountYen: Long!
+  correctionCount: Int!
+  remainingRefundableAmountYen: Long!
   corrections(first: Int, after: String): PurchaseCorrectionConnection!
     @goField(name: "CorrectionsConnection", forceResolver: true)
   totalYen: Long!

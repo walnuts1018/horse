@@ -192,6 +192,10 @@ type RotateHouseholdMailForwardingResult interface {
 	IsRotateHouseholdMailForwardingResult()
 }
 
+type SavePurchaseItemEditsResult interface {
+	IsSavePurchaseItemEditsResult()
+}
+
 type SetAllocationRuleResult interface {
 	IsSetAllocationRuleResult()
 }
@@ -1495,22 +1499,25 @@ func (ProductVariant) IsAllocationRuleTarget() {}
 func (this ProductVariant) GetName() string    { return this.Name }
 
 type Purchase struct {
-	ID                    string                        `json:"id"`
-	HouseholdID           string                        `json:"householdId"`
-	OccurredAt            DateTime                      `json:"occurredAt"`
-	Merchant              string                        `json:"merchant"`
-	Origin                PurchaseOrigin                `json:"origin"`
-	HasEvidence           bool                          `json:"hasEvidence"`
-	SourceKinds           []SourceKind                  `json:"sourceKinds"`
-	PaymentAllocations    []*PurchasePayment            `json:"paymentAllocations"`
-	Items                 []*PurchaseItem               `json:"items"`
-	CorrectionsConnection *PurchaseCorrectionConnection `json:"corrections"`
-	TotalYen              Long                          `json:"totalYen"`
-	Currency              string                        `json:"currency"`
-	Revision              int                           `json:"revision"`
-	Status                PurchaseStatus                `json:"status"`
-	CreatedAt             DateTime                      `json:"createdAt"`
-	UpdatedAt             DateTime                      `json:"updatedAt"`
+	ID                           string                        `json:"id"`
+	HouseholdID                  string                        `json:"householdId"`
+	OccurredAt                   DateTime                      `json:"occurredAt"`
+	Merchant                     string                        `json:"merchant"`
+	Origin                       PurchaseOrigin                `json:"origin"`
+	HasEvidence                  bool                          `json:"hasEvidence"`
+	SourceKinds                  []SourceKind                  `json:"sourceKinds"`
+	PaymentAllocations           []*PurchasePayment            `json:"paymentAllocations"`
+	Items                        []*PurchaseItem               `json:"items"`
+	CorrectionAmountYen          Long                          `json:"correctionAmountYen"`
+	CorrectionCount              int                           `json:"correctionCount"`
+	RemainingRefundableAmountYen Long                          `json:"remainingRefundableAmountYen"`
+	CorrectionsConnection        *PurchaseCorrectionConnection `json:"corrections"`
+	TotalYen                     Long                          `json:"totalYen"`
+	Currency                     string                        `json:"currency"`
+	Revision                     int                           `json:"revision"`
+	Status                       PurchaseStatus                `json:"status"`
+	CreatedAt                    DateTime                      `json:"createdAt"`
+	UpdatedAt                    DateTime                      `json:"updatedAt"`
 }
 
 func (Purchase) IsAccountBalanceSource() {}
@@ -1577,18 +1584,19 @@ type PurchaseFilter struct {
 }
 
 type PurchaseItem struct {
-	ID                 string                    `json:"id"`
-	Name               string                    `json:"name"`
-	AmountYen          Long                      `json:"amountYen"`
-	Currency           string                    `json:"currency"`
-	Quantity           *PurchaseQuantity         `json:"quantity,omitempty"`
-	PrintedUnitPrice   *PrintedUnitPrice         `json:"printedUnitPrice,omitempty"`
-	EffectiveUnitPrice *EffectiveUnitPrice       `json:"effectiveUnitPrice,omitempty"`
-	CategoryID         *string                   `json:"categoryId,omitempty"`
-	ProductVariantID   *string                   `json:"productVariantId,omitempty"`
-	Allocations        []*PurchaseItemAllocation `json:"allocations"`
-	Tags               []*Tag                    `json:"tags"`
-	Revision           int                       `json:"revision"`
+	ID                           string                    `json:"id"`
+	Name                         string                    `json:"name"`
+	AmountYen                    Long                      `json:"amountYen"`
+	RemainingRefundableAmountYen Long                      `json:"remainingRefundableAmountYen"`
+	Currency                     string                    `json:"currency"`
+	Quantity                     *PurchaseQuantity         `json:"quantity,omitempty"`
+	PrintedUnitPrice             *PrintedUnitPrice         `json:"printedUnitPrice,omitempty"`
+	EffectiveUnitPrice           *EffectiveUnitPrice       `json:"effectiveUnitPrice,omitempty"`
+	CategoryID                   *string                   `json:"categoryId,omitempty"`
+	ProductVariantID             *string                   `json:"productVariantId,omitempty"`
+	Allocations                  []*PurchaseItemAllocation `json:"allocations"`
+	Tags                         []*Tag                    `json:"tags"`
+	Revision                     int                       `json:"revision"`
 }
 
 func (PurchaseItem) IsNode() {}
@@ -1992,6 +2000,30 @@ type RotateHouseholdMailForwardingSuccess struct {
 }
 
 func (RotateHouseholdMailForwardingSuccess) IsRotateHouseholdMailForwardingResult() {}
+
+type SavePurchaseItemEditsInput struct {
+	PurchaseID           string                            `json:"purchaseId"`
+	PurchaseBaseRevision int                               `json:"purchaseBaseRevision"`
+	PurchasePatch        graphql.Omittable[*PurchasePatch] `json:"purchasePatch,omitempty"`
+	Items                []*UpdatePurchaseItemInput        `json:"items"`
+}
+
+type SavePurchaseItemEditsSuccess struct {
+	Items []*PurchaseItem `json:"items"`
+}
+
+func (SavePurchaseItemEditsSuccess) IsSavePurchaseItemEditsResult() {}
+
+type SavePurchaseItemEditsUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SavePurchaseItemEditsUserError) IsSavePurchaseItemEditsResult() {}
+
+func (SavePurchaseItemEditsUserError) IsMutationError()                {}
+func (this SavePurchaseItemEditsUserError) GetCode() MutationErrorCode { return this.Code }
+func (this SavePurchaseItemEditsUserError) GetMessage() string         { return this.Message }
 
 type SetAllocationRuleInput struct {
 	HouseholdID string                     `json:"householdId"`

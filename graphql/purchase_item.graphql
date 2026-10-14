@@ -2,6 +2,7 @@ type PurchaseItem implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
   amountYen: Long!
+  remainingRefundableAmountYen: Long!
   currency: String!
   quantity: PurchaseQuantity
   printedUnitPrice: PrintedUnitPrice

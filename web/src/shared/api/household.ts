@@ -194,6 +194,7 @@ export type PurchaseItem = {
   id: string;
   name: string;
   amountYen: number;
+  remainingRefundableAmountYen: number;
   revision: number;
   quantityNumerator?: string | null;
   quantityDenominator?: string | null;
@@ -218,6 +219,9 @@ export type Purchase = {
   hasEvidence: boolean;
   sourceKinds: string[];
   paymentAllocations: PurchasePayment[];
+  correctionAmountYen: number;
+  correctionCount: number;
+  remainingRefundableAmountYen: number;
   corrections?: PurchaseCorrection[];
   items: PurchaseItem[];
   totalYen: number;

@@ -153,6 +153,8 @@ export function ImportDocumentReview({
               setReviewTargetIndex={review.setReviewTargetIndex}
               setReceiptPayments={review.setReceiptPayments}
               editItem={review.editItem}
+              itemAllocationsFor={review.itemAllocationsFor}
+              editItemAllocations={review.editReceiptItemAllocations}
               onPurchaseDateChange={(date) => review.editPurchaseDate(document.id, date)}
               onMerchantChange={(merchant) => review.editMerchant(document.id, merchant)}
               suggestedCategoryId={review.suggestedCategoryId}

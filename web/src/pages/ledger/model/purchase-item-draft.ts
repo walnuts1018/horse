@@ -8,6 +8,7 @@ export type LedgerItemDraft = {
   printedUnitPriceUnit: string;
   categoryId: string;
   productVariantId: string;
+  allocations: Array<{ poolId: string; weight: number }>;
   productLearning: "ITEM_ONLY" | "VARIANT_NAME" | "MERCHANT_ALIAS";
   variantName: string;
 };

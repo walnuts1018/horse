@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<497c21207c3d3dea4d8f66ccc15ea085>>
+ * @generated SignedSource<<489f850bd9caf23330c1df436e09741e>>
  * @lightSyntaxTransform
  */
 
@@ -39,6 +39,7 @@ export type PurchaseItemFields$data = {
     readonly numerator: string;
     readonly unit: string;
   } | null | undefined;
+  readonly remainingRefundableAmountYen: any;
   readonly revision: number;
   readonly tags: ReadonlyArray<{
     readonly archived: boolean;
@@ -116,6 +117,13 @@ return {
     (v0/*:: as any*/),
     (v1/*:: as any*/),
     (v2/*:: as any*/),
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "remainingRefundableAmountYen",
+      "storageKey": null
+    },
     {
       "alias": null,
       "args": null,
@@ -256,6 +264,6 @@ return {
 };
 })();
 
-(node as any).hash = "db3018754608d10d9262ab843fbd3ed8";
+(node as any).hash = "6042bd6042494efbacd9b6114f50a764";
 
 export default node;

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
@@ -28,6 +29,10 @@ const (
 )
 
 func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResult, error) {
+	return s.update(ctx, command, nil)
+}
+
+func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pgx.Tx) (UpdateResult, error) {
 	if len(command.ChangedFields) == 0 {
 		return UpdateResult{}, fmt.Errorf("%w: patch must contain a field", ErrBadInput)
 	}
@@ -59,11 +64,15 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResu
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return UpdateResult{}, err
+	tx := sharedTx
+	ownsTransaction := tx == nil
+	if ownsTransaction {
+		tx, err = s.db.Begin(ctx)
+		if err != nil {
+			return UpdateResult{}, err
+		}
+		defer txcleanup.Rollback(ctx, tx)
 	}
-	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 
 	observed, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID)))).One(ctx, executor)
@@ -192,8 +201,10 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResu
 	if err := insertPurchaseUpdateEvent(ctx, executor, purchase.HouseholdID, actorUUID, purchaseUUID, newRevision, command.ChangedFields); err != nil {
 		return UpdateResult{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return UpdateResult{}, err
+	if ownsTransaction {
+		if err := tx.Commit(ctx); err != nil {
+			return UpdateResult{}, err
+		}
 	}
 	return UpdateResult{PurchaseID: command.PurchaseID}, nil
 }

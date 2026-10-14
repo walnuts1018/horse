@@ -251,7 +251,8 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if len(listedPurchase.Items[0].Allocations) != 1 || listedPurchase.Items[0].Allocations[0].PoolID != pool.ID || int64(listedPurchase.Items[0].Allocations[0].AmountYen) != 1200 {
 		t.Fatalf("first purchase allocation relation is incorrect: %#v", listedPurchase.Items[0].Allocations)
 	}
-	if len(listedPurchase.PaymentAllocations) != 1 || listedPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedPurchase.PaymentAllocations[0].AmountYen) != 1200 || len(listedPurchase.CorrectionsConnection.Edges) != 1 {
+	listedCorrections, err := purchaseCorrectionConnection(ctx, db, generatedUUID(listedPurchase.ID), nil, nil)
+	if err != nil || len(listedPurchase.PaymentAllocations) != 1 || listedPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedPurchase.PaymentAllocations[0].AmountYen) != 1200 || len(listedCorrections.Edges) != 1 {
 		t.Fatalf("first purchase relations were not loaded from their own records: %#v", listedPurchase)
 	}
 	listedSecondPurchase := listedByID[secondPurchase.ID]
@@ -267,7 +268,8 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if len(listedSecondPurchase.Items[0].Allocations) != 1 || listedSecondPurchase.Items[0].Allocations[0].PoolID != pool.ID || int64(listedSecondPurchase.Items[0].Allocations[0].AmountYen) != 300 {
 		t.Fatalf("second purchase allocation relation crossed with another purchase: %#v", listedSecondPurchase.Items[0].Allocations)
 	}
-	if len(listedSecondPurchase.PaymentAllocations) != 1 || listedSecondPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedSecondPurchase.PaymentAllocations[0].AmountYen) != 300 || len(listedSecondPurchase.CorrectionsConnection.Edges) != 0 {
+	listedSecondCorrections, err := purchaseCorrectionConnection(ctx, db, generatedUUID(listedSecondPurchase.ID), nil, nil)
+	if err != nil || len(listedSecondPurchase.PaymentAllocations) != 1 || listedSecondPurchase.PaymentAllocations[0].PaymentAccountID != account.ID || int64(listedSecondPurchase.PaymentAllocations[0].AmountYen) != 300 || len(listedSecondCorrections.Edges) != 0 {
 		t.Fatalf("second purchase relations crossed with another purchase: %#v", listedSecondPurchase)
 	}
 	outsiderContext := auth.WithPrincipal(t.Context(), auth.Principal{MemberID: outsider, Subject: "burden-integration:" + outsider, DisplayName: "Outsider"})

@@ -1,0 +1,21 @@
+extend type Mutation {
+  savePurchaseItemEdits(input: SavePurchaseItemEditsInput!): SavePurchaseItemEditsResult!
+}
+
+union SavePurchaseItemEditsResult = SavePurchaseItemEditsSuccess | SavePurchaseItemEditsUserError
+
+type SavePurchaseItemEditsSuccess {
+  items: [PurchaseItem!]!
+}
+
+input SavePurchaseItemEditsInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+  purchaseBaseRevision: Int!
+  purchasePatch: PurchasePatch @goField(omittable: true)
+  items: [UpdatePurchaseItemInput!]!
+}
+
+type SavePurchaseItemEditsUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

@@ -4,6 +4,7 @@ import { Check, X } from "lucide-react";
 
 import type { Household } from "../../../shared/api";
 
+import { EditPurchaseItemAllocations } from "../../../entities/purchase";
 import {
   type DocumentReview,
   type ExtractedItem,
@@ -11,6 +12,7 @@ import {
   type ReviewTarget,
   yen,
 } from "../model/imports";
+import { effectiveReceiptItemAmount } from "../model/use-import-confirmation";
 import { ProductVariantSelect } from "./product-variant-select";
 
 type ReceiptReviewProps = {
@@ -26,13 +28,25 @@ type ReceiptReviewProps = {
   setReviewTargetIndex: Dispatch<SetStateAction<number>>;
   setReceiptPayments: Dispatch<SetStateAction<Record<string, ReceiptPaymentDraft[] | undefined>>>;
   editItem: (documentId: string, index: number, patch: Partial<ExtractedItem>) => void;
+  itemAllocationsFor: (
+    documentId: string,
+    itemKey: string,
+  ) => Array<{
+    poolId: string;
+    weight: number;
+  }>;
+  editItemAllocations: (
+    documentId: string,
+    itemKey: string,
+    allocations: Array<{ poolId: string; weight: number }>,
+  ) => void;
   onPurchaseDateChange: (date: string) => void;
   onMerchantChange: (merchant: string) => void;
   suggestedCategoryId: (item: ExtractedItem) => string;
   selectedCandidates: Record<string, string>;
   setSelectedCandidates: Dispatch<SetStateAction<Record<string, string>>>;
-  manualAmountOverrides: Record<string, boolean>;
-  setManualAmountOverrides: Dispatch<SetStateAction<Record<string, boolean>>>;
+  manualAmountOverrides: Record<string, Record<string, number>>;
+  setManualAmountOverrides: Dispatch<SetStateAction<Record<string, Record<string, number>>>>;
   manualAmountOverrideReasons: Record<string, string | undefined>;
   setManualAmountOverrideReasons: Dispatch<SetStateAction<Record<string, string | undefined>>>;
   pending: boolean;
@@ -52,6 +66,8 @@ export function ReceiptReview({
   setReviewTargetIndex,
   setReceiptPayments,
   editItem,
+  itemAllocationsFor,
+  editItemAllocations,
   onPurchaseDateChange,
   onMerchantChange,
   suggestedCategoryId,
@@ -65,6 +81,13 @@ export function ReceiptReview({
   onConfirm,
 }: ReceiptReviewProps) {
   if (!selectedDocument.result?.receipt?.items?.length) return null;
+  const defaultAllocations =
+    household.defaultAllocation.length > 0
+      ? household.defaultAllocation
+      : household.pools.map((pool) => ({
+          poolId: pool.id,
+          weight: pool.defaultShareWeight || 1,
+        }));
   return (
     <div className="receipt-review">
       {reviewTargets.length > 0 && (
@@ -280,20 +303,42 @@ export function ReceiptReview({
                   })
                 }
               />
+              <EditPurchaseItemAllocations
+                allocations={itemAllocationsFor(selectedDocument.id, item.key ?? `item-${index}`)}
+                defaultAllocations={defaultAllocations}
+                pools={household.pools}
+                onChange={(allocations) =>
+                  editItemAllocations(selectedDocument.id, item.key ?? `item-${index}`, allocations)
+                }
+              />
             </div>
             <label>
               ¥
               <input
                 inputMode="numeric"
-                value={String(item.grossAmount)}
+                value={String(
+                  effectiveReceiptItemAmount(
+                    item,
+                    index,
+                    selectedDocument.result?.candidates?.find(
+                      (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
+                    )?.amounts,
+                    manualAmountOverrides[selectedDocument.id],
+                  ),
+                )}
                 onChange={(event) => {
                   markUnsaved();
+                  const amount = Number(event.target.value.replace(/\D/g, ""));
+                  const itemKey = item.key ?? `item-${index}`;
                   setManualAmountOverrides((current) => ({
                     ...current,
-                    [selectedDocument.id]: true,
+                    [selectedDocument.id]: {
+                      ...current[selectedDocument.id],
+                      [itemKey]: amount,
+                    },
                   }));
                   editItem(selectedDocument.id, index, {
-                    grossAmount: Number(event.target.value.replace(/\D/g, "")),
+                    grossAmount: amount,
                   });
                 }}
               />
@@ -421,7 +466,7 @@ export function ReceiptReview({
             <small>品目の印字額は保持されます。選んだ計算額を帳簿に使います。</small>
           </div>
         )}
-        {(manualAmountOverrides[selectedDocument.id] ||
+        {(Object.keys(manualAmountOverrides[selectedDocument.id] ?? {}).length > 0 ||
           (selectedCandidates[selectedDocument.id]
             ? !selectedDocument.result.candidates?.find(
                 (candidate) => candidate.id === selectedCandidates[selectedDocument.id],

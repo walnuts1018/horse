@@ -1434,7 +1434,11 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	}); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("item refund after a full purchase refund should exceed the remaining purchase amount: %v", err)
 	}
-	correctionOccurredAt, err := time.Parse(time.RFC3339Nano, string(correctedPurchase.CorrectionsConnection.Edges[0].Node.GetOccurredAt()))
+	correctionConnection, err := purchaseCorrectionConnection(ctx, db, generatedUUID(correctedPurchase.ID), nil, nil)
+	if err != nil || len(correctionConnection.Edges) != 1 {
+		t.Fatalf("purchase correction history is missing: connection=%#v error=%v", correctionConnection, err)
+	}
+	correctionOccurredAt, err := time.Parse(time.RFC3339Nano, string(correctionConnection.Edges[0].Node.GetOccurredAt()))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
@@ -39,6 +40,10 @@ const (
 )
 
 func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (UpdateResult, error) {
+	return s.updateItem(ctx, command, nil)
+}
+
+func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sharedTx pgx.Tx) (UpdateResult, error) {
 	if len(command.ChangedFields) == 0 {
 		return UpdateResult{}, fmt.Errorf("%w: patch must contain a field", ErrBadInput)
 	}
@@ -64,11 +69,15 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (Up
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return UpdateResult{}, err
+	tx := sharedTx
+	ownsTransaction := tx == nil
+	if ownsTransaction {
+		tx, err = s.db.Begin(ctx)
+		if err != nil {
+			return UpdateResult{}, err
+		}
+		defer txcleanup.Rollback(ctx, tx)
 	}
-	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	observedItem, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)))).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -385,8 +394,10 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (Up
 			return UpdateResult{}, err
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return UpdateResult{}, err
+	if ownsTransaction {
+		if err := tx.Commit(ctx); err != nil {
+			return UpdateResult{}, err
+		}
 	}
 	return UpdateResult{PurchaseID: purchase.ID.String()}, nil
 }

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8d5982f2a74081b7ec07fb343b7668f8>>
+ * @generated SignedSource<<dd4c36473b2332578d531ad2e8c50678>>
  * @lightSyntaxTransform
  */
 
@@ -85,6 +85,7 @@ export type UpdatePurchaseItemMutation$data = {
         readonly numerator: string;
         readonly unit: string;
       } | null | undefined;
+      readonly remainingRefundableAmountYen: any;
       readonly revision: number;
       readonly tags: ReadonlyArray<{
         readonly archived: boolean;
@@ -197,6 +198,13 @@ v7 = [
               (v1/*:: as any*/),
               (v2/*:: as any*/),
               (v3/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "remainingRefundableAmountYen",
+                "storageKey": null
+              },
               {
                 "alias": null,
                 "args": null,
@@ -381,12 +389,12 @@ return {
     "selections": (v7/*:: as any*/)
   },
   "params": {
-    "cacheID": "3c09af34ce32e7f67076678ed88c413e",
+    "cacheID": "74dae0b353db4420efa51091713b2759",
     "id": null,
     "metadata": {},
     "name": "UpdatePurchaseItemMutation",
     "operationKind": "mutation",
-    "text": "mutation UpdatePurchaseItemMutation(\n  $input: UpdatePurchaseItemInput!\n) {\n  updatePurchaseItem(input: $input) {\n    __typename\n    ... on UpdatePurchaseItemSuccess {\n      result {\n        id\n        name\n        amountYen\n        currency\n        quantity {\n          numerator\n          denominator\n          unit\n        }\n        printedUnitPrice {\n          amountYen\n          basis {\n            numerator\n            denominator\n            unit\n          }\n        }\n        effectiveUnitPrice {\n          numeratorYen\n          denominator\n        }\n        revision\n        categoryId\n        productVariantId\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n        tags {\n          id\n          householdId\n          name\n          archived\n          revision\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation UpdatePurchaseItemMutation(\n  $input: UpdatePurchaseItemInput!\n) {\n  updatePurchaseItem(input: $input) {\n    __typename\n    ... on UpdatePurchaseItemSuccess {\n      result {\n        id\n        name\n        amountYen\n        remainingRefundableAmountYen\n        currency\n        quantity {\n          numerator\n          denominator\n          unit\n        }\n        printedUnitPrice {\n          amountYen\n          basis {\n            numerator\n            denominator\n            unit\n          }\n        }\n        effectiveUnitPrice {\n          numeratorYen\n          denominator\n        }\n        revision\n        categoryId\n        productVariantId\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n        tags {\n          id\n          householdId\n          name\n          archived\n          revision\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

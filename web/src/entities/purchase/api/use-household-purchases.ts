@@ -13,7 +13,12 @@ import type {
   PurchaseAmountTarget,
   PurchasesQuery,
 } from "..";
-import type { Purchase, PurchaseListFragment$data, PurchaseOrigin } from "../../../shared/api";
+import type {
+  Purchase,
+  PurchaseCorrection,
+  PurchaseListFragment$data,
+  PurchaseOrigin,
+} from "../../../shared/api";
 
 import { getRelayEnvironment } from "../../../shared/api";
 import { isOneOf } from "../../../shared/lib";
@@ -43,7 +48,15 @@ type Options = {
 };
 
 type RelayPurchaseCorrection =
-  PurchaseListFragment$data["purchases"]["edges"][number]["node"]["corrections"]["edges"][number]["node"];
+  PurchaseCorrectionsPaginationQuery["response"]["purchaseCorrections"]["edges"][number]["node"];
+
+type PurchaseCorrectionPageState = {
+  corrections: PurchaseCorrection[];
+  after: string | null;
+  hasNextPage: boolean;
+  loading: boolean;
+  error: string;
+};
 
 /** Relayが返す訂正履歴を画面で使うPurchaseCorrectionへ変換する。 */
 function toPurchaseCorrection(correction: RelayPurchaseCorrection) {
@@ -121,73 +134,68 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   useEffect(() => {
     activeRequestKey.current = requestKey;
   }, [requestKey]);
-  const [completeCorrections, setCompleteCorrections] = useState<
-    Record<string, NonNullable<Purchase["corrections"]> | undefined>
-  >({});
+  const [correctionPages, setCorrectionPages] = useState<Record<string, PurchaseCorrectionPageState>>({});
+  const loadingCorrectionPages = useRef(new Set<string>());
   const purchases: Purchase[] = data.purchases.edges.map(({ node }) => {
-    const corrections =
-      completeCorrections[`${node.id}:${node.revision}`] ??
-      node.corrections.edges.map(({ node: correction }) => toPurchaseCorrection(correction));
     return {
       ...node,
       origin: isOneOf(node.origin, ["AI", "MANUAL", "UNKNOWN"]) ? node.origin : "UNKNOWN",
       sourceKinds: [...node.sourceKinds],
       paymentAllocations: [...node.paymentAllocations],
       status: node.status,
-      corrections,
+      corrections: correctionPages[node.id]?.corrections ?? [],
       items: node.items.map(mapPurchaseItem),
     };
   });
-  useEffect(() => {
-    let cancelled = false;
-    const loadCorrections = async () => {
-      const purchasesMissingCorrections = data.purchases.edges.filter(
-        ({ node }) =>
-          node.corrections.pageInfo.hasNextPage &&
-          completeCorrections[`${node.id}:${node.revision}`] === undefined,
-      );
-      if (purchasesMissingCorrections.length === 0) return;
-      setMoreErrorState(null);
-      const loadedByPurchase: Record<string, NonNullable<Purchase["corrections"]>> = {};
-      try {
-        await Promise.all(
-          purchasesMissingCorrections.map(async ({ node }) => {
-            const corrections = node.corrections.edges.map(({ node: correction }) => correction);
-            let after = node.corrections.pageInfo.endCursor;
-            let hasNextPage = node.corrections.pageInfo.hasNextPage;
-            while (hasNextPage && after) {
-              const result = await fetchQuery<PurchaseCorrectionsPaginationQuery>(
-                getRelayEnvironment(),
-                purchaseCorrectionsPaginationQuery,
-                { purchaseId: node.id, first: 100, after },
-                { fetchPolicy: "network-only" },
-              ).toPromise();
-              if (!result) throw new Error("購入の訂正履歴を取得できませんでした");
-              const connection = result.purchaseCorrections;
-              corrections.push(...connection.edges.map(({ node: correction }) => correction));
-              after = connection.pageInfo.endCursor;
-              hasNextPage = connection.pageInfo.hasNextPage;
-            }
-            loadedByPurchase[`${node.id}:${node.revision}`] = corrections.map(toPurchaseCorrection);
-          }),
-        );
-        if (!cancelled) setCompleteCorrections((current) => ({ ...current, ...loadedByPurchase }));
-      } catch (error) {
-        if (!cancelled)
-          setMoreErrorState({
-            requestKey,
-            message:
-              error instanceof Error ? error.message : "購入の訂正履歴を取得できませんでした",
-          });
-      }
-    };
-    void loadCorrections();
-    return () => {
-      cancelled = true;
-    };
-  }, [completeCorrections, data.purchases.edges, requestKey]);
+  const loadCorrections = useCallback(async (purchaseId: string, after?: string) => {
+    const requestId = `${purchaseId}:${after ?? "first"}`;
+    if (loadingCorrectionPages.current.has(requestId)) return;
+    loadingCorrectionPages.current.add(requestId);
+    setCorrectionPages((current) => ({
+      ...current,
+      [purchaseId]: { ...current[purchaseId], loading: true, error: "" },
+    }));
+    try {
+      const result = await fetchQuery<PurchaseCorrectionsPaginationQuery>(
+        getRelayEnvironment(),
+        purchaseCorrectionsPaginationQuery,
+        { purchaseId, first: 50, after: after ?? null },
+        { fetchPolicy: "network-only" },
+      ).toPromise();
+      if (!result) throw new Error("購入の訂正履歴を取得できませんでした");
+      const connection = result.purchaseCorrections;
+      const corrections = connection.edges.map(({ node }) => toPurchaseCorrection(node));
+      setCorrectionPages((current) => {
+        const previous = current[purchaseId];
+        return {
+          ...current,
+          [purchaseId]: {
+            corrections: after ? [...(previous?.corrections ?? []), ...corrections] : corrections,
+            after: connection.pageInfo.endCursor ?? null,
+            hasNextPage: connection.pageInfo.hasNextPage,
+            loading: false,
+            error: "",
+          },
+        };
+      });
+    } catch (error) {
+      setCorrectionPages((current) => ({
+        ...current,
+        [purchaseId]: {
+          corrections: current[purchaseId]?.corrections ?? [],
+          after: current[purchaseId]?.after ?? null,
+          hasNextPage: current[purchaseId]?.hasNextPage ?? false,
+          loading: false,
+          error: error instanceof Error ? error.message : "購入の訂正履歴を取得できませんでした",
+        },
+      }));
+    } finally {
+      loadingCorrectionPages.current.delete(requestId);
+    }
+  }, []);
   const refresh = useCallback(() => {
     setMoreErrorState(null);
+    setCorrectionPages({});
     refetch(variables, { fetchPolicy: "network-only" });
   }, [refetch, variables]);
   const loadMore = useCallback(() => {
@@ -226,6 +234,8 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
     moreError,
     hasNextPage: hasNext,
     totalCount: data.purchases.totalCount,
+    correctionPages,
+    loadCorrections,
     loadMore,
     refresh,
   };

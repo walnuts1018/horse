@@ -48,7 +48,7 @@ export function PurchaseCorrection({
   const [refundAutoTotal, setRefundAutoTotal] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const remaining = getRemainingRefundAmount(purchase, item);
+  const remaining = getRemainingRefundAmount(item);
   const refundPaymentTotal = refundPayments.reduce(
     (sum, payment) =>
       sum +

@@ -44,6 +44,18 @@ import {
   statementSourceReference,
 } from "./imports";
 
+type ReceiptItemAllocation = { poolId: string; weight: number };
+
+export function effectiveReceiptItemAmount(
+  item: ExtractedItem,
+  index: number,
+  candidateAmounts: number[] | undefined,
+  manualAmountOverrides: Record<string, number> | undefined,
+) {
+  const itemKey = item.key ?? `item-${index}`;
+  return manualAmountOverrides?.[itemKey] ?? candidateAmounts?.[index] ?? item.grossAmount;
+}
+
 export function useImportConfirmation({
   household,
   selectedDocument,
@@ -83,12 +95,17 @@ export function useImportConfirmation({
     documentId: string;
     index: number;
   }>({ documentId: "", index: 0 });
-  const [manualAmountOverrides, setManualAmountOverrides] = useState<Record<string, boolean>>({});
+  const [manualAmountOverrides, setManualAmountOverrides] = useState<
+    Record<string, Record<string, number>>
+  >({});
   const [manualAmountOverrideReasons, setManualAmountOverrideReasons] = useState<
     Record<string, string | undefined>
   >({});
   const [receiptPayments, setReceiptPayments] = useState<
     Record<string, ReceiptPaymentDraft[] | undefined>
+  >({});
+  const [receiptItemAllocations, setReceiptItemAllocations] = useState<
+    Record<string, Record<string, ReceiptItemAllocation[]>>
   >({});
   const [manualPurchaseDates, setManualPurchaseDates] = useState<Record<string, string>>({});
   const selectedDocumentId = selectedDocument?.id ?? "";
@@ -121,10 +138,15 @@ export function useImportConfirmation({
   const receiptItemAmount = (document: DocumentReview, item: ExtractedItem, index: number) => {
     const candidateID = selectedCandidates[document.id] ?? "";
     const candidate = document.result?.candidates?.find((entry) => entry.id === candidateID);
-    return manualAmountOverrides[document.id]
-      ? item.grossAmount
-      : (candidate?.amounts[index] ?? item.grossAmount);
+    return effectiveReceiptItemAmount(
+      item,
+      index,
+      candidate?.amounts,
+      manualAmountOverrides[document.id],
+    );
   };
+  const hasManualAmountOverrides = (documentId: string) =>
+    Object.keys(manualAmountOverrides[documentId] ?? {}).length > 0;
   const receiptTotal = (document: DocumentReview) =>
     (document.result?.receipt?.items ?? []).reduce(
       (total, item, index) => total + receiptItemAmount(document, item, index),
@@ -187,7 +209,7 @@ export function useImportConfirmation({
             0,
           );
           const needsAmountReview =
-            manualAmountOverrides[selectedDocument.id] ||
+            hasManualAmountOverrides(selectedDocument.id) ||
             needsCandidateSelection ||
             (selectedCandidate
               ? !selectedCandidate.consistent
@@ -261,6 +283,19 @@ export function useImportConfirmation({
     );
   };
 
+  const editReceiptItemAllocations = (
+    documentId: string,
+    itemKey: string,
+    allocations: ReceiptItemAllocation[],
+  ) => {
+    editedReceiptDocuments.current.add(documentId);
+    markUnsaved();
+    setReceiptItemAllocations((current) => ({
+      ...current,
+      [documentId]: { ...current[documentId], [itemKey]: allocations },
+    }));
+  };
+
   const editMerchant = (documentId: string, merchant: string) => {
     editedReceiptDocuments.current.add(documentId);
     markUnsaved();
@@ -297,7 +332,7 @@ export function useImportConfirmation({
     const candidate = document.result?.candidates?.find((item) => item.id === candidateID);
     const overrideReason = manualAmountOverrideReasons[document.id]?.trim() ?? "";
     const requiresOverrideReason =
-      manualAmountOverrides[document.id] ||
+      hasManualAmountOverrides(document.id) ||
       (candidate ? !candidate.consistent : !document.result?.balanced);
     const paymentDraft = paymentDraftFor(document);
     const totalYen = items.reduce(
@@ -324,21 +359,24 @@ export function useImportConfirmation({
     ) {
       throw new Error("決済内訳と購入額を一致させてください");
     }
-    const purchaseItems = items.map((item, index) => ({
-      name: item.name,
-      amountYen: receiptItemAmount(document, item, index),
-      quantityNumerator: item.quantityNumerator,
-      quantityDenominator: item.quantityDenominator,
-      quantityUnit: item.quantityUnit,
-      printedUnitPriceYen: item.printedUnitPriceYen,
-      printedUnitPriceQuantityNumerator: item.printedUnitPriceQuantityNumerator,
-      printedUnitPriceQuantityDenominator: item.printedUnitPriceQuantityDenominator,
-      printedUnitPriceUnit: item.printedUnitPriceUnit,
-      categoryId:
-        item.categoryId != null ? item.categoryId || null : suggestedCategoryId(item) || null,
-      productVariantId: item.productVariantId || null,
-      allocations: null,
-    }));
+    const purchaseItems = items.map((item, index) => {
+      const allocations = receiptItemAllocations[document.id]?.[item.key ?? `item-${index}`] ?? [];
+      return {
+        name: item.name,
+        amountYen: receiptItemAmount(document, item, index),
+        quantityNumerator: item.quantityNumerator,
+        quantityDenominator: item.quantityDenominator,
+        quantityUnit: item.quantityUnit,
+        printedUnitPriceYen: item.printedUnitPriceYen,
+        printedUnitPriceQuantityNumerator: item.printedUnitPriceQuantityNumerator,
+        printedUnitPriceQuantityDenominator: item.printedUnitPriceQuantityDenominator,
+        printedUnitPriceUnit: item.printedUnitPriceUnit,
+        categoryId:
+          item.categoryId != null ? item.categoryId || null : suggestedCategoryId(item) || null,
+        productVariantId: item.productVariantId || null,
+        allocations: allocations.length ? allocations : null,
+      };
+    });
     await createAndPostPurchase({
       idempotencyKey: await importIdempotencyKey(document.id, "receipt"),
       householdId: household.id,
@@ -675,6 +713,9 @@ export function useImportConfirmation({
     setManualAmountOverrideReasons,
     receiptPayments,
     setReceiptPayments,
+    itemAllocationsFor: (documentId: string, itemKey: string) =>
+      receiptItemAllocations[documentId]?.[itemKey] ?? [],
+    editReceiptItemAllocations,
     purchaseDateFor,
     editPurchaseDate,
     suggestedCategoryId,

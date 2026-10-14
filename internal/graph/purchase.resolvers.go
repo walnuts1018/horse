@@ -8,6 +8,7 @@ package graph
 import (
 	"context"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
@@ -23,7 +24,14 @@ func (r *purchaseResolver) HouseholdID(ctx context.Context, obj *model.Purchase)
 
 // Corrections is the resolver for the corrections field.
 func (r *purchaseResolver) Corrections(ctx context.Context, obj *model.Purchase, first *int, after *string) (*model.PurchaseCorrectionConnection, error) {
-	return paginatePurchaseCorrections(obj.CorrectionsConnection.Edges, first, after)
+	if _, err := requireMember(ctx, r.DB, obj.HouseholdID); err != nil {
+		return nil, err
+	}
+	purchaseID, err := gofrsuuid.FromString(obj.ID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	return purchaseCorrectionConnection(ctx, r.DB, purchaseID, first, after)
 }
 
 // Purchases is the resolver for the purchases field.

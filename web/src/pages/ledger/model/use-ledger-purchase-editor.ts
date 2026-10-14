@@ -6,8 +6,7 @@ import { readProductCatalog } from "../../../entities/product";
 import {
   mapUpdatePurchaseItemInput,
   usePostPurchaseMutation,
-  useUpdatePurchaseMutation,
-  useUpdatePurchaseItem,
+  useSavePurchaseItemEdits,
 } from "../../../entities/purchase";
 import {
   ApiError,
@@ -18,7 +17,7 @@ import {
   type PurchaseItem,
   type PurchasePaymentInput,
 } from "../../../shared/api";
-import { errorMessage, formatQuantity, isOneOf, parseQuantity } from "../../../shared/lib";
+import { errorMessage, formatQuantity, parseQuantity } from "../../../shared/lib";
 import { readLedgerPurchase } from "../api/read-ledger-purchase";
 import { createPurchaseDraft, type PurchaseDraft } from "./purchase-draft";
 
@@ -29,13 +28,6 @@ type PurchaseConflict = {
   retry: () => Promise<void>;
   discard: () => Promise<void>;
 };
-
-const yen = (amount = 0) =>
-  new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 const sameNullableString = (left?: string | null, right?: string | null) =>
   (left ?? "") === (right ?? "");
@@ -48,8 +40,7 @@ export function useLedgerPurchaseEditor({
   refresh: () => void | Promise<void>;
 }) {
   const { mutate: mutatePostPurchase } = usePostPurchaseMutation();
-  const mutateUpdatePurchaseItem = useUpdatePurchaseItem();
-  const { mutate: mutateUpdatePurchase } = useUpdatePurchaseMutation();
+  const mutateSavePurchaseItemEdits = useSavePurchaseItemEdits();
   const [editing, setEditing] = useState<string | null>(null);
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
   const [itemDrafts, setItemDrafts] = useState<Record<string, LedgerItemDraft | undefined>>({});
@@ -114,6 +105,7 @@ export function useLedgerPurchaseEditor({
             printedUnitPriceUnit: item.printedUnitPriceUnit ?? "",
             categoryId: item.categoryId ?? "",
             productVariantId: item.productVariantId ?? "",
+            allocations: item.allocations.map(({ poolId, weight }) => ({ poolId, weight })),
             productLearning: "ITEM_ONLY",
             variantName: "",
           },
@@ -128,128 +120,126 @@ export function useLedgerPurchaseEditor({
     setCorrectionTarget({ purchaseId: purchase.id, itemId: item.id });
   };
 
-  const saveItem = async (purchase: Purchase, item: PurchaseItem) => {
-    const draft = itemDrafts[item.id];
-    if (!draft || !draft.name.trim() || Number(draft.amountYen) < 1) return;
-    let quantity;
-    let printedBasis;
-    try {
-      quantity = parseQuantity(draft.quantity, draft.quantityUnit);
-      printedBasis = parseQuantity(draft.printedBasisQuantity, draft.printedUnitPriceUnit);
-    } catch (reason) {
-      setEditError(errorMessage(reason));
-      return;
-    }
-    const printedPriceText = draft.printedUnitPriceYen.trim();
-    const hasPrintedPrice = Boolean(
-      printedPriceText || draft.printedBasisQuantity.trim() || draft.printedUnitPriceUnit.trim(),
-    );
-    const printedPrice = printedPriceText ? Number(printedPriceText.replace(/\D/g, "")) : null;
-    if (
-      hasPrintedPrice &&
-      (!printedBasis || printedPrice === null || !Number.isSafeInteger(printedPrice))
-    ) {
-      setEditError("印字単価、基準量、単位を確認してください");
-      return;
-    }
-    const patch = {
-      name: draft.name.trim(),
-      amountYen: Number(draft.amountYen),
-      categoryId: draft.categoryId || null,
-      productVariantId: draft.productVariantId || null,
-    };
-    const baseChangedFields: Array<keyof typeof patch> = [];
-    if (patch.name !== item.name) baseChangedFields.push("name");
-    if (patch.amountYen !== item.amountYen) baseChangedFields.push("amountYen");
-    if (!sameNullableString(patch.categoryId, item.categoryId))
-      baseChangedFields.push("categoryId");
-    if (!sameNullableString(patch.productVariantId, item.productVariantId))
-      baseChangedFields.push("productVariantId");
-    const quantityChanged =
-      !sameNullableString(quantity?.numerator, item.quantityNumerator) ||
-      !sameNullableString(quantity?.denominator, item.quantityDenominator) ||
-      !sameNullableString(quantity?.unit, item.quantityUnit);
-    const printedPriceChanged =
-      (printedPrice ?? null) !== (item.printedUnitPriceYen ?? null) ||
-      !sameNullableString(printedBasis?.numerator, item.printedUnitPriceQuantityNumerator) ||
-      !sameNullableString(printedBasis?.denominator, item.printedUnitPriceQuantityDenominator) ||
-      !sameNullableString(printedBasis?.unit, item.printedUnitPriceUnit);
-    const changedFields: string[] = [...baseChangedFields];
-    if (quantityChanged) changedFields.push("quantity");
-    if (printedPriceChanged) changedFields.push("printedUnitPrice");
-    if (!changedFields.length) return;
-    const changedPatch = Object.fromEntries(
-      baseChangedFields.map((field) => [field, patch[field]]),
-    );
-    const inputForRevision = (baseRevision: number) =>
-      mapUpdatePurchaseItemInput({
-        itemId: item.id,
-        baseRevision,
-        ...changedPatch,
-        ...(quantityChanged
-          ? {
-              quantityNumerator: quantity?.numerator ?? null,
-              quantityDenominator: quantity?.denominator ?? null,
-              quantityUnit: quantity?.unit ?? null,
-            }
-          : {}),
-        ...(printedPriceChanged
-          ? {
-              printedUnitPriceYen: hasPrintedPrice ? printedPrice : null,
-              printedUnitPriceQuantityNumerator: printedBasis?.numerator ?? null,
-              printedUnitPriceQuantityDenominator: printedBasis?.denominator ?? null,
-              printedUnitPriceUnit: printedBasis?.unit ?? null,
-            }
-          : {}),
-        ...(baseChangedFields.includes("productVariantId") && patch.productVariantId
-          ? {
-              productLearning:
-                draft.productLearning === "VARIANT_NAME"
-                  ? { variantName: draft.variantName.trim() }
-                  : draft.productLearning === "MERCHANT_ALIAS"
-                    ? { merchantAlias: true }
-                    : { itemOnly: true },
-            }
-          : {}),
-      });
-    try {
-      await mutateUpdatePurchaseItem({ input: inputForRevision(item.revision) });
-      await refresh();
-      setEditError("");
-    } catch (reason) {
+  const buildItemEdits = (purchase: Purchase) => {
+    const inputs = [];
+    const defaultAllocations =
+      household.defaultAllocation.length > 0
+        ? household.defaultAllocation.map(({ poolId, weight }) => ({ poolId, weight }))
+        : household.pools.map((pool) => ({
+            poolId: pool.id,
+            weight: pool.defaultShareWeight || 1,
+          }));
+    for (const item of purchase.items) {
+      const draft = itemDrafts[item.id];
+      if (!draft) continue;
+      const amountYen = Number(draft.amountYen);
+      const amountChanged = amountYen !== item.amountYen;
       if (
-        (reason instanceof ApiError && reason.code === "CONFLICT") ||
-        errorMessage(reason).toLowerCase().includes("conflict")
+        !draft.name.trim() ||
+        (amountChanged &&
+          (!Number.isSafeInteger(amountYen) || amountYen < 0 || amountYen > 1_000_000_000_000))
       ) {
-        const latest = await latestPurchase(purchase.id);
-        const current = latest?.items.find((row) => row.id === item.id);
-        await refresh();
-        if (current)
-          setConflict({
-            label: `${item.name}の品目`,
-            localValue: changedFields
-              .map(
-                (field) =>
-                  `${field}: ${String(
-                    isOneOf(field, ["name", "amountYen", "categoryId", "productVariantId"])
-                      ? patch[field]
-                      : "未分類",
-                  )}`,
-              )
-              .join("、"),
-            serverValue: `${current.name} · ${yen(current.amountYen)}`,
-            retry: async () => {
-              await mutateUpdatePurchaseItem({ input: inputForRevision(current.revision) });
-              await refresh();
-              setConflict(null);
-            },
-            discard: async () => {
-              await refresh();
-              setConflict(null);
-            },
-          });
-      } else setEditError(errorMessage(reason));
+        setEditError("品名と金額を確認してください");
+        return null;
+      }
+      let quantity;
+      let printedBasis;
+      try {
+        quantity = parseQuantity(draft.quantity, draft.quantityUnit);
+        printedBasis = parseQuantity(draft.printedBasisQuantity, draft.printedUnitPriceUnit);
+      } catch (reason) {
+        setEditError(errorMessage(reason));
+        return null;
+      }
+      const printedPriceText = draft.printedUnitPriceYen.trim();
+      const hasPrintedPrice = Boolean(
+        printedPriceText || draft.printedBasisQuantity.trim() || draft.printedUnitPriceUnit.trim(),
+      );
+      const printedPrice = printedPriceText ? Number(printedPriceText.replace(/\D/g, "")) : null;
+      if (
+        hasPrintedPrice &&
+        (!printedBasis || printedPrice === null || !Number.isSafeInteger(printedPrice))
+      ) {
+        setEditError("印字単価、基準量、単位を確認してください");
+        return null;
+      }
+      const patch = {
+        name: draft.name.trim(),
+        amountYen,
+        categoryId: draft.categoryId || null,
+        productVariantId: draft.productVariantId || null,
+      };
+      const baseChangedFields: Array<keyof typeof patch> = [];
+      if (patch.name !== item.name) baseChangedFields.push("name");
+      if (patch.amountYen !== item.amountYen) baseChangedFields.push("amountYen");
+      if (!sameNullableString(patch.categoryId, item.categoryId))
+        baseChangedFields.push("categoryId");
+      if (!sameNullableString(patch.productVariantId, item.productVariantId))
+        baseChangedFields.push("productVariantId");
+      const quantityChanged =
+        !sameNullableString(quantity?.numerator, item.quantityNumerator) ||
+        !sameNullableString(quantity?.denominator, item.quantityDenominator) ||
+        !sameNullableString(quantity?.unit, item.quantityUnit);
+      const printedPriceChanged =
+        (printedPrice ?? null) !== (item.printedUnitPriceYen ?? null) ||
+        !sameNullableString(printedBasis?.numerator, item.printedUnitPriceQuantityNumerator) ||
+        !sameNullableString(printedBasis?.denominator, item.printedUnitPriceQuantityDenominator) ||
+        !sameNullableString(printedBasis?.unit, item.printedUnitPriceUnit);
+      const allocations = draft.allocations.length ? draft.allocations : defaultAllocations;
+      const currentAllocations = item.allocations.map(({ poolId, weight }) => ({ poolId, weight }));
+      const allocationsChanged =
+        allocations.length !== currentAllocations.length ||
+        allocations.some((allocation) =>
+          currentAllocations.every(
+            (current) =>
+              current.poolId !== allocation.poolId || current.weight !== allocation.weight,
+          ),
+        );
+      if (
+        !baseChangedFields.length &&
+        !quantityChanged &&
+        !printedPriceChanged &&
+        !allocationsChanged
+      )
+        continue;
+      const changedPatch = Object.fromEntries(
+        baseChangedFields.map((field) => [field, patch[field]]),
+      );
+      inputs.push(
+        mapUpdatePurchaseItemInput({
+          itemId: item.id,
+          baseRevision: item.revision,
+          ...changedPatch,
+          ...(quantityChanged
+            ? {
+                quantityNumerator: quantity?.numerator ?? null,
+                quantityDenominator: quantity?.denominator ?? null,
+                quantityUnit: quantity?.unit ?? null,
+              }
+            : {}),
+          ...(printedPriceChanged
+            ? {
+                printedUnitPriceYen: hasPrintedPrice ? printedPrice : null,
+                printedUnitPriceQuantityNumerator: printedBasis?.numerator ?? null,
+                printedUnitPriceQuantityDenominator: printedBasis?.denominator ?? null,
+                printedUnitPriceUnit: printedBasis?.unit ?? null,
+              }
+            : {}),
+          ...(allocationsChanged ? { allocations } : {}),
+          ...(baseChangedFields.includes("productVariantId") && patch.productVariantId
+            ? {
+                productLearning:
+                  draft.productLearning === "VARIANT_NAME"
+                    ? { variantName: draft.variantName.trim() }
+                    : draft.productLearning === "MERCHANT_ALIAS"
+                      ? { merchantAlias: true }
+                      : { itemOnly: true },
+              }
+            : {}),
+        }),
+      );
     }
+    return inputs;
   };
 
   const savePurchase = async (purchase: Purchase) => {
@@ -259,6 +249,10 @@ export function useLedgerPurchaseEditor({
         paymentAccountId: payment.paymentAccountId,
         amountYen: Number(payment.amountYen),
       }),
+    );
+    const totalYen = purchase.items.reduce(
+      (total, item) => total + Number(itemDrafts[item.id]?.amountYen ?? item.amountYen),
+      0,
     );
     const currentAllocations = purchase.paymentAllocations.map((payment) => ({
       paymentAccountId: payment.paymentAccountId,
@@ -274,8 +268,7 @@ export function useLedgerPurchaseEditor({
           !Number.isSafeInteger(payment.amountYen) ||
           payment.amountYen < 1,
       ) ||
-        paymentAllocations.reduce((total, payment) => total + payment.amountYen, 0) !==
-          purchase.totalYen)
+        paymentAllocations.reduce((total, payment) => total + payment.amountYen, 0) !== totalYen)
     ) {
       setEditError("決済元と金額を確認してください");
       return;
@@ -285,19 +278,29 @@ export function useLedgerPurchaseEditor({
       occurredAt: new Date(purchaseDraft.occurredAt).toISOString(),
       paymentAllocations,
     };
-    const changedFields: Array<keyof typeof patch> = [];
-    if (patch.merchant !== purchase.merchant) changedFields.push("merchant");
-    if (Date.parse(patch.occurredAt) !== Date.parse(purchase.occurredAt))
-      changedFields.push("occurredAt");
-    if (paymentAllocationsChanged) changedFields.push("paymentAllocations");
-    if (!changedFields.length) return;
-    const changedPatch = Object.fromEntries(changedFields.map((field) => [field, patch[field]]));
+    const purchasePatch = {
+      ...(patch.merchant !== purchase.merchant ? { merchant: patch.merchant } : {}),
+      ...(Date.parse(patch.occurredAt) !== Date.parse(purchase.occurredAt)
+        ? { occurredAt: patch.occurredAt }
+        : {}),
+      ...(paymentAllocationsChanged ? { paymentAllocations } : {}),
+    };
+    const items = buildItemEdits(purchase);
+    if (!items) return;
+    const hasPurchaseChanges = Object.keys(purchasePatch).length > 0;
+    if (!items.length && !hasPurchaseChanges) {
+      setEditing(null);
+      setConflict(null);
+      setEditError("");
+      return;
+    }
     try {
-      await mutateUpdatePurchase({
+      await mutateSavePurchaseItemEdits({
         input: {
           purchaseId: purchase.id,
-          baseRevision: purchase.revision,
-          patch: changedPatch,
+          purchaseBaseRevision: purchase.revision,
+          ...(hasPurchaseChanges ? { purchasePatch } : {}),
+          items,
         },
       });
       await refresh();
@@ -313,19 +316,28 @@ export function useLedgerPurchaseEditor({
         await refresh();
         if (latest)
           setConflict({
-            label: "買い物の情報",
+            label: "買い物と品目",
             localValue: `${patch.merchant} · ${new Date(patch.occurredAt).toLocaleString("ja-JP")}`,
             serverValue: `${latest.merchant} · ${new Date(latest.occurredAt).toLocaleString("ja-JP")}`,
             retry: async () => {
-              await mutateUpdatePurchase({
+              const latestItemRevisions = new Map(
+                latest.items.map((item) => [item.id, item.revision]),
+              );
+              await mutateSavePurchaseItemEdits({
                 input: {
                   purchaseId: latest.id,
-                  baseRevision: latest.revision,
-                  patch: changedPatch,
+                  purchaseBaseRevision: latest.revision,
+                  ...(hasPurchaseChanges ? { purchasePatch } : {}),
+                  items: items.map((item) =>
+                    Object.assign({}, item, {
+                      baseRevision: latestItemRevisions.get(item.itemId) ?? item.baseRevision,
+                    }),
+                  ),
                 },
               });
               await refresh();
               setConflict(null);
+              setEditing(null);
             },
             discard: async () => {
               await refresh();
@@ -347,7 +359,6 @@ export function useLedgerPurchaseEditor({
     postDraftPurchase,
     postingPurchase,
     purchaseDraft,
-    saveItem,
     savePurchase,
     setConflict,
     setCorrectionTarget,

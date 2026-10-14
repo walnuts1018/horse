@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<fb70b3b86418643012efe88f31504d25>>
+ * @generated SignedSource<<d0765aaebb79cf40283227e159f4102e>>
  * @lightSyntaxTransform
  */
 
@@ -91,6 +91,7 @@ export type CreatePurchaseMutation$data = {
           readonly numerator: string;
           readonly unit: string;
         } | null | undefined;
+        readonly remainingRefundableAmountYen: any;
         readonly revision: number;
         readonly tags: ReadonlyArray<{
           readonly archived: boolean;
@@ -255,6 +256,13 @@ v8 = [
                   (v1/*:: as any*/),
                   (v4/*:: as any*/),
                   (v5/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "remainingRefundableAmountYen",
+                    "storageKey": null
+                  },
                   {
                     "alias": null,
                     "args": null,
@@ -436,12 +444,12 @@ return {
     "selections": (v8/*:: as any*/)
   },
   "params": {
-    "cacheID": "55591052ae2b127c909c6e2e90f40f67",
+    "cacheID": "6e5d6e0a4d5776866658522352e36223",
     "id": null,
     "metadata": {},
     "name": "CreatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    __typename\n    ... on CreatePurchaseSuccess {\n      result {\n        id\n        householdId\n        occurredAt\n        merchant\n        totalYen\n        revision\n        status\n        items {\n          id\n          name\n          amountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    __typename\n    ... on CreatePurchaseSuccess {\n      result {\n        id\n        householdId\n        occurredAt\n        merchant\n        totalYen\n        revision\n        status\n        items {\n          id\n          name\n          amountYen\n          remainingRefundableAmountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

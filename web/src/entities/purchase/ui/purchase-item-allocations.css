@@ -1,0 +1,50 @@
+.allocation-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 27px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: #f3f7f2;
+  color: #5f6d65;
+  font-size: 9px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.allocation-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allocation-popup {
+  display: grid;
+  gap: 10px;
+  min-width: 220px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  padding: 14px;
+  box-shadow: 0 12px 32px rgb(30 48 40 / 0.16);
+}
+
+.allocation-popup [data-slot="title"] {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.allocation-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.allocation-popup .number-field {
+  width: 78px;
+}

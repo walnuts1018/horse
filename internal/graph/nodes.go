@@ -312,8 +312,24 @@ func (r *queryResolver) findNodeInHouseholds(ctx context.Context, households []*
 				if value := findValue(purchase.Items, func(value *model.PurchaseItem) bool { return value.ID == id }); value != nil {
 					return value, nil
 				}
-			} else if value := findValue(purchaseCorrectionNodes(purchase), func(value model.PurchaseCorrection) bool { return value.GetID() == id }); value != nil {
-				return value, nil
+			} else {
+				correction, err := models.Corrections.Query(sm.Where(psql.And(
+					models.Corrections.Columns.ID.EQ(psql.Arg(parsedID)),
+					models.Corrections.Columns.HouseholdID.EQ(psql.Arg(mustUUID(household.ID))),
+				))).One(ctx, queryExecutor(r.DB))
+				if errors.Is(err, sql.ErrNoRows) {
+					continue
+				}
+				if err != nil {
+					return nil, err
+				}
+				edges, err := purchaseCorrectionEdges(ctx, r.DB, purchaseID, models.CorrectionSlice{correction})
+				if err != nil {
+					return nil, err
+				}
+				if len(edges) == 1 {
+					return edges[0].Node, nil
+				}
 			}
 		}
 		if kind == nodeTypeAllocationRule {

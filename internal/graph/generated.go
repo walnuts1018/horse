@@ -747,6 +747,7 @@ type ComplexityRoot struct {
 		RevokeHouseholdInvitation     func(childComplexity int, input model.RevokeHouseholdInvitationInput) int
 		RevokeHouseholdMailForwarding func(childComplexity int, input model.HouseholdMailForwardingInput) int
 		RotateHouseholdMailForwarding func(childComplexity int, input model.HouseholdMailForwardingInput) int
+		SavePurchaseItemEdits         func(childComplexity int, input model.SavePurchaseItemEditsInput) int
 		SetAllocationRule             func(childComplexity int, input model.SetAllocationRuleInput) int
 		SetCategoryArchived           func(childComplexity int, input model.SetCategoryArchivedInput) int
 		SetDefaultAllocation          func(childComplexity int, input model.SetDefaultAllocationInput) int
@@ -865,22 +866,25 @@ type ComplexityRoot struct {
 	}
 
 	Purchase struct {
-		Corrections        func(childComplexity int, first *int, after *string) int
-		CreatedAt          func(childComplexity int) int
-		Currency           func(childComplexity int) int
-		HasEvidence        func(childComplexity int) int
-		HouseholdID        func(childComplexity int) int
-		ID                 func(childComplexity int) int
-		Items              func(childComplexity int) int
-		Merchant           func(childComplexity int) int
-		OccurredAt         func(childComplexity int) int
-		Origin             func(childComplexity int) int
-		PaymentAllocations func(childComplexity int) int
-		Revision           func(childComplexity int) int
-		SourceKinds        func(childComplexity int) int
-		Status             func(childComplexity int) int
-		TotalYen           func(childComplexity int) int
-		UpdatedAt          func(childComplexity int) int
+		CorrectionAmountYen          func(childComplexity int) int
+		CorrectionCount              func(childComplexity int) int
+		Corrections                  func(childComplexity int, first *int, after *string) int
+		CreatedAt                    func(childComplexity int) int
+		Currency                     func(childComplexity int) int
+		HasEvidence                  func(childComplexity int) int
+		HouseholdID                  func(childComplexity int) int
+		ID                           func(childComplexity int) int
+		Items                        func(childComplexity int) int
+		Merchant                     func(childComplexity int) int
+		OccurredAt                   func(childComplexity int) int
+		Origin                       func(childComplexity int) int
+		PaymentAllocations           func(childComplexity int) int
+		RemainingRefundableAmountYen func(childComplexity int) int
+		Revision                     func(childComplexity int) int
+		SourceKinds                  func(childComplexity int) int
+		Status                       func(childComplexity int) int
+		TotalYen                     func(childComplexity int) int
+		UpdatedAt                    func(childComplexity int) int
 	}
 
 	PurchaseChange struct {
@@ -917,18 +921,19 @@ type ComplexityRoot struct {
 	}
 
 	PurchaseItem struct {
-		Allocations        func(childComplexity int) int
-		AmountYen          func(childComplexity int) int
-		CategoryID         func(childComplexity int) int
-		Currency           func(childComplexity int) int
-		EffectiveUnitPrice func(childComplexity int) int
-		ID                 func(childComplexity int) int
-		Name               func(childComplexity int) int
-		PrintedUnitPrice   func(childComplexity int) int
-		ProductVariantID   func(childComplexity int) int
-		Quantity           func(childComplexity int) int
-		Revision           func(childComplexity int) int
-		Tags               func(childComplexity int) int
+		Allocations                  func(childComplexity int) int
+		AmountYen                    func(childComplexity int) int
+		CategoryID                   func(childComplexity int) int
+		Currency                     func(childComplexity int) int
+		EffectiveUnitPrice           func(childComplexity int) int
+		ID                           func(childComplexity int) int
+		Name                         func(childComplexity int) int
+		PrintedUnitPrice             func(childComplexity int) int
+		ProductVariantID             func(childComplexity int) int
+		Quantity                     func(childComplexity int) int
+		RemainingRefundableAmountYen func(childComplexity int) int
+		Revision                     func(childComplexity int) int
+		Tags                         func(childComplexity int) int
 	}
 
 	PurchaseItemAllocation struct {
@@ -1127,6 +1132,15 @@ type ComplexityRoot struct {
 
 	RotateHouseholdMailForwardingSuccess struct {
 		Result func(childComplexity int) int
+	}
+
+	SavePurchaseItemEditsSuccess struct {
+		Items func(childComplexity int) int
+	}
+
+	SavePurchaseItemEditsUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
 	}
 
 	SetAllocationRuleSuccess struct {
@@ -1495,6 +1509,7 @@ type MutationResolver interface {
 	LinkStatementTransfer(ctx context.Context, input model.LinkStatementTransferInput) (model.LinkStatementTransferResult, error)
 	RemoveHouseholdMember(ctx context.Context, input model.RemoveHouseholdMemberInput) (model.RemoveHouseholdMemberResult, error)
 	RevokeHouseholdInvitation(ctx context.Context, input model.RevokeHouseholdInvitationInput) (model.RevokeHouseholdInvitationResult, error)
+	SavePurchaseItemEdits(ctx context.Context, input model.SavePurchaseItemEditsInput) (model.SavePurchaseItemEditsResult, error)
 	SetAllocationRule(ctx context.Context, input model.SetAllocationRuleInput) (model.SetAllocationRuleResult, error)
 	SetCategoryArchived(ctx context.Context, input model.SetCategoryArchivedInput) (model.SetCategoryArchivedResult, error)
 	SetDefaultAllocation(ctx context.Context, input model.SetDefaultAllocationInput) (model.SetDefaultAllocationResult, error)
@@ -4012,6 +4027,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RotateHouseholdMailForwarding(childComplexity, args["input"].(model.HouseholdMailForwardingInput)), true
+	case "Mutation.savePurchaseItemEdits":
+		if e.ComplexityRoot.Mutation.SavePurchaseItemEdits == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_savePurchaseItemEdits_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.SavePurchaseItemEdits(childComplexity, args["input"].(model.SavePurchaseItemEditsInput)), true
 	case "Mutation.setAllocationRule":
 		if e.ComplexityRoot.Mutation.SetAllocationRule == nil {
 			break
@@ -4525,6 +4551,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.ProductVariant.Revision(childComplexity), true
 
+	case "Purchase.correctionAmountYen":
+		if e.ComplexityRoot.Purchase.CorrectionAmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Purchase.CorrectionAmountYen(childComplexity), true
+	case "Purchase.correctionCount":
+		if e.ComplexityRoot.Purchase.CorrectionCount == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Purchase.CorrectionCount(childComplexity), true
 	case "Purchase.corrections":
 		if e.ComplexityRoot.Purchase.Corrections == nil {
 			break
@@ -4596,6 +4634,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Purchase.PaymentAllocations(childComplexity), true
+	case "Purchase.remainingRefundableAmountYen":
+		if e.ComplexityRoot.Purchase.RemainingRefundableAmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Purchase.RemainingRefundableAmountYen(childComplexity), true
 	case "Purchase.revision":
 		if e.ComplexityRoot.Purchase.Revision == nil {
 			break
@@ -4800,6 +4844,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.PurchaseItem.Quantity(childComplexity), true
+	case "PurchaseItem.remainingRefundableAmountYen":
+		if e.ComplexityRoot.PurchaseItem.RemainingRefundableAmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseItem.RemainingRefundableAmountYen(childComplexity), true
 	case "PurchaseItem.revision":
 		if e.ComplexityRoot.PurchaseItem.Revision == nil {
 			break
@@ -5656,6 +5706,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.RotateHouseholdMailForwardingSuccess.Result(childComplexity), true
 
+	case "SavePurchaseItemEditsSuccess.items":
+		if e.ComplexityRoot.SavePurchaseItemEditsSuccess.Items == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SavePurchaseItemEditsSuccess.Items(childComplexity), true
+
+	case "SavePurchaseItemEditsUserError.code":
+		if e.ComplexityRoot.SavePurchaseItemEditsUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SavePurchaseItemEditsUserError.Code(childComplexity), true
+	case "SavePurchaseItemEditsUserError.message":
+		if e.ComplexityRoot.SavePurchaseItemEditsUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SavePurchaseItemEditsUserError.Message(childComplexity), true
+
 	case "SetAllocationRuleSuccess.result":
 		if e.ComplexityRoot.SetAllocationRuleSuccess.Result == nil {
 			break
@@ -6360,6 +6430,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputRecordTransferInput,
 		ec.unmarshalInputRemoveHouseholdMemberInput,
 		ec.unmarshalInputRevokeHouseholdInvitationInput,
+		ec.unmarshalInputSavePurchaseItemEditsInput,
 		ec.unmarshalInputSetAllocationRuleInput,
 		ec.unmarshalInputSetAllocationRuleItemInput,
 		ec.unmarshalInputSetCategoryArchivedInput,
@@ -7840,6 +7911,9 @@ type Purchase implements Node {
   sourceKinds: [SourceKind!]!
   paymentAllocations: [PurchasePayment!]!
   items: [PurchaseItem!]!
+  correctionAmountYen: Long!
+  correctionCount: Int!
+  remainingRefundableAmountYen: Long!
   corrections(first: Int, after: String): PurchaseCorrectionConnection!
     @goField(name: "CorrectionsConnection", forceResolver: true)
   totalYen: Long!
@@ -7957,6 +8031,7 @@ extend type Query {
   id: ID! @goField(forceResolver: true)
   name: String!
   amountYen: Long!
+  remainingRefundableAmountYen: Long!
   currency: String!
   quantity: PurchaseQuantity
   printedUnitPrice: PrintedUnitPrice
@@ -8348,6 +8423,28 @@ type RevokeHouseholdInvitationSuccess {
 }
 
 type RevokeHouseholdInvitationUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/save_purchase_item_edits.graphql", Input: `extend type Mutation {
+  savePurchaseItemEdits(input: SavePurchaseItemEditsInput!): SavePurchaseItemEditsResult!
+}
+
+union SavePurchaseItemEditsResult = SavePurchaseItemEditsSuccess | SavePurchaseItemEditsUserError
+
+type SavePurchaseItemEditsSuccess {
+  items: [PurchaseItem!]!
+}
+
+input SavePurchaseItemEditsInput {
+  purchaseId: ID! @nodeID(of: "Purchase")
+  purchaseBaseRevision: Int!
+  purchasePatch: PurchasePatch @goField(omittable: true)
+  items: [UpdatePurchaseItemInput!]!
+}
+
+type SavePurchaseItemEditsUserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
@@ -9662,6 +9759,12 @@ func (ec *executionContext) childFields_Purchase(ctx context.Context, field grap
 		return ec.fieldContext_Purchase_paymentAllocations(ctx, field)
 	case "items":
 		return ec.fieldContext_Purchase_items(ctx, field)
+	case "correctionAmountYen":
+		return ec.fieldContext_Purchase_correctionAmountYen(ctx, field)
+	case "correctionCount":
+		return ec.fieldContext_Purchase_correctionCount(ctx, field)
+	case "remainingRefundableAmountYen":
+		return ec.fieldContext_Purchase_remainingRefundableAmountYen(ctx, field)
 	case "corrections":
 		return ec.fieldContext_Purchase_corrections(ctx, field)
 	case "totalYen":
@@ -9754,6 +9857,8 @@ func (ec *executionContext) childFields_PurchaseItem(ctx context.Context, field 
 		return ec.fieldContext_PurchaseItem_name(ctx, field)
 	case "amountYen":
 		return ec.fieldContext_PurchaseItem_amountYen(ctx, field)
+	case "remainingRefundableAmountYen":
+		return ec.fieldContext_PurchaseItem_remainingRefundableAmountYen(ctx, field)
 	case "currency":
 		return ec.fieldContext_PurchaseItem_currency(ctx, field)
 	case "quantity":
@@ -10644,6 +10749,20 @@ func (ec *executionContext) field_Mutation_rotateHouseholdMailForwarding_args(ct
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.HouseholdMailForwardingInput, error) {
 			return ec.unmarshalNHouseholdMailForwardingInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_savePurchaseItemEdits_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.SavePurchaseItemEditsInput, error) {
+			return ec.unmarshalNSavePurchaseItemEditsInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSavePurchaseItemEditsInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -22319,6 +22438,50 @@ func (ec *executionContext) fieldContext_Mutation_revokeHouseholdInvitation(ctx 
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_savePurchaseItemEdits(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_savePurchaseItemEdits(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SavePurchaseItemEdits(ctx, fc.Args["input"].(model.SavePurchaseItemEditsInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.SavePurchaseItemEditsResult) graphql.Marshaler {
+			return ec.marshalNSavePurchaseItemEditsResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSavePurchaseItemEditsResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_savePurchaseItemEdits(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type SavePurchaseItemEditsResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_savePurchaseItemEdits_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_setAllocationRule(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -24618,6 +24781,75 @@ func (ec *executionContext) fieldContext_Purchase_items(_ context.Context, field
 	return fc, nil
 }
 
+func (ec *executionContext) _Purchase_correctionAmountYen(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Purchase_correctionAmountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.CorrectionAmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Purchase_correctionAmountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _Purchase_correctionCount(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Purchase_correctionCount(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.CorrectionCount, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Purchase_correctionCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
+func (ec *executionContext) _Purchase_remainingRefundableAmountYen(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Purchase_remainingRefundableAmountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RemainingRefundableAmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Purchase_remainingRefundableAmountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
 func (ec *executionContext) _Purchase_corrections(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -25334,6 +25566,29 @@ func (ec *executionContext) _PurchaseItem_amountYen(ctx context.Context, field g
 	)
 }
 func (ec *executionContext) fieldContext_PurchaseItem_amountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseItem_remainingRefundableAmountYen(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseItem_remainingRefundableAmountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RemainingRefundableAmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseItem_remainingRefundableAmountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("PurchaseItem", field, false, false, errors.New("field of type Long does not have child fields"))
 }
 
@@ -29011,6 +29266,84 @@ func (ec *executionContext) fieldContext_RotateHouseholdMailForwardingSuccess_re
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _SavePurchaseItemEditsSuccess_items(ctx context.Context, field graphql.CollectedField, obj *model.SavePurchaseItemEditsSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SavePurchaseItemEditsSuccess_items(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Items, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.PurchaseItem) graphql.Marshaler {
+			return ec.marshalNPurchaseItem2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseItemᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SavePurchaseItemEditsSuccess_items(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SavePurchaseItemEditsSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PurchaseItem(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SavePurchaseItemEditsUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.SavePurchaseItemEditsUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SavePurchaseItemEditsUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SavePurchaseItemEditsUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SavePurchaseItemEditsUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _SavePurchaseItemEditsUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.SavePurchaseItemEditsUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SavePurchaseItemEditsUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SavePurchaseItemEditsUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SavePurchaseItemEditsUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _SetAllocationRuleSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.SetAllocationRuleSuccess) (ret graphql.Marshaler) {
@@ -37439,6 +37772,77 @@ func (ec *executionContext) unmarshalInputRevokeHouseholdInvitationInput(ctx con
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputSavePurchaseItemEditsInput(ctx context.Context, obj any) (model.SavePurchaseItemEditsInput, error) {
+	var it model.SavePurchaseItemEditsInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"purchaseId", "purchaseBaseRevision", "purchasePatch", "items"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "purchaseId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("purchaseId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Purchase")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PurchaseID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "purchaseBaseRevision":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("purchaseBaseRevision"))
+			data, err := ec.unmarshalNInt2int(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PurchaseBaseRevision = data
+		case "purchasePatch":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("purchasePatch"))
+			data, err := ec.unmarshalOPurchasePatch2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePatch(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.PurchasePatch = graphql.OmittableOf(data)
+		case "items":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("items"))
+			data, err := ec.unmarshalNUpdatePurchaseItemInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseItemInputᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Items = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputSetAllocationRuleInput(ctx context.Context, obj any) (model.SetAllocationRuleInput, error) {
 	var it model.SetAllocationRuleInput
 	if obj == nil {
@@ -40018,6 +40422,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._SetAllocationRuleUserError(ctx, sel, obj)
+	case model.SavePurchaseItemEditsUserError:
+		return ec._SavePurchaseItemEditsUserError(ctx, sel, &obj)
+	case *model.SavePurchaseItemEditsUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SavePurchaseItemEditsUserError(ctx, sel, obj)
 	case model.RevokeHouseholdInvitationUserError:
 		return ec._RevokeHouseholdInvitationUserError(ctx, sel, &obj)
 	case *model.RevokeHouseholdInvitationUserError:
@@ -40943,6 +41354,33 @@ func (ec *executionContext) _RotateHouseholdMailForwardingResult(ctx context.Con
 			return typedObj
 		} else {
 			panic(fmt.Errorf("unexpected type %T; non-generated variants of RotateHouseholdMailForwardingResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _SavePurchaseItemEditsResult(ctx context.Context, sel ast.SelectionSet, obj model.SavePurchaseItemEditsResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.SavePurchaseItemEditsUserError:
+		return ec._SavePurchaseItemEditsUserError(ctx, sel, &obj)
+	case *model.SavePurchaseItemEditsUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SavePurchaseItemEditsUserError(ctx, sel, obj)
+	case model.SavePurchaseItemEditsSuccess:
+		return ec._SavePurchaseItemEditsSuccess(ctx, sel, &obj)
+	case *model.SavePurchaseItemEditsSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SavePurchaseItemEditsSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of SavePurchaseItemEditsResult must implement graphql.Marshaler", obj))
 		}
 	}
 }
@@ -48189,6 +48627,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "savePurchaseItemEdits":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_savePurchaseItemEdits(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "setAllocationRule":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_setAllocationRule(ctx, field)
@@ -49719,6 +50164,21 @@ func (ec *executionContext) _Purchase(ctx context.Context, sel ast.SelectionSet,
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "correctionAmountYen":
+			out.Values[i] = ec._Purchase_correctionAmountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "correctionCount":
+			out.Values[i] = ec._Purchase_correctionCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "remainingRefundableAmountYen":
+			out.Values[i] = ec._Purchase_remainingRefundableAmountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
 		case "corrections":
 			field := field
 
@@ -50153,6 +50613,11 @@ func (ec *executionContext) _PurchaseItem(ctx context.Context, sel ast.Selection
 			}
 		case "amountYen":
 			out.Values[i] = ec._PurchaseItem_amountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "remainingRefundableAmountYen":
+			out.Values[i] = ec._PurchaseItem_remainingRefundableAmountYen(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
@@ -52718,6 +53183,87 @@ func (ec *executionContext) _RotateHouseholdMailForwardingSuccess(ctx context.Co
 			out.Values[i] = graphql.MarshalString("RotateHouseholdMailForwardingSuccess")
 		case "result":
 			out.Values[i] = ec._RotateHouseholdMailForwardingSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var savePurchaseItemEditsSuccessImplementors = []string{"SavePurchaseItemEditsSuccess", "SavePurchaseItemEditsResult"}
+
+func (ec *executionContext) _SavePurchaseItemEditsSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.SavePurchaseItemEditsSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, savePurchaseItemEditsSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SavePurchaseItemEditsSuccess")
+		case "items":
+			out.Values[i] = ec._SavePurchaseItemEditsSuccess_items(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var savePurchaseItemEditsUserErrorImplementors = []string{"SavePurchaseItemEditsUserError", "SavePurchaseItemEditsResult", "MutationError"}
+
+func (ec *executionContext) _SavePurchaseItemEditsUserError(ctx context.Context, sel ast.SelectionSet, obj *model.SavePurchaseItemEditsUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, savePurchaseItemEditsUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SavePurchaseItemEditsUserError")
+		case "code":
+			out.Values[i] = ec._SavePurchaseItemEditsUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._SavePurchaseItemEditsUserError_message(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -57380,6 +57926,21 @@ func (ec *executionContext) marshalNRotateHouseholdMailForwardingResult2github�
 	return ec._RotateHouseholdMailForwardingResult(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNSavePurchaseItemEditsInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSavePurchaseItemEditsInput(ctx context.Context, v any) (model.SavePurchaseItemEditsInput, error) {
+	res, err := ec.unmarshalInputSavePurchaseItemEditsInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSavePurchaseItemEditsResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSavePurchaseItemEditsResult(ctx context.Context, sel ast.SelectionSet, v model.SavePurchaseItemEditsResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SavePurchaseItemEditsResult(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNSetAllocationRuleInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetAllocationRuleInput(ctx context.Context, v any) (model.SetAllocationRuleInput, error) {
 	res, err := ec.unmarshalInputSetAllocationRuleInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -57836,6 +58397,25 @@ func (ec *executionContext) unmarshalNUpdatePurchaseItemAllocationInput2ᚖgithu
 func (ec *executionContext) unmarshalNUpdatePurchaseItemInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseItemInput(ctx context.Context, v any) (model.UpdatePurchaseItemInput, error) {
 	res, err := ec.unmarshalInputUpdatePurchaseItemInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNUpdatePurchaseItemInput2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseItemInputᚄ(ctx context.Context, v any) ([]*model.UpdatePurchaseItemInput, error) {
+	vSlice := graphql.CoerceList(v)
+	var err error
+	res := make([]*model.UpdatePurchaseItemInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNUpdatePurchaseItemInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseItemInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalNUpdatePurchaseItemInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐUpdatePurchaseItemInput(ctx context.Context, v any) (*model.UpdatePurchaseItemInput, error) {
+	res, err := ec.unmarshalInputUpdatePurchaseItemInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalNUpdatePurchaseItemQuantityInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantityInput(ctx context.Context, v any) (*model.PurchaseQuantityInput, error) {
@@ -58430,6 +59010,14 @@ func (ec *executionContext) marshalOPurchaseOrigin2ᚖgithubᚗcomᚋwalnuts1018
 		return graphql.Null
 	}
 	return v
+}
+
+func (ec *executionContext) unmarshalOPurchasePatch2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePatch(ctx context.Context, v any) (*model.PurchasePatch, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputPurchasePatch(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalOPurchaseQuantity2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantity(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseQuantity) graphql.Marshaler {

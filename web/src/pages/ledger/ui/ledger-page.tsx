@@ -127,27 +127,36 @@ export function LedgerPage({
     sourceKind: observationSourceFilter || undefined,
     state: observationStateFilter || undefined,
   });
-  const { purchases, loadingMore, moreError, hasNextPage, totalCount, loadMore, refresh } =
-    useHouseholdPurchases(household.id, 100, {
-      from: fromMonth ? `${fromMonth}-01T00:00:00+09:00` : undefined,
-      to: toMonth ? `${nextMonth(toMonth)}-01T00:00:00+09:00` : undefined,
-      origin: recordMode === "purchases" ? originFilter || undefined : undefined,
-      hasEvidence:
-        recordMode === "purchases" && evidenceFilter !== "" ? evidenceFilter === "true" : undefined,
-      search: recordMode === "purchases" ? search || undefined : undefined,
-      categoryId:
-        recordMode === "purchases" && categoryFilter && categoryFilter !== "__uncategorized"
-          ? categoryFilter
-          : undefined,
-      uncategorized:
-        recordMode === "purchases" && categoryFilter === "__uncategorized" ? true : undefined,
-      tagId: recordMode === "purchases" ? tagFilter || undefined : undefined,
-      paymentAccountId: recordMode === "purchases" ? accountFilter || undefined : undefined,
-      poolId: recordMode === "purchases" ? poolFilter || undefined : undefined,
-      ...(recordMode === "purchases"
-        ? toPurchaseAmountVariables({ minimumAmount, maximumAmount }, viewMode)
-        : {}),
-    });
+  const {
+    purchases,
+    loadingMore,
+    moreError,
+    hasNextPage,
+    totalCount,
+    correctionPages,
+    loadCorrections,
+    loadMore,
+    refresh,
+  } = useHouseholdPurchases(household.id, 100, {
+    from: fromMonth ? `${fromMonth}-01T00:00:00+09:00` : undefined,
+    to: toMonth ? `${nextMonth(toMonth)}-01T00:00:00+09:00` : undefined,
+    origin: recordMode === "purchases" ? originFilter || undefined : undefined,
+    hasEvidence:
+      recordMode === "purchases" && evidenceFilter !== "" ? evidenceFilter === "true" : undefined,
+    search: recordMode === "purchases" ? search || undefined : undefined,
+    categoryId:
+      recordMode === "purchases" && categoryFilter && categoryFilter !== "__uncategorized"
+        ? categoryFilter
+        : undefined,
+    uncategorized:
+      recordMode === "purchases" && categoryFilter === "__uncategorized" ? true : undefined,
+    tagId: recordMode === "purchases" ? tagFilter || undefined : undefined,
+    paymentAccountId: recordMode === "purchases" ? accountFilter || undefined : undefined,
+    poolId: recordMode === "purchases" ? poolFilter || undefined : undefined,
+    ...(recordMode === "purchases"
+      ? toPurchaseAmountVariables({ minimumAmount, maximumAmount }, viewMode)
+      : {}),
+  });
   const purchaseBulkEdit = usePurchaseBulkEdit({
     householdId: household.id,
     purchases,
@@ -208,7 +217,6 @@ export function LedgerPage({
     postDraftPurchase,
     postingPurchase,
     purchaseDraft,
-    saveItem,
     savePurchase,
     setCorrectionTarget,
     setEditError,
@@ -437,7 +445,14 @@ export function LedgerPage({
                   type="button"
                   onClick={() => {
                     setHighlightedEvidenceItem(null);
-                    setExpanded(expanded === purchase.id ? null : purchase.id);
+                    const opening = expanded !== purchase.id;
+                    setExpanded(opening ? purchase.id : null);
+                    if (
+                      opening &&
+                      (!correctionPages[purchase.id] || correctionPages[purchase.id].error)
+                    ) {
+                      void loadCorrections(purchase.id);
+                    }
                   }}
                 >
                   <div className="merchant-icon">{purchase.merchant.slice(0, 1) || "買"}</div>
@@ -550,6 +565,37 @@ export function LedgerPage({
                         <small>{correction.reason}</small>
                       </div>
                     ))}
+                    {correctionPages[purchase.id]?.loading && <small>訂正履歴を取得中</small>}
+                    {correctionPages[purchase.id]?.error && (
+                      <>
+                        <InlineError message={correctionPages[purchase.id].error} />
+                        <button
+                          className="text-button"
+                          type="button"
+                          disabled={correctionPages[purchase.id].loading}
+                          onClick={() => void loadCorrections(purchase.id)}
+                        >
+                          再試行
+                        </button>
+                      </>
+                    )}
+                    {correctionPages[purchase.id]?.hasNextPage && (
+                      <button
+                        className="text-button"
+                        type="button"
+                        disabled={correctionPages[purchase.id].loading}
+                        onClick={() =>
+                          void loadCorrections(
+                            purchase.id,
+                            correctionPages[purchase.id].after ?? undefined,
+                          )
+                        }
+                      >
+                        {correctionPages[purchase.id].loading
+                          ? "読み込み中"
+                          : "過去の訂正を読み込む"}
+                      </button>
+                    )}
                     {purchase.items.map((item) => (
                       <div
                         className={`expanded-item ${highlightedEvidenceItem === item.id ? "evidence-item-highlighted" : ""}`}
@@ -574,6 +620,7 @@ export function LedgerPage({
                           <PurchaseItemEditor
                             item={item}
                             draft={itemDrafts[item.id]}
+                            household={household}
                             categories={household.categories}
                             catalog={catalog}
                             onChange={(updates) =>
@@ -583,7 +630,6 @@ export function LedgerPage({
                                 return { ...current, [item.id]: { ...draft, ...updates } };
                               })
                             }
-                            onSave={() => void saveItem(purchase, item)}
                           />
                         ) : (
                           <>
@@ -626,7 +672,7 @@ export function LedgerPage({
                             <button
                               className="text-button correction-trigger"
                               type="button"
-                              disabled={getRemainingRefundAmount(purchase, item) <= 0}
+                              disabled={getRemainingRefundAmount(item) <= 0}
                               onClick={() => startCorrection(purchase, item)}
                             >
                               返品を記録

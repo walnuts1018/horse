@@ -8,6 +8,7 @@ export function mapPurchaseItem(item: PurchaseListItem): PurchaseItem {
     id: item.id,
     name: item.name,
     amountYen: item.amountYen,
+    remainingRefundableAmountYen: item.remainingRefundableAmountYen,
     revision: item.revision,
     quantityNumerator: item.quantity?.numerator ?? null,
     quantityDenominator: item.quantity?.denominator ?? null,
