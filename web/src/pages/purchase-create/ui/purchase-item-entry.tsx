@@ -180,7 +180,7 @@ export function PurchaseItemEntry({
             onKeyDown={onAmountKey}
             onCompositionStart={onCompositionStart}
             onCompositionEnd={onCompositionEnd}
-            enterKeyHint="next"
+            enterKeyHint="done"
             onPaste={onPaste}
             placeholder="金額"
             aria-label="金額"
