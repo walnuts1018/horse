@@ -50,6 +50,25 @@ func unmatchedObservationQuery(filters []bob.Expression, mods ...bob.Mod[*dialec
 	return models.SourceObservations.Query(queryMods...)
 }
 
+func unmatchedSourceReferenceOrdinal(reference bob.Expression) psql.Expression {
+	return psql.Cast(psql.F("substring", reference, psql.Arg("^row:([0-9]+)$"))(), "bigint")
+}
+
+func unmatchedSourceReferencePrecedes(cursorReference string) bob.Expression {
+	rowOrdinal := unmatchedSourceReferenceOrdinal(models.SourceObservations.Columns.SourceReference)
+	cursorOrdinal := unmatchedSourceReferenceOrdinal(psql.Arg(cursorReference))
+
+	return psql.Or(
+		psql.And(rowOrdinal.IsNotNull(), cursorOrdinal.IsNull()),
+		psql.And(rowOrdinal.IsNotNull(), cursorOrdinal.IsNotNull(), rowOrdinal.LT(cursorOrdinal)),
+		psql.And(
+			rowOrdinal.IsNull(),
+			cursorOrdinal.IsNull(),
+			models.SourceObservations.Columns.SourceReference.LT(psql.Arg(cursorReference)),
+		),
+	)
+}
+
 func unmatchedObservationFilters(householdID gofrsuuid.UUID, fromMonth, toMonth time.Time, sourceKind *model.SourceKind, state *model.UnmatchedObservationState) []bob.Expression {
 	filters := []bob.Expression{models.SourceObservations.Columns.HouseholdID.EQ(psql.Arg(householdID))}
 	if sourceKind != nil {
@@ -121,7 +140,7 @@ func unmatchedObservationCursorPosition(ctx context.Context, executor bob.Execut
 		psql.And(
 			models.SourceDocuments.Columns.CreatedAt.EQ(psql.Arg(document.CreatedAt)),
 			models.SourceDocuments.Columns.ID.EQ(psql.Arg(document.ID)),
-			models.SourceObservations.Columns.SourceReference.LT(psql.Arg(parsed.SourceReference)),
+			unmatchedSourceReferencePrecedes(parsed.SourceReference),
 		),
 	)
 	positionFilters := append([]bob.Expression(nil), filters...)
@@ -192,6 +211,7 @@ func (r *queryResolver) unmatchedObservations(ctx context.Context, householdID s
 	rows, err := unmatchedObservationQuery(filters,
 		sm.OrderBy(models.SourceDocuments.Columns.CreatedAt).Desc(),
 		sm.OrderBy(models.SourceDocuments.Columns.ID).Desc(),
+		sm.OrderBy(unmatchedSourceReferenceOrdinal(models.SourceObservations.Columns.SourceReference)).NullsLast(),
 		sm.OrderBy(models.SourceObservations.Columns.SourceReference),
 		sm.Offset(int(pageStart)),
 		sm.Limit(int(pageEnd-pageStart)),

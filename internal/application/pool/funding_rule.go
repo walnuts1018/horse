@@ -99,6 +99,7 @@ func (s *Service) SetFundingRule(ctx context.Context, command SetFundingRuleComm
 		member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 			models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 			models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(ownerUUID)),
+			models.HouseholdMembers.Columns.LeftAt.IsNull(),
 		))).Exists(ctx, executor)
 		if err != nil {
 			return err
@@ -134,6 +135,7 @@ func (s *Service) SetFundingRule(ctx context.Context, command SetFundingRuleComm
 			member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 				models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 				models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+				models.HouseholdMembers.Columns.LeftAt.IsNull(),
 			))).Exists(ctx, executor)
 			if err != nil {
 				return err

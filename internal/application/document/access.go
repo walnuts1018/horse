@@ -24,6 +24,7 @@ func (s *Service) RequireHouseholdMember(ctx context.Context, householdID, membe
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	))).Exists(ctx, bobpgx.NewPool(s.db))
 	if err != nil {
 		return err

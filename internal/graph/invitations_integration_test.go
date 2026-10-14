@@ -251,6 +251,30 @@ func TestHouseholdInvitationLifecycle(t *testing.T) {
 	if err != nil || acceptedAt.Valid {
 		t.Fatalf("membership conflict must not consume invitation: acceptedAt=%v error=%v", acceptedAt, err)
 	}
+	leftAt := time.Now().UTC().Add(-time.Minute)
+	if _, err := models.HouseholdMembers.Update(
+		um.Where(psql.And(
+			models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberUUID)),
+		)),
+		um.SetCol("left_at").To(psql.Arg(leftAt)),
+	).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	rejoin := createInvitation(time.Now().Add(24 * time.Hour))
+	if _, err := resolver.acceptHouseholdInvitation(memberCtx, rejoin.Token); err != nil {
+		t.Fatalf("tombstoned membership could not rejoin: %v", err)
+	}
+	rejoined, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberUUID)),
+	))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rejoined.LeftAt.Valid || rejoined.Role != "MEMBER" || !rejoined.JoinedAt.After(leftAt) {
+		t.Fatalf("rejoined membership = %#v, want active MEMBER with refreshed joined_at", rejoined)
+	}
 	pageSize := 1
 	firstPage, err := ownerQuery.HouseholdInvitations(ownerCtx, household.ID, nil, nil, &pageSize, nil)
 	if err != nil || len(firstPage.Edges) != 1 || !firstPage.PageInfo.HasNextPage || firstPage.PageInfo.EndCursor == nil {

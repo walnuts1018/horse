@@ -44,6 +44,7 @@ func requireMember(ctx context.Context, db *pgxpool.Pool, householdID string) (a
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberUUID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	))).Exists(ctx, bobpgx.NewPool(db))
 	if err != nil {
 		return auth.Principal{}, err
@@ -188,6 +189,9 @@ func loadHouseholdDetails(ctx context.Context, db *pgxpool.Pool, households map[
 				household.Members = make([]*model.Member, 0)
 			}
 			for _, membership := range memberships {
+				if membership.LeftAt.Valid {
+					continue
+				}
 				households[membership.HouseholdID].Members = append(households[membership.HouseholdID].Members, &model.Member{
 					ID: membership.MemberID.String(), DisplayName: membership.R.Member.DisplayName, Role: model.MemberRole(membership.Role),
 				})

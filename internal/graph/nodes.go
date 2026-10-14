@@ -149,7 +149,10 @@ func (r *queryResolver) householdReferences(ctx context.Context) ([]*model.House
 		return nil, fmt.Errorf("parse member id: %w", err)
 	}
 	memberships, err := models.HouseholdMembers.Query(
-		sm.Where(models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID))),
+		sm.Where(psql.And(
+			models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+			models.HouseholdMembers.Columns.LeftAt.IsNull(),
+		)),
 		sm.OrderBy(models.HouseholdMembers.Columns.JoinedAt),
 	).All(ctx, queryExecutor(r.DB))
 	if err != nil {

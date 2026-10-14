@@ -16,6 +16,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -67,13 +68,27 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 	}
 	defer func(ctx context.Context) { _ = tx.Rollback(ctx) }(context.WithoutCancel(r.Context()))
 	executor := bobpgx.NewTx(tx, nil)
-	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID))), sm.ForUpdate()).One(r.Context(), executor)
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(r.Context(), executor)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
 	}
 	if err != nil {
 		http.Error(w, "purchase lookup failed", http.StatusInternalServerError)
+		return
+	}
+	if err := accounting.LockHouseholdEventCursor(r.Context(), executor, purchase.HouseholdID); err != nil {
+		http.Error(w, "purchase lookup failed", http.StatusInternalServerError)
+
+		return
+	}
+	purchase, err = models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)),
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+	)), sm.ForUpdate()).One(r.Context(), executor)
+	if err != nil {
+		http.Error(w, "purchase lookup failed", http.StatusInternalServerError)
+
 		return
 	}
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
@@ -100,6 +115,11 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	eventType := "evidence.group_linked"
+	if err := accounting.LockHouseholdEventCursor(r.Context(), executor, purchase.HouseholdID); err != nil {
+		http.Error(w, "evidence event failed", http.StatusInternalServerError)
+
+		return
+	}
 	changedFields := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`["evidence"]`)}
 	actorID := sql.Null[gofrsuuid.UUID]{V: memberID, Valid: true}
 	if _, err := models.HouseholdEvents.Insert(&models.HouseholdEventSetter{

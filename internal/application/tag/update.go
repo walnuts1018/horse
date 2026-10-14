@@ -74,6 +74,7 @@ func (s *Service) update(ctx context.Context, actorIDValue, tagIDValue string, b
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(row.HouseholdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	))).Exists(ctx, executor)
 	if err != nil {
 		return Tag{}, err

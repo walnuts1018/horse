@@ -87,6 +87,7 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedInv
 	owner, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	)), sm.ForShare()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && owner.Role != ownerRole {
 		return CreatedInvitation{}, apperror.ErrNotFound

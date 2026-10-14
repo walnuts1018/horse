@@ -291,6 +291,7 @@ func requirePurchaseMember(ctx context.Context, executor bob.Executor, household
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	))).Exists(ctx, executor)
 	if err != nil {
 		return err

@@ -181,7 +181,10 @@ func TestJournalEntriesHouseholdBackfillOnUpgrade(t *testing.T) {
 			t.Fatal(err)
 		}
 		role := "OWNER"
-		if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdIDs[i], MemberID: &memberIDs[i], Role: &role}).Exec(ctx, executor); err != nil {
+		if _, err := psql.Insert(
+			im.Into(models.HouseholdMembers.NameAsExpr(), "household_id", "member_id", "role"),
+			im.Values(psql.Arg(householdIDs[i]), psql.Arg(memberIDs[i]), psql.Arg(role)),
+		).Exec(ctx, executor); err != nil {
 			t.Fatal(err)
 		}
 		accountName := name

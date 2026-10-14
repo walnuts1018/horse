@@ -48,6 +48,7 @@ func (s *Service) SetCardLast4(ctx context.Context, command SetCardLast4Command)
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(account.HouseholdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	))).Exists(ctx, executor)
 	if err != nil {
 		return CreatedAccount{}, err

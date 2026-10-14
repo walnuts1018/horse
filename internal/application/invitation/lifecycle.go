@@ -9,8 +9,8 @@ import (
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
-	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
@@ -20,6 +20,8 @@ import (
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
+
+const memberRole = "MEMBER"
 
 type InvitationState struct {
 	ID          string
@@ -96,6 +98,7 @@ func (s *Service) changeMembership(ctx context.Context, actorValue, householdVal
 	actor, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	)), sm.ForShare()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
 		return MemberChange{}, apperror.ErrNotFound
@@ -110,6 +113,7 @@ func (s *Service) changeMembership(ctx context.Context, actorValue, householdVal
 	target, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	)), sm.ForUpdate()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
 		return MemberChange{}, apperror.ErrNotFound
@@ -118,7 +122,10 @@ func (s *Service) changeMembership(ctx context.Context, actorValue, householdVal
 		return MemberChange{}, err
 	}
 	if target.Role == ownerRole {
-		members, err := models.HouseholdMembers.Query(sm.Where(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)))).All(ctx, executor)
+		members, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+			models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.HouseholdMembers.Columns.LeftAt.IsNull(),
+		))).All(ctx, executor)
 		if err != nil {
 			return MemberChange{}, err
 		}
@@ -133,10 +140,25 @@ func (s *Service) changeMembership(ctx context.Context, actorValue, householdVal
 		}
 	}
 
-	if _, err := models.HouseholdMembers.Delete(dm.Where(psql.And(
-		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
-	))).Exec(ctx, executor); err != nil {
+	if referenced, err := hasActivePoolFundingReference(ctx, executor, householdID, memberID); err != nil {
+		return MemberChange{}, err
+	} else if referenced {
+		return MemberChange{}, apperror.ErrConflict
+	}
+	if referenced, err := hasActiveFundingScheduleReference(ctx, executor, householdID, memberID); err != nil {
+		return MemberChange{}, err
+	} else if referenced {
+		return MemberChange{}, apperror.ErrConflict
+	}
+	leftAt := time.Now().UTC()
+	if _, err := models.HouseholdMembers.Update(
+		um.Where(psql.And(
+			models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+			models.HouseholdMembers.Columns.LeftAt.IsNull(),
+		)),
+		um.SetCol("left_at").To(psql.Arg(leftAt)),
+	).One(ctx, executor); err != nil {
 		return MemberChange{}, err
 	}
 	household, err := models.Households.Update(
@@ -158,6 +180,57 @@ func (s *Service) changeMembership(ctx context.Context, actorValue, householdVal
 		return MemberChange{}, err
 	}
 	return MemberChange{HouseholdID: householdID.String()}, nil
+}
+
+func hasActivePoolFundingReference(ctx context.Context, executor bob.Executor, householdID, memberID gofrsuuid.UUID) (bool, error) {
+	pools, err := models.Pools.Query(sm.Where(models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdID)))).All(ctx, executor)
+	if err != nil {
+		return false, err
+	}
+	for _, pool := range pools {
+		rule, err := models.PoolFundingRules.Query(sm.Where(psql.And(
+			models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.PoolFundingRules.Columns.PoolID.EQ(psql.Arg(pool.ID)),
+			models.PoolFundingRules.Columns.Version.EQ(psql.Arg(pool.FundingRuleVersion)),
+		))).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if rule.OwnerMemberID.Valid && rule.OwnerMemberID.V == memberID {
+			return true, nil
+		}
+		share, err := models.PoolFundingShares.Query(sm.Where(psql.And(
+			models.PoolFundingShares.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.PoolFundingShares.Columns.PoolID.EQ(psql.Arg(pool.ID)),
+			models.PoolFundingShares.Columns.Version.EQ(psql.Arg(pool.FundingRuleVersion)),
+			models.PoolFundingShares.Columns.MemberID.EQ(psql.Arg(memberID)),
+		))).Exists(ctx, executor)
+		if err != nil {
+			return false, err
+		}
+		if share {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func hasActiveFundingScheduleReference(ctx context.Context, executor bob.Executor, householdID, memberID gofrsuuid.UUID) (bool, error) {
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+
+	return models.FundingSchedules.Query(sm.Where(psql.And(
+		models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.FundingSchedules.Columns.MemberID.EQ(psql.Arg(memberID)),
+		models.FundingSchedules.Columns.Active.EQ(psql.Arg(true)),
+		psql.Or(
+			models.FundingSchedules.Columns.EndsOn.IsNull(),
+			models.FundingSchedules.Columns.EndsOn.GTE(psql.Arg(today)),
+		),
+	))).Exists(ctx, executor)
 }
 
 func (s *Service) Revoke(ctx context.Context, command RevokeCommand) (InvitationState, error) {
@@ -183,6 +256,7 @@ func (s *Service) Revoke(ctx context.Context, command RevokeCommand) (Invitation
 	owner, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	)), sm.ForShare()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && owner.Role != ownerRole {
 		return InvitationState{}, apperror.ErrNotFound
@@ -259,27 +333,44 @@ func (s *Service) Accept(ctx context.Context, command AcceptCommand) (string, er
 	if invitation.RevokedAt.Valid || invitation.AcceptedAt.Valid || !invitation.ExpiresAt.After(time.Now()) {
 		return "", apperror.ErrConflict
 	}
-	_, err = models.HouseholdMembers.Query(sm.Where(psql.And(
+	householdID := invitation.HouseholdID
+	existing, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(invitation.HouseholdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
-	))).One(ctx, executor)
+	)), sm.ForUpdate()).One(ctx, executor)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
 	if err == nil {
-		return "", apperror.ErrConflict
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return "", err
-	}
-	householdID := invitation.HouseholdID
-	role := "MEMBER"
-	_, err = models.HouseholdMembers.Insert(
-		&models.HouseholdMemberSetter{HouseholdID: &householdID, MemberID: &memberID, Role: &role},
-		im.OnConflict("household_id", "member_id").DoNothing(),
-	).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", apperror.ErrConflict
-	}
-	if err != nil {
-		return "", err
+		if !existing.LeftAt.Valid {
+			return "", apperror.ErrConflict
+		}
+		role := memberRole
+		joinedAt := time.Now().UTC()
+		if _, err := models.HouseholdMembers.Update(
+			um.Where(psql.And(
+				models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(invitation.HouseholdID)),
+				models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+				models.HouseholdMembers.Columns.LeftAt.IsNotNull(),
+			)),
+			um.SetCol("left_at").To(psql.Arg(nil)),
+			um.SetCol("joined_at").To(psql.Arg(joinedAt)),
+			um.SetCol("role").To(psql.Arg(role)),
+		).One(ctx, executor); err != nil {
+			return "", err
+		}
+	} else {
+		role := memberRole
+		_, err = models.HouseholdMembers.Insert(
+			&models.HouseholdMemberSetter{HouseholdID: &householdID, MemberID: &memberID, Role: &role},
+			im.OnConflict("household_id", "member_id").DoNothing(),
+		).One(ctx, executor)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", apperror.ErrConflict
+		}
+		if err != nil {
+			return "", err
+		}
 	}
 	acceptedAt := time.Now().UTC()
 	if _, err := models.HouseholdInvitations.Update(

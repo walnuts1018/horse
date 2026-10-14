@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"database/sql"
+	stdjson "encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +13,10 @@ import (
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/stephenafamo/bob/types"
 	"github.com/stephenafamo/scan"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -188,6 +193,91 @@ func TestDocumentResponsesUseConstantQueryCount(t *testing.T) {
 			if response.ID != documents[i].ID.String() || response.Status != documentStatusQueued || response.Confirmations == nil {
 				t.Fatalf("unexpected response at index %d: %#v", i, response)
 			}
+		}
+	}
+}
+
+func TestDocumentMerchantFilterMatchesLatestMerchantOnly(t *testing.T) {
+	t.Parallel()
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := t.Context()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(t.Context()) }()
+	executor := bobpgx.NewTx(tx, nil)
+	householdID, memberID := gofrsuuid.Must(gofrsuuid.NewV7()), gofrsuuid.Must(gofrsuuid.NewV7())
+	subject := "document-merchant-filter:" + memberID.String()
+	displayName, householdName := subject, "document merchant filter"
+	if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberID, OidcSubject: &subject, DisplayName: &displayName}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := models.Households.Insert(&models.HouseholdSetter{ID: &householdID, Name: &householdName}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	type documentFixture struct {
+		name      string
+		results   []string
+		wantMatch bool
+	}
+	fixtures := []documentFixture{
+		{name: "kind is not merchant", results: []string{`{"statements":[{"merchant":"A Store","kind":"EXTERNAL_INCOME"}]}`}},
+		{name: "merchant matches", results: []string{`{"statements":[{"merchant":"Income Market","kind":"PAYMENT"}]}`}, wantMatch: true},
+		{name: "latest result wins", results: []string{`{"statements":[{"merchant":"Income Market","kind":"PAYMENT"}]}`, `{"statements":[{"merchant":"A Store","kind":"INCOME"}]}`}},
+	}
+	want := make(map[string]bool, len(fixtures))
+	for _, fixture := range fixtures {
+		documentID := gofrsuuid.Must(gofrsuuid.NewV7())
+		digest, objectKey, mimeType, sourceKind := "merchant-filter:"+documentID.String(), "merchant-filter/"+documentID.String(), documentMIMEPDF, "bank"
+		if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
+			ID: &documentID, HouseholdID: &householdID, Sha256: &digest, ObjectKey: &objectKey,
+			MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberID,
+		}).Exec(ctx, executor); err != nil {
+			t.Fatal(err)
+		}
+		for index, result := range fixture.results {
+			jobID := gofrsuuid.Must(gofrsuuid.NewV7())
+			version, status := int32(index+1), "succeeded"
+			request := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`{}`)}
+			jobResult := sql.Null[types.JSON[stdjson.RawMessage]]{
+				V: types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(result)}, Valid: true,
+			}
+			if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
+				ID: &jobID, HouseholdID: &householdID, SourceDocumentID: &documentID, Version: &version,
+				Status: &status, Request: &request, Result: &jobResult,
+			}).Exec(ctx, executor); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want[documentID.String()] = fixture.wantMatch
+	}
+	merchantFilter, err := documentMerchantExists(householdID, "income")
+	if err != nil {
+		t.Fatal(err)
+	}
+	documents, err := models.SourceDocuments.Query(
+		sm.Where(models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdID))),
+		merchantFilter,
+	).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]bool, len(documents))
+	for _, document := range documents {
+		got[document.ID.String()] = true
+	}
+	for documentID, wantMatch := range want {
+		if got[documentID] != wantMatch {
+			t.Fatalf("document %s match = %t, want %t", documentID, got[documentID], wantMatch)
 		}
 	}
 }

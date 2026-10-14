@@ -86,3 +86,36 @@ func TestWorkerExtractionKeepsAttachmentlessEmptyEmailFailure(t *testing.T) {
 		t.Fatal("attachmentless empty email unexpectedly succeeded")
 	}
 }
+
+func TestWorkerExtractionVerifiesBankCSVMeaning(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		data         string
+		wantBalanced bool
+		wantError    bool
+	}{
+		{name: "positive income", data: "date,merchant,amount,transactionKind\n2026-10-01,給与,100000,給与\n", wantBalanced: true},
+		{name: "negative income", data: "date,merchant,amount,transactionKind\n2026-10-01,給与,-100000,給与\n", wantError: true},
+		{name: "unclassified transaction", data: "date,merchant,amount,transactionKind\n2026-10-01,振込,100000,不明\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			worker := Worker{Store: attachmentOnlyStore{document: Document{MIMEType: mimeTypeCSV, Data: []byte(test.data)}}}
+			result, err := worker.extract(t.Context(), job{ObjectKey: "statement.csv", MIMEType: mimeTypeCSV, SourceKind: statementSourceBank, Request: []byte("{}")})
+			if (err != nil) != test.wantError {
+				t.Fatalf("CSV extraction error = %v, want error %t", err, test.wantError)
+			}
+			if err != nil {
+				return
+			}
+			if result.Balanced != test.wantBalanced {
+				t.Fatalf("CSV balanced = %t, want %t", result.Balanced, test.wantBalanced)
+			}
+			if test.name == "unclassified transaction" && len(result.Issues) != 1 {
+				t.Fatalf("unclassified CSV issues = %v, want one review issue", result.Issues)
+			}
+		})
+	}
+}

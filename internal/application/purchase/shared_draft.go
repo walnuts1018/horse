@@ -210,6 +210,7 @@ func validateSharedDraftMembership(ctx context.Context, executor bob.Executor, h
 	_, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	)), sm.ForShare()).One(ctx, executor)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

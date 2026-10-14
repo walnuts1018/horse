@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	documentapp "github.com/walnuts1018/horse/internal/application/document"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -779,7 +781,13 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 		documentMods = append(documentMods, sm.Where(confirmationFilter))
 	}
 	if filters.store != "" {
-		documentMods = append(documentMods, documentMerchantExists(householdUUID, filters.store))
+		merchantFilter, err := documentMerchantExists(householdUUID, filters.store)
+		if err != nil {
+			http.Error(w, "invalid store filter", http.StatusBadRequest)
+
+			return
+		}
+		documentMods = append(documentMods, merchantFilter)
 	}
 	if cursor != nil {
 		documentMods = append(documentMods, sm.Where(psql.Or(
@@ -823,31 +831,50 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 
 func documentConfirmationExists() psql.Expression {
 	query := psql.Select(
-		sm.Columns(psql.Arg(1)),
+		sm.Columns(psql.Cast(psql.Arg(1), "integer")),
 		sm.From(models.DocumentConfirmations.NameExpr()),
 		sm.Where(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(models.SourceDocuments.Columns.ID)),
 	)
 	return psql.Exists(query)
 }
 
-func documentMerchantExists(householdID gofrsuuid.UUID, store string) bob.Mod[*psqldialect.SelectQuery] {
+func documentMerchantExists(householdID gofrsuuid.UUID, store string) (bob.Mod[*psqldialect.SelectQuery], error) {
 	pattern := psql.Arg("%" + escapeLike(store) + "%")
 	receiptMerchant := psql.F("jsonb_extract_path_text", models.ExtractionJobs.Columns.Result, psql.Arg("receipt"), psql.Arg("merchant"))()
-	statements := psql.Cast(psql.F("jsonb_extract_path", models.ExtractionJobs.Columns.Result, psql.Arg("statements"))(), "text")
+	statementPattern, err := json.Marshal(".*" + regexp.QuoteMeta(store) + ".*")
+	if err != nil {
+		return nil, fmt.Errorf("encode merchant search pattern: %w", err)
+	}
+	statementMerchant := psql.F(
+		"jsonb_path_exists",
+		models.ExtractionJobs.Columns.Result,
+		psql.Cast(psql.Arg(`$.statements[*] ? (@.merchant like_regex `+string(statementPattern)+` flag "i")`), "jsonpath"),
+	)()
 	merchantFilter := psql.Or(
 		psql.Expression{}.New(receiptMerchant).ILike(pattern),
-		statements.ILike(pattern),
+		statementMerchant.EQ(psql.Arg(true)),
+	)
+	latestJob := models.ExtractionJobs.Query(
+		sm.Columns(models.ExtractionJobs.Columns.ID),
+		sm.Where(psql.And(
+			models.ExtractionJobs.Columns.SourceDocumentID.EQ(models.SourceDocuments.Columns.ID),
+			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		)),
+		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
+		sm.Limit(1),
 	)
 	query := psql.Select(
-		sm.Columns(psql.Arg(1)),
+		sm.Columns(psql.Cast(psql.Arg(1), "integer")),
 		sm.From(models.ExtractionJobs.NameExpr()),
 		sm.Where(psql.And(
 			models.ExtractionJobs.Columns.SourceDocumentID.EQ(models.SourceDocuments.Columns.ID),
 			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.ExtractionJobs.Columns.ID.In(latestJob),
 			merchantFilter,
 		)),
 	)
-	return sm.Where(psql.Exists(query))
+
+	return sm.Where(psql.Exists(query)), nil
 }
 
 type documentFilters struct {
@@ -1331,6 +1358,11 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	eventType := "evidence.linked"
+	if err := accounting.LockHouseholdEventCursor(r.Context(), executor, document.HouseholdID); err != nil {
+		http.Error(w, "evidence event failed", http.StatusInternalServerError)
+
+		return
+	}
 	changedFields := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`["evidence"]`)}
 	actorID := sql.Null[gofrsuuid.UUID]{V: memberID, Valid: true}
 	if _, err := models.HouseholdEvents.Insert(&models.HouseholdEventSetter{

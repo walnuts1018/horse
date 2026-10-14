@@ -129,13 +129,13 @@ var SharedPurchaseDrafts = Table[
 	},
 
 	Checks: sharedPurchaseDraftChecks{
-		SharedPurchaseDraftsPayloadCheck: check{
+		SharedPurchaseDraftsPayloadSizeCheck: check{
 			constraint: constraint{
-				Name:    "shared_purchase_drafts_payload_check",
+				Name:    "shared_purchase_drafts_payload_size_check",
 				Columns: []string{"payload"},
 				Comment: "",
 			},
-			Expression: "(pg_column_size(payload) <= 262144)",
+			Expression: "(pg_column_size(payload) <= 524288)",
 		},
 		SharedPurchaseDraftsRevisionCheck: check{
 			constraint: constraint{
@@ -192,12 +192,12 @@ func (u sharedPurchaseDraftUniques) AsSlice() []constraint {
 }
 
 type sharedPurchaseDraftChecks struct {
-	SharedPurchaseDraftsPayloadCheck  check
-	SharedPurchaseDraftsRevisionCheck check
+	SharedPurchaseDraftsPayloadSizeCheck check
+	SharedPurchaseDraftsRevisionCheck    check
 }
 
 func (c sharedPurchaseDraftChecks) AsSlice() []check {
 	return []check{
-		c.SharedPurchaseDraftsPayloadCheck, c.SharedPurchaseDraftsRevisionCheck,
+		c.SharedPurchaseDraftsPayloadSizeCheck, c.SharedPurchaseDraftsRevisionCheck,
 	}
 }

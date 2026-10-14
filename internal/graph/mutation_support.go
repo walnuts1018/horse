@@ -52,6 +52,7 @@ func verifyHouseholdMember(ctx context.Context, db *pgxpool.Pool, householdID, m
 	_, err = models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberUUID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	))).One(ctx, bobpgx.NewPool(db))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound

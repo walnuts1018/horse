@@ -11,11 +11,11 @@ var SharedPurchaseDraftErrors = &sharedPurchaseDraftErrors{
 		s:       "shared_purchase_drafts_pkey",
 	},
 
-	ErrCheckSharedPurchaseDraftsPayloadCheck: &CheckConstraintError{
+	ErrCheckSharedPurchaseDraftsPayloadSizeCheck: &CheckConstraintError{
 		schema:  "",
 		table:   "shared_purchase_drafts",
 		columns: []string{"payload"},
-		s:       "shared_purchase_drafts_payload_check",
+		s:       "shared_purchase_drafts_payload_size_check",
 	},
 
 	ErrCheckSharedPurchaseDraftsRevisionCheck: &CheckConstraintError{
@@ -29,7 +29,7 @@ var SharedPurchaseDraftErrors = &sharedPurchaseDraftErrors{
 type sharedPurchaseDraftErrors struct {
 	ErrUniqueSharedPurchaseDraftsPkey *UniqueConstraintError
 
-	ErrCheckSharedPurchaseDraftsPayloadCheck *CheckConstraintError
+	ErrCheckSharedPurchaseDraftsPayloadSizeCheck *CheckConstraintError
 
 	ErrCheckSharedPurchaseDraftsRevisionCheck *CheckConstraintError
 }

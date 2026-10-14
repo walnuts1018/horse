@@ -48,17 +48,6 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*model.AccountBalanceChange, 0, len(analysis.Changes))
-	for _, change := range analysis.Changes {
-		source, err := r.accountBalanceSource(ctx, householdID, analysis.Account, change.Journal)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, &model.AccountBalanceChange{
-			OccurredAt: timeString(change.Journal.OccurredAt), Source: source,
-			Description: change.Description, ChangeYen: graphLong(change.Amount), BalanceYen: graphLong(change.Balance),
-		})
-	}
 	startIndex := 0
 	if cursorID, err := cursorID(after, cursorTypeAccountBalanceChange); err != nil {
 		return nil, err
@@ -75,20 +64,29 @@ func (r *queryResolver) accountBalanceAnalysis(ctx context.Context, householdID,
 		}
 		startIndex = len(analysis.Changes) - cursorIndex
 	}
-	slices.Reverse(result)
-	endIndex := min(startIndex+limit, len(result))
+	orderedChanges := slices.Clone(analysis.Changes)
+	slices.Reverse(orderedChanges)
+	endIndex := min(startIndex+limit, len(orderedChanges))
 	connection := &model.AccountBalanceChangeConnection{
 		Edges: make([]*model.AccountBalanceChangeEdge, 0, endIndex-startIndex),
 		PageInfo: &model.PageInfo{
-			HasNextPage:     endIndex < len(result),
+			HasNextPage:     endIndex < len(orderedChanges),
 			HasPreviousPage: startIndex > 0,
 		},
-		TotalCount: len(analysis.Changes),
+		TotalCount: len(orderedChanges),
 	}
 	for index := startIndex; index < endIndex; index++ {
+		change := orderedChanges[index]
+		source, err := r.accountBalanceSource(ctx, householdID, analysis.Account, change.Journal)
+		if err != nil {
+			return nil, err
+		}
 		connection.Edges = append(connection.Edges, &model.AccountBalanceChangeEdge{
-			Cursor: encodeCursor(cursorTypeAccountBalanceChange, analysis.Changes[len(analysis.Changes)-index-1].Journal.ID.String()),
-			Node:   result[index],
+			Cursor: encodeCursor(cursorTypeAccountBalanceChange, change.Journal.ID.String()),
+			Node: &model.AccountBalanceChange{
+				OccurredAt: timeString(change.Journal.OccurredAt), Source: source,
+				Description: change.Description, ChangeYen: graphLong(change.Amount), BalanceYen: graphLong(change.Balance),
+			},
 		})
 	}
 	if len(connection.Edges) > 0 {

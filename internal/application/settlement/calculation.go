@@ -156,6 +156,9 @@ func calculatePeriodsAccounting(ctx context.Context, db bob.Executor, householdI
 		inputs := make([]domain.SettlementInput, 0, len(householdMembers))
 		memberIndex := make(map[string]int, len(householdMembers))
 		for _, householdMember := range householdMembers {
+			if !memberActiveDuringPeriod(householdMember, month) {
+				continue
+			}
 			memberID := householdMember.MemberID.String()
 			memberIndex[memberID] = len(inputs)
 			inputs = append(inputs, domain.SettlementInput{MemberID: memberID, MemberName: householdMember.R.Member.DisplayName})
@@ -202,6 +205,10 @@ func calculatePeriodsAccounting(ctx context.Context, db bob.Executor, householdI
 		}
 	}
 	return results, nil
+}
+
+func memberActiveDuringPeriod(member *models.HouseholdMember, start time.Time) bool {
+	return !member.LeftAt.Valid || member.LeftAt.V.After(start)
 }
 
 func CalculatePeriod(ctx context.Context, db bob.Executor, householdID, period string) ([]domain.SettlementAmount, error) {

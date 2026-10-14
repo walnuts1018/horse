@@ -41,7 +41,8 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		if err != nil {
 			return Verification{}, err
 		}
-		return Verification{Statements: entries, Balanced: true}, nil
+
+		return verifyCSVStatements(j.SourceKind, entries)
 	}
 	transform := identityTransform()
 	transformPage := 0

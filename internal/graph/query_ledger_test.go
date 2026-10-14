@@ -100,7 +100,11 @@ func TestLedgerConnectionPageInfoUsesCursorPosition(t *testing.T) {
 	}
 
 	cursorsByDay := make(map[string]string, 3)
-	for _, day := range []string{"2026-10-13", "2026-10-14", "2026-10-15"} {
+	lastDay := "2026-10-13"
+	middleDay := "2026-10-14"
+	firstDay := "2026-10-15"
+	days := []string{lastDay, middleDay, firstDay}
+	for _, day := range days {
 		entry, err := mutation.recordFunding(ctx, model.RecordFundingInput{
 			HouseholdID: household.ID, MemberID: memberID, PoolID: pool.ID, AmountYen: 100,
 			OccurredAt: model.DateTime(day + "T10:00:00Z"), IdempotencyKey: gofrsuuid.Must(gofrsuuid.NewV7()).String(),
@@ -119,12 +123,12 @@ func TestLedgerConnectionPageInfoUsesCursorPosition(t *testing.T) {
 		wantHasNext     bool
 		wantEdgeCount   int
 	}{
-		{name: "after first", cursorDay: "2026-10-15", wantHasNext: true, wantEdgeCount: 1},
-		{name: "after middle", cursorDay: "2026-10-14", wantHasPrevious: true, wantEdgeCount: 1},
-		{name: "after last", cursorDay: "2026-10-13", wantHasPrevious: true},
-		{name: "before first", cursorDay: "2026-10-15", backward: true, wantHasNext: true},
-		{name: "before middle", cursorDay: "2026-10-14", backward: true, wantHasNext: true, wantEdgeCount: 1},
-		{name: "before last", cursorDay: "2026-10-13", backward: true, wantHasPrevious: true, wantEdgeCount: 1},
+		{name: "after first", cursorDay: firstDay, wantHasNext: true, wantEdgeCount: 1},
+		{name: "after middle", cursorDay: middleDay, wantHasPrevious: true, wantEdgeCount: 1},
+		{name: "after last", cursorDay: lastDay, wantHasPrevious: true},
+		{name: "before first", cursorDay: firstDay, backward: true, wantHasNext: true},
+		{name: "before middle", cursorDay: middleDay, backward: true, wantHasNext: true, wantEdgeCount: 1},
+		{name: "before last", cursorDay: lastDay, backward: true, wantHasPrevious: true, wantEdgeCount: 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -168,5 +172,6 @@ func ledgerContextWithQuery(t *testing.T, ctx context.Context, query string) con
 	}
 	ledgerField := doc.Operations[0].SelectionSet[0].(*ast.Field)
 	ctx = graphql.WithOperationContext(ctx, &graphql.OperationContext{Doc: doc, Variables: map[string]any{}})
+
 	return graphql.WithFieldContext(ctx, &graphql.FieldContext{Field: graphql.CollectedField{Field: ledgerField, Selections: ledgerField.SelectionSet}})
 }

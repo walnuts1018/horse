@@ -51,6 +51,15 @@ var HouseholdMembers = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		LeftAt: column{
+			Name:      "left_at",
+			DBType:    "timestamp with time zone",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: householdMemberIndexes{
 		HouseholdMembersPkey: index{
@@ -120,11 +129,12 @@ type householdMemberColumns struct {
 	MemberID    column
 	Role        column
 	JoinedAt    column
+	LeftAt      column
 }
 
 func (c householdMemberColumns) AsSlice() []column {
 	return []column{
-		c.HouseholdID, c.MemberID, c.Role, c.JoinedAt,
+		c.HouseholdID, c.MemberID, c.Role, c.JoinedAt, c.LeftAt,
 	}
 }
 

@@ -80,6 +80,36 @@ func VerifyStatements(sourceKind string, entries []StatementEntry, warnings []st
 	return Verification{Receipt: Receipt{Statements: verified, Warnings: slices.Clone(warnings)}, Statements: verified, Issues: issues, Balanced: len(issues) == 0}, nil
 }
 
+func verifyCSVStatements(sourceKind string, entries []StatementEntry) (Verification, error) {
+	if sourceKind != statementSourceCard && sourceKind != statementSourceBank || len(entries) == 0 || len(entries) > 10_000 {
+		return Verification{}, errors.New("invalid statement CSV")
+	}
+	verified := slices.Clone(entries)
+	warnings := make([]string, 0)
+	for i := range verified {
+		entry := &verified[i]
+		occurredAt, err := time.Parse(time.RFC3339, entry.OccurredAt)
+		if err != nil || entry.Row < 2 || entry.SourceReference != statementSourceReference(entry.Row) || entry.Merchant == "" || len(entry.Merchant) > 1024 || strings.TrimSpace(entry.Merchant) != entry.Merchant || !validAmount(entry.Amount) || entry.TransactionID != "" && len(entry.TransactionID) > 256 || entry.OrderID != "" && len(entry.OrderID) > 256 || entry.CardLast4 != "" && (len(entry.CardLast4) != 4 || !allASCIIDigits(entry.CardLast4)) {
+			return Verification{}, fmt.Errorf("invalid statement CSV row %d", entry.Row)
+		}
+		if sourceKind == statementSourceCard {
+			if entry.Kind != statementKindCardPurchase && entry.Kind != statementKindRefund {
+				return Verification{}, fmt.Errorf("invalid card transaction kind at row %d", entry.Row)
+			}
+		} else if !validBankStatementKind(entry.Kind) {
+			return Verification{}, fmt.Errorf("invalid bank transaction kind at row %d", entry.Row)
+		} else if entry.Kind == statementKindExternalIncome && entry.Amount <= 0 {
+			return Verification{}, fmt.Errorf("external income must have a positive amount at row %d", entry.Row)
+		} else if entry.Kind == statementKindUnclassified {
+			warnings = append(warnings, fmt.Sprintf("取引%dの種別が未確定です。", entry.Row))
+		}
+		entry.OccurredAt = occurredAt.Format(time.RFC3339)
+	}
+	issues := slices.Clone(warnings)
+
+	return Verification{Receipt: Receipt{Statements: verified, Warnings: warnings}, Statements: verified, Issues: issues, Balanced: len(issues) == 0}, nil
+}
+
 func validBankStatementKind(kind string) bool {
 	switch kind {
 	case statementKindPayment, statementKindCardBillPayment, statementKindAccountTransfer, statementKindLoan, statementKindRepayment, statementKindExternalIncome, statementKindRefund, statementKindUnclassified:

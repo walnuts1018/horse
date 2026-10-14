@@ -27,10 +27,11 @@ import (
 
 // HouseholdMember is an object representing the database table.
 type HouseholdMember struct {
-	HouseholdID uuid.UUID `db:"household_id,pk" `
-	MemberID    uuid.UUID `db:"member_id,pk" `
-	Role        string    `db:"role" `
-	JoinedAt    time.Time `db:"joined_at" `
+	HouseholdID uuid.UUID           `db:"household_id,pk" `
+	MemberID    uuid.UUID           `db:"member_id,pk" `
+	Role        string              `db:"role" `
+	JoinedAt    time.Time           `db:"joined_at" `
+	LeftAt      sql.Null[time.Time] `db:"left_at" `
 
 	R householdMemberR `db:"-" `
 
@@ -77,7 +78,7 @@ type householdMemberRLoaded struct {
 
 func buildHouseholdMemberColumns(tableName string) householdMemberColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"household_id", "member_id", "role", "joined_at",
+		"household_id", "member_id", "role", "joined_at", "left_at",
 	)
 
 	if tableName != "" {
@@ -91,6 +92,7 @@ func buildHouseholdMemberColumns(tableName string) householdMemberColumns {
 		MemberID:    buildHouseholdMemberColumn(tableName, "member_id"),
 		Role:        buildHouseholdMemberColumn(tableName, "role"),
 		JoinedAt:    buildHouseholdMemberColumn(tableName, "joined_at"),
+		LeftAt:      buildHouseholdMemberColumn(tableName, "left_at"),
 	}
 }
 
@@ -101,6 +103,7 @@ type householdMemberColumns struct {
 	MemberID    householdMemberColumn
 	Role        householdMemberColumn
 	JoinedAt    householdMemberColumn
+	LeftAt      householdMemberColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -146,14 +149,15 @@ func (c householdMemberColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type HouseholdMemberSetter struct {
-	HouseholdID *uuid.UUID `db:"household_id,pk" `
-	MemberID    *uuid.UUID `db:"member_id,pk" `
-	Role        *string    `db:"role" `
-	JoinedAt    *time.Time `db:"joined_at" `
+	HouseholdID *uuid.UUID           `db:"household_id,pk" `
+	MemberID    *uuid.UUID           `db:"member_id,pk" `
+	Role        *string              `db:"role" `
+	JoinedAt    *time.Time           `db:"joined_at" `
+	LeftAt      *sql.Null[time.Time] `db:"left_at" `
 }
 
 func (s HouseholdMemberSetter) SetColumns() []string {
-	vals := make([]string, 0, 4)
+	vals := make([]string, 0, 5)
 	if s.HouseholdID != nil {
 		vals = append(vals, "household_id")
 	}
@@ -165,6 +169,9 @@ func (s HouseholdMemberSetter) SetColumns() []string {
 	}
 	if s.JoinedAt != nil {
 		vals = append(vals, "joined_at")
+	}
+	if s.LeftAt != nil {
+		vals = append(vals, "left_at")
 	}
 	return vals
 }
@@ -200,6 +207,15 @@ func (s HouseholdMemberSetter) Overwrite(t *HouseholdMember) {
 				return *new(time.Time)
 			}
 			return *s.JoinedAt
+		}()
+	}
+	if s.LeftAt != nil {
+		t.LeftAt = func() sql.Null[time.Time] {
+			if s.LeftAt == nil {
+				return *new(sql.Null[time.Time])
+			}
+			v := s.LeftAt
+			return *v
 		}()
 	}
 }
@@ -250,6 +266,17 @@ func (s *HouseholdMemberSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.JoinedAt
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.LeftAt == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[time.Time] {
+				if s.LeftAt == nil {
+					return *new(sql.Null[time.Time])
+				}
+				v := s.LeftAt
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -258,7 +285,7 @@ func (s HouseholdMemberSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s HouseholdMemberSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 4)
+	exprs := make([]bob.Expression, 0, 5)
 
 	if s.HouseholdID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -288,6 +315,13 @@ func (s HouseholdMemberSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.LeftAt != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "left_at")...),
+			psql.Arg(s.LeftAt),
+		}})
+	}
+
 	return exprs
 }
 
@@ -298,7 +332,7 @@ func householdMemberScanMapper(ctx context.Context, cols []string) (scan.BeforeF
 		idx int
 		dst func(o *HouseholdMember) any
 	}
-	targets := make([]target, 0, 4)
+	targets := make([]target, 0, 5)
 	for i, col := range cols {
 		switch col {
 		case "household_id":
@@ -309,6 +343,8 @@ func householdMemberScanMapper(ctx context.Context, cols []string) (scan.BeforeF
 			targets = append(targets, target{i, func(o *HouseholdMember) any { return &o.Role }})
 		case "joined_at":
 			targets = append(targets, target{i, func(o *HouseholdMember) any { return &o.JoinedAt }})
+		case "left_at":
+			targets = append(targets, target{i, func(o *HouseholdMember) any { return &o.LeftAt }})
 		}
 	}
 
@@ -1372,6 +1408,7 @@ type householdMemberWhere[Q psql.Filterable] struct {
 	MemberID    psql.WhereMod[Q, uuid.UUID]
 	Role        psql.WhereMod[Q, string]
 	JoinedAt    psql.WhereMod[Q, time.Time]
+	LeftAt      psql.WhereNullMod[Q, time.Time]
 	R           householdMemberWhereR[Q]
 }
 
@@ -1386,6 +1423,7 @@ func buildHouseholdMemberWhere[Q psql.Filterable](cols householdMemberColumns) h
 		MemberID:    psql.Where[Q, uuid.UUID](cols.MemberID.Expression),
 		Role:        psql.Where[Q, string](cols.Role.Expression),
 		JoinedAt:    psql.Where[Q, time.Time](cols.JoinedAt.Expression),
+		LeftAt:      psql.WhereNull[Q, time.Time](cols.LeftAt.Expression),
 		R:           householdMemberWhereR[Q]{cols: cols},
 	}
 }
@@ -1523,6 +1561,7 @@ type householdMemberPreloadBuf struct {
 	MemberID    sql.Null[uuid.UUID]
 	Role        sql.Null[string]
 	JoinedAt    sql.Null[time.Time]
+	LeftAt      sql.Null[time.Time]
 }
 
 // householdMemberScanMapperNullable maps the preloaded householdMember
@@ -1537,7 +1576,7 @@ func householdMemberScanMapperNullable(prefix string) scan.Mapper[*HouseholdMemb
 			idx int
 			dst func(b *householdMemberPreloadBuf) any
 		}
-		targets := make([]target, 0, 4)
+		targets := make([]target, 0, 5)
 		for i, col := range cols {
 			name, ok := strings.CutPrefix(col, prefix)
 			if !ok {
@@ -1552,6 +1591,8 @@ func householdMemberScanMapperNullable(prefix string) scan.Mapper[*HouseholdMemb
 				targets = append(targets, target{i, func(b *householdMemberPreloadBuf) any { return &b.Role }})
 			case "joined_at":
 				targets = append(targets, target{i, func(b *householdMemberPreloadBuf) any { return &b.JoinedAt }})
+			case "left_at":
+				targets = append(targets, target{i, func(b *householdMemberPreloadBuf) any { return &b.LeftAt }})
 			}
 		}
 
@@ -1577,7 +1618,8 @@ func householdMemberScanMapperNullable(prefix string) scan.Mapper[*HouseholdMemb
 				if !(buf.HouseholdID.Valid) &&
 					!(buf.MemberID.Valid) &&
 					!(buf.Role.Valid) &&
-					!(buf.JoinedAt.Valid) {
+					!(buf.JoinedAt.Valid) &&
+					!(buf.LeftAt.Valid) {
 					return nil, nil
 				}
 
@@ -1594,6 +1636,7 @@ func householdMemberScanMapperNullable(prefix string) scan.Mapper[*HouseholdMemb
 				if buf.JoinedAt.Valid {
 					o.JoinedAt = buf.JoinedAt.V
 				}
+				o.LeftAt = buf.LeftAt
 				return o, nil
 			}
 	}

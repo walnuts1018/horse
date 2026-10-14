@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob"
 )
 
@@ -23,8 +24,6 @@ func (tx *rollbackTransaction) Rollback(ctx context.Context) error {
 }
 
 func TestRollbackUsesUncancelledContextAndLogsFailure(t *testing.T) {
-	t.Parallel()
-
 	rollbackErr := errors.New("rollback failed")
 	tx := &rollbackTransaction{err: rollbackErr}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -41,5 +40,21 @@ func TestRollbackUsesUncancelledContextAndLogsFailure(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), rollbackErr.Error()) {
 		t.Fatalf("rollback error was not logged: %q", output.String())
+	}
+}
+
+func TestRollbackIgnoresAlreadyClosedTransaction(t *testing.T) {
+	t.Parallel()
+
+	tx := &rollbackTransaction{err: pgx.ErrTxClosed}
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	Rollback(t.Context(), tx)
+
+	if output.Len() != 0 {
+		t.Fatalf("already closed transaction was logged as an error: %q", output.String())
 	}
 }

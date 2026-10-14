@@ -52,6 +52,7 @@ func (s *Service) TransferOwner(ctx context.Context, command TransferOwnerComman
 	actor, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	)), sm.ForUpdate()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && actor.Role != ownerRole {
 		return MemberChange{}, apperror.ErrNotFound
@@ -66,6 +67,7 @@ func (s *Service) TransferOwner(ctx context.Context, command TransferOwnerComman
 	newOwner, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(newOwnerID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	)), sm.ForUpdate()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
 		return MemberChange{}, apperror.ErrNotFound
@@ -79,6 +81,7 @@ func (s *Service) TransferOwner(ctx context.Context, command TransferOwnerComman
 		um.Where(psql.And(
 			models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 			models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+			models.HouseholdMembers.Columns.LeftAt.IsNull(),
 		)),
 		um.SetCol("role").To(psql.Arg(memberRole)),
 	).One(ctx, executor); err != nil {
@@ -90,6 +93,7 @@ func (s *Service) TransferOwner(ctx context.Context, command TransferOwnerComman
 			um.Where(psql.And(
 				models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 				models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(newOwnerID)),
+				models.HouseholdMembers.Columns.LeftAt.IsNull(),
 			)),
 			um.SetCol("role").To(psql.Arg(ownerRoleValue)),
 		).One(ctx, executor); err != nil {

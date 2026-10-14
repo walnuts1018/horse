@@ -120,11 +120,11 @@ func TestUnmatchedObservationsPagesPersistedRowsAndFiltersConfirmations(t *testi
 	if page.TotalCount != 3 || len(page.Edges) != 2 {
 		t.Fatalf("October page has total=%d edges=%d, want total=3 and 2 edges", page.TotalCount, len(page.Edges))
 	}
-	if page.Edges[0].Node.GetSourceReference() != "row:10" || page.Edges[1].Node.GetSourceReference() != "row:2" {
-		t.Fatalf("stable observation order = [%s, %s], want [row:10, row:2]", page.Edges[0].Node.GetSourceReference(), page.Edges[1].Node.GetSourceReference())
+	if page.Edges[0].Node.GetSourceReference() != "row:2" || page.Edges[1].Node.GetSourceReference() != "row:10" {
+		t.Fatalf("stable observation order = [%s, %s], want [row:2, row:10]", page.Edges[0].Node.GetSourceReference(), page.Edges[1].Node.GetSourceReference())
 	}
-	if _, ok := page.Edges[1].Node.(*model.ConfirmedObservation); !ok {
-		t.Fatalf("confirmed row node has type %T, want *model.ConfirmedObservation", page.Edges[1].Node)
+	if _, ok := page.Edges[0].Node.(*model.ConfirmedObservation); !ok {
+		t.Fatalf("confirmed row node has type %T, want *model.ConfirmedObservation", page.Edges[0].Node)
 	}
 	if !page.PageInfo.HasNextPage || page.PageInfo.HasPreviousPage {
 		t.Fatalf("first page info = %#v, want next=true previous=false", page.PageInfo)
@@ -145,8 +145,8 @@ func TestUnmatchedObservationsPagesPersistedRowsAndFiltersConfirmations(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if previous.TotalCount != 3 || len(previous.Edges) != 1 || previous.Edges[0].Node.GetSourceReference() != "row:2" {
-		t.Fatalf("last row before row:1 = %#v, want row:2", previous)
+	if previous.TotalCount != 3 || len(previous.Edges) != 1 || previous.Edges[0].Node.GetSourceReference() != "row:10" {
+		t.Fatalf("last row before row:1 = %#v, want row:10", previous)
 	}
 	if !previous.PageInfo.HasPreviousPage || !previous.PageInfo.HasNextPage {
 		t.Fatalf("backward page info = %#v, want previous=true next=true", previous.PageInfo)
@@ -172,7 +172,7 @@ func TestUnmatchedObservationsPagesPersistedRowsAndFiltersConfirmations(t *testi
 	if unmatchedPage.TotalCount != 3 || len(unmatchedPage.Edges) != 2 {
 		t.Fatalf("unmatched observations total=%d edges=%d, want total=3 and first 2", unmatchedPage.TotalCount, len(unmatchedPage.Edges))
 	}
-	if unmatchedPage.Edges[0].Node.GetSourceReference() != "row:10" || unmatchedPage.Edges[1].Node.GetSourceReference() != "row:3" {
-		t.Fatalf("unmatched order = [%s, %s], want [row:10, row:3]", unmatchedPage.Edges[0].Node.GetSourceReference(), unmatchedPage.Edges[1].Node.GetSourceReference())
+	if unmatchedPage.Edges[0].Node.GetSourceReference() != "row:3" || unmatchedPage.Edges[1].Node.GetSourceReference() != "row:10" {
+		t.Fatalf("unmatched order = [%s, %s], want [row:3, row:10]", unmatchedPage.Edges[0].Node.GetSourceReference(), unmatchedPage.Edges[1].Node.GetSourceReference())
 	}
 }

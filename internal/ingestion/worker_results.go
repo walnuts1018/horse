@@ -14,6 +14,7 @@ import (
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
@@ -159,6 +160,12 @@ func (w *Worker) recordExtractionSuccess(finishCtx context.Context, j job, resul
 	}
 	if err := persistSourceObservations(finishCtx, bobpgx.NewTx(finishTx, nil), householdUUID, sourceUUID, j.SourceHash, j.SourceKind, result); err != nil {
 		return false, fmt.Errorf("record source observations: %w", err)
+	}
+	if _, err := models.Households.Query(
+		sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))),
+		sm.ForUpdate(),
+	).One(finishCtx, bobpgx.NewTx(finishTx, nil)); err != nil {
+		return false, fmt.Errorf("lock household event cursor: %w", err)
 	}
 	eventType := "receipt.extraction.updated"
 	jVersion := j.Version

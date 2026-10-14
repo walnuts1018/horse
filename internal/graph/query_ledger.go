@@ -164,6 +164,7 @@ func ledgerCursorSideExists(ctx context.Context, executor bob.Executor, househol
 			),
 		)
 	}
+
 	return models.LedgerEntries.Query(sm.Where(psql.And(
 		models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		position,

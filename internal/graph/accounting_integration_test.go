@@ -1064,6 +1064,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(household.ID)))).Exec(t.Context(), bobpgx.NewPool(db))
 	}()
 	householdUUID, _ := gofrsuuid.FromString(household.ID)
+	memberAUUID, _ := gofrsuuid.FromString(memberA)
 	memberBUUID, _ := gofrsuuid.FromString(memberB)
 	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdUUID, MemberID: &memberBUUID}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
@@ -1484,6 +1485,72 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		t.Fatalf("repayment journal did not reduce the shared bank and increase the lender bank: source credit=%d destination debit=%d", sourceAccountCredit, destinationAccountDebit)
 	}
 	assertHouseholdJournalsBalance(t, ctx, db, generatedUUID(household.ID))
+
+	for index, day := range []string{"2026-06-15", "2026-06-16"} {
+		loan, err := resolver.recordTransfer(ctx, model.RecordTransferInput{
+			HouseholdID: household.ID, FromMemberID: memberA, ToMemberID: memberB, Kind: model.TransferInputKindLoan,
+			AmountYen: model.Long(1000 + index), OccurredAt: model.DateTime(day + "T12:00:00Z"), Description: "Additional loan",
+			IdempotencyKey: uuid.NewV7().String(),
+		})
+		if err != nil || loan.TransferID == nil {
+			t.Fatalf("additional loan failed: loan=%#v error=%v", loan, err)
+		}
+	}
+	query := (&Resolver{DB: db}).Query()
+	allLoans, err := query.LoanBalances(ctx, household.ID, nil, nil, new(10), nil)
+	if err != nil || len(allLoans.Edges) != 3 || allLoans.TotalCount != 3 {
+		t.Fatalf("loan list did not exclude unrelated transfers: loans=%#v error=%v", allLoans, err)
+	}
+	loanPageSize := 2
+	firstLoans, err := query.LoanBalances(ctx, household.ID, nil, nil, &loanPageSize, nil)
+	if err != nil || len(firstLoans.Edges) != loanPageSize || !firstLoans.PageInfo.HasNextPage || firstLoans.PageInfo.HasPreviousPage || firstLoans.PageInfo.EndCursor == nil {
+		t.Fatalf("first loan page is invalid: loans=%#v error=%v", firstLoans, err)
+	}
+	lastLoans, err := query.LoanBalances(ctx, household.ID, firstLoans.PageInfo.EndCursor, nil, &loanPageSize, nil)
+	if err != nil || len(lastLoans.Edges) != 1 || !lastLoans.PageInfo.HasPreviousPage || lastLoans.PageInfo.HasNextPage {
+		t.Fatalf("last loan page is invalid: loans=%#v error=%v", lastLoans, err)
+	}
+	for index, edge := range firstLoans.Edges {
+		if edge.Node.ID != allLoans.Edges[index].Node.ID {
+			t.Fatalf("first loan page changed order at %d: got=%s want=%s", index, edge.Node.ID, allLoans.Edges[index].Node.ID)
+		}
+	}
+	if lastLoans.Edges[0].Node.ID != allLoans.Edges[2].Node.ID {
+		t.Fatalf("last loan page changed order: got=%s want=%s", lastLoans.Edges[0].Node.ID, allLoans.Edges[2].Node.ID)
+	}
+	newestLoanCursor, oldestLoanCursor := allLoans.Edges[0].Cursor, allLoans.Edges[2].Cursor
+	singleLoanPageSize := 1
+	afterNewestLoan, err := query.LoanBalances(ctx, household.ID, &newestLoanCursor, nil, &singleLoanPageSize, nil)
+	if err != nil || len(afterNewestLoan.Edges) != 1 || afterNewestLoan.PageInfo.HasPreviousPage || afterNewestLoan.Edges[0].Node.ID != allLoans.Edges[1].Node.ID {
+		t.Fatalf("after newest loan cursor page is invalid: page=%#v error=%v", afterNewestLoan, err)
+	}
+	afterOldestLoan, err := query.LoanBalances(ctx, household.ID, &oldestLoanCursor, nil, &singleLoanPageSize, nil)
+	if err != nil || len(afterOldestLoan.Edges) != 0 || !afterOldestLoan.PageInfo.HasPreviousPage || afterOldestLoan.PageInfo.HasNextPage {
+		t.Fatalf("after oldest loan cursor page is invalid: page=%#v error=%v", afterOldestLoan, err)
+	}
+
+	invalidSourceJournalID, invalidSourceID := generatedUUID(uuid.NewV7().String()), generatedUUID(uuid.NewV7().String())
+	invalidSourceKind, invalidSourceKey := "UNKNOWN_SOURCE", "unknown-source:"+uuid.NewV7().String()
+	invalidSourceAt := time.Date(2026, time.May, 2, 12, 0, 0, 0, time.UTC)
+	if _, err := models.Journals.Insert(&models.JournalSetter{
+		ID: &invalidSourceJournalID, HouseholdID: &householdUUID, SourceKind: &invalidSourceKind, SourceID: &invalidSourceID,
+		IdempotencyKey: &invalidSourceKey, OccurredAt: &invalidSourceAt, CreatedBy: &memberAUUID,
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	debitAccount, emptyAccount := sql.Null[gofrsuuid.UUID]{V: sharedAccountUUID, Valid: true}, sql.Null[gofrsuuid.UUID]{}
+	debit, credit := int64(1), int64(1)
+	debitLine, creditLine := int32(1), int32(2)
+	if _, err := models.JournalEntries.Insert(
+		&models.JournalEntrySetter{JournalID: &invalidSourceJournalID, LineNo: &debitLine, AccountID: &debitAccount, DebitYen: &debit, HouseholdID: &householdUUID},
+		&models.JournalEntrySetter{JournalID: &invalidSourceJournalID, LineNo: &creditLine, AccountID: &emptyAccount, CreditYen: &credit, HouseholdID: &householdUUID},
+	).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	firstAccountHistory, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, sharedAccount.ID, "2025-05", "2026-12", new(1), nil)
+	if err != nil || len(firstAccountHistory.Changes.Edges) != 1 || firstAccountHistory.Changes.TotalCount != 6 {
+		t.Fatalf("page outside an invalid source journal should remain readable: analysis=%#v error=%v", firstAccountHistory, err)
+	}
 }
 
 func settlementByMember(t *testing.T, lines []*model.SettlementLine) map[string]*model.SettlementLine {

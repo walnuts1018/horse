@@ -14,7 +14,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -163,6 +165,75 @@ func TestPurchaseConcurrentUpdatesMergeDisjointFieldsAndConflictOnSameField(t *t
 	}
 	if loaded.Revision != sharedRevision+1 || loaded.Merchant != successfulMerchant || !gotOccurredAt.Equal(wantOccurredAt) {
 		t.Fatalf("reloaded purchase does not contain the concurrent updates: revision=%d merchant=%q occurredAt=%q", loaded.Revision, loaded.Merchant, loaded.OccurredAt)
+	}
+	purchaseUUID, err := gofrsuuid.FromString(purchase.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEventCursorCommitOrder(t, ctx, db, householdUUID, memberUUID, purchaseUUID)
+}
+
+func assertEventCursorCommitOrder(t *testing.T, ctx context.Context, db *pgxpool.Pool, householdID, actorID, entityID gofrsuuid.UUID) {
+	t.Helper()
+	executor := bobpgx.NewPool(db)
+	baseline, err := latestHouseholdEventCursor(ctx, db, householdID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstTx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = firstTx.Rollback(context.WithoutCancel(ctx)) }()
+	if err := accounting.RecordEvent(ctx, bobpgx.NewTx(firstTx, nil), householdID, entityID, "test.cursor.first", 1, []string{"first"}, actorID); err != nil {
+		t.Fatal(err)
+	}
+
+	secondCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	secondTx, err := db.Begin(secondCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = secondTx.Rollback(context.WithoutCancel(ctx)) }()
+	secondEvent := make(chan error, 1)
+	go func() {
+		err := accounting.RecordEvent(secondCtx, bobpgx.NewTx(secondTx, nil), householdID, entityID, "test.cursor.second", 2, []string{"second"}, actorID)
+		if err == nil {
+			err = secondTx.Commit(secondCtx)
+		}
+		secondEvent <- err
+	}()
+
+	select {
+	case err := <-secondEvent:
+		t.Fatalf("second event completed before the first transaction committed: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := firstTx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-secondEvent:
+		if err != nil {
+			t.Fatalf("write second event: %v", err)
+		}
+	case <-secondCtx.Done():
+		t.Fatalf("second event did not continue after the first transaction committed: %v", secondCtx.Err())
+	}
+
+	events, err := models.HouseholdEvents.Query(
+		sm.Where(psql.And(
+			models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.HouseholdEvents.Columns.Cursor.GT(psql.Arg(baseline)),
+		)),
+		sm.OrderBy(models.HouseholdEvents.Columns.Cursor),
+	).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 || events[0].Type != "test.cursor.first" || events[1].Type != "test.cursor.second" || events[0].Cursor >= events[1].Cursor {
+		t.Fatalf("event cursor order does not match commit order: %#v", events)
 	}
 }
 

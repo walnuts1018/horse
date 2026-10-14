@@ -1,8 +1,10 @@
 package graph
 
 import (
+	"database/sql"
 	"os"
 	"testing"
+	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -77,6 +79,58 @@ func TestHouseholdMemberOffboarding(t *testing.T) {
 	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdID, MemberID: uuidPointer(t, memberID), Role: new("MEMBER")}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
+
+	pool, err := resolver.createPool(ownerContext, model.CreatePoolInput{HouseholdID: household.ID, Name: "Member offboarding", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.setPoolFundingRule(ownerContext, model.SetPoolFundingRuleInput{
+		HouseholdID: household.ID, PoolID: pool.ID, Configuration: personalPoolFundingConfiguration(initialMemberID.String()), ExpectedVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	conflictedLeave, err := resolver.LeaveHousehold(initialMemberContext, model.LeaveHouseholdInput{HouseholdID: household.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, ok := conflictedLeave.(*model.LeaveHouseholdUserError); !ok || result.Code != model.MutationErrorCodeConflict {
+		t.Fatalf("leaving with an active pool funding reference = %#v, want CONFLICT", conflictedLeave)
+	}
+	if _, err := resolver.setPoolFundingRule(ownerContext, model.SetPoolFundingRuleInput{
+		HouseholdID: household.ID, PoolID: pool.ID, Configuration: personalPoolFundingConfiguration(secondOwnerID), ExpectedVersion: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	journalID, sourceID := generatedUUID(newID()), generatedUUID(newID())
+	sourceKind, idempotencyKey := "TEST", "offboarding:"+initialMemberID.String()
+	occurredAt := time.Now().UTC()
+	if _, err := models.Journals.Insert(&models.JournalSetter{
+		ID: &journalID, HouseholdID: &householdID, SourceKind: &sourceKind, SourceID: &sourceID,
+		IdempotencyKey: &idempotencyKey, OccurredAt: &occurredAt, CreatedBy: uuidPointer(t, initialMemberID.String()),
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	journalTx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = journalTx.Rollback(ctx) }()
+	journalExecutor := bobpgx.NewTx(journalTx, nil)
+	lineNo, debitYen := int32(1), int64(1250)
+	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+		JournalID: &journalID, LineNo: &lineNo, MemberID: &sql.Null[gofrsuuid.UUID]{V: initialMemberID, Valid: true}, DebitYen: &debitYen,
+	}).Exec(ctx, journalExecutor); err != nil {
+		t.Fatal(err)
+	}
+	creditLineNo, creditYen := int32(2), debitYen
+	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+		JournalID: &journalID, LineNo: &creditLineNo, CreditYen: &creditYen,
+	}).Exec(ctx, journalExecutor); err != nil {
+		t.Fatal(err)
+	}
+	if err := journalTx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
 		executor := bobpgx.NewPool(db)
 		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID)))).Exec(t.Context(), executor)
@@ -137,14 +191,38 @@ func TestHouseholdMemberOffboarding(t *testing.T) {
 	if _, ok := leaveMember.(*model.LeaveHouseholdSuccess); !ok {
 		t.Fatalf("member leaving = %T, want success", leaveMember)
 	}
+	departedView, err := (&Resolver{DB: db}).Query().Household(initialMemberContext, household.ID)
+	if err != nil || departedView != nil {
+		t.Fatalf("departed member household access = %#v, error=%v, want no access", departedView, err)
+	}
+	activeView, err := (&Resolver{DB: db}).Query().Household(secondOwnerContext, household.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, activeMember := range activeView.Members {
+		if activeMember.ID == initialMemberID.String() {
+			t.Fatal("departed member appeared in the active household member list")
+		}
+	}
 	if _, err := models.Members.Query(sm.Where(models.Members.Columns.ID.EQ(psql.Arg(initialMemberID)))).One(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatalf("departed member record was deleted: %v", err)
 	}
-	if _, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+	departedMembership, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(initialMemberID)),
-	))).One(ctx, bobpgx.NewPool(db)); err == nil {
-		t.Fatal("departed member still has household membership")
+	))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatalf("departed member membership was not retained: %v", err)
+	}
+	if !departedMembership.LeftAt.Valid {
+		t.Fatal("departed member membership has no left_at timestamp")
+	}
+	journalEntries, err := models.JournalEntries.Query(sm.Where(psql.And(
+		models.JournalEntries.Columns.JournalID.EQ(psql.Arg(journalID)),
+		models.JournalEntries.Columns.MemberID.EQ(psql.Arg(initialMemberID)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(journalEntries) != 1 || journalEntries[0].DebitYen != debitYen {
+		t.Fatalf("accounting entry after offboarding = %#v, error=%v", journalEntries, err)
 	}
 
 	leave, err := resolver.LeaveHousehold(ownerContext, model.LeaveHouseholdInput{HouseholdID: household.ID})

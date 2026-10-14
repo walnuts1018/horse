@@ -206,6 +206,7 @@ func requireHouseholdOwner(ctx context.Context, db bob.Executor, householdID, me
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	)), sm.ForShare()).One(ctx, db)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound

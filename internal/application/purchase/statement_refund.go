@@ -230,6 +230,7 @@ func (s *Service) LinkStatementRefundCorrection(ctx context.Context, input LinkS
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorUUID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	))).Exists(ctx, executor)
 	if err != nil {
 		return "", err

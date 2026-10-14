@@ -150,6 +150,7 @@ func (s *Service) UpdateName(ctx context.Context, command UpdateNameCommand) (Ca
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(category.HouseholdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	))).Exists(ctx, executor)
 	if err != nil {
 		return Category{}, err
@@ -203,6 +204,7 @@ func (s *Service) SetArchived(ctx context.Context, command SetArchivedCommand) (
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(category.HouseholdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
 	))).Exists(ctx, executor)
 	if err != nil {
 		return Category{}, err
