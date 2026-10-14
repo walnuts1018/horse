@@ -1,5 +1,5 @@
 import { BarChart3 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { Household } from "../../../shared/api";
 
@@ -17,14 +17,17 @@ import { RecurringExpensePanel } from "./recurring-expense-panel";
 import "./analysis-page.css";
 
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
+const formatTokyoDate = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 const sorted = <T,>(values: T[], compare: (left: T, right: T) => number): T[] => {
-  const result: T[] = [];
-  for (const value of values) {
-    const index = result.findIndex((current) => compare(value, current) < 0);
-    if (index === -1) result.push(value);
-    else result.splice(index, 0, value);
-  }
-  return result;
+  // ES2022の型定義にtoSortedが含まれないため、複製後にsortする。
+  // oxlint-disable-next-line unicorn/no-array-sort
+  return [...values].sort(compare);
 };
 export function AnalysisPage({ household }: { household: Household }) {
   const period = useAnalysisPeriod();
@@ -177,14 +180,11 @@ export function AnalysisPage({ household }: { household: Household }) {
   const maxCategoryNegative = Math.max(...categoryMonthTotals.map(({ negative }) => negative), 1);
   const peakRow = rows[0];
   const loadError = budgetError || recurringError;
-  const [today] = useState(() =>
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Tokyo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date()),
-  );
+  const [today, setToday] = useState(formatTokyoDate);
+  useEffect(() => {
+    const timer = window.setInterval(() => setToday(formatTokyoDate()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const activeRecurringExpenses = recurringExpenses.filter(
     (expense) => expense.startsOn <= today && (!expense.endsOn || expense.endsOn >= today),
   );

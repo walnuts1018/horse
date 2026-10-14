@@ -443,6 +443,13 @@ dependencies = [
 dev = [
     { name = "ruff" },
 ]
+test = [
+    { name = "fastapi" },
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "pypdfium2" },
+    { name = "python-multipart" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -457,6 +464,13 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [{ name = "ruff", specifier = ">=0.8,<1" }]
+test = [
+    { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "numpy", specifier = ">=2,<3" },
+    { name = "pillow", specifier = ">=11,<13" },
+    { name = "pypdfium2", specifier = ">=5,<6" },
+    { name = "python-multipart", specifier = ">=0.0.9,<1" },
+]
 
 [[package]]
 name = "httpcore"

@@ -15,16 +15,6 @@ const format = (value: string) => {
   const [numerator, denominator] = value.split("/");
   return denominator ? formatExactYen(numerator, denominator) : yen(Number(value));
 };
-const sortBy = <T,>(values: T[], compare: (left: T, right: T) => number): T[] => {
-  const result: T[] = [];
-  for (const value of values) {
-    const index = result.findIndex((current) => compare(value, current) < 0);
-    if (index === -1) result.push(value);
-    else result.splice(index, 0, value);
-  }
-  return result;
-};
-
 export function ItemPricePanel({
   rows,
   data,
@@ -71,8 +61,9 @@ export function ItemPricePanel({
         </label>
       </div>
       {rows.slice(0, 5).map((row) => {
-        const prices = sortBy(
-          (data?.monthly.item ?? []).filter((entry) => entry.id === row.id),
+        const matchingPrices = (data?.monthly.item ?? []).filter((entry) => entry.id === row.id);
+        // oxlint-disable-next-line unicorn/no-array-sort
+        const prices = matchingPrices.sort(
           (left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt),
         );
         const trend =

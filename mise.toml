@@ -119,3 +119,8 @@ run = "uv lock"
 description = "OCRサービスの静的解析"
 dir = "services/ocr"
 run = "uv run --only-group dev ruff check ."
+
+[tasks."ocr:test"]
+description = "OCRサービスのテスト"
+dir = "services/ocr"
+run = "uv run --only-group test python -m unittest -v"

@@ -147,6 +147,20 @@ func TestReconciliationObservationsUseStableBoundedQueries(t *testing.T) {
 	if len(candidates) != observationsPerDocument {
 		t.Fatalf("candidate query returned %d observations, want %d for one matching source hash", len(candidates), observationsPerDocument)
 	}
+	boundedMatches := make([]ingestion.Observation, 0, priorDocumentCount)
+	for documentIndex := range priorDocumentCount {
+		boundedMatches = append(boundedMatches, ingestion.Observation{Hash: "prior-" + strconv.Itoa(documentIndex)})
+	}
+	boundedCandidates, err := reconciliationObservations(ctx, executor, householdID, reconciliationObservationQuery{
+		candidates: boundedMatches,
+		limit:      reconciliationCandidateLimit + 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(boundedCandidates) != reconciliationCandidateLimit+1 {
+		t.Fatalf("candidate query returned %d observations, want the bounded page of %d", len(boundedCandidates), reconciliationCandidateLimit+1)
+	}
 	amountCandidates, err := reconciliationObservations(ctx, executor, householdID, reconciliationObservationQuery{
 		candidates: []ingestion.Observation{{Merchant: "店舗", OccurredAt: occurredAt.V, Amount: 1000}},
 	})

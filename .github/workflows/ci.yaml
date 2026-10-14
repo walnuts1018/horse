@@ -85,6 +85,9 @@ jobs:
           - name: Test Go
             run: mise run test
 
+          - name: Test OCR service
+            run: mise run ocr:test
+
           - name: Validate Relay artifacts
             run: mise run web:relay:validate
 

@@ -83,10 +83,15 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 	// 候補検索は確定した購入へ自動統合せず、同じ家庭の全原本に保存された観測を照合する。
 	existing, err := reconciliationObservations(r.Context(), executor, document.HouseholdID, reconciliationObservationQuery{
 		candidates: incoming,
+		limit:      reconciliationCandidateLimit + 1,
 	})
 	if err != nil {
 		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
 		return
+	}
+	if len(existing) > reconciliationCandidateLimit {
+		existing = existing[:reconciliationCandidateLimit]
+		truncated = true
 	}
 	type candidate struct {
 		SourceReference string            `json:"sourceReference"`
@@ -108,6 +113,7 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 }
 
 const reconciliationObservationLimit = 100
+const reconciliationCandidateLimit = 5000
 
 type reconciliationObservationQuery struct {
 	documentID      *gofrsuuid.UUID
