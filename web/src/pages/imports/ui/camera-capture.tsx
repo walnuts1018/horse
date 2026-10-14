@@ -313,7 +313,7 @@ export const CameraCapture = forwardRef<
                 </button>
               )}
               <button type="button" className="button button-primary" onClick={() => void add()}>
-                画像を追加
+                画像をアップロード
               </button>
             </div>
             {draft.crop && (

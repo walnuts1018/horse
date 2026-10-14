@@ -38,6 +38,24 @@ export function EditPurchaseItemAllocations({
         <Popover.Positioner sideOffset={6}>
           <Popover.Popup className="allocation-popup">
             <Popover.Title>負担割合</Popover.Title>
+            {pools.map((pool) => (
+              <button
+                type="button"
+                className="text-button"
+                key={pool.id}
+                onClick={() => onChange([{ poolId: pool.id, weight: 1 }])}
+              >
+                {pool.name} 100%
+              </button>
+            ))}
+            <button
+              type="button"
+              className="text-button"
+              disabled={pools.length === 0}
+              onClick={() => onChange(pools.map((pool) => ({ poolId: pool.id, weight: 1 })))}
+            >
+              均等
+            </button>
             {pools.map((pool) => {
               const weight =
                 (allocations.length ? allocations : defaultAllocations).find(

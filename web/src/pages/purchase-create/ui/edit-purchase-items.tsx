@@ -63,8 +63,6 @@ export function EditPurchaseItems({
   const [draft, setDraft] = useState(value);
   const draftRef = useRef(draft);
   const onChangeRef = useRef(onChange);
-  // ユーザーが明示的に選択したカテゴリのみを状態として保持（自動推測は導出値）
-  const [userCategoryId, setUserCategoryId] = useState(value.categoryId || "");
   const [selectedProductVariantId, setSelectedProductVariantId] = useState("");
   const [productSuggestions, setProductSuggestions] = useState<ProductSuggestion[]>([]);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
@@ -98,15 +96,15 @@ export function EditPurchaseItems({
   // 実効カテゴリ：ユーザー明示選択 > 自動推測 > 空
   const suggestedCategoryFromHistory = useMemo(() => {
     const query = draft.itemName.trim();
-    if (!query || userCategoryId !== "") return null;
+    if (!query || draft.categoryId !== "") return null;
     const match = history
       .flatMap((purchase) => purchase.items)
       .find((item) => item.name.toLocaleLowerCase() === query.toLocaleLowerCase());
     if (match && isEnabledCategory(match.categoryId)) return match.categoryId;
     return null;
-  }, [draft.itemName, history, isEnabledCategory, userCategoryId]);
+  }, [draft.categoryId, draft.itemName, history, isEnabledCategory]);
 
-  const effectiveCategoryId = userCategoryId || suggestedCategoryFromHistory || "";
+  const effectiveCategoryId = draft.categoryId || suggestedCategoryFromHistory || "";
 
   // コールバックはref経由で参照し、副作用の依存が毎回変わって延々と再実行されるのを避ける
   useEffect(() => {
@@ -115,26 +113,18 @@ export function EditPurchaseItems({
 
   const update = useCallback(
     (next: PurchaseItemsValue) => {
-      // 実効カテゴリを反映して親へ通知
-      const withEffectiveCategory = {
-        ...next,
-        categoryId: effectiveCategoryId,
-      };
-      draftRef.current = withEffectiveCategory;
-      setDraft(withEffectiveCategory);
-      onChangeRef.current(withEffectiveCategory);
+      draftRef.current = next;
+      setDraft(next);
+      onChangeRef.current(next);
     },
-    [effectiveCategoryId],
+    [],
   );
   const patchDraft = useCallback(
     (patch: Partial<PurchaseItemsValue>) => update({ ...draftRef.current, ...patch }),
     [update],
   );
   const updateCategory = useCallback(
-    (id: string) => {
-      setUserCategoryId(id);
-      patchDraft({ categoryId: id });
-    },
+    (id: string) => patchDraft({ categoryId: id }),
     [patchDraft],
   );
   const changeItemName = useCallback(
@@ -142,15 +132,9 @@ export function EditPurchaseItems({
       setSelectedProductVariantId("");
       setActiveSuggestionIndex(-1);
       setSuggestionsDismissed(false);
-      // ユーザーが明示的にカテゴリを選んでいない場合のみリセット
-      const nextCategoryId = userCategoryId ? draftRef.current.categoryId : "";
-      patchDraft({
-        itemName: name,
-        categoryId: nextCategoryId,
-      });
-      if (!userCategoryId) setUserCategoryId("");
+      patchDraft({ itemName: name });
     },
-    [patchDraft, userCategoryId],
+    [patchDraft],
   );
   const markDirty = useCallback(() => onDirty(), [onDirty]);
   const replaceItems = useCallback(
@@ -166,7 +150,6 @@ export function EditPurchaseItems({
   );
   const reset = useCallback(() => {
     const empty = emptyPurchaseItemsValue();
-    setUserCategoryId("");
     setSelectedProductVariantId("");
     rememberUndo(null);
     setProductSuggestions([]);
@@ -198,11 +181,10 @@ export function EditPurchaseItems({
       }));
       // コピーは明示的な操作なので、最初のアイテムのカテゴリをユーザー選択として記録
       const firstCategoryId = items[0]?.categoryId ?? "";
-      setUserCategoryId(firstCategoryId);
       rememberUndo(draftRef.current.items);
-      replaceItems(items);
+      update({ ...draftRef.current, items, categoryId: firstCategoryId });
     },
-    [markDirty, isEnabledCategory, rememberUndo, replaceItems],
+    [markDirty, isEnabledCategory, rememberUndo, update],
   );
   useImperativeHandle(commandsRef, () => ({ reset, undo, copy }), [reset, undo, copy]);
 
@@ -252,7 +234,7 @@ export function EditPurchaseItems({
     const item: PurchaseDraftItem = {
       key: crypto.randomUUID(),
       ...parsed.data,
-      categoryId: draft.categoryId,
+      categoryId: effectiveCategoryId,
       ...(selectedProductVariantId ? { productVariantId: selectedProductVariantId } : {}),
       allocations: [],
     };
@@ -264,7 +246,6 @@ export function EditPurchaseItems({
       itemAmount: "",
       categoryId: "",
     });
-    setUserCategoryId("");
     setSelectedProductVariantId("");
     setProductSuggestions([]);
     setFocused("name");
@@ -278,7 +259,7 @@ export function EditPurchaseItems({
   const selectProductSuggestion = (candidate: ProductSuggestion) => {
     changeItemName(candidate.matchedName || draft.itemName.trim());
     setSelectedProductVariantId(candidate.variant.id);
-    if (isEnabledCategory(candidate.concept.categoryId) && !userCategoryId)
+    if (isEnabledCategory(candidate.concept.categoryId) && !draft.categoryId)
       updateCategory(candidate.concept.categoryId);
     setProductSuggestions([]);
     amountRef.current?.focus();
@@ -415,7 +396,7 @@ export function EditPurchaseItems({
           key: crypto.randomUUID(),
           name,
           amount: amount.replace(/[¥,]/g, ""),
-          categoryId: userCategoryId
+          categoryId: draft.categoryId
             ? effectiveCategoryId
             : isEnabledCategory(historyCategoryId)
               ? historyCategoryId

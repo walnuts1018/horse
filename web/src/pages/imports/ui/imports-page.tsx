@@ -150,11 +150,10 @@ export function ImportsPage({
         : "",
     );
   };
-  const uploadFiles = async () => {
-    if (!files.length) return;
+  const uploadFiles = async (queued: PendingUpload[] = files) => {
+    if (!queued.length) return;
     setPending(true);
     setMessage("");
-    const queued = files;
     const queuedIds = new Set(queued.map((entry) => entry.id));
     let nextIndex = 0;
     const failedUploads = new Set<string>();
@@ -375,15 +374,14 @@ export function ImportsPage({
         onAdd={(file) => {
           markUnsaved();
           setMessage("");
-          setFiles((current) => [
-            ...current,
-            {
-              id: crypto.randomUUID(),
-              file,
-              sourceKind: defaultUploadSourceKind(file),
-              status: "queued",
-            },
-          ]);
+          const upload: PendingUpload = {
+            id: crypto.randomUUID(),
+            file,
+            sourceKind: defaultUploadSourceKind(file),
+            status: "queued",
+          };
+          setFiles((current) => [...current, upload]);
+          void uploadFiles([upload]);
         }}
       />
       <div className="import-layout">
