@@ -18,14 +18,15 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
+	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 var (
-	ErrBadInput = errors.New("invalid input")
-	ErrConflict = errors.New("resource conflict")
-	ErrNotFound = errors.New("resource not found")
+	ErrBadInput = apperror.ErrBadInput
+	ErrConflict = apperror.ErrConflict
+	ErrNotFound = apperror.ErrNotFound
 )
 
 const maxMoney int64 = 1_000_000_000_000

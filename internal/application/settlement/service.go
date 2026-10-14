@@ -20,6 +20,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -28,9 +29,9 @@ import (
 const closedStatus = "CLOSED"
 
 var (
-	ErrBadInput                       = errors.New("invalid input")
-	ErrConflict                       = errors.New("resource conflict")
-	ErrNotFound                       = errors.New("resource not found")
+	ErrBadInput                       = apperror.ErrBadInput
+	ErrConflict                       = apperror.ErrConflict
+	ErrNotFound                       = apperror.ErrNotFound
 	ErrUnattributedPurchasePayment    = errors.New("posted purchase payment has no funding pool")
 	ErrMissingPurchaseFundingSnapshot = errors.New("posted purchase has no funding snapshot")
 )
