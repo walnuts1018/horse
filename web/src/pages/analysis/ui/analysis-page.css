@@ -16,6 +16,7 @@
   color: #374a3f;
   margin: 9px 0 4px;
   letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
 }
 
 .analysis-page .summary-card small {
@@ -115,6 +116,7 @@
   color: #5f6d65;
   white-space: nowrap;
   height: auto;
+  font-variant-numeric: tabular-nums;
 }
 
 .analysis-page .month-column > i {
@@ -235,6 +237,13 @@
   overflow: hidden;
 }
 
+.analysis-page .category-row > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .analysis-page .category-row > i > b {
   display: block;
   height: 100%;
@@ -246,6 +255,7 @@
   font-size: 12px;
   font-weight: 600;
   color: #59685e;
+  font-variant-numeric: tabular-nums;
 }
 
 .analysis-page .analysis-price-panel {
@@ -423,7 +433,11 @@
   border: 0;
   background: transparent;
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
+}
+
+.analysis-controls .select-filter {
+  font-size: 11px;
 }
 
 @media (width <= 760px) {

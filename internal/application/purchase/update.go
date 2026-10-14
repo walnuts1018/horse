@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
@@ -33,36 +34,52 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResu
 	return s.update(ctx, command, nil, false, nil)
 }
 
+type purchaseUpdateValidationInput struct {
+	changedFields      []string
+	occurredAt         *time.Time
+	datePrecision      *string
+	merchant           *string
+	paymentAllocations *[]Payment
+}
+
+func validatePurchaseUpdateFields(input purchaseUpdateValidationInput) error {
+	if len(input.changedFields) == 0 {
+		return fmt.Errorf("%w: patch must contain a field", ErrBadInput)
+	}
+	seen := make(map[string]struct{}, len(input.changedFields))
+	for _, field := range input.changedFields {
+		if field != updateFieldOccurredAt && field != updateFieldMerchant && field != updateFieldPaymentAllocations {
+			return fmt.Errorf("%w: invalid changed field", ErrBadInput)
+		}
+		if _, exists := seen[field]; exists {
+			return fmt.Errorf("%w: duplicate changed field", ErrBadInput)
+		}
+		seen[field] = struct{}{}
+	}
+	if slices.Contains(input.changedFields, updateFieldOccurredAt) && input.occurredAt == nil {
+		return fmt.Errorf("%w: occurredAt is required", ErrBadInput)
+	}
+	if input.datePrecision != nil && (input.occurredAt == nil || !slices.Contains(input.changedFields, updateFieldOccurredAt) || !validDatePrecision(*input.datePrecision)) {
+		return fmt.Errorf("%w: valid date precision requires occurredAt", ErrBadInput)
+	}
+	if slices.Contains(input.changedFields, updateFieldMerchant) && input.merchant == nil {
+		return fmt.Errorf("%w: merchant is required", ErrBadInput)
+	}
+	if slices.Contains(input.changedFields, updateFieldPaymentAllocations) && input.paymentAllocations == nil {
+		return fmt.Errorf("%w: payment allocations are required", ErrBadInput)
+	}
+	return nil
+}
+
 func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pgx.Tx, deferAccountingSync bool, accountingChanged *bool) (UpdateResult, error) {
 	if err := inputvalidation.Check(command); err != nil {
 		return UpdateResult{}, err
 	}
-	if len(command.ChangedFields) == 0 {
-		return UpdateResult{}, fmt.Errorf("%w: patch must contain a field", ErrBadInput)
-	}
-	seen := make(map[string]struct{}, len(command.ChangedFields))
-	for _, field := range command.ChangedFields {
-		if field != updateFieldOccurredAt && field != updateFieldMerchant && field != updateFieldPaymentAllocations {
-			return UpdateResult{}, fmt.Errorf("%w: invalid changed field", ErrBadInput)
-		}
-		if _, exists := seen[field]; exists {
-			return UpdateResult{}, fmt.Errorf("%w: duplicate changed field", ErrBadInput)
-		}
-		seen[field] = struct{}{}
-	}
-	if _, ok := seen[updateFieldOccurredAt]; ok && command.OccurredAt == nil {
-		return UpdateResult{}, fmt.Errorf("%w: occurredAt is required", ErrBadInput)
-	}
-	if command.DatePrecision != nil {
-		if !slices.Contains(command.ChangedFields, updateFieldOccurredAt) || command.OccurredAt == nil || !validDatePrecision(*command.DatePrecision) {
-			return UpdateResult{}, fmt.Errorf("%w: valid date precision requires occurredAt", ErrBadInput)
-		}
-	}
-	if _, ok := seen[updateFieldMerchant]; ok && command.Merchant == nil {
-		return UpdateResult{}, fmt.Errorf("%w: merchant is required", ErrBadInput)
-	}
-	if _, ok := seen[updateFieldPaymentAllocations]; ok && command.PaymentAllocations == nil {
-		return UpdateResult{}, fmt.Errorf("%w: payment allocations are required", ErrBadInput)
+	if err := validatePurchaseUpdateFields(purchaseUpdateValidationInput{
+		changedFields: command.ChangedFields, occurredAt: command.OccurredAt, datePrecision: command.DatePrecision,
+		merchant: command.Merchant, paymentAllocations: command.PaymentAllocations,
+	}); err != nil {
+		return UpdateResult{}, err
 	}
 
 	purchaseUUID, err := parseUUID(command.PurchaseID, "purchase")

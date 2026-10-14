@@ -96,6 +96,10 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	if _, err := mutation.setDefaultAllocation(ownerContext, model.SetDefaultAllocationInput{HouseholdID: ownedHousehold.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
+	secondOwnedPool, err := mutation.createPool(ownerContext, model.CreatePoolInput{HouseholdID: ownedHousehold.ID, Name: "nodes integration second", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ownedPurchase, err := mutation.createPurchase(ownerContext, model.CreatePurchaseInput{
 		IdempotencyKey: uuid.Must(uuid.NewV7()).String(), HouseholdID: ownedHousehold.ID,
 		OccurredAt: "2026-10-14T12:00:00Z", Merchant: "nodes integration",
@@ -109,6 +113,10 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 		t.Fatal(err)
 	}
 	foreignCategory, err := mutation.createCategory(outsiderContext, model.CreateCategoryInput{HouseholdID: foreignHousehold.ID, Name: "foreign category"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignPool, err := mutation.createPool(outsiderContext, model.CreatePoolInput{HouseholdID: foreignHousehold.ID, Name: "foreign pool", Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,6 +191,32 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	}
 	if relatedNodes[5] != nil || relatedNodes[6] != nil || relatedNodes[7] != nil || relatedNodes[8] != nil {
 		t.Fatalf("relatedNodes[5:9] = %#v, want nil for foreign and missing records", relatedNodes[5:9])
+	}
+	householdPoolNodes, err := (&queryResolver{Resolver: &Resolver{DB: db}}).nodes(ownerContext, []string{
+		globalID(nodeTypePool, secondOwnedPool.ID), globalID(nodeTypeHousehold, ownedHousehold.ID),
+		globalID(nodeTypePool, pool.ID), globalID(nodeTypePool, secondOwnedPool.ID),
+		globalID(nodeTypePool, foreignPool.ID), globalID(nodeTypeHousehold, foreignHousehold.ID),
+		globalID(nodeTypeHousehold, ownedHousehold.ID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, expectedID := range []string{secondOwnedPool.ID, ownedHousehold.ID, pool.ID, secondOwnedPool.ID} {
+		if index == 1 {
+			if value, ok := householdPoolNodes[index].(*model.Household); !ok || value.ID != expectedID {
+				t.Fatalf("householdPoolNodes[%d] = %#v, want authorized household", index, householdPoolNodes[index])
+			}
+			continue
+		}
+		if value, ok := householdPoolNodes[index].(model.PoolVariant); !ok || value.GetID() != expectedID {
+			t.Fatalf("householdPoolNodes[%d] = %#v, want pool %s", index, householdPoolNodes[index], expectedID)
+		}
+	}
+	if householdPoolNodes[4] != nil || householdPoolNodes[5] != nil {
+		t.Fatalf("householdPoolNodes[4:6] = %#v, want nil for foreign household records", householdPoolNodes[4:6])
+	}
+	if value, ok := householdPoolNodes[6].(*model.Household); !ok || value.ID != ownedHousehold.ID {
+		t.Fatalf("householdPoolNodes[6] = %#v, want duplicate authorized household", householdPoolNodes[6])
 	}
 	memberNodes, err := (&queryResolver{Resolver: &Resolver{DB: db}}).nodes(ownerContext, []string{
 		globalID(nodeTypeMember, memberID), globalID(nodeTypeMember, memberID),

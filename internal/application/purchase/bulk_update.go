@@ -234,32 +234,8 @@ func validateBulkPurchaseFields(target BulkUpdateTarget) error {
 	if err := inputvalidation.Check(target); err != nil {
 		return err
 	}
-	if len(target.ChangedFields) == 0 {
-		return fmt.Errorf("%w: patch must contain a field", ErrBadInput)
-	}
-	seen := make(map[string]struct{}, len(target.ChangedFields))
-	for _, field := range target.ChangedFields {
-		if field != updateFieldOccurredAt && field != updateFieldMerchant && field != updateFieldPaymentAllocations {
-			return fmt.Errorf("%w: invalid changed field", ErrBadInput)
-		}
-		if _, exists := seen[field]; exists {
-			return fmt.Errorf("%w: duplicate changed field", ErrBadInput)
-		}
-		seen[field] = struct{}{}
-	}
-	if slices.Contains(target.ChangedFields, updateFieldOccurredAt) && target.OccurredAt == nil {
-		return fmt.Errorf("%w: occurredAt is required", ErrBadInput)
-	}
-	if target.DatePrecision != nil {
-		if !slices.Contains(target.ChangedFields, updateFieldOccurredAt) || target.OccurredAt == nil || !validDatePrecision(*target.DatePrecision) {
-			return fmt.Errorf("%w: valid date precision requires occurredAt", ErrBadInput)
-		}
-	}
-	if slices.Contains(target.ChangedFields, updateFieldMerchant) && target.Merchant == nil {
-		return fmt.Errorf("%w: merchant is required", ErrBadInput)
-	}
-	if slices.Contains(target.ChangedFields, updateFieldPaymentAllocations) && target.PaymentAllocations == nil {
-		return fmt.Errorf("%w: payment allocations are required", ErrBadInput)
-	}
-	return nil
+	return validatePurchaseUpdateFields(purchaseUpdateValidationInput{
+		changedFields: target.ChangedFields, occurredAt: target.OccurredAt, datePrecision: target.DatePrecision,
+		merchant: target.Merchant, paymentAllocations: target.PaymentAllocations,
+	})
 }

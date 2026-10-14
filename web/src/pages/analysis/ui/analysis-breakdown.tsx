@@ -11,6 +11,13 @@ type MonthTotal = { month: string; amount: number };
 type CategorySeries = { id: string; name: string; colorIndex: number };
 
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
+const compactYen = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+const chartYen = (amount: number) => compactYen.format(amount);
 const formatMonth = (month: string) => {
   const [year, value] = month.split("-");
   return `${year}/${Number(value)}`;
@@ -77,7 +84,7 @@ export function AnalysisBreakdown({
             if (dimension !== "category") {
               return (
                 <figure className="month-column" key={row.month} aria-label={accessibleLabel}>
-                  <b>{yen(row.amount)}</b>
+                  <b title={yen(row.amount)}>{chartYen(row.amount)}</b>
                   <i style={{ height: `${Math.max(3, (row.amount / max) * 100)}%` }} />
                   <span>{label}</span>
                 </figure>
@@ -107,7 +114,7 @@ export function AnalysisBreakdown({
                 key={row.month}
                 aria-label={`${Number(row.month.slice(0, 4))}年${Number(row.month.slice(5))}月、${monthlyBreakdown}、合計${yen(row.amount)}`}
               >
-                <b>{yen(row.amount)}</b>
+                <b title={yen(row.amount)}>{chartYen(row.amount)}</b>
                 <div className="category-stack">
                   <div
                     className="category-positive"
@@ -161,7 +168,7 @@ export function AnalysisBreakdown({
           rows.map((row, index) => (
             <div className="category-row" key={row.id}>
               <span className={`category-swatch swatch-${index % 6}`} />
-              <span>{row.name}</span>
+              <span title={row.name}>{row.name}</span>
               <i>
                 <b
                   style={{ width: `${Math.max(8, (row.amount / (rows[0]?.amount || 1)) * 100)}%` }}
