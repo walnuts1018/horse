@@ -25,6 +25,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/mailforwarding"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/graph"
 	"github.com/walnuts1018/horse/internal/ingestion"
@@ -37,6 +38,7 @@ type Config struct {
 	Store          DocumentStore
 	OCR            ingestion.OCR
 	Queue          *ingestion.Queue
+	MailForwarding mailforwarding.Config
 }
 
 const (
@@ -110,7 +112,11 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) newGraphQLHandler() *handler.Server {
-	resolver := &graph.Resolver{DB: s.db, Auth: s.auth}
+	resolver := &graph.Resolver{
+		DB: s.db, Auth: s.auth,
+		MailForwarding:        mailforwarding.NewService(s.db, s.cfg.MailForwarding),
+		MailForwardingEnabled: s.cfg.MailForwarding.MailboxDomain != "" && s.cfg.MailForwarding.AddressLocalPartPrefix != "",
+	}
 	executor := handler.New(graph.NewExecutableSchema(graph.Config{
 		Resolvers: resolver,
 		Directives: graph.DirectiveRoot{

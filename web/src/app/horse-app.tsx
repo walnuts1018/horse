@@ -57,7 +57,11 @@ import {
 import { Notice, type NoticeKind } from "../shared/ui";
 import { isAppPage, type AppPage } from "./app-page";
 import { GraphQLErrorBoundary } from "./graphql-error-boundary";
-import { householdRouteContext } from "./household-route-context";
+import {
+  createUnsavedChangesRegistry,
+  hasSameNavigationTarget,
+  householdRouteContext,
+} from "./household-route-context";
 
 const mobileViewportQuery = "(width <= 760px)";
 
@@ -126,7 +130,7 @@ export function App() {
   const [household, setHousehold] = useState<Household | null>(null);
   const [householdLoading, setHouseholdLoading] = useState(false);
   const activeHousehold = household?.id === householdId ? household : null;
-  const hasUnsavedChangesRef = useRef(false);
+  const [unsavedChangesRegistry] = useState(createUnsavedChangesRegistry);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -171,28 +175,24 @@ export function App() {
 
   useBlocker({
     shouldBlockFn: ({ current, next }) => {
-      if (
-        current.pathname === next.pathname &&
-        JSON.stringify(current.search) === JSON.stringify(next.search)
-      )
-        return false;
-      return hasUnsavedChangesRef.current && !window.confirm("未保存の変更を破棄しますか？");
+      if (hasSameNavigationTarget(current, next)) return false;
+      return (
+        unsavedChangesRegistry.hasUnsavedChanges() &&
+        !window.confirm("未保存の変更を破棄しますか？")
+      );
     },
-    enableBeforeUnload: () => hasUnsavedChangesRef.current,
+    enableBeforeUnload: () => unsavedChangesRegistry.hasUnsavedChanges(),
   });
 
-  useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!hasUnsavedChangesRef.current) return;
-      event.preventDefault();
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
-
-  const reportUnsavedChanges = useCallback((unsaved: boolean) => {
-    hasUnsavedChangesRef.current = unsaved;
-  }, []);
+  const unsavedChangesRegistrationId = `household:${householdId ?? "none"}:page:${page}`;
+  const reportUnsavedChanges = useCallback(
+    (unsaved: boolean) => unsavedChangesRegistry.report(unsavedChangesRegistrationId, unsaved),
+    [unsavedChangesRegistrationId, unsavedChangesRegistry],
+  );
+  useEffect(
+    () => () => unsavedChangesRegistry.clear(unsavedChangesRegistrationId),
+    [unsavedChangesRegistrationId, unsavedChangesRegistry],
+  );
 
   const navigateToHouseholdPage = useCallback(
     (id: string, nextPage: AppPage, replace = false) => {
@@ -393,9 +393,10 @@ export function App() {
         ? `送信待ち ${pendingOutboxCount}件`
         : "";
   const logout = async () => {
-    const hadUnsavedChanges = hasUnsavedChangesRef.current;
+    const dirtyIds = unsavedChangesRegistry.getDirtyIds();
+    const hadUnsavedChanges = dirtyIds.length > 0;
     if (hadUnsavedChanges && !window.confirm("未保存の変更を破棄してログアウトしますか？")) return;
-    if (hadUnsavedChanges) hasUnsavedChangesRef.current = false;
+    if (hadUnsavedChanges) unsavedChangesRegistry.clearAll();
     setLoggingOut(true);
     try {
       const response = await fetch("/auth/logout", {
@@ -403,20 +404,21 @@ export function App() {
         credentials: "include",
       });
       if (!response.ok) throw new Error("ログアウトできませんでした");
-      hasUnsavedChangesRef.current = false;
+      unsavedChangesRegistry.clearAll();
       window.location.reload();
     } catch (reason) {
-      if (hadUnsavedChanges) hasUnsavedChangesRef.current = true;
+      for (const id of dirtyIds) unsavedChangesRegistry.report(id, true);
       showNotice(errorMessage(reason), "error");
       setLoggingOut(false);
     }
   };
   const acceptInvitation = async () => {
     if (!pendingInvitation || acceptingInvitation) return;
-    const hadUnsavedChanges = hasUnsavedChangesRef.current;
+    const dirtyIds = unsavedChangesRegistry.getDirtyIds();
+    const hadUnsavedChanges = dirtyIds.length > 0;
     if (hadUnsavedChanges && !window.confirm("未保存の変更を破棄して招待を受け入れますか？"))
       return;
-    if (hadUnsavedChanges) hasUnsavedChangesRef.current = false;
+    if (hadUnsavedChanges) unsavedChangesRegistry.clearAll();
     setAcceptingInvitation(true);
     try {
       const result = await acceptHouseholdInvitation({ token: pendingInvitation });
@@ -429,7 +431,7 @@ export function App() {
       navigateToHouseholdPage(result.id, page);
       showNotice("家計簿に参加しました", "success");
     } catch (reason) {
-      if (hadUnsavedChanges) hasUnsavedChangesRef.current = true;
+      for (const id of dirtyIds) unsavedChangesRegistry.report(id, true);
       showNotice(errorMessage(reason), "error");
     } finally {
       setAcceptingInvitation(false);

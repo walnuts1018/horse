@@ -20,19 +20,20 @@ import (
 //go:generate go tool kessoku $GOFILE
 
 type Config struct {
-	DatabaseURL       string
-	PublicOrigin      string
-	FrontendOrigin    string
-	OIDCIssuerURL     string
-	OIDCClientID      string
-	OIDCClientSecret  string
-	OIDCRedirectURL   string
-	S3Endpoint        string
-	S3Bucket          string
-	S3AccessKeyID     string
-	S3SecretAccessKey string
-	RabbitMQURL       string
-	OCREndpoint       string
+	DatabaseURL         string
+	PublicOrigin        string
+	FrontendOrigin      string
+	OIDCIssuerURL       string
+	OIDCClientID        string
+	OIDCClientSecret    string
+	OIDCRedirectURL     string
+	S3Endpoint          string
+	S3Bucket            string
+	S3AccessKeyID       string
+	S3SecretAccessKey   string
+	EmailEncryptionKeys string
+	RabbitMQURL         string
+	OCREndpoint         string
 }
 
 type App struct {
@@ -94,19 +95,20 @@ func NewAPI(ctx context.Context, logger *slog.Logger) (*App, error) {
 
 func loadConfig() Config {
 	return Config{
-		DatabaseURL:       os.Getenv("DATABASE_URL"),
-		PublicOrigin:      os.Getenv("PUBLIC_ORIGIN"),
-		FrontendOrigin:    os.Getenv("FRONTEND_ORIGIN"),
-		OIDCIssuerURL:     os.Getenv("OIDC_ISSUER_URL"),
-		OIDCClientID:      os.Getenv("OIDC_CLIENT_ID"),
-		OIDCClientSecret:  os.Getenv("OIDC_CLIENT_SECRET"),
-		OIDCRedirectURL:   os.Getenv("OIDC_REDIRECT_URL"),
-		S3Endpoint:        os.Getenv("S3_ENDPOINT"),
-		S3Bucket:          os.Getenv("S3_BUCKET"),
-		S3AccessKeyID:     os.Getenv("S3_ACCESS_KEY_ID"),
-		S3SecretAccessKey: os.Getenv("S3_SECRET_ACCESS_KEY"),
-		RabbitMQURL:       os.Getenv("RABBITMQ_URL"),
-		OCREndpoint:       os.Getenv("OCR_URL"),
+		DatabaseURL:         os.Getenv("DATABASE_URL"),
+		PublicOrigin:        os.Getenv("PUBLIC_ORIGIN"),
+		FrontendOrigin:      os.Getenv("FRONTEND_ORIGIN"),
+		OIDCIssuerURL:       os.Getenv("OIDC_ISSUER_URL"),
+		OIDCClientID:        os.Getenv("OIDC_CLIENT_ID"),
+		OIDCClientSecret:    os.Getenv("OIDC_CLIENT_SECRET"),
+		OIDCRedirectURL:     os.Getenv("OIDC_REDIRECT_URL"),
+		S3Endpoint:          os.Getenv("S3_ENDPOINT"),
+		S3Bucket:            os.Getenv("S3_BUCKET"),
+		S3AccessKeyID:       os.Getenv("S3_ACCESS_KEY_ID"),
+		S3SecretAccessKey:   os.Getenv("S3_SECRET_ACCESS_KEY"),
+		EmailEncryptionKeys: os.Getenv("EMAIL_BODY_ENCRYPTION_KEYS"),
+		RabbitMQURL:         os.Getenv("RABBITMQ_URL"),
+		OCREndpoint:         os.Getenv("OCR_URL"),
 	}
 }
 
@@ -156,7 +158,7 @@ func newObjectStore(ctx context.Context, cfg Config, logger *slog.Logger) (*inge
 	if cfg.S3Endpoint == "" && cfg.S3Bucket == "" && cfg.S3AccessKeyID == "" && cfg.S3SecretAccessKey == "" {
 		return nil, nil
 	}
-	store, err := ingestion.NewObjectStore(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKeyID, cfg.S3SecretAccessKey)
+	store, err := ingestion.NewObjectStore(ctx, cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKeyID, cfg.S3SecretAccessKey, cfg.EmailEncryptionKeys)
 	if err != nil {
 		logger.Error("Initializing object store failed", "error", err)
 	}

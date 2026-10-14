@@ -26,7 +26,10 @@ export function useSettingsAccountBalances({
   }, [household.id]);
 
   useEffect(() => {
-    void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+    // 取得をマイクロタスクで遅延し、同期setStateを排除
+    queueMicrotask(() => {
+      void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+    });
   }, [refresh]);
 
   const refreshAfterActivity = async () => {

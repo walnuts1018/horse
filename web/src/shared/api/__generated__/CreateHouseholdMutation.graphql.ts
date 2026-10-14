@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9db9276cd9ceb32f4faaeda1bff72104>>
+ * @generated SignedSource<<91a855815dff2311a69ff43ba181703a>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type CreateHouseholdInput = {
   memberNames: ReadonlyArray<string>;
   name: string;

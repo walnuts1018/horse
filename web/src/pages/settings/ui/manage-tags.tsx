@@ -53,7 +53,9 @@ export function ManageTags({
   );
 
   useEffect(() => {
-    void refresh(undefined, true).catch(() => undefined);
+    queueMicrotask(() => {
+      void refresh(undefined, true).catch(() => undefined);
+    });
   }, [refresh]);
 
   const saveTag = async (event: SubmitEvent<HTMLFormElement>) => {

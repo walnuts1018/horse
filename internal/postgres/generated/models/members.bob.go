@@ -49,28 +49,29 @@ type MembersQuery = *psql.ViewQuery[*Member, MemberSlice]
 
 // memberR is where relationships are stored.
 type memberR struct {
-	ClosedByAccountingPeriods      AccountingPeriodSlice     // accounting_periods.accounting_periods_closed_by_fkey
-	CreatedByCorrections           CorrectionSlice           // corrections.corrections_created_by_fkey
-	CreatedByDocumentConfirmations DocumentConfirmationSlice // document_confirmations.document_confirmations_created_by_fkey
-	FundingObligations             FundingObligationSlice    // funding_obligations.funding_obligations_member_id_fkey
-	FundingSchedules               FundingScheduleSlice      // funding_schedules.funding_schedules_member_id_fkey
-	ActorHouseholdEvents           HouseholdEventSlice       // household_events.household_events_actor_id_fkey
-	AcceptedByHouseholdInvitations HouseholdInvitationSlice  // household_invitations.household_invitations_accepted_by_fkey
-	CreatedByHouseholdInvitations  HouseholdInvitationSlice  // household_invitations.household_invitations_created_by_fkey
-	HouseholdMembers               HouseholdMemberSlice      // household_members.household_members_member_id_fkey
-	CreatedByJournals              JournalSlice              // journals.journals_created_by_fkey
-	FromMemberLedgerEntries        LedgerEntrySlice          // ledger_entries.ledger_entries_from_member_id_fkey
-	ToMemberLedgerEntries          LedgerEntrySlice          // ledger_entries.ledger_entries_to_member_id_fkey
-	OidcSessions                   OidcSessionSlice          // oidc_sessions.oidc_sessions_member_id_fkey
-	CreatedByPoolFundingRules      PoolFundingRuleSlice      // pool_funding_rules.pool_funding_rules_created_by_fkey
-	ActorProductCorrections        ProductCorrectionSlice    // product_corrections.product_corrections_actor_id_fkey
-	CreatedByPurchases             PurchaseSlice             // purchases.purchases_created_by_fkey
-	SettlementAdjustments          SettlementAdjustmentSlice // settlement_adjustments.settlement_adjustments_member_id_fkey
-	SettlementLines                SettlementLineSlice       // settlement_lines.settlement_lines_member_id_fkey
-	CreatedBySettlementRuns        SettlementRunSlice        // settlement_runs.settlement_runs_created_by_fkey
-	CreatedBySourceDocuments       SourceDocumentSlice       // source_documents.source_documents_created_by_fkey
-	FromMemberTransfers            TransferSlice             // transfers.transfers_from_member_id_fkey
-	ToMemberTransfers              TransferSlice             // transfers.transfers_to_member_id_fkey
+	ClosedByAccountingPeriods         AccountingPeriodSlice        // accounting_periods.accounting_periods_closed_by_fkey
+	CreatedByCorrections              CorrectionSlice              // corrections.corrections_created_by_fkey
+	CreatedByDocumentConfirmations    DocumentConfirmationSlice    // document_confirmations.document_confirmations_created_by_fkey
+	FundingObligations                FundingObligationSlice       // funding_obligations.funding_obligations_member_id_fkey
+	FundingSchedules                  FundingScheduleSlice         // funding_schedules.funding_schedules_member_id_fkey
+	ActorHouseholdEvents              HouseholdEventSlice          // household_events.household_events_actor_id_fkey
+	AcceptedByHouseholdInvitations    HouseholdInvitationSlice     // household_invitations.household_invitations_accepted_by_fkey
+	CreatedByHouseholdInvitations     HouseholdInvitationSlice     // household_invitations.household_invitations_created_by_fkey
+	CreatedByHouseholdMailForwardings HouseholdMailForwardingSlice // household_mail_forwardings.household_mail_forwardings_created_by_fkey
+	HouseholdMembers                  HouseholdMemberSlice         // household_members.household_members_member_id_fkey
+	CreatedByJournals                 JournalSlice                 // journals.journals_created_by_fkey
+	FromMemberLedgerEntries           LedgerEntrySlice             // ledger_entries.ledger_entries_from_member_id_fkey
+	ToMemberLedgerEntries             LedgerEntrySlice             // ledger_entries.ledger_entries_to_member_id_fkey
+	OidcSessions                      OidcSessionSlice             // oidc_sessions.oidc_sessions_member_id_fkey
+	CreatedByPoolFundingRules         PoolFundingRuleSlice         // pool_funding_rules.pool_funding_rules_created_by_fkey
+	ActorProductCorrections           ProductCorrectionSlice       // product_corrections.product_corrections_actor_id_fkey
+	CreatedByPurchases                PurchaseSlice                // purchases.purchases_created_by_fkey
+	SettlementAdjustments             SettlementAdjustmentSlice    // settlement_adjustments.settlement_adjustments_member_id_fkey
+	SettlementLines                   SettlementLineSlice          // settlement_lines.settlement_lines_member_id_fkey
+	CreatedBySettlementRuns           SettlementRunSlice           // settlement_runs.settlement_runs_created_by_fkey
+	CreatedBySourceDocuments          SourceDocumentSlice          // source_documents.source_documents_created_by_fkey
+	FromMemberTransfers               TransferSlice                // transfers.transfers_from_member_id_fkey
+	ToMemberTransfers                 TransferSlice                // transfers.transfers_to_member_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -79,28 +80,29 @@ type memberR struct {
 
 // memberRLoaded tracks which relationships on Member have been loaded.
 type memberRLoaded struct {
-	ClosedByAccountingPeriods      bool // accounting_periods.accounting_periods_closed_by_fkey
-	CreatedByCorrections           bool // corrections.corrections_created_by_fkey
-	CreatedByDocumentConfirmations bool // document_confirmations.document_confirmations_created_by_fkey
-	FundingObligations             bool // funding_obligations.funding_obligations_member_id_fkey
-	FundingSchedules               bool // funding_schedules.funding_schedules_member_id_fkey
-	ActorHouseholdEvents           bool // household_events.household_events_actor_id_fkey
-	AcceptedByHouseholdInvitations bool // household_invitations.household_invitations_accepted_by_fkey
-	CreatedByHouseholdInvitations  bool // household_invitations.household_invitations_created_by_fkey
-	HouseholdMembers               bool // household_members.household_members_member_id_fkey
-	CreatedByJournals              bool // journals.journals_created_by_fkey
-	FromMemberLedgerEntries        bool // ledger_entries.ledger_entries_from_member_id_fkey
-	ToMemberLedgerEntries          bool // ledger_entries.ledger_entries_to_member_id_fkey
-	OidcSessions                   bool // oidc_sessions.oidc_sessions_member_id_fkey
-	CreatedByPoolFundingRules      bool // pool_funding_rules.pool_funding_rules_created_by_fkey
-	ActorProductCorrections        bool // product_corrections.product_corrections_actor_id_fkey
-	CreatedByPurchases             bool // purchases.purchases_created_by_fkey
-	SettlementAdjustments          bool // settlement_adjustments.settlement_adjustments_member_id_fkey
-	SettlementLines                bool // settlement_lines.settlement_lines_member_id_fkey
-	CreatedBySettlementRuns        bool // settlement_runs.settlement_runs_created_by_fkey
-	CreatedBySourceDocuments       bool // source_documents.source_documents_created_by_fkey
-	FromMemberTransfers            bool // transfers.transfers_from_member_id_fkey
-	ToMemberTransfers              bool // transfers.transfers_to_member_id_fkey
+	ClosedByAccountingPeriods         bool // accounting_periods.accounting_periods_closed_by_fkey
+	CreatedByCorrections              bool // corrections.corrections_created_by_fkey
+	CreatedByDocumentConfirmations    bool // document_confirmations.document_confirmations_created_by_fkey
+	FundingObligations                bool // funding_obligations.funding_obligations_member_id_fkey
+	FundingSchedules                  bool // funding_schedules.funding_schedules_member_id_fkey
+	ActorHouseholdEvents              bool // household_events.household_events_actor_id_fkey
+	AcceptedByHouseholdInvitations    bool // household_invitations.household_invitations_accepted_by_fkey
+	CreatedByHouseholdInvitations     bool // household_invitations.household_invitations_created_by_fkey
+	CreatedByHouseholdMailForwardings bool // household_mail_forwardings.household_mail_forwardings_created_by_fkey
+	HouseholdMembers                  bool // household_members.household_members_member_id_fkey
+	CreatedByJournals                 bool // journals.journals_created_by_fkey
+	FromMemberLedgerEntries           bool // ledger_entries.ledger_entries_from_member_id_fkey
+	ToMemberLedgerEntries             bool // ledger_entries.ledger_entries_to_member_id_fkey
+	OidcSessions                      bool // oidc_sessions.oidc_sessions_member_id_fkey
+	CreatedByPoolFundingRules         bool // pool_funding_rules.pool_funding_rules_created_by_fkey
+	ActorProductCorrections           bool // product_corrections.product_corrections_actor_id_fkey
+	CreatedByPurchases                bool // purchases.purchases_created_by_fkey
+	SettlementAdjustments             bool // settlement_adjustments.settlement_adjustments_member_id_fkey
+	SettlementLines                   bool // settlement_lines.settlement_lines_member_id_fkey
+	CreatedBySettlementRuns           bool // settlement_runs.settlement_runs_created_by_fkey
+	CreatedBySourceDocuments          bool // source_documents.source_documents_created_by_fkey
+	FromMemberTransfers               bool // transfers.transfers_from_member_id_fkey
+	ToMemberTransfers                 bool // transfers.transfers_to_member_id_fkey
 }
 
 func buildMemberColumns(tableName string) memberColumns {
@@ -793,6 +795,29 @@ func (os MemberSlice) CreatedByHouseholdInvitations(mods ...bob.Mod[*dialect.Sel
 
 	return HouseholdInvitations.Query(append(mods,
 		sm.Where(HouseholdInvitations.Columns.CreatedBy.EQ(PKArgExpr)),
+	)...)
+}
+
+// CreatedByHouseholdMailForwardings starts a query for related objects on household_mail_forwardings
+func (o *Member) CreatedByHouseholdMailForwardings(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdMailForwardingsQuery {
+	return HouseholdMailForwardings.Query(append(mods,
+		sm.Where(HouseholdMailForwardings.Columns.CreatedBy.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os MemberSlice) CreatedByHouseholdMailForwardings(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdMailForwardingsQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return HouseholdMailForwardings.Query(append(mods,
+		sm.Where(HouseholdMailForwardings.Columns.CreatedBy.EQ(PKArgExpr)),
 	)...)
 }
 
@@ -1669,6 +1694,76 @@ func (member0 *Member) AttachCreatedByHouseholdInvitations(ctx context.Context, 
 	}
 
 	member0.R.CreatedByHouseholdInvitations = append(member0.R.CreatedByHouseholdInvitations, householdInvitations1...)
+
+	for _, rel := range related {
+		rel.R.CreatedByMember = member0
+		rel.R.Loaded.CreatedByMember = true
+	}
+
+	return nil
+}
+
+func insertMemberCreatedByHouseholdMailForwardings0(ctx context.Context, exec bob.Executor, householdMailForwardings1 []*HouseholdMailForwardingSetter, member0 *Member) (HouseholdMailForwardingSlice, error) {
+	for i := range householdMailForwardings1 {
+		householdMailForwardings1[i].CreatedBy = func() *uuid.UUID { return &member0.ID }()
+	}
+
+	ret, err := HouseholdMailForwardings.Insert(bob.ToMods(householdMailForwardings1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertMemberCreatedByHouseholdMailForwardings0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachMemberCreatedByHouseholdMailForwardings0(ctx context.Context, exec bob.Executor, count int, householdMailForwardings1 HouseholdMailForwardingSlice, member0 *Member) (HouseholdMailForwardingSlice, error) {
+	setter := &HouseholdMailForwardingSetter{
+		CreatedBy: func() *uuid.UUID { return &member0.ID }(),
+	}
+
+	err := householdMailForwardings1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachMemberCreatedByHouseholdMailForwardings0: %w", err)
+	}
+
+	return householdMailForwardings1, nil
+}
+
+func (member0 *Member) InsertCreatedByHouseholdMailForwardings(ctx context.Context, exec bob.Executor, related ...*HouseholdMailForwardingSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	householdMailForwardings1, err := insertMemberCreatedByHouseholdMailForwardings0(ctx, exec, related, member0)
+	if err != nil {
+		return err
+	}
+
+	member0.R.CreatedByHouseholdMailForwardings = append(member0.R.CreatedByHouseholdMailForwardings, householdMailForwardings1...)
+
+	for _, rel := range householdMailForwardings1 {
+		rel.R.CreatedByMember = member0
+		rel.R.Loaded.CreatedByMember = true
+	}
+	return nil
+}
+
+func (member0 *Member) AttachCreatedByHouseholdMailForwardings(ctx context.Context, exec bob.Executor, related ...*HouseholdMailForwarding) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	householdMailForwardings1 := HouseholdMailForwardingSlice(related)
+
+	_, err = attachMemberCreatedByHouseholdMailForwardings0(ctx, exec, len(related), householdMailForwardings1, member0)
+	if err != nil {
+		return err
+	}
+
+	member0.R.CreatedByHouseholdMailForwardings = append(member0.R.CreatedByHouseholdMailForwardings, householdMailForwardings1...)
 
 	for _, rel := range related {
 		rel.R.CreatedByMember = member0
@@ -2801,6 +2896,20 @@ func (w memberWhereR[Q]) HasCreatedByHouseholdInvitations(filters ...bob.Mod[*di
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasCreatedByHouseholdMailForwardings filters parents that have a matching CreatedByHouseholdMailForwardings using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to HouseholdMailForwardings).
+func (w memberWhereR[Q]) HasCreatedByHouseholdMailForwardings(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(HouseholdMailForwardings.NameExpr()),
+		sm.Where(HouseholdMailForwardings.Columns.CreatedBy.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasHouseholdMembers filters parents that have a matching HouseholdMembers using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -3215,6 +3324,22 @@ func (o *Member) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "CreatedByHouseholdMailForwardings":
+		rels, ok := retrieved.(HouseholdMailForwardingSlice)
+		if !ok {
+			return fmt.Errorf("member cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.CreatedByHouseholdMailForwardings = rels
+		o.R.Loaded.CreatedByHouseholdMailForwardings = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.CreatedByMember = o
+				rel.R.Loaded.CreatedByMember = true
+			}
+		}
+		return nil
 	case "HouseholdMembers":
 		rels, ok := retrieved.(HouseholdMemberSlice)
 		if !ok {
@@ -3451,28 +3576,29 @@ func buildMemberPreloader() memberPreloader {
 }
 
 type memberThenLoader[Q orm.Loadable] struct {
-	ClosedByAccountingPeriods      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByCorrections           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByDocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FundingObligations             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FundingSchedules               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ActorHouseholdEvents           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AcceptedByHouseholdInvitations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByHouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	HouseholdMembers               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByJournals              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FromMemberLedgerEntries        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ToMemberLedgerEntries          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	OidcSessions                   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByPoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ActorProductCorrections        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByPurchases             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	SettlementAdjustments          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	SettlementLines                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedBySettlementRuns        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedBySourceDocuments       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FromMemberTransfers            func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ToMemberTransfers              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ClosedByAccountingPeriods         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByCorrections              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByDocumentConfirmations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FundingObligations                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FundingSchedules                  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ActorHouseholdEvents              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AcceptedByHouseholdInvitations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByHouseholdInvitations     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByHouseholdMailForwardings func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdMembers                  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByJournals                 func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FromMemberLedgerEntries           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ToMemberLedgerEntries             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	OidcSessions                      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByPoolFundingRules         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ActorProductCorrections           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByPurchases                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementAdjustments             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementLines                   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedBySettlementRuns           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedBySourceDocuments          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FromMemberTransfers               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ToMemberTransfers                 func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildMemberThenLoader[Q orm.Loadable]() memberThenLoader[Q] {
@@ -3499,6 +3625,9 @@ func buildMemberThenLoader[Q orm.Loadable]() memberThenLoader[Q] {
 	}
 	type CreatedByHouseholdInvitationsLoadInterface interface {
 		LoadCreatedByHouseholdInvitations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type CreatedByHouseholdMailForwardingsLoadInterface interface {
+		LoadCreatedByHouseholdMailForwardings(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type HouseholdMembersLoadInterface interface {
 		LoadHouseholdMembers(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -3590,6 +3719,12 @@ func buildMemberThenLoader[Q orm.Loadable]() memberThenLoader[Q] {
 			"CreatedByHouseholdInvitations",
 			func(ctx context.Context, exec bob.Executor, retrieved CreatedByHouseholdInvitationsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCreatedByHouseholdInvitations(ctx, exec, mods...)
+			},
+		),
+		CreatedByHouseholdMailForwardings: thenLoadBuilder[Q](
+			"CreatedByHouseholdMailForwardings",
+			func(ctx context.Context, exec bob.Executor, retrieved CreatedByHouseholdMailForwardingsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCreatedByHouseholdMailForwardings(ctx, exec, mods...)
 			},
 		),
 		HouseholdMembers: thenLoadBuilder[Q](
@@ -4276,6 +4411,80 @@ func (os MemberSlice) LoadCreatedByHouseholdInvitations(ctx context.Context, exe
 			rel.R.Loaded.CreatedByMember = true
 
 			o.R.CreatedByHouseholdInvitations = append(o.R.CreatedByHouseholdInvitations, rel)
+
+		}
+	}
+
+	return nil
+}
+
+// LoadCreatedByHouseholdMailForwardings loads the member's CreatedByHouseholdMailForwardings into the .R struct
+func (o *Member) LoadCreatedByHouseholdMailForwardings(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.CreatedByHouseholdMailForwardings = nil
+	o.R.Loaded.CreatedByHouseholdMailForwardings = false
+
+	related, err := o.CreatedByHouseholdMailForwardings(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.CreatedByMember = o
+		rel.R.Loaded.CreatedByMember = true
+	}
+
+	o.R.CreatedByHouseholdMailForwardings = related
+	o.R.Loaded.CreatedByHouseholdMailForwardings = true
+	return nil
+}
+
+// LoadCreatedByHouseholdMailForwardings loads the member's CreatedByHouseholdMailForwardings into the .R struct
+func (os MemberSlice) LoadCreatedByHouseholdMailForwardings(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	householdMailForwardings, err := os.CreatedByHouseholdMailForwardings(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.CreatedByHouseholdMailForwardings = nil
+		o.R.Loaded.CreatedByHouseholdMailForwardings = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	memberByKey := make(map[uuid.UUID][]*Member, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		memberByKey[o.ID] = append(memberByKey[o.ID], o)
+	}
+
+	for _, rel := range householdMailForwardings {
+
+		owners, ok := memberByKey[rel.CreatedBy]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			rel.R.CreatedByMember = o
+			rel.R.Loaded.CreatedByMember = true
+
+			o.R.CreatedByHouseholdMailForwardings = append(o.R.CreatedByHouseholdMailForwardings, rel)
 
 		}
 	}
@@ -5329,28 +5538,29 @@ func (os MemberSlice) LoadToMemberTransfers(ctx context.Context, exec bob.Execut
 
 // memberC is where relationship counts are stored.
 type memberC struct {
-	ClosedByAccountingPeriods      *int64
-	CreatedByCorrections           *int64
-	CreatedByDocumentConfirmations *int64
-	FundingObligations             *int64
-	FundingSchedules               *int64
-	ActorHouseholdEvents           *int64
-	AcceptedByHouseholdInvitations *int64
-	CreatedByHouseholdInvitations  *int64
-	HouseholdMembers               *int64
-	CreatedByJournals              *int64
-	FromMemberLedgerEntries        *int64
-	ToMemberLedgerEntries          *int64
-	OidcSessions                   *int64
-	CreatedByPoolFundingRules      *int64
-	ActorProductCorrections        *int64
-	CreatedByPurchases             *int64
-	SettlementAdjustments          *int64
-	SettlementLines                *int64
-	CreatedBySettlementRuns        *int64
-	CreatedBySourceDocuments       *int64
-	FromMemberTransfers            *int64
-	ToMemberTransfers              *int64
+	ClosedByAccountingPeriods         *int64
+	CreatedByCorrections              *int64
+	CreatedByDocumentConfirmations    *int64
+	FundingObligations                *int64
+	FundingSchedules                  *int64
+	ActorHouseholdEvents              *int64
+	AcceptedByHouseholdInvitations    *int64
+	CreatedByHouseholdInvitations     *int64
+	CreatedByHouseholdMailForwardings *int64
+	HouseholdMembers                  *int64
+	CreatedByJournals                 *int64
+	FromMemberLedgerEntries           *int64
+	ToMemberLedgerEntries             *int64
+	OidcSessions                      *int64
+	CreatedByPoolFundingRules         *int64
+	ActorProductCorrections           *int64
+	CreatedByPurchases                *int64
+	SettlementAdjustments             *int64
+	SettlementLines                   *int64
+	CreatedBySettlementRuns           *int64
+	CreatedBySourceDocuments          *int64
+	FromMemberTransfers               *int64
+	ToMemberTransfers                 *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -5376,6 +5586,8 @@ func (o *Member) PreloadCount(name string, count int64) error {
 		o.C.AcceptedByHouseholdInvitations = &count
 	case "CreatedByHouseholdInvitations":
 		o.C.CreatedByHouseholdInvitations = &count
+	case "CreatedByHouseholdMailForwardings":
+		o.C.CreatedByHouseholdMailForwardings = &count
 	case "HouseholdMembers":
 		o.C.HouseholdMembers = &count
 	case "CreatedByJournals":
@@ -5409,28 +5621,29 @@ func (o *Member) PreloadCount(name string, count int64) error {
 }
 
 type memberCountPreloader struct {
-	ClosedByAccountingPeriods      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	CreatedByCorrections           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	CreatedByDocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	FundingObligations             func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	FundingSchedules               func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	ActorHouseholdEvents           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	AcceptedByHouseholdInvitations func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	CreatedByHouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	HouseholdMembers               func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	CreatedByJournals              func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	FromMemberLedgerEntries        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	ToMemberLedgerEntries          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	OidcSessions                   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	CreatedByPoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	ActorProductCorrections        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	CreatedByPurchases             func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	SettlementAdjustments          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	SettlementLines                func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	CreatedBySettlementRuns        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	CreatedBySourceDocuments       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	FromMemberTransfers            func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	ToMemberTransfers              func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ClosedByAccountingPeriods         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedByCorrections              func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedByDocumentConfirmations    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	FundingObligations                func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	FundingSchedules                  func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ActorHouseholdEvents              func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AcceptedByHouseholdInvitations    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedByHouseholdInvitations     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedByHouseholdMailForwardings func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	HouseholdMembers                  func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedByJournals                 func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	FromMemberLedgerEntries           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ToMemberLedgerEntries             func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	OidcSessions                      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedByPoolFundingRules         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ActorProductCorrections           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedByPurchases                func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	SettlementAdjustments             func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	SettlementLines                   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedBySettlementRuns           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CreatedBySourceDocuments          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	FromMemberTransfers               func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ToMemberTransfers                 func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildMemberCountPreloader() memberCountPreloader {
@@ -5566,6 +5779,23 @@ func buildMemberCountPreloader() memberCountPreloader {
 
 					sm.From(HouseholdInvitations.NameAsExpr()),
 					sm.Where(psql.Quote(HouseholdInvitations.Alias(), "created_by").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+		CreatedByHouseholdMailForwardings: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Member]("CreatedByHouseholdMailForwardings", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Members.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(HouseholdMailForwardings.NameAsExpr()),
+					sm.Where(psql.Quote(HouseholdMailForwardings.Alias(), "created_by").EQ(psql.Quote(parent, "id"))),
 				}
 				subqueryMods = append(subqueryMods, mods...)
 				return psql.Group(psql.Select(subqueryMods...).Expression)
@@ -5813,28 +6043,29 @@ func buildMemberCountPreloader() memberCountPreloader {
 }
 
 type memberCountThenLoader[Q orm.Loadable] struct {
-	ClosedByAccountingPeriods      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByCorrections           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByDocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FundingObligations             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FundingSchedules               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ActorHouseholdEvents           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AcceptedByHouseholdInvitations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByHouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	HouseholdMembers               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByJournals              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FromMemberLedgerEntries        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ToMemberLedgerEntries          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	OidcSessions                   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByPoolFundingRules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ActorProductCorrections        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByPurchases             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	SettlementAdjustments          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	SettlementLines                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedBySettlementRuns        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedBySourceDocuments       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FromMemberTransfers            func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ToMemberTransfers              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ClosedByAccountingPeriods         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByCorrections              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByDocumentConfirmations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FundingObligations                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FundingSchedules                  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ActorHouseholdEvents              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AcceptedByHouseholdInvitations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByHouseholdInvitations     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByHouseholdMailForwardings func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdMembers                  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByJournals                 func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FromMemberLedgerEntries           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ToMemberLedgerEntries             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	OidcSessions                      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByPoolFundingRules         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ActorProductCorrections           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByPurchases                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementAdjustments             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementLines                   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedBySettlementRuns           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedBySourceDocuments          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FromMemberTransfers               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ToMemberTransfers                 func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildMemberCountThenLoader[Q orm.Loadable]() memberCountThenLoader[Q] {
@@ -5861,6 +6092,9 @@ func buildMemberCountThenLoader[Q orm.Loadable]() memberCountThenLoader[Q] {
 	}
 	type CreatedByHouseholdInvitationsCountInterface interface {
 		LoadCountCreatedByHouseholdInvitations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type CreatedByHouseholdMailForwardingsCountInterface interface {
+		LoadCountCreatedByHouseholdMailForwardings(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type HouseholdMembersCountInterface interface {
 		LoadCountHouseholdMembers(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -5952,6 +6186,12 @@ func buildMemberCountThenLoader[Q orm.Loadable]() memberCountThenLoader[Q] {
 			"CreatedByHouseholdInvitations",
 			func(ctx context.Context, exec bob.Executor, retrieved CreatedByHouseholdInvitationsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountCreatedByHouseholdInvitations(ctx, exec, mods...)
+			},
+		),
+		CreatedByHouseholdMailForwardings: countThenLoadBuilder[Q](
+			"CreatedByHouseholdMailForwardings",
+			func(ctx context.Context, exec bob.Executor, retrieved CreatedByHouseholdMailForwardingsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountCreatedByHouseholdMailForwardings(ctx, exec, mods...)
 			},
 		),
 		HouseholdMembers: countThenLoadBuilder[Q](
@@ -6668,6 +6908,85 @@ func (os MemberSlice) LoadCountCreatedByHouseholdInvitations(ctx context.Context
 		}
 		count := countMap[o.ID]
 		o.C.CreatedByHouseholdInvitations = &count
+	}
+
+	return nil
+}
+
+// LoadCountCreatedByHouseholdMailForwardings loads the count of CreatedByHouseholdMailForwardings into the C struct
+func (o *Member) LoadCountCreatedByHouseholdMailForwardings(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.CreatedByHouseholdMailForwardings(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.CreatedByHouseholdMailForwardings = &count
+	return nil
+}
+
+// LoadCountCreatedByHouseholdMailForwardings loads the count of CreatedByHouseholdMailForwardings for a slice in a single batch query
+func (os MemberSlice) LoadCountCreatedByHouseholdMailForwardings(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			HouseholdMailForwardings.Columns.CreatedBy.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(HouseholdMailForwardings.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.Where(HouseholdMailForwardings.Columns.CreatedBy.EQ(PKArgExpr)),
+		// GROUP BY fk columns
+		sm.GroupBy(HouseholdMailForwardings.Columns.CreatedBy),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Single-column FK: direct map lookup
+	countMap := make(map[uuid.UUID]int64, len(results))
+	for _, r := range results {
+		countMap[r.ID] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[o.ID]
+		o.C.CreatedByHouseholdMailForwardings = &count
 	}
 
 	return nil
@@ -7780,29 +8099,30 @@ func (os MemberSlice) LoadCountToMemberTransfers(ctx context.Context, exec bob.E
 }
 
 type memberJoins[Q dialect.Joinable] struct {
-	typ                            string
-	ClosedByAccountingPeriods      modAs[Q, accountingPeriodColumns]
-	CreatedByCorrections           modAs[Q, correctionColumns]
-	CreatedByDocumentConfirmations modAs[Q, documentConfirmationColumns]
-	FundingObligations             modAs[Q, fundingObligationColumns]
-	FundingSchedules               modAs[Q, fundingScheduleColumns]
-	ActorHouseholdEvents           modAs[Q, householdEventColumns]
-	AcceptedByHouseholdInvitations modAs[Q, householdInvitationColumns]
-	CreatedByHouseholdInvitations  modAs[Q, householdInvitationColumns]
-	HouseholdMembers               modAs[Q, householdMemberColumns]
-	CreatedByJournals              modAs[Q, journalColumns]
-	FromMemberLedgerEntries        modAs[Q, ledgerEntryColumns]
-	ToMemberLedgerEntries          modAs[Q, ledgerEntryColumns]
-	OidcSessions                   modAs[Q, oidcSessionColumns]
-	CreatedByPoolFundingRules      modAs[Q, poolFundingRuleColumns]
-	ActorProductCorrections        modAs[Q, productCorrectionColumns]
-	CreatedByPurchases             modAs[Q, purchaseColumns]
-	SettlementAdjustments          modAs[Q, settlementAdjustmentColumns]
-	SettlementLines                modAs[Q, settlementLineColumns]
-	CreatedBySettlementRuns        modAs[Q, settlementRunColumns]
-	CreatedBySourceDocuments       modAs[Q, sourceDocumentColumns]
-	FromMemberTransfers            modAs[Q, transferColumns]
-	ToMemberTransfers              modAs[Q, transferColumns]
+	typ                               string
+	ClosedByAccountingPeriods         modAs[Q, accountingPeriodColumns]
+	CreatedByCorrections              modAs[Q, correctionColumns]
+	CreatedByDocumentConfirmations    modAs[Q, documentConfirmationColumns]
+	FundingObligations                modAs[Q, fundingObligationColumns]
+	FundingSchedules                  modAs[Q, fundingScheduleColumns]
+	ActorHouseholdEvents              modAs[Q, householdEventColumns]
+	AcceptedByHouseholdInvitations    modAs[Q, householdInvitationColumns]
+	CreatedByHouseholdInvitations     modAs[Q, householdInvitationColumns]
+	CreatedByHouseholdMailForwardings modAs[Q, householdMailForwardingColumns]
+	HouseholdMembers                  modAs[Q, householdMemberColumns]
+	CreatedByJournals                 modAs[Q, journalColumns]
+	FromMemberLedgerEntries           modAs[Q, ledgerEntryColumns]
+	ToMemberLedgerEntries             modAs[Q, ledgerEntryColumns]
+	OidcSessions                      modAs[Q, oidcSessionColumns]
+	CreatedByPoolFundingRules         modAs[Q, poolFundingRuleColumns]
+	ActorProductCorrections           modAs[Q, productCorrectionColumns]
+	CreatedByPurchases                modAs[Q, purchaseColumns]
+	SettlementAdjustments             modAs[Q, settlementAdjustmentColumns]
+	SettlementLines                   modAs[Q, settlementLineColumns]
+	CreatedBySettlementRuns           modAs[Q, settlementRunColumns]
+	CreatedBySourceDocuments          modAs[Q, sourceDocumentColumns]
+	FromMemberTransfers               modAs[Q, transferColumns]
+	ToMemberTransfers                 modAs[Q, transferColumns]
 }
 
 func (j memberJoins[Q]) aliasedAs(alias string) memberJoins[Q] {
@@ -7917,6 +8237,20 @@ func buildMemberJoins[Q dialect.Joinable](cols memberColumns, typ string) member
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, HouseholdInvitations.NameExpr().As(to.Alias())).On(
+						to.CreatedBy.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		CreatedByHouseholdMailForwardings: modAs[Q, householdMailForwardingColumns]{
+			c: HouseholdMailForwardings.Columns,
+			f: func(to householdMailForwardingColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, HouseholdMailForwardings.NameExpr().As(to.Alias())).On(
 						to.CreatedBy.EQ(cols.ID),
 					))
 				}

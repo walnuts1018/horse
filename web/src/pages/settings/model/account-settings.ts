@@ -103,7 +103,10 @@ export function useAccountSettings({
   useEffect(() => {
     const currentHouseholdId = fundingDraftHouseholdId.current;
     fundingDraftHouseholdId.current = household.id;
-    setFundingDrafts((current) => reconcileFundingDrafts(household, currentHouseholdId, current));
+    // 同期setStateをマイクロタスクで遅延
+    queueMicrotask(() => {
+      setFundingDrafts((current) => reconcileFundingDrafts(household, currentHouseholdId, current));
+    });
   }, [household]);
 
   const addPool = (event: SubmitEvent<HTMLFormElement>) => {
@@ -157,9 +160,8 @@ export function useAccountSettings({
 
   const saveFundingRule = async (event: SubmitEvent<HTMLFormElement>, poolId: string) => {
     event.preventDefault();
-    const pool = household.pools.find((item) => item.id === poolId);
+    const pool = household.pools.find((item) => item.id === poolId)!;
     const draft = fundingDrafts[poolId];
-    if (!pool || !draft) return;
     const fundingShares = household.members
       .map((member) => ({
         memberId: member.id,

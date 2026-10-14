@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<c03e0ee12a4ca894356686610ebf1443>>
+ * @generated SignedSource<<720066c000cc711aead442b012819295>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type SharedPoolSettlementPolicy = "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL" | "%future added value";
 export type SetPoolFundingRuleInput = {
   configuration: PoolFundingRuleConfigurationInput;

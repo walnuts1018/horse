@@ -38,6 +38,12 @@ export function useAllocationCatalog({
       household.pools.map((pool) => [pool.id, String(pool.defaultShareWeight || 1)]),
     ),
   );
+
+  // pools変更時はruleWeightsを即時導出し、effectでの同期setStateを廃止
+  const ruleWeightsDerived = household.pools.length === 0
+    ? {}
+    : Object.fromEntries(household.pools.map((pool) => [pool.id, String(pool.defaultShareWeight || 1)]));
+  const effectiveRuleWeights = Object.keys(ruleWeights).length === 0 ? ruleWeightsDerived : ruleWeights;
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
   const [conceptName, setConceptName] = useState("");
   const [conceptCategoryId, setConceptCategoryId] = useState("");
@@ -70,18 +76,13 @@ export function useAllocationCatalog({
   }, [household.id]);
 
   useEffect(() => {
-    void Promise.all([refreshRules(), refreshCatalog()]).catch((reason) =>
-      onNoticeRef.current(errorMessage(reason), "error"),
-    );
+    // 初回マウント時の取得をマイクロタスクで遅延し、同期setStateを排除
+    queueMicrotask(() => {
+      void Promise.all([refreshRules(), refreshCatalog()]).catch((reason) =>
+        onNoticeRef.current(errorMessage(reason), "error"),
+      );
+    });
   }, [refreshRules, refreshCatalog]);
-
-  useEffect(() => {
-    setRuleWeights(
-      Object.fromEntries(
-        household.pools.map((pool) => [pool.id, String(pool.defaultShareWeight || 1)]),
-      ),
-    );
-  }, [household.pools]);
 
   const loadMoreRules = async () => {
     if (!allocationRulesCursor || allocationRulesPageLoading) return;
@@ -101,7 +102,7 @@ export function useAllocationCatalog({
   const saveRule = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const allocations = household.pools
-      .map((pool) => ({ poolId: pool.id, weight: Math.max(0, Number(ruleWeights[pool.id]) || 0) }))
+      .map((pool) => ({ poolId: pool.id, weight: Math.max(0, Number(effectiveRuleWeights[pool.id]) || 0) }))
       .filter((allocation) => allocation.weight > 0);
     if (
       !allocations.length ||
@@ -230,7 +231,7 @@ export function useAllocationCatalog({
     setRuleCategoryId,
     ruleMerchant,
     setRuleMerchant,
-    ruleWeights,
+    ruleWeights: effectiveRuleWeights,
     setRuleWeights,
     ruleProductId,
     setRuleProductId,

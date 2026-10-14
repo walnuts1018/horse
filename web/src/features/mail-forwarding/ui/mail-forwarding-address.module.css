@@ -1,0 +1,62 @@
+.section {
+  display: grid;
+  gap: 12px;
+  padding: 18px 18px 15px;
+}
+
+.heading {
+  align-items: center;
+}
+
+.heading h2 {
+  font-size: 15px;
+}
+
+.status {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.address {
+  display: grid;
+  gap: 5px;
+}
+
+.addressControls {
+  display: flex;
+  gap: 8px;
+}
+
+.addressControls input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: var(--paper);
+}
+
+.addressControls button,
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (width <= 520px) {
+  .addressControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

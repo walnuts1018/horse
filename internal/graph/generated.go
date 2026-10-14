@@ -571,6 +571,25 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	HouseholdMailForwardingAddress struct {
+		Address func(childComplexity int) int
+		Status  func(childComplexity int) int
+	}
+
+	HouseholdMailForwardingStatus struct {
+		Active    func(childComplexity int) int
+		CreatedAt func(childComplexity int) int
+	}
+
+	HouseholdMailForwardingUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
+	IssueHouseholdMailForwardingSuccess struct {
+		Result func(childComplexity int) int
+	}
+
 	LeaveHouseholdSuccess struct {
 		HouseholdID func(childComplexity int) int
 	}
@@ -654,48 +673,51 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		AcceptHouseholdInvitation    func(childComplexity int, input model.AcceptHouseholdInvitationInput) int
-		ArchiveBudget                func(childComplexity int, input model.ArchiveBudgetInput) int
-		ArchiveRecurringExpense      func(childComplexity int, input model.ArchiveRecurringExpenseInput) int
-		ArchiveTag                   func(childComplexity int, input model.ArchiveTagInput) int
-		BulkUpdatePurchaseItems      func(childComplexity int, input model.BulkUpdatePurchaseItemsInput) int
-		BulkUpdatePurchases          func(childComplexity int, input model.BulkUpdatePurchasesInput) int
-		ClosePeriod                  func(childComplexity int, input model.ClosePeriodInput) int
-		CorrectPurchase              func(childComplexity int, input model.CorrectPurchaseInput) int
-		CorrectPurchaseFromStatement func(childComplexity int, input model.CorrectPurchaseFromStatementInput) int
-		CreateAccount                func(childComplexity int, input model.CreateAccountInput) int
-		CreateAndPostPurchase        func(childComplexity int, input model.CreatePurchaseInput) int
-		CreateBudget                 func(childComplexity int, input model.CreateBudgetInput) int
-		CreateCategory               func(childComplexity int, input model.CreateCategoryInput) int
-		CreateHousehold              func(childComplexity int, input model.CreateHouseholdInput) int
-		CreateHouseholdInvitation    func(childComplexity int, input model.CreateHouseholdInvitationInput) int
-		CreatePool                   func(childComplexity int, input model.CreatePoolInput) int
-		CreateProductConcept         func(childComplexity int, input model.CreateProductConceptInput) int
-		CreateProductVariant         func(childComplexity int, input model.CreateProductVariantInput) int
-		CreatePurchase               func(childComplexity int, input model.CreatePurchaseInput) int
-		CreateRecurringExpense       func(childComplexity int, input model.CreateRecurringExpenseInput) int
-		CreateTag                    func(childComplexity int, input model.CreateTagInput) int
-		LeaveHousehold               func(childComplexity int, input model.LeaveHouseholdInput) int
-		PostPurchase                 func(childComplexity int, input model.PostPurchaseInput) int
-		RecordAccountMovement        func(childComplexity int, input model.RecordAccountMovementInput) int
-		RecordExternalIncome         func(childComplexity int, input model.RecordExternalIncomeInput) int
-		RecordFunding                func(childComplexity int, input model.RecordFundingInput) int
-		RecordRepayment              func(childComplexity int, input model.RecordRepaymentInput) int
-		RecordTransfer               func(childComplexity int, input model.RecordTransferInput) int
-		RemoveHouseholdMember        func(childComplexity int, input model.RemoveHouseholdMemberInput) int
-		RevokeHouseholdInvitation    func(childComplexity int, input model.RevokeHouseholdInvitationInput) int
-		SetAllocationRule            func(childComplexity int, input model.SetAllocationRuleInput) int
-		SetCategoryArchived          func(childComplexity int, input model.SetCategoryArchivedInput) int
-		SetDefaultAllocation         func(childComplexity int, input model.SetDefaultAllocationInput) int
-		SetFundingSchedule           func(childComplexity int, input model.SetFundingScheduleInput) int
-		SetPoolFundingRule           func(childComplexity int, input model.SetPoolFundingRuleInput) int
-		SetProductAlias              func(childComplexity int, input model.SetProductAliasInput) int
-		TransferHouseholdOwner       func(childComplexity int, input model.TransferHouseholdOwnerInput) int
-		UpdateBudget                 func(childComplexity int, input model.UpdateBudgetInput) int
-		UpdatePurchase               func(childComplexity int, input model.UpdatePurchaseInput) int
-		UpdatePurchaseItem           func(childComplexity int, input model.UpdatePurchaseItemInput) int
-		UpdateRecurringExpense       func(childComplexity int, input model.UpdateRecurringExpenseInput) int
-		UpdateTag                    func(childComplexity int, input model.UpdateTagInput) int
+		AcceptHouseholdInvitation     func(childComplexity int, input model.AcceptHouseholdInvitationInput) int
+		ArchiveBudget                 func(childComplexity int, input model.ArchiveBudgetInput) int
+		ArchiveRecurringExpense       func(childComplexity int, input model.ArchiveRecurringExpenseInput) int
+		ArchiveTag                    func(childComplexity int, input model.ArchiveTagInput) int
+		BulkUpdatePurchaseItems       func(childComplexity int, input model.BulkUpdatePurchaseItemsInput) int
+		BulkUpdatePurchases           func(childComplexity int, input model.BulkUpdatePurchasesInput) int
+		ClosePeriod                   func(childComplexity int, input model.ClosePeriodInput) int
+		CorrectPurchase               func(childComplexity int, input model.CorrectPurchaseInput) int
+		CorrectPurchaseFromStatement  func(childComplexity int, input model.CorrectPurchaseFromStatementInput) int
+		CreateAccount                 func(childComplexity int, input model.CreateAccountInput) int
+		CreateAndPostPurchase         func(childComplexity int, input model.CreatePurchaseInput) int
+		CreateBudget                  func(childComplexity int, input model.CreateBudgetInput) int
+		CreateCategory                func(childComplexity int, input model.CreateCategoryInput) int
+		CreateHousehold               func(childComplexity int, input model.CreateHouseholdInput) int
+		CreateHouseholdInvitation     func(childComplexity int, input model.CreateHouseholdInvitationInput) int
+		CreatePool                    func(childComplexity int, input model.CreatePoolInput) int
+		CreateProductConcept          func(childComplexity int, input model.CreateProductConceptInput) int
+		CreateProductVariant          func(childComplexity int, input model.CreateProductVariantInput) int
+		CreatePurchase                func(childComplexity int, input model.CreatePurchaseInput) int
+		CreateRecurringExpense        func(childComplexity int, input model.CreateRecurringExpenseInput) int
+		CreateTag                     func(childComplexity int, input model.CreateTagInput) int
+		IssueHouseholdMailForwarding  func(childComplexity int, input model.HouseholdMailForwardingInput) int
+		LeaveHousehold                func(childComplexity int, input model.LeaveHouseholdInput) int
+		PostPurchase                  func(childComplexity int, input model.PostPurchaseInput) int
+		RecordAccountMovement         func(childComplexity int, input model.RecordAccountMovementInput) int
+		RecordExternalIncome          func(childComplexity int, input model.RecordExternalIncomeInput) int
+		RecordFunding                 func(childComplexity int, input model.RecordFundingInput) int
+		RecordRepayment               func(childComplexity int, input model.RecordRepaymentInput) int
+		RecordTransfer                func(childComplexity int, input model.RecordTransferInput) int
+		RemoveHouseholdMember         func(childComplexity int, input model.RemoveHouseholdMemberInput) int
+		RevokeHouseholdInvitation     func(childComplexity int, input model.RevokeHouseholdInvitationInput) int
+		RevokeHouseholdMailForwarding func(childComplexity int, input model.HouseholdMailForwardingInput) int
+		RotateHouseholdMailForwarding func(childComplexity int, input model.HouseholdMailForwardingInput) int
+		SetAllocationRule             func(childComplexity int, input model.SetAllocationRuleInput) int
+		SetCategoryArchived           func(childComplexity int, input model.SetCategoryArchivedInput) int
+		SetDefaultAllocation          func(childComplexity int, input model.SetDefaultAllocationInput) int
+		SetFundingSchedule            func(childComplexity int, input model.SetFundingScheduleInput) int
+		SetPoolFundingRule            func(childComplexity int, input model.SetPoolFundingRuleInput) int
+		SetProductAlias               func(childComplexity int, input model.SetProductAliasInput) int
+		TransferHouseholdOwner        func(childComplexity int, input model.TransferHouseholdOwnerInput) int
+		UpdateBudget                  func(childComplexity int, input model.UpdateBudgetInput) int
+		UpdatePurchase                func(childComplexity int, input model.UpdatePurchaseInput) int
+		UpdatePurchaseItem            func(childComplexity int, input model.UpdatePurchaseItemInput) int
+		UpdateRecurringExpense        func(childComplexity int, input model.UpdateRecurringExpenseInput) int
+		UpdateTag                     func(childComplexity int, input model.UpdateTagInput) int
 	}
 
 	OpenSettlement struct {
@@ -927,6 +949,7 @@ type ComplexityRoot struct {
 		HomeSummary             func(childComplexity int, householdID string) int
 		Household               func(childComplexity int, id string) int
 		HouseholdInvitations    func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
+		HouseholdMailForwarding func(childComplexity int, householdID string) int
 		Households              func(childComplexity int) int
 		Ledger                  func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		LoanBalances            func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
@@ -1048,12 +1071,20 @@ type ComplexityRoot struct {
 		Message func(childComplexity int) int
 	}
 
+	RevokeHouseholdMailForwardingSuccess struct {
+		Result func(childComplexity int) int
+	}
+
 	RevokedHouseholdInvitation struct {
 		CreatedAt   func(childComplexity int) int
 		ExpiresAt   func(childComplexity int) int
 		HouseholdID func(childComplexity int) int
 		ID          func(childComplexity int) int
 		RevokedAt   func(childComplexity int) int
+	}
+
+	RotateHouseholdMailForwardingSuccess struct {
+		Result func(childComplexity int) int
 	}
 
 	SetAllocationRuleSuccess struct {
@@ -1389,6 +1420,9 @@ type MutationResolver interface {
 	CreatePurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreatePurchaseResult, error)
 	CreateRecurringExpense(ctx context.Context, input model.CreateRecurringExpenseInput) (model.CreateRecurringExpenseResult, error)
 	CreateTag(ctx context.Context, input model.CreateTagInput) (model.CreateTagResult, error)
+	IssueHouseholdMailForwarding(ctx context.Context, input model.HouseholdMailForwardingInput) (model.IssueHouseholdMailForwardingResult, error)
+	RotateHouseholdMailForwarding(ctx context.Context, input model.HouseholdMailForwardingInput) (model.RotateHouseholdMailForwardingResult, error)
+	RevokeHouseholdMailForwarding(ctx context.Context, input model.HouseholdMailForwardingInput) (model.RevokeHouseholdMailForwardingResult, error)
 	LeaveHousehold(ctx context.Context, input model.LeaveHouseholdInput) (model.LeaveHouseholdResult, error)
 	PostPurchase(ctx context.Context, input model.PostPurchaseInput) (model.PostPurchaseResult, error)
 	RecordAccountMovement(ctx context.Context, input model.RecordAccountMovementInput) (model.RecordAccountMovementResult, error)
@@ -1488,6 +1522,7 @@ type QueryResolver interface {
 	Households(ctx context.Context) ([]*model.Household, error)
 	Household(ctx context.Context, id string) (*model.Household, error)
 	HouseholdInvitations(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.HouseholdInvitationConnection, error)
+	HouseholdMailForwarding(ctx context.Context, householdID string) (*model.HouseholdMailForwardingStatus, error)
 	Ledger(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.LedgerConnection, error)
 	LoanBalances(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.LoanBalanceConnection, error)
 	MonthlyCategorySpending(ctx context.Context, householdID string, from model.YearMonth, to model.YearMonth) ([]*model.MonthlyCategorySpending, error)
@@ -3105,6 +3140,52 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.HouseholdInvitationEdge.Node(childComplexity), true
 
+	case "HouseholdMailForwardingAddress.address":
+		if e.ComplexityRoot.HouseholdMailForwardingAddress.Address == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdMailForwardingAddress.Address(childComplexity), true
+	case "HouseholdMailForwardingAddress.status":
+		if e.ComplexityRoot.HouseholdMailForwardingAddress.Status == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdMailForwardingAddress.Status(childComplexity), true
+
+	case "HouseholdMailForwardingStatus.active":
+		if e.ComplexityRoot.HouseholdMailForwardingStatus.Active == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdMailForwardingStatus.Active(childComplexity), true
+	case "HouseholdMailForwardingStatus.createdAt":
+		if e.ComplexityRoot.HouseholdMailForwardingStatus.CreatedAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdMailForwardingStatus.CreatedAt(childComplexity), true
+
+	case "HouseholdMailForwardingUserError.code":
+		if e.ComplexityRoot.HouseholdMailForwardingUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdMailForwardingUserError.Code(childComplexity), true
+	case "HouseholdMailForwardingUserError.message":
+		if e.ComplexityRoot.HouseholdMailForwardingUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.HouseholdMailForwardingUserError.Message(childComplexity), true
+
+	case "IssueHouseholdMailForwardingSuccess.result":
+		if e.ComplexityRoot.IssueHouseholdMailForwardingSuccess.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.IssueHouseholdMailForwardingSuccess.Result(childComplexity), true
+
 	case "LeaveHouseholdSuccess.householdId":
 		if e.ComplexityRoot.LeaveHouseholdSuccess.HouseholdID == nil {
 			break
@@ -3607,6 +3688,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.CreateTag(childComplexity, args["input"].(model.CreateTagInput)), true
+	case "Mutation.issueHouseholdMailForwarding":
+		if e.ComplexityRoot.Mutation.IssueHouseholdMailForwarding == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_issueHouseholdMailForwarding_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.IssueHouseholdMailForwarding(childComplexity, args["input"].(model.HouseholdMailForwardingInput)), true
 	case "Mutation.leaveHousehold":
 		if e.ComplexityRoot.Mutation.LeaveHousehold == nil {
 			break
@@ -3706,6 +3798,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RevokeHouseholdInvitation(childComplexity, args["input"].(model.RevokeHouseholdInvitationInput)), true
+	case "Mutation.revokeHouseholdMailForwarding":
+		if e.ComplexityRoot.Mutation.RevokeHouseholdMailForwarding == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_revokeHouseholdMailForwarding_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.RevokeHouseholdMailForwarding(childComplexity, args["input"].(model.HouseholdMailForwardingInput)), true
+	case "Mutation.rotateHouseholdMailForwarding":
+		if e.ComplexityRoot.Mutation.RotateHouseholdMailForwarding == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_rotateHouseholdMailForwarding_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.RotateHouseholdMailForwarding(childComplexity, args["input"].(model.HouseholdMailForwardingInput)), true
 	case "Mutation.setAllocationRule":
 		if e.ComplexityRoot.Mutation.SetAllocationRule == nil {
 			break
@@ -4803,6 +4917,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.HouseholdInvitations(childComplexity, args["householdId"].(string), args["after"].(*string), args["before"].(*string), args["first"].(*int), args["last"].(*int)), true
+	case "Query.householdMailForwarding":
+		if e.ComplexityRoot.Query.HouseholdMailForwarding == nil {
+			break
+		}
+
+		args, err := ec.field_Query_householdMailForwarding_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.HouseholdMailForwarding(childComplexity, args["householdId"].(string)), true
 	case "Query.households":
 		if e.ComplexityRoot.Query.Households == nil {
 			break
@@ -5283,6 +5408,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.RevokeHouseholdInvitationUserError.Message(childComplexity), true
 
+	case "RevokeHouseholdMailForwardingSuccess.result":
+		if e.ComplexityRoot.RevokeHouseholdMailForwardingSuccess.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RevokeHouseholdMailForwardingSuccess.Result(childComplexity), true
+
 	case "RevokedHouseholdInvitation.createdAt":
 		if e.ComplexityRoot.RevokedHouseholdInvitation.CreatedAt == nil {
 			break
@@ -5313,6 +5445,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.RevokedHouseholdInvitation.RevokedAt(childComplexity), true
+
+	case "RotateHouseholdMailForwardingSuccess.result":
+		if e.ComplexityRoot.RotateHouseholdMailForwardingSuccess.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RotateHouseholdMailForwardingSuccess.Result(childComplexity), true
 
 	case "SetAllocationRuleSuccess.result":
 		if e.ComplexityRoot.SetAllocationRuleSuccess.Result == nil {
@@ -5936,6 +6075,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputCreatePurchaseQuantityInput,
 		ec.unmarshalInputCreateRecurringExpenseInput,
 		ec.unmarshalInputCreateTagInput,
+		ec.unmarshalInputHouseholdMailForwardingInput,
 		ec.unmarshalInputLeaveHouseholdInput,
 		ec.unmarshalInputPersonalPoolFundingRuleInput,
 		ec.unmarshalInputPoolFundingRuleConfigurationInput,
@@ -7014,6 +7154,67 @@ extend type Query {
   ): HouseholdInvitationConnection!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/household_mail_forwarding.graphql", Input: `extend type Query {
+  householdMailForwarding(
+    householdId: ID! @nodeID(of: "Household")
+  ): HouseholdMailForwardingStatus
+}
+
+extend type Mutation {
+  issueHouseholdMailForwarding(
+    input: HouseholdMailForwardingInput!
+  ): IssueHouseholdMailForwardingResult!
+  rotateHouseholdMailForwarding(
+    input: HouseholdMailForwardingInput!
+  ): RotateHouseholdMailForwardingResult!
+  revokeHouseholdMailForwarding(
+    input: HouseholdMailForwardingInput!
+  ): RevokeHouseholdMailForwardingResult!
+}
+
+input HouseholdMailForwardingInput {
+  householdId: ID! @nodeID(of: "Household")
+}
+
+type HouseholdMailForwardingStatus {
+  createdAt: DateTime!
+  active: Boolean!
+}
+
+type HouseholdMailForwardingAddress {
+  address: String!
+  status: HouseholdMailForwardingStatus!
+}
+
+type IssueHouseholdMailForwardingSuccess {
+  result: HouseholdMailForwardingAddress!
+}
+
+type RotateHouseholdMailForwardingSuccess {
+  result: HouseholdMailForwardingAddress!
+}
+
+type RevokeHouseholdMailForwardingSuccess {
+  result: HouseholdMailForwardingStatus!
+}
+
+type HouseholdMailForwardingUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
+union IssueHouseholdMailForwardingResult =
+  | IssueHouseholdMailForwardingSuccess
+  | HouseholdMailForwardingUserError
+
+union RotateHouseholdMailForwardingResult =
+  | RotateHouseholdMailForwardingSuccess
+  | HouseholdMailForwardingUserError
+
+union RevokeHouseholdMailForwardingResult =
+  | RevokeHouseholdMailForwardingSuccess
+  | HouseholdMailForwardingUserError
+`, BuiltIn: false},
 	{Name: "../../graphql/leave_household_mutation.graphql", Input: `extend type Mutation {
   leaveHousehold(input: LeaveHouseholdInput!): LeaveHouseholdResult!
 }
@@ -7852,6 +8053,7 @@ enum MutationErrorCode {
   BAD_INPUT
   CONFLICT
   NOT_FOUND
+  MAIL_FORWARDING_DISABLED
 }
 
 interface MutationError {
@@ -8778,6 +8980,26 @@ func (ec *executionContext) childFields_HouseholdInvitationEdge(ctx context.Cont
 		return ec.fieldContext_HouseholdInvitationEdge_node(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type HouseholdInvitationEdge", field.Name)
+}
+
+func (ec *executionContext) childFields_HouseholdMailForwardingAddress(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "address":
+		return ec.fieldContext_HouseholdMailForwardingAddress_address(ctx, field)
+	case "status":
+		return ec.fieldContext_HouseholdMailForwardingAddress_status(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type HouseholdMailForwardingAddress", field.Name)
+}
+
+func (ec *executionContext) childFields_HouseholdMailForwardingStatus(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "createdAt":
+		return ec.fieldContext_HouseholdMailForwardingStatus_createdAt(ctx, field)
+	case "active":
+		return ec.fieldContext_HouseholdMailForwardingStatus_active(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type HouseholdMailForwardingStatus", field.Name)
 }
 
 func (ec *executionContext) childFields_LedgerConnection(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -9784,6 +10006,20 @@ func (ec *executionContext) field_Mutation_createTag_args(ctx context.Context, r
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_issueHouseholdMailForwarding_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.HouseholdMailForwardingInput, error) {
+			return ec.unmarshalNHouseholdMailForwardingInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_leaveHousehold_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -9902,6 +10138,34 @@ func (ec *executionContext) field_Mutation_revokeHouseholdInvitation_args(ctx co
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.RevokeHouseholdInvitationInput, error) {
 			return ec.unmarshalNRevokeHouseholdInvitationInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRevokeHouseholdInvitationInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_revokeHouseholdMailForwarding_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.HouseholdMailForwardingInput, error) {
+			return ec.unmarshalNHouseholdMailForwardingInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_rotateHouseholdMailForwarding_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.HouseholdMailForwardingInput, error) {
+			return ec.unmarshalNHouseholdMailForwardingInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -10874,6 +11138,63 @@ func (ec *executionContext) field_Query_householdInvitations_args(ctx context.Co
 }
 
 func (ec *executionContext) field_Query_householdInvitations_argsHouseholdID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["householdId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["householdId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Household")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
+}
+
+func (ec *executionContext) field_Query_householdMailForwarding_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+
+	arg0, err := ec.field_Query_householdMailForwarding_argsHouseholdID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_householdMailForwarding_argsHouseholdID(
 	ctx context.Context,
 	rawArgs map[string]any,
 ) (string, error) {
@@ -18277,6 +18598,185 @@ func (ec *executionContext) fieldContext_HouseholdInvitationEdge_node(_ context.
 	return fc, nil
 }
 
+func (ec *executionContext) _HouseholdMailForwardingAddress_address(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdMailForwardingAddress) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdMailForwardingAddress_address(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Address, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdMailForwardingAddress_address(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdMailForwardingAddress", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdMailForwardingAddress_status(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdMailForwardingAddress) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdMailForwardingAddress_status(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Status, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.HouseholdMailForwardingStatus) graphql.Marshaler {
+			return ec.marshalNHouseholdMailForwardingStatus2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingStatus(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdMailForwardingAddress_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "HouseholdMailForwardingAddress",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HouseholdMailForwardingStatus(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _HouseholdMailForwardingStatus_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdMailForwardingStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdMailForwardingStatus_createdAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdMailForwardingStatus_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdMailForwardingStatus", field, false, false, errors.New("field of type DateTime does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdMailForwardingStatus_active(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdMailForwardingStatus) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdMailForwardingStatus_active(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Active, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v bool) graphql.Marshaler {
+			return ec.marshalNBoolean2bool(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdMailForwardingStatus_active(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdMailForwardingStatus", field, false, false, errors.New("field of type Boolean does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdMailForwardingUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdMailForwardingUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdMailForwardingUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdMailForwardingUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdMailForwardingUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _HouseholdMailForwardingUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.HouseholdMailForwardingUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_HouseholdMailForwardingUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_HouseholdMailForwardingUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("HouseholdMailForwardingUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _IssueHouseholdMailForwardingSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.IssueHouseholdMailForwardingSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_IssueHouseholdMailForwardingSuccess_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.HouseholdMailForwardingAddress) graphql.Marshaler {
+			return ec.marshalNHouseholdMailForwardingAddress2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingAddress(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_IssueHouseholdMailForwardingSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "IssueHouseholdMailForwardingSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HouseholdMailForwardingAddress(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _LeaveHouseholdSuccess_householdId(ctx context.Context, field graphql.CollectedField, obj *model.LeaveHouseholdSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -20274,6 +20774,138 @@ func (ec *executionContext) fieldContext_Mutation_createTag(ctx context.Context,
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_createTag_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_issueHouseholdMailForwarding(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_issueHouseholdMailForwarding(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().IssueHouseholdMailForwarding(ctx, fc.Args["input"].(model.HouseholdMailForwardingInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.IssueHouseholdMailForwardingResult) graphql.Marshaler {
+			return ec.marshalNIssueHouseholdMailForwardingResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐIssueHouseholdMailForwardingResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_issueHouseholdMailForwarding(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type IssueHouseholdMailForwardingResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_issueHouseholdMailForwarding_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_rotateHouseholdMailForwarding(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_rotateHouseholdMailForwarding(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().RotateHouseholdMailForwarding(ctx, fc.Args["input"].(model.HouseholdMailForwardingInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.RotateHouseholdMailForwardingResult) graphql.Marshaler {
+			return ec.marshalNRotateHouseholdMailForwardingResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRotateHouseholdMailForwardingResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_rotateHouseholdMailForwarding(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type RotateHouseholdMailForwardingResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_rotateHouseholdMailForwarding_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_revokeHouseholdMailForwarding(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_revokeHouseholdMailForwarding(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().RevokeHouseholdMailForwarding(ctx, fc.Args["input"].(model.HouseholdMailForwardingInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.RevokeHouseholdMailForwardingResult) graphql.Marshaler {
+			return ec.marshalNRevokeHouseholdMailForwardingResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRevokeHouseholdMailForwardingResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_revokeHouseholdMailForwarding(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type RevokeHouseholdMailForwardingResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_revokeHouseholdMailForwarding_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -25188,6 +25820,50 @@ func (ec *executionContext) fieldContext_Query_householdInvitations(ctx context.
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_householdMailForwarding(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_householdMailForwarding(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().HouseholdMailForwarding(ctx, fc.Args["householdId"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.HouseholdMailForwardingStatus) graphql.Marshaler {
+			return ec.marshalOHouseholdMailForwardingStatus2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingStatus(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Query_householdMailForwarding(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HouseholdMailForwardingStatus(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_householdMailForwarding_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_ledger(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -27059,6 +27735,38 @@ func (ec *executionContext) fieldContext_RevokeHouseholdInvitationUserError_mess
 	return graphql.NewScalarFieldContext("RevokeHouseholdInvitationUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _RevokeHouseholdMailForwardingSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.RevokeHouseholdMailForwardingSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RevokeHouseholdMailForwardingSuccess_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.HouseholdMailForwardingStatus) graphql.Marshaler {
+			return ec.marshalNHouseholdMailForwardingStatus2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingStatus(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RevokeHouseholdMailForwardingSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RevokeHouseholdMailForwardingSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HouseholdMailForwardingStatus(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _RevokedHouseholdInvitation_id(ctx context.Context, field graphql.CollectedField, obj *model.RevokedHouseholdInvitation) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -27172,6 +27880,38 @@ func (ec *executionContext) _RevokedHouseholdInvitation_revokedAt(ctx context.Co
 }
 func (ec *executionContext) fieldContext_RevokedHouseholdInvitation_revokedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("RevokedHouseholdInvitation", field, false, false, errors.New("field of type DateTime does not have child fields"))
+}
+
+func (ec *executionContext) _RotateHouseholdMailForwardingSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.RotateHouseholdMailForwardingSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RotateHouseholdMailForwardingSuccess_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.HouseholdMailForwardingAddress) graphql.Marshaler {
+			return ec.marshalNHouseholdMailForwardingAddress2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingAddress(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RotateHouseholdMailForwardingSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RotateHouseholdMailForwardingSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_HouseholdMailForwardingAddress(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _SetAllocationRuleSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.SetAllocationRuleSuccess) (ret graphql.Marshaler) {
@@ -32794,6 +33534,56 @@ func (ec *executionContext) unmarshalInputCreateTagInput(ctx context.Context, ob
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputHouseholdMailForwardingInput(ctx context.Context, obj any) (model.HouseholdMailForwardingInput, error) {
+	var it model.HouseholdMailForwardingInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Household")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.HouseholdID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputLeaveHouseholdInput(ctx context.Context, obj any) (model.LeaveHouseholdInput, error) {
 	var it model.LeaveHouseholdInput
 	if obj == nil {
@@ -37033,6 +37823,33 @@ func (ec *executionContext) _HouseholdInvitation(ctx context.Context, sel ast.Se
 	}
 }
 
+func (ec *executionContext) _IssueHouseholdMailForwardingResult(ctx context.Context, sel ast.SelectionSet, obj model.IssueHouseholdMailForwardingResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.HouseholdMailForwardingUserError:
+		return ec._HouseholdMailForwardingUserError(ctx, sel, &obj)
+	case *model.HouseholdMailForwardingUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._HouseholdMailForwardingUserError(ctx, sel, obj)
+	case model.IssueHouseholdMailForwardingSuccess:
+		return ec._IssueHouseholdMailForwardingSuccess(ctx, sel, &obj)
+	case *model.IssueHouseholdMailForwardingSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._IssueHouseholdMailForwardingSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of IssueHouseholdMailForwardingResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _LeaveHouseholdResult(ctx context.Context, sel ast.SelectionSet, obj model.LeaveHouseholdResult) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -37278,6 +38095,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._LeaveHouseholdUserError(ctx, sel, obj)
+	case model.HouseholdMailForwardingUserError:
+		return ec._HouseholdMailForwardingUserError(ctx, sel, &obj)
+	case *model.HouseholdMailForwardingUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._HouseholdMailForwardingUserError(ctx, sel, obj)
 	case model.CreateTagUserError:
 		return ec._CreateTagUserError(ctx, sel, &obj)
 	case *model.CreateTagUserError:
@@ -38051,6 +38875,60 @@ func (ec *executionContext) _RevokeHouseholdInvitationResult(ctx context.Context
 			return typedObj
 		} else {
 			panic(fmt.Errorf("unexpected type %T; non-generated variants of RevokeHouseholdInvitationResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _RevokeHouseholdMailForwardingResult(ctx context.Context, sel ast.SelectionSet, obj model.RevokeHouseholdMailForwardingResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.HouseholdMailForwardingUserError:
+		return ec._HouseholdMailForwardingUserError(ctx, sel, &obj)
+	case *model.HouseholdMailForwardingUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._HouseholdMailForwardingUserError(ctx, sel, obj)
+	case model.RevokeHouseholdMailForwardingSuccess:
+		return ec._RevokeHouseholdMailForwardingSuccess(ctx, sel, &obj)
+	case *model.RevokeHouseholdMailForwardingSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RevokeHouseholdMailForwardingSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of RevokeHouseholdMailForwardingResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _RotateHouseholdMailForwardingResult(ctx context.Context, sel ast.SelectionSet, obj model.RotateHouseholdMailForwardingResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.HouseholdMailForwardingUserError:
+		return ec._HouseholdMailForwardingUserError(ctx, sel, &obj)
+	case *model.HouseholdMailForwardingUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._HouseholdMailForwardingUserError(ctx, sel, obj)
+	case model.RotateHouseholdMailForwardingSuccess:
+		return ec._RotateHouseholdMailForwardingSuccess(ctx, sel, &obj)
+	case *model.RotateHouseholdMailForwardingSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RotateHouseholdMailForwardingSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of RotateHouseholdMailForwardingResult must implement graphql.Marshaler", obj))
 		}
 	}
 }
@@ -43659,6 +44537,173 @@ func (ec *executionContext) _HouseholdInvitationEdge(ctx context.Context, sel as
 	return out
 }
 
+var householdMailForwardingAddressImplementors = []string{"HouseholdMailForwardingAddress"}
+
+func (ec *executionContext) _HouseholdMailForwardingAddress(ctx context.Context, sel ast.SelectionSet, obj *model.HouseholdMailForwardingAddress) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, householdMailForwardingAddressImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("HouseholdMailForwardingAddress")
+		case "address":
+			out.Values[i] = ec._HouseholdMailForwardingAddress_address(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "status":
+			out.Values[i] = ec._HouseholdMailForwardingAddress_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var householdMailForwardingStatusImplementors = []string{"HouseholdMailForwardingStatus"}
+
+func (ec *executionContext) _HouseholdMailForwardingStatus(ctx context.Context, sel ast.SelectionSet, obj *model.HouseholdMailForwardingStatus) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, householdMailForwardingStatusImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("HouseholdMailForwardingStatus")
+		case "createdAt":
+			out.Values[i] = ec._HouseholdMailForwardingStatus_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "active":
+			out.Values[i] = ec._HouseholdMailForwardingStatus_active(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var householdMailForwardingUserErrorImplementors = []string{"HouseholdMailForwardingUserError", "MutationError", "IssueHouseholdMailForwardingResult", "RotateHouseholdMailForwardingResult", "RevokeHouseholdMailForwardingResult"}
+
+func (ec *executionContext) _HouseholdMailForwardingUserError(ctx context.Context, sel ast.SelectionSet, obj *model.HouseholdMailForwardingUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, householdMailForwardingUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("HouseholdMailForwardingUserError")
+		case "code":
+			out.Values[i] = ec._HouseholdMailForwardingUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._HouseholdMailForwardingUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var issueHouseholdMailForwardingSuccessImplementors = []string{"IssueHouseholdMailForwardingSuccess", "IssueHouseholdMailForwardingResult"}
+
+func (ec *executionContext) _IssueHouseholdMailForwardingSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.IssueHouseholdMailForwardingSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, issueHouseholdMailForwardingSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("IssueHouseholdMailForwardingSuccess")
+		case "result":
+			out.Values[i] = ec._IssueHouseholdMailForwardingSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var leaveHouseholdSuccessImplementors = []string{"LeaveHouseholdSuccess", "LeaveHouseholdResult"}
 
 func (ec *executionContext) _LeaveHouseholdSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.LeaveHouseholdSuccess) graphql.Marshaler {
@@ -44697,6 +45742,27 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "createTag":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createTag(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "issueHouseholdMailForwarding":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_issueHouseholdMailForwarding(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "rotateHouseholdMailForwarding":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_rotateHouseholdMailForwarding(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "revokeHouseholdMailForwarding":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_revokeHouseholdMailForwarding(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -47708,6 +48774,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "householdMailForwarding":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_householdMailForwarding(ctx, field)
+				if res == graphql.RequiredNull {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "ledger":
 			field := field
 
@@ -49066,6 +50154,44 @@ func (ec *executionContext) _RevokeHouseholdInvitationUserError(ctx context.Cont
 	return out
 }
 
+var revokeHouseholdMailForwardingSuccessImplementors = []string{"RevokeHouseholdMailForwardingSuccess", "RevokeHouseholdMailForwardingResult"}
+
+func (ec *executionContext) _RevokeHouseholdMailForwardingSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.RevokeHouseholdMailForwardingSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, revokeHouseholdMailForwardingSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RevokeHouseholdMailForwardingSuccess")
+		case "result":
+			out.Values[i] = ec._RevokeHouseholdMailForwardingSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var revokedHouseholdInvitationImplementors = []string{"RevokedHouseholdInvitation", "Node", "HouseholdInvitation"}
 
 func (ec *executionContext) _RevokedHouseholdInvitation(ctx context.Context, sel ast.SelectionSet, obj *model.RevokedHouseholdInvitation) graphql.Marshaler {
@@ -49168,6 +50294,44 @@ func (ec *executionContext) _RevokedHouseholdInvitation(ctx context.Context, sel
 			out.Values[i] = ec._RevokedHouseholdInvitation_revokedAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var rotateHouseholdMailForwardingSuccessImplementors = []string{"RotateHouseholdMailForwardingSuccess", "RotateHouseholdMailForwardingResult"}
+
+func (ec *executionContext) _RotateHouseholdMailForwardingSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.RotateHouseholdMailForwardingSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, rotateHouseholdMailForwardingSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RotateHouseholdMailForwardingSuccess")
+		case "result":
+			out.Values[i] = ec._RotateHouseholdMailForwardingSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -52481,6 +53645,31 @@ func (ec *executionContext) marshalNHouseholdInvitationEdge2ᚖgithubᚗcomᚋwa
 	return ec._HouseholdInvitationEdge(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNHouseholdMailForwardingAddress2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingAddress(ctx context.Context, sel ast.SelectionSet, v *model.HouseholdMailForwardingAddress) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._HouseholdMailForwardingAddress(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNHouseholdMailForwardingInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingInput(ctx context.Context, v any) (model.HouseholdMailForwardingInput, error) {
+	res, err := ec.unmarshalInputHouseholdMailForwardingInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNHouseholdMailForwardingStatus2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingStatus(ctx context.Context, sel ast.SelectionSet, v *model.HouseholdMailForwardingStatus) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._HouseholdMailForwardingStatus(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v any) (string, error) {
 	res, err := graphql.UnmarshalID(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -52540,6 +53729,16 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalNIssueHouseholdMailForwardingResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐIssueHouseholdMailForwardingResult(ctx context.Context, sel ast.SelectionSet, v model.IssueHouseholdMailForwardingResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._IssueHouseholdMailForwardingResult(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNLeaveHouseholdInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLeaveHouseholdInput(ctx context.Context, v any) (model.LeaveHouseholdInput, error) {
@@ -53536,6 +54735,26 @@ func (ec *executionContext) marshalNRevokeHouseholdInvitationResult2githubᚗcom
 	return ec._RevokeHouseholdInvitationResult(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNRevokeHouseholdMailForwardingResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRevokeHouseholdMailForwardingResult(ctx context.Context, sel ast.SelectionSet, v model.RevokeHouseholdMailForwardingResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._RevokeHouseholdMailForwardingResult(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNRotateHouseholdMailForwardingResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRotateHouseholdMailForwardingResult(ctx context.Context, sel ast.SelectionSet, v model.RotateHouseholdMailForwardingResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._RotateHouseholdMailForwardingResult(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNSetAllocationRuleInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetAllocationRuleInput(ctx context.Context, v any) (model.SetAllocationRuleInput, error) {
 	res, err := ec.unmarshalInputSetAllocationRuleInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -54368,6 +55587,13 @@ func (ec *executionContext) marshalOHousehold2ᚖgithubᚗcomᚋwalnuts1018ᚋho
 		return graphql.Null
 	}
 	return ec._Household(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOHouseholdMailForwardingStatus2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐHouseholdMailForwardingStatus(ctx context.Context, sel ast.SelectionSet, v *model.HouseholdMailForwardingStatus) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._HouseholdMailForwardingStatus(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOID2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {

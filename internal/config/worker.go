@@ -10,25 +10,26 @@ import (
 const defaultUSDJPYRate = 158.535
 
 type Worker struct {
-	DatabaseURL       string   `env:"DATABASE_URL,notEmpty" validate:"required"`
-	S3Endpoint        string   `env:"S3_ENDPOINT,notEmpty" validate:"required"`
-	S3Bucket          string   `env:"S3_BUCKET,notEmpty" validate:"required"`
-	S3AccessKeyID     string   `env:"S3_ACCESS_KEY_ID" validate:"required_with=S3SecretAccessKey"`
-	S3SecretAccessKey string   `env:"S3_SECRET_ACCESS_KEY" validate:"required_with=S3AccessKeyID"`
-	RabbitMQURL       string   `env:"RABBITMQ_URL"`
-	GeminiEnabled     bool     `env:"GEMINI_ENABLED" envDefault:"false"`
-	GeminiFreeAPIKey  string   `env:"GEMINI_FREE_API_KEY"`
-	GeminiPaidAPIKey  string   `env:"GEMINI_PAID_API_KEY"`
-	GeminiFreeProject string   `env:"GEMINI_FREE_PROJECT_ID"`
-	GeminiPaidProject string   `env:"GEMINI_PAID_PROJECT_ID"`
-	GeminiFlashModel  string   `env:"GEMINI_FLASH_MODEL"`
-	GeminiLiteModel   string   `env:"GEMINI_LITE_MODEL"`
-	GeminiProModel    string   `env:"GEMINI_PRO_MODEL"`
-	USDJPYRate        *float64 `env:"USDJPY_RATE" validate:"omitempty,gt=0"`
-	GeminiUSDJPYRate  *float64 `env:"GEMINI_USDJPY_RATE" validate:"omitempty,gt=0"`
-	USDJPYRateSource  string   `env:"USDJPY_RATE_SOURCE"`
-	USDJPYRateAsOf    string   `env:"USDJPY_RATE_AS_OF" validate:"omitempty,datetime=2006-01-02"`
-	OCRURL            string   `env:"OCR_URL"`
+	DatabaseURL         string   `env:"DATABASE_URL,notEmpty" validate:"required"`
+	S3Endpoint          string   `env:"S3_ENDPOINT,notEmpty" validate:"required"`
+	S3Bucket            string   `env:"S3_BUCKET,notEmpty" validate:"required"`
+	S3AccessKeyID       string   `env:"S3_ACCESS_KEY_ID" validate:"required_with=S3SecretAccessKey"`
+	S3SecretAccessKey   string   `env:"S3_SECRET_ACCESS_KEY" validate:"required_with=S3AccessKeyID"`
+	EmailEncryptionKeys string   `env:"EMAIL_BODY_ENCRYPTION_KEYS"`
+	RabbitMQURL         string   `env:"RABBITMQ_URL"`
+	GeminiEnabled       bool     `env:"GEMINI_ENABLED" envDefault:"false"`
+	GeminiFreeAPIKey    string   `env:"GEMINI_FREE_API_KEY"`
+	GeminiPaidAPIKey    string   `env:"GEMINI_PAID_API_KEY"`
+	GeminiFreeProject   string   `env:"GEMINI_FREE_PROJECT_ID"`
+	GeminiPaidProject   string   `env:"GEMINI_PAID_PROJECT_ID"`
+	GeminiFlashModel    string   `env:"GEMINI_FLASH_MODEL"`
+	GeminiLiteModel     string   `env:"GEMINI_LITE_MODEL"`
+	GeminiProModel      string   `env:"GEMINI_PRO_MODEL"`
+	USDJPYRate          *float64 `env:"USDJPY_RATE" validate:"omitempty,gt=0"`
+	GeminiUSDJPYRate    *float64 `env:"GEMINI_USDJPY_RATE" validate:"omitempty,gt=0"`
+	USDJPYRateSource    string   `env:"USDJPY_RATE_SOURCE"`
+	USDJPYRateAsOf      string   `env:"USDJPY_RATE_AS_OF" validate:"omitempty,datetime=2006-01-02"`
+	OCRURL              string   `env:"OCR_URL"`
 }
 
 func LoadWorker() (Worker, error) {

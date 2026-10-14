@@ -49,7 +49,7 @@ func provideObjectStore(ctx context.Context, settings config.Worker) objectStore
 	if err := ctx.Err(); err != nil {
 		return objectStoreResult{err: err}
 	}
-	store, err := ingestion.NewObjectStore(ctx, settings.S3Endpoint, settings.S3Bucket, settings.S3AccessKeyID, settings.S3SecretAccessKey)
+	store, err := ingestion.NewObjectStore(ctx, settings.S3Endpoint, settings.S3Bucket, settings.S3AccessKeyID, settings.S3SecretAccessKey, settings.EmailEncryptionKeys)
 	return objectStoreResult{store: store, err: err}
 }
 

@@ -62,9 +62,11 @@ export function ManageHouseholdInvitations({
   };
 
   useEffect(() => {
-    setInvitationLink("");
-    setIssuedInvitationId("");
-    void refreshInvitations().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+    queueMicrotask(() => {
+      setInvitationLink("");
+      setIssuedInvitationId("");
+      void refreshInvitations().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+    });
   }, [refreshInvitations]);
 
   const issueInvitation = async (event: SubmitEvent<HTMLFormElement>) => {
@@ -165,9 +167,7 @@ export function ManageHouseholdInvitations({
                     ? "失効"
                     : invitation.__typename === "ExpiredHouseholdInvitation"
                       ? "期限切れ"
-                      : invitation.__typename === "PendingHouseholdInvitation"
-                        ? "未使用"
-                        : "状態不明"}
+                      : "未使用"}
               </small>
             </div>
             {invitation.__typename === "PendingHouseholdInvitation" && (

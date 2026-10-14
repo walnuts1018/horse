@@ -63,7 +63,9 @@ export function ManageRecurringExpenses({
   }, [householdId]);
 
   useEffect(() => {
-    void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+    queueMicrotask(() => {
+      void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+    });
   }, [refresh]);
 
   const saveRecurring = async (event: SubmitEvent<HTMLFormElement>) => {

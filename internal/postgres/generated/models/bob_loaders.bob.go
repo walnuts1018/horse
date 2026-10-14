@@ -37,6 +37,7 @@ type preloaders struct {
 	FundingSchedule                fundingSchedulePreloader
 	HouseholdEvent                 householdEventPreloader
 	HouseholdInvitation            householdInvitationPreloader
+	HouseholdMailForwarding        householdMailForwardingPreloader
 	HouseholdMember                householdMemberPreloader
 	Household                      householdPreloader
 	IdempotencyKey                 idempotencyKeyPreloader
@@ -91,6 +92,7 @@ func getPreloaders() preloaders {
 		FundingSchedule:                buildFundingSchedulePreloader(),
 		HouseholdEvent:                 buildHouseholdEventPreloader(),
 		HouseholdInvitation:            buildHouseholdInvitationPreloader(),
+		HouseholdMailForwarding:        buildHouseholdMailForwardingPreloader(),
 		HouseholdMember:                buildHouseholdMemberPreloader(),
 		Household:                      buildHouseholdPreloader(),
 		IdempotencyKey:                 buildIdempotencyKeyPreloader(),
@@ -151,6 +153,7 @@ type thenLoaders[Q orm.Loadable] struct {
 	FundingSchedule                fundingScheduleThenLoader[Q]
 	HouseholdEvent                 householdEventThenLoader[Q]
 	HouseholdInvitation            householdInvitationThenLoader[Q]
+	HouseholdMailForwarding        householdMailForwardingThenLoader[Q]
 	HouseholdMember                householdMemberThenLoader[Q]
 	Household                      householdThenLoader[Q]
 	IdempotencyKey                 idempotencyKeyThenLoader[Q]
@@ -205,6 +208,7 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		FundingSchedule:                buildFundingScheduleThenLoader[Q](),
 		HouseholdEvent:                 buildHouseholdEventThenLoader[Q](),
 		HouseholdInvitation:            buildHouseholdInvitationThenLoader[Q](),
+		HouseholdMailForwarding:        buildHouseholdMailForwardingThenLoader[Q](),
 		HouseholdMember:                buildHouseholdMemberThenLoader[Q](),
 		Household:                      buildHouseholdThenLoader[Q](),
 		IdempotencyKey:                 buildIdempotencyKeyThenLoader[Q](),

@@ -1,0 +1,60 @@
+extend type Query {
+  householdMailForwarding(
+    householdId: ID! @nodeID(of: "Household")
+  ): HouseholdMailForwardingStatus
+}
+
+extend type Mutation {
+  issueHouseholdMailForwarding(
+    input: HouseholdMailForwardingInput!
+  ): IssueHouseholdMailForwardingResult!
+  rotateHouseholdMailForwarding(
+    input: HouseholdMailForwardingInput!
+  ): RotateHouseholdMailForwardingResult!
+  revokeHouseholdMailForwarding(
+    input: HouseholdMailForwardingInput!
+  ): RevokeHouseholdMailForwardingResult!
+}
+
+input HouseholdMailForwardingInput {
+  householdId: ID! @nodeID(of: "Household")
+}
+
+type HouseholdMailForwardingStatus {
+  createdAt: DateTime!
+  active: Boolean!
+}
+
+type HouseholdMailForwardingAddress {
+  address: String!
+  status: HouseholdMailForwardingStatus!
+}
+
+type IssueHouseholdMailForwardingSuccess {
+  result: HouseholdMailForwardingAddress!
+}
+
+type RotateHouseholdMailForwardingSuccess {
+  result: HouseholdMailForwardingAddress!
+}
+
+type RevokeHouseholdMailForwardingSuccess {
+  result: HouseholdMailForwardingStatus!
+}
+
+type HouseholdMailForwardingUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
+union IssueHouseholdMailForwardingResult =
+  | IssueHouseholdMailForwardingSuccess
+  | HouseholdMailForwardingUserError
+
+union RotateHouseholdMailForwardingResult =
+  | RotateHouseholdMailForwardingSuccess
+  | HouseholdMailForwardingUserError
+
+union RevokeHouseholdMailForwardingResult =
+  | RevokeHouseholdMailForwardingSuccess
+  | HouseholdMailForwardingUserError

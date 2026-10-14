@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 export type SettingsTab = "accounts" | "allocation" | "catalog" | "planning" | "members";
 
@@ -16,35 +16,33 @@ const settingsTabByHash: Record<string, SettingsTab> = {
   "default-allocation-settings": "allocation",
 };
 
+function getTabFromHash(hash: string): SettingsTab | undefined {
+  return settingsTabByHash[hash];
+}
+
+const getSetupHashSnapshot = () => window.location.hash.slice(1);
+const getSetupHashServerSnapshot = () => "";
+const subscribeSetupHash = (onStoreChange: () => void) => {
+  window.addEventListener("hashchange", onStoreChange);
+  return () => window.removeEventListener("hashchange", onStoreChange);
+};
+
 export function useSettingsNavigation() {
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("accounts");
-  const [setupHashTarget, setSetupHashTarget] = useState<string | null>(null);
+  const setupHashTarget = useSyncExternalStore(
+    subscribeSetupHash,
+    getSetupHashSnapshot,
+    getSetupHashServerSnapshot,
+  );
 
   useEffect(() => {
-    const selectSettingsTabFromHash = () => {
-      const sectionId = window.location.hash.slice(1);
-      const tab = settingsTabByHash[sectionId];
-      if (!tab) {
-        setSetupHashTarget(null);
-        return;
-      }
-      setActiveSettingsTab(tab);
-      setSetupHashTarget(sectionId);
-    };
-    selectSettingsTabFromHash();
-    window.addEventListener("hashchange", selectSettingsTabFromHash);
-    return () => window.removeEventListener("hashchange", selectSettingsTabFromHash);
-  }, []);
-
-  useEffect(() => {
-    if (!setupHashTarget || settingsTabByHash[setupHashTarget] !== activeSettingsTab) return;
-    document.getElementById(setupHashTarget)?.scrollIntoView({ block: "start" });
-    setSetupHashTarget(null);
-  }, [activeSettingsTab, setupHashTarget]);
+    const tab = getTabFromHash(setupHashTarget);
+    if (tab === undefined || tab === activeSettingsTab) return;
+    queueMicrotask(() => setActiveSettingsTab(tab));
+  }, [setupHashTarget, activeSettingsTab]);
 
   const selectTab = (tab: SettingsTab) => {
     setActiveSettingsTab(tab);
-    setSetupHashTarget(null);
   };
 
   return { activeSettingsTab, selectTab };

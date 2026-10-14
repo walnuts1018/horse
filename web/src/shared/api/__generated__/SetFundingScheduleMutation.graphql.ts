@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e734db695304d729b22d2c96aa0957f1>>
+ * @generated SignedSource<<cc933ab8c03a1ee31fae6407ec4415fc>>
  * @lightSyntaxTransform
  */
 
@@ -9,7 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type FundingScheduleCadence = "MONTHLY" | "%future added value";
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type SetFundingScheduleInput = {
   amountYen: any;
   cadence: FundingScheduleCadence;

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<57d3f07044e86de603edc2ba5c35e1fc>>
+ * @generated SignedSource<<4682d0e0b321cd0c005a7b0b407b1893>>
  * @lightSyntaxTransform
  */
 
@@ -12,7 +12,7 @@ export type HouseholdMailForwardingStatusQuery$variables = {
   householdId: string;
 };
 export type HouseholdMailForwardingStatusQuery$data = {
-  readonly householdMailForwardingStatus: {
+  readonly householdMailForwarding: {
     readonly active: boolean;
     readonly createdAt: string;
   } | null | undefined;
@@ -42,7 +42,7 @@ v1 = [
     ],
     "concreteType": "HouseholdMailForwardingStatus",
     "kind": "LinkedField",
-    "name": "householdMailForwardingStatus",
+    "name": "householdMailForwarding",
     "plural": false,
     "selections": [
       {
@@ -81,16 +81,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "54b54f24d24c5413dcf66eeb795e851d",
+    "cacheID": "664faee788475a96a00b8bd28795cf62",
     "id": null,
     "metadata": {},
     "name": "HouseholdMailForwardingStatusQuery",
     "operationKind": "query",
-    "text": "query HouseholdMailForwardingStatusQuery(\n  $householdId: ID!\n) {\n  householdMailForwardingStatus(householdId: $householdId) {\n    createdAt\n    active\n  }\n}\n"
+    "text": "query HouseholdMailForwardingStatusQuery(\n  $householdId: ID!\n) {\n  householdMailForwarding(householdId: $householdId) {\n    createdAt\n    active\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "67e2519a2c9a157be49f12677d9f790a";
+(node as any).hash = "abb13c41c3e157ba5a511666f51f10bb";
 
 export default node;

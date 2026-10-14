@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<172b58ffdc7bb00700750b716e331848>>
+ * @generated SignedSource<<88f2540837c3d34e40419ea9ad08063e>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type RecurringExpenseCadence = "MONTHLY" | "WEEKLY" | "YEARLY" | "%future added value";
 export type CreateRecurringExpenseInput = {
   amountYen: any;

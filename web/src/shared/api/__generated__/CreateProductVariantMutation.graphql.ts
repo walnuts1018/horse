@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<570fd7762a79e0002210bd35ddc7910b>>
+ * @generated SignedSource<<306d2ae6abd872507e1b04c47329a350>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type CreateProductVariantInput = {
   barcode?: string | null | undefined;
   brand?: string | null | undefined;

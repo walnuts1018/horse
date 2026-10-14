@@ -100,6 +100,10 @@ type CreateTagResult interface {
 	IsCreateTagResult()
 }
 
+type IssueHouseholdMailForwardingResult interface {
+	IsIssueHouseholdMailForwardingResult()
+}
+
 type LeaveHouseholdResult interface {
 	IsLeaveHouseholdResult()
 }
@@ -162,6 +166,14 @@ type RemoveHouseholdMemberResult interface {
 
 type RevokeHouseholdInvitationResult interface {
 	IsRevokeHouseholdInvitationResult()
+}
+
+type RevokeHouseholdMailForwardingResult interface {
+	IsRevokeHouseholdMailForwardingResult()
+}
+
+type RotateHouseholdMailForwardingResult interface {
+	IsRotateHouseholdMailForwardingResult()
 }
 
 type SetAllocationRuleResult interface {
@@ -1086,6 +1098,41 @@ type HouseholdInvitationEdge struct {
 	Node   HouseholdInvitationVariant `json:"node"`
 }
 
+type HouseholdMailForwardingAddress struct {
+	Address string                         `json:"address"`
+	Status  *HouseholdMailForwardingStatus `json:"status"`
+}
+
+type HouseholdMailForwardingInput struct {
+	HouseholdID string `json:"householdId"`
+}
+
+type HouseholdMailForwardingStatus struct {
+	CreatedAt DateTime `json:"createdAt"`
+	Active    bool     `json:"active"`
+}
+
+type HouseholdMailForwardingUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (HouseholdMailForwardingUserError) IsMutationError()                {}
+func (this HouseholdMailForwardingUserError) GetCode() MutationErrorCode { return this.Code }
+func (this HouseholdMailForwardingUserError) GetMessage() string         { return this.Message }
+
+func (HouseholdMailForwardingUserError) IsIssueHouseholdMailForwardingResult() {}
+
+func (HouseholdMailForwardingUserError) IsRotateHouseholdMailForwardingResult() {}
+
+func (HouseholdMailForwardingUserError) IsRevokeHouseholdMailForwardingResult() {}
+
+type IssueHouseholdMailForwardingSuccess struct {
+	Result *HouseholdMailForwardingAddress `json:"result"`
+}
+
+func (IssueHouseholdMailForwardingSuccess) IsIssueHouseholdMailForwardingResult() {}
+
 type LeaveHouseholdInput struct {
 	HouseholdID string `json:"householdId"`
 }
@@ -1811,6 +1858,18 @@ func (RevokeHouseholdInvitationUserError) IsMutationError()                {}
 func (this RevokeHouseholdInvitationUserError) GetCode() MutationErrorCode { return this.Code }
 func (this RevokeHouseholdInvitationUserError) GetMessage() string         { return this.Message }
 
+type RevokeHouseholdMailForwardingSuccess struct {
+	Result *HouseholdMailForwardingStatus `json:"result"`
+}
+
+func (RevokeHouseholdMailForwardingSuccess) IsRevokeHouseholdMailForwardingResult() {}
+
+type RotateHouseholdMailForwardingSuccess struct {
+	Result *HouseholdMailForwardingAddress `json:"result"`
+}
+
+func (RotateHouseholdMailForwardingSuccess) IsRotateHouseholdMailForwardingResult() {}
+
 type SetAllocationRuleInput struct {
 	HouseholdID string                     `json:"householdId"`
 	Target      *AllocationRuleTargetInput `json:"target"`
@@ -2395,20 +2454,22 @@ func (e MemberRole) MarshalJSON() ([]byte, error) {
 type MutationErrorCode string
 
 const (
-	MutationErrorCodeBadInput MutationErrorCode = "BAD_INPUT"
-	MutationErrorCodeConflict MutationErrorCode = "CONFLICT"
-	MutationErrorCodeNotFound MutationErrorCode = "NOT_FOUND"
+	MutationErrorCodeBadInput               MutationErrorCode = "BAD_INPUT"
+	MutationErrorCodeConflict               MutationErrorCode = "CONFLICT"
+	MutationErrorCodeNotFound               MutationErrorCode = "NOT_FOUND"
+	MutationErrorCodeMailForwardingDisabled MutationErrorCode = "MAIL_FORWARDING_DISABLED"
 )
 
 var AllMutationErrorCode = []MutationErrorCode{
 	MutationErrorCodeBadInput,
 	MutationErrorCodeConflict,
 	MutationErrorCodeNotFound,
+	MutationErrorCodeMailForwardingDisabled,
 }
 
 func (e MutationErrorCode) IsValid() bool {
 	switch e {
-	case MutationErrorCodeBadInput, MutationErrorCodeConflict, MutationErrorCodeNotFound:
+	case MutationErrorCodeBadInput, MutationErrorCodeConflict, MutationErrorCodeNotFound, MutationErrorCodeMailForwardingDisabled:
 		return true
 	}
 	return false

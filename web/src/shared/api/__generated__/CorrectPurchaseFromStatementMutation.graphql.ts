@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<95125d1ab92f30c944c00a66f6208386>>
+ * @generated SignedSource<<4b110796a6cf90d6aaa0a943bfe317aa>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type CorrectPurchaseFromStatementInput = {
   householdId: string;
   idempotencyKey: string;

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<23c44f4af4885fd98bc6a4195c7f1959>>
+ * @generated SignedSource<<47982148bbdd885ede1b516cb6018165>>
  * @lightSyntaxTransform
  */
 
@@ -9,7 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type AccountKind = "BANK" | "CARD" | "CASH" | "OTHER" | "%future added value";
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type CreateAccountInput = {
   householdId: string;
   kind: AccountKind;

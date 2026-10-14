@@ -50,6 +50,7 @@ type joins[Q dialect.Joinable] struct {
 	FundingSchedules                joinSet[fundingScheduleJoins[Q]]
 	HouseholdEvents                 joinSet[householdEventJoins[Q]]
 	HouseholdInvitations            joinSet[householdInvitationJoins[Q]]
+	HouseholdMailForwardings        joinSet[householdMailForwardingJoins[Q]]
 	HouseholdMembers                joinSet[householdMemberJoins[Q]]
 	Households                      joinSet[householdJoins[Q]]
 	IdempotencyKeys                 joinSet[idempotencyKeyJoins[Q]]
@@ -112,6 +113,7 @@ func getJoins[Q dialect.Joinable]() joins[Q] {
 		FundingSchedules:                buildJoinSet[fundingScheduleJoins[Q]](FundingSchedules.Columns, buildFundingScheduleJoins),
 		HouseholdEvents:                 buildJoinSet[householdEventJoins[Q]](HouseholdEvents.Columns, buildHouseholdEventJoins),
 		HouseholdInvitations:            buildJoinSet[householdInvitationJoins[Q]](HouseholdInvitations.Columns, buildHouseholdInvitationJoins),
+		HouseholdMailForwardings:        buildJoinSet[householdMailForwardingJoins[Q]](HouseholdMailForwardings.Columns, buildHouseholdMailForwardingJoins),
 		HouseholdMembers:                buildJoinSet[householdMemberJoins[Q]](HouseholdMembers.Columns, buildHouseholdMemberJoins),
 		Households:                      buildJoinSet[householdJoins[Q]](Households.Columns, buildHouseholdJoins),
 		IdempotencyKeys:                 buildJoinSet[idempotencyKeyJoins[Q]](IdempotencyKeys.Columns, buildIdempotencyKeyJoins),

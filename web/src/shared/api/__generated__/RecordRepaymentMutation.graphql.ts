@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ebaec30cdb3082bd7fa78705becba1fd>>
+ * @generated SignedSource<<93e27a69121c58e4ce14c9732f7ea3ab>>
  * @lightSyntaxTransform
  */
 
@@ -9,7 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 import type { FragmentRefs } from "relay-runtime";
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type RecordRepaymentInput = {
   amountYen: any;
   description: string;

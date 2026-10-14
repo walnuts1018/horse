@@ -1,6 +1,11 @@
+import { useEffect } from "react";
+
 import type { Household } from "../../../shared/api";
 
+import { MailForwardingAddress } from "../../../features/mail-forwarding";
 import { useSettingsAccountBalances } from "../model/account-balances";
+import { useAccountSettings } from "../model/account-settings";
+import { useAllocationCatalog } from "../model/allocation-catalog";
 import { useSettingsChangeTracking } from "../model/settings-change-tracking";
 import { useSettingsMutations } from "../model/settings-mutations";
 import { useSettingsNavigation } from "../model/settings-navigation";
@@ -37,8 +42,20 @@ export function SettingsPage({
   isOwner: boolean;
 }) {
   const navigation = useSettingsNavigation();
-  const changes = useSettingsChangeTracking(onUnsavedChanges);
+  const changes = useSettingsChangeTracking();
   const balances = useSettingsAccountBalances({ household, onNotice });
+  const accountSettings = useAccountSettings({
+    household,
+    onRefresh,
+    onRefreshBalances: balances.refresh,
+    onNotice,
+    onFormClean: changes.markFormClean,
+  });
+  const allocationCatalog = useAllocationCatalog({
+    household,
+    onNotice,
+    onFormClean: changes.markFormClean,
+  });
   const mutations = useSettingsMutations({
     household,
     onRefresh,
@@ -48,6 +65,15 @@ export function SettingsPage({
   });
   const activeTab = navigation.activeSettingsTab;
   const isPending = changes.isPending;
+
+  const overallPending =
+    isPending("settings") || accountSettings.pending || allocationCatalog.pending;
+  const hasUnsavedChanges = changes.hasUnsavedChanges || overallPending;
+
+  useEffect(() => {
+    onUnsavedChanges(hasUnsavedChanges);
+    return () => onUnsavedChanges(false);
+  }, [hasUnsavedChanges, onUnsavedChanges]);
 
   return (
     <>
@@ -68,7 +94,7 @@ export function SettingsPage({
           onRefreshBalances={balances.refresh}
           onNotice={onNotice}
           onFormClean={changes.markFormClean}
-          onPendingChange={(pending) => changes.setPending("account-settings", pending)}
+          pending={accountSettings.pending}
         />
         <ViewAccountBalanceHistory
           householdId={household.id}
@@ -101,7 +127,7 @@ export function SettingsPage({
           catalogHidden={activeTab !== "catalog"}
           onNotice={onNotice}
           onFormClean={changes.markFormClean}
-          onPendingChange={(pending) => changes.setPending("allocation-catalog", pending)}
+          pending={allocationCatalog.pending}
         />
         {isOwner && (
           <ManageHouseholdInvitations
@@ -111,6 +137,15 @@ export function SettingsPage({
             onNotice={onNotice}
             onPendingChange={(pending) => changes.setPending("invitations", pending)}
             onInvitationFormSaved={() => changes.markFormClean("create-invitation")}
+          />
+        )}
+        {isOwner && (
+          <MailForwardingAddress
+            householdId={household.id}
+            hidden={activeTab !== "members"}
+            disabled={isPending("settings") || isPending("mail-forwarding")}
+            onNotice={onNotice}
+            onPendingChange={(pending) => changes.setPending("mail-forwarding", pending)}
           />
         )}
         <ManageTags

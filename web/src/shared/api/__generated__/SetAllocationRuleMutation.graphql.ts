@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<2f0017011b35bc4f950f6b5654c4d2d8>>
+ * @generated SignedSource<<f98221a226dbdad66b8af54f63a32cf5>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type SetAllocationRuleInput = {
   allocations: ReadonlyArray<SetAllocationRuleItemInput>;
   householdId: string;

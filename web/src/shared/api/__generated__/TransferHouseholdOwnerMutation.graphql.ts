@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ea2fc3a1b8e7792edfe0f06c056f1511>>
+ * @generated SignedSource<<7b7031cd60d01e2699c06df1003becc6>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type TransferHouseholdOwnerInput = {
   householdId: string;
   newOwnerId: string;

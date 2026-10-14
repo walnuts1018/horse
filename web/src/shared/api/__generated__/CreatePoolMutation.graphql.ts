@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<c2b99a166aa4a46ccca12dba5ff16b90>>
+ * @generated SignedSource<<d34665894a5eb21a7a55969f8a298ada>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type PoolKind = "PERSONAL" | "SHARED" | "%future added value";
 export type CreatePoolInput = {
   householdId: string;

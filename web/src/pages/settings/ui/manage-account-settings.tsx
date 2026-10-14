@@ -1,5 +1,4 @@
 import { Check, ChevronRight, Plus, Wallet } from "lucide-react";
-import { useEffect } from "react";
 
 import {
   isPersonalPool,
@@ -27,7 +26,7 @@ export function ManageAccountSettings({
   onRefreshBalances,
   onNotice,
   onFormClean,
-  onPendingChange,
+  pending,
 }: {
   household: Household;
   balances: AccountBalance[];
@@ -36,7 +35,7 @@ export function ManageAccountSettings({
   onRefreshBalances: () => Promise<void>;
   onNotice: (message: string, kind?: "success" | "error" | "warning" | "info") => void;
   onFormClean: (formID: string) => void;
-  onPendingChange: (pending: boolean) => void;
+  pending: boolean;
 }) {
   const model = useAccountSettings({
     household,
@@ -45,7 +44,6 @@ export function ManageAccountSettings({
     onNotice,
     onFormClean,
   });
-  useEffect(() => onPendingChange(model.pending), [model.pending, onPendingChange]);
 
   return (
     <>
@@ -90,7 +88,7 @@ export function ManageAccountSettings({
                     所有者
                     <select
                       required
-                      value={model.fundingDrafts[pool.id]?.ownerMemberId ?? ""}
+                      value={model.fundingDrafts[pool.id].ownerMemberId}
                       onChange={(event) =>
                         model.setFundingDrafts((current) => ({
                           ...current,
@@ -111,7 +109,7 @@ export function ManageAccountSettings({
                     <label>
                       精算方法
                       <select
-                        value={model.fundingDrafts[pool.id]?.policy ?? "BALANCE_TO_STANDARD"}
+                        value={model.fundingDrafts[pool.id].policy}
                         onChange={(event) => {
                           const policy = event.target.value;
                           if (!isOneOf(policy, ["BALANCE_TO_STANDARD", "REIMBURSE_PERSONAL"]))

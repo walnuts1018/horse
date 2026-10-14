@@ -1,5 +1,4 @@
 import { Check, Plus } from "lucide-react";
-import { useEffect } from "react";
 
 import type { Household } from "../../../shared/api";
 
@@ -14,17 +13,16 @@ export function ManageAllocationCatalog({
   catalogHidden,
   onNotice,
   onFormClean,
-  onPendingChange,
+  pending,
 }: {
   household: Household;
   allocationHidden: boolean;
   catalogHidden: boolean;
   onNotice: (message: string, kind?: "success" | "error" | "warning" | "info") => void;
   onFormClean: (formID: string) => void;
-  onPendingChange: (pending: boolean) => void;
+  pending: boolean;
 }) {
   const model = useAllocationCatalog({ household, onNotice, onFormClean });
-  useEffect(() => onPendingChange(model.pending), [model.pending, onPendingChange]);
 
   return (
     <>

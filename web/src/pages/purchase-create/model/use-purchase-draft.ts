@@ -111,9 +111,11 @@ export function usePurchaseDraft({
 
   useEffect(() => {
     let active = true;
-    setStorageReady(false);
-    setDraftScope(null);
-    void loadPurchaseDraft(memberId, householdId)
+    queueMicrotask(() => {
+      if (!active) return;
+      setStorageReady(false);
+      setDraftScope(null);
+      void loadPurchaseDraft(memberId, householdId)
       .then((loaded) => {
         if (!active) return;
         if (loaded) {
@@ -124,7 +126,10 @@ export function usePurchaseDraft({
         setDraftScope(scope);
       })
       .catch((reason) => active && onLoadErrorRef.current(toError(reason)))
-      .finally(() => active && setStorageReady(true));
+      .finally(() => {
+        if (active) setStorageReady(true);
+      });
+    });
     return () => {
       active = false;
     };

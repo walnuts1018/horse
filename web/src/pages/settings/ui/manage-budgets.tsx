@@ -57,7 +57,9 @@ export function ManageBudgets({
   }, [budgetPeriod, householdId]);
 
   useEffect(() => {
-    void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+    queueMicrotask(() => {
+      void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+    });
   }, [refresh]);
 
   const saveBudget = async (event: SubmitEvent<HTMLFormElement>) => {

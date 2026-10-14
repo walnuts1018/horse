@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -23,7 +24,6 @@ const purchaseItemSchema = z.object({
   name: z.string().trim().min(1),
   amount: z.string().regex(/^[1-9]\d*$/),
 });
-type CategorySource = "default" | "history" | "product" | "manual" | "restored";
 
 export type EditPurchaseItemsCommands = {
   reset: () => void;
@@ -64,6 +64,8 @@ export function EditPurchaseItems({
   const [draft, setDraft] = useState(value);
   const draftRef = useRef(draft);
   const onChangeRef = useRef(onChange);
+  // ユーザーが明示的に選択したカテゴリのみを状態として保持（自動推測は導出値）
+  const [userCategoryId, setUserCategoryId] = useState(value.categoryId || "");
   const [selectedProductVariantId, setSelectedProductVariantId] = useState("");
   const [productSuggestions, setProductSuggestions] = useState<ProductSuggestion[]>([]);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
@@ -73,7 +75,6 @@ export function EditPurchaseItems({
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const itemGridRef = useRef<HTMLDivElement>(null);
-  const categorySource = useRef<CategorySource>(value.categoryId ? "restored" : "default");
   const composing = useRef(false);
   const enabledCategories = useMemo(
     () => household.categories.filter((category) => !category.archived),
@@ -81,7 +82,7 @@ export function EditPurchaseItems({
   );
   const defaultAllocations = useMemo(
     () =>
-      household.defaultAllocation?.length
+      household.defaultAllocation.length > 0
         ? household.defaultAllocation
         : household.pools.map((pool) => ({
             poolId: pool.id,
@@ -101,17 +102,22 @@ export function EditPurchaseItems({
   });
 
   const update = useCallback((next: PurchaseItemsValue) => {
-    draftRef.current = next;
-    setDraft(next);
-    onChangeRef.current(next);
+    // 実効カテゴリを反映して親へ通知
+    const withEffectiveCategory = {
+      ...next,
+      categoryId: effectiveCategoryRef.current,
+    };
+    draftRef.current = withEffectiveCategory;
+    setDraft(withEffectiveCategory);
+    onChangeRef.current(withEffectiveCategory);
   }, []);
   const patchDraft = useCallback(
     (patch: Partial<PurchaseItemsValue>) => update({ ...draftRef.current, ...patch }),
     [update],
   );
   const updateCategory = useCallback(
-    (id: string, source: CategorySource) => {
-      categorySource.current = source;
+    (id: string) => {
+      setUserCategoryId(id);
       patchDraft({ categoryId: id });
     },
     [patchDraft],
@@ -121,17 +127,15 @@ export function EditPurchaseItems({
       setSelectedProductVariantId("");
       setActiveSuggestionIndex(-1);
       setSuggestionsDismissed(false);
+      // ユーザーが明示的にカテゴリを選んでいない場合のみリセット
+      const nextCategoryId = userCategoryId ? draftRef.current.categoryId : "";
       patchDraft({
         itemName: name,
-        categoryId:
-          categorySource.current === "history" || categorySource.current === "product"
-            ? ""
-            : draftRef.current.categoryId,
+        categoryId: nextCategoryId,
       });
-      if (categorySource.current === "history" || categorySource.current === "product")
-        categorySource.current = "default";
+      if (!userCategoryId) setUserCategoryId("");
     },
-    [patchDraft],
+    [patchDraft, userCategoryId],
   );
   const markDirty = useCallback(() => onDirty(), [onDirty]);
   const replaceItems = useCallback(
@@ -147,7 +151,7 @@ export function EditPurchaseItems({
   );
   const reset = useCallback(() => {
     const empty = emptyPurchaseItemsValue();
-    categorySource.current = "default";
+    setUserCategoryId("");
     setSelectedProductVariantId("");
     rememberUndo(null);
     setProductSuggestions([]);
@@ -177,6 +181,9 @@ export function EditPurchaseItems({
             }
           : {}),
       }));
+      // コピーは明示的な操作なので、最初のアイテムのカテゴリをユーザー選択として記録
+      const firstCategoryId = items[0]?.categoryId ?? "";
+      setUserCategoryId(firstCategoryId);
       rememberUndo(draftRef.current.items);
       replaceItems(items);
     },
@@ -187,7 +194,7 @@ export function EditPurchaseItems({
   useEffect(() => {
     const query = draft.itemName.trim();
     if (query.length < 2) {
-      setProductSuggestions([]);
+      queueMicrotask(() => setProductSuggestions([]));
       return;
     }
     let active = true;
@@ -210,24 +217,27 @@ export function EditPurchaseItems({
     };
   }, [householdId, draft.itemName, merchant]);
 
-  useEffect(() => {
+  // 履歴からのカテゴリ推測はレンダー中に導出
+  const suggestedCategoryFromHistory = useMemo(() => {
     const query = draft.itemName.trim();
     if (
       !query ||
-      categorySource.current === "manual" ||
-      categorySource.current === "restored" ||
-      categorySource.current === "product"
+      userCategoryId !== ""
     )
-      return;
+      return null;
     const match = history
       .flatMap((purchase) => purchase.items)
       .find((item) => item.name.toLocaleLowerCase() === query.toLocaleLowerCase());
-    if (match && isEnabledCategory(match.categoryId)) {
-      updateCategory(match.categoryId, "history");
-    } else if (categorySource.current === "history") {
-      updateCategory("", "default");
-    }
-  }, [draft.itemName, history, isEnabledCategory, updateCategory]);
+    if (match && isEnabledCategory(match.categoryId)) return match.categoryId;
+    return null;
+  }, [draft.itemName, history, isEnabledCategory, userCategoryId]);
+
+  // 実効カテゴリ：ユーザー明示選択 > 自動推測 > 空
+  const effectiveCategoryId = userCategoryId || suggestedCategoryFromHistory || "";
+  const effectiveCategoryRef = useRef(effectiveCategoryId);
+  useLayoutEffect(() => {
+    effectiveCategoryRef.current = effectiveCategoryId;
+  }, [effectiveCategoryId]);
 
   const suggestions = useMemo(() => {
     const seen = new Set<string>();
@@ -261,7 +271,7 @@ export function EditPurchaseItems({
       itemAmount: "",
       categoryId: "",
     });
-    categorySource.current = "default";
+    setUserCategoryId("");
     setSelectedProductVariantId("");
     setProductSuggestions([]);
     setFocused("name");
@@ -277,10 +287,9 @@ export function EditPurchaseItems({
     setSelectedProductVariantId(candidate.variant.id);
     if (
       isEnabledCategory(candidate.concept.categoryId) &&
-      categorySource.current !== "manual" &&
-      categorySource.current !== "restored"
+      !userCategoryId
     )
-      updateCategory(candidate.concept.categoryId, "product");
+      updateCategory(candidate.concept.categoryId);
     setProductSuggestions([]);
     amountRef.current?.focus();
     setFocused("amount");
@@ -313,7 +322,7 @@ export function EditPurchaseItems({
     ) {
       event.preventDefault();
       if (productSuggestions.length > 0 && !selectedProductVariantId) {
-        const candidate = productSuggestions[activeSuggestionIndex];
+        const candidate = productSuggestions.at(activeSuggestionIndex);
         if (candidate) selectProductSuggestion(candidate);
       } else {
         const suggestion = suggestions[activeSuggestionIndex];
@@ -417,8 +426,8 @@ export function EditPurchaseItems({
           name,
           amount: amount.replace(/[¥,]/g, ""),
           categoryId:
-            categorySource.current === "manual" || categorySource.current === "restored"
-              ? draft.categoryId
+            userCategoryId
+              ? effectiveCategoryId
               : isEnabledCategory(historyCategoryId)
                 ? historyCategoryId
                 : "",
@@ -462,7 +471,7 @@ export function EditPurchaseItems({
       <PurchaseItemEntry
         itemName={draft.itemName}
         itemAmount={draft.itemAmount}
-        categoryId={draft.categoryId}
+        categoryId={effectiveCategoryId}
         categories={enabledCategories}
         suggestions={suggestions}
         productSuggestions={productSuggestions}
@@ -506,7 +515,7 @@ export function EditPurchaseItems({
         onAmountKey={onAmountKey}
         onCategoryChange={(id) => {
           markDirty();
-          updateCategory(id, "manual");
+          updateCategory(id);
         }}
         onAdd={addItem}
       />

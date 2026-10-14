@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<d7828885048ba852ba8061352225c40f>>
+ * @generated SignedSource<<3d1ace4cbd9acf51b398dc77f2568b89>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type ArchiveTagInput = {
   archived: boolean;
   baseRevision: number;

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9d0f880affd0278e7bdda4e7fde475b2>>
+ * @generated SignedSource<<ad60e5219d89835eb58bc6b73d9e0a65>>
  * @lightSyntaxTransform
  */
 
@@ -8,7 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type CreateBudgetInput = {
   amountYen: any;
   categoryId?: string | null | undefined;

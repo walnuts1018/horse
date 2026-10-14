@@ -37,6 +37,7 @@ func Where[Q psql.Filterable]() struct {
 	FundingSchedules                fundingScheduleWhere[Q]
 	HouseholdEvents                 householdEventWhere[Q]
 	HouseholdInvitations            householdInvitationWhere[Q]
+	HouseholdMailForwardings        householdMailForwardingWhere[Q]
 	HouseholdMembers                householdMemberWhere[Q]
 	Households                      householdWhere[Q]
 	IdempotencyKeys                 idempotencyKeyWhere[Q]
@@ -44,6 +45,7 @@ func Where[Q psql.Filterable]() struct {
 	JournalEntries                  journalEntryWhere[Q]
 	Journals                        journalWhere[Q]
 	LedgerEntries                   ledgerEntryWhere[Q]
+	MailboxCursors                  mailboxCursorWhere[Q]
 	Members                         memberWhere[Q]
 	OidcSessions                    oidcSessionWhere[Q]
 	OidcStates                      oidcStateWhere[Q]
@@ -90,6 +92,7 @@ func Where[Q psql.Filterable]() struct {
 		FundingSchedules                fundingScheduleWhere[Q]
 		HouseholdEvents                 householdEventWhere[Q]
 		HouseholdInvitations            householdInvitationWhere[Q]
+		HouseholdMailForwardings        householdMailForwardingWhere[Q]
 		HouseholdMembers                householdMemberWhere[Q]
 		Households                      householdWhere[Q]
 		IdempotencyKeys                 idempotencyKeyWhere[Q]
@@ -97,6 +100,7 @@ func Where[Q psql.Filterable]() struct {
 		JournalEntries                  journalEntryWhere[Q]
 		Journals                        journalWhere[Q]
 		LedgerEntries                   ledgerEntryWhere[Q]
+		MailboxCursors                  mailboxCursorWhere[Q]
 		Members                         memberWhere[Q]
 		OidcSessions                    oidcSessionWhere[Q]
 		OidcStates                      oidcStateWhere[Q]
@@ -142,6 +146,7 @@ func Where[Q psql.Filterable]() struct {
 		FundingSchedules:                buildFundingScheduleWhere[Q](FundingSchedules.Columns),
 		HouseholdEvents:                 buildHouseholdEventWhere[Q](HouseholdEvents.Columns),
 		HouseholdInvitations:            buildHouseholdInvitationWhere[Q](HouseholdInvitations.Columns),
+		HouseholdMailForwardings:        buildHouseholdMailForwardingWhere[Q](HouseholdMailForwardings.Columns),
 		HouseholdMembers:                buildHouseholdMemberWhere[Q](HouseholdMembers.Columns),
 		Households:                      buildHouseholdWhere[Q](Households.Columns),
 		IdempotencyKeys:                 buildIdempotencyKeyWhere[Q](IdempotencyKeys.Columns),
@@ -149,6 +154,7 @@ func Where[Q psql.Filterable]() struct {
 		JournalEntries:                  buildJournalEntryWhere[Q](JournalEntries.Columns),
 		Journals:                        buildJournalWhere[Q](Journals.Columns),
 		LedgerEntries:                   buildLedgerEntryWhere[Q](LedgerEntries.Columns),
+		MailboxCursors:                  buildMailboxCursorWhere[Q](MailboxCursors.Columns),
 		Members:                         buildMemberWhere[Q](Members.Columns),
 		OidcSessions:                    buildOidcSessionWhere[Q](OidcSessions.Columns),
 		OidcStates:                      buildOidcStateWhere[Q](OidcStates.Columns),

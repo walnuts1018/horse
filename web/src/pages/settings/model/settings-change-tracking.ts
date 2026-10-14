@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { useCallback, useState, type ChangeEvent } from "react";
 
-export function useSettingsChangeTracking(onUnsavedChanges: (unsaved: boolean) => void) {
+export function useSettingsChangeTracking() {
   const [dirtyForms, setDirtyForms] = useState<Set<string>>(() => new Set());
   const [pendingOperations, setPendingOperations] = useState<Set<string>>(() => new Set());
 
-  useEffect(() => {
-    onUnsavedChanges(dirtyForms.size > 0 || pendingOperations.size > 0);
-    return () => onUnsavedChanges(false);
-  }, [dirtyForms, onUnsavedChanges, pendingOperations]);
+  // parentがuseUnsavedChangesフックやuseMemoで導出できるよう戻り値として返す
+  const hasUnsavedChanges = dirtyForms.size > 0 || pendingOperations.size > 0;
 
   const markFormDirty = useCallback((formID: string) => {
     setDirtyForms((current) => {
@@ -48,5 +46,12 @@ export function useSettingsChangeTracking(onUnsavedChanges: (unsaved: boolean) =
     if (form?.dataset.unsavedId) markFormDirty(form.dataset.unsavedId);
   };
 
-  return { isPending, markFormClean, markFormDirty, setPending, trackFormChange };
+  return {
+    hasUnsavedChanges,
+    isPending,
+    markFormClean,
+    markFormDirty,
+    setPending,
+    trackFormChange,
+  };
 }

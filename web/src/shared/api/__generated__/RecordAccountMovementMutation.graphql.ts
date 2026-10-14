@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f330fe96fd693193fb801d1e106dd0d7>>
+ * @generated SignedSource<<0bd147e6cc6173381f45f2f729921747>>
  * @lightSyntaxTransform
  */
 
@@ -9,7 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type AccountMovementKind = "CARD_BILL_PAYMENT" | "TRANSFER" | "%future added value";
-export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "NOT_FOUND" | "%future added value";
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type RecordAccountMovementInput = {
   amountYen: any;
   description: string;
