@@ -30,6 +30,7 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 	}
 	executor := queryExecutor(r.DB)
 	filters := []bob.Expression{models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID))}
+	var afterCursorHasPreviousPage bool
 	var count int64
 	if ledgerTotalCountRequested(ctx) {
 		count, err = models.LedgerEntries.Query(sm.Where(models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID)))).Count(ctx, executor)
@@ -51,8 +52,15 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 		if err != nil {
 			return nil, err
 		}
+		if !backward {
+			afterCursorHasPreviousPage, err = ledgerCursorSideExists(ctx, executor, hhID, cursor, true)
+			if err != nil {
+				return nil, err
+			}
+		}
 		filters = append(filters, psql.Or(models.LedgerEntries.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.LedgerEntries.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.LedgerEntries.Columns.ID.LT(psql.Arg(cursor.ID)))))
 	}
+	var beforeCursorHasNextPage bool
 	if cursorID, err := cursorID(before, nodeTypeLedgerEntry); err != nil {
 		return nil, err
 	} else if cursorID != nil {
@@ -66,6 +74,12 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 		}
 		if err != nil {
 			return nil, err
+		}
+		if backward {
+			beforeCursorHasNextPage, err = ledgerCursorSideExists(ctx, executor, hhID, cursor, false)
+			if err != nil {
+				return nil, err
+			}
 		}
 		filters = append(filters, psql.Or(models.LedgerEntries.Columns.OccurredAt.GT(psql.Arg(cursor.OccurredAt)), psql.And(models.LedgerEntries.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.LedgerEntries.Columns.ID.GT(psql.Arg(cursor.ID)))))
 	}
@@ -88,10 +102,10 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 	}
 	pageInfo := &model.PageInfo{HasPreviousPage: backward && hasExtra, HasNextPage: !backward && hasExtra}
 	if !backward && after != nil && *after != "" {
-		pageInfo.HasPreviousPage = true
+		pageInfo.HasPreviousPage = afterCursorHasPreviousPage
 	}
 	if backward && before != nil && *before != "" {
-		pageInfo.HasNextPage = true
+		pageInfo.HasNextPage = beforeCursorHasNextPage
 	}
 	connection := &model.LedgerConnection{Edges: make([]*model.LedgerEdge, 0, len(entries)), TotalCount: int(count), PageInfo: pageInfo}
 	for _, row := range entries {
@@ -129,4 +143,29 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 
 func ledgerTotalCountRequested(ctx context.Context) bool {
 	return graphql.FieldRequested(ctx, "totalCount")
+}
+
+func ledgerCursorSideExists(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, cursor *models.LedgerEntry, newer bool) (bool, error) {
+	var position bob.Expression
+	if newer {
+		position = psql.Or(
+			models.LedgerEntries.Columns.OccurredAt.GT(psql.Arg(cursor.OccurredAt)),
+			psql.And(
+				models.LedgerEntries.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)),
+				models.LedgerEntries.Columns.ID.GT(psql.Arg(cursor.ID)),
+			),
+		)
+	} else {
+		position = psql.Or(
+			models.LedgerEntries.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)),
+			psql.And(
+				models.LedgerEntries.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)),
+				models.LedgerEntries.Columns.ID.LT(psql.Arg(cursor.ID)),
+			),
+		)
+	}
+	return models.LedgerEntries.Query(sm.Where(psql.And(
+		models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		position,
+	))).Exists(ctx, executor)
 }
