@@ -11,9 +11,3 @@
 `internal/graph/purchase_subscription.resolvers.go`と`internal/graph/shared_purchase_draft_subscription.resolvers.go`は接続ごとに1秒間隔でDBを確認する。同時接続数に比例して所属確認とイベント検索が増える。
 
 DB通知などの起床手段を使い、権限の再確認には上限付きの定期確認を残す。
-
-## 3. 照合に使う取引IDの発行元
-
-`internal/ingestion/reconcile.go`は`TransactionID`の一致を強く評価するが、取引IDの発行元を比較しない。異なる決済事業者が同じIDを発行した場合、照合候補の順位を誤る可能性がある。
-
-取引IDを発行元と組にして比較する。現在は候補提示のみで自動統合しないため、誤った候補が確定データを直接変更することはない。

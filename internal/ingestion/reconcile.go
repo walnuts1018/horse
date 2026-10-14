@@ -43,21 +43,13 @@ func Reconcile(incoming Observation, existing []Observation) []Match {
 		if !reconcilablePair(incoming, old) {
 			continue
 		}
-		transaction := incoming.TransactionID != "" && incoming.TransactionID == old.TransactionID
 		order := incoming.OrderID != "" && incoming.OrderID == old.OrderID
 		amount := reconciliationAmountsEqual(incoming, old)
 		merchant := normalize(incoming.Merchant) != "" && normalize(incoming.Merchant) == normalize(old.Merchant)
 		merchantConflict := normalize(incoming.Merchant) != "" && normalize(old.Merchant) != "" && !merchant
 		near := !incoming.OccurredAt.IsZero() && !old.OccurredAt.IsZero() && incoming.OccurredAt.Sub(old.OccurredAt).Abs() <= 72*time.Hour
 		card := incoming.CardLast4 != "" && incoming.CardLast4 == old.CardLast4
-		if transaction {
-			match.Reasons = append(match.Reasons, "同じ取引番号")
-			if amount && !merchantConflict {
-				match.State = "IDENTICAL"
-			} else {
-				match.State = "CONFLICT"
-			}
-		} else if order {
+		if order {
 			match.Reasons = append(match.Reasons, "同じ注文番号")
 			if !amount {
 				match.Reasons = append(match.Reasons, "分割発送・分割決済または金額相違")
