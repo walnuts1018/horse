@@ -68,9 +68,15 @@ export function HomePage({
     };
   }, [household.id, currentMonth]);
   useEffect(() => {
+    let active = true;
     void readHomeSettlement(household.id, currentMonth)
-      .then(setSettlement)
-      .catch(() => setSettlement(null));
+      .then((result) => {
+        if (active) setSettlement(result);
+      })
+      .catch(() => active && setSettlement(null));
+    return () => {
+      active = false;
+    };
   }, [household.id, currentMonth]);
   const nextDue = sum(settlement?.lines.map((line) => line.amountDueYen) ?? []);
   return (

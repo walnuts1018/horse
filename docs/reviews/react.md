@@ -14,7 +14,7 @@
 
 高優先度
 
-# 7
+# 3
 
 不整合・競合・データ損失リスク
 
@@ -34,23 +34,9 @@
 
 | 対象 | 問題と改善方針 |
 | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| [招待管理 L58–62](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/pages/settings/ui/manage-household-invitations.tsx#L58-L62) | 招待リンク消失の可能性が高い。 `onNotice` の参照変化で再取得とフォームリセットが実行される |
-| [設定モデル L59–80](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/pages/settings/model/account-settings.ts#L59-L80) | `household.pools` 更新時に編集中の `fundingDrafts` を上書きする |
-| [下書き保存 L80–131](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/pages/purchase-create/model/use-purchase-draft.ts#L80-L131) | 保存タイマー、非同期保存、アンマウント時の保存が競合し得る |
-| [購入入力 L110–154](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/pages/purchase-create/ui/edit-purchase-items.tsx#L110-L154) | Reset / Undo / Copy が props の変更を監視する Effect として実装されている |
 | [取り込み L44–128](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/pages/imports/ui/imports-page.tsx#L44-L128) | URL、フィルター state、フィルター下書きの三重管理 |
 | [購入履歴 L116–195](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/entities/purchase/api/use-household-purchases.ts#L116-L195) | 履歴の全件ロードと訂正履歴の追加取得がクライアントの Effect に依存 |
 | [Relay Environment L437–550](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/shared/api/household.ts#L437-L550) | SSR 時にモジュールスコープの singleton を使用する構造。サーバーでデータ取得する場合はリクエスト間の分離が必要 |
-
-### まず修正したい実際の問題
-
-招待リンクの消失は、単に React 的に美しくないという話ではありません。
-
-`ManageHouseholdInvitations` は `onNotice` が変わると Effect を再実行し、`setInvitationLink("")` を呼びます。一方、親の `horse-app.tsx` にある `showNotice` はレンダーごとに新しい関数です。
-
-したがって、招待発行成功後に `onNotice("招待を発行しました")` を呼ぶと、親が再レンダーされ、招待リンクが消える経路があります。
-
-修正するなら、通知関数を `useCallback` で安定化するだけでなく、招待一覧の再取得と招待フォームの初期化を別の責務に分離してください。通知コールバックは再取得のトリガーではありません。
 
 ## 2. 不要な useEffect の具体的な修正
 
@@ -87,58 +73,12 @@ function DocumentReviewPage({ document }: Props) {
 
 ただし、`key` による再マウントは子ツリー全体を破棄するため、保存すべき編集中のデータは親または外部ストアに分離する必要があります。
 
-### B. イベントを Effect で処理している
-
-`EditPurchaseItems` が典型例です。
-
-```
-
-useEffect(() => {
-  if (lastUndoToken.current === undoToken) return;
-  lastUndoToken.current = undoToken;
-
-  if (!undoItems) return;
-
-  markDirty();
-  replaceItems(undoItems);
-  setUndoItems(null);
-}, [undoToken]);
-
-```
-
-Undo は外部システムとの同期ではなくユーザー操作です。
-
-`undoToken` を親から渡す代わりに、編集操作を親の reducer に集約するのが自然です。
-
-```
-
-type Action =
-  | { type: "item/add"; item: PurchaseDraftItem }
-  | { type: "items/copy"; items: PurchaseDraftItem[] }
-  | { type: "undo" }
-  | { type: "reset" };
-
-const [state, dispatch] = useReducer(
-  purchaseEditorReducer,
-  initialState,
-);
-
-const undo = () => dispatch({ type: "undo" });
-const reset = () => dispatch({ type: "reset" });
-
-```
-
-これにより `itemsResetToken`、`undoToken`、`lastUndoToken`、`lastResetToken`、`lastCopiedPurchase` などの間接的な制御を削減できます。
-
-また、親と子の両方で保持している `itemsValue` と `draft` についても、編集データの所有者を一箇所に統一するべきです。
-
-### C. 派生値を Effect で通知している
+### B. 派生値を Effect で通知している
 
 該当箇所は、たとえば以下です。
 
 | ファイル | 行 | 改善案 |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `edit-purchase-items.tsx` | [121–123](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/pages/purchase-create/ui/edit-purchase-items.tsx#L121-L123) | `undoAvailable` を親の編集 state から直接計算 |
 | `observation-ledger.tsx` | [36–38](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/pages/ledger/ui/observation-ledger.tsx#L36-L38) | 親が件数データを取得・計算 |
 | `manage-account-settings.tsx` | [50](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/pages/settings/ui/manage-account-settings.tsx#L50) | pending 状態の管理を親に統合 |
 | `manage-account-activity.tsx` | [40](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/pages/settings/ui/manage-account-activity.tsx#L40) | 同上 |
@@ -319,12 +259,10 @@ React
 
 ## 7. 推奨する修正順序
 
-1. 実際の不整合を優先修正 — 招待リンク消失、設定ドラフトの上書き、非同期下書き保存の競合。これらは UI の見た目よりも優先度が高いです。
-2. 編集フォームを reducer 中心に再設計 — 購入入力、Undo、Copy、Reset、カテゴリ自動補完をイベント起点に統一します。
-3. TanStack Query を REST に導入 — imports と document preview から開始し、fetch と polling の手動管理を削減します。
-4. Router に URL 状態を統合 — imports と settings の URL 同期処理を置換します。
-5. React の副作用を整理 — 派生 state、親への通知、prop change reset の Effect を削除します。
-6. 回帰テストの強化 — 下書き復元、連続操作、ネットワーク競合、世帯切り替え、Back/Forward を自動テストします。
+1. TanStack Query を REST に導入 — imports と document preview から開始し、fetch と polling の手動管理を削減します。
+2. Router に URL 状態を統合 — imports と settings の URL 同期処理を置換します。
+3. React の副作用を整理 — 派生 state、親への通知、prop change reset の Effect を削除します。
+4. 回帰テストの強化 — 下書き復元、連続操作、ネットワーク競合、世帯切り替え、Back/Forward を自動テストします。
 
 今回のレビューで特に勧めたいのは、単純に `useEffect` を減らすのではなく、state の所有権を明確にして、イベント・サーバーデータ・ブラウザの外部状態を分離することです。
 
