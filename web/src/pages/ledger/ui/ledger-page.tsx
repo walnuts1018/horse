@@ -6,6 +6,7 @@ import { readTags } from "../../../entities/tag";
 import { type Household, type Tag } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib";
 import { EmptyState, InlineError } from "../../../shared/ui";
+import { useBulkDeletePurchaseItemsMutation } from "../api/bulk-delete-purchase-items";
 import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
 import { useLedgerItemBulkEdit } from "../model/ledger-item-bulk-edit";
 import { toPurchaseAmountVariables, type LedgerSearch } from "../model/ledger-search";
@@ -194,10 +195,12 @@ export function LedgerPage({
       maximumAmount,
     ]),
   });
+  const { mutate: deletePurchaseItems } = useBulkDeletePurchaseItemsMutation();
   const ledgerItemBulkEdit = useLedgerItemBulkEdit({
     householdId: household.id,
     purchases,
     refresh,
+    deletePurchaseItems,
     selectionKey: JSON.stringify([
       household.id,
       recordMode,

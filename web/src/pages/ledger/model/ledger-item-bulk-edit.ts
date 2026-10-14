@@ -7,7 +7,6 @@ import {
   type BulkUpdatePurchaseItemsMutation$variables,
 } from "../../../entities/purchase";
 import { errorMessage } from "../../../shared/lib";
-import { useBulkDeletePurchaseItemsMutation } from "../api/bulk-delete-purchase-items";
 import { selectableLedgerItemIds } from "./ledger-item-selection";
 
 type LedgerItemBulkPatch = BulkUpdatePurchaseItemsMutation$variables["input"]["patch"];
@@ -43,14 +42,19 @@ export function useLedgerItemBulkEdit({
   purchases,
   selectionKey,
   refresh,
+  deletePurchaseItems,
 }: {
   householdId: string;
   purchases: Purchase[];
   selectionKey: string;
   refresh: () => void | Promise<void>;
+  deletePurchaseItems: (variables: {
+    input: {
+      targets: ReadonlyArray<{ itemId: string; baseRevision: number }>;
+    };
+  }) => Promise<unknown>;
 }) {
   const { mutate: mutateBulkUpdatePurchaseItems } = useBulkUpdatePurchaseItemsMutation();
-  const { mutate: mutateBulkDeletePurchaseItems } = useBulkDeletePurchaseItemsMutation();
   const selectionScope = `${householdId}\u0000${selectionKey}`;
   const [selection, setSelection] = useState<LedgerItemSelectionState>(() => ({
     scope: selectionScope,
@@ -204,7 +208,7 @@ export function useLedgerItemBulkEdit({
     setPending(true);
     patchSession({ error: "" });
     try {
-      await mutateBulkDeletePurchaseItems({ input: { targets } });
+      await deletePurchaseItems({ input: { targets } });
     } catch (reason) {
       const mutationError = errorMessage(reason);
       try {

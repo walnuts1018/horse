@@ -1,8 +1,10 @@
 import { graphql } from "react-relay";
 
-import type { BulkDeletePurchaseItemsMutation } from "../../../shared/api/__generated__/BulkDeletePurchaseItemsMutation.graphql";
-
-import { MutationUserError, useTypedGraphqlMutation } from "../../../shared/api";
+import {
+  MutationUserError,
+  type BulkDeletePurchaseItemsMutation,
+  useTypedGraphqlMutation,
+} from "../../../shared/api";
 
 const bulkDeletePurchaseItemsMutation = graphql`
   mutation BulkDeletePurchaseItemsMutation($input: BulkDeletePurchaseItemsInput!) {
