@@ -1,5 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { Camera, FileImage, ShieldCheck, Upload } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "./imports-page.css";
 import { type Household } from "../../../shared/api";
@@ -70,7 +71,6 @@ export function ImportsPage({
   const documentFilterScope = JSON.stringify(documentFilters);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
-  const [relatedDocuments, setRelatedDocuments] = useState<Record<string, DocumentReview>>({});
   const {
     documents,
     setDocuments,
@@ -83,22 +83,23 @@ export function ImportsPage({
     loadOlderDocuments,
   } = useImportDocuments(household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
-  const selectedDocument =
-    documents.find((document) => document.id === selected) ??
-    (selected ? relatedDocuments[selected] : undefined);
+  const listedDocument = documents.find((document) => document.id === selected);
+  const selectedDocumentQuery = useQuery({
+    queryKey: ["import-document-detail", household.id, selected],
+    queryFn: ({ signal }) => readDocument(selected ?? "", signal),
+    enabled: Boolean(selected && !listedDocument),
+  });
+  const selectedDocument = useMemo(
+    () =>
+      listedDocument ??
+      (selectedDocumentQuery.data ? withStableEvidenceKeys(selectedDocumentQuery.data) : undefined),
+    [listedDocument, selectedDocumentQuery.data],
+  );
   useEffect(() => {
-    if (!selected || selectedDocument) return;
-    const controller = new AbortController();
-    void readDocument(selected, controller.signal)
-      .then((document) => {
-        const keyed = withStableEvidenceKeys(document);
-        setRelatedDocuments((current) => ({ ...current, [keyed.id]: keyed }));
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setMessage(errorMessage(reason));
-      });
-    return () => controller.abort();
-  }, [selected, selectedDocument]);
+    if (!listedDocument && selectedDocumentQuery.error) {
+      setMessage(errorMessage(selectedDocumentQuery.error));
+    }
+  }, [listedDocument, selectedDocumentQuery.error]);
   const evidencePreview = useEvidencePreview(selectedDocument);
   const evidence = useDocumentEvidence({
     document: selectedDocument,

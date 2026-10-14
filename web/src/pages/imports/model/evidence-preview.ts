@@ -1,9 +1,10 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import type { PreviewTransform } from "./evidence-geometry";
 import type { DocumentReview } from "./imports";
 
-import { toError } from "../../../shared/lib/errors";
+import { errorMessage } from "../../../shared/lib/errors";
 import { readDocumentPreview } from "../api/document-preview";
 
 export type EvidencePreview = {
@@ -14,11 +15,9 @@ export type EvidencePreview = {
 };
 
 // 取得結果は要求キー(document.id + ページ)と一致するときだけ参照し、それ以外は読み込み中として扱う
-type PreviewRequest = {
+type PreviewObjectURL = {
   key: string | null;
-  preview: EvidencePreview | null;
-  loading: boolean;
-  error: string;
+  src: string;
 };
 
 export function useEvidencePreview(document: DocumentReview | undefined) {
@@ -30,11 +29,13 @@ export function useEvidencePreview(document: DocumentReview | undefined) {
     documentId: "",
     draft: "1",
   });
-  const [requestState, setRequestState] = useState<PreviewRequest>({
+  const [objectURL, setObjectURL] = useState<PreviewObjectURL>({
     key: null,
-    preview: null,
-    loading: false,
-    error: "",
+    src: "",
+  });
+  const [pageError, setPageError] = useState<{ key: string | null; message: string }>({
+    key: null,
+    message: "",
   });
   const [receiptEvidenceIndex, setReceiptEvidenceIndex] = useState("0");
 
@@ -46,58 +47,40 @@ export function useEvidencePreview(document: DocumentReview | undefined) {
     (document.mimeType.startsWith("image/") || document.mimeType === "application/pdf"),
   );
   const requestKey = previewable && documentId ? `${documentId}:${page}` : null;
-  const synced = requestKey !== null && requestState.key === requestKey;
-  const preview = synced ? requestState.preview : null;
-  const loading = requestKey !== null && !synced;
-  const error = synced ? requestState.error : "";
+  const query = useQuery({
+    queryKey: ["import-document-preview", documentId, page],
+    queryFn: ({ signal }) => readDocumentPreview(documentId, page, signal),
+    enabled: requestKey !== null,
+    gcTime: 0,
+  });
+  const preview =
+    query.data && objectURL.key === requestKey
+      ? { documentId, page, src: objectURL.src, transform: query.data.transform }
+      : null;
+  const error =
+    (pageError.key === requestKey ? pageError.message : "") ||
+    (!query.data && query.error ? errorMessage(query.error) : "");
+  const loading = requestKey !== null && !error && !preview;
 
   const setPage = (requestedPage: number) => {
+    setPageError({ key: requestKey, message: "" });
     setPageState({ documentId, page: requestedPage });
   };
   const setPageDraft = (draft: string) => {
     setPageDraftState({ documentId, draft });
   };
   const setError = (message: string) => {
-    setRequestState((current) => ({
-      key: requestKey,
-      preview: current.key === requestKey ? current.preview : null,
-      loading: requestKey !== null && current.key !== requestKey,
-      error: message,
-    }));
+    setPageError({ key: requestKey, message });
   };
 
   useEffect(() => {
-    if (!document?.mimeType) return;
-    if (!document.mimeType.startsWith("image/") && document.mimeType !== "application/pdf") {
-      return;
-    }
-    const controller = new AbortController();
-    const key = `${document.id}:${page}`;
-    let active = true;
-    let objectUrl = "";
-    void readDocumentPreview(document.id, page, controller.signal)
-      .then(({ blob, transform }) => {
-        if (!active) return;
-        objectUrl = URL.createObjectURL(blob);
-        setRequestState({
-          key,
-          preview: { documentId: document.id, page, src: objectUrl, transform },
-          loading: false,
-          error: "",
-        });
-      })
-      .catch((reason) => {
-        if (!active) return;
-        const caught = toError(reason);
-        if (caught.name === "AbortError") return;
-        setRequestState({ key, preview: null, loading: false, error: caught.message });
-      });
+    if (!requestKey || !query.data) return;
+    const src = URL.createObjectURL(query.data.blob);
+    setObjectURL({ key: requestKey, src });
     return () => {
-      active = false;
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      URL.revokeObjectURL(src);
     };
-  }, [document?.id, document?.mimeType, page]);
+  }, [query.data, requestKey]);
 
   const showPage = () => {
     const requestedPage = Number(pageDraft);

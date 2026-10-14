@@ -1,6 +1,6 @@
 # Horse Frontend Reactの未解決項目
 
-現行の`web/src`を確認し、解決済みの指摘を除きました。購入履歴と帳簿一覧はRelayのConnectionとpaginationを使い、Imports一覧はTanStack Queryの`useInfiniteQuery`へ移行済みです。画面のpathはTanStack Routerのfile-based routingを使い、LedgerとImportsのfilterはURLに保存します。
+現行の`web/src`を確認し、解決済みの指摘を除きました。購入履歴と帳簿一覧はRelayのConnectionとpaginationを使い、Importsの一覧・詳細・プレビューはTanStack Queryを使います。画面のpathはTanStack Routerのfile-based routingを使い、LedgerとImportsのfilterはURLに保存します。
 
 ## ブラウザー離脱時の未保存確認
 
@@ -15,12 +15,6 @@
 商品catalogは`useLedgerPurchaseEditor`のEffectから全ページを`fetchQuery`で読み込み、候補検索も入力ごとに`fetchQuery`します（`web/src/pages/ledger/model/use-ledger-purchase-editor.ts:65-73`、`web/src/pages/imports/ui/product-variant-select.tsx:32-47`、`web/src/entities/product/api/read-product-catalog.ts:17-31`、`web/src/entities/product/api/read-product-suggestions.ts:28-42`）。両queryは`network-only`のため、再表示時に取得を繰り返します。Relayのquery cacheを再利用する読み込み方法へ整理してください。
 
 Homeはsummary、月間支出、精算を3つのEffectで別々に取得し、Analysisも支出、メンバー別支出、予算、定期支出を別々のEffectで取得します（`web/src/pages/home/ui/home-page.tsx:41-72`、`web/src/pages/analysis/model/use-analysis-data.ts:53-129`）。どちらもRelay operationの結果を画面local stateで保持しているため、再訪問時のquery再利用と複数データのloading/error管理が分かれています。Relayのquery hookとcacheを使う単位を整理してください。
-
-## Importsの書類詳細とプレビュー
-
-Imports一覧はTanStack Queryへ移行済みですが、選択した書類の詳細は`useEffect`からRESTで取得し、コンポーネント内の`relatedDocuments`に保持します（`web/src/pages/imports/ui/imports-page.tsx:73-101`）。書類詳細を再利用するcacheはありません。TanStack Queryで詳細取得を共有し、一覧queryとの更新関係を定義してください。
-
-書類プレビューは`useEvidencePreview`からREST取得し、Effect内でBlob URLを作成・破棄しています（`web/src/pages/imports/model/evidence-preview.ts:69-100`）。Blob URLの作成・解放は外部リソースとの同期としてEffectに残し、取得結果のcacheと無効化だけをTanStack Queryへ移す余地があります。
 
 ## RouterのloaderとSettingsのURL状態
 
