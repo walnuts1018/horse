@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<d06089b5952e813afebdbd9196f77777>>
+ * @generated SignedSource<<4ac02176c483be0147347665d9456b5c>>
  * @lightSyntaxTransform
  */
 
@@ -9,6 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
+export type PurchaseDatePrecision = "DATE_ONLY" | "DATE_TIME" | "%future added value";
 export type SavePurchaseItemEditsInput = {
   items: ReadonlyArray<UpdatePurchaseItemInput>;
   purchaseBaseRevision: number;
@@ -16,6 +17,7 @@ export type SavePurchaseItemEditsInput = {
   purchasePatch?: PurchasePatch | null | undefined;
 };
 export type PurchasePatch = {
+  datePrecision?: PurchaseDatePrecision | null | undefined;
   merchant?: string | null | undefined;
   occurredAt?: string | null | undefined;
   paymentAllocations?: ReadonlyArray<UpdatePurchasePaymentInput> | null | undefined;
