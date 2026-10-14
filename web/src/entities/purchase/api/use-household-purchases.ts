@@ -11,10 +11,10 @@ import type {
   PurchaseCorrectionsPaginationQuery,
   PurchaseListFragment$key,
   PurchaseAmountTarget,
+  PurchaseItemChangeQuery,
   PurchasesQuery,
 } from "..";
 import type { Purchase, PurchaseCorrection, PurchaseOrigin } from "../../../shared/api";
-import type { PurchaseItemChangeQuery } from "../../../shared/api/__generated__/PurchaseItemChangeQuery.graphql";
 
 import { getRelayEnvironment } from "../../../shared/api";
 import { isOneOf } from "../../../shared/lib";

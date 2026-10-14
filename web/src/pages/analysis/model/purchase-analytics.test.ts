@@ -23,9 +23,7 @@ describe("purchaseDimensions", () => {
       correctionAmountYen: -150,
       correctionCount: 2,
       remainingRefundableAmountYen: 850,
-      paymentAllocations: [
-        { paymentAccountId: "account-1", amountYen: 1000, account: null },
-      ],
+      paymentAllocations: [{ paymentAccountId: "account-1", amountYen: 1000, account: null }],
       items: [
         {
           id: "item-1",
@@ -35,9 +33,7 @@ describe("purchaseDimensions", () => {
           revision: 1,
           quantityUnit: null,
           productVariantId: null,
-          allocations: [
-            { poolId: "pool-1", poolName: "プール", weight: 1, amountYen: 500 },
-          ],
+          allocations: [{ poolId: "pool-1", poolName: "プール", weight: 1, amountYen: 500 }],
           tags: [],
         },
       ],
