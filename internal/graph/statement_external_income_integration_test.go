@@ -66,7 +66,7 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 
 	documentID, occurredAt, reference := uuid.NewV7().String(), testStatementTransferFirstOccurredAt, testStatementRow2Reference
 	documentUUID, householdUUID := generatedUUID(documentID), generatedUUID(household.ID)
-	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, household.ID+"/originals/"+documentID, testApplicationPDF, "bank"
+	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, household.ID+"/originals/"+documentID, testApplicationPDF, testBankStatementSourceKind
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
 		ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &objectKey,
 		MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberUUID,
@@ -75,7 +75,7 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 	}
 	region := ingestion.Region{Page: 0, Top: 0.2, Left: 0.1, Bottom: 0.3, Right: 0.8}
 	verified, err := stdjson.Marshal(ingestion.Verification{Statements: []ingestion.StatementEntry{{
-		Row: 2, SourceReference: reference, Kind: "EXTERNAL_INCOME", OccurredAt: occurredAt, Merchant: "Salary", Amount: 72500, Region: &region,
+		Row: 2, SourceReference: reference, Kind: "EXTERNAL_INCOME", OccurredAt: occurredAt, Merchant: testStatementSalaryDescription, Amount: 72500, Region: &region,
 	}}})
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 	sourceReference := reference
 	input := model.RecordExternalIncomeInput{
 		HouseholdID: household.ID, AccountID: account.ID, AmountYen: 72500, OccurredAt: model.DateTime(occurredAt),
-		Description: "Salary", IdempotencyKey: uuid.NewV7().String(), SourceDocumentID: &sourceDocumentID, SourceReference: &sourceReference,
+		Description: testStatementSalaryDescription, IdempotencyKey: uuid.NewV7().String(), SourceDocumentID: &sourceDocumentID, SourceReference: &sourceReference,
 	}
 	wrongAmount := input
 	wrongAmount.AmountYen = 72501
@@ -101,7 +101,7 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 		t.Fatalf("statement amount mismatch was not rejected: %v", err)
 	}
 	wrongDate := input
-	wrongDate.OccurredAt = "2026-10-03T12:00:00Z"
+	wrongDate.OccurredAt = testStatementTransferThirdOccurredAt
 	wrongDate.IdempotencyKey = uuid.NewV7().String()
 	if _, err := resolver.recordExternalIncome(ctx, wrongDate); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("statement date mismatch was not rejected: %v", err)
@@ -135,9 +135,9 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
-	linkReference := "row:7"
+	linkReference := testStatementRow7Reference
 	linkVerified, err := stdjson.Marshal(ingestion.Verification{Statements: []ingestion.StatementEntry{{
-		Row: 7, SourceReference: linkReference, Kind: "EXTERNAL_INCOME", OccurredAt: occurredAt, Merchant: "Salary", Amount: 72500, Region: &region,
+		Row: 7, SourceReference: linkReference, Kind: "EXTERNAL_INCOME", OccurredAt: occurredAt, Merchant: testStatementSalaryDescription, Amount: 72500, Region: &region,
 	}}})
 	if err != nil {
 		t.Fatal(err)
@@ -152,21 +152,21 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 	}
 	otherAccountIncome, err := resolver.recordExternalIncome(ctx, model.RecordExternalIncomeInput{
 		HouseholdID: household.ID, AccountID: otherBank.ID, AmountYen: 72500, OccurredAt: model.DateTime(occurredAt),
-		Description: "Salary", IdempotencyKey: uuid.NewV7().String(),
+		Description: testStatementSalaryDescription, IdempotencyKey: uuid.NewV7().String(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	wrongAmountIncome, err := resolver.recordExternalIncome(ctx, model.RecordExternalIncomeInput{
 		HouseholdID: household.ID, AccountID: account.ID, AmountYen: 72501, OccurredAt: model.DateTime(occurredAt),
-		Description: "Salary", IdempotencyKey: uuid.NewV7().String(),
+		Description: testStatementSalaryDescription, IdempotencyKey: uuid.NewV7().String(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	wrongDateIncome, err := resolver.recordExternalIncome(ctx, model.RecordExternalIncomeInput{
-		HouseholdID: household.ID, AccountID: account.ID, AmountYen: 72500, OccurredAt: "2026-10-03T12:00:00Z",
-		Description: "Salary", IdempotencyKey: uuid.NewV7().String(),
+		HouseholdID: household.ID, AccountID: account.ID, AmountYen: 72500, OccurredAt: testStatementTransferThirdOccurredAt,
+		Description: testStatementSalaryDescription, IdempotencyKey: uuid.NewV7().String(),
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -74,7 +74,7 @@ func loadStatementTransferEvidence(ctx context.Context, executor bob.Executor, h
 	}
 	for _, entry := range verification.Statements {
 		if entry.SourceReference == reference || entry.SourceReference == "" && reference == fmt.Sprintf("row:%d", entry.Row) {
-			if (transferKind == "" && entry.Kind != "LOAN" && entry.Kind != repaymentKind) || transferKind != "" && entry.Kind != transferKind || entry.Amount == 0 {
+			if (transferKind == "" && entry.Kind != loanKind && entry.Kind != repaymentKind) || transferKind != "" && entry.Kind != transferKind || entry.Amount == 0 {
 				return nil, fmt.Errorf("%w: statement row is not a matching transfer", ErrBadInput)
 			}
 			return &statementTransferEvidence{DocumentID: documentUUID, Entry: entry}, nil

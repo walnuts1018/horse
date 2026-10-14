@@ -108,7 +108,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 	documentHash := "access-test:" + documentID
 	objectKey := householdID + "/originals/" + documentID
-	mimeType, sourceKind := "image/jpeg", testReceiptSourceKind
+	mimeType, sourceKind := documentMIMEJPEG, testReceiptSourceKind
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &documentHash, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &ownerUUID}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}

@@ -49,7 +49,7 @@ func TestRecentReconciliationDocumentsFiltersAndLimitsInDatabase(t *testing.T) {
 	insertDocument := func(createdAt time.Time, status string) gofrsuuid.UUID {
 		t.Helper()
 		documentID, jobID := newReconciliationUUID(t), newReconciliationUUID(t)
-		digest, objectKey, mimeType, sourceKind := "reconciliation:"+documentID.String(), "reconciliation/"+documentID.String(), "image/jpeg", "receipt"
+		digest, objectKey, mimeType, sourceKind := "reconciliation:"+documentID.String(), "reconciliation/"+documentID.String(), documentMIMEJPEG, "receipt"
 		if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &documentID, HouseholdID: &householdID, Sha256: &digest, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberID, CreatedAt: &createdAt}).Exec(ctx, executor); err != nil {
 			t.Fatal(err)
 		}

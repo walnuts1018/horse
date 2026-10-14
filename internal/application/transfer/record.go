@@ -29,7 +29,10 @@ var (
 	ErrNotFound = errors.New("resource not found")
 )
 
-const repaymentKind = "REPAYMENT"
+const (
+	loanKind      = "LOAN"
+	repaymentKind = "REPAYMENT"
+)
 
 const maxMoney int64 = 1_000_000_000_000
 
@@ -81,7 +84,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		return Result{}, fmt.Errorf("%w: loan id is only valid for a repayment", ErrBadInput)
 	}
 	statementProvided := command.SourceDocumentID != "" || command.SourceReference != "" || command.SourceAccountID != ""
-	if statementProvided && (command.SourceDocumentID == "" || command.SourceReference == "" || command.SourceAccountID == "" || command.Kind != "LOAN" && command.Kind != repaymentKind || len(command.SourceReference) > 256) {
+	if statementProvided && (command.SourceDocumentID == "" || command.SourceReference == "" || command.SourceAccountID == "" || command.Kind != loanKind && command.Kind != repaymentKind || len(command.SourceReference) > 256) {
 		return Result{}, fmt.Errorf("%w: invalid statement transfer source", ErrBadInput)
 	}
 
@@ -304,7 +307,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		loan, loanErr := models.Transfers.Query(sm.Where(psql.And(
 			models.Transfers.Columns.ID.EQ(psql.Arg(id)),
 			models.Transfers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-			models.Transfers.Columns.Kind.EQ(psql.Arg("LOAN")),
+			models.Transfers.Columns.Kind.EQ(psql.Arg(loanKind)),
 		)), sm.ForUpdate()).One(ctx, executor)
 		if loanErr != nil {
 			return Result{}, ErrNotFound
@@ -447,7 +450,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 			return Result{}, err
 		}
 	}
-	if command.Kind == "ADVANCE" || command.Kind == "LOAN" || command.Kind == repaymentKind {
+	if command.Kind == "ADVANCE" || command.Kind == loanKind || command.Kind == repaymentKind {
 		adjustments := []struct {
 			memberID gofrsuuid.UUID
 			amount   int64
@@ -487,7 +490,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 
 func validKind(kind string) bool {
 	switch kind {
-	case "ADVANCE", "LOAN", repaymentKind, "GIFT":
+	case "ADVANCE", loanKind, repaymentKind, "GIFT":
 		return true
 	default:
 		return false

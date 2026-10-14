@@ -133,7 +133,7 @@ func TestDocumentResponsesUseConstantQueryCount(t *testing.T) {
 	documents := make([]*models.SourceDocument, 50)
 	for i := range documents {
 		documentID := gofrsuuid.Must(gofrsuuid.NewV7())
-		digest, objectKey, mimeType, sourceKind := "document-response:"+documentID.String(), "document-response/"+documentID.String(), "image/jpeg", "receipt"
+		digest, objectKey, mimeType, sourceKind := "document-response:"+documentID.String(), "document-response/"+documentID.String(), documentMIMEJPEG, "receipt"
 		createdAt := time.Date(2026, time.January, 1, 0, i, 0, 0, time.UTC)
 		stored, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
 			ID: &documentID, HouseholdID: &householdID, Sha256: &digest, ObjectKey: &objectKey,

@@ -24,8 +24,15 @@ import (
 const (
 	testStatementTransferFirstOccurredAt  = "2026-10-02T12:00:00Z"
 	testStatementTransferSecondOccurredAt = "2026-10-02T12:01:00Z"
+	testStatementTransferThirdOccurredAt  = "2026-10-03T12:00:00Z"
+	testBankStatementSourceKind           = "bank"
+	testStatementRow3Reference            = "row:3"
 	testStatementRow2Reference            = "row:2"
 	testStatementRow4Reference            = "row:4"
+	testStatementRow5Reference            = "row:5"
+	testStatementRow7Reference            = "row:7"
+	testStatementSalaryDescription        = "Salary"
+	testAccountCardBillDescription        = "Credit card bill"
 	testOperatingAccountName              = "Operating"
 )
 
@@ -74,7 +81,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 
 	documentID := uuid.NewV7().String()
 	documentUUID, householdUUID := generatedUUID(documentID), generatedUUID(household.ID)
-	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, household.ID+"/originals/"+documentID, testApplicationPDF, "bank"
+	hash, objectKey, mimeType, sourceKind := "hash-"+documentID, household.ID+"/originals/"+documentID, testApplicationPDF, testBankStatementSourceKind
 	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
 		ID: &documentUUID, HouseholdID: &householdUUID, Sha256: &hash, ObjectKey: &objectKey,
 		MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberUUID,
@@ -94,9 +101,9 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 	region := ingestion.Region{Page: 0, Top: 0.2, Left: 0.1, Bottom: 0.3, Right: 0.8}
 	verified, err := stdjson.Marshal(ingestion.Verification{Statements: []ingestion.StatementEntry{
 		{Row: 2, SourceReference: testStatementRow2Reference, Kind: "ACCOUNT_TRANSFER", OccurredAt: testStatementTransferFirstOccurredAt, Merchant: testAccountTransferDescription, Amount: -250, Region: &region},
-		{Row: 3, SourceReference: "row:3", Kind: "ACCOUNT_TRANSFER", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: testAccountTransferDescription, Amount: -300, Region: &region},
-		{Row: 4, SourceReference: testStatementRow4Reference, Kind: "CARD_BILL_PAYMENT", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: "Credit card bill", Amount: -800, Region: &region},
-		{Row: 5, SourceReference: "row:5", Kind: "CARD_BILL_PAYMENT", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: "Credit card bill", Amount: -500, Region: &region},
+		{Row: 3, SourceReference: testStatementRow3Reference, Kind: "ACCOUNT_TRANSFER", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: testAccountTransferDescription, Amount: -300, Region: &region},
+		{Row: 4, SourceReference: testStatementRow4Reference, Kind: "CARD_BILL_PAYMENT", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: testAccountCardBillDescription, Amount: -800, Region: &region},
+		{Row: 5, SourceReference: testStatementRow5Reference, Kind: "CARD_BILL_PAYMENT", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: testAccountCardBillDescription, Amount: -500, Region: &region},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +137,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 		t.Fatalf("same statement row with a different key was not rejected: %v", err)
 	}
 	badAmount := input
-	badAmount.SourceReference = new("row:3")
+	badAmount.SourceReference = new(testStatementRow3Reference)
 	badAmount.AmountYen = 301
 	badAmount.OccurredAt = testStatementTransferSecondOccurredAt
 	badAmount.IdempotencyKey = uuid.NewV7().String()
@@ -146,7 +153,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 	}
 	wrongSourceKind := input
 	wrongSourceKind.SourceDocumentID = &cardDocumentID
-	wrongSourceKind.SourceReference = new("row:2")
+	wrongSourceKind.SourceReference = new(testStatementRow2Reference)
 	wrongSourceKind.IdempotencyKey = uuid.NewV7().String()
 	if _, err := resolver.recordAccountMovement(ctx, wrongSourceKind); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("non-bank statement source was not rejected: %v", err)
@@ -156,7 +163,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 	cardBillInput := model.RecordAccountMovementInput{
 		HouseholdID: household.ID, Kind: model.AccountMovementKindCardBillPayment,
 		FromAccountID: fromAccount.ID, ToAccountID: cardAccount.ID, AmountYen: 800,
-		OccurredAt: testStatementTransferSecondOccurredAt, Description: "Credit card bill", IdempotencyKey: uuid.NewV7().String(),
+		OccurredAt: testStatementTransferSecondOccurredAt, Description: testAccountCardBillDescription, IdempotencyKey: uuid.NewV7().String(),
 		SourceDocumentID: &sourceDocumentID, SourceReference: &cardBillReference, SourceAccountID: &sourceAccountID,
 	}
 	badCardBillAmount := cardBillInput
@@ -172,7 +179,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 		t.Fatalf("card bill statement account mismatch was not rejected: %v", err)
 	}
 	wrongCardBillRow := cardBillInput
-	wrongCardBillRow.SourceReference = new("row:3")
+	wrongCardBillRow.SourceReference = new(testStatementRow3Reference)
 	wrongCardBillRow.IdempotencyKey = uuid.NewV7().String()
 	if _, err := resolver.recordAccountMovement(ctx, wrongCardBillRow); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("non-card-bill statement row was not rejected: %v", err)
@@ -189,7 +196,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 	}
 	linkInput := model.LinkStatementAccountMovementInput{
 		HouseholdID: household.ID, AccountMovementID: existingMovement.ID, SourceDocumentID: documentID,
-		SourceReference: "row:3", SourceAccountID: fromAccount.ID,
+		SourceReference: testStatementRow3Reference, SourceAccountID: fromAccount.ID,
 	}
 	wrongLinkAccount := linkInput
 	wrongLinkAccount.SourceAccountID = toAccount.ID
@@ -283,7 +290,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 		if confirmation.PurchaseID.Valid || confirmation.CorrectionID.Valid || !confirmation.AccountMovementID.Valid {
 			t.Fatalf("statement row was not linked to an account movement: %#v", confirmation)
 		}
-		if confirmation.SourceReference == "row:2" && confirmation.AccountMovementID.V != generatedUUID(created.ID) || confirmation.SourceReference == "row:3" && confirmation.AccountMovementID.V != generatedUUID(existingMovement.ID) || confirmation.SourceReference == cardBillReference && confirmation.AccountMovementID.V != generatedUUID(cardBillMovement.ID) || confirmation.SourceReference == "row:5" && confirmation.AccountMovementID.V != generatedUUID(existingCardBill.ID) {
+		if confirmation.SourceReference == testStatementRow2Reference && confirmation.AccountMovementID.V != generatedUUID(created.ID) || confirmation.SourceReference == testStatementRow3Reference && confirmation.AccountMovementID.V != generatedUUID(existingMovement.ID) || confirmation.SourceReference == cardBillReference && confirmation.AccountMovementID.V != generatedUUID(cardBillMovement.ID) || confirmation.SourceReference == testStatementRow5Reference && confirmation.AccountMovementID.V != generatedUUID(existingCardBill.ID) {
 			t.Fatalf("statement row was linked to the wrong movement: %#v", confirmation)
 		}
 	}
