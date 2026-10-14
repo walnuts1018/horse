@@ -32,7 +32,7 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		s.writeAuthenticationFailure(w, r, err)
 
 		return
 	}

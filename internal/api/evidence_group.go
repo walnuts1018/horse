@@ -34,7 +34,7 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		s.writeAuthenticationFailure(w, r, err)
 		return
 	}
 	var input struct {

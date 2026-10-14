@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
@@ -251,23 +252,39 @@ func (s *Service) Resolve(r *http.Request) (Principal, error) {
 		models.OidcSessions.Columns.Expiry.GT(psql.Arg(time.Now())),
 	))).One(ctx, bobpgx.NewPool(s.db))
 	if err != nil {
-		return Principal{}, ErrUnauthenticated
+		return Principal{}, resolveLookupError("resolve OIDC session", err)
 	}
 	member, err := models.FindMember(ctx, bobpgx.NewPool(s.db), session.MemberID)
 	if err != nil {
-		return Principal{}, ErrUnauthenticated
+		return Principal{}, resolveLookupError("resolve OIDC session member", err)
 	}
 	return Principal{MemberID: member.ID.String(), Subject: member.OidcSubject, DisplayName: member.DisplayName}, nil
 }
 
+func resolveLookupError(operation string, err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrUnauthenticated
+	}
+	return fmt.Errorf("%s: %w", operation, err)
+}
+
 func (s *Service) Me(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	principal, err := s.Resolve(r)
+	writeMeResponse(w, principal, err)
+}
+
+func writeMeResponse(w http.ResponseWriter, principal Principal, err error) {
 	if err != nil {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"authenticated":false,"loginURL":"/auth/login"}`))
+		if errors.Is(err, ErrUnauthenticated) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"authenticated":false,"loginURL":"/auth/login"}`))
+			return
+		}
+		http.Error(w, "authentication unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	if err := json.MarshalWrite(w, map[string]any{"authenticated": true, "viewer": principal}); err != nil {
 		http.Error(w, "response encoding failed", http.StatusInternalServerError)
 	}

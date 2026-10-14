@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/walnuts1018/horse/internal/auth"
 )
 
 func TestHandlerPreservesGetRoutesForHeadRequests(t *testing.T) {
@@ -25,6 +27,60 @@ func TestHandlerPreservesGetRoutesForHeadRequests(t *testing.T) {
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("HEAD /healthz status = %d, want %d", response.Code, http.StatusOK)
+	}
+}
+
+func TestGraphQLProtocolErrorsKeepTheirCodeAndHTTPStatus(t *testing.T) {
+	t.Parallel()
+	server := New(nil, nil, slog.New(slog.DiscardHandler), Config{})
+	for _, test := range []struct {
+		name  string
+		query string
+		code  string
+	}{
+		{name: "parse", query: "query {", code: "GRAPHQL_PARSE_FAILED"},
+		{name: "validation", query: "query { notAField }", code: "GRAPHQL_VALIDATION_FAILED"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			requestBody := fmt.Sprintf(`{"query":%q}`, test.query)
+			request := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader(requestBody))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			server.graphqlHandler.ServeHTTP(response, request)
+			if response.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("protocol error status = %d, want %d: %s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), test.code) {
+				t.Fatalf("protocol error code %q is missing: %s", test.code, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestAuthenticationFailuresSeparateMissingSessionFromLookupFailure(t *testing.T) {
+	t.Parallel()
+	server := New(nil, nil, slog.New(slog.DiscardHandler), Config{})
+	for _, test := range []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{name: "missing session", err: auth.ErrUnauthenticated, wantStatus: http.StatusUnauthorized},
+		{name: "lookup timeout", err: context.DeadlineExceeded, wantStatus: http.StatusServiceUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			request := httptest.NewRequest(http.MethodGet, "/documents", nil)
+			response := httptest.NewRecorder()
+			server.writeAuthenticationFailure(response, request, test.err)
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d", response.Code, test.wantStatus)
+			}
+			if strings.Contains(response.Body.String(), "context deadline exceeded") {
+				t.Fatalf("response exposed the authentication lookup cause: %s", response.Body.String())
+			}
+		})
 	}
 }
 

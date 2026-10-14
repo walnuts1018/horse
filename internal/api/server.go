@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/99designs/gqlgen/graphql"
+	"github.com/99designs/gqlgen/graphql/errcode"
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
@@ -104,7 +105,12 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		if errors.Is(err, auth.ErrUnauthenticated) {
+			writeUnauthenticatedGraphError(w)
+			return
+		}
+		s.writeAuthenticationUnavailable(w, r, err)
+		writeGraphQLUnavailableBody(w)
 		return
 	}
 	request := http.MaxBytesReader(w, r.Body, 2<<20)
@@ -131,7 +137,9 @@ func (s *Server) newGraphQLHandler() *handler.Server {
 	executor.SetErrorPresenter(func(ctx context.Context, err error) *gqlerror.Error {
 		presented := graphql.DefaultErrorPresenter(ctx, err)
 		kind, isApplicationError := graph.ApplicationErrorKind(err)
-		if isApplicationError && kind == apperror.KindConflict {
+		if isGraphQLProtocolError(presented) {
+			return presented
+		} else if isApplicationError && kind == apperror.KindConflict {
 			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "CONFLICT"}
 			presented.Message = "the resource changed since it was loaded"
 		} else if isApplicationError && kind == apperror.KindNotFound {
@@ -216,7 +224,7 @@ func graphQLFieldPath(ctx context.Context) string {
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		http.Error(w, "authentication required", http.StatusUnauthorized)
+		s.writeAuthenticationFailure(w, r, err)
 		return
 	}
 	householdID := r.URL.Query().Get("householdId")
@@ -408,4 +416,31 @@ func writeUnauthenticatedGraphError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
 	_ = json.MarshalWrite(w, map[string]any{"errors": []map[string]any{{"message": graphUnauthenticatedMessage, "extensions": map[string]string{graphErrorCodeJSONKey: graphErrorCodeUnauthenticated}}}})
+}
+
+func (s *Server) writeAuthenticationFailure(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, auth.ErrUnauthenticated) {
+		writeUnauthenticatedGraphError(w)
+		return
+	}
+	s.writeAuthenticationUnavailable(w, r, err)
+	http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+}
+
+func (s *Server) writeAuthenticationUnavailable(w http.ResponseWriter, r *http.Request, err error) {
+	s.logger.ErrorContext(r.Context(), "authentication resolution failed", "error_type", fmt.Sprintf("%T", err))
+}
+
+func writeGraphQLUnavailableBody(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_ = json.MarshalWrite(w, map[string]any{"errors": []map[string]any{{"message": "service unavailable", "extensions": map[string]string{graphErrorCodeJSONKey: "SERVICE_UNAVAILABLE"}}}})
+}
+
+func isGraphQLProtocolError(err *gqlerror.Error) bool {
+	if err == nil {
+		return false
+	}
+	code, ok := err.Extensions[graphErrorCodeJSONKey].(string)
+	return ok && (code == errcode.ParseFailed || code == errcode.ValidationFailed)
 }

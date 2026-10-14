@@ -18,7 +18,7 @@ import (
 func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		s.writeAuthenticationFailure(w, r, err)
 		return
 	}
 	documentID, err := gofrsuuid.FromString(r.PathValue("id"))

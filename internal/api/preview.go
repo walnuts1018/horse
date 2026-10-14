@@ -20,7 +20,7 @@ const maxPreviewPixels = 40_000_000
 func (s *Server) documentPreview(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		s.writeAuthenticationFailure(w, r, err)
 		return
 	}
 	if s.cfg.Store == nil {

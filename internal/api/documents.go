@@ -91,7 +91,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		s.writeAuthenticationFailure(w, r, err)
 		return
 	}
 	if s.cfg.Store == nil {
@@ -401,7 +401,7 @@ func documentForMember(ctx context.Context, exec bob.Executor, documentID, membe
 func (s *Server) document(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		s.writeAuthenticationFailure(w, r, err)
 		return
 	}
 	documentID, err := gofrsuuid.FromString(r.PathValue("id"))
@@ -712,7 +712,7 @@ func (s *Server) documentResponses(ctx context.Context, exec bob.Executor, docum
 func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		s.writeAuthenticationFailure(w, r, err)
 		return
 	}
 	householdID := r.URL.Query().Get("householdId")
@@ -951,7 +951,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		s.writeAuthenticationFailure(w, r, err)
 		return
 	}
 	if s.cfg.Store == nil {
@@ -1124,7 +1124,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 func (s *Server) documentContent(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		s.writeAuthenticationFailure(w, r, err)
 		return
 	}
 	if s.cfg.Store == nil {
@@ -1167,7 +1167,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, err := s.authenticate(r)
 	if err != nil {
-		writeUnauthenticatedGraphError(w)
+		s.writeAuthenticationFailure(w, r, err)
 		return
 	}
 	var input struct {
