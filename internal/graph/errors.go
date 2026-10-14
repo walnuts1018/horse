@@ -7,7 +7,6 @@ import (
 	"github.com/walnuts1018/horse/internal/application/funding"
 	purchaseapp "github.com/walnuts1018/horse/internal/application/purchase"
 	"github.com/walnuts1018/horse/internal/application/settlement"
-	"github.com/walnuts1018/horse/internal/application/transfer"
 )
 
 var (
@@ -21,11 +20,11 @@ func ApplicationErrorKind(err error) (apperror.Kind, bool) {
 		return kind, true
 	}
 	switch {
-	case errors.Is(err, purchaseapp.ErrBadInput), errors.Is(err, funding.ErrBadInput), errors.Is(err, transfer.ErrBadInput), errors.Is(err, settlement.ErrBadInput):
+	case errors.Is(err, purchaseapp.ErrBadInput), errors.Is(err, funding.ErrBadInput), errors.Is(err, settlement.ErrBadInput):
 		return apperror.KindBadInput, true
-	case errors.Is(err, purchaseapp.ErrConflict), errors.Is(err, funding.ErrConflict), errors.Is(err, transfer.ErrConflict), errors.Is(err, settlement.ErrConflict):
+	case errors.Is(err, purchaseapp.ErrConflict), errors.Is(err, funding.ErrConflict), errors.Is(err, settlement.ErrConflict):
 		return apperror.KindConflict, true
-	case errors.Is(err, purchaseapp.ErrNotFound), errors.Is(err, funding.ErrNotFound), errors.Is(err, transfer.ErrNotFound), errors.Is(err, settlement.ErrNotFound):
+	case errors.Is(err, purchaseapp.ErrNotFound), errors.Is(err, funding.ErrNotFound), errors.Is(err, settlement.ErrNotFound):
 		return apperror.KindNotFound, true
 	default:
 		return apperror.KindUnknown, false
