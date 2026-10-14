@@ -170,7 +170,6 @@ GraphQLなどの公開API
 
 | 対象 | 確認した問題 | 推奨する改善 |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
-| [購入一覧クエリ](https://github.com/walnuts1018/horse/blob/main/internal/graph/query_purchases.go#L26) | GraphQL APIは`PurchaseFilter`入力を受け取り、ページネーションも専用構造体に整理された。一方、resolverから内部の`purchases()`へ各フィールドを再展開し、金額条件だけ別の可変長引数で渡している | `PurchaseFilter`を内部クエリまで維持し、フィルタ変換の重複と可変長引数をなくす |
 | [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、`Do()`にはDB操作、権限確認、ロック、冪等性処理などが残る | ユースケース処理の責務と順序を整理する |
 | [GraphQLエラー変換](https://github.com/walnuts1018/horse/blob/main/internal/graph/errors.go) | Purchase、Funding、Settlement、Transferのエラーは`apperror`へ統一されたが、`ApplicationErrorKind()`には`KindOf()`と重複するPurchase固有の判定が残る | Purchase固有の互換判定を削除し、共通エラー分類に一本化する |
 | [Gemini Router](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/router.go#L81-L199) | ルート候補の生成はデータ化され、共通ループで試行する形に改善された。一方、候補の実行条件、次候補の探索、フォールバック理由の記録が`Generate()`に残る | 候補選択とフォールバック状態の扱いを分離し、ルーティングの条件を追いやすくする |
