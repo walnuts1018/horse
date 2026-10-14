@@ -73,34 +73,33 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		verified.Runs = runs
 		return verified, err
 	}
-	if !verified.Balanced && len(verified.Runs) > 0 {
+	retryPolicy := extractionRetryPolicyFor(verified, document.MIMEType, w.Router.Paid.APIKey != "")
+	if retryPolicy.qualityRun != nil {
 		guidance := evidenceGuidance(verified.Issues, verified.OCRLines)
-		lastRun := latestSuccessfulRun(verified.Runs)
-		if lastRun != nil {
-			qualityOptions := router.QualityOptions(j.SourceKind, *lastRun, guidance)
-			qualityOptions.Attempt = j.Attempt
-			second, qualityRuns, qualityErr := pipeline.run(ctx, qualityOptions, "map reviewed evidence regions to original image")
-			var transformErr *extractionPipelineTransformError
-			if errors.As(qualityErr, &transformErr) {
-				return Verification{}, qualityErr
-			}
-			verified.Runs = append(verified.Runs, qualityRuns...)
-			if qualityErr == nil && betterVerification(second, verified) {
-				verified.Receipt, verified.Statements, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = second.Receipt, second.Statements, second.Issues, second.ComputedTotal, second.Balanced, second.Candidates
-			}
+		qualityOptions := router.QualityOptions(j.SourceKind, *retryPolicy.qualityRun, guidance)
+		qualityOptions.Attempt = j.Attempt
+		second, qualityRuns, qualityErr := pipeline.run(ctx, qualityOptions, "map reviewed evidence regions to original image")
+		var transformErr *extractionPipelineTransformError
+		if errors.As(qualityErr, &transformErr) {
+			return Verification{}, qualityErr
 		}
-		if !verified.Balanced && supportsProReview(document.MIMEType) && needsProReview(verified.Issues) && w.Router.Paid.APIKey != "" {
-			proOptions := router.ProOptions(request.Purpose, evidenceGuidance(verified.Issues, verified.OCRLines))
-			proOptions.Attempt = j.Attempt
-			proVerification, proRuns, proErr := pipeline.run(ctx, proOptions, "map reviewed evidence regions to original image")
-			var transformErr *extractionPipelineTransformError
-			if errors.As(proErr, &transformErr) {
-				return Verification{}, proErr
-			}
-			verified.Runs = append(verified.Runs, proRuns...)
-			if proErr == nil && betterVerification(proVerification, verified) {
-				verified.Receipt, verified.Statements, verified.Issues, verified.ComputedTotal, verified.Balanced, verified.Candidates = proVerification.Receipt, proVerification.Statements, proVerification.Issues, proVerification.ComputedTotal, proVerification.Balanced, proVerification.Candidates
-			}
+		verified.Runs = append(verified.Runs, qualityRuns...)
+		if qualityErr == nil {
+			verified = selectVerificationCandidate(verified, second)
+		}
+	}
+	retryPolicy = extractionRetryPolicyFor(verified, document.MIMEType, w.Router.Paid.APIKey != "")
+	if retryPolicy.proReview {
+		proOptions := router.ProOptions(request.Purpose, evidenceGuidance(verified.Issues, verified.OCRLines))
+		proOptions.Attempt = j.Attempt
+		proVerification, proRuns, proErr := pipeline.run(ctx, proOptions, "map reviewed evidence regions to original image")
+		var transformErr *extractionPipelineTransformError
+		if errors.As(proErr, &transformErr) {
+			return Verification{}, proErr
+		}
+		verified.Runs = append(verified.Runs, proRuns...)
+		if proErr == nil {
+			verified = selectVerificationCandidate(verified, proVerification)
 		}
 	}
 	return verified, nil
@@ -207,22 +206,6 @@ func annotateRuns(runs []ExtractionRun, receipt Receipt, issues []string) []Extr
 		}
 	}
 	return runs
-}
-
-func latestSuccessfulRun(runs []ExtractionRun) *ExtractionRun {
-	for i := len(runs) - 1; i >= 0; i-- {
-		if runs[i].Status == extractionStatusSucceeded && runs[i].Receipt != nil {
-			return &runs[i]
-		}
-	}
-	return nil
-}
-
-func betterVerification(candidate, current Verification) bool {
-	if candidate.Balanced != current.Balanced {
-		return candidate.Balanced
-	}
-	return len(candidate.Issues) < len(current.Issues)
 }
 
 func supportsProReview(mimeType string) bool {
