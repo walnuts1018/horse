@@ -29,6 +29,17 @@ function sharedPool(id: string, fundingShares: PoolFundingShare[]): Pool {
   };
 }
 
+function unconfiguredPersonalPool(id: string): Pool {
+  return {
+    __typename: "UnconfiguredPersonalPool",
+    id,
+    name: id,
+    defaultShareWeight: 1,
+    fundingShares: [],
+    fundingRuleVersion: 0,
+  };
+}
+
 function household(id: string, members: string[], pools: Pool[]): Household {
   return {
     id,
@@ -43,6 +54,14 @@ function household(id: string, members: string[], pools: Pool[]): Household {
 }
 
 describe("reconcileFundingDrafts", () => {
+  it("initializes drafts for unconfigured pools before they are edited", () => {
+    const current = household("household-a", ["member-a"], [unconfiguredPersonalPool("pool-a")]);
+
+    expect(reconcileFundingDrafts(current, current.id, {})).toEqual({
+      "pool-a": { ownerMemberId: "", policy: "BALANCE_TO_STANDARD", weights: { "member-a": "" } },
+    });
+  });
+
   it("preserves edited values on refresh and initializes newly added members", () => {
     const initial = household(
       "household-a",

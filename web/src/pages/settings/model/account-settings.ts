@@ -94,7 +94,9 @@ export function useAccountSettings({
     const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
     return date.toISOString().slice(0, 10);
   });
-  const [fundingDrafts, setFundingDrafts] = useState<FundingDrafts>({});
+  const [fundingDrafts, setFundingDrafts] = useState<FundingDrafts>(() =>
+    reconcileFundingDrafts(household, household.id, {}),
+  );
   const [fundingRuleErrors, setFundingRuleErrors] = useState<Record<string, string>>({});
   const fundingDraftHouseholdId = useRef(household.id);
   const cardLast4DraftHouseholdId = useRef(household.id);
@@ -199,8 +201,9 @@ export function useAccountSettings({
 
   const saveFundingRule = async (event: SubmitEvent<HTMLFormElement>, poolId: string) => {
     event.preventDefault();
-    const pool = household.pools.find((item) => item.id === poolId)!;
-    const draft = fundingDrafts[poolId];
+    const pool = household.pools.find((item) => item.id === poolId);
+    if (!pool) return;
+    const draft = fundingDrafts[poolId] ?? initialFundingDraft(pool, household);
     const fundingShares = household.members
       .map((member) => ({
         memberId: member.id,
@@ -243,6 +246,18 @@ export function useAccountSettings({
     }
   };
 
+  const updateFundingDraft = (poolId: string, update: Partial<FundingDraft>) => {
+    const pool = household.pools.find((item) => item.id === poolId);
+    if (!pool) return;
+    setFundingDrafts((current) => ({
+      ...current,
+      [poolId]: {
+        ...(current[poolId] ?? initialFundingDraft(pool, household)),
+        ...update,
+      },
+    }));
+  };
+
   return {
     poolName,
     setPoolName,
@@ -263,9 +278,11 @@ export function useAccountSettings({
     openingBalanceAt,
     setOpeningBalanceAt,
     fundingDrafts,
-    setFundingDrafts,
+    updateFundingDraft,
     fundingRuleErrors,
     setFundingShareWeight: (poolId: string, memberId: string, weight: string) => {
+      const pool = household.pools.find((item) => item.id === poolId);
+      if (!pool) return;
       setFundingRuleErrors((current) => {
         const next = { ...current };
         delete next[poolId];
@@ -274,8 +291,11 @@ export function useAccountSettings({
       setFundingDrafts((current) => ({
         ...current,
         [poolId]: {
-          ...current[poolId],
-          weights: { ...current[poolId].weights, [memberId]: weight },
+          ...(current[poolId] ?? initialFundingDraft(pool, household)),
+          weights: {
+            ...(current[poolId] ?? initialFundingDraft(pool, household)).weights,
+            [memberId]: weight,
+          },
         },
       }));
     },

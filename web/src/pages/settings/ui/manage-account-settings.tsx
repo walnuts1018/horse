@@ -73,12 +73,9 @@ export function ManageAccountSettings({
                     所有者
                     <select
                       required
-                      value={model.fundingDrafts[pool.id].ownerMemberId}
+                      value={model.fundingDrafts[pool.id]?.ownerMemberId ?? ""}
                       onChange={(event) =>
-                        model.setFundingDrafts((current) => ({
-                          ...current,
-                          [pool.id]: { ...current[pool.id], ownerMemberId: event.target.value },
-                        }))
+                        model.updateFundingDraft(pool.id, { ownerMemberId: event.target.value })
                       }
                     >
                       <option value="">メンバーを選択</option>
@@ -94,18 +91,12 @@ export function ManageAccountSettings({
                     <label>
                       精算方法
                       <select
-                        value={model.fundingDrafts[pool.id].policy}
+                        value={model.fundingDrafts[pool.id]?.policy ?? "BALANCE_TO_STANDARD"}
                         onChange={(event) => {
                           const policy = event.target.value;
                           if (!isOneOf(policy, ["BALANCE_TO_STANDARD", "REIMBURSE_PERSONAL"]))
                             return;
-                          model.setFundingDrafts((current) => ({
-                            ...current,
-                            [pool.id]: {
-                              ...current[pool.id],
-                              policy,
-                            },
-                          }));
+                          model.updateFundingDraft(pool.id, { policy });
                         }}
                       >
                         <option value="BALANCE_TO_STANDARD">負担割合の平準化</option>
