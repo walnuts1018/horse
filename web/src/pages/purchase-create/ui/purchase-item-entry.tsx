@@ -1,7 +1,13 @@
-import type { ClipboardEvent, KeyboardEvent, RefObject } from "react";
-
 import { Combobox } from "@base-ui/react/combobox";
 import { Plus } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type KeyboardEvent,
+  type RefObject,
+} from "react";
 
 import type { Household } from "../../../shared/api";
 import type { PurchaseEntrySuggestion, RecentPurchasePrice } from "../model/product-suggestions";
@@ -74,6 +80,11 @@ export function PurchaseItemEntry({
   onAdd: () => void;
   invalidEntryField: "name" | "amount" | null;
 }) {
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const categorySelectRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (categoryPickerOpen) categorySelectRef.current?.focus();
+  }, [categoryPickerOpen]);
   const dateLabel = recentPurchasePrice
     ? new Intl.DateTimeFormat("ja-JP", {
         month: "numeric",
@@ -219,18 +230,38 @@ export function PurchaseItemEntry({
             </div>
           )}
         </div>
-        <select
-          aria-label="新しい品目のカテゴリ"
-          value={categoryId}
-          onChange={(event) => onCategoryChange(event.target.value)}
-        >
-          <option value="">未分類</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </select>
+        <div className={`entry-category ${categoryId ? "" : "entry-category-uncategorized"}`}>
+          {categoryPickerOpen ? (
+            <select
+              ref={categorySelectRef}
+              aria-label="新しい品目のカテゴリ"
+              value={categoryId}
+              onChange={(event) => {
+                onCategoryChange(event.target.value);
+                setCategoryPickerOpen(false);
+              }}
+            >
+              <option value="">未分類</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <button
+              type="button"
+              className="entry-category-button"
+              aria-label={categoryId ? "品目カテゴリを変更" : "未分類。カテゴリを選択"}
+              onClick={() => setCategoryPickerOpen(true)}
+            >
+              <span>
+                {categories.find((category) => category.id === categoryId)?.name ?? "未分類"}
+              </span>
+              <span>{categoryId ? "変更" : "選択"}</span>
+            </button>
+          )}
+        </div>
         <button
           type="button"
           className="button button-add"

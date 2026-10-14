@@ -27,6 +27,30 @@ describe("suggested purchase item category", () => {
       "",
     );
   });
+
+  it("leaves the item uncategorized when matching history disagrees", () => {
+    expect(
+      suggestedPurchaseItemCategory(
+        "牛乳",
+        "",
+        false,
+        [...history, { items: [{ name: "牛乳", categoryId: "drink" }] }],
+        () => true,
+      ),
+    ).toBe("");
+  });
+
+  it("leaves the item uncategorized when any exact history entry is uncategorized", () => {
+    expect(
+      suggestedPurchaseItemCategory(
+        "牛乳",
+        "",
+        false,
+        [...history, { items: [{ name: "牛乳", categoryId: null }] }],
+        () => true,
+      ),
+    ).toBe("");
+  });
 });
 
 describe("purchase item draft restoration", () => {

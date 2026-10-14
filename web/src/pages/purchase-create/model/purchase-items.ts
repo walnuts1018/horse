@@ -24,10 +24,16 @@ export function suggestedPurchaseItemCategory(
 ): string {
   const query = name.trim();
   if (!query || categoryId || categoryManuallySelected) return "";
-  const match = history
+  const matches = history
     .flatMap((purchase) => purchase.items)
-    .find((item) => item.name.toLocaleLowerCase() === query.toLocaleLowerCase());
-  return match && isEnabledCategory(match.categoryId) ? (match.categoryId ?? "") : "";
+    .filter((item) => item.name.trim().toLocaleLowerCase() === query.toLocaleLowerCase());
+  if (!matches.length) return "";
+
+  const categoryIds = new Set(matches.map((item) => item.categoryId ?? ""));
+  if (categoryIds.size !== 1) return "";
+
+  const [match] = categoryIds;
+  return isEnabledCategory(match) ? match : "";
 }
 
 export const emptyPurchaseItemsValue = (): PurchaseItemsValue => ({

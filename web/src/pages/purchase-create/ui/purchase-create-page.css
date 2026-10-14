@@ -292,7 +292,7 @@
 .entry-form {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(140px, 2fr) minmax(90px, 0.8fr) minmax(100px, 1fr) auto;
+  grid-template-columns: minmax(140px, 2fr) minmax(90px, 0.8fr) auto auto;
   align-items: center;
   gap: 8px;
   margin: 12px 0 0;
@@ -402,7 +402,11 @@
   cursor: pointer;
 }
 
-.entry-form > select {
+.entry-category {
+  min-width: 0;
+}
+
+.entry-category select {
   height: 34px;
   width: 100%;
   min-width: 0;
@@ -411,6 +415,38 @@
   color: #5f6d65;
   font-size: 12px;
   padding: 0 4px;
+}
+
+.entry-category-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 6px;
+  background: transparent;
+  color: #5f6d65;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.entry-category-button > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry-category-button > span:last-child {
+  color: #849187;
+  font-size: 10px;
+}
+
+.entry-category-uncategorized .entry-category-button {
+  color: #8a6742;
+  background: #fff7e9;
 }
 
 .button-add {
@@ -669,9 +705,13 @@
     min-height: 44px;
   }
 
-  .entry-form > select {
+  .entry-category {
     grid-column: 1;
     grid-row: 2;
+  }
+
+  .entry-category select,
+  .entry-category-button {
     height: 31px;
   }
 
@@ -730,7 +770,8 @@
   }
 
   .button-add,
-  .entry-form > select,
+  .entry-category select,
+  .entry-category-button,
   .item-edit-row select,
   .payment-allocation-row > select {
     min-height: 44px;

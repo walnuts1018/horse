@@ -422,7 +422,7 @@ export function EditPurchaseItems({
       itemName: candidate.matchedName || draft.itemName.trim(),
       selectedProductVariantId: candidate.variant.id,
       ...(isEnabledCategory(candidate.concept.categoryId) &&
-      !draft.categoryId &&
+      !effectiveCategoryId &&
       !categoryManuallySelected
         ? { categoryId: candidate.concept.categoryId }
         : {}),
@@ -441,9 +441,17 @@ export function EditPurchaseItems({
     }
     if (!productSuggestions.includes(suggestion.candidate)) return;
     markDirty();
+    const suggestedCategoryId = isEnabledCategory(suggestion.categoryId)
+      ? suggestion.categoryId
+      : suggestion.candidate.concept.categoryId;
     patchDraft({
       itemName: suggestion.name,
       selectedProductVariantId: suggestion.candidate.variant.id,
+      ...(!effectiveCategoryId &&
+      !categoryManuallySelected &&
+      isEnabledCategory(suggestedCategoryId)
+        ? { categoryId: suggestedCategoryId }
+        : {}),
     });
     amountRef.current?.focus();
     setFocused("amount");
@@ -548,18 +556,15 @@ export function EditPurchaseItems({
     replaceItems([
       ...draft.items,
       ...parsed.items.map(({ name, amount }) => {
-        const historyCategoryId = history
-          .flatMap((purchase) => purchase.items)
-          .find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.categoryId;
+        const categoryId =
+          categoryManuallySelected || draft.categoryId
+            ? effectiveCategoryId
+            : suggestedPurchaseItemCategory(name, "", false, history, isEnabledCategory);
         return {
           key: crypto.randomUUID(),
           name,
           amount,
-          categoryId: draft.categoryId
-            ? effectiveCategoryId
-            : isEnabledCategory(historyCategoryId)
-              ? historyCategoryId
-              : "",
+          categoryId,
           allocations: [],
         };
       }),
