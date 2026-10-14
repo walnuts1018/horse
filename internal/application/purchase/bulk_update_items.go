@@ -3,7 +3,6 @@ package purchase
 import (
 	"context"
 	"database/sql"
-	stdjson "encoding/json"
 	"errors"
 	"fmt"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
-	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/domain"
@@ -196,11 +194,6 @@ func (s *Service) BulkUpdateItems(ctx context.Context, command BulkUpdateItemsCo
 }
 
 func (s *Service) updateBulkItem(ctx context.Context, tx pgx.Tx, executor bob.Executor, item *models.PurchaseItem, purchase *models.Purchase, patch BulkItemPatch, fields []string, ruleVersion int64) error {
-	newRevision := item.Revision + 1
-	fieldRevisions, err := purchaseUpdateFieldRevisions(item.FieldRevisions.Val, fields, newRevision)
-	if err != nil {
-		return err
-	}
 	categoryID := item.CategoryID
 	if patch.CategoryIDSet {
 		categoryID = sql.Null[gofrsuuid.UUID]{}
@@ -230,57 +223,22 @@ func (s *Service) updateBulkItem(ctx context.Context, tx pgx.Tx, executor bob.Ex
 			variantID = sql.Null[gofrsuuid.UUID]{V: id, Valid: true}
 		}
 	}
-	fieldValue := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(fieldRevisions)}
 	allocationOverride := item.AllocationOverride || patch.AllocationsSet
-	allocationChanged := patch.AllocationsSet || !item.AllocationOverride && (patch.CategoryIDSet || patch.ProductVariantIDSet)
-	var allocations []domain.AllocationAmount
-	var weights []domain.Weight
-	var appliedRuleID *gofrsuuid.UUID
-	appliedRuleVersion := ruleVersion
-	if allocationChanged {
-		if patch.AllocationsSet {
-			weights = patch.Allocations
-		} else {
-			var category, variant *gofrsuuid.UUID
-			if categoryID.Valid {
-				category = &categoryID.V
-			}
-			if variantID.Valid {
-				variant = &variantID.V
-			}
-			weights, appliedRuleID, appliedRuleVersion, err = allocationRuleWeights(ctx, tx, item.HouseholdID, category, variant, normalizeMerchant(purchase.Merchant))
-			if err == nil && appliedRuleID == nil {
-				weights, err = loadWeights(ctx, tx, item.HouseholdID, ruleVersion)
-			}
-		}
-		if err != nil {
-			return err
-		}
-		allocations, err = domain.Allocate(item.AmountYen, weights)
-		if err != nil {
-			return fmt.Errorf("%w: %w", ErrBadInput, err)
-		}
-	}
-	if _, err := models.PurchaseItems.Update((&models.PurchaseItemSetter{CategoryID: &categoryID, ProductVariantID: &variantID, AllocationOverride: &allocationOverride, Revision: &newRevision, FieldRevisions: &fieldValue}).UpdateMod(), um.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(item.ID))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
+	plan, err := buildItemChangePlan(ctx, tx, executor, item, purchase, itemChangeInput{
+		fields: fields, amount: item.AmountYen, categoryID: categoryID, productVariantID: variantID,
+		allocationOverride: allocationOverride, categoryOrVariantChanged: patch.CategoryIDSet || patch.ProductVariantIDSet,
+		allocationsSet: patch.AllocationsSet, requestedWeights: patch.Allocations,
+		defaultAllocationVersion: ruleVersion,
+	})
+	if err != nil {
 		return err
 	}
-	if allocationChanged {
-		if _, err := models.ItemAllocations.Delete(dm.Where(models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(item.ID)))).Exec(ctx, executor); err != nil {
-			return err
-		}
-		for _, allocation := range allocations {
-			poolID, err := parseUUID(allocation.PoolID, "pool")
-			if err != nil {
-				return fmt.Errorf("%w: invalid allocation pool", ErrBadInput)
-			}
-			var ruleID sql.Null[gofrsuuid.UUID]
-			if appliedRuleID != nil {
-				ruleID = sql.Null[gofrsuuid.UUID]{V: *appliedRuleID, Valid: true}
-			}
-			if _, err := models.ItemAllocations.Insert(&models.ItemAllocationSetter{HouseholdID: &item.HouseholdID, PurchaseID: &item.PurchaseID, ItemID: &item.ID, PoolID: &poolID, Weight: &allocation.Weight, AmountYen: &allocation.Amount, RuleVersion: &appliedRuleVersion, RuleID: &ruleID}).Exec(ctx, executor); err != nil {
-				return err
-			}
-		}
+	fieldValue := itemChangeFieldValue(plan)
+	if _, err := models.PurchaseItems.Update((&models.PurchaseItemSetter{CategoryID: &plan.categoryID, ProductVariantID: &plan.productVariantID, AllocationOverride: &plan.allocationOverride, Revision: &plan.revision, FieldRevisions: &fieldValue}).UpdateMod(), um.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(item.ID))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
+		return err
+	}
+	if err := applyItemAllocationPlan(ctx, executor, item, plan); err != nil {
+		return err
 	}
 	if patch.TagIDsSet {
 		if _, err := models.PurchaseItemTags.Delete(dm.Where(models.PurchaseItemTags.Columns.ItemID.EQ(psql.Arg(item.ID)))).Exec(ctx, executor); err != nil {

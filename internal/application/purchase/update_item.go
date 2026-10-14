@@ -3,7 +3,6 @@ package purchase
 import (
 	"context"
 	"database/sql"
-	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -15,11 +14,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
-	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
-	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/domain"
@@ -203,71 +200,35 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	if err != nil {
 		return UpdateResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
-	ruleVersion := household.DefaultAllocationVersion
 	allocationOverride := item.AllocationOverride
 	if command.AllocationsSet {
 		allocationOverride = true
 	}
-	var weights []domain.Weight
-	var ruleID *gofrsuuid.UUID
-	allocationRuleVersion := ruleVersion
+	var requestedWeights []domain.Weight
 	if command.AllocationsSet {
-		weights = make([]domain.Weight, 0, len(command.Allocations))
+		requestedWeights = make([]domain.Weight, 0, len(command.Allocations))
 		for _, allocation := range command.Allocations {
-			weights = append(weights, domain.Weight{PoolID: allocation.PoolID, Value: allocation.Weight})
+			requestedWeights = append(requestedWeights, domain.Weight{PoolID: allocation.PoolID, Value: allocation.Weight})
 		}
-	} else if (command.CategoryIDSet || command.ProductVariantIDSet) && !item.AllocationOverride {
-		var categoryUUID, variantUUID *gofrsuuid.UUID
-		if categoryID != nil {
-			parsed, parseErr := parseUUID(*categoryID, "category")
-			if parseErr != nil {
-				return UpdateResult{}, ErrNotFound
-			}
-			categoryUUID = &parsed
-		}
-		if variantID != nil {
-			parsed, parseErr := parseUUID(*variantID, "product variant")
-			if parseErr != nil {
-				return UpdateResult{}, ErrNotFound
-			}
-			variantUUID = &parsed
-		}
-		weights, ruleID, allocationRuleVersion, err = allocationRuleWeights(ctx, tx, householdID, categoryUUID, variantUUID, normalizeMerchant(purchase.Merchant))
-		if err == nil && ruleID == nil {
-			weights, err = loadWeights(ctx, tx, householdID, ruleVersion)
-		}
-	} else {
-		allocations, queryErr := models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(itemUUID))), sm.OrderBy(models.ItemAllocations.Columns.PoolID)).All(ctx, executor)
-		if queryErr != nil {
-			return UpdateResult{}, queryErr
-		}
-		for _, allocation := range allocations {
-			weights = append(weights, domain.Weight{PoolID: allocation.PoolID.String(), Value: allocation.Weight})
-			if len(weights) == 1 {
-				if allocation.RuleID.Valid {
-					id := allocation.RuleID.V
-					ruleID = &id
-				}
-				allocationRuleVersion = allocation.RuleVersion
-			}
-		}
-		if len(weights) == 0 {
-			weights, err = loadWeights(ctx, tx, householdID, ruleVersion)
-		}
-	}
-	if err != nil {
-		return UpdateResult{}, err
-	}
-	allocated, err := domain.Allocate(newAmount, weights)
-	if err != nil {
-		return UpdateResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
 	payments, updatePayments, err := adjustedPurchasePayments(ctx, executor, purchase, item.AmountYen, newAmount)
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	newRevision := item.Revision + 1
-	updatedFields, err := purchaseUpdateFieldRevisions(item.FieldRevisions.Val, command.ChangedFields, newRevision)
+	categoryValue, err := nullableUUID(categoryID)
+	if err != nil {
+		return UpdateResult{}, ErrNotFound
+	}
+	variantValue, err := nullableUUID(variantID)
+	if err != nil {
+		return UpdateResult{}, ErrNotFound
+	}
+	plan, err := buildItemChangePlan(ctx, tx, executor, item, purchase, itemChangeInput{
+		fields: command.ChangedFields, amount: newAmount, categoryID: categoryValue, productVariantID: variantValue,
+		allocationOverride: allocationOverride, categoryOrVariantChanged: command.CategoryIDSet || command.ProductVariantIDSet,
+		allocationsSet: command.AllocationsSet, requestedWeights: requestedWeights,
+		defaultAllocationVersion: household.DefaultAllocationVersion,
+	})
 	if err != nil {
 		return UpdateResult{}, err
 	}
@@ -296,18 +257,10 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 			return UpdateResult{}, err
 		}
 	}
-	categoryValue, err := nullableUUID(categoryID)
-	if err != nil {
-		return UpdateResult{}, ErrNotFound
-	}
-	variantValue, err := nullableUUID(variantID)
-	if err != nil {
-		return UpdateResult{}, ErrNotFound
-	}
-	fieldRevisionValue := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(updatedFields)}
+	fieldRevisionValue := itemChangeFieldValue(plan)
 	if _, err := models.PurchaseItems.Update((&models.PurchaseItemSetter{
 		Name: &newName, AmountYen: &newAmount, CategoryID: &categoryValue, ProductVariantID: &variantValue,
-		AllocationOverride: &allocationOverride, Revision: &newRevision, FieldRevisions: &fieldRevisionValue,
+		AllocationOverride: &plan.allocationOverride, Revision: &plan.revision, FieldRevisions: &fieldRevisionValue,
 		QuantityNumerator: &measure.quantityNumerator, QuantityDenominator: &measure.quantityDenominator, QuantityUnit: &measure.quantityUnit,
 		PrintedUnitPriceYen: &measure.printedUnitPriceYen, PrintedUnitPriceQuantityNumerator: &measure.printedUnitPriceQuantityNumerator,
 		PrintedUnitPriceQuantityDenominator: &measure.printedUnitPriceQuantityDenominator, PrintedUnitPriceUnit: &measure.printedUnitPriceUnit,
@@ -353,24 +306,8 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 			return UpdateResult{}, err
 		}
 	}
-	if _, err := models.ItemAllocations.Delete(dm.Where(models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(itemUUID)))).Exec(ctx, executor); err != nil {
+	if err := applyItemAllocationPlan(ctx, executor, item, plan); err != nil {
 		return UpdateResult{}, err
-	}
-	for _, allocation := range allocated {
-		poolUUID, parseErr := parseUUID(allocation.PoolID, "pool")
-		if parseErr != nil {
-			return UpdateResult{}, parseErr
-		}
-		ruleValue := sql.Null[gofrsuuid.UUID]{}
-		if ruleID != nil {
-			ruleValue = sql.Null[gofrsuuid.UUID]{V: *ruleID, Valid: true}
-		}
-		if _, err := models.ItemAllocations.Insert(&models.ItemAllocationSetter{
-			HouseholdID: &householdID, PurchaseID: &purchase.ID, ItemID: &itemUUID, PoolID: &poolUUID,
-			Weight: &allocation.Weight, AmountYen: &allocation.Amount, RuleVersion: &allocationRuleVersion, RuleID: &ruleValue,
-		}).Exec(ctx, executor); err != nil {
-			return UpdateResult{}, err
-		}
 	}
 	if updatePayments {
 		validated, err := validatePayments(ctx, tx, householdID, payments)
@@ -386,7 +323,7 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	).Exec(ctx, executor); err != nil {
 		return UpdateResult{}, err
 	}
-	if err := accounting.RecordEvent(ctx, executor, householdID, itemUUID, "purchase.item.updated", newRevision, command.ChangedFields, actorUUID); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, householdID, itemUUID, "purchase.item.updated", plan.revision, command.ChangedFields, actorUUID); err != nil {
 		return UpdateResult{}, err
 	}
 	if status == postedStatus {
