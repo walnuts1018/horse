@@ -57,6 +57,7 @@ type PurchaseCreatePageProps = {
     status: "saved" | "saving" | "conflict" | "error";
     serverDraft?: PurchaseDraft;
     error?: string;
+    recoveryError?: string;
     onUseServer: () => void;
     onKeepMine: () => void;
     onRetry: () => void;
@@ -684,10 +685,11 @@ function PurchaseCreatePageContent({
           })}
         </section>
       )}
-      {(outbox.storageError || message || draftSaveError) && (
+      {(outbox.storageError || message || draftSaveError || sharedSync?.recoveryError) && (
         <div className={styles.errors}>
           {outbox.storageError && <InlineError message={outbox.storageError} />}
           {message && <InlineError message={message} />}
+          {sharedSync?.recoveryError && <InlineError message={sharedSync.recoveryError} />}
           {draftSaveError && (
             <div className={styles.draftSaveFailure} role="alert">
               <InlineError message={draftSaveError} />
