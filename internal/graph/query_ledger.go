@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/99designs/gqlgen/graphql"
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
@@ -29,9 +30,12 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 	}
 	executor := queryExecutor(r.DB)
 	filters := []bob.Expression{models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID))}
-	count, err := models.LedgerEntries.Query(sm.Where(models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID)))).Count(ctx, executor)
-	if err != nil {
-		return nil, err
+	var count int64
+	if ledgerTotalCountRequested(ctx) {
+		count, err = models.LedgerEntries.Query(sm.Where(models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(hhID)))).Count(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if cursorID, err := cursorID(after, nodeTypeLedgerEntry); err != nil {
 		return nil, err
@@ -121,4 +125,8 @@ func (r *queryResolver) ledger(ctx context.Context, householdID string, after, b
 		connection.PageInfo.EndCursor = &end
 	}
 	return connection, nil
+}
+
+func ledgerTotalCountRequested(ctx context.Context) bool {
+	return graphql.FieldRequested(ctx, "totalCount")
 }

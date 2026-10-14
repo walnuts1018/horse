@@ -17,7 +17,6 @@ type ObservationRecord =
   UnmatchedObservationsFragment$data["unmatchedObservations"]["edges"][number]["node"];
 
 type Options = {
-  enabled?: boolean;
   from?: string;
   to?: string;
   sourceKind?: SourceKind;
@@ -33,17 +32,9 @@ export function useUnmatchedObservations(householdId: string, options: Options =
       to: options.to,
       sourceKind: options.sourceKind,
       state: options.state,
-      first: unmatchedObservationPageSize(options.enabled, options.first),
+      first: unmatchedObservationPageSize(options.first),
     }),
-    [
-      householdId,
-      options.enabled,
-      options.first,
-      options.from,
-      options.sourceKind,
-      options.state,
-      options.to,
-    ],
+    [householdId, options.first, options.from, options.sourceKind, options.state, options.to],
   );
   const query = useLazyLoadQuery<UnmatchedObservationsQuery>(
     unmatchedObservationsQuery,
@@ -84,9 +75,9 @@ export function useUnmatchedObservations(householdId: string, options: Options =
   }, [hasNext, isLoadingNext, loadNext, options.first]);
 
   return {
-    observations: options.enabled === false ? [] : observations,
-    totalCount: options.enabled === false ? 0 : page.totalCount,
-    hasNextPage: options.enabled !== false && hasNext,
+    observations,
+    totalCount: page.totalCount,
+    hasNextPage: hasNext,
     loading,
     loadingMore: isLoadingNext,
     error: refreshError,

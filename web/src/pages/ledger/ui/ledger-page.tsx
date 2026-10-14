@@ -3,7 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { purchaseOccurredAtLabel, useHouseholdPurchases } from "../../../entities/purchase";
 import { readTags } from "../../../entities/tag";
-import { type Household, type Tag } from "../../../shared/api";
+import {
+  type Household,
+  type SourceKind,
+  type Tag,
+  type UnmatchedObservationState,
+} from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib";
 import { EmptyState, InlineError } from "../../../shared/ui";
 import { useBulkDeletePurchaseItemsMutation } from "../api/bulk-delete-purchase-items";
@@ -135,13 +140,6 @@ export function LedgerPage({
     minimumAmount ||
     maximumAmount,
   );
-  const unmatchedObservations = useUnmatchedObservations(household.id, {
-    enabled: recordMode === "observations",
-    from: fromMonth || undefined,
-    to: toMonth || undefined,
-    sourceKind: observationSourceFilter || undefined,
-    state: observationStateFilter || undefined,
-  });
   const {
     purchases,
     loadingMore,
@@ -299,7 +297,7 @@ export function LedgerPage({
         tags={tags}
         recordCount={
           recordMode === "observations"
-            ? `${unmatchedObservations.observations.length}/${unmatchedObservations.totalCount}件表示`
+            ? "照合候補"
             : viewMode === "items"
               ? `${filteredItems.length}品目表示 · ${purchases.length}/${totalCount}件購入取得`
               : `${filtered.length}件表示 · ${purchases.length}/${totalCount}件読込`
@@ -353,9 +351,12 @@ export function LedgerPage({
         </section>
       )}
       {recordMode === "observations" && (
-        <ObservationLedger
+        <ObservationLedgerData
           household={household}
-          unmatched={unmatchedObservations}
+          from={fromMonth || undefined}
+          to={toMonth || undefined}
+          sourceKind={observationSourceFilter || undefined}
+          state={observationStateFilter || undefined}
           onUnsavedChanges={(dirty) => reportDirtySource("observations", dirty)}
         />
       )}
@@ -845,5 +846,30 @@ export function LedgerPage({
         </div>
       )}
     </>
+  );
+}
+
+function ObservationLedgerData({
+  household,
+  from,
+  to,
+  sourceKind,
+  state,
+  onUnsavedChanges,
+}: {
+  household: Household;
+  from?: string;
+  to?: string;
+  sourceKind?: SourceKind;
+  state?: UnmatchedObservationState;
+  onUnsavedChanges: (dirty: boolean) => void;
+}) {
+  const unmatched = useUnmatchedObservations(household.id, { from, to, sourceKind, state });
+  return (
+    <ObservationLedger
+      household={household}
+      unmatched={unmatched}
+      onUnsavedChanges={onUnsavedChanges}
+    />
   );
 }

@@ -146,6 +146,20 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &jobID, HouseholdID: &householdID, SourceDocumentID: &sourceDocumentID, Version: &jobVersion, Status: &jobStatus, Result: &jobResultValue}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
+	observationOccurredAt, err := time.Parse(time.RFC3339, occurredAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyObservationReference, observationTransactionKind, observationMerchant := "", "RECEIPT_PURCHASE", testMerchant
+	observationTime := sql.Null[time.Time]{V: observationOccurredAt, Valid: true}
+	observationAmount := int64(1000)
+	if _, err := models.SourceObservations.Insert(&models.SourceObservationSetter{
+		HouseholdID: &householdID, SourceDocumentID: &sourceDocumentID, SourceReference: &emptyObservationReference,
+		SourceHash: &hash, SourceKind: &sourceKind, TransactionKind: &observationTransactionKind,
+		Merchant: &observationMerchant, OccurredAt: &observationTime, AmountYen: &observationAmount,
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
 	queryFrom := model.YearMonth(period)
 	queryTo := model.YearMonth(period)
 	kind, candidateState := model.SourceKindReceipt, model.UnmatchedObservationStateUnmatched
