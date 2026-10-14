@@ -90,13 +90,46 @@ func TestGeminiRouterSelectedOptionsUseRequestedModelRoute(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if options.Model != test.wantModel || options.FreeOnly != test.freeOnly || options.PaidOnly != test.paidOnly || options.Attempt != 3 || options.Reason != geminiReasonInitialExtraction {
+			if options.Model != test.wantModel || !options.ExactModel || options.FreeOnly != test.freeOnly || options.PaidOnly != test.paidOnly || options.Attempt != 3 || options.Reason != geminiReasonInitialExtraction {
 				t.Fatalf("selected extraction options = %+v", options)
 			}
 		})
 	}
 	if _, err := router.selectedOptions("unknown", "receipt", mimeTypeJPEG, JobPurposeInteractive, 1); err == nil {
 		t.Fatal("unknown model selection was accepted")
+	}
+}
+
+func TestGeminiRouterKeepsSelectedEmailModelOnQuota(t *testing.T) {
+	t.Parallel()
+	freeCalls := 0
+	freeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		freeCalls++
+		if !strings.Contains(r.URL.Path, "lite-model:generateContent") {
+			t.Errorf("selected email model changed during quota handling: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"rate limit"}}`)
+	}))
+	defer freeServer.Close()
+	var paidCalls int
+	paidServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paidCalls++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer paidServer.Close()
+	router := GeminiRouter{
+		Free:      Gemini{APIKey: testFreeGeminiAPIKey, Endpoint: freeServer.URL + "/v1beta/", HTTPClient: freeServer.Client()},
+		Paid:      Gemini{APIKey: testPaidGeminiAPIKey, Endpoint: paidServer.URL + "/v1beta/", HTTPClient: paidServer.Client()},
+		LiteModel: "lite-model",
+	}
+	options, err := router.selectedOptions(ModelSelectionFree, "email", mimeTypeEmail, JobPurposeInteractive, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, runs, err := router.Generate(t.Context(), "email", Document{MIMEType: mimeTypeEmail, Data: []byte("message")}, nil, options)
+	if err == nil || freeCalls != 1 || paidCalls != 0 || len(runs) != 1 {
+		t.Fatalf("selected model was retried through a different model or route: free=%d paid=%d runs=%#v error=%v", freeCalls, paidCalls, runs, err)
 	}
 }
 

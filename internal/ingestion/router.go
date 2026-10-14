@@ -69,6 +69,7 @@ type GeminiRouter struct {
 
 type GeminiRouteOptions struct {
 	Model            string
+	ExactModel       bool
 	ThinkingLevel    string
 	ServiceTier      string
 	ProjectPreferred string
@@ -91,9 +92,11 @@ func (r GeminiRouter) selectedOptions(selection, sourceKind, mimeType, purpose s
 		options.Model = r.modelForSource(sourceKind, mimeType)
 	case ModelSelectionFree:
 		options.Model = r.modelForSource(sourceKind, mimeType)
+		options.ExactModel = true
 		options.FreeOnly = true
 	case ModelSelectionPro:
 		options = r.ProOptions(purpose, nil)
+		options.ExactModel = true
 		options.Reason = geminiReasonInitialExtraction
 		options.Attempt = attempt
 	default:
@@ -166,6 +169,9 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	}
 	emailSource := r.modelForSource(sourceKind, document.MIMEType) == r.emailModel() && model == r.emailModel() && r.flashModel() != model
 	candidates := geminiCandidates(clients, model, r.flashModel(), emailSource, options.FreeOnly)
+	if options.ExactModel && len(candidates) > 1 {
+		candidates = candidates[:1]
+	}
 	runs := make([]ExtractionRun, 0, 2)
 	var state geminiRouteState
 	for index, candidate := range candidates {

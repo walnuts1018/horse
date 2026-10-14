@@ -77,11 +77,10 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		verified.Runs = runs
 		return verified, err
 	}
-	allowProReview := request.Model == "" && w.Router.Paid.APIKey != ""
-	if request.Model == ModelSelectionPro {
+	if request.Model != "" {
 		return verified, nil
 	}
-	retryPolicy := extractionRetryPolicyFor(verified, document.MIMEType, allowProReview)
+	retryPolicy := extractionRetryPolicyFor(verified, document.MIMEType, w.Router.Paid.APIKey != "")
 	if retryPolicy.qualityRun != nil {
 		guidance := evidenceGuidance(verified.Issues, verified.OCRLines)
 		qualityOptions := router.QualityOptions(j.SourceKind, *retryPolicy.qualityRun, guidance)
