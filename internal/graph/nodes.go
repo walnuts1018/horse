@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,7 +14,6 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/walnuts1018/horse/internal/graph/model"
-	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 	"github.com/walnuts1018/horse/internal/relayid"
 )
@@ -387,9 +385,10 @@ func (r *queryResolver) findUnmatchedObservation(ctx context.Context, documentID
 		return nil, nil
 	}
 	executor := queryExecutor(r.DB)
-	document, err := models.SourceDocuments.Query(sm.Where(psql.And(
-		models.SourceDocuments.Columns.ID.EQ(psql.Arg(documentUUID)),
-		models.SourceDocuments.Columns.HouseholdID.In(householdIDs...),
+	observation, err := models.SourceObservations.Query(sm.Where(psql.And(
+		models.SourceObservations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)),
+		models.SourceObservations.Columns.SourceReference.EQ(psql.Arg(sourceReference)),
+		models.SourceObservations.Columns.HouseholdID.In(householdIDs...),
 	))).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -397,53 +396,19 @@ func (r *queryResolver) findUnmatchedObservation(ctx context.Context, documentID
 	if err != nil {
 		return nil, err
 	}
-	job, err := models.ExtractionJobs.Query(
-		sm.Where(psql.And(
-			models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
-			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
-			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
-		)),
-		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
-	).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if !job.Result.Valid {
-		return nil, nil
-	}
-	var verification ingestion.Verification
-	if err := json.Unmarshal(job.Result.V.Val, &verification); err != nil {
-		return nil, fmt.Errorf("decode extraction result: %w", err)
-	}
-	observations := ingestion.SourceObservations(document.ID.String(), document.Sha256, document.SourceKind, verification)
-	var observation ingestion.Observation
-	observationFound := false
-	for _, candidate := range observations {
-		if candidate.SourceReference == sourceReference {
-			observation = candidate
-			observationFound = true
-			break
-		}
-	}
-	if !observationFound {
-		return nil, nil
-	}
-	kind := model.SourceKind(strings.ToUpper(document.SourceKind))
+	kind := model.SourceKind(strings.ToUpper(observation.SourceKind))
 	fields := &model.ObservationFields{
-		DocumentID: document.ID.String(), SourceReference: observation.SourceReference, SourceKind: kind,
-		Merchant: observation.Merchant, AmountYen: graphLong(observation.Amount),
+		DocumentID: observation.SourceDocumentID.String(), SourceReference: observation.SourceReference, SourceKind: kind,
+		Merchant: observation.Merchant, AmountYen: graphLong(observation.AmountYen),
 		OrderID: observation.OrderID, TransactionID: observation.TransactionID,
 	}
-	if !observation.OccurredAt.IsZero() {
-		occurredAt := timeString(observation.OccurredAt)
+	if observation.OccurredAt.Valid {
+		occurredAt := timeString(observation.OccurredAt.V)
 		fields.OccurredAt = &occurredAt
 	}
 	confirmation, err := models.DocumentConfirmations.Query(sm.Where(psql.And(
-		models.DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
-		models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
+		models.DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(observation.HouseholdID)),
+		models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(observation.SourceDocumentID)),
 		models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(sourceReference)),
 	))).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -458,7 +423,7 @@ func (r *queryResolver) findUnmatchedObservation(ctx context.Context, documentID
 	} else if confirmation.CorrectionID.Valid {
 		correction, err := models.Corrections.Query(sm.Where(psql.And(
 			models.Corrections.Columns.ID.EQ(psql.Arg(confirmation.CorrectionID.V)),
-			models.Corrections.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+			models.Corrections.Columns.HouseholdID.EQ(psql.Arg(observation.HouseholdID)),
 		))).One(ctx, executor)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
