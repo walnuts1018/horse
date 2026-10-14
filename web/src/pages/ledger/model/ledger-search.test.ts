@@ -101,6 +101,11 @@ describe("ledger search", () => {
     expect(parseLedgerSearch({ observationStateFilter: "ALL" }).observationStateFilter).toBe("");
   });
 
+  it("帳簿で未対応のtabパラメーターを正規化する", () => {
+    expect(parseLedgerSearch({ tab: "accounts" })).toEqual(defaultLedgerSearch);
+    expect(serializeLedgerSearch(parseLedgerSearch({ tab: "accounts" }))).toEqual({});
+  });
+
   it("対象購入のIDをURLに保持する", () => {
     expect(parseLedgerSearch({ purchaseId: "purchase-1" }).purchaseId).toBe("purchase-1");
     expect(serializeLedgerSearch({ ...defaultLedgerSearch, purchaseId: "purchase-1" })).toEqual({

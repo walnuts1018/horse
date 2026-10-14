@@ -83,6 +83,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 			t.Fatal(err)
 		}
 		status := extractionStatusQueued
+		availableAt := time.Now().UTC()
 		attemptValue, err := postgresInt32(attempt, "extraction attempt")
 		if err != nil {
 			t.Fatal(err)
@@ -93,7 +94,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		}
 		if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
 			ID: &jobUUID, HouseholdID: &householdUUID, SourceDocumentID: &documentUUID, Status: &status,
-			Attempt: &attemptValue, FailureCount: &failureCountValue,
+			Attempt: &attemptValue, FailureCount: &failureCountValue, AvailableAt: &availableAt,
 		}).Exec(ctx, executor); err != nil {
 			t.Fatal(err)
 		}
@@ -118,8 +119,9 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		t.Fatal(err)
 	}
 	queued := extractionStatusQueued
+	analysisAvailableAt := time.Now().UTC()
 	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
-		ID: &analysisJobUUID, HouseholdID: &householdUUID, SourceDocumentID: &analysisDocumentUUID, Status: &queued,
+		ID: &analysisJobUUID, HouseholdID: &householdUUID, SourceDocumentID: &analysisDocumentUUID, Status: &queued, AvailableAt: &analysisAvailableAt,
 	}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
@@ -258,6 +260,16 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	}
 	if csv.Status != extractionStatusSucceeded || csv.Attempt != 1 || !bytes.Contains(csvResult, []byte(`"transactionId":"tx-1"`)) {
 		t.Fatalf("CSV import did not complete deterministically while Gemini was disabled: status=%q attempt=%d result=%s", csv.Status, csv.Attempt, csvResult)
+	}
+	observations, err := models.SourceObservations.Query(sm.Where(models.SourceObservations.Columns.SourceDocumentID.EQ(psql.Arg(csv.SourceDocumentID)))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(observations) != 1 {
+		t.Fatalf("successful extraction persisted %d source observations, want 1", len(observations))
+	}
+	if observation := observations[0]; observation.SourceReference != "row:2" || observation.TransactionID != "tx-1" || observation.SourceHash == "" {
+		t.Fatalf("successful extraction persisted an incomplete source observation: reference=%q transaction=%q hash=%q", observation.SourceReference, observation.TransactionID, observation.SourceHash)
 	}
 }
 

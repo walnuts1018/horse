@@ -68,6 +68,7 @@ type preloaders struct {
 	SharedPurchaseDraft            sharedPurchaseDraftPreloader
 	SourceDocumentAttachment       sourceDocumentAttachmentPreloader
 	SourceDocument                 sourceDocumentPreloader
+	SourceObservation              sourceObservationPreloader
 	Tag                            tagPreloader
 	Transfer                       transferPreloader
 }
@@ -125,6 +126,7 @@ func getPreloaders() preloaders {
 		SharedPurchaseDraft:            buildSharedPurchaseDraftPreloader(),
 		SourceDocumentAttachment:       buildSourceDocumentAttachmentPreloader(),
 		SourceDocument:                 buildSourceDocumentPreloader(),
+		SourceObservation:              buildSourceObservationPreloader(),
 		Tag:                            buildTagPreloader(),
 		Transfer:                       buildTransferPreloader(),
 	}
@@ -188,6 +190,7 @@ type thenLoaders[Q orm.Loadable] struct {
 	SharedPurchaseDraft            sharedPurchaseDraftThenLoader[Q]
 	SourceDocumentAttachment       sourceDocumentAttachmentThenLoader[Q]
 	SourceDocument                 sourceDocumentThenLoader[Q]
+	SourceObservation              sourceObservationThenLoader[Q]
 	Tag                            tagThenLoader[Q]
 	Transfer                       transferThenLoader[Q]
 }
@@ -245,6 +248,7 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		SharedPurchaseDraft:            buildSharedPurchaseDraftThenLoader[Q](),
 		SourceDocumentAttachment:       buildSourceDocumentAttachmentThenLoader[Q](),
 		SourceDocument:                 buildSourceDocumentThenLoader[Q](),
+		SourceObservation:              buildSourceObservationThenLoader[Q](),
 		Tag:                            buildTagThenLoader[Q](),
 		Transfer:                       buildTransferThenLoader[Q](),
 	}

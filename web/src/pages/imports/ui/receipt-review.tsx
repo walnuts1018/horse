@@ -28,6 +28,7 @@ import {
   receiptItemHasInvalidInput,
   receiptItemNeedsAttention,
   receiptItemReviewStateLabels,
+  receiptItemsNeedingReview,
   type ReceiptItemReviewState,
 } from "../model/receipt-item-review";
 import { addReceiptPayment, updateReceiptPaymentAmount } from "../model/receipt-payment-split";
@@ -167,6 +168,10 @@ export function ReceiptReview({
     );
   const uncategorizedItemCount = receiptItems.filter((item) =>
     item.categoryId != null ? !item.categoryId : !suggestedCategoryId(item),
+  ).length;
+  const attentionItemCount = receiptItemsNeedingReview(
+    receiptItems,
+    receiptItemReviewStates[selectedDocument.id],
   ).length;
   const compactReview =
     result.balanced === true &&
@@ -370,36 +375,14 @@ export function ReceiptReview({
           <span>品目</span>
           <strong>{receiptItems.length}件</strong>
         </div>
+        <div>
+          <span>確認</span>
+          <strong>{attentionItemCount ? `${attentionItemCount}件` : "完了"}</strong>
+        </div>
         <div className={styles.receiptSummaryPayment}>
           <span>決済元</span>
           <strong>{paymentSummary || "決済情報なし"}</strong>
         </div>
-        <ul className={styles.receiptSummaryItems}>
-          {receiptItems.map((item, index) => {
-            const key = item.key ?? `item-${index}`;
-            const state = receiptItemReviewStates[selectedDocument.id]?.[key] ?? "UNREVIEWED";
-            const attention =
-              state === "UNRESOLVED" ||
-              receiptItemHasInvalidInput(item) ||
-              (state !== "CONFIRMED" && state !== "CORRECTED" && receiptItemNeedsAttention(item));
-            return (
-              <li key={key}>
-                <span>{item.name.trim() || `品目${index + 1}`}</span>
-                <strong>
-                  {yen(
-                    effectiveReceiptItemAmount(
-                      item,
-                      index,
-                      selectedCandidateAmounts,
-                      manualAmountOverrides[selectedDocument.id],
-                    ),
-                  )}
-                </strong>
-                {attention && <small>確認が必要</small>}
-              </li>
-            );
-          })}
-        </ul>
       </section>
       <div className="review-fields">
         <details
@@ -652,7 +635,12 @@ export function ReceiptReview({
                           <button
                             type="button"
                             className="button button-primary"
-                            onClick={() => setReceiptItemReviewState(itemKey, "CONFIRMED")}
+                            onClick={(event) => {
+                              setReceiptItemReviewState(itemKey, "CONFIRMED");
+                              if (activeReviewTarget?.key === `item:${itemKey}`) {
+                                event.currentTarget.blur();
+                              }
+                            }}
                           >
                             {reviewState === "UNRESOLVED" ? "確認済みにする" : "一致を確認"}
                           </button>

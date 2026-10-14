@@ -17,8 +17,13 @@ import { type ProductSuggestion } from "../../../entities/product";
 import { EditPurchaseItemAllocations } from "../../../entities/purchase";
 import { useProductSuggestions } from "../../../features/product-variant-select";
 import { type Household, type Purchase } from "../../../shared/api";
+import {
+  readPurchaseAllocationData,
+  type PurchaseAllocationData,
+} from "../api/read-purchase-allocation-data";
 import { parsePastedPurchaseItems } from "../model/pasted-purchase-items";
 import { purchaseEntrySuggestions, recentPurchasePrice } from "../model/product-suggestions";
+import { resolvePurchaseAllocationRule } from "../model/purchase-allocation-rules";
 import {
   emptyPurchaseEditHistory,
   recordPurchaseEdit,
@@ -36,6 +41,11 @@ import { PurchaseItemEntry } from "./purchase-item-entry";
 import { PurchaseItemsGrid } from "./purchase-items-grid";
 
 import styles from "./edit-purchase-items.module.css";
+
+const emptyPurchaseAllocationData: PurchaseAllocationData = {
+  rules: [],
+  conceptIdsByVariant: new Map(),
+};
 
 const purchaseItemSchema = z.object({
   name: z.string().trim().min(1),
@@ -110,6 +120,10 @@ export function EditPurchaseItems({
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
   const [invalidEntryField, setInvalidEntryField] = useState<"name" | "amount" | null>(null);
   const [categoryManuallySelected, setCategoryManuallySelected] = useState(false);
+  const [allocationDataState, setAllocationDataState] = useState<{
+    householdId: string;
+    data: PurchaseAllocationData;
+  } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const itemGridRef = useRef<HTMLDivElement>(null);
@@ -127,6 +141,44 @@ export function EditPurchaseItems({
             weight: pool.defaultShareWeight || 1,
           })),
     [household.defaultAllocation, household.pools],
+  );
+  useEffect(() => {
+    let active = true;
+    void readPurchaseAllocationData(householdId)
+      .then((data) => {
+        if (active) setAllocationDataState({ householdId, data });
+      })
+      .catch(() => {
+        if (active) {
+          setAllocationDataState({
+            householdId,
+            data: { rules: [], conceptIdsByVariant: new Map() },
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [householdId]);
+  const allocationData =
+    allocationDataState?.householdId === householdId
+      ? allocationDataState.data
+      : emptyPurchaseAllocationData;
+  const allocationDefaultsForItem = useCallback(
+    (item: PurchaseDraftItem) => {
+      const rule = resolvePurchaseAllocationRule(
+        allocationData.rules,
+        allocationData.conceptIdsByVariant,
+        merchant,
+        item.categoryId,
+        item.productVariantId,
+      );
+      return {
+        allocations: rule?.allocations ?? defaultAllocations,
+        label: rule ? "ルール" : "標準",
+      };
+    },
+    [allocationData, defaultAllocations, merchant],
   );
   const clearAllocationUndoGroup = useCallback(() => {
     if (allocationUndoGroup.current) window.clearTimeout(allocationUndoGroup.current.timer);
@@ -734,7 +786,7 @@ export function EditPurchaseItems({
         items={draft.items}
         copiedPrices={copiedPrices}
         household={household}
-        defaultAllocations={defaultAllocations}
+        allocationDefaultsForItem={allocationDefaultsForItem}
         enabledCategories={enabledCategories}
         classNames={{ itemTable: classNames.itemTable, itemList: classNames.itemList }}
         selectedKeys={selectedItemKeys}

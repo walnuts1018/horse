@@ -187,22 +187,30 @@ export function SettlementPreview({
                       </select>
                     </label>
                   </details>
-                  <label className="settlement-account-select">
-                    <span>今回の入金額</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={1_000_000_000_000}
-                      step={1}
-                      value={
-                        fundingAmounts[line.memberId] ?? String(Math.max(line.amountDueYen, 1))
-                      }
-                      disabled={pending || Boolean(pendingIntent) || line.amountDueYen <= 0}
-                      aria-label={`${line.memberName}の今回の入金額`}
-                      onChange={(event) => onFundingAmountChange(line.memberId, event.target.value)}
-                    />
-                  </label>
+                  {line.amountDueYen > 0 ? (
+                    <label className="settlement-account-select">
+                      <span>今回の入金額</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={1_000_000_000_000}
+                        step={1}
+                        value={fundingAmounts[line.memberId] ?? String(line.amountDueYen)}
+                        disabled={pending || Boolean(pendingIntent)}
+                        aria-label={`${line.memberName}の今回の入金額`}
+                        onChange={(event) =>
+                          onFundingAmountChange(line.memberId, event.target.value)
+                        }
+                      />
+                    </label>
+                  ) : (
+                    <p className="settlement-no-funding">
+                      {line.amountDueYen < 0
+                        ? `過払い・控除 ${formatSettlementYen(Math.abs(line.amountDueYen))}`
+                        : "今回の入金はありません"}
+                    </p>
+                  )}
                   <button
                     className="text-button"
                     type="button"

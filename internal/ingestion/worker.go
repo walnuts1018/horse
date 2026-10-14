@@ -27,6 +27,7 @@ type job struct {
 	ID                string
 	HouseholdID       string
 	SourceID          string
+	SourceHash        string
 	ObjectKey         string
 	MIMEType          string
 	AnalysisObjectKey string

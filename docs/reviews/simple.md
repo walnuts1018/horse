@@ -145,20 +145,10 @@ GraphQLなどの公開API
 | 既存の `Bob` | 維持・活用 | 型付きDBアクセスとリレーション一括ロードがすでに利用可能。ORMを変える必要はない |
 | dataloadgen | 条件付きで導入 | gqlgenのフィールド単位ロードでN+1が発生する箇所に有効。既存のBobの一括ロードで足りる部分では不要 |
 | 既存の `pgx` トランザクションヘルパー | 利用を検討 | `Begin`・`Rollback`・`Commit`の定型処理を減らせる。ただし既存のキャンセル時Rollbackの扱いを維持すること |
-| River | 中長期的に導入検討 | RabbitMQ通知とPostgreSQLジョブ管理の二重構造を簡素化できる可能性がある |
+| River・Watermill | 導入しない | 現行のDB正本とRabbitMQ通知を維持する判断と再検討条件を[`extraction-job-queue.md`](../decisions/extraction-job-queue.md)に記録 |
 | 新しいORM・DIフレームワーク | 不要 | 既存のBob・Kessokuで十分。置き換え自体の複雑さの方が大きい |
 
-### Riverへの移行は検討する価値が高い
-
-現在はRabbitMQがジョブ実行の通知を担い、PostgreSQLの`extraction_jobs`がジョブ状態の正本になっています。
-
-[ingestion/queue.go](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/queue.go)と[worker_claim.go](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/worker_claim.go)を見ると、ジョブ通知、Claim、Attempt管理、再実行などを自前で組み合わせています。
-
-RiverはPostgreSQL上のジョブ管理、トランザクション連携、再試行などを提供するため、この種の実装を減らせる可能性があります。
-
-参考：[River GitHub](https://github.com/riverqueue/river) / [dataloadgen](https://pkg.go.dev/github.com/vikstrous/dataloadgen)
-
-ただし、Riverへの移行は単純なライブラリ差し替えではありません。既存の抽出履歴、Attemptによる古いWorker結果の排除、再処理、Gemini Quota、Kubernetesでのスケーリングとの関係を設計し直す必要があります。
+ジョブ管理ライブラリの採否は[`extraction-job-queue.md`](../decisions/extraction-job-queue.md)に記録した判断に従います。
 
 すぐに取り組む小規模リファクタリングというより、自前キュー実装を大幅に減らすための独立した設計課題として扱うべきです。
 
@@ -196,12 +186,9 @@ Horseで重要なのは、ビジネスルールを読もうとしたときにSQL
 | -- | ------------------------------------------ | -------------------- |
 | P0 | Purchaseの購入全体と明細の通常・一括・複数明細更新を共通の変更処理へ統合 | 残る重複した業務ロジックを削減 |
 | P0 | `updateItem()`・`create()`・`Correct()`の責務分離 | 最も複雑なコードの理解と保守が容易になる |
-| P0 | Document登録処理のサービス化、メール取り込みとの共通化 | 重複処理とHTTP依存を解消 |
 | P1 | GraphQLの巨大ローダー、残るNode解決の最適化 | 可読性だけでなくDBアクセスも改善 |
-| P1 | Purchaseの入力形式・長さ検証を共通化 | 入力チェックの重複を減らし、境界条件を一貫させる |
 | P1 | Gemini Routerの実行計画とProvider処理を分離 | フォールバックロジックが追いやすくなる |
 | P2 | Transfer・Settlementの残る業務調整を整理する | 複雑な会計処理の理解と拡張が容易になる |
-| P2 | Riverなどによるジョブ基盤の置き換えを評価 | 自前の非同期処理基盤を縮小できる可能性 |
 
 ### リファクタリング時に絶対に守りたいこと
 

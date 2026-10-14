@@ -10,6 +10,7 @@ import type {
   UnmatchedObservationsQuery,
 } from "../../../../shared/api";
 
+import { unmatchedObservationPageSize } from "../../model/observation-page-size";
 import { unmatchedObservationsFragment, unmatchedObservationsQuery } from "./operations";
 
 type ObservationRecord =
@@ -32,7 +33,7 @@ export function useUnmatchedObservations(householdId: string, options: Options =
       to: options.to,
       sourceKind: options.sourceKind,
       state: options.state,
-      first: options.enabled === false ? 0 : (options.first ?? 50),
+      first: unmatchedObservationPageSize(options.enabled, options.first),
     }),
     [
       householdId,

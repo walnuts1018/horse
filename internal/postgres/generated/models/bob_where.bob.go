@@ -73,6 +73,7 @@ func Where[Q psql.Filterable]() struct {
 	SharedPurchaseDrafts            sharedPurchaseDraftWhere[Q]
 	SourceDocumentAttachments       sourceDocumentAttachmentWhere[Q]
 	SourceDocuments                 sourceDocumentWhere[Q]
+	SourceObservations              sourceObservationWhere[Q]
 	Tags                            tagWhere[Q]
 	Transfers                       transferWhere[Q]
 } {
@@ -133,6 +134,7 @@ func Where[Q psql.Filterable]() struct {
 		SharedPurchaseDrafts            sharedPurchaseDraftWhere[Q]
 		SourceDocumentAttachments       sourceDocumentAttachmentWhere[Q]
 		SourceDocuments                 sourceDocumentWhere[Q]
+		SourceObservations              sourceObservationWhere[Q]
 		Tags                            tagWhere[Q]
 		Transfers                       transferWhere[Q]
 	}{
@@ -192,6 +194,7 @@ func Where[Q psql.Filterable]() struct {
 		SharedPurchaseDrafts:            buildSharedPurchaseDraftWhere[Q](SharedPurchaseDrafts.Columns),
 		SourceDocumentAttachments:       buildSourceDocumentAttachmentWhere[Q](SourceDocumentAttachments.Columns),
 		SourceDocuments:                 buildSourceDocumentWhere[Q](SourceDocuments.Columns),
+		SourceObservations:              buildSourceObservationWhere[Q](SourceObservations.Columns),
 		Tags:                            buildTagWhere[Q](Tags.Columns),
 		Transfers:                       buildTransferWhere[Q](Transfers.Columns),
 	}

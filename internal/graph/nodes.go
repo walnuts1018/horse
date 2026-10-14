@@ -166,7 +166,7 @@ func (r *queryResolver) householdReferences(ctx context.Context) ([]*model.House
 
 func isBatchLoadedNodeKind(kind string) bool {
 	switch kind {
-	case nodeTypePurchase, nodeTypePurchaseItem, nodeTypePurchaseCorrection, nodeTypeFundingSchedule, nodeTypeAccountMovement, nodeTypeAccountIncome, nodeTypeHouseholdInvitation, nodeTypeTag, nodeTypeRecurringExpense, nodeTypeLoanBalance, nodeTypeAllocationRule, nodeTypeProductConcept, nodeTypeProductVariant, nodeTypeProductAlias, nodeTypeBudget, nodeTypeLedgerEntry, nodeTypeMember, nodeTypeAccount, nodeTypeCategory, nodeTypeHousehold, nodeTypePool:
+	case nodeTypePurchase, nodeTypePurchaseItem, nodeTypePurchaseCorrection, nodeTypeFundingSchedule, nodeTypeAccountMovement, nodeTypeAccountIncome, nodeTypeAccountOpeningBalance, nodeTypeHouseholdInvitation, nodeTypeTag, nodeTypeRecurringExpense, nodeTypeLoanBalance, nodeTypeAllocationRule, nodeTypeProductConcept, nodeTypeProductVariant, nodeTypeProductAlias, nodeTypeBudget, nodeTypeLedgerEntry, nodeTypeMember, nodeTypeAccount, nodeTypeCategory, nodeTypeHousehold, nodeTypePool:
 		return true
 	default:
 		return false

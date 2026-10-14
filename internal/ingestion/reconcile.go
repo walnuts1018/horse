@@ -45,7 +45,7 @@ func Reconcile(incoming Observation, existing []Observation) []Match {
 		}
 		transaction := incoming.TransactionID != "" && incoming.TransactionID == old.TransactionID
 		order := incoming.OrderID != "" && incoming.OrderID == old.OrderID
-		amount := incoming.Amount == old.Amount
+		amount := reconciliationAmountsEqual(incoming, old)
 		merchant := normalize(incoming.Merchant) != "" && normalize(incoming.Merchant) == normalize(old.Merchant)
 		merchantConflict := normalize(incoming.Merchant) != "" && normalize(old.Merchant) != "" && !merchant
 		near := !incoming.OccurredAt.IsZero() && !old.OccurredAt.IsZero() && incoming.OccurredAt.Sub(old.OccurredAt).Abs() <= 72*time.Hour
@@ -127,6 +127,16 @@ func reconcilablePair(left, right Observation) bool {
 		return left.TransactionKind == statementKindPayment && right.TransactionKind == statementKindReceipt
 	}
 	return right.TransactionKind == statementKindPayment && left.TransactionKind == statementKindReceipt
+}
+
+func reconciliationAmountsEqual(left, right Observation) bool {
+	if left.SourceKind == statementSourceBank && left.TransactionKind == statementKindPayment && right.TransactionKind == statementKindReceipt {
+		return left.Amount < 0 && right.Amount > 0 && left.Amount == -right.Amount
+	}
+	if right.SourceKind == statementSourceBank && right.TransactionKind == statementKindPayment && left.TransactionKind == statementKindReceipt {
+		return right.Amount < 0 && left.Amount > 0 && right.Amount == -left.Amount
+	}
+	return left.Amount == right.Amount
 }
 
 func normalize(value string) string { return strings.ToLower(strings.Join(strings.Fields(value), "")) }

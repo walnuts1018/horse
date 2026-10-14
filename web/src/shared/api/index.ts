@@ -108,6 +108,10 @@ export type {
   AllocationRulesQuery,
   AllocationRulesQuery$data,
 } from "./__generated__/AllocationRulesQuery.graphql";
+export type {
+  PurchaseAllocationRulesQuery,
+  PurchaseAllocationRulesQuery$data,
+} from "./__generated__/PurchaseAllocationRulesQuery.graphql";
 export type { BudgetsQuery, BudgetsQuery$data } from "./__generated__/BudgetsQuery.graphql";
 export type { TagsQuery, TagsQuery$data } from "./__generated__/TagsQuery.graphql";
 export type {

@@ -8,7 +8,7 @@ import { useHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type HomeDashboardQuery, type Purchase } from "../../../shared/api";
 import { japanMonth } from "../../../shared/lib";
 import { EmptyState } from "../../../shared/ui";
-import { homeDashboardQuery } from "../model/home-summary";
+import { homeDashboardQuery, summarizeSettlementDues } from "../model/home-summary";
 import { pendingImportMessage, readPendingImportStatus } from "../model/pending-imports";
 import { SetupGuidance } from "./setup-guidance";
 
@@ -103,7 +103,9 @@ export function HomePage({
       .map((entry) => Number(entry.amountYen)),
   );
   const settlement = dashboard.settlement;
-  const nextDue = sum(settlement.lines.map((line) => Number(line.amountDueYen)));
+  const settlementDues = summarizeSettlementDues(
+    settlement.lines.map((line) => ({ amountDueYen: Number(line.amountDueYen) })),
+  );
   return (
     <div className="home-page">
       <div className="welcome-row">
@@ -162,12 +164,23 @@ export function HomePage({
           <div className="panel-heading">
             <div>
               <span className="eyebrow">次回の入金</span>
-              <h2>{yen(nextDue)}</h2>
+              <h2>{yen(settlementDues.fundingDueYen)}</h2>
             </div>
             <span className="settle-icon">
               <Wallet size={18} />
             </span>
           </div>
+          {settlementDues.creditYen > 0 && (
+            <p className="settle-credit-summary">過払い・控除 {yen(settlementDues.creditYen)}</p>
+          )}
+          <ul className="settle-members" aria-label="メンバー別の入金額">
+            {settlement.lines.map((line) => (
+              <li key={line.memberId}>
+                <span>{line.memberName}</span>
+                <b>{yen(Number(line.amountDueYen))}</b>
+              </li>
+            ))}
+          </ul>
           <div className="settle-line">
             <span className="status-dot" />
             {settlement.__typename === "ClosedSettlement" ? "締め済み" : "今月分の精算"}

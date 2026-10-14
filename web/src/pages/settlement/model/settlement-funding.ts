@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 
-import { makeIdempotencyKey, type Household, type Settlement } from "../../../shared/api";
+import {
+  isSharedPool,
+  makeIdempotencyKey,
+  type Household,
+  type Settlement,
+} from "../../../shared/api";
 import { errorMessage, japanMonth } from "../../../shared/lib";
 import { recordSettlementFunding } from "../api/settlement-mutations";
 import {
@@ -108,23 +113,25 @@ export function useSettlementFunding({
     try {
       if (amountYen <= 0 && !existingIntent) return;
       const idempotencyKey = makeIdempotencyKey();
-      const intent = existingIntent ?? {
-        idempotencyKey,
-        input: {
-          householdId: household.id,
-          memberId,
+      let intent = existingIntent;
+      if (!intent) {
+        const fundingTarget = resolveFundingTarget(household, destinationAccountId);
+        intent = {
           idempotencyKey,
-          poolId:
-            household.pools.find(
-              (pool) =>
-                pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool",
-            )?.id ?? household.pools[0]?.id,
-          amountYen,
-          occurredAt: new Date().toISOString(),
-          ...(sourceAccountId ? { sourceAccountId } : {}),
-          ...(destinationAccountId ? { destinationAccountId } : {}),
-        },
-      };
+          input: {
+            householdId: household.id,
+            memberId,
+            idempotencyKey,
+            poolId: fundingTarget.poolId,
+            amountYen,
+            occurredAt: new Date().toISOString(),
+            ...(sourceAccountId ? { sourceAccountId } : {}),
+            ...(fundingTarget.destinationAccountId
+              ? { destinationAccountId: fundingTarget.destinationAccountId }
+              : {}),
+          },
+        };
+      }
       if (!intent.input.poolId) throw new Error("入金先のプールがありません");
       saveFundingIntent(household.id, memberId, intent);
       setPendingFunding((current) => ({ ...current, [memberId]: intent }));
@@ -191,6 +198,24 @@ export function useSettlementFunding({
     setFundingAmounts,
     setFundingSourceAccounts,
   };
+}
+
+export function resolveFundingTarget(
+  household: Pick<Household, "pools" | "accounts">,
+  destinationAccountId: string,
+) {
+  if (destinationAccountId) {
+    const account = household.accounts.find((candidate) => candidate.id === destinationAccountId);
+    const pool = household.pools.find((candidate) => candidate.id === account?.poolId);
+    if (!account || account.kind === "CARD" || !pool || !isSharedPool(pool)) {
+      throw new Error("選択した入金先口座は共用プールに属していません");
+    }
+    return { poolId: pool.id, destinationAccountId: account.id };
+  }
+
+  const pool = household.pools.find(isSharedPool);
+  if (!pool) throw new Error("入金先のプールがありません");
+  return { poolId: pool.id, destinationAccountId: undefined };
 }
 
 function getValidFundingAccountDefaults(household: Household) {

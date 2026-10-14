@@ -659,6 +659,7 @@ export function LedgerPage({
                       <PurchaseEditForm
                         purchase={purchase}
                         draft={purchaseDraft}
+                        itemDrafts={itemDrafts}
                         accounts={household.accounts}
                         saveState={purchaseSaveState}
                         onChange={updatePurchaseDraft}

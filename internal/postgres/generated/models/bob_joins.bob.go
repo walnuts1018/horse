@@ -81,6 +81,7 @@ type joins[Q dialect.Joinable] struct {
 	SharedPurchaseDrafts            joinSet[sharedPurchaseDraftJoins[Q]]
 	SourceDocumentAttachments       joinSet[sourceDocumentAttachmentJoins[Q]]
 	SourceDocuments                 joinSet[sourceDocumentJoins[Q]]
+	SourceObservations              joinSet[sourceObservationJoins[Q]]
 	Tags                            joinSet[tagJoins[Q]]
 	Transfers                       joinSet[transferJoins[Q]]
 }
@@ -146,6 +147,7 @@ func getJoins[Q dialect.Joinable]() joins[Q] {
 		SharedPurchaseDrafts:            buildJoinSet[sharedPurchaseDraftJoins[Q]](SharedPurchaseDrafts.Columns, buildSharedPurchaseDraftJoins),
 		SourceDocumentAttachments:       buildJoinSet[sourceDocumentAttachmentJoins[Q]](SourceDocumentAttachments.Columns, buildSourceDocumentAttachmentJoins),
 		SourceDocuments:                 buildJoinSet[sourceDocumentJoins[Q]](SourceDocuments.Columns, buildSourceDocumentJoins),
+		SourceObservations:              buildJoinSet[sourceObservationJoins[Q]](SourceObservations.Columns, buildSourceObservationJoins),
 		Tags:                            buildJoinSet[tagJoins[Q]](Tags.Columns, buildTagJoins),
 		Transfers:                       buildJoinSet[transferJoins[Q]](Transfers.Columns, buildTransferJoins),
 	}

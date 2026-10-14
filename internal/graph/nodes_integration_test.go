@@ -77,6 +77,13 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	openingAccount, err := mutation.createAccount(ownerContext, model.CreateAccountInput{
+		HouseholdID: ownedHousehold.ID, Name: "opening balance", Kind: model.AccountKindBank,
+		OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(1200), At: "2026-10-01T00:00:00Z"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	parentCategory, err := mutation.createCategory(ownerContext, model.CreateCategoryInput{HouseholdID: ownedHousehold.ID, Name: "parent"})
 	if err != nil {
 		t.Fatal(err)
@@ -109,6 +116,13 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 		t.Fatal(err)
 	}
 	foreignAccount, err := mutation.createAccount(outsiderContext, model.CreateAccountInput{HouseholdID: foreignHousehold.ID, Name: "foreign", Kind: model.AccountKindBank})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignOpeningAccount, err := mutation.createAccount(outsiderContext, model.CreateAccountInput{
+		HouseholdID: foreignHousehold.ID, Name: "foreign opening balance", Kind: model.AccountKindBank,
+		OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: model.Long(3400), At: "2026-10-01T00:00:00Z"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,6 +241,25 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	for index, node := range memberNodes {
 		if value, ok := node.(*model.Member); !ok || value.ID != memberID {
 			t.Fatalf("memberNodes[%d] = %#v, want authorized member", index, node)
+		}
+	}
+	openingBalanceID := globalID(nodeTypeAccountOpeningBalance, openingAccount.ID)
+	openingBalanceNodes, err := (&queryResolver{Resolver: &Resolver{DB: db}}).nodes(ownerContext, []string{
+		openingBalanceID, globalID(nodeTypeAccountOpeningBalance, foreignOpeningAccount.ID),
+		globalID(nodeTypeAccountOpeningBalance, newID()), globalID(nodeTypeAccountOpeningBalance, ownedAccount.ID), openingBalanceID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, index := range []int{0, 4} {
+		value, ok := openingBalanceNodes[index].(*model.AccountOpeningBalance)
+		if !ok || value.ID != openingBalanceID || value.Account == nil || value.Account.ID != openingAccount.ID {
+			t.Fatalf("openingBalanceNodes[%d] = %#v, want duplicate authorized opening balance", index, openingBalanceNodes[index])
+		}
+	}
+	for _, index := range []int{1, 2, 3} {
+		if openingBalanceNodes[index] != nil {
+			t.Fatalf("openingBalanceNodes[%d] = %#v, want nil for foreign, missing, or account without opening balance", index, openingBalanceNodes[index])
 		}
 	}
 

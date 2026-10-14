@@ -89,7 +89,7 @@ func (w *Worker) claim(ctx context.Context, jobID string) (job, bool, error) {
 	}
 	j := job{
 		ID: candidate.ID.String(), HouseholdID: candidate.HouseholdID.String(), SourceID: candidate.SourceDocumentID.String(),
-		ObjectKey: document.ObjectKey, MIMEType: document.MimeType, SourceKind: document.SourceKind,
+		SourceHash: document.Sha256, ObjectKey: document.ObjectKey, MIMEType: document.MimeType, SourceKind: document.SourceKind,
 		Request: candidate.Request.Val, Attempt: int(candidate.Attempt), FailureCount: int(candidate.FailureCount), Version: int64(candidate.Version),
 	}
 	if document.AnalysisObjectKey.Valid {

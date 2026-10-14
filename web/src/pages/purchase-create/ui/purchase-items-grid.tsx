@@ -12,7 +12,7 @@ export function PurchaseItemsGrid({
   items,
   copiedPrices,
   household,
-  defaultAllocations,
+  allocationDefaultsForItem,
   enabledCategories,
   classNames,
   selectedKeys,
@@ -26,7 +26,10 @@ export function PurchaseItemsGrid({
   items: PurchaseDraftItem[];
   copiedPrices: ReadonlyMap<string, { amount: string; occurredAt: string }>;
   household: Household;
-  defaultAllocations: PurchaseDraftItem["allocations"];
+  allocationDefaultsForItem: (item: PurchaseDraftItem) => {
+    allocations: PurchaseDraftItem["allocations"];
+    label: string;
+  };
   enabledCategories: Household["categories"];
   classNames: { itemTable: string; itemList: string };
   selectedKeys: ReadonlySet<string>;
@@ -58,6 +61,7 @@ export function PurchaseItemsGrid({
       >
         {items.map((item, index) => {
           const copiedPrice = copiedPrices.get(item.key);
+          const allocationDefaults = allocationDefaultsForItem(item);
           return (
             <div className={`item-entry ${styles.itemEntry}`} key={item.key}>
               {copiedPrice?.amount === item.amount && (
@@ -123,7 +127,8 @@ export function PurchaseItemsGrid({
                 </select>
                 <EditPurchaseItemAllocations
                   allocations={item.allocations}
-                  defaultAllocations={defaultAllocations}
+                  defaultAllocations={allocationDefaults.allocations}
+                  defaultLabel={allocationDefaults.label}
                   pools={household.pools}
                   amount={item.amount}
                   onChange={(allocations) => onPatch(item.key, { allocations })}

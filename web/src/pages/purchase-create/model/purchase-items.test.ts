@@ -2,10 +2,49 @@ import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
+  resolvePurchaseAllocations,
+  type PurchaseAllocationRule,
+} from "./purchase-allocation-rules";
+import {
   convertPurchaseItems,
   restorePurchaseItemsValue,
   suggestedPurchaseItemCategory,
 } from "./purchase-items";
+
+describe("purchase allocation rule selection", () => {
+  const rules: PurchaseAllocationRule[] = [
+    {
+      target: { kind: "merchant", key: "スーパー a" },
+      allocations: [{ poolId: "merchant", weight: 1 }],
+    },
+    {
+      target: { kind: "category", id: "category" },
+      allocations: [{ poolId: "category", weight: 1 }],
+    },
+    { target: { kind: "concept", id: "concept" }, allocations: [{ poolId: "concept", weight: 1 }] },
+    { target: { kind: "variant", id: "variant" }, allocations: [{ poolId: "variant", weight: 1 }] },
+  ];
+
+  it("matches the backend priority from variant through merchant", () => {
+    const concepts = new Map([["variant", "concept"]]);
+    expect(
+      resolvePurchaseAllocations(rules, concepts, "  SUPER  A ", "category", "variant"),
+    ).toEqual(rules[3].allocations);
+    expect(
+      resolvePurchaseAllocations(rules.slice(0, 3), concepts, "スーパー A", "category", "variant"),
+    ).toEqual(rules[2].allocations);
+    expect(
+      resolvePurchaseAllocations(rules.slice(0, 2), concepts, "スーパー A", "category"),
+    ).toEqual(rules[1].allocations);
+    expect(resolvePurchaseAllocations(rules.slice(0, 1), concepts, "スーパー  A", "")).toEqual(
+      rules[0].allocations,
+    );
+  });
+
+  it("returns no match when no target rule applies", () => {
+    expect(resolvePurchaseAllocations([], new Map(), "スーパー A", "category")).toBeNull();
+  });
+});
 
 describe("suggested purchase item category", () => {
   const history = [

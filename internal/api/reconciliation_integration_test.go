@@ -1,19 +1,24 @@
 package api
 
 import (
+	"database/sql"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dialect"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
-	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/stephenafamo/bob/dialect/psql/im"
+	"github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func TestRecentReconciliationDocumentsFiltersAndLimitsInDatabase(t *testing.T) {
+func TestReconciliationObservationsReadAllHouseholdRecords(t *testing.T) {
 	t.Parallel()
 
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
@@ -29,9 +34,9 @@ func TestRecentReconciliationDocumentsFiltersAndLimitsInDatabase(t *testing.T) {
 	if err := db.Ping(ctx); err != nil {
 		t.Fatal(err)
 	}
-	executor := bobpgx.NewPool(db)
+	executor := pgx.NewPool(db)
 	householdID, memberID := newReconciliationUUID(t), newReconciliationUUID(t)
-	name, subject := "reconciliation window test", "reconciliation-window:"+memberID.String()
+	name, subject := "reconciliation observation test", "reconciliation-observations:"+memberID.String()
 	if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberID, OidcSubject: &subject, DisplayName: &subject}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
@@ -44,45 +49,87 @@ func TestRecentReconciliationDocumentsFiltersAndLimitsInDatabase(t *testing.T) {
 	defer func() {
 		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID)))).Exec(t.Context(), executor)
 	}()
+	otherHouseholdID := newReconciliationUUID(t)
+	otherHouseholdName := "other reconciliation household"
+	if _, err := models.Households.Insert(&models.HouseholdSetter{ID: &otherHouseholdID, Name: &otherHouseholdName}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(otherHouseholdID)))).Exec(t.Context(), executor)
+	}()
 
-	baseTime := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
-	insertDocument := func(createdAt time.Time, status string) gofrsuuid.UUID {
+	insertDocument := func(owner gofrsuuid.UUID, digest string) gofrsuuid.UUID {
 		t.Helper()
-		documentID, jobID := newReconciliationUUID(t), newReconciliationUUID(t)
-		digest, objectKey, mimeType, sourceKind := "reconciliation:"+documentID.String(), "reconciliation/"+documentID.String(), documentMIMEJPEG, "receipt"
-		if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &documentID, HouseholdID: &householdID, Sha256: &digest, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberID, CreatedAt: &createdAt}).Exec(ctx, executor); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &jobID, HouseholdID: &householdID, SourceDocumentID: &documentID, Status: &status}).Exec(ctx, executor); err != nil {
+		documentID := newReconciliationUUID(t)
+		objectKey, mimeType, sourceKind := "reconciliation/"+documentID.String(), documentMIMEJPEG, "receipt"
+		if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &documentID, HouseholdID: &owner, Sha256: &digest, ObjectKey: &objectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberID}).Exec(ctx, executor); err != nil {
 			t.Fatal(err)
 		}
 		return documentID
 	}
 
-	eligible := make([]gofrsuuid.UUID, 0, 103)
-	for i := range 103 {
-		eligible = append(eligible, insertDocument(baseTime.Add(time.Duration(i)*time.Minute), "succeeded"))
+	const observationsPerDocument = 50
+	const priorDocumentCount = 101
+	priorDocuments := make([]gofrsuuid.UUID, 0, priorDocumentCount)
+	values := make([]bob.Mod[*dialect.InsertQuery], 0, priorDocumentCount*observationsPerDocument+126)
+	occurredAt := sql.Null[time.Time]{V: time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC), Valid: true}
+	for documentIndex := range priorDocumentCount {
+		digest := "prior-" + strconv.Itoa(documentIndex)
+		documentID := insertDocument(householdID, digest)
+		priorDocuments = append(priorDocuments, documentID)
+		for observationIndex := range observationsPerDocument {
+			values = append(values, im.Values(psql.Arg(
+				householdID, documentID, "row:"+strconv.Itoa(observationIndex+1), digest, "card", "PAYMENT",
+				"", "", "店舗", occurredAt, int64(1000+observationIndex), "",
+			)))
+		}
 	}
-	for i := range 2 {
-		insertDocument(baseTime.Add(time.Duration(200+i)*time.Minute), "failed")
+	currentDigest := "current-reconciliation-document"
+	currentDocumentID := insertDocument(householdID, currentDigest)
+	for observationIndex := range 125 {
+		values = append(values, im.Values(psql.Arg(
+			householdID, currentDocumentID, "row:"+strconv.Itoa(observationIndex+1), currentDigest, "card", "PAYMENT",
+			"", "", "店舗", occurredAt, int64(2000+observationIndex), "",
+		)))
 	}
-	currentDocumentID := insertDocument(baseTime.Add(300*time.Minute), "succeeded")
-
-	documents, truncated, err := recentReconciliationDocuments(ctx, executor, householdID, currentDocumentID)
+	otherDigest := "other-household-reconciliation-document"
+	otherDocumentID := insertDocument(otherHouseholdID, otherDigest)
+	values = append(values, im.Values(psql.Arg(
+		otherHouseholdID, otherDocumentID, "row:1", otherDigest, "card", "PAYMENT",
+		"", "", "店舗", occurredAt, int64(1000), "",
+	)))
+	mods := []bob.Mod[*dialect.InsertQuery]{im.Into(models.SourceObservations.NameAsExpr(),
+		"household_id", "source_document_id", "source_reference", "source_hash", "source_kind",
+		"transaction_kind", "order_id", "transaction_id", "merchant", "occurred_at", "amount_yen", "card_last4",
+	)}
+	mods = append(mods, values...)
+	_, err = psql.Insert(mods...).Exec(ctx, executor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !truncated {
-		t.Fatal("expected truncation when more than 100 successful source documents exist")
+
+	all, err := reconciliationObservations(ctx, executor, householdID, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(documents) != 100 {
-		t.Fatalf("got %d candidate documents, want 100", len(documents))
+	wantAll := priorDocumentCount*observationsPerDocument + 125
+	if len(all) != wantAll {
+		t.Fatalf("got %d household observations, want %d", len(all), wantAll)
 	}
-	for i, document := range documents {
-		want := eligible[len(eligible)-1-i]
-		if document.ID != want {
-			t.Fatalf("candidate %d is %s, want newest eligible document %s", i, document.ID, want)
+	current, err := reconciliationObservations(ctx, executor, householdID, &currentDocumentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(current) != 125 {
+		t.Fatalf("got %d observations for the current document, want 125", len(current))
+	}
+	for _, observation := range all {
+		if observation.Hash == otherDigest || observation.DocumentID == otherDocumentID.String() {
+			t.Fatal("reconciliation observations included another household")
 		}
+	}
+	if len(priorDocuments) != priorDocumentCount {
+		t.Fatalf("test setup created %d prior documents, want %d", len(priorDocuments), priorDocumentCount)
 	}
 }
 

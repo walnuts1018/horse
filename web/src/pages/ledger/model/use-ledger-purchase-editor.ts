@@ -28,6 +28,7 @@ import {
   type LedgerItemFieldPatch,
 } from "./ledger-item-autosave";
 import { createPurchaseDraft, type PurchaseDraft } from "./purchase-draft";
+import { purchaseDraftTotalYen } from "./purchase-draft-total";
 import { isLedgerPurchaseEditorDirty, ledgerPurchaseEditorSnapshot } from "./purchase-editor-dirty";
 
 type PurchaseConflict = {
@@ -559,10 +560,7 @@ export function useLedgerPurchaseEditor({
         amountYen: Number(payment.amountYen),
       }),
     );
-    const totalYen = purchase.items.reduce(
-      (total, item) => total + Number(itemDrafts[item.id]?.amountYen ?? item.amountYen),
-      0,
-    );
+    const totalYen = purchaseDraftTotalYen(purchase, itemDrafts);
     const currentAllocations = purchase.paymentAllocations.map((payment) => ({
       paymentAccountId: payment.paymentAccountId,
       amountYen: payment.amountYen,

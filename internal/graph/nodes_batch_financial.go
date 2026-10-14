@@ -85,6 +85,40 @@ func (b *nodeBatch) loadFinancialNodes(ctx context.Context) error {
 	households, idsByKind := b.households, b.idsByKind
 	householdArgs, args, set := b.householdArgs, b.ids, b.set
 	r := b.resolver
+	if values := idsByKind[nodeTypeAccountOpeningBalance]; len(values) > 0 {
+		accountRows, err := models.Accounts.Query(sm.Where(psql.And(
+			models.Accounts.Columns.HouseholdID.In(householdArgs...), models.Accounts.Columns.ID.In(args(nodeTypeAccountOpeningBalance)...),
+		))).All(ctx, executor)
+		if err != nil {
+			return err
+		}
+		accountByID := make(map[uuid.UUID]*models.Account, len(accountRows))
+		for _, account := range accountRows {
+			accountByID[account.ID] = account
+		}
+		if len(accountByID) > 0 {
+			accountIDs := make([]bob.Expression, 0, len(accountByID))
+			for id := range accountByID {
+				accountIDs = append(accountIDs, psql.Arg(id))
+			}
+			journals, err := models.Journals.Query(sm.Where(psql.And(
+				models.Journals.Columns.HouseholdID.In(householdArgs...),
+				models.Journals.Columns.SourceKind.EQ(psql.Arg(sourceKindAccountOpeningBalance)),
+				models.Journals.Columns.SourceID.In(accountIDs...),
+			))).All(ctx, executor)
+			if err != nil {
+				return err
+			}
+			for _, journal := range journals {
+				account := accountByID[journal.SourceID]
+				globalID, err := encodeNodeID(nodeTypeAccountOpeningBalance, journal.SourceID.String())
+				if err != nil {
+					return err
+				}
+				set(nodeTypeAccountOpeningBalance, journal.SourceID.String(), &model.AccountOpeningBalance{ID: globalID, Account: graphAccount(account)})
+			}
+		}
+	}
 	if values := idsByKind[nodeTypeFundingSchedule]; len(values) > 0 {
 		rows, err := models.FundingSchedules.Query(sm.Where(psql.And(
 			models.FundingSchedules.Columns.HouseholdID.In(householdArgs...), models.FundingSchedules.Columns.ID.In(args(nodeTypeFundingSchedule)...),

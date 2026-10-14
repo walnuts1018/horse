@@ -3,6 +3,8 @@ import { Plus, X } from "lucide-react";
 import type { Household, Purchase } from "../../../shared/api";
 import type { PurchaseDraft } from "../model/purchase-draft";
 
+import { purchaseDraftTotalYen } from "../model/purchase-draft-total";
+
 const yen = (amount = 0) =>
   new Intl.NumberFormat("ja-JP", {
     style: "currency",
@@ -13,6 +15,7 @@ const yen = (amount = 0) =>
 export function PurchaseEditForm({
   purchase,
   draft,
+  itemDrafts,
   accounts,
   onChange,
   onCancel,
@@ -21,6 +24,7 @@ export function PurchaseEditForm({
 }: {
   purchase: Purchase;
   draft: PurchaseDraft;
+  itemDrafts: Record<string, { amountYen: string } | undefined>;
   accounts: Household["accounts"];
   onChange: (draft: PurchaseDraft) => void;
   onCancel: () => void;
@@ -133,7 +137,7 @@ export function PurchaseEditForm({
         <small>
           差額{" "}
           {yen(
-            purchase.totalYen -
+            purchaseDraftTotalYen(purchase, itemDrafts) -
               draft.paymentAllocations.reduce(
                 (total, currentPayment) => total + Number(currentPayment.amountYen || 0),
                 0,

@@ -85,7 +85,7 @@ func TestReconcileBankTransactionsOnlyAgainstReceipts(t *testing.T) {
 	for _, kind := range []string{statementKindPayment, statementKindCardBillPayment, statementKindAccountTransfer, statementKindRefund, statementKindUnclassified} {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
-			bank := Observation{DocumentID: "statement", SourceKind: statementSourceBank, TransactionKind: kind, Merchant: "スーパー", Amount: 1000, OccurredAt: now}
+			bank := Observation{DocumentID: "statement", SourceKind: statementSourceBank, TransactionKind: kind, Merchant: "スーパー", Amount: -1000, OccurredAt: now}
 			got := Reconcile(bank, []Observation{receipt})
 			if kind == statementKindPayment {
 				if len(got) != 1 || got[0].State != statementMatchPossible {
@@ -97,5 +97,50 @@ func TestReconcileBankTransactionsOnlyAgainstReceipts(t *testing.T) {
 				t.Fatalf("non-purchase bank transaction became a receipt candidate: %#v", got)
 			}
 		})
+	}
+}
+
+func TestReconcileBankOutflowAgainstPositiveReceiptTotal(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+	bank := Observation{DocumentID: "statement", SourceKind: statementSourceBank, TransactionKind: statementKindPayment, Merchant: "スーパー", Amount: -1000, OccurredAt: now}
+	receipt := Observation{DocumentID: "receipt", SourceKind: "receipt", TransactionKind: statementKindReceipt, Merchant: "スーパー", Amount: 1000, OccurredAt: now}
+
+	got := Reconcile(bank, []Observation{receipt})
+	if len(got) != 1 || got[0].State != statementMatchPossible {
+		t.Fatalf("negative bank outflow did not match the positive receipt total: %#v", got)
+	}
+	if bank.Amount != -1000 || receipt.Amount != 1000 {
+		t.Fatalf("reconciliation changed observation amounts: bank=%d receipt=%d", bank.Amount, receipt.Amount)
+	}
+
+	for _, tc := range []struct {
+		name       string
+		bankAmount int64
+		receiptAmt int64
+	}{
+		{name: "金額相違", bankAmount: -999, receiptAmt: 1000},
+		{name: "出金符号ではない", bankAmount: 1000, receiptAmt: 1000},
+		{name: "レシート合計が正ではない", bankAmount: -1000, receiptAmt: -1000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			invalidBank := bank
+			invalidBank.Amount = tc.bankAmount
+			invalidReceipt := receipt
+			invalidReceipt.Amount = tc.receiptAmt
+			if matches := Reconcile(invalidBank, []Observation{invalidReceipt}); len(matches) != 0 {
+				t.Fatalf("invalid signed amount pair became a candidate: %#v", matches)
+			}
+		})
+	}
+}
+
+func TestSourceObservationsPreserveBankAndReceiptSigns(t *testing.T) {
+	t.Parallel()
+	bankObservations := SourceObservations("statement", "bank-hash", statementSourceBank, Verification{Statements: []StatementEntry{{Kind: statementKindPayment, Amount: -1000}}})
+	receiptObservations := SourceObservations("receipt", "receipt-hash", "receipt", Verification{Receipt: Receipt{Total: 1000, Items: []Item{{GrossAmount: 1000}}}})
+	if len(bankObservations) != 1 || bankObservations[0].Amount != -1000 || len(receiptObservations) != 1 || receiptObservations[0].Amount != 1000 {
+		t.Fatalf("observation signs were normalized during extraction: bank=%#v receipt=%#v", bankObservations, receiptObservations)
 	}
 }

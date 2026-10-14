@@ -13,12 +13,14 @@ const formatYen = (value: bigint) => `¥${new Intl.NumberFormat("ja-JP").format(
 export function EditPurchaseItemAllocations({
   allocations,
   defaultAllocations,
+  defaultLabel = "標準",
   pools,
   amount,
   onChange,
 }: {
   allocations: PurchaseDraftItem["allocations"];
   defaultAllocations: PurchaseDraftItem["allocations"];
+  defaultLabel?: string;
   pools: Household["pools"];
   amount?: string;
   onChange: (allocations: PurchaseDraftItem["allocations"]) => void;
@@ -55,7 +57,7 @@ export function EditPurchaseItemAllocations({
   }
   const allocationName = () => {
     if (allocations.length === 0 || areAllocationsEquivalent(allocations, defaultAllocations))
-      return "標準";
+      return defaultLabel;
     if (allocations.length === 1)
       return `${pools.find((pool) => pool.id === allocations[0].poolId)?.name ?? "口座"} 100%`;
     const labelWeight = allocations.reduce((sum, allocation) => sum + allocation.weight, 0);

@@ -157,6 +157,9 @@ func (w *Worker) recordExtractionSuccess(finishCtx context.Context, j job, resul
 	if err != nil {
 		return false, fmt.Errorf("record extraction event: %w", err)
 	}
+	if err := persistSourceObservations(finishCtx, bobpgx.NewTx(finishTx, nil), householdUUID, sourceUUID, j.SourceHash, j.SourceKind, result); err != nil {
+		return false, fmt.Errorf("record source observations: %w", err)
+	}
 	eventType := "receipt.extraction.updated"
 	jVersion := j.Version
 	changedFields := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`["status","result"]`)}

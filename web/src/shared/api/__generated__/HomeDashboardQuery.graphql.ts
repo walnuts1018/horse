@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b463120e49b0c754f7e569c73050e865>>
+ * @generated SignedSource<<155694f97c4c1766eac5058ef5d54a8d>>
  * @lightSyntaxTransform
  */
 
@@ -30,6 +30,8 @@ export type HomeDashboardQuery$data = {
     readonly __typename: string;
     readonly lines: ReadonlyArray<{
       readonly amountDueYen: any;
+      readonly memberId: string;
+      readonly memberName: string;
     }>;
   };
 };
@@ -168,6 +170,20 @@ v10 = {
       "alias": null,
       "args": null,
       "kind": "ScalarField",
+      "name": "memberId",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
+      "name": "memberName",
+      "storageKey": null
+    },
+    {
+      "alias": null,
+      "args": null,
+      "kind": "ScalarField",
       "name": "amountDueYen",
       "storageKey": null
     }
@@ -241,16 +257,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "17e8ef334a113e4159cc376d85f07483",
+    "cacheID": "141bbc51e242796d17ed6eaf22fe9c92",
     "id": null,
     "metadata": {},
     "name": "HomeDashboardQuery",
     "operationKind": "query",
-    "text": "query HomeDashboardQuery(\n  $householdId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n  $period: YearMonth!\n) {\n  homeSummary(householdId: $householdId) {\n    dailySpending {\n      date\n      amountYen\n    }\n    monthlyItemCount\n  }\n  monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {\n    period\n    amountYen\n  }\n  settlement(householdId: $householdId, period: $period) {\n    __typename\n    lines {\n      amountDueYen\n    }\n    id\n  }\n}\n"
+    "text": "query HomeDashboardQuery(\n  $householdId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n  $period: YearMonth!\n) {\n  homeSummary(householdId: $householdId) {\n    dailySpending {\n      date\n      amountYen\n    }\n    monthlyItemCount\n  }\n  monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {\n    period\n    amountYen\n  }\n  settlement(householdId: $householdId, period: $period) {\n    __typename\n    lines {\n      memberId\n      memberName\n      amountDueYen\n    }\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "1d1af66d261ba70ec74a7536180132da";
+(node as any).hash = "832ef98f8c4b6689744dae36abf5ffa9";
 
 export default node;

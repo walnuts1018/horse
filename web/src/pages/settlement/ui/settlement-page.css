@@ -164,6 +164,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.settlement-no-funding {
+  margin: 8px 0 0;
+  color: #5f6d65;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .settlement-amount .text-button {
   padding-right: 0;
   font-size: 12px;

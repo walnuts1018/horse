@@ -130,9 +130,41 @@
   place-items: center;
 }
 
+.home-page .settle-members {
+  width: 100%;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.home-page .settle-credit-summary {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-page .settle-members li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.home-page .settle-members b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 .home-page .settle-line {
-  margin-top: auto;
-  padding-top: 22px;
+  margin-top: 16px;
+  padding-top: 0;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -283,8 +315,7 @@
   }
 
   .home-page .settle-line {
-    margin-top: auto;
-    padding-top: 16px;
+    margin-top: 14px;
   }
 
   .home-page .settle-card .button {

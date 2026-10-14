@@ -68,6 +68,7 @@ type sourceDocumentR struct {
 	AttachmentsAsParent     SourceDocumentAttachmentSlice // source_document_attachments.source_document_attachments_parent_household_fkey
 	CreatedByMember         *Member                       // source_documents.source_documents_created_by_fkey
 	Household               *Household                    // source_documents.source_documents_household_id_fkey
+	SourceObservations      SourceObservationSlice        // source_observations.source_observations_household_id_source_document_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -84,6 +85,7 @@ type sourceDocumentRLoaded struct {
 	AttachmentsAsParent     bool // source_document_attachments.source_document_attachments_parent_household_fkey
 	CreatedByMember         bool // source_documents.source_documents_created_by_fkey
 	Household               bool // source_documents.source_documents_household_id_fkey
+	SourceObservations      bool // source_observations.source_observations_household_id_source_document_id_fkey
 }
 
 func buildSourceDocumentColumns(tableName string) sourceDocumentColumns {
@@ -1116,6 +1118,35 @@ func (os SourceDocumentSlice) Household(mods ...bob.Mod[*dialect.SelectQuery]) H
 	)...)
 }
 
+// SourceObservations starts a query for related objects on source_observations
+func (o *SourceDocument) SourceObservations(mods ...bob.Mod[*dialect.SelectQuery]) SourceObservationsQuery {
+	return SourceObservations.Query(append(mods,
+		sm.Where(SourceObservations.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(SourceObservations.Columns.SourceDocumentID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os SourceDocumentSlice) SourceObservations(mods ...bob.Mod[*dialect.SelectQuery]) SourceObservationsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return SourceObservations.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "SourceDocumentID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "SourceDocumentID"),
+		)).As("bob_rel_keys").On(SourceObservations.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), SourceObservations.Columns.SourceDocumentID.EQ(psql.Quote("bob_rel_keys", "SourceDocumentID"))),
+	)...)
+}
+
 func insertSourceDocumentCorrectionEvidenceLinks0(ctx context.Context, exec bob.Executor, correctionEvidenceLinks1 []*CorrectionEvidenceLinkSetter, sourceDocument0 *SourceDocument) (CorrectionEvidenceLinkSlice, error) {
 	for i := range correctionEvidenceLinks1 {
 		correctionEvidenceLinks1[i].HouseholdID = func() *uuid.UUID { return &sourceDocument0.HouseholdID }()
@@ -1572,6 +1603,78 @@ func (sourceDocument0 *SourceDocument) AttachHousehold(ctx context.Context, exec
 	return nil
 }
 
+func insertSourceDocumentSourceObservations0(ctx context.Context, exec bob.Executor, sourceObservations1 []*SourceObservationSetter, sourceDocument0 *SourceDocument) (SourceObservationSlice, error) {
+	for i := range sourceObservations1 {
+		sourceObservations1[i].HouseholdID = func() *uuid.UUID { return &sourceDocument0.HouseholdID }()
+		sourceObservations1[i].SourceDocumentID = func() *uuid.UUID { return &sourceDocument0.ID }()
+	}
+
+	ret, err := SourceObservations.Insert(bob.ToMods(sourceObservations1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertSourceDocumentSourceObservations0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachSourceDocumentSourceObservations0(ctx context.Context, exec bob.Executor, count int, sourceObservations1 SourceObservationSlice, sourceDocument0 *SourceDocument) (SourceObservationSlice, error) {
+	setter := &SourceObservationSetter{
+		HouseholdID:      func() *uuid.UUID { return &sourceDocument0.HouseholdID }(),
+		SourceDocumentID: func() *uuid.UUID { return &sourceDocument0.ID }(),
+	}
+
+	err := sourceObservations1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachSourceDocumentSourceObservations0: %w", err)
+	}
+
+	return sourceObservations1, nil
+}
+
+func (sourceDocument0 *SourceDocument) InsertSourceObservations(ctx context.Context, exec bob.Executor, related ...*SourceObservationSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	sourceObservations1, err := insertSourceDocumentSourceObservations0(ctx, exec, related, sourceDocument0)
+	if err != nil {
+		return err
+	}
+
+	sourceDocument0.R.SourceObservations = append(sourceDocument0.R.SourceObservations, sourceObservations1...)
+
+	for _, rel := range sourceObservations1 {
+		rel.R.SourceDocument = sourceDocument0
+		rel.R.Loaded.SourceDocument = true
+	}
+	return nil
+}
+
+func (sourceDocument0 *SourceDocument) AttachSourceObservations(ctx context.Context, exec bob.Executor, related ...*SourceObservation) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	sourceObservations1 := SourceObservationSlice(related)
+
+	_, err = attachSourceDocumentSourceObservations0(ctx, exec, len(related), sourceObservations1, sourceDocument0)
+	if err != nil {
+		return err
+	}
+
+	sourceDocument0.R.SourceObservations = append(sourceDocument0.R.SourceObservations, sourceObservations1...)
+
+	for _, rel := range related {
+		rel.R.SourceDocument = sourceDocument0
+		rel.R.Loaded.SourceDocument = true
+	}
+
+	return nil
+}
+
 type sourceDocumentWhere[Q psql.Filterable] struct {
 	cols              sourceDocumentColumns
 	ID                psql.WhereMod[Q, uuid.UUID]
@@ -1731,6 +1834,21 @@ func (w sourceDocumentWhereR[Q]) HasHousehold(filters ...bob.Mod[*dialect.Select
 		sm.Columns(psql.Raw("1")),
 		sm.From(Households.NameExpr()),
 		sm.Where(Households.Columns.ID.EQ(w.cols.HouseholdID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasSourceObservations filters parents that have a matching SourceObservations using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to SourceObservations).
+func (w sourceDocumentWhereR[Q]) HasSourceObservations(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(SourceObservations.NameExpr()),
+		sm.Where(SourceObservations.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(SourceObservations.Columns.SourceDocumentID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -2003,6 +2121,22 @@ func (o *SourceDocument) Preload(name string, retrieved any) error {
 			rel.R.SourceDocuments = SourceDocumentSlice{o}
 		}
 		return nil
+	case "SourceObservations":
+		rels, ok := retrieved.(SourceObservationSlice)
+		if !ok {
+			return fmt.Errorf("sourceDocument cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.SourceObservations = rels
+		o.R.Loaded.SourceObservations = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.SourceDocument = o
+				rel.R.Loaded.SourceDocument = true
+			}
+		}
+		return nil
 	default:
 		return fmt.Errorf("sourceDocument has no relationship %q", name)
 	}
@@ -2053,6 +2187,7 @@ type sourceDocumentThenLoader[Q orm.Loadable] struct {
 	AttachmentsAsParent     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByMember         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Household               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SourceObservations      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildSourceDocumentThenLoader[Q orm.Loadable]() sourceDocumentThenLoader[Q] {
@@ -2079,6 +2214,9 @@ func buildSourceDocumentThenLoader[Q orm.Loadable]() sourceDocumentThenLoader[Q]
 	}
 	type HouseholdLoadInterface interface {
 		LoadHousehold(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type SourceObservationsLoadInterface interface {
+		LoadSourceObservations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return sourceDocumentThenLoader[Q]{
@@ -2128,6 +2266,12 @@ func buildSourceDocumentThenLoader[Q orm.Loadable]() sourceDocumentThenLoader[Q]
 			"Household",
 			func(ctx context.Context, exec bob.Executor, retrieved HouseholdLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadHousehold(ctx, exec, mods...)
+			},
+		),
+		SourceObservations: thenLoadBuilder[Q](
+			"SourceObservations",
+			func(ctx context.Context, exec bob.Executor, retrieved SourceObservationsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadSourceObservations(ctx, exec, mods...)
 			},
 		),
 	}
@@ -2712,6 +2856,75 @@ func (os SourceDocumentSlice) LoadHousehold(ctx context.Context, exec bob.Execut
 	return nil
 }
 
+// LoadSourceObservations loads the sourceDocument's SourceObservations into the .R struct
+func (o *SourceDocument) LoadSourceObservations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.SourceObservations = nil
+	o.R.Loaded.SourceObservations = false
+
+	related, err := o.SourceObservations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.SourceDocument = o
+		rel.R.Loaded.SourceDocument = true
+	}
+
+	o.R.SourceObservations = related
+	o.R.Loaded.SourceObservations = true
+	return nil
+}
+
+// LoadSourceObservations loads the sourceDocument's SourceObservations into the .R struct
+func (os SourceDocumentSlice) LoadSourceObservations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	sourceObservations, err := os.SourceObservations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.SourceObservations = nil
+		o.R.Loaded.SourceObservations = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range sourceObservations {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.ID == rel.SourceDocumentID) {
+				continue
+			}
+
+			rel.R.SourceDocument = o
+			rel.R.Loaded.SourceDocument = true
+
+			o.R.SourceObservations = append(o.R.SourceObservations, rel)
+		}
+	}
+
+	return nil
+}
+
 // sourceDocumentC is where relationship counts are stored.
 type sourceDocumentC struct {
 	CorrectionEvidenceLinks *int64
@@ -2720,6 +2933,7 @@ type sourceDocumentC struct {
 	ExtractionJobs          *int64
 	AttachmentsAsChild      *int64
 	AttachmentsAsParent     *int64
+	SourceObservations      *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -2741,6 +2955,8 @@ func (o *SourceDocument) PreloadCount(name string, count int64) error {
 		o.C.AttachmentsAsChild = &count
 	case "AttachmentsAsParent":
 		o.C.AttachmentsAsParent = &count
+	case "SourceObservations":
+		o.C.SourceObservations = &count
 	}
 	return nil
 }
@@ -2752,6 +2968,7 @@ type sourceDocumentCountPreloader struct {
 	ExtractionJobs          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	AttachmentsAsChild      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	AttachmentsAsParent     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	SourceObservations      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildSourceDocumentCountPreloader() sourceDocumentCountPreloader {
@@ -2861,6 +3078,24 @@ func buildSourceDocumentCountPreloader() sourceDocumentCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		SourceObservations: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*SourceDocument]("SourceObservations", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = SourceDocuments.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(SourceObservations.NameAsExpr()),
+					sm.Where(psql.Quote(SourceObservations.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(SourceObservations.Alias(), "source_document_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 	}
 }
 
@@ -2871,6 +3106,7 @@ type sourceDocumentCountThenLoader[Q orm.Loadable] struct {
 	ExtractionJobs          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	AttachmentsAsChild      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	AttachmentsAsParent     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SourceObservations      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildSourceDocumentCountThenLoader[Q orm.Loadable]() sourceDocumentCountThenLoader[Q] {
@@ -2891,6 +3127,9 @@ func buildSourceDocumentCountThenLoader[Q orm.Loadable]() sourceDocumentCountThe
 	}
 	type AttachmentsAsParentCountInterface interface {
 		LoadCountAttachmentsAsParent(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type SourceObservationsCountInterface interface {
+		LoadCountSourceObservations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return sourceDocumentCountThenLoader[Q]{
@@ -2928,6 +3167,12 @@ func buildSourceDocumentCountThenLoader[Q orm.Loadable]() sourceDocumentCountThe
 			"AttachmentsAsParent",
 			func(ctx context.Context, exec bob.Executor, retrieved AttachmentsAsParentCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountAttachmentsAsParent(ctx, exec, mods...)
+			},
+		),
+		SourceObservations: countThenLoadBuilder[Q](
+			"SourceObservations",
+			func(ctx context.Context, exec bob.Executor, retrieved SourceObservationsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountSourceObservations(ctx, exec, mods...)
 			},
 		),
 	}
@@ -3500,6 +3745,116 @@ func (os SourceDocumentSlice) LoadCountAttachmentsAsParent(ctx context.Context, 
 	return nil
 }
 
+// LoadCountSourceObservations loads the count of SourceObservations into the C struct
+func (o *SourceDocument) LoadCountSourceObservations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.SourceObservations(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.SourceObservations = &count
+	return nil
+}
+
+// LoadCountSourceObservations loads the count of SourceObservations for a slice in a single batch query
+func (os SourceDocumentSlice) LoadCountSourceObservations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			SourceObservations.Columns.HouseholdID.As("household_id"),
+			SourceObservations.Columns.SourceDocumentID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(SourceObservations.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "SourceDocumentID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "SourceDocumentID"),
+		)).As("bob_rel_keys").On(
+			SourceObservations.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			SourceObservations.Columns.SourceDocumentID.EQ(psql.Quote("bob_rel_keys", "SourceDocumentID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(SourceObservations.Columns.HouseholdID),
+		sm.GroupBy(SourceObservations.Columns.SourceDocumentID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.SourceObservations = &count
+	}
+
+	return nil
+}
+
 type sourceDocumentJoins[Q dialect.Joinable] struct {
 	typ                     string
 	CorrectionEvidenceLinks modAs[Q, correctionEvidenceLinkColumns]
@@ -3510,6 +3865,7 @@ type sourceDocumentJoins[Q dialect.Joinable] struct {
 	AttachmentsAsParent     modAs[Q, sourceDocumentAttachmentColumns]
 	CreatedByMember         modAs[Q, memberColumns]
 	Household               modAs[Q, householdColumns]
+	SourceObservations      modAs[Q, sourceObservationColumns]
 }
 
 func (j sourceDocumentJoins[Q]) aliasedAs(alias string) sourceDocumentJoins[Q] {
@@ -3625,6 +3981,20 @@ func buildSourceDocumentJoins[Q dialect.Joinable](cols sourceDocumentColumns, ty
 				{
 					mods = append(mods, dialect.Join[Q](typ, Households.NameExpr().As(to.Alias())).On(
 						to.ID.EQ(cols.HouseholdID),
+					))
+				}
+
+				return mods
+			},
+		},
+		SourceObservations: modAs[Q, sourceObservationColumns]{
+			c: SourceObservations.Columns,
+			f: func(to sourceObservationColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, SourceObservations.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.SourceDocumentID.EQ(cols.ID),
 					))
 				}
 

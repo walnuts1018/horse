@@ -88,7 +88,7 @@ export function EvidenceSourcePreview({
   }, [document.id, page, receiptItems, selectPage, selectedReceiptIndex, selection]);
 
   return (
-    <details className={styles.evidenceSourceColumn} ref={detailsRef} open>
+    <details className={styles.evidenceSourceColumn} ref={detailsRef}>
       <summary>
         <span>原本</span>
         {preview?.documentId === document.id && preview.page === page && (
@@ -193,108 +193,107 @@ export function EvidenceSourcePreview({
       </div>
       {(document.result?.receipt?.items?.length ||
         document.result?.ocrLines?.some((line) => line.region)) && (
-        <section className={`panel ${styles.evidenceCropPanel}`}>
-          <div className="panel-heading">
-            <div>
-              <span className="eyebrow">原本座標</span>
-              <h3>範囲の再抽出</h3>
+        <details className={`panel ${styles.evidenceCropPanel}`}>
+          <summary className={styles.evidenceCropSummary}>
+            <span>範囲の再抽出</span>
+            <small>{cropRegion ? `ページ ${cropRegion.page + 1}` : "座標を調整"}</small>
+          </summary>
+          <div className={styles.evidenceCropControls}>
+            <div className={styles.evidenceSourceItems}>
+              {receiptItems.map((item, index) => (
+                <button
+                  type="button"
+                  key={item.key}
+                  className={`text-button ${selectedReceiptIndex === index ? styles.evidenceItemSelected : ""}`}
+                  aria-pressed={selectedReceiptIndex === index}
+                  disabled={!item.region}
+                  onClick={() => {
+                    setReceiptEvidenceIndex(String(index));
+                    selectReceiptEvidenceItem(document.id, {
+                      itemKey: item.key ?? `item-${index}`,
+                      index,
+                      focusEditor: true,
+                    });
+                    detailsRef.current?.setAttribute("open", "");
+                    if (item.region && item.region.page !== page) selectPage(item.region.page);
+                    if (item.region) onSelectCropRegion(item.region);
+                  }}
+                >
+                  {item.name} · {yen(item.grossAmount)}
+                </button>
+              ))}
             </div>
-            <span>{cropRegion ? `ページ ${cropRegion.page + 1}` : "範囲未選択"}</span>
-          </div>
-          <div className={styles.evidenceSourceItems}>
-            {receiptItems.map((item, index) => (
-              <button
-                type="button"
-                key={item.key}
-                className={`text-button ${selectedReceiptIndex === index ? styles.evidenceItemSelected : ""}`}
-                aria-pressed={selectedReceiptIndex === index}
-                disabled={!item.region}
-                onClick={() => {
-                  setReceiptEvidenceIndex(String(index));
-                  selectReceiptEvidenceItem(document.id, {
-                    itemKey: item.key ?? `item-${index}`,
-                    index,
-                    focusEditor: true,
-                  });
-                  detailsRef.current?.setAttribute("open", "");
-                  if (item.region && item.region.page !== page) selectPage(item.region.page);
-                  if (item.region) onSelectCropRegion(item.region);
-                }}
-              >
-                {item.name} · {yen(item.grossAmount)}
-              </button>
-            ))}
-          </div>
-          {!!document.result.ocrLines?.length && (
-            <div className={styles.evidenceOcrLines}>
-              {document.result.ocrLines
-                .filter((line) => line.region)
-                .slice(0, 80)
-                .map((line) => (
-                  <button
-                    type="button"
-                    className="text-button"
-                    key={line.key}
-                    onClick={() => onSelectCropRegion(line.region!)}
-                  >
-                    {line.text} · ページ {line.region!.page + 1}
-                  </button>
+            {!!document.result.ocrLines?.length && (
+              <div className={styles.evidenceOcrLines}>
+                {document.result.ocrLines
+                  .filter((line) => line.region)
+                  .slice(0, 80)
+                  .map((line) => (
+                    <button
+                      type="button"
+                      className="text-button"
+                      key={line.key}
+                      onClick={() => onSelectCropRegion(line.region!)}
+                    >
+                      {line.text} · ページ {line.region!.page + 1}
+                    </button>
+                  ))}
+              </div>
+            )}
+            {cropRegion && (
+              <div className={styles.cropCoordinateFields}>
+                {(["top", "left", "bottom", "right"] as const).map((key) => (
+                  <label key={key}>
+                    {{ top: "上", left: "左", bottom: "下", right: "右" }[key]}
+                    <input
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={cropRegion[key]}
+                      onChange={(event) => {
+                        onDirty();
+                        onCropRegionChange((current) =>
+                          current ? { ...current, [key]: Number(event.target.value) } : current,
+                        );
+                      }}
+                    />
+                  </label>
                 ))}
-            </div>
-          )}
-          {cropRegion && (
-            <div className={styles.cropCoordinateFields}>
-              {(["top", "left", "bottom", "right"] as const).map((key) => (
-                <label key={key}>
-                  {{ top: "上", left: "左", bottom: "下", right: "右" }[key]}
+                <label>
+                  ページ
                   <input
                     type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={cropRegion[key]}
+                    min="1"
+                    step="1"
+                    value={cropRegion.page + 1}
                     onChange={(event) => {
                       onDirty();
+                      const requestedPage = Math.max(0, Math.trunc(Number(event.target.value) - 1));
                       onCropRegionChange((current) =>
-                        current ? { ...current, [key]: Number(event.target.value) } : current,
+                        current ? { ...current, page: requestedPage } : current,
                       );
+                      selectPage(requestedPage);
                     }}
                   />
                 </label>
-              ))}
-              <label>
-                ページ
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={cropRegion.page + 1}
-                  onChange={(event) => {
-                    onDirty();
-                    const requestedPage = Math.max(0, Math.trunc(Number(event.target.value) - 1));
-                    onCropRegionChange((current) =>
-                      current ? { ...current, page: requestedPage } : current,
-                    );
-                    selectPage(requestedPage);
-                  }}
-                />
-              </label>
-              <button
-                className="button button-soft"
-                type="button"
-                disabled={
-                  pending ||
-                  cropPending ||
-                  cropRegion.bottom <= cropRegion.top ||
-                  cropRegion.right <= cropRegion.left
-                }
-                onClick={onRetryCrop}
-              >
-                {cropPending ? "抽出中" : "この範囲で再抽出"}
-              </button>
-            </div>
-          )}
-        </section>
+                <button
+                  className="button button-soft"
+                  type="button"
+                  disabled={
+                    pending ||
+                    cropPending ||
+                    cropRegion.bottom <= cropRegion.top ||
+                    cropRegion.right <= cropRegion.left
+                  }
+                  onClick={onRetryCrop}
+                >
+                  {cropPending ? "抽出中" : "この範囲で再抽出"}
+                </button>
+              </div>
+            )}
+          </div>
+        </details>
       )}
     </details>
   );

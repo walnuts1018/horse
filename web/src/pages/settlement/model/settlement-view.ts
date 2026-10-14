@@ -1,7 +1,11 @@
 import type { Settlement } from "../../../shared/api";
 
 export function settlementTotalDue(settlement: Settlement | null): number {
-  return settlement?.lines.reduce((total, line) => total + line.amountDueYen, 0) ?? 0;
+  return settlementFundingDue(settlement?.lines ?? []);
+}
+
+export function settlementFundingDue(lines: readonly { amountDueYen: number }[]): number {
+  return lines.reduce((total, line) => total + Math.max(line.amountDueYen, 0), 0);
 }
 
 export function settlementPeriodLabel(period: string): string {
