@@ -370,6 +370,7 @@ export function LedgerPage({
                     onClick={() => {
                       updateFilters({ recordMode: "purchases", viewMode: "purchases" });
                       setExpanded(purchase.id);
+                      setHighlightedEvidenceItem(item.id);
                     }}
                   >
                     購入を開く

@@ -19,7 +19,3 @@ Homeはsummary、月間支出、精算を3つのEffectで別々に取得し、An
 ## Routerのloader
 
 認証情報と世帯一覧は`horse-app.tsx`のmount後に取得し、世帯詳細も別Effectで取得しています（`web/src/app/horse-app.tsx:240-259,267-295`）。TanStack Routerの`beforeLoad`や`loader`を使っていないため、初期表示で認証・世帯一覧・世帯詳細の取得が続きます。route contextとloaderで依存関係を整理してください。
-
-## 帳簿のEvidence highlight
-
-帳簿の通常の展開buttonはhighlightをresetしますが、「購入を開く」操作は展開対象だけを更新します（`web/src/pages/ledger/ui/ledger-page.tsx:367-373,434-440`）。highlight IDが別の購入へ残らないよう、展開対象のIDと対応付けてください。

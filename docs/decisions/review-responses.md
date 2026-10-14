@@ -280,6 +280,10 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 
 購入下書きとOutboxの保存キーに`memberId`と`householdId`を含め、enqueue、claim、再送、完了、失敗、破棄で同じscopeを検証します。送信時は現在の利用者が対象家庭に所属することを確認し、ログイン利用者が変わった直後に前利用者のOutboxを表示しません。所有者が記録されていない旧v2データは削除も引継ぎもせず、旧storeに保持して送信対象から除外します。IndexedDBテスト3件とFrontend型検査が成功したため、該当指摘を`docs/reviews/all2.md`から削除しました。
 
+### 2026年10月14日の帳簿Evidence highlight
+
+品目一覧の「購入を開く」は対象購入を展開し、選択した品目をhighlightします。購入一覧からの展開操作は以前のhighlightを解除します。どちらの操作でも表示対象とhighlight対象が一致するため、指摘を`docs/reviews/react.md`から削除しました。
+
 ### 返品、購入日、PDF原本照合
 
 カード明細の負額は`Math.abs`で正額へ変換せず、`REFUND`行を利用者が選択した確定済み購入または品目への訂正として記録します。最新の成功した抽出結果から返金額、原本領域、観測内容を取得し、訂正・明細確定・証拠を同一transactionへ保存します。同じ明細行の二重確定と残額を超える返金を拒否し、負額の`CARD_PURCHASE`も返金として扱いません。Testcontainers PostgreSQL 18の`TestCorrectPurchaseFromStatementKeepsRowEvidenceAtomic`で冪等再試行、証拠保持、重複拒否、過剰返金のrollback、世帯分離を確認しました。購入日の抽出値がないレシートは、利用者が日付を入力するまで確定できません。PDFは最大20ページ、ページあたり400万画素、合計4000万画素までレンダリングして独立OCRとGeminiの候補を照合し、上限超過やOCR失敗時は`Balanced=false`にします。Go側の130秒request timeoutでworkerは失敗として戻りますが、PaddleOCRの同期推論はPythonプロセス内から強制停止できないため、timeout後にOCR serviceの処理が続く可能性は残ります。関連Importsテスト9件、OCR/Workerテスト、OCR serviceのunittest 6件、FSD検査とFrontend型検査が成功したため、解決した項目を`docs/reviews/all2.md`から削除しました。
