@@ -25,6 +25,24 @@ func TestCompareProductSuggestionsUsesPurchaseStatsOnlyAfterTextScore(t *testing
 	}
 }
 
+func TestCompareProductSuggestionsPrioritizesMemberPurchaseHistory(t *testing.T) {
+	items := []rankedProductSuggestion{
+		{score: 75, memberPurchaseCount: 1, memberLastPurchasedAt: 20, purchaseCount: 1, sameMerchant: true, variantName: "member recent"},
+		{score: 75, memberPurchaseCount: 2, memberLastPurchasedAt: 10, purchaseCount: 100, sameMerchant: true, variantName: "member frequent"},
+		{score: 75, memberPurchaseCount: 0, purchaseCount: 100, sameMerchant: true, variantName: "household popular"},
+		{score: 95, memberPurchaseCount: 0, purchaseCount: 0, variantName: "exact match"},
+	}
+
+	slices.SortFunc(items, compareProductSuggestions)
+
+	want := []string{"exact match", "member frequent", "member recent", "household popular"}
+	for index, item := range items {
+		if item.variantName != want[index] {
+			t.Fatalf("rank %d = %q, want %q", index, item.variantName, want[index])
+		}
+	}
+}
+
 func TestNormalizeSuggestionMerchant(t *testing.T) {
 	if got, want := normalizeSuggestionMerchant("  Mart  East\t "), "mart east"; got != want {
 		t.Fatalf("normalized merchant = %q, want %q", got, want)

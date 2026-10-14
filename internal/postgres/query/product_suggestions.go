@@ -31,6 +31,8 @@ type rankedProductSuggestion struct {
 	variant                             *models.ProductVariant
 	concept                             *models.ProductConcept
 	score                               int
+	memberPurchaseCount                 int
+	memberLastPurchasedAt               int64
 	purchaseCount                       int
 	lastPurchasedAt                     int64
 	sameMerchant                        bool
@@ -39,12 +41,14 @@ type rankedProductSuggestion struct {
 }
 
 type productPurchaseStats struct {
-	purchaseCount   int
-	lastPurchasedAt int64
-	sameMerchant    bool
+	memberPurchaseCount   int
+	memberLastPurchasedAt int64
+	purchaseCount         int
+	lastPurchasedAt       int64
+	sameMerchant          bool
 }
 
-func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID gofrsuuid.UUID, searchKey, merchantKey string, pageSize int) (*ProductSuggestions, error) {
+func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID, memberID gofrsuuid.UUID, searchKey, merchantKey string, pageSize int) (*ProductSuggestions, error) {
 	escapedSearchKey := escapeProductSearchPattern(searchKey)
 	prefixPattern := escapedSearchKey + "%"
 	searchPattern := "%" + escapedSearchKey + "%"
@@ -166,7 +170,7 @@ func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID 
 	for variantID := range variantByID {
 		variantUUIDs = append(variantUUIDs, variantID)
 	}
-	purchaseStats, err := loadProductPurchaseStats(ctx, db, householdID, variantUUIDs, merchantKey)
+	purchaseStats, err := loadProductPurchaseStats(ctx, db, householdID, memberID, variantUUIDs, merchantKey)
 	if err != nil {
 		return nil, err
 	}
@@ -198,6 +202,7 @@ func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID 
 		stats := purchaseStats[variantRow.ID]
 		items = append(items, rankedProductSuggestion{
 			variant: variantRow, concept: conceptRow, score: score,
+			memberPurchaseCount: stats.memberPurchaseCount, memberLastPurchasedAt: stats.memberLastPurchasedAt,
 			purchaseCount: stats.purchaseCount, lastPurchasedAt: stats.lastPurchasedAt, sameMerchant: stats.sameMerchant,
 			conceptName: conceptRow.NormalizedName, variantName: variantRow.NormalizedName,
 			variantID: variantRow.ID.String(), matchedName: matchedName,
@@ -253,7 +258,7 @@ func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID 
 	return result, nil
 }
 
-func loadProductPurchaseStats(ctx context.Context, db bob.Executor, householdID gofrsuuid.UUID, variantIDs []any, merchantKey string) (map[gofrsuuid.UUID]productPurchaseStats, error) {
+func loadProductPurchaseStats(ctx context.Context, db bob.Executor, householdID, memberID gofrsuuid.UUID, variantIDs []any, merchantKey string) (map[gofrsuuid.UUID]productPurchaseStats, error) {
 	stats := make(map[gofrsuuid.UUID]productPurchaseStats)
 	if len(variantIDs) == 0 {
 		return stats, nil
@@ -316,6 +321,12 @@ func loadProductPurchaseStats(ctx context.Context, db bob.Executor, householdID 
 		stat := stats[variantID]
 		stat.purchaseCount++
 		occurredAt := purchase.OccurredAt.UnixNano()
+		if purchase.CreatedBy == memberID {
+			stat.memberPurchaseCount++
+			if occurredAt > stat.memberLastPurchasedAt {
+				stat.memberLastPurchasedAt = occurredAt
+			}
+		}
 		if occurredAt > stat.lastPurchasedAt {
 			stat.lastPurchasedAt = occurredAt
 		}
@@ -330,6 +341,15 @@ func loadProductPurchaseStats(ctx context.Context, db bob.Executor, householdID 
 func compareProductSuggestions(a, b rankedProductSuggestion) int {
 	if a.score != b.score {
 		return b.score - a.score
+	}
+	if a.memberPurchaseCount != b.memberPurchaseCount {
+		return b.memberPurchaseCount - a.memberPurchaseCount
+	}
+	if a.memberLastPurchasedAt != b.memberLastPurchasedAt {
+		if a.memberLastPurchasedAt > b.memberLastPurchasedAt {
+			return -1
+		}
+		return 1
 	}
 	if a.sameMerchant != b.sameMerchant {
 		if a.sameMerchant {

@@ -285,7 +285,8 @@ func (r *queryResolver) productCatalog(ctx context.Context, householdID string, 
 }
 
 func (r *queryResolver) productSuggestions(ctx context.Context, householdID, queryText string, merchant *string, first *int) ([]*model.ProductSuggestion, error) {
-	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
+	user, err := requireMember(ctx, r.DB, householdID)
+	if err != nil {
 		return nil, err
 	}
 	searchKey := normalizeProductText(queryText)
@@ -304,7 +305,11 @@ func (r *queryResolver) productSuggestions(ctx context.Context, householdID, que
 		merchantKey = normalizeMerchant(*merchant)
 	}
 	householdUUID, _ := gofrsuuid.FromString(householdID)
-	suggestions, err := productquery.SearchProductSuggestions(ctx, bobpgx.NewPool(r.DB), householdUUID, searchKey, merchantKey, pageSize)
+	memberUUID, err := gofrsuuid.FromString(user.MemberID)
+	if err != nil {
+		return nil, fmt.Errorf("parse member id: %w", err)
+	}
+	suggestions, err := productquery.SearchProductSuggestions(ctx, bobpgx.NewPool(r.DB), householdUUID, memberUUID, searchKey, merchantKey, pageSize)
 	if err != nil {
 		return nil, err
 	}
