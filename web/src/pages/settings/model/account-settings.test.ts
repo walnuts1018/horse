@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Household, Pool, PoolFundingShare } from "../../../shared/api";
+
 import { reconcileFundingDrafts } from "./account-settings";
 
 vi.mock("../../../shared/api", () => ({
@@ -16,10 +17,7 @@ vi.mock("../api/account-settings", () => ({
   setPoolFundingRule: vi.fn(),
 }));
 
-function sharedPool(
-  id: string,
-  fundingShares: PoolFundingShare[],
-): Pool {
+function sharedPool(id: string, fundingShares: PoolFundingShare[]): Pool {
   return {
     __typename: "SharedPool",
     id,
@@ -46,19 +44,25 @@ function household(id: string, members: string[], pools: Pool[]): Household {
 
 describe("reconcileFundingDrafts", () => {
   it("preserves edited values on refresh and initializes newly added members", () => {
-    const initial = household("household-a", ["member-a"], [
-      sharedPool("pool-a", [{ memberId: "member-a", memberName: "A", weight: 2 }]),
-    ]);
+    const initial = household(
+      "household-a",
+      ["member-a"],
+      [sharedPool("pool-a", [{ memberId: "member-a", memberName: "A", weight: 2 }])],
+    );
     const drafts = reconcileFundingDrafts(initial, initial.id, {});
     drafts["pool-a"].weights["member-a"] = "7";
     drafts["pool-a"].policy = "REIMBURSE_PERSONAL";
 
-    const refreshed = household("household-a", ["member-a", "member-b"], [
-      sharedPool("pool-a", [
-        { memberId: "member-a", memberName: "A", weight: 2 },
-        { memberId: "member-b", memberName: "B", weight: 3 },
-      ]),
-    ]);
+    const refreshed = household(
+      "household-a",
+      ["member-a", "member-b"],
+      [
+        sharedPool("pool-a", [
+          { memberId: "member-a", memberName: "A", weight: 2 },
+          { memberId: "member-b", memberName: "B", weight: 3 },
+        ]),
+      ],
+    );
 
     expect(reconcileFundingDrafts(refreshed, initial.id, drafts)).toEqual({
       "pool-a": {
@@ -70,15 +74,19 @@ describe("reconcileFundingDrafts", () => {
   });
 
   it("resets drafts when switching households", () => {
-    const firstHousehold = household("household-a", ["member-a"], [
-      sharedPool("pool-a", [{ memberId: "member-a", memberName: "A", weight: 2 }]),
-    ]);
+    const firstHousehold = household(
+      "household-a",
+      ["member-a"],
+      [sharedPool("pool-a", [{ memberId: "member-a", memberName: "A", weight: 2 }])],
+    );
     const drafts = reconcileFundingDrafts(firstHousehold, firstHousehold.id, {});
     drafts["pool-a"].weights["member-a"] = "7";
 
-    const nextHousehold = household("household-b", ["member-b"], [
-      sharedPool("pool-b", [{ memberId: "member-b", memberName: "B", weight: 4 }]),
-    ]);
+    const nextHousehold = household(
+      "household-b",
+      ["member-b"],
+      [sharedPool("pool-b", [{ memberId: "member-b", memberName: "B", weight: 4 }])],
+    );
 
     expect(reconcileFundingDrafts(nextHousehold, firstHousehold.id, drafts)).toEqual({
       "pool-b": {

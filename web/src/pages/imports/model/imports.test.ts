@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   canReclassifyAttachment,
   defaultUploadSourceKind,
+  parseDocumentFilters,
+  serializeDocumentFilters,
   uploadSourceKinds,
   type DocumentReview,
 } from "./imports";
@@ -49,5 +51,37 @@ describe("添付文書の明細種別変更", () => {
       }),
     ).toBe(false);
     expect(canReclassifyAttachment({ ...attachment, status: "RUNNING" })).toBe(false);
+  });
+});
+
+describe("取り込み検索条件", () => {
+  it("URL検索値を許可された条件だけに正規化する", () => {
+    expect(
+      parseDocumentFilters({
+        store: "スーパー",
+        from: "2026-10-01",
+        sourceKind: "unknown",
+        confirmed: "true",
+        ignored: "value",
+      }),
+    ).toEqual({
+      store: "スーパー",
+      from: "2026-10-01",
+      to: "",
+      sourceKind: "",
+      confirmed: "true",
+    });
+  });
+
+  it("空の条件をURLから除き、設定済み条件だけを残す", () => {
+    expect(
+      serializeDocumentFilters({
+        store: "スーパー",
+        from: "",
+        to: "2026-10-31",
+        sourceKind: "",
+        confirmed: "false",
+      }),
+    ).toEqual({ store: "スーパー", to: "2026-10-31", confirmed: "false" });
   });
 });

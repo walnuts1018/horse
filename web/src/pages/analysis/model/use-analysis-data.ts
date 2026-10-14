@@ -52,35 +52,43 @@ export function useAnalysisData(
 
   useEffect(() => {
     let active = true;
-    setSpendingLoading(true);
-    setSpendingError("");
-    void readAnalysisCategorySpending(householdId, fromMonth, toMonth)
-      .then((result) => active && setSpending(result))
-      .catch((reason) => active && setSpendingError(errorMessage(reason)))
-      .finally(() => active && setSpendingLoading(false));
+    //同期setStateはeffect直後ではなくマイクロタスクで走らせ、取得の再開も1tick遅延させる
+    queueMicrotask(() => {
+      if (!active) return;
+      setSpendingLoading(true);
+      setSpendingError("");
+      void readAnalysisCategorySpending(householdId, fromMonth, toMonth)
+        .then((result) => active && setSpending(result))
+        .catch((reason) => active && setSpendingError(errorMessage(reason)))
+        .finally(() => active && setSpendingLoading(false));
+    });
     return () => {
       active = false;
     };
   }, [householdId, fromMonth, toMonth]);
 
   useEffect(() => {
-    if (dimension !== "member") {
-      setMemberSpendingLoading(false);
-      setMemberSpendingError("");
-      return;
-    }
     let active = true;
-    setMemberSpendingLoading(true);
-    setMemberSpendingError("");
-    setHasUnattributedPurchases(false);
-    void readAnalysisMemberSpending(householdId, fromMonth, toMonth)
-      .then((result) => {
-        if (!active) return;
-        setMemberSpending(result.items);
-        setHasUnattributedPurchases(result.hasUnattributedPurchases);
-      })
-      .catch((reason) => active && setMemberSpendingError(errorMessage(reason)))
-      .finally(() => active && setMemberSpendingLoading(false));
+    //同期setStateはeffect直後ではなくマイクロタスクで走らせ、取得の再開も1tick遅延させる
+    queueMicrotask(() => {
+      if (!active) return;
+      if (dimension !== "member") {
+        setMemberSpendingLoading(false);
+        setMemberSpendingError("");
+        return;
+      }
+      setMemberSpendingLoading(true);
+      setMemberSpendingError("");
+      setHasUnattributedPurchases(false);
+      void readAnalysisMemberSpending(householdId, fromMonth, toMonth)
+        .then((result) => {
+          if (!active) return;
+          setMemberSpending(result.items);
+          setHasUnattributedPurchases(result.hasUnattributedPurchases);
+        })
+        .catch((reason) => active && setMemberSpendingError(errorMessage(reason)))
+        .finally(() => active && setMemberSpendingLoading(false));
+    });
     return () => {
       active = false;
     };
@@ -88,10 +96,14 @@ export function useAnalysisData(
 
   useEffect(() => {
     let active = true;
-    setBudgetError("");
-    void readBudgets(householdId, currentMonth)
-      .then((result) => active && setBudgets(result))
-      .catch((reason) => active && setBudgetError(errorMessage(reason)));
+    //同期setStateはeffect直後ではなくマイクロタスクで走らせ、取得の再開も1tick遅延させる
+    queueMicrotask(() => {
+      if (!active) return;
+      setBudgetError("");
+      void readBudgets(householdId, currentMonth)
+        .then((result) => active && setBudgets(result))
+        .catch((reason) => active && setBudgetError(errorMessage(reason)));
+    });
     return () => {
       active = false;
     };
@@ -99,10 +111,14 @@ export function useAnalysisData(
 
   useEffect(() => {
     let active = true;
-    setRecurringError("");
-    void readRecurringExpenses(householdId)
-      .then((expenses) => active && setRecurringExpenses(expenses))
-      .catch((reason) => active && setRecurringError(errorMessage(reason)));
+    //同期setStateはeffect直後ではなくマイクロタスクで走らせ、取得の再開も1tick遅延させる
+    queueMicrotask(() => {
+      if (!active) return;
+      setRecurringError("");
+      void readRecurringExpenses(householdId)
+        .then((expenses) => active && setRecurringExpenses(expenses))
+        .catch((reason) => active && setRecurringError(errorMessage(reason)));
+    });
     return () => {
       active = false;
     };

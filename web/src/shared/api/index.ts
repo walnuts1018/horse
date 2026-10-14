@@ -27,6 +27,7 @@ export type {
 } from "./__generated__/HouseholdInvitationsQuery.graphql";
 export type { RevokeHouseholdInvitationMutation$data } from "./__generated__/RevokeHouseholdInvitationMutation.graphql";
 export type { LeaveHouseholdMutation$data } from "./__generated__/LeaveHouseholdMutation.graphql";
+export type { TransferHouseholdOwnerMutation$data } from "./__generated__/TransferHouseholdOwnerMutation.graphql";
 export type { RemoveHouseholdMemberMutation$data } from "./__generated__/RemoveHouseholdMemberMutation.graphql";
 export type { ArchiveBudgetMutation } from "./__generated__/ArchiveBudgetMutation.graphql";
 export type { CreateBudgetMutation } from "./__generated__/CreateBudgetMutation.graphql";

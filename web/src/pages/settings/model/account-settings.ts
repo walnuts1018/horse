@@ -91,9 +91,7 @@ export function useAccountSettings({
     const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
     return date.toISOString().slice(0, 10);
   });
-  const [fundingDrafts, setFundingDrafts] = useState<
-    FundingDrafts
-  >({});
+  const [fundingDrafts, setFundingDrafts] = useState<FundingDrafts>({});
   const fundingDraftHouseholdId = useRef(household.id);
   const [pending, setPending] = useState(false);
 
@@ -105,9 +103,7 @@ export function useAccountSettings({
   useEffect(() => {
     const currentHouseholdId = fundingDraftHouseholdId.current;
     fundingDraftHouseholdId.current = household.id;
-    setFundingDrafts((current) =>
-      reconcileFundingDrafts(household, currentHouseholdId, current),
-    );
+    setFundingDrafts((current) => reconcileFundingDrafts(household, currentHouseholdId, current));
   }, [household]);
 
   const addPool = (event: SubmitEvent<HTMLFormElement>) => {

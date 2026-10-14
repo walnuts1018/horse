@@ -1,4 +1,3 @@
-import { useRouter } from "@tanstack/react-router";
 import { Camera, FileImage, ShieldCheck, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -11,10 +10,7 @@ import { useEvidencePreview } from "../model/evidence-preview";
 import {
   asRecord,
   defaultUploadSourceKind,
-  defaultDocumentFilters,
   isSupportedFile,
-  parseDocumentFilters,
-  serializeDocumentFilters,
   withStableEvidenceKeys,
   type DocumentFilters,
   type DocumentReview,
@@ -31,14 +27,19 @@ import { ImportDocumentReview } from "./import-document-review";
 
 export function ImportsPage({
   household,
+  documentFilters,
+  filterLocation,
+  onApplyDocumentFilters,
   onAdded,
   onUnsavedChanges,
 }: {
   household: Household;
+  documentFilters: DocumentFilters;
+  filterLocation: object;
+  onApplyDocumentFilters: (filters: DocumentFilters) => void;
   onAdded: (keepOpen?: boolean) => void;
   onUnsavedChanges: (unsaved: boolean) => void;
 }) {
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<CameraCaptureHandle>(null);
   const [files, setFiles] = useState<PendingUpload[]>([]);
@@ -58,12 +59,14 @@ export function ImportsPage({
     reportedUnsavedChanges.current = unsaved;
     onUnsavedChangesRef.current(unsaved);
   }, []);
-  const [documentFilters, setDocumentFilters] = useState<DocumentFilters>(() =>
-    typeof window === "undefined"
-      ? defaultDocumentFilters
-      : parseDocumentFilters(new URLSearchParams(window.location.search)),
-  );
-  const [documentFilterDraft, setDocumentFilterDraft] = useState(documentFilters);
+  const [documentFilterDraftState, setDocumentFilterDraftState] = useState({
+    location: filterLocation,
+    filters: documentFilters,
+  });
+  const documentFilterDraft =
+    documentFilterDraftState.location === filterLocation
+      ? documentFilterDraftState.filters
+      : documentFilters;
   const documentFilterScope = JSON.stringify(documentFilters);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
@@ -116,26 +119,8 @@ export function ImportsPage({
     onAdded,
   });
   const markUnsaved = () => setHasUnsavedChanges(true);
-  const applyDocumentFilters = (filters: DocumentFilters) => {
-    setDocumentFilters(filters);
-    setDocumentFilterDraft(filters);
-    const url = new URL(window.location.href);
-    url.search = serializeDocumentFilters(filters, url.searchParams).toString();
-    router.history.replace(
-      `${url.pathname}${url.search}${url.hash}`,
-      router.history.location.state,
-      { ignoreBlocker: true },
-    );
-  };
-  useEffect(() => {
-    const restoreFilters = () => {
-      const filters = parseDocumentFilters(new URLSearchParams(window.location.search));
-      setDocumentFilters(filters);
-      setDocumentFilterDraft(filters);
-    };
-    window.addEventListener("popstate", restoreFilters);
-    return () => window.removeEventListener("popstate", restoreFilters);
-  }, []);
+  const setDocumentFilterDraft = (filters: DocumentFilters) =>
+    setDocumentFilterDraftState({ location: filterLocation, filters });
   // フィルタスコープが変わったときだけ確認状態をリセットする
   const confirmationScope = useRef(documentFilterScope);
   useEffect(() => {
@@ -437,7 +422,7 @@ export function ImportsPage({
             selected={selected}
             filters={documentFilterDraft}
             onFiltersChange={setDocumentFilterDraft}
-            onSearch={() => applyDocumentFilters(documentFilterDraft)}
+            onSearch={() => onApplyDocumentFilters(documentFilterDraft)}
             onSourceKindChange={(id, kind) => {
               markUnsaved();
               setFiles((current) =>

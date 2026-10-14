@@ -1,6 +1,12 @@
 import { useState } from "react";
+
 import type { Household } from "../../../shared/api";
-import { leaveHousehold, removeHouseholdMember } from "../api/household-members";
+
+import {
+  leaveHousehold,
+  removeHouseholdMember,
+  transferHouseholdOwner,
+} from "../api/household-members";
 
 import styles from "./settings-page.module.css";
 
@@ -54,6 +60,20 @@ export function SettingsMembersSection({
     }
   };
 
+  const handleTransfer = async (memberId: string, displayName: string) => {
+    if (pending || !window.confirm(`${displayName}にオーナーを移譲しますか？`)) return;
+    setPending(true);
+    try {
+      await transferHouseholdOwner({ householdId, newOwnerId: memberId });
+      await onRefresh();
+      onNotice(`${displayName}にオーナーを移譲しました`, "success");
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "オーナーを移譲できませんでした", "error");
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
     <section className={`panel ${styles.settingsSection} ${styles.memberSection}`} hidden={hidden}>
       <div className={`panel-heading ${styles.panelHeading}`}>
@@ -70,13 +90,33 @@ export function SettingsMembersSection({
             <small>{member.role === "OWNER" ? "オーナー" : "メンバー"}</small>
           </div>
           {member.id === viewerId ? (
-            <button className="button" type="button" disabled={disabled || pending} onClick={() => void handleLeave()}>
+            <button
+              className="button"
+              type="button"
+              disabled={disabled || pending}
+              onClick={() => void handleLeave()}
+            >
               脱退
             </button>
           ) : isOwner ? (
-            <button className="button" type="button" disabled={disabled || pending} onClick={() => void handleRemove(member.id)}>
-              除名
-            </button>
+            <>
+              <button
+                className="button"
+                type="button"
+                disabled={disabled || pending}
+                onClick={() => void handleTransfer(member.id, member.displayName)}
+              >
+                オーナーを移譲
+              </button>
+              <button
+                className="button"
+                type="button"
+                disabled={disabled || pending}
+                onClick={() => void handleRemove(member.id)}
+              >
+                除名
+              </button>
+            </>
           ) : null}
         </div>
       ))}

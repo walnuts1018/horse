@@ -231,13 +231,13 @@ export const defaultDocumentFilters: DocumentFilters = {
   confirmed: "",
 };
 
-export function parseDocumentFilters(search: URLSearchParams): DocumentFilters {
-  const sourceKind = search.get("sourceKind") ?? "";
-  const confirmed = search.get("confirmed") ?? "";
+export function parseDocumentFilters(search: Record<string, unknown>): DocumentFilters {
+  const sourceKind = typeof search.sourceKind === "string" ? search.sourceKind : "";
+  const confirmed = typeof search.confirmed === "string" ? search.confirmed : "";
   return {
-    store: search.get("store") ?? "",
-    from: search.get("from") ?? "",
-    to: search.get("to") ?? "",
+    store: typeof search.store === "string" ? search.store : "",
+    from: typeof search.from === "string" ? search.from : "",
+    to: typeof search.to === "string" ? search.to : "",
     sourceKind: ["receipt", "order", "email", "card", "bank"].includes(sourceKind)
       ? sourceKind
       : "",
@@ -245,13 +245,14 @@ export function parseDocumentFilters(search: URLSearchParams): DocumentFilters {
   };
 }
 
-export function serializeDocumentFilters(filters: DocumentFilters, search: URLSearchParams) {
-  const query = new URLSearchParams(search);
-  for (const [key, value] of Object.entries(filters)) {
-    if (value) query.set(key, value);
-    else query.delete(key);
-  }
-  return query;
+export function serializeDocumentFilters(filters: DocumentFilters): Partial<DocumentFilters> {
+  return {
+    ...(filters.store ? { store: filters.store } : {}),
+    ...(filters.from ? { from: filters.from } : {}),
+    ...(filters.to ? { to: filters.to } : {}),
+    ...(filters.sourceKind ? { sourceKind: filters.sourceKind } : {}),
+    ...(filters.confirmed ? { confirmed: filters.confirmed } : {}),
+  };
 }
 export type ReceiptPaymentDraft = {
   key: string;

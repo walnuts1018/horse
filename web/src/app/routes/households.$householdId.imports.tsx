@@ -1,19 +1,38 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useLocation } from "@tanstack/react-router";
+import { useMemo } from "react";
 
-import { ImportsPage } from "../../pages/imports";
+import { ImportsPage, parseDocumentFilters, serializeDocumentFilters } from "../../pages/imports";
 import { useHouseholdRouteContext } from "../household-route-context";
 
 export const Route = createFileRoute("/households/$householdId/imports")({
+  validateSearch: (search: Record<string, unknown>) => search,
   component: HouseholdImports,
 });
 
 function HouseholdImports() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const filterLocation = useLocation();
+  const documentFilters = useMemo(() => parseDocumentFilters(search), [search]);
   const { household, navigateToPage, refreshHousehold, reportUnsavedChanges, showNotice } =
     useHouseholdRouteContext();
   if (!household) return null;
   return (
     <ImportsPage
       household={household}
+      documentFilters={documentFilters}
+      filterLocation={filterLocation}
+      onApplyDocumentFilters={(filters) =>
+        void navigate({
+          search: (previous) => {
+            const next = { ...previous };
+            for (const key of ["store", "from", "to", "sourceKind", "confirmed"] as const) {
+              delete next[key];
+            }
+            return { ...next, ...serializeDocumentFilters(filters) };
+          },
+        })
+      }
       onUnsavedChanges={reportUnsavedChanges}
       onAdded={async (keepOpen) => {
         await refreshHousehold(household.id);

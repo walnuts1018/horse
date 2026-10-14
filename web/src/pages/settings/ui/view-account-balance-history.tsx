@@ -10,6 +10,16 @@ import styles from "./settings-page.module.css";
 
 type Account = Household["accounts"][number];
 
+/** 残高分析の取得結果。keyは結果が有効な取得条件を表し、現在の取得条件と一致しない間は表示内容を導出値で上書きする。 */
+type BalanceHistoryState = {
+  key: string;
+  history: AccountBalanceAnalysis | null;
+  error: string;
+  loading: boolean;
+  loadingMore: boolean;
+  moreError: string;
+};
+
 /** 残高分析の取得条件を一意に表すキーを作る。古い応答を弾くための識別子として使う。 */
 const buildRequestKey = (params: {
   householdId: string;
@@ -56,6 +66,14 @@ const balanceChangeSource = (sourceType: string) =>
     AccountMovement: "口座振替",
     AccountIncome: "外部入金",
   })[sourceType] ?? "仕訳";
+/** 期間指定が不正なときのエラーメッセージを返す。空文字なら期間指定は正しい。 */
+const periodErrorMessage = (from: string, to: string) =>
+  !/^\d{4}-\d{2}$/.test(from) ||
+  !/^\d{4}-\d{2}$/.test(to) ||
+  monthIndex(to) < monthIndex(from) ||
+  monthIndex(to) - monthIndex(from) > 120
+    ? "期間は前後関係を確認し、10年以内で指定してください"
+    : "";
 
 export function ViewAccountBalanceHistory({
   householdId,
@@ -68,68 +86,99 @@ export function ViewAccountBalanceHistory({
   hidden: boolean;
   refreshRevision: number;
 }) {
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id ?? "");
   const [from, setFrom] = useState(() => shiftMonth(currentMonth(), -5));
   const [to, setTo] = useState(currentMonth);
-  const [balanceHistory, setBalanceHistory] = useState<AccountBalanceAnalysis | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState("");
-  const [moreError, setMoreError] = useState("");
+  const [historyState, setHistoryState] = useState<BalanceHistoryState>(() => ({
+    key: "",
+    history: null,
+    error: "",
+    loading: false,
+    loadingMore: false,
+    moreError: "",
+  }));
   const activeRequestKey = useRef<string | null>(null);
   const request = useRef(false);
 
+  //選択中の口座が口座一覧に無ければ先頭の口座を使う。stateに書き戻さずレンダー中に導出して口座一覧の変化に追従させる。
+  const accountId = accounts.some((account) => account.id === selectedAccountId)
+    ? selectedAccountId
+    : (accounts[0]?.id ?? "");
+  const requestKey = buildRequestKey({ householdId, accountId, from, to, refreshRevision });
+  const periodError = periodErrorMessage(from, to);
+  //表示する履歴・合計・ページネーションは取得条件と一致する結果が無ければ導出値にする。プロップや入力の変更でstateを書き換えない。
+  const view: BalanceHistoryState = !accountId
+    ? {
+        key: requestKey,
+        history: null,
+        error: "",
+        loading: false,
+        loadingMore: false,
+        moreError: "",
+      }
+    : periodError
+      ? {
+          key: requestKey,
+          history: null,
+          error: periodError,
+          loading: false,
+          loadingMore: false,
+          moreError: "",
+        }
+      : historyState.key === requestKey
+        ? historyState
+        : {
+            key: requestKey,
+            history: null,
+            error: "",
+            loading: true,
+            loadingMore: false,
+            moreError: "",
+          };
+  const { history: balanceHistory, error, loading, loadingMore, moreError } = view;
+
   useEffect(() => {
-    if (!accounts.some((account) => account.id === accountId)) {
-      setAccountId(accounts[0]?.id ?? "");
-    }
-  }, [accounts, accountId]);
-  useEffect(() => {
-    const requestKey = buildRequestKey({ householdId, accountId, from, to, refreshRevision });
-    activeRequestKey.current = requestKey;
+    const key = buildRequestKey({ householdId, accountId, from, to, refreshRevision });
+    activeRequestKey.current = key;
     request.current = false;
-    if (!accountId) {
-      setBalanceHistory(null);
-      setError("");
-      setLoading(false);
-      setLoadingMore(false);
-      setMoreError("");
-      return;
-    }
-    if (
-      !/^\d{4}-\d{2}$/.test(from) ||
-      !/^\d{4}-\d{2}$/.test(to) ||
-      monthIndex(to) < monthIndex(from) ||
-      monthIndex(to) - monthIndex(from) > 120
-    ) {
-      setBalanceHistory(null);
-      setError("期間は前後関係を確認し、10年以内で指定してください");
-      setLoading(false);
-      setLoadingMore(false);
-      setMoreError("");
-      return;
-    }
-    setBalanceHistory(null);
-    setLoading(true);
-    setLoadingMore(false);
-    setError("");
-    setMoreError("");
-    void readAccountBalanceAnalysis({
-      householdId,
-      accountId,
-      from,
-      to,
-      first: 100,
-    })
-      .then((result) => {
-        if (activeRequestKey.current === requestKey) setBalanceHistory(result);
-      })
-      .catch((reason) => {
-        if (activeRequestKey.current === requestKey) setError(errorMessage(reason));
-      })
-      .finally(() => {
-        if (activeRequestKey.current === requestKey) setLoading(false);
+    if (!accountId || periodErrorMessage(from, to)) return;
+    //開始時のstateリセットと取得開始はeffectの同期処理にせず、マイクロタスクへ延期する。
+    queueMicrotask(() => {
+      if (activeRequestKey.current !== key) return;
+      setHistoryState({
+        key,
+        history: null,
+        error: "",
+        loading: true,
+        loadingMore: false,
+        moreError: "",
       });
+      void readAccountBalanceAnalysis({
+        householdId,
+        accountId,
+        from,
+        to,
+        first: 100,
+      })
+        .then((result) => {
+          if (activeRequestKey.current === key)
+            setHistoryState((current) =>
+              current.key === key ? { ...current, history: result } : current,
+            );
+        })
+        .catch((reason) => {
+          if (activeRequestKey.current === key)
+            setHistoryState((current) =>
+              current.key === key ? { ...current, error: errorMessage(reason) } : current,
+            );
+        })
+        .finally(() => {
+          if (activeRequestKey.current === key)
+            setHistoryState((current) =>
+              current.key === key ? { ...current, loading: false } : current,
+            );
+        });
+    });
   }, [householdId, accountId, from, to, refreshRevision]);
   const loadMoreBalanceChanges = async () => {
     const after = balanceHistory?.changes.pageInfo.endCursor;
@@ -140,11 +189,11 @@ export function ViewAccountBalanceHistory({
       request.current
     )
       return;
-    const requestKey = buildRequestKey({ householdId, accountId, from, to, refreshRevision });
     if (activeRequestKey.current !== requestKey) return;
     request.current = true;
-    setLoadingMore(true);
-    setMoreError("");
+    setHistoryState((current) =>
+      current.key === requestKey ? { ...current, loadingMore: true, moreError: "" } : current,
+    );
     try {
       const result = await readAccountBalanceAnalysis({
         householdId,
@@ -155,26 +204,38 @@ export function ViewAccountBalanceHistory({
         after,
       });
       if (activeRequestKey.current !== requestKey) return;
-      setBalanceHistory((current) => {
-        if (!current || current.accountId !== result.accountId) return current;
+      setHistoryState((current) => {
+        if (
+          current.key !== requestKey ||
+          !current.history ||
+          current.history.accountId !== result.accountId
+        )
+          return current;
         return {
           ...current,
-          changes: {
-            ...result.changes,
-            edges: [...current.changes.edges, ...result.changes.edges],
+          history: {
+            ...current.history,
+            changes: {
+              ...result.changes,
+              edges: [...current.history.changes.edges, ...result.changes.edges],
+            },
           },
         };
       });
     } catch (reason) {
-      if (activeRequestKey.current === requestKey) setMoreError(errorMessage(reason));
+      if (activeRequestKey.current === requestKey)
+        setHistoryState((current) =>
+          current.key === requestKey ? { ...current, moreError: errorMessage(reason) } : current,
+        );
     } finally {
       if (activeRequestKey.current === requestKey) {
         request.current = false;
-        setLoadingMore(false);
+        setHistoryState((current) =>
+          current.key === requestKey ? { ...current, loadingMore: false } : current,
+        );
       }
     }
   };
-  const visibleBalanceChanges = balanceHistory?.changes.edges.map(({ node }) => node) ?? [];
   const maxBalanceChange =
     balanceHistory?.changes.edges.reduce(
       (maximum, { node }) => Math.max(maximum, Math.abs(node.changeYen)),
@@ -196,7 +257,7 @@ export function ViewAccountBalanceHistory({
           <select
             value={accountId}
             disabled={!accounts.length}
-            onChange={(event) => setAccountId(event.target.value)}
+            onChange={(event) => setSelectedAccountId(event.target.value)}
           >
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
@@ -243,11 +304,8 @@ export function ViewAccountBalanceHistory({
             <small className="account-balance-sign">カード債務の増加はプラス</small>
           )}
           <div className="account-balance-changes">
-            {visibleBalanceChanges.map((change, index) => (
-              <div
-                className="account-balance-change"
-                key={`${change.source.id}-${change.occurredAt}-${index}`}
-              >
+            {balanceHistory.changes.edges.map(({ cursor, node: change }) => (
+              <div className="account-balance-change" key={cursor}>
                 <div className="account-balance-change-copy">
                   <b>{change.description || balanceChangeSource(change.source.__typename)}</b>
                   <small>

@@ -37,12 +37,14 @@ export function useAccountActivity({
   accounts,
   onNotice,
   onFormClean,
+  onPendingChange,
   onRecorded,
 }: {
   householdId: string;
   accounts: { id: string; kind: string }[];
   onNotice: (message: string, kind?: "success" | "error" | "warning" | "info") => void;
   onFormClean: (formID: string) => void;
+  onPendingChange: (pending: boolean) => void;
   onRecorded: () => void | Promise<void>;
 }) {
   const onNoticeRef = useRef(onNotice);
@@ -61,8 +63,8 @@ export function useAccountActivity({
   const [incomeDescription, setIncomeDescription] = useState("");
   const [incomeDate, setIncomeDate] = useState(localDateTime);
   const [movementKind, setMovementKind] = useState<"TRANSFER" | "CARD_BILL_PAYMENT">("TRANSFER");
-  const [movementFrom, setMovementFrom] = useState("");
-  const [movementTo, setMovementTo] = useState("");
+  const [movementFromSelection, setMovementFromSelection] = useState("");
+  const [movementToSelection, setMovementToSelection] = useState("");
   const [movementAmount, setMovementAmount] = useState("");
   const [movementDescription, setMovementDescription] = useState("");
   const [movementDate, setMovementDate] = useState(localDateTime);
@@ -86,46 +88,48 @@ export function useAccountActivity({
     setIncomeHasNextPage(result.incomes.pageInfo.hasNextPage);
   }, [householdId]);
 
+  //世帯ごとの入出金意図(intent)を読み込んでフォームを復元し、履歴を再取得する。awaitで非同期化してeffectの同期実行中のsetStateを避ける
   useEffect(() => {
-    void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
-    const incomeIntent = getAccountIncomeIntent(householdId);
-    if (incomeIntent) {
-      setPendingIncomeIntent(incomeIntent);
-      setIncomeAccountId(incomeIntent.input.accountId);
-      setIncomeAmount(String(incomeIntent.input.amountYen));
-      setIncomeDate(localDateTimeFromIso(incomeIntent.input.occurredAt));
-      setIncomeDescription(incomeIntent.input.description);
-    } else {
-      setPendingIncomeIntent(null);
-    }
-    const movementIntent = getAccountMovementIntent(householdId);
-    if (movementIntent) {
-      setPendingMovementIntent(movementIntent);
-      setMovementKind(movementIntent.input.kind);
-      setMovementFrom(movementIntent.input.fromAccountId);
-      setMovementTo(movementIntent.input.toAccountId);
-      setMovementAmount(String(movementIntent.input.amountYen));
-      setMovementDate(localDateTimeFromIso(movementIntent.input.occurredAt));
-      setMovementDescription(movementIntent.input.description);
-    } else {
-      setPendingMovementIntent(null);
-    }
+    void (async () => {
+      const incomeIntent = await Promise.resolve(getAccountIncomeIntent(householdId));
+      if (incomeIntent) {
+        setPendingIncomeIntent(incomeIntent);
+        setIncomeAccountId(incomeIntent.input.accountId);
+        setIncomeAmount(String(incomeIntent.input.amountYen));
+        setIncomeDate(localDateTimeFromIso(incomeIntent.input.occurredAt));
+        setIncomeDescription(incomeIntent.input.description);
+      } else {
+        setPendingIncomeIntent(null);
+      }
+      const movementIntent = getAccountMovementIntent(householdId);
+      if (movementIntent) {
+        setPendingMovementIntent(movementIntent);
+        setMovementKind(movementIntent.input.kind);
+        setMovementFromSelection(movementIntent.input.fromAccountId);
+        setMovementToSelection(movementIntent.input.toAccountId);
+        setMovementAmount(String(movementIntent.input.amountYen));
+        setMovementDate(localDateTimeFromIso(movementIntent.input.occurredAt));
+        setMovementDescription(movementIntent.input.description);
+      } else {
+        setPendingMovementIntent(null);
+      }
+      await refresh();
+    })().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
   }, [householdId, refresh]);
 
-  useEffect(() => {
-    const sourceAccounts = accounts.filter((account) =>
-      movementKind === "TRANSFER" ? account.kind !== "CARD" : account.kind === "BANK",
-    );
-    const destinationAccounts = accounts.filter((account) =>
-      movementKind === "TRANSFER" ? account.kind !== "CARD" : account.kind === "CARD",
-    );
-    if (!sourceAccounts.some((account) => account.id === movementFrom)) {
-      setMovementFrom(sourceAccounts[0]?.id ?? "");
-    }
-    if (!destinationAccounts.some((account) => account.id === movementTo)) {
-      setMovementTo(destinationAccounts[0]?.id ?? "");
-    }
-  }, [accounts, movementKind, movementFrom, movementTo]);
+  //移動元と移動先は選択値を候補口座と突合してレンダー中に導出する。候補にない場合は先頭の口座を使う
+  const sourceAccounts = accounts.filter((account) =>
+    movementKind === "TRANSFER" ? account.kind !== "CARD" : account.kind === "BANK",
+  );
+  const destinationAccounts = accounts.filter((account) =>
+    movementKind === "TRANSFER" ? account.kind !== "CARD" : account.kind === "CARD",
+  );
+  const movementFrom = sourceAccounts.some((account) => account.id === movementFromSelection)
+    ? movementFromSelection
+    : (sourceAccounts[0]?.id ?? "");
+  const movementTo = destinationAccounts.some((account) => account.id === movementToSelection)
+    ? movementToSelection
+    : (destinationAccounts[0]?.id ?? "");
 
   const loadMoreMovements = async () => {
     if (!movementCursor || movementPageLoading) return;
@@ -163,6 +167,7 @@ export function useAccountActivity({
     event.preventDefault();
     if (!pendingIncomeIntent && (!incomeAccountId || !Number(incomeAmount))) return;
     setPending(true);
+    onPendingChange(true);
     try {
       const intent =
         pendingIncomeIntent ??
@@ -200,6 +205,7 @@ export function useAccountActivity({
       onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setPending(false);
+      onPendingChange(false);
     }
   };
 
@@ -211,6 +217,7 @@ export function useAccountActivity({
     )
       return;
     setPending(true);
+    onPendingChange(true);
     try {
       const intent =
         pendingMovementIntent ??
@@ -253,6 +260,7 @@ export function useAccountActivity({
       onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setPending(false);
+      onPendingChange(false);
     }
   };
 
@@ -276,9 +284,9 @@ export function useAccountActivity({
     movementKind,
     setMovementKind,
     movementFrom,
-    setMovementFrom,
+    setMovementFrom: setMovementFromSelection,
     movementTo,
-    setMovementTo,
+    setMovementTo: setMovementToSelection,
     movementAmount,
     setMovementAmount,
     movementDescription,

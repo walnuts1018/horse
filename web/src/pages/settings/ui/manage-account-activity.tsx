@@ -1,5 +1,4 @@
 import { ArrowLeftRight, Check, Plus } from "lucide-react";
-import { useEffect } from "react";
 
 import type { Household } from "../../../shared/api";
 
@@ -36,9 +35,9 @@ export function ManageAccountActivity({
     accounts: household.accounts,
     onNotice,
     onFormClean,
+    onPendingChange,
     onRecorded,
   });
-  useEffect(() => onPendingChange(activity.pending), [activity.pending, onPendingChange]);
 
   return (
     <section className={`panel ${styles.settingsSection}`} hidden={hidden}>
