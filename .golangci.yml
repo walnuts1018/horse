@@ -29,6 +29,7 @@ linters:
     - misspell
     - modernize
     - nilerr
+    - nlreturn
     - noctx
     - nolintlint
     - paralleltest
