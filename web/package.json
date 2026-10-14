@@ -39,7 +39,7 @@
   "devDependencies": {
     "@feature-sliced/steiger-plugin": "^0.7.0",
     "@markuplint/jsx-parser": "^5.1.1",
-    "@markuplint/react-spec": "^5.1.1",
+    "@markuplint/react-spec": "^5.2.0",
     "@storybook/react-vite": "10.6.0",
     "@types/node": "^24.19.2",
     "@types/react": "^19.1.16",
