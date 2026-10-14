@@ -31,8 +31,17 @@ type rankedProductSuggestion struct {
 	variant                             *models.ProductVariant
 	concept                             *models.ProductConcept
 	score                               int
+	purchaseCount                       int
+	lastPurchasedAt                     int64
+	sameMerchant                        bool
 	conceptName, variantName, variantID string
 	matchedName                         string
+}
+
+type productPurchaseStats struct {
+	purchaseCount   int
+	lastPurchasedAt int64
+	sameMerchant    bool
 }
 
 func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID gofrsuuid.UUID, searchKey, merchantKey string, pageSize int) (*ProductSuggestions, error) {
@@ -48,7 +57,7 @@ func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID 
 	}
 	partialVariantRows, err := models.ProductVariants.Query(
 		sm.Where(psql.And(models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdID)), psql.Not(models.ProductVariants.Columns.Archived), models.ProductVariants.Columns.NormalizedName.Like(psql.Arg(searchPattern)), psql.Not(models.ProductVariants.Columns.NormalizedName.Like(psql.Arg(prefixPattern))))),
-		sm.OrderBy(models.ProductVariants.Columns.NormalizedName), sm.OrderBy(models.ProductVariants.Columns.ID), sm.Limit(productSuggestionCandidateLimit),
+		sm.OrderBy(models.ProductVariants.Columns.NormalizedName), sm.OrderBy(models.ProductVariants.Columns.ID),
 	).All(ctx, db)
 	if err != nil {
 		return nil, err
@@ -67,7 +76,7 @@ func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID 
 	}
 	partialConceptRows, err := models.ProductConcepts.Query(
 		sm.Where(psql.And(models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdID)), psql.Not(models.ProductConcepts.Columns.Archived), models.ProductConcepts.Columns.NormalizedName.Like(psql.Arg(searchPattern)), psql.Not(models.ProductConcepts.Columns.NormalizedName.Like(psql.Arg(prefixPattern))))),
-		sm.OrderBy(models.ProductConcepts.Columns.NormalizedName), sm.OrderBy(models.ProductConcepts.Columns.ID), sm.Limit(productSuggestionCandidateLimit),
+		sm.OrderBy(models.ProductConcepts.Columns.NormalizedName), sm.OrderBy(models.ProductConcepts.Columns.ID),
 	).All(ctx, db)
 	if err != nil {
 		return nil, err
@@ -101,7 +110,7 @@ func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID 
 		}
 		partialAliasRows, err := models.ProductAliases.Query(
 			sm.Where(psql.And(models.ProductAliases.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.ProductAliases.Columns.MerchantKey.EQ(psql.Arg(merchantKey)), models.ProductAliases.Columns.NormalizedAlias.Like(psql.Arg(searchPattern)), psql.Not(models.ProductAliases.Columns.NormalizedAlias.Like(psql.Arg(prefixPattern))))),
-			sm.OrderBy(models.ProductAliases.Columns.NormalizedAlias), sm.OrderBy(models.ProductAliases.Columns.ID), sm.Limit(productSuggestionCandidateLimit),
+			sm.OrderBy(models.ProductAliases.Columns.NormalizedAlias), sm.OrderBy(models.ProductAliases.Columns.ID),
 		).All(ctx, db)
 		if err != nil {
 			return nil, err
@@ -153,6 +162,14 @@ func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID 
 			conceptByID[conceptRow.ID] = conceptRow
 		}
 	}
+	variantUUIDs := make([]any, 0, len(variantByID))
+	for variantID := range variantByID {
+		variantUUIDs = append(variantUUIDs, variantID)
+	}
+	purchaseStats, err := loadProductPurchaseStats(ctx, db, householdID, variantUUIDs, merchantKey)
+	if err != nil {
+		return nil, err
+	}
 	items := make([]rankedProductSuggestion, 0, len(variantByID))
 	for _, variantRow := range variantByID {
 		conceptRow := conceptByID[variantRow.ConceptID]
@@ -178,20 +195,15 @@ func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID 
 		case strings.HasPrefix(conceptRow.NormalizedName, searchKey):
 			score = 70
 		}
-		items = append(items, rankedProductSuggestion{variant: variantRow, concept: conceptRow, score: score, conceptName: conceptRow.NormalizedName, variantName: variantRow.NormalizedName, variantID: variantRow.ID.String(), matchedName: matchedName})
+		stats := purchaseStats[variantRow.ID]
+		items = append(items, rankedProductSuggestion{
+			variant: variantRow, concept: conceptRow, score: score,
+			purchaseCount: stats.purchaseCount, lastPurchasedAt: stats.lastPurchasedAt, sameMerchant: stats.sameMerchant,
+			conceptName: conceptRow.NormalizedName, variantName: variantRow.NormalizedName,
+			variantID: variantRow.ID.String(), matchedName: matchedName,
+		})
 	}
-	slices.SortFunc(items, func(a, b rankedProductSuggestion) int {
-		if a.score != b.score {
-			return b.score - a.score
-		}
-		if a.conceptName != b.conceptName {
-			return strings.Compare(a.conceptName, b.conceptName)
-		}
-		if a.variantName != b.variantName {
-			return strings.Compare(a.variantName, b.variantName)
-		}
-		return strings.Compare(a.variantID, b.variantID)
-	})
+	slices.SortFunc(items, compareProductSuggestions)
 	if len(items) > pageSize {
 		items = items[:pageSize]
 	}
@@ -239,6 +251,112 @@ func SearchProductSuggestions(ctx context.Context, db bob.Executor, householdID 
 		result.Items = append(result.Items, ProductSuggestion{Concept: item.concept, Variant: item.variant, MatchedName: item.matchedName, Score: item.score})
 	}
 	return result, nil
+}
+
+func loadProductPurchaseStats(ctx context.Context, db bob.Executor, householdID gofrsuuid.UUID, variantIDs []any, merchantKey string) (map[gofrsuuid.UUID]productPurchaseStats, error) {
+	stats := make(map[gofrsuuid.UUID]productPurchaseStats)
+	if len(variantIDs) == 0 {
+		return stats, nil
+	}
+	items := make([]*models.PurchaseItem, 0)
+	purchaseIDSet := make(map[gofrsuuid.UUID]struct{})
+	for start := 0; start < len(variantIDs); start += productSuggestionCandidateLimit {
+		end := min(start+productSuggestionCandidateLimit, len(variantIDs))
+		rows, err := models.PurchaseItems.Query(sm.Where(psql.And(
+			models.PurchaseItems.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.PurchaseItems.Columns.ProductVariantID.IsNotNull(),
+			models.PurchaseItems.Columns.ProductVariantID.In(psql.Arg(variantIDs[start:end]...)),
+		))).All(ctx, db)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, rows...)
+		for _, item := range rows {
+			purchaseIDSet[item.PurchaseID] = struct{}{}
+		}
+	}
+	purchaseIDs := make([]any, 0, len(purchaseIDSet))
+	for purchaseID := range purchaseIDSet {
+		purchaseIDs = append(purchaseIDs, purchaseID)
+	}
+	purchasesByID := make(map[gofrsuuid.UUID]*models.Purchase, len(purchaseIDs))
+	for start := 0; start < len(purchaseIDs); start += productSuggestionCandidateLimit {
+		end := min(start+productSuggestionCandidateLimit, len(purchaseIDs))
+		rows, err := models.Purchases.Query(sm.Where(psql.And(
+			models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.Purchases.Columns.ID.In(psql.Arg(purchaseIDs[start:end]...)),
+			models.Purchases.Columns.Status.In(psql.Arg("POSTED"), psql.Arg("CLOSED")),
+		))).All(ctx, db)
+		if err != nil {
+			return nil, err
+		}
+		for _, purchase := range rows {
+			purchasesByID[purchase.ID] = purchase
+		}
+	}
+	countedPurchases := make(map[gofrsuuid.UUID]map[gofrsuuid.UUID]struct{})
+	for _, item := range items {
+		if !item.ProductVariantID.Valid {
+			continue
+		}
+		purchase := purchasesByID[item.PurchaseID]
+		if purchase == nil {
+			continue
+		}
+		variantID := item.ProductVariantID.V
+		seen := countedPurchases[variantID]
+		if seen == nil {
+			seen = make(map[gofrsuuid.UUID]struct{})
+			countedPurchases[variantID] = seen
+		}
+		if _, ok := seen[purchase.ID]; ok {
+			continue
+		}
+		seen[purchase.ID] = struct{}{}
+		stat := stats[variantID]
+		stat.purchaseCount++
+		occurredAt := purchase.OccurredAt.UnixNano()
+		if occurredAt > stat.lastPurchasedAt {
+			stat.lastPurchasedAt = occurredAt
+		}
+		if merchantKey != "" && normalizeSuggestionMerchant(purchase.Merchant) == merchantKey {
+			stat.sameMerchant = true
+		}
+		stats[variantID] = stat
+	}
+	return stats, nil
+}
+
+func compareProductSuggestions(a, b rankedProductSuggestion) int {
+	if a.score != b.score {
+		return b.score - a.score
+	}
+	if a.sameMerchant != b.sameMerchant {
+		if a.sameMerchant {
+			return -1
+		}
+		return 1
+	}
+	if a.purchaseCount != b.purchaseCount {
+		return b.purchaseCount - a.purchaseCount
+	}
+	if a.lastPurchasedAt != b.lastPurchasedAt {
+		if a.lastPurchasedAt > b.lastPurchasedAt {
+			return -1
+		}
+		return 1
+	}
+	if a.conceptName != b.conceptName {
+		return strings.Compare(a.conceptName, b.conceptName)
+	}
+	if a.variantName != b.variantName {
+		return strings.Compare(a.variantName, b.variantName)
+	}
+	return strings.Compare(a.variantID, b.variantID)
+}
+
+func normalizeSuggestionMerchant(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
 }
 
 func escapeProductSearchPattern(value string) string {
