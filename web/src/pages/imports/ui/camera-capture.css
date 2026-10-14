@@ -1,3 +1,44 @@
 .camera-capture-dialog {
   overscroll-behavior-y: contain;
 }
+
+.camera-capture-stage {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  max-height: min(62vh, 620px);
+  margin: 16px auto;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  line-height: 0;
+  background: #17201a;
+}
+
+.camera-capture-stage:active {
+  cursor: grabbing;
+}
+
+.camera-capture-stage.is-cropping {
+  cursor: crosshair;
+}
+
+.camera-capture-image {
+  position: relative;
+  width: fit-content;
+  transform-origin: top left;
+}
+
+.camera-capture-image img {
+  display: block;
+  max-width: 100%;
+  max-height: min(62vh, 620px);
+}
+
+.camera-capture-selection {
+  position: absolute;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.38);
+  pointer-events: none;
+}

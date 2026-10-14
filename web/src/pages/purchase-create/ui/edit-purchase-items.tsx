@@ -180,10 +180,8 @@ export function EditPurchaseItems({
             }
           : {}),
       }));
-      // コピーは明示的な操作なので、最初のアイテムのカテゴリをユーザー選択として記録
-      const firstCategoryId = items[0]?.categoryId ?? "";
       rememberUndo(draftRef.current.items);
-      update({ ...draftRef.current, items, categoryId: firstCategoryId });
+      update({ ...draftRef.current, items, categoryId: "" });
     },
     [markDirty, isEnabledCategory, rememberUndo, update],
   );

@@ -8,7 +8,7 @@ import { isLedgerPurchaseEditorDirty, ledgerPurchaseEditorSnapshot } from "./pur
 const purchaseDraft: PurchaseDraft = {
   merchant: "スーパー",
   occurredAt: "2026-10-14T12:00",
-  paymentAllocations: [{ paymentAccountId: "cash", amountYen: "500" }],
+  paymentAllocations: [{ key: "payment-1", paymentAccountId: "cash", amountYen: "500" }],
 };
 
 const itemDraft: LedgerItemDraft = {

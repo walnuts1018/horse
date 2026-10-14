@@ -49,7 +49,7 @@ export function PurchaseEditForm({
         {draft.paymentAllocations.map((payment, index) => (
           <div
             className="purchase-edit-payment-row"
-            key={payment.paymentAccountId || `payment-${index}`}
+            key={payment.key}
           >
             <select
               aria-label={"決済元 " + (index + 1)}
@@ -110,7 +110,7 @@ export function PurchaseEditForm({
               ...draft,
               paymentAllocations: [
                 ...draft.paymentAllocations,
-                { paymentAccountId: "", amountYen: "" },
+                { key: crypto.randomUUID(), paymentAccountId: "", amountYen: "" },
               ],
             })
           }

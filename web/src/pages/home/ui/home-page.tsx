@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { BookOpen, ChevronRight, Plus, Upload, Wallet } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLazyLoadQuery } from "react-relay";
 
 import { useHouseholdPurchases } from "../../../entities/purchase";
@@ -19,6 +19,19 @@ const yen = (amount = 0) =>
     maximumFractionDigits: 0,
   }).format(amount);
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
+const millisecondsUntilJapanMidnight = (date: Date) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const elapsedToday = getPart("hour") * 60 * 60 + getPart("minute") * 60 + getPart("second");
+  return (24 * 60 * 60 - elapsedToday) * 1000 - date.getMilliseconds();
+};
 type HomeSummary = {
   dailySpending: Array<{ date: string; amountYen: number }>;
   monthlyItemCount: number;
@@ -32,8 +45,27 @@ export function HomePage({
   onNavigateToPurchase: () => void;
 }) {
   const { purchases, totalCount } = useHouseholdPurchases(household.id, 8);
-  const [currentMonth] = useState(() => japanMonth(new Date()));
-  const [today] = useState(() => new Date());
+  const [today, setToday] = useState(() => new Date());
+  const [refreshKey, setRefreshKey] = useState(0);
+  const currentMonth = japanMonth(today);
+  useEffect(() => {
+    let midnightTimer: number;
+    function refresh() {
+      setToday(new Date());
+      setRefreshKey((key) => key + 1);
+      window.clearTimeout(midnightTimer);
+      midnightTimer = window.setTimeout(refresh, millisecondsUntilJapanMidnight(new Date()));
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    midnightTimer = window.setTimeout(refresh, millisecondsUntilJapanMidnight(new Date()));
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearTimeout(midnightTimer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
   const dashboardVariables = useMemo(
     () => ({
       householdId: household.id,
@@ -45,6 +77,7 @@ export function HomePage({
   );
   const dashboard = useLazyLoadQuery<HomeDashboardQuery>(homeDashboardQuery, dashboardVariables, {
     fetchPolicy: "network-only",
+    fetchKey: refreshKey,
   });
   const homeSummary = {
     dailySpending: dashboard.homeSummary.dailySpending.map((day) => ({

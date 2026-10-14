@@ -48,13 +48,8 @@ P1 — 意図しない情報変更
 
 | 優先度 | 新しい指摘 | 改善方法 |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| P1 | 過去の購入をコピーすると、最初の商品カテゴリが次の新規品目へ引き継がれる。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/purchase-create/ui/edit-purchase-items.tsx#L165-L187) | コピー後に新しい商品を追加するときはカテゴリを商品名から再推定する。先頭商品のカテゴリを無関係な品目に使わない |
-| P1 | レシート金額欄を空にすると`0`が即座に入る。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/receipt-review.tsx#L284-L299) | 入力中は文字列として保持して空欄を許可し、フォーカス終了時や確定時に数値検証する |
 | P2 | AIの原本一覧がファイル名と処理状態中心で、どの買い物か判別しにくい。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/import-document-list.tsx#L173-L196) | 店舗・購入日・合計額・品目数を優先表示する。自動生成ファイル名は補助情報へ |
-| P2 | 撮影画像を触ると、切り抜きモードを明示的に選んでいなくても範囲選択が始まる。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/camera-capture.tsx#L226-L260) | 通常時は拡大・移動を優先し、切り抜きモードを選択したときだけ範囲選択を有効にする |
-| P2 | 既存購入の決済行が口座IDをReactのkeyに使い、口座変更で行が再マウントされる。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/ledger/ui/purchase-edit-form.tsx#L47-L55) | 決済行に編集セッション内の安定IDを持たせ、口座変更しても入力フォーカスと行状態を維持する |
 | P2 | 取り込み画面のエラーメッセージが2か所に重複表示される。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/imports-page.tsx#L525-L528) | 一か所に統一し、修正すべき入力欄・原本への移動を提供する |
-| P2 | ホーム画面の「今日」と「今月」は初回マウント時に固定される。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/home/ui/home-page.tsx#L35-L40) | 日付変更時やタブ復帰時に更新する。月が変わった場合は当月の集計も更新する |
 
 とくに、決済行の不安定なkeyやカメラの意図しない切り抜きは、画面を見ただけでは分かりにくく、操作中の混乱につながります。
 

@@ -1,6 +1,5 @@
-import type { Dispatch, SetStateAction } from "react";
-
 import { Check, X } from "lucide-react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 
 import type { Household } from "../../../shared/api";
 
@@ -13,6 +12,7 @@ import {
   yen,
 } from "../model/imports";
 import { addReceiptPayment, updateReceiptPaymentAmount } from "../model/receipt-payment-split";
+import { parseReceiptReviewAmountDraft } from "../model/receipt-review-amount";
 import {
   candidateAmountDifferences,
   candidateAmountForItem,
@@ -86,6 +86,7 @@ export function ReceiptReview({
   pending,
   onConfirm,
 }: ReceiptReviewProps) {
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, Record<string, string>>>({});
   const result = selectedDocument.result;
   const receipt = result?.receipt;
   const receiptItems = receipt?.items;
@@ -321,37 +322,58 @@ export function ReceiptReview({
             </div>
             <label>
               帳簿に登録する金額
-              <small>レシート印字額 {yen(item.printedAmount)}</small>
-              ¥
-              <input
-                aria-label={`${item.name}の帳簿に登録する金額`}
-                inputMode="numeric"
-                value={String(
-                  effectiveReceiptItemAmount(
-                    item,
-                    index,
-                    selectedDocument.result?.candidates?.find(
-                      (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
-                    )?.amounts,
-                    manualAmountOverrides[selectedDocument.id],
-                  ),
-                )}
-                onChange={(event) => {
-                  markUnsaved();
-                  const amount = Number(event.target.value.replace(/\D/g, ""));
-                  const itemKey = item.key ?? `item-${index}`;
-                  setManualAmountOverrides((current) => ({
-                    ...current,
-                    [selectedDocument.id]: {
-                      ...current[selectedDocument.id],
-                      [itemKey]: amount,
-                    },
-                  }));
-                  editItem(selectedDocument.id, index, {
-                    grossAmount: amount,
-                  });
-                }}
-              />
+              <small>レシート印字額 {yen(item.printedAmount)}</small>{" "}¥
+              {(() => {
+                const itemKey = item.key ?? `item-${index}`;
+                const amount = effectiveReceiptItemAmount(
+                  item,
+                  index,
+                  selectedDocument.result?.candidates?.find(
+                    (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
+                  )?.amounts,
+                  manualAmountOverrides[selectedDocument.id],
+                );
+                const hasDraft = Object.hasOwn(amountDrafts[selectedDocument.id] ?? {}, itemKey);
+                const draft = amountDrafts[selectedDocument.id]?.[itemKey];
+                return (
+                  <input
+                    aria-label={`${item.name}の帳簿に登録する金額`}
+                    inputMode="numeric"
+                    value={hasDraft ? draft : String(amount)}
+                    onChange={(event) => {
+                      markUnsaved();
+                      setAmountDrafts((current) => ({
+                        ...current,
+                        [selectedDocument.id]: {
+                          ...current[selectedDocument.id],
+                          [itemKey]: event.target.value,
+                        },
+                      }));
+                    }}
+                    onBlur={() => {
+                      if (!hasDraft) return;
+                      const nextAmount = parseReceiptReviewAmountDraft(draft);
+                      if (nextAmount !== null) {
+                        setManualAmountOverrides((current) => ({
+                          ...current,
+                          [selectedDocument.id]: {
+                            ...current[selectedDocument.id],
+                            [itemKey]: nextAmount,
+                          },
+                        }));
+                        editItem(selectedDocument.id, index, {
+                          grossAmount: nextAmount,
+                        });
+                      }
+                      setAmountDrafts((current) => {
+                        const documentDrafts = { ...current[selectedDocument.id] };
+                        delete documentDrafts[itemKey];
+                        return { ...current, [selectedDocument.id]: documentDrafts };
+                      });
+                    }}
+                  />
+                );
+              })()}
             </label>
             <details className="receipt-measure-details">
               <summary>数量・印字単価</summary>
@@ -467,6 +489,11 @@ export function ReceiptReview({
                     className={`candidate-option ${selected ? "candidate-selected" : ""}`}
                     onClick={() => {
                       markUnsaved();
+                      setAmountDrafts((current) => {
+                        const next = { ...current };
+                        delete next[selectedDocument.id];
+                        return next;
+                      });
                       if (!selected) {
                         setManualAmountOverrides((current) => {
                           const next = { ...current };

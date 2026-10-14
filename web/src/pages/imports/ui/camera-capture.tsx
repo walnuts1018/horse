@@ -15,6 +15,7 @@ import "./camera-capture.css";
 
 type Crop = { left: number; top: number; right: number; bottom: number };
 type CameraDraft = { file: File; src: string; crop: Crop | null };
+type Point = { x: number; y: number };
 
 const supportedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const supportedImageExtensions = /\.(jpe?g|png|webp)$/i;
@@ -32,10 +33,12 @@ export const CameraCapture = forwardRef<
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-  const cropStart = useRef<{ x: number; y: number } | null>(null);
+  const pointerStart = useRef<{ point: Point; client: Point; pan: Point } | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const [draft, setDraft] = useState<CameraDraft | null>(null);
+  const [cropMode, setCropMode] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
   const draftOpen = draft !== null;
 
   useImperativeHandle(ref, () => ({
@@ -96,6 +99,9 @@ export const CameraCapture = forwardRef<
       onError("画像を選択してください");
       return;
     }
+    setCropMode(false);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
     setDraft({ file, src: URL.createObjectURL(file), crop: null });
   };
 
@@ -120,27 +126,39 @@ export const CameraCapture = forwardRef<
         lastModified: draft.file.lastModified,
       });
       setDraft({ file, src: URL.createObjectURL(file), crop: null });
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
     } catch (reason) {
       onError(errorMessage(reason));
     }
   };
 
   const updateCrop = (event: PointerEvent<HTMLDivElement>, finish = false) => {
-    const bounds = imageRef.current?.getBoundingClientRect();
-    const start = cropStart.current;
-    if (!bounds || !start) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const start = pointerStart.current;
+    if (!start) return;
     const point = {
-      x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
-      y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+      x: Math.max(0, Math.min(1, (event.clientX - bounds.left - pan.x) / (bounds.width * zoom))),
+      y: Math.max(0, Math.min(1, (event.clientY - bounds.top - pan.y) / (bounds.height * zoom))),
     };
+    if (!cropMode) {
+      if (zoom > 1) {
+        setPan({
+          x: start.pan.x + event.clientX - start.client.x,
+          y: start.pan.y + event.clientY - start.client.y,
+        });
+      }
+      if (finish) pointerStart.current = null;
+      return;
+    }
     const crop = {
-      left: Math.min(start.x, point.x),
-      top: Math.min(start.y, point.y),
-      right: Math.max(start.x, point.x),
-      bottom: Math.max(start.y, point.y),
+      left: Math.min(start.point.x, point.x),
+      top: Math.min(start.point.y, point.y),
+      right: Math.max(start.point.x, point.x),
+      bottom: Math.max(start.point.y, point.y),
     };
     if (finish) {
-      cropStart.current = null;
+      pointerStart.current = null;
       if (crop.right - crop.left < 0.02 || crop.bottom - crop.top < 0.02) {
         setDraft((current) => (current ? { ...current, crop: null } : current));
         return;
@@ -232,79 +250,98 @@ export const CameraCapture = forwardRef<
               </button>
             </div>
             <div
+              className={`camera-capture-stage${cropMode ? " is-cropping" : ""}`}
               onPointerDown={(event) => {
-                const bounds = imageRef.current?.getBoundingClientRect();
-                if (!bounds) return;
-                const start = {
-                  x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
-                  y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+                const bounds = event.currentTarget.getBoundingClientRect();
+                const point = {
+                  x: Math.max(
+                    0,
+                    Math.min(1, (event.clientX - bounds.left - pan.x) / (bounds.width * zoom)),
+                  ),
+                  y: Math.max(
+                    0,
+                    Math.min(1, (event.clientY - bounds.top - pan.y) / (bounds.height * zoom)),
+                  ),
                 };
-                cropStart.current = start;
+                pointerStart.current = {
+                  point,
+                  client: { x: event.clientX, y: event.clientY },
+                  pan,
+                };
                 event.currentTarget.setPointerCapture(event.pointerId);
-                setDraft((current) =>
-                  current
-                    ? {
-                        ...current,
-                        crop: { left: start.x, top: start.y, right: start.x, bottom: start.y },
-                      }
-                    : current,
-                );
+                if (cropMode) {
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          crop: { left: point.x, top: point.y, right: point.x, bottom: point.y },
+                        }
+                      : current,
+                  );
+                }
               }}
               onPointerMove={(event) => updateCrop(event)}
               onPointerUp={(event) => updateCrop(event, true)}
               onPointerCancel={() => {
-                cropStart.current = null;
-              }}
-              style={{
-                position: "relative",
-                margin: "16px auto",
-                width: "fit-content",
-                maxWidth: "100%",
-                maxHeight: "min(62vh, 620px)",
-                touchAction: "none",
-                cursor: "crosshair",
-                lineHeight: 0,
-                background: "#17201a",
+                pointerStart.current = null;
               }}
             >
-              <img
-                ref={imageRef}
-                src={draft.src}
-                alt="撮影した画像"
-                style={{ display: "block", maxWidth: "100%", maxHeight: "min(62vh, 620px)" }}
-              />
-              {draft.crop && (
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    left: `${draft.crop.left * 100}%`,
-                    top: `${draft.crop.top * 100}%`,
-                    width: `${(draft.crop.right - draft.crop.left) * 100}%`,
-                    height: `${(draft.crop.bottom - draft.crop.top) * 100}%`,
-                    border: "2px solid #fff",
-                    boxShadow: "0 0 0 9999px rgb(0 0 0 / 38%)",
-                  }}
-                />
-              )}
+              <div
+                className="camera-capture-image"
+                style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+              >
+                <img src={draft.src} alt="撮影した画像" />
+                {draft.crop && (
+                  <div
+                    className="camera-capture-selection"
+                    aria-hidden="true"
+                    style={{
+                      left: `${draft.crop.left * 100}%`,
+                      top: `${draft.crop.top * 100}%`,
+                      width: `${(draft.crop.right - draft.crop.left) * 100}%`,
+                      height: `${(draft.crop.bottom - draft.crop.top) * 100}%`,
+                    }}
+                  />
+                )}
+              </div>
             </div>
             <div className="import-actions" style={{ justifyContent: "flex-end" }}>
               <button
                 type="button"
                 className="button button-soft"
-                aria-expanded={draft.crop !== null}
-                onClick={() =>
-                  setDraft((current) =>
-                    current
-                      ? {
-                          ...current,
-                          crop: current.crop ?? { left: 0, top: 0, right: 1, bottom: 1 },
-                        }
-                      : current,
-                  )
-                }
+                aria-pressed={cropMode}
+                onClick={() => setCropMode((current) => !current)}
               >
-                範囲を選択
+                {cropMode ? "切り抜きモードを終了" : "切り抜き"}
+              </button>
+              <button
+                type="button"
+                className="button button-soft"
+                aria-label="縮小"
+                disabled={zoom <= 1}
+                onClick={() => setZoom((current) => Math.max(1, current - 0.25))}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="button button-soft"
+                aria-label="拡大"
+                disabled={zoom >= 4}
+                onClick={() => setZoom((current) => Math.min(4, current + 0.25))}
+              >
+                ＋
+              </button>
+              <button
+                type="button"
+                className="button button-soft"
+                disabled={zoom === 1 && pan.x === 0 && pan.y === 0}
+                onClick={() => {
+                  setZoom(1);
+                  setPan({ x: 0, y: 0 });
+                }}
+              >
+                表示をリセット
               </button>
               <button type="button" className="button button-soft" onClick={() => void rotate()}>
                 回転
