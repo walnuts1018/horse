@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 import { fetchQuery } from "react-relay";
 
-import { loanBalancesQuery, statementTransferCandidatesQuery } from "../../../entities/ledger";
+import {
+  accountMovementsQuery,
+  loanBalancesQuery,
+  statementTransferCandidatesQuery,
+} from "../../../entities/ledger";
 import {
   getRelayEnvironment,
   type Account,
+  type AccountMovementsQuery,
   type Household,
   type LoanBalancesQuery,
   type Purchase,
@@ -30,6 +35,7 @@ export function StatementReview({
   onConfirmTransfer,
   onConfirmLoan,
   onLinkExistingTransfer,
+  onLinkExistingMovement,
   onSelectRegion,
 }: {
   document: DocumentReview;
@@ -53,6 +59,7 @@ export function StatementReview({
     loanId?: string,
   ) => void;
   onLinkExistingTransfer: (entry: StatementEntry, accountId: string, transferId: string) => void;
+  onLinkExistingMovement: (entry: StatementEntry, accountId: string, movementId: string) => void;
   onSelectRegion: (entry: StatementEntry) => void;
 }) {
   const [refundTargets, setRefundTargets] = useState<
@@ -69,6 +76,7 @@ export function StatementReview({
         toMemberId?: string;
         loanId?: string;
         existingTransferId?: string;
+        existingMovementId?: string;
       }
     >
   >({});
@@ -81,6 +89,12 @@ export function StatementReview({
   const [transferCandidateCursor, setTransferCandidateCursor] = useState<string | null>(null);
   const [hasMoreTransferCandidates, setHasMoreTransferCandidates] = useState(false);
   const [loadingTransferCandidates, setLoadingTransferCandidates] = useState(false);
+  const [movementCandidates, setMovementCandidates] = useState<
+    AccountMovementsQuery["response"]["accountMovements"]["edges"]
+  >([]);
+  const [movementCandidateCursor, setMovementCandidateCursor] = useState<string | null>(null);
+  const [hasMoreMovementCandidates, setHasMoreMovementCandidates] = useState(false);
+  const [loadingMovementCandidates, setLoadingMovementCandidates] = useState(false);
   useEffect(() => {
     const subscription = fetchQuery<LoanBalancesQuery>(getRelayEnvironment(), loanBalancesQuery, {
       householdId: household.id,
@@ -95,6 +109,28 @@ export function StatementReview({
             balanceYen: Number(node.balanceYen),
           })),
         ),
+    });
+    return () => subscription.unsubscribe();
+  }, [household.id]);
+  useEffect(() => {
+    setMovementCandidates([]);
+    setMovementCandidateCursor(null);
+    setHasMoreMovementCandidates(false);
+    const subscription = fetchQuery<AccountMovementsQuery>(
+      getRelayEnvironment(),
+      accountMovementsQuery,
+      {
+        householdId: household.id,
+        first: 100,
+        after: null,
+      },
+      { fetchPolicy: "network-only" },
+    ).subscribe({
+      next: (data) => {
+        setMovementCandidates(data.accountMovements.edges);
+        setMovementCandidateCursor(data.accountMovements.pageInfo.endCursor ?? null);
+        setHasMoreMovementCandidates(data.accountMovements.pageInfo.hasNextPage);
+      },
     });
     return () => subscription.unsubscribe();
   }, [household.id]);
@@ -134,6 +170,28 @@ export function StatementReview({
       complete: () => setLoadingTransferCandidates(false),
     });
   };
+  const loadMoreMovementCandidates = () => {
+    if (!movementCandidateCursor || loadingMovementCandidates) return;
+    setLoadingMovementCandidates(true);
+    fetchQuery<AccountMovementsQuery>(
+      getRelayEnvironment(),
+      accountMovementsQuery,
+      {
+        householdId: household.id,
+        first: 100,
+        after: movementCandidateCursor,
+      },
+      { fetchPolicy: "network-only" },
+    ).subscribe({
+      next: (data) => {
+        setMovementCandidates((current) => [...current, ...data.accountMovements.edges]);
+        setMovementCandidateCursor(data.accountMovements.pageInfo.endCursor ?? null);
+        setHasMoreMovementCandidates(data.accountMovements.pageInfo.hasNextPage);
+      },
+      error: () => setLoadingMovementCandidates(false),
+      complete: () => setLoadingMovementCandidates(false),
+    });
+  };
   const statements = document.result?.statements;
   if (!statements) return null;
 
@@ -155,6 +213,19 @@ export function StatementReview({
           {loadingTransferCandidates ? "読み込み中" : "過去の取引を読み込む"}
         </button>
       )}
+      {hasMoreMovementCandidates &&
+        statements.some(
+          (entry) => entry.kind === "ACCOUNT_TRANSFER" || entry.kind === "CARD_BILL_PAYMENT",
+        ) && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={loadingMovementCandidates}
+            onClick={loadMoreMovementCandidates}
+          >
+            {loadingMovementCandidates ? "読み込み中" : "過去の口座移動を読み込む"}
+          </button>
+        )}
       {statements.map((entry) => {
         const reference = statementSourceReference(entry);
         const key = `${document.id}:${reference}`;
@@ -184,7 +255,18 @@ export function StatementReview({
             return [];
           return [{ id: node.id, description: node.description, occurredAt: node.occurredAt }];
         });
+        const matchingMovements = movementCandidates.flatMap(({ node }) => {
+          const expectedKind = isTransfer ? "TRANSFER" : "CARD_BILL_PAYMENT";
+          if ((!isTransfer && !isCardBillPayment) || node.kind !== expectedKind) return [];
+          if (
+            Number(node.amountYen) !== Math.abs(entry.amount) ||
+            Date.parse(node.occurredAt) !== Date.parse(entry.occurredAt)
+          )
+            return [];
+          return [{ id: node.id, description: node.description, occurredAt: node.occurredAt }];
+        });
         const selectedTransferId = transferAccounts.existingTransferId ?? "";
+        const selectedMovementId = transferAccounts.existingMovementId ?? "";
         const loanDraft = transferAccounts;
         return (
           <div
@@ -484,6 +566,31 @@ export function StatementReview({
                         </select>
                       </label>
                     )}
+                    {(isTransfer || isCardBillPayment) && matchingMovements.length > 0 && (
+                      <label>
+                        <span>既存の口座移動</span>
+                        <select
+                          value={selectedMovementId}
+                          disabled={pending}
+                          onChange={(event) =>
+                            setStatementAccounts((current) => ({
+                              ...current,
+                              [key]: {
+                                ...transferAccounts,
+                                existingMovementId: event.target.value,
+                              },
+                            }))
+                          }
+                        >
+                          <option value="">新しい口座移動を記録</option>
+                          {matchingMovements.map((movement) => (
+                            <option key={movement.id} value={movement.id}>
+                              {movement.occurredAt.slice(0, 10)} · {movement.description}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <button
                       type="button"
                       className="text-button"
@@ -491,6 +598,7 @@ export function StatementReview({
                         pending ||
                         !transferAccounts.statementAccountId ||
                         (!selectedTransferId &&
+                          !selectedMovementId &&
                           (isTransfer || isCardBillPayment
                             ? !transferAccounts.otherAccountId
                             : isLoan
@@ -502,42 +610,50 @@ export function StatementReview({
                                 )))
                       }
                       onClick={() =>
-                        selectedTransferId
-                          ? onLinkExistingTransfer(
+                        selectedMovementId
+                          ? onLinkExistingMovement(
                               entry,
                               transferAccounts.statementAccountId,
-                              selectedTransferId,
+                              selectedMovementId,
                             )
-                          : isLoan || isRepayment
-                            ? onConfirmLoan(
+                          : selectedTransferId
+                            ? onLinkExistingTransfer(
                                 entry,
                                 transferAccounts.statementAccountId,
-                                isLoan
-                                  ? loanDraft.fromMemberId!
-                                  : loans.find((loan) => loan.id === loanDraft.loanId)!
-                                      .borrowerMemberId,
-                                isLoan
-                                  ? loanDraft.toMemberId!
-                                  : loans.find((loan) => loan.id === loanDraft.loanId)!
-                                      .lenderMemberId,
-                                isRepayment ? loanDraft.loanId : undefined,
+                                selectedTransferId,
                               )
-                            : onConfirmTransfer(
-                                entry,
-                                transferAccounts.statementAccountId,
-                                transferAccounts.otherAccountId,
-                              )
+                            : isLoan || isRepayment
+                              ? onConfirmLoan(
+                                  entry,
+                                  transferAccounts.statementAccountId,
+                                  isLoan
+                                    ? loanDraft.fromMemberId!
+                                    : loans.find((loan) => loan.id === loanDraft.loanId)!
+                                        .borrowerMemberId,
+                                  isLoan
+                                    ? loanDraft.toMemberId!
+                                    : loans.find((loan) => loan.id === loanDraft.loanId)!
+                                        .lenderMemberId,
+                                  isRepayment ? loanDraft.loanId : undefined,
+                                )
+                              : onConfirmTransfer(
+                                  entry,
+                                  transferAccounts.statementAccountId,
+                                  transferAccounts.otherAccountId,
+                                )
                       }
                     >
-                      {selectedTransferId
-                        ? "既存の取引に紐付け"
-                        : isCardBillPayment
-                          ? "カード引落しを記録"
-                          : isLoan
-                            ? "貸付を記録"
-                            : isRepayment
-                              ? "返済を記録"
-                              : "振替を記録"}
+                      {selectedMovementId
+                        ? "既存の口座移動に紐付け"
+                        : selectedTransferId
+                          ? "既存の取引に紐付け"
+                          : isCardBillPayment
+                            ? "カード引落しを記録"
+                            : isLoan
+                              ? "貸付を記録"
+                              : isRepayment
+                                ? "返済を記録"
+                                : "振替を記録"}
                     </button>
                   </>
                 )

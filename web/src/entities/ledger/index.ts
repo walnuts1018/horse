@@ -8,6 +8,7 @@ export {
   statementTransferCandidatesQuery,
   linkStatementTransferMutation,
   recordAccountMovementMutation,
+  linkStatementAccountMovementMutation,
   recordExternalIncomeMutation,
   recordFundingMutation,
   recordTransferMutation,

@@ -96,6 +96,7 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 		{Row: 2, SourceReference: testStatementRow2Reference, Kind: "ACCOUNT_TRANSFER", OccurredAt: testStatementTransferFirstOccurredAt, Merchant: testAccountTransferDescription, Amount: -250, Region: &region},
 		{Row: 3, SourceReference: "row:3", Kind: "ACCOUNT_TRANSFER", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: testAccountTransferDescription, Amount: -300, Region: &region},
 		{Row: 4, SourceReference: testStatementRow4Reference, Kind: "CARD_BILL_PAYMENT", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: "Credit card bill", Amount: -800, Region: &region},
+		{Row: 5, SourceReference: "row:5", Kind: "CARD_BILL_PAYMENT", OccurredAt: testStatementTransferSecondOccurredAt, Merchant: "Credit card bill", Amount: -500, Region: &region},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -176,6 +177,63 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 	if _, err := resolver.recordAccountMovement(ctx, wrongCardBillRow); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("non-card-bill statement row was not rejected: %v", err)
 	}
+	existingMovementInput := badAmount
+	existingMovementInput.AmountYen = 300
+	existingMovementInput.SourceDocumentID = nil
+	existingMovementInput.SourceReference = nil
+	existingMovementInput.SourceAccountID = nil
+	existingMovementInput.IdempotencyKey = uuid.NewV7().String()
+	existingMovement, err := resolver.recordAccountMovement(ctx, existingMovementInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkInput := model.LinkStatementAccountMovementInput{
+		HouseholdID: household.ID, AccountMovementID: existingMovement.ID, SourceDocumentID: documentID,
+		SourceReference: "row:3", SourceAccountID: fromAccount.ID,
+	}
+	wrongLinkAccount := linkInput
+	wrongLinkAccount.SourceAccountID = toAccount.ID
+	if _, err := resolver.linkStatementAccountMovement(ctx, wrongLinkAccount); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("statement bank account mismatch was not rejected: %v", err)
+	}
+	wrongLinkMovement := linkInput
+	wrongLinkMovement.AccountMovementID = created.ID
+	if _, err := resolver.linkStatementAccountMovement(ctx, wrongLinkMovement); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("movement amount mismatch was not rejected: %v", err)
+	}
+	linkedMovement, err := resolver.linkStatementAccountMovement(ctx, linkInput)
+	if err != nil || linkedMovement.ID != existingMovement.ID {
+		t.Fatalf("existing movement was not linked: result=%#v error=%v", linkedMovement, err)
+	}
+	if _, err := resolver.linkStatementAccountMovement(ctx, linkInput); !errors.Is(err, ErrConflict) {
+		t.Fatalf("duplicate movement link was not rejected: %v", err)
+	}
+	existingCardBillInput := cardBillInput
+	existingCardBillInput.AmountYen = 500
+	existingCardBillInput.SourceDocumentID = nil
+	existingCardBillInput.SourceReference = nil
+	existingCardBillInput.SourceAccountID = nil
+	existingCardBillInput.IdempotencyKey = uuid.NewV7().String()
+	existingCardBill, err := resolver.recordAccountMovement(ctx, existingCardBillInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cardBillLink := model.LinkStatementAccountMovementInput{
+		HouseholdID: household.ID, AccountMovementID: existingCardBill.ID, SourceDocumentID: documentID,
+		SourceReference: "row:5", SourceAccountID: fromAccount.ID,
+	}
+	wrongCardBillLink := cardBillLink
+	wrongCardBillLink.AccountMovementID = existingMovement.ID
+	if _, err := resolver.linkStatementAccountMovement(ctx, wrongCardBillLink); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("card bill movement kind mismatch was not rejected: %v", err)
+	}
+	linkedCardBill, err := resolver.linkStatementAccountMovement(ctx, cardBillLink)
+	if err != nil || linkedCardBill.ID != existingCardBill.ID {
+		t.Fatalf("existing card bill movement was not linked: result=%#v error=%v", linkedCardBill, err)
+	}
+	if _, err := resolver.linkStatementAccountMovement(ctx, cardBillLink); !errors.Is(err, ErrConflict) {
+		t.Fatalf("duplicate card bill link was not rejected: %v", err)
+	}
 	cardBillMovement, err := resolver.recordAccountMovement(ctx, cardBillInput)
 	if err != nil {
 		t.Fatal(err)
@@ -214,18 +272,18 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 	}
 
 	movements, err := models.AccountMovements.Query(sm.Where(models.AccountMovements.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, bobpgx.NewPool(db))
-	if err != nil || len(movements) != 2 {
+	if err != nil || len(movements) != 4 {
 		t.Fatalf("failed or replayed requests created extra movements: movements=%#v error=%v", movements, err)
 	}
 	confirmations, err := models.DocumentConfirmations.Query(sm.Where(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)))).All(ctx, bobpgx.NewPool(db))
-	if err != nil || len(confirmations) != 2 {
-		t.Fatalf("confirmed statement rows were not linked to exactly two movements: confirmations=%#v error=%v", confirmations, err)
+	if err != nil || len(confirmations) != 4 {
+		t.Fatalf("confirmed statement rows were not linked to exactly four movements: confirmations=%#v error=%v", confirmations, err)
 	}
 	for _, confirmation := range confirmations {
 		if confirmation.PurchaseID.Valid || confirmation.CorrectionID.Valid || !confirmation.AccountMovementID.Valid {
 			t.Fatalf("statement row was not linked to an account movement: %#v", confirmation)
 		}
-		if confirmation.SourceReference == "row:2" && confirmation.AccountMovementID.V != generatedUUID(created.ID) || confirmation.SourceReference == cardBillReference && confirmation.AccountMovementID.V != generatedUUID(cardBillMovement.ID) {
+		if confirmation.SourceReference == "row:2" && confirmation.AccountMovementID.V != generatedUUID(created.ID) || confirmation.SourceReference == "row:3" && confirmation.AccountMovementID.V != generatedUUID(existingMovement.ID) || confirmation.SourceReference == cardBillReference && confirmation.AccountMovementID.V != generatedUUID(cardBillMovement.ID) || confirmation.SourceReference == "row:5" && confirmation.AccountMovementID.V != generatedUUID(existingCardBill.ID) {
 			t.Fatalf("statement row was linked to the wrong movement: %#v", confirmation)
 		}
 	}

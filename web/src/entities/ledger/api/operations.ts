@@ -278,6 +278,23 @@ export const recordAccountMovementMutation = graphql`
   }
 `;
 
+export const linkStatementAccountMovementMutation = graphql`
+  mutation LinkStatementAccountMovementMutation($input: LinkStatementAccountMovementInput!) {
+    linkStatementAccountMovement(input: $input) {
+      __typename
+      ... on LinkStatementAccountMovementSuccess {
+        result {
+          id
+        }
+      }
+      ... on LinkStatementAccountMovementUserError {
+        code
+        message
+      }
+    }
+  }
+`;
+
 export const recordExternalIncomeMutation = graphql`
   mutation RecordExternalIncomeMutation($input: RecordExternalIncomeInput!) {
     recordExternalIncome(input: $input) {

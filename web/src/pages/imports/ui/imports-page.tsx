@@ -485,6 +485,14 @@ export function ImportsPage({
               onLinkExistingTransfer={(entry, accountId, transferId) =>
                 void review.linkStatementTransfer(selectedDocument, entry, accountId, transferId)
               }
+              onLinkExistingMovement={(entry, accountId, movementId) =>
+                void review.linkStatementAccountMovement(
+                  selectedDocument,
+                  entry,
+                  accountId,
+                  movementId,
+                )
+              }
               onError={setMessage}
               onLinked={async () => {
                 setHasUnsavedChanges(false);

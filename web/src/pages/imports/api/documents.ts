@@ -8,6 +8,7 @@ import {
   recordRepaymentMutation,
   recordTransferMutation,
   linkStatementTransferMutation,
+  linkStatementAccountMovementMutation,
 } from "../../../entities/ledger";
 import {
   getRelayEnvironment,
@@ -16,6 +17,7 @@ import {
   type RecordRepaymentMutation,
   type RecordTransferMutation,
   type LinkStatementTransferMutation,
+  type LinkStatementAccountMovementMutation,
 } from "../../../shared/api";
 import { asRecord } from "../model/imports";
 
@@ -154,6 +156,30 @@ export function linkStatementTransfer(input: LinkStatementTransferMutation["vari
             result.__typename === "LinkStatementTransferUserError"
               ? result.message
               : "明細を既存取引に紐付けできませんでした",
+          ),
+        );
+      },
+      onError: reject,
+    }),
+  );
+}
+
+export function linkStatementAccountMovement(
+  input: LinkStatementAccountMovementMutation["variables"]["input"],
+) {
+  return new Promise<void>((resolve, reject) =>
+    commitMutation<LinkStatementAccountMovementMutation>(getRelayEnvironment(), {
+      mutation: linkStatementAccountMovementMutation,
+      variables: { input },
+      onCompleted: (response, errors) => {
+        if (errors?.length) return reject(new Error(errors[0].message));
+        const result = response.linkStatementAccountMovement;
+        if (result.__typename === "LinkStatementAccountMovementSuccess") return resolve();
+        reject(
+          new Error(
+            result.__typename === "LinkStatementAccountMovementUserError"
+              ? result.message
+              : "口座移動に紐付けできませんでした",
           ),
         );
       },

@@ -119,6 +119,10 @@ type LedgerEntry interface {
 	GetCreatedAt() DateTime
 }
 
+type LinkStatementAccountMovementResult interface {
+	IsLinkStatementAccountMovementResult()
+}
+
 type LinkStatementTransferResult interface {
 	IsLinkStatementTransferResult()
 }
@@ -1168,6 +1172,31 @@ type LedgerEdge struct {
 	Cursor string      `json:"cursor"`
 	Node   LedgerEntry `json:"node"`
 }
+
+type LinkStatementAccountMovementInput struct {
+	HouseholdID       string `json:"householdId"`
+	AccountMovementID string `json:"accountMovementId"`
+	SourceDocumentID  string `json:"sourceDocumentId"`
+	SourceReference   string `json:"sourceReference"`
+	SourceAccountID   string `json:"sourceAccountId"`
+}
+
+type LinkStatementAccountMovementSuccess struct {
+	Result *AccountMovement `json:"result"`
+}
+
+func (LinkStatementAccountMovementSuccess) IsLinkStatementAccountMovementResult() {}
+
+type LinkStatementAccountMovementUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (LinkStatementAccountMovementUserError) IsLinkStatementAccountMovementResult() {}
+
+func (LinkStatementAccountMovementUserError) IsMutationError()                {}
+func (this LinkStatementAccountMovementUserError) GetCode() MutationErrorCode { return this.Code }
+func (this LinkStatementAccountMovementUserError) GetMessage() string         { return this.Message }
 
 type LinkStatementTransferInput struct {
 	HouseholdID      string `json:"householdId"`

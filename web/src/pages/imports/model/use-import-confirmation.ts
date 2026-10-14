@@ -28,6 +28,7 @@ function normalizeName(name: string) {
 import {
   importIdempotencyKey,
   linkStatementTransfer as linkStatementTransferRequest,
+  linkStatementAccountMovement as linkStatementAccountMovementRequest,
   recordStatementAccountMovement,
   recordStatementExternalIncome,
   recordStatementLoan,
@@ -574,6 +575,37 @@ export function useImportConfirmation({
     onAdded(true);
   };
 
+  const linkStatementAccountMovement = async (
+    document: DocumentReview,
+    entry: StatementEntry,
+    statementAccountId: string,
+    movementId: string,
+  ) => {
+    if (entry.kind !== "ACCOUNT_TRANSFER" && entry.kind !== "CARD_BILL_PAYMENT")
+      throw new Error("口座移動の明細を選択してください");
+    const issue = statementConfirmationIssue(entry);
+    if (issue) throw new Error(issue);
+    if (
+      !household.accounts.some(
+        (account) => account.id === statementAccountId && account.kind === "BANK",
+      )
+    )
+      throw new Error("銀行口座を選択してください");
+    const reference = statementSourceReference(entry);
+    const key = `${document.id}:${reference}`;
+    if (confirmedStatements.has(key)) return;
+    await linkStatementAccountMovementRequest({
+      householdId: household.id,
+      accountMovementId: movementId,
+      sourceDocumentId: document.id,
+      sourceReference: reference,
+      sourceAccountId: statementAccountId,
+    });
+    setConfirmedStatements((current) => new Set(current).add(key));
+    setHasUnsavedChanges(false);
+    onAdded(true);
+  };
+
   return {
     recentPurchases,
     confirmedStatements,
@@ -618,5 +650,11 @@ export function useImportConfirmation({
       accountId: string,
       transferId: string,
     ) => linkStatementTransfer(document, entry, accountId, transferId),
+    linkStatementAccountMovement: (
+      document: DocumentReview,
+      entry: StatementEntry,
+      accountId: string,
+      movementId: string,
+    ) => linkStatementAccountMovement(document, entry, accountId, movementId),
   };
 }
