@@ -38,9 +38,9 @@ pgxの`BeginFunc`は採用せず、明示的な`Begin`/`Commit`/`Rollback`を維
 
 購入・精算・設定・取込の未保存変更を検知し、家庭切替やログアウトなどで変更を破棄する前に確認する処理を追加しました。drawer表示中はbodyを固定し、閉じた後に表示位置を復元します。公開環境で画面URL、直接URL、再読み込み、戻る・進むの動作を確認しました。
 
-変更は`web/src/app/horse-app.tsx`と画面ごとの編集フォームにあります。公開環境では履歴操作と深いURLからの再読み込みを確認しました。iOS実機でのpull-to-refresh抑止と、タブを閉じる・更新する場合の未保存確認は未確認のため、`docs/reviews/react.md`に残します。
+変更は`web/src/app/horse-app.tsx`と画面ごとの編集フォームにあります。公開環境では履歴操作と深いURLからの再読み込みを確認しました。タブを閉じる・更新する場合の未保存確認は`docs/reviews/react.md`に残します。
 
-ソース監査でdirty状態に対する`useBlocker`と`beforeunload`、購入下書きのIndexedDB保存、drawer表示中の`overscroll-behavior`とbody固定を確認しました。2026年10月13日に公開環境で帳簿への遷移によるURL変更、深いURLの直接表示、再読み込み後の画面維持、戻る・進むを確認しました。dirtyな購入入力からホームへ移動すると破棄確認が表示されました。別の合成入力では直接再読み込み後も品名と金額が下書きから復元されましたが、ブラウザー確認は表示されませんでした。合成入力は空に戻し、購入は送信していません。タブを閉じた後の復元、下書き保存前の離脱、Android/iOS実機でのpull-to-refresh抑止は未確認のため、`docs/reviews/react.md`に残します。
+ソース監査でdirty状態に対する`useBlocker`と`beforeunload`、購入下書きのIndexedDB保存、drawer表示中の`overscroll-behavior`とbody固定を確認しました。2026年10月13日に公開環境で帳簿への遷移によるURL変更、深いURLの直接表示、再読み込み後の画面維持、戻る・進むを確認しました。dirtyな購入入力からホームへ移動すると破棄確認が表示されました。別の合成入力では直接再読み込み後も品名と金額が下書きから復元されましたが、ブラウザー確認は表示されませんでした。合成入力は空に戻し、購入は送信していません。更新・タブ終了時の確認は未解決として`docs/reviews/react.md`に残します。
 
 UXレビューの品目では、商品サジェストを選択した直後に自由入力用handlerが消していたvariant IDを、名前変更後に設定するよう順序を直しました。取込画面では、編集中のレシート結果をポーリング応答で上書きしないようにし、明示的な再抽出・購入確定後に保護を解除します。精算画面では世帯と期間を応答snapshotに紐付け、古い応答を破棄し、締めMutationには表示中snapshotのrevisionを使います。各変更の型検査と整形確認は成功し、総合CIは後続のmain実行で確認します。実操作を伴うフロントエンドのtest runnerがなく、小規模なstate更新順序やrequest世代管理だけを検証するモック中心のテストは追加しませんでした。対応した3項目を`docs/reviews/ux.md`から削除し、未解決項目は残しています。
 
@@ -318,7 +318,7 @@ MAX_TOKENSや不正生成JSONでGemini呼び出しに失敗した場合も、応
 
 ### 2026年10月14日の未保存画面と取り込みURL
 
-世帯内の画面はTanStack Startのfile-based routingでpathを切り替え、取り込みフィルターはTanStack Routerのsearch stateから読み書きします。未保存状態は世帯とページをscopeとするregistryに集約し、画面遷移は`useBlocker`、ブラウザー終了は`enableBeforeUnload`で確認します。モバイル幅では`html`とdrawerに`overscroll-behavior-y: none`を設定し、drawer背景はBase UI Dialogのmodal scroll lockで固定します。registryはページ内の複数フォームを個別登録しないため、共有callbackを使う画面は各フォームの状態を内部で集約します。route contextの対象test、型検査、対象oxlint、Steiger、format検査が成功しました。iOS・Android実機のpull-to-refreshと未保存状態のブラウザー終了確認は未実施です。
+世帯内の画面はTanStack Startのfile-based routingでpathを切り替え、取り込みフィルターはTanStack Routerのsearch stateから読み書きします。未保存状態は世帯とページをscopeとするregistryに集約し、画面遷移は`useBlocker`、ブラウザー離脱は`enableBeforeUnload`で確認します。モバイル幅では`html`とdrawerに`overscroll-behavior-y: none`を設定し、drawer背景はBase UI Dialogのmodal scroll lockで固定します。registryはページ内の複数フォームを個別登録しないため、共有callbackを使う画面は各フォームの状態を内部で集約します。route contextの対象test、型検査、対象oxlint、Steiger、format検査が成功しました。ブラウザー更新・タブ終了時の離脱確認は未解決です。
 
 ### 2026年10月14日の購入メール転送
 
