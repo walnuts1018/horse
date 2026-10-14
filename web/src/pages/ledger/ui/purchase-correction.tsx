@@ -9,6 +9,7 @@ import {
   type PurchaseItem,
   type PurchasePaymentInput,
 } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 import { getRemainingRefundAmount } from "../model/purchase-correction";
 
@@ -17,6 +18,13 @@ type RefundPayment = {
   paymentAccountId: string;
   amountYen: string;
 };
+
+const yen = (amount = 0) =>
+  new Intl.NumberFormat("ja-JP", {
+    style: "currency",
+    currency: "JPY",
+    maximumFractionDigits: 0,
+  }).format(amount);
 
 export function PurchaseCorrection({
   householdId,
@@ -47,12 +55,6 @@ export function PurchaseCorrection({
       Number(refundAutoTotal && refundPayments.length === 1 ? refundAmount : payment.amountYen),
     0,
   );
-  const yen = (amount = 0) =>
-    new Intl.NumberFormat("ja-JP", {
-      style: "currency",
-      currency: "JPY",
-      maximumFractionDigits: 0,
-    }).format(amount);
 
   const addRefundPayment = () => {
     setRefundPayments((current) => [
@@ -122,7 +124,7 @@ export function PurchaseCorrection({
       });
       await onSaved();
     } catch (reason) {
-      setError((reason as Error).message);
+      setError(errorMessage(reason));
     } finally {
       setPending(false);
     }
@@ -229,7 +231,11 @@ export function PurchaseCorrection({
         <button className="button button-soft" type="button" disabled={pending} onClick={onCancel}>
           キャンセル
         </button>
-        <button className="button button-primary" disabled={pending || remaining <= 0}>
+        <button
+          className="button button-primary"
+          type="submit"
+          disabled={pending || remaining <= 0}
+        >
           返品を記録
         </button>
       </div>

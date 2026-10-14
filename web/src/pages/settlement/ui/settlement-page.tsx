@@ -128,6 +128,7 @@ export function SettlementPage({
         <div className="settlement-actions">
           <button
             className="button button-soft"
+            type="button"
             disabled={!settlement || pending || settlement.__typename === "ClosedSettlement"}
             onClick={() => {
               periodClose.setConfirmationOpen(true);
@@ -138,6 +139,7 @@ export function SettlementPage({
           </button>
           <button
             className="button button-primary"
+            type="button"
             disabled={loanState.hasPendingRepayment}
             onClick={() => {
               transfer.toggle(loanState.hasPendingRepayment);

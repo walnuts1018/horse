@@ -1,8 +1,10 @@
 import { Check } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "react";
 
 import { readRecurringExpenses } from "../../../entities/recurring-expense";
 import { type Household, type RecurringExpense } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
+import { isOneOf } from "../../../shared/lib/guard";
 import {
   archiveRecurringExpense,
   createRecurringExpense,
@@ -61,10 +63,10 @@ export function ManageRecurringExpenses({
   }, [householdId]);
 
   useEffect(() => {
-    void refresh().catch((reason) => onNoticeRef.current((reason as Error).message, "error"));
+    void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
   }, [refresh]);
 
-  const saveRecurring = async (event: FormEvent) => {
+  const saveRecurring = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const amountYen = Number(recurringAmount);
     if (!recurringName.trim() || !amountYen || amountYen < 1) return;
@@ -101,7 +103,7 @@ export function ManageRecurringExpenses({
       await refresh();
       onNotice("定期支出を保存しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
     } finally {
       setPending(false);
       onPendingChange(false);
@@ -134,7 +136,7 @@ export function ManageRecurringExpenses({
       await refresh();
       onNotice(expense.archived ? "定期支出を再表示しました" : "定期支出を終了しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
     } finally {
       setPending(false);
       onPendingChange(false);
@@ -182,6 +184,7 @@ export function ManageRecurringExpenses({
               </small>
             </div>
             <button
+              type="button"
               className="text-button"
               disabled={pending || expense.archived}
               onClick={() => editRecurring(expense)}
@@ -189,6 +192,7 @@ export function ManageRecurringExpenses({
               編集
             </button>
             <button
+              type="button"
               className="text-button"
               disabled={pending}
               onClick={() => void toggleRecurringExpenseVisibility(expense)}
@@ -226,9 +230,10 @@ export function ManageRecurringExpenses({
         <select
           aria-label="頻度"
           value={recurringCadence}
-          onChange={(event) =>
-            setRecurringCadence(event.target.value as RecurringExpense["cadence"])
-          }
+          onChange={(event) => {
+            if (isOneOf(event.target.value, ["WEEKLY", "MONTHLY", "YEARLY"]))
+              setRecurringCadence(event.target.value);
+          }}
         >
           <option value="WEEKLY">毎週</option>
           <option value="MONTHLY">毎月</option>
@@ -286,7 +291,7 @@ export function ManageRecurringExpenses({
             onChange={(event) => setRecurringEndsOn(event.target.value)}
           />
         </label>
-        <button className="button button-primary" disabled={pending}>
+        <button type="submit" className="button button-primary" disabled={pending}>
           <Check size={15} />
           {editingRecurring ? "変更を保存" : "予定を追加"}
         </button>

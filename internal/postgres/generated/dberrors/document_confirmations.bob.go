@@ -17,10 +17,19 @@ var DocumentConfirmationErrors = &documentConfirmationErrors{
 		columns: []string{"source_reference"},
 		s:       "document_confirmations_source_reference_length",
 	},
+
+	ErrCheckDocumentConfirmationsTargetCheck: &CheckConstraintError{
+		schema:  "",
+		table:   "document_confirmations",
+		columns: []string{"purchase_id", "correction_id"},
+		s:       "document_confirmations_target_check",
+	},
 }
 
 type documentConfirmationErrors struct {
 	ErrUniqueDocumentConfirmationsPkey *UniqueConstraintError
 
 	ErrCheckDocumentConfirmationsSourceReferenceLength *CheckConstraintError
+
+	ErrCheckDocumentConfirmationsTargetCheck *CheckConstraintError
 }

@@ -3,6 +3,16 @@ import type { PurchaseEvidence as PurchaseEvidenceEntry } from "../api/purchase-
 
 import { InlineError } from "../../../shared/ui";
 
+// 同一の原本・品目・範囲で一意になるキーを組み立てる(添字は使わない)
+const evidenceEntryKey = (entry: PurchaseEvidenceEntry) =>
+  [
+    entry.documentId,
+    entry.itemId ?? "purchase",
+    entry.region
+      ? `p${entry.region.page}:${entry.region.top}:${entry.region.left}:${entry.region.bottom}:${entry.region.right}`
+      : "full",
+  ].join("-");
+
 export function PurchaseEvidence({
   purchase,
   evidence,
@@ -27,14 +37,11 @@ export function PurchaseEvidence({
         </div>
       </div>
       {error && <InlineError message={error} />}
-      {evidence.map((entry, index) => {
+      {evidence.map((entry) => {
         const linkedItem = purchase.items.find((item) => item.id === entry.itemId);
         const contentUrl = `/documents/${encodeURIComponent(entry.documentId)}/content`;
         return (
-          <div
-            className="ledger-evidence-entry"
-            key={`${entry.documentId}-${entry.itemId ?? "purchase"}-${index}`}
-          >
+          <div className="ledger-evidence-entry" key={evidenceEntryKey(entry)}>
             <a href={contentUrl} target="_blank" rel="noreferrer">
               {entry.sourceKind} · {linkedItem?.name ?? "購入全体"}を開く
             </a>
@@ -58,7 +65,12 @@ export function PurchaseEvidence({
               </div>
             )}
             {entry.mimeType === "application/pdf" && (
-              <iframe className="evidence-pdf-preview" title="証拠原本" src={contentUrl} />
+              <iframe
+                className="evidence-pdf-preview"
+                title="証拠原本"
+                src={contentUrl}
+                sandbox="allow-same-origin"
+              />
             )}
             {linkedItem && <span>品目 {linkedItem.name}</span>}
           </div>

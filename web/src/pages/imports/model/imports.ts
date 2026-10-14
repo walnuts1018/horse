@@ -1,6 +1,7 @@
 import type { Region } from "./evidence-geometry";
 
 export type ExtractedItem = {
+  key?: string;
   name: string;
   printedAmount: number;
   grossAmount: number;
@@ -36,8 +37,10 @@ export type StatementEntry = {
   transactionId?: string;
   orderId?: string;
   cardLast4?: string;
+  region?: Region;
 };
 export type StatementSourceKind = "card" | "bank";
+export type UploadSourceKind = "receipt" | "order" | "email" | StatementSourceKind;
 
 export function receiptDateInputValue(purchasedAt?: string): string {
   if (!purchasedAt) return "";
@@ -71,6 +74,15 @@ export function receiptOccurredAt(purchasedAt?: string, manualDate?: string): st
 }
 
 export function statementConfirmationIssue(entry: StatementEntry): string | undefined {
+  if (entry.kind === "REFUND") {
+    if (!Number.isSafeInteger(entry.amount) || entry.amount >= 0) {
+      return "返金額を確認してください";
+    }
+    if (!entry.occurredAt || Number.isNaN(new Date(entry.occurredAt).getTime())) {
+      return "返品日を確認してください";
+    }
+    return undefined;
+  }
   if (entry.kind !== "CARD_PURCHASE") return undefined;
   if (!Number.isSafeInteger(entry.amount) || entry.amount <= 0) {
     return entry.amount < 0 ? "返品・返金は確定できません" : "明細金額を確認してください";
@@ -139,10 +151,36 @@ export type DocumentReview = {
     issues?: string[];
     transform?: number[];
     transformPage?: number;
-    ocrLines?: Array<{ text: string; confidence: number; region?: Region }>;
+    ocrLines?: Array<{ key?: string; text: string; confidence: number; region?: Region }>;
     statements?: StatementEntry[];
   };
 };
+
+// APIから届いた証拠品目とOCR行に一覧の再利用に耐える安定キーを付与する。編集時は既存品目を展開し直すためキーは保持される。
+export function withStableEvidenceKeys(document: DocumentReview): DocumentReview {
+  const result = document.result;
+  if (!result) return document;
+  const receipt = result.receipt;
+  const items = receipt?.items;
+  const ocrLines = result.ocrLines;
+  if (!items?.length && !ocrLines?.length) return document;
+  return {
+    ...document,
+    result: {
+      ...result,
+      receipt:
+        receipt && items?.length
+          ? {
+              ...receipt,
+              items: items.map((item, index) => Object.assign({}, item, { key: `item-${index}` })),
+            }
+          : receipt,
+      ocrLines: ocrLines?.length
+        ? ocrLines.map((line, index) => Object.assign({}, line, { key: `ocr-${index}` }))
+        : ocrLines,
+    },
+  };
+}
 
 export function canReclassifyAttachment(
   document: DocumentReview,
@@ -160,6 +198,7 @@ export function canReclassifyAttachment(
 export type PendingUpload = {
   id: string;
   file: File;
+  sourceKind: UploadSourceKind;
   status: "queued" | "uploading" | "failed";
   error?: string;
 };
@@ -228,9 +267,18 @@ export const yen = (amount = 0) =>
   }).format(amount);
 
 export const isCsvFile = (file: File) => /\.csv$/i.test(file.name) || file.type === "text/csv";
+export const isEmailFile = (file: File) =>
+  /\.eml$/i.test(file.name) || file.type === "message/rfc822";
 
-export const sourceKind = (file: File, csvKind: "card" | "bank") =>
-  isCsvFile(file) ? csvKind : /\.eml$/i.test(file.name) ? "email" : "receipt";
+export const uploadSourceKinds = (file: File): readonly UploadSourceKind[] =>
+  isEmailFile(file)
+    ? []
+    : isCsvFile(file)
+      ? ["card", "bank"]
+      : ["receipt", "order", "card", "bank"];
+
+export const defaultUploadSourceKind = (file: File): UploadSourceKind =>
+  isCsvFile(file) ? "card" : isEmailFile(file) ? "email" : "receipt";
 
 export const isSupportedFile = (file: File) =>
   /\.(jpe?g|png|webp|pdf|csv|eml)$/i.test(file.name) ||
@@ -270,3 +318,9 @@ export const sourceKindLabel = (kind?: string) =>
   )[kind ?? ""] ?? "証拠";
 
 export const isProcessing = (status: string) => !terminalStatuses.has(status.toUpperCase());
+
+/** 不明な値がオブジェクトである場合にのみレコード型として扱い、それ以外は undefined を返す。 */
+export function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  return { ...value };
+}

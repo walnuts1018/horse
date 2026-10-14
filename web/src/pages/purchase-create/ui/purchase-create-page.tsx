@@ -1,9 +1,9 @@
 import { Check, ChevronLeft, Undo2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { readHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type Purchase } from "../../../shared/api";
-import { usePurchaseOutbox } from "../../../shared/lib";
+import { errorMessage, usePurchaseOutbox } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
 import { usePurchasePayments } from "../model/purchase-payments";
@@ -50,12 +50,20 @@ export function PurchaseCreatePage({
   const [undoAvailable, setUndoAvailable] = useState(false);
   const [history, setHistory] = useState<Purchase[]>([]);
   const markUnsavedRef = useRef<() => void>(() => {});
-  const markUnsaved = () => markUnsavedRef.current();
+  const markUnsaved = useCallback(() => markUnsavedRef.current(), []);
   const [copiedPurchase, setCopiedPurchase] = useState<Purchase | null>(null);
   const outbox = usePurchaseOutbox(memberId, household.id);
   const householdOutbox = outbox.entries.filter(
     (entry) => entry.input.householdId === household.id,
   );
+  // 送信中かどうかはリースの期限から判定するため、レンダー中ではなくタイマーで現在時刻を更新する
+  const [now, setNow] = useState(() => Date.now());
+  const hasLeasedEntry = householdOutbox.some((entry) => (entry.leaseUntil ?? 0) > now);
+  useEffect(() => {
+    if (!hasLeasedEntry) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 5000);
+    return () => window.clearInterval(timer);
+  }, [hasLeasedEntry]);
   const enabledCategories = household.categories.filter((category) => !category.archived);
   const isEnabledCategory = (id: string | null | undefined): id is string =>
     Boolean(id && enabledCategories.some((category) => category.id === id));
@@ -117,7 +125,10 @@ export function PurchaseCreatePage({
     onLoadError: (error) => setMessage(error.message),
     onUnsavedChanges,
   });
-  markUnsavedRef.current = draftPersistence.markUnsaved;
+  // refはレンダー中に書き換えると再レンダーで巻き戻るため、コミット後に最新値を反映する
+  useEffect(() => {
+    markUnsavedRef.current = draftPersistence.markUnsaved;
+  }, [draftPersistence.markUnsaved]);
   const {
     storageReady,
     hasUnsavedChanges,
@@ -277,6 +288,7 @@ export function PurchaseCreatePage({
           </button>
         )}
         <button
+          type="submit"
           className="button button-primary"
           disabled={pending || !outbox.ready || Boolean(outbox.storageError) || items.length === 0}
         >
@@ -294,12 +306,12 @@ export function PurchaseCreatePage({
           </div>
           {householdOutbox.map((entry) => {
             const failed = entry.status === "FAILED";
-            const sending = (entry.leaseUntil ?? 0) > Date.now();
+            const sending = (entry.leaseUntil ?? 0) > now;
             const status = failed
               ? "送信失敗"
               : sending
                 ? "送信中"
-                : outbox.online === false
+                : !outbox.online
                   ? "オフライン保存済み"
                   : "送信待ち";
             return (
@@ -322,7 +334,7 @@ export function PurchaseCreatePage({
                       onClick={() =>
                         void outbox
                           .retry(entry.input.idempotencyKey)
-                          .catch((reason) => setMessage((reason as Error).message))
+                          .catch((reason) => setMessage(errorMessage(reason)))
                       }
                     >
                       再送
@@ -335,7 +347,7 @@ export function PurchaseCreatePage({
                     onClick={() =>
                       void outbox
                         .discard(entry.input.idempotencyKey)
-                        .catch((reason) => setMessage((reason as Error).message))
+                        .catch((reason) => setMessage(errorMessage(reason)))
                     }
                   >
                     破棄

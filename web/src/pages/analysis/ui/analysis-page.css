@@ -101,6 +101,7 @@
 .analysis-page .month-column {
   flex: 1;
   display: flex;
+  margin: 0;
   align-items: center;
   justify-content: flex-end;
   flex-direction: column;

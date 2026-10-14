@@ -1,15 +1,13 @@
 import { Check, ChevronRight, Plus, Wallet } from "lucide-react";
 import { useEffect } from "react";
 
-import type { AccountKind, PoolKind } from "../api/account-settings";
-
 import {
   isPersonalPool,
   isSharedPool,
   type AccountBalance,
   type Household,
-  type SharedPoolSettlementPolicy,
 } from "../../../shared/api";
+import { isOneOf } from "../../../shared/lib/guard";
 import { useAccountSettings } from "../model/account-settings";
 
 import styles from "./settings-page.module.css";
@@ -114,15 +112,18 @@ export function ManageAccountSettings({
                       精算方法
                       <select
                         value={model.fundingDrafts[pool.id]?.policy ?? "BALANCE_TO_STANDARD"}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const policy = event.target.value;
+                          if (!isOneOf(policy, ["BALANCE_TO_STANDARD", "REIMBURSE_PERSONAL"]))
+                            return;
                           model.setFundingDrafts((current) => ({
                             ...current,
                             [pool.id]: {
                               ...current[pool.id],
-                              policy: event.target.value as SharedPoolSettlementPolicy,
+                              policy,
                             },
-                          }))
-                        }
+                          }));
+                        }}
                       >
                         <option value="BALANCE_TO_STANDARD">負担割合の平準化</option>
                         <option value="REIMBURSE_PERSONAL">予算外支出の補填</option>
@@ -156,7 +157,7 @@ export function ManageAccountSettings({
                     </div>
                   </>
                 )}
-                <button className="button button-soft" disabled={model.pending}>
+                <button type="submit" className="button button-soft" disabled={model.pending}>
                   <Check size={15} />
                   精算設定を保存
                 </button>
@@ -173,12 +174,15 @@ export function ManageAccountSettings({
           />
           <select
             value={model.poolKind}
-            onChange={(event) => model.setPoolKind(event.target.value as PoolKind)}
+            onChange={(event) => {
+              const kind = event.target.value;
+              if (isOneOf(kind, ["PERSONAL", "SHARED"])) model.setPoolKind(kind);
+            }}
           >
             <option value="PERSONAL">個人</option>
             <option value="SHARED">共用</option>
           </select>
-          <button className="button button-soft" disabled={model.pending}>
+          <button type="submit" className="button button-soft" disabled={model.pending}>
             <Plus size={15} />
             追加
           </button>
@@ -236,7 +240,10 @@ export function ManageAccountSettings({
           />
           <select
             value={model.accountKind}
-            onChange={(event) => model.setAccountKind(event.target.value as AccountKind)}
+            onChange={(event) => {
+              const kind = event.target.value;
+              if (isOneOf(kind, ["BANK", "CASH", "CARD", "OTHER"])) model.setAccountKind(kind);
+            }}
           >
             <option value="BANK">銀行</option>
             <option value="CASH">現金</option>
@@ -274,7 +281,7 @@ export function ManageAccountSettings({
               />
             </label>
           )}
-          <button className="button button-soft" disabled={model.pending}>
+          <button type="submit" className="button button-soft" disabled={model.pending}>
             <Plus size={15} />
             追加
           </button>

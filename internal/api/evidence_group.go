@@ -137,7 +137,7 @@ func (s *Server) linkPurchaseEvidenceSource(ctx context.Context, executor bob.Ex
 		models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
 		models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(input.SourceReference)),
 	))).One(ctx, executor)
-	if err == nil && confirmation.PurchaseID != purchase.ID {
+	if err == nil && (!confirmation.PurchaseID.Valid || confirmation.PurchaseID.V != purchase.ID || confirmation.CorrectionID.Valid) {
 		return errEvidenceConflict
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -159,9 +159,10 @@ func (s *Server) linkPurchaseEvidenceSource(ctx context.Context, executor bob.Ex
 			return pgx.ErrNoRows
 		}
 	}
+	purchaseID := sql.Null[gofrsuuid.UUID]{V: purchase.ID, Valid: true}
 	if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{
 		SourceDocumentID: &document.ID, SourceReference: &input.SourceReference,
-		HouseholdID: &purchase.HouseholdID, PurchaseID: &purchase.ID, CreatedBy: &memberID,
+		HouseholdID: &purchase.HouseholdID, PurchaseID: &purchaseID, CreatedBy: &memberID,
 	}, im.OnConflict("source_document_id", "source_reference").DoNothing()).Exec(ctx, executor); err != nil {
 		return err
 	}

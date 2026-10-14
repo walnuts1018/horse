@@ -4,6 +4,14 @@ import {
   type PreviewTransform,
 } from "../model/evidence-geometry";
 
+function isPreviewTransform(value: unknown): value is PreviewTransform {
+  return (
+    Array.isArray(value) &&
+    value.length === 9 &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
+}
+
 export async function readDocumentPreview(
   documentId: string,
   page: number,
@@ -19,9 +27,9 @@ export async function readDocumentPreview(
   const encodedTransform = response.headers.get("X-Coordinate-Transform");
   let transform = identityTransform;
   if (encodedTransform) {
-    const parsed = JSON.parse(encodedTransform) as number[];
-    if (parsed.length === 9 && parsed.every(Number.isFinite)) {
-      transform = parsed as PreviewTransform;
+    const parsed: unknown = JSON.parse(encodedTransform);
+    if (isPreviewTransform(parsed)) {
+      transform = parsed;
     }
   }
   if (!invertTransform(transform)) throw new Error("原本の座標を読み取れません");

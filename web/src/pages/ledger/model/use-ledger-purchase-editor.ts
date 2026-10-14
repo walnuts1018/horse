@@ -18,7 +18,7 @@ import {
   type PurchaseItem,
   type PurchasePaymentInput,
 } from "../../../shared/api";
-import { formatQuantity, parseQuantity } from "../../../shared/lib";
+import { errorMessage, formatQuantity, isOneOf, parseQuantity } from "../../../shared/lib";
 import { readLedgerPurchase } from "../api/read-ledger-purchase";
 import { createPurchaseDraft, type PurchaseDraft } from "./purchase-draft";
 
@@ -52,7 +52,7 @@ export function useLedgerPurchaseEditor({
   const { mutate: mutateUpdatePurchase } = useUpdatePurchaseMutation();
   const [editing, setEditing] = useState<string | null>(null);
   const [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
-  const [itemDrafts, setItemDrafts] = useState<Record<string, LedgerItemDraft>>({});
+  const [itemDrafts, setItemDrafts] = useState<Record<string, LedgerItemDraft | undefined>>({});
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
   const [editError, setEditError] = useState("");
   const [postingPurchase, setPostingPurchase] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export function useLedgerPurchaseEditor({
       await refresh();
     } catch (reason) {
       await refresh();
-      setEditError((reason as Error).message);
+      setEditError(errorMessage(reason));
     } finally {
       setPostingPurchase(null);
     }
@@ -137,7 +137,7 @@ export function useLedgerPurchaseEditor({
       quantity = parseQuantity(draft.quantity, draft.quantityUnit);
       printedBasis = parseQuantity(draft.printedBasisQuantity, draft.printedUnitPriceUnit);
     } catch (reason) {
-      setEditError((reason as Error).message);
+      setEditError(errorMessage(reason));
       return;
     }
     const printedPriceText = draft.printedUnitPriceYen.trim();
@@ -158,14 +158,13 @@ export function useLedgerPurchaseEditor({
       categoryId: draft.categoryId || null,
       productVariantId: draft.productVariantId || null,
     };
-    const baseChangedFields = [
-      ...(patch.name !== item.name ? ["name"] : []),
-      ...(patch.amountYen !== item.amountYen ? ["amountYen"] : []),
-      ...(!sameNullableString(patch.categoryId, item.categoryId) ? ["categoryId"] : []),
-      ...(!sameNullableString(patch.productVariantId, item.productVariantId)
-        ? ["productVariantId"]
-        : []),
-    ] as Array<keyof typeof patch>;
+    const baseChangedFields: Array<keyof typeof patch> = [];
+    if (patch.name !== item.name) baseChangedFields.push("name");
+    if (patch.amountYen !== item.amountYen) baseChangedFields.push("amountYen");
+    if (!sameNullableString(patch.categoryId, item.categoryId))
+      baseChangedFields.push("categoryId");
+    if (!sameNullableString(patch.productVariantId, item.productVariantId))
+      baseChangedFields.push("productVariantId");
     const quantityChanged =
       !sameNullableString(quantity?.numerator, item.quantityNumerator) ||
       !sameNullableString(quantity?.denominator, item.quantityDenominator) ||
@@ -175,11 +174,9 @@ export function useLedgerPurchaseEditor({
       !sameNullableString(printedBasis?.numerator, item.printedUnitPriceQuantityNumerator) ||
       !sameNullableString(printedBasis?.denominator, item.printedUnitPriceQuantityDenominator) ||
       !sameNullableString(printedBasis?.unit, item.printedUnitPriceUnit);
-    const changedFields = [
-      ...baseChangedFields,
-      ...(quantityChanged ? ["quantity"] : []),
-      ...(printedPriceChanged ? ["printedUnitPrice"] : []),
-    ];
+    const changedFields: string[] = [...baseChangedFields];
+    if (quantityChanged) changedFields.push("quantity");
+    if (printedPriceChanged) changedFields.push("printedUnitPrice");
     if (!changedFields.length) return;
     const changedPatch = Object.fromEntries(
       baseChangedFields.map((field) => [field, patch[field]]),
@@ -222,7 +219,7 @@ export function useLedgerPurchaseEditor({
     } catch (reason) {
       if (
         (reason instanceof ApiError && reason.code === "CONFLICT") ||
-        (reason as Error).message.toLowerCase().includes("conflict")
+        errorMessage(reason).toLowerCase().includes("conflict")
       ) {
         const latest = await latestPurchase(purchase.id);
         const current = latest?.items.find((row) => row.id === item.id);
@@ -231,7 +228,14 @@ export function useLedgerPurchaseEditor({
           setConflict({
             label: `${item.name}の品目`,
             localValue: changedFields
-              .map((field) => `${field}: ${String(patch[field as keyof typeof patch] ?? "未分類")}`)
+              .map(
+                (field) =>
+                  `${field}: ${String(
+                    isOneOf(field, ["name", "amountYen", "categoryId", "productVariantId"])
+                      ? patch[field]
+                      : "未分類",
+                  )}`,
+              )
               .join("、"),
             serverValue: `${current.name} · ${yen(current.amountYen)}`,
             retry: async () => {
@@ -244,7 +248,7 @@ export function useLedgerPurchaseEditor({
               setConflict(null);
             },
           });
-      } else setEditError((reason as Error).message);
+      } else setEditError(errorMessage(reason));
     }
   };
 
@@ -281,11 +285,11 @@ export function useLedgerPurchaseEditor({
       occurredAt: new Date(purchaseDraft.occurredAt).toISOString(),
       paymentAllocations,
     };
-    const changedFields = [
-      ...(patch.merchant !== purchase.merchant ? ["merchant"] : []),
-      ...(Date.parse(patch.occurredAt) !== Date.parse(purchase.occurredAt) ? ["occurredAt"] : []),
-      ...(paymentAllocationsChanged ? ["paymentAllocations"] : []),
-    ] as Array<keyof typeof patch>;
+    const changedFields: Array<keyof typeof patch> = [];
+    if (patch.merchant !== purchase.merchant) changedFields.push("merchant");
+    if (Date.parse(patch.occurredAt) !== Date.parse(purchase.occurredAt))
+      changedFields.push("occurredAt");
+    if (paymentAllocationsChanged) changedFields.push("paymentAllocations");
     if (!changedFields.length) return;
     const changedPatch = Object.fromEntries(changedFields.map((field) => [field, patch[field]]));
     try {
@@ -303,7 +307,7 @@ export function useLedgerPurchaseEditor({
     } catch (reason) {
       if (
         (reason instanceof ApiError && reason.code === "CONFLICT") ||
-        (reason as Error).message.toLowerCase().includes("conflict")
+        errorMessage(reason).toLowerCase().includes("conflict")
       ) {
         const latest = await latestPurchase(purchase.id);
         await refresh();
@@ -329,7 +333,7 @@ export function useLedgerPurchaseEditor({
               setEditing(null);
             },
           });
-      } else setEditError((reason as Error).message);
+      } else setEditError(errorMessage(reason));
     }
   };
 

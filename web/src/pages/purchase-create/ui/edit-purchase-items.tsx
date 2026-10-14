@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -58,6 +59,7 @@ export function EditPurchaseItems({
 }) {
   const [draft, setDraft] = useState(value);
   const draftRef = useRef(draft);
+  const onChangeRef = useRef(onChange);
   const [selectedProductVariantId, setSelectedProductVariantId] = useState("");
   const [productSuggestions, setProductSuggestions] = useState<ProductSuggestion[]>([]);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
@@ -72,40 +74,69 @@ export function EditPurchaseItems({
   const lastResetToken = useRef(resetToken);
   const lastCopiedPurchase = useRef<Purchase | null>(null);
   const lastUndoToken = useRef(undoToken);
-  const enabledCategories = household.categories.filter((category) => !category.archived);
-  const defaultAllocations = household.defaultAllocation?.length
-    ? household.defaultAllocation
-    : household.pools.map((pool) => ({ poolId: pool.id, weight: pool.defaultShareWeight || 1 }));
-  const isEnabledCategory = (id: string | null | undefined): id is string =>
-    Boolean(id && enabledCategories.some((category) => category.id === id));
+  const enabledCategories = useMemo(
+    () => household.categories.filter((category) => !category.archived),
+    [household.categories],
+  );
+  const defaultAllocations = useMemo(
+    () =>
+      household.defaultAllocation?.length
+        ? household.defaultAllocation
+        : household.pools.map((pool) => ({
+            poolId: pool.id,
+            weight: pool.defaultShareWeight || 1,
+          })),
+    [household.defaultAllocation, household.pools],
+  );
+  const isEnabledCategory = useCallback(
+    (id: string | null | undefined): id is string =>
+      Boolean(id && enabledCategories.some((category) => category.id === id)),
+    [enabledCategories],
+  );
 
-  const update = (next: PurchaseItemsValue) => {
+  // コールバックはref経由で参照し、副作用の依存が毎回変わって延々と再実行されるのを避ける
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+
+  const update = useCallback((next: PurchaseItemsValue) => {
     draftRef.current = next;
     setDraft(next);
-    onChange(next);
-  };
-  const patchDraft = (patch: Partial<PurchaseItemsValue>) =>
-    update({ ...draftRef.current, ...patch });
-  const updateCategory = (id: string, source: CategorySource) => {
-    categorySource.current = source;
-    patchDraft({ categoryId: id });
-  };
-  const changeItemName = (name: string) => {
-    setSelectedProductVariantId("");
-    setActiveSuggestionIndex(-1);
-    setSuggestionsDismissed(false);
-    patchDraft({
-      itemName: name,
-      categoryId:
-        categorySource.current === "history" || categorySource.current === "product"
-          ? ""
-          : draftRef.current.categoryId,
-    });
-    if (categorySource.current === "history" || categorySource.current === "product")
-      categorySource.current = "default";
-  };
-  const markDirty = () => onDirty();
-  const replaceItems = (items: PurchaseDraftItem[]) => patchDraft({ items });
+    onChangeRef.current(next);
+  }, []);
+  const patchDraft = useCallback(
+    (patch: Partial<PurchaseItemsValue>) => update({ ...draftRef.current, ...patch }),
+    [update],
+  );
+  const updateCategory = useCallback(
+    (id: string, source: CategorySource) => {
+      categorySource.current = source;
+      patchDraft({ categoryId: id });
+    },
+    [patchDraft],
+  );
+  const changeItemName = useCallback(
+    (name: string) => {
+      setSelectedProductVariantId("");
+      setActiveSuggestionIndex(-1);
+      setSuggestionsDismissed(false);
+      patchDraft({
+        itemName: name,
+        categoryId:
+          categorySource.current === "history" || categorySource.current === "product"
+            ? ""
+            : draftRef.current.categoryId,
+      });
+      if (categorySource.current === "history" || categorySource.current === "product")
+        categorySource.current = "default";
+    },
+    [patchDraft],
+  );
+  const markDirty = useCallback(() => onDirty(), [onDirty]);
+  const replaceItems = useCallback(
+    (items: PurchaseDraftItem[]) => patchDraft({ items }),
+    [patchDraft],
+  );
 
   useEffect(() => {
     if (lastResetToken.current === resetToken) return;
@@ -116,7 +147,7 @@ export function EditPurchaseItems({
     setUndoItems(null);
     setProductSuggestions([]);
     update(empty);
-  }, [resetToken]);
+  }, [resetToken, update]);
 
   useEffect(() => {
     onUndoAvailabilityChange(Boolean(undoItems));
@@ -129,7 +160,7 @@ export function EditPurchaseItems({
     markDirty();
     replaceItems(undoItems);
     setUndoItems(null);
-  }, [undoToken]);
+  }, [undoToken, undoItems, markDirty, replaceItems]);
 
   useEffect(() => {
     if (!copiedPurchase || lastCopiedPurchase.current === copiedPurchase) return;
@@ -151,7 +182,7 @@ export function EditPurchaseItems({
     }));
     setUndoItems(draft.items);
     replaceItems(items);
-  }, [copiedPurchase]);
+  }, [copiedPurchase, draft.items, markDirty, isEnabledCategory, replaceItems]);
 
   useEffect(() => {
     const query = draft.itemName.trim();
@@ -180,8 +211,9 @@ export function EditPurchaseItems({
   }, [householdId, draft.itemName, merchant]);
 
   useEffect(() => {
+    const query = draft.itemName.trim();
     if (
-      !draft.itemName.trim() ||
+      !query ||
       categorySource.current === "manual" ||
       categorySource.current === "restored" ||
       categorySource.current === "product"
@@ -189,15 +221,13 @@ export function EditPurchaseItems({
       return;
     const match = history
       .flatMap((purchase) => purchase.items)
-      .find((item) => item.name.toLocaleLowerCase() === draft.itemName.trim().toLocaleLowerCase());
-    if (isEnabledCategory(match?.categoryId)) {
-      categorySource.current = "history";
-      update({ ...draft, categoryId: match.categoryId });
+      .find((item) => item.name.toLocaleLowerCase() === query.toLocaleLowerCase());
+    if (match && isEnabledCategory(match.categoryId)) {
+      updateCategory(match.categoryId, "history");
     } else if (categorySource.current === "history") {
-      categorySource.current = "default";
-      update({ ...draft, categoryId: "" });
+      updateCategory("", "default");
     }
-  }, [draft.itemName, history]);
+  }, [draft.itemName, history, isEnabledCategory, updateCategory]);
 
   const suggestions = useMemo(() => {
     const seen = new Set<string>();

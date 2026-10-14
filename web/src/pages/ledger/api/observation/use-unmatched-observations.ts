@@ -9,6 +9,7 @@ import {
   type UnmatchedObservation,
   type UnmatchedObservationState,
 } from "../../../../shared/api";
+import { errorMessage } from "../../../../shared/lib";
 import { unmatchedObservationsQuery } from "./operations";
 
 type ObservationRecord =
@@ -81,7 +82,7 @@ export function useUnmatchedObservations(householdId: string, options: Options =
       setHasNextPage(page.pageInfo.hasNextPage && Boolean(cursor.current));
     } catch (reason) {
       if (generation.current === currentGeneration)
-        setError((reason as Error).message || "未照合候補を取得できませんでした");
+        setError(errorMessage(reason) || "未照合候補を取得できませんでした");
     } finally {
       if (generation.current === currentGeneration) {
         requestInProgress.current = false;
@@ -137,7 +138,7 @@ export function useUnmatchedObservations(householdId: string, options: Options =
       );
     } catch (reason) {
       if (generation.current === currentGeneration)
-        setMoreError((reason as Error).message || "未照合候補を取得できませんでした");
+        setMoreError(errorMessage(reason) || "未照合候補を取得できませんでした");
     } finally {
       if (generation.current === currentGeneration) {
         requestInProgress.current = false;
@@ -157,8 +158,13 @@ export function useUnmatchedObservations(householdId: string, options: Options =
   ]);
 
   useEffect(() => {
-    void refresh();
+    // effect本体での同期的なsetStateを避けるため、取得の開始を1tick遅延させる
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) void refresh();
+    });
     return () => {
+      cancelled = true;
       generation.current += 1;
       requestInProgress.current = false;
     };

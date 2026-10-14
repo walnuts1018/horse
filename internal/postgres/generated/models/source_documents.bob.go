@@ -57,13 +57,14 @@ type SourceDocumentsQuery = *psql.ViewQuery[*SourceDocument, SourceDocumentSlice
 
 // sourceDocumentR is where relationships are stored.
 type sourceDocumentR struct {
-	DocumentConfirmations DocumentConfirmationSlice     // document_confirmations.document_confirmations_source_document_id_fkey
-	EvidenceLinks         EvidenceLinkSlice             // evidence_links.evidence_links_source_document_id_fkey
-	ExtractionJobs        ExtractionJobSlice            // extraction_jobs.extraction_jobs_source_document_id_fkey
-	AttachmentsAsChild    SourceDocumentAttachmentSlice // source_document_attachments.source_document_attachments_child_household_fkey
-	AttachmentsAsParent   SourceDocumentAttachmentSlice // source_document_attachments.source_document_attachments_parent_household_fkey
-	CreatedByMember       *Member                       // source_documents.source_documents_created_by_fkey
-	Household             *Household                    // source_documents.source_documents_household_id_fkey
+	CorrectionEvidenceLinks CorrectionEvidenceLinkSlice   // correction_evidence_links.correction_evidence_links_household_id_source_document_id_fkey
+	DocumentConfirmations   DocumentConfirmationSlice     // document_confirmations.document_confirmations_source_document_id_fkey
+	EvidenceLinks           EvidenceLinkSlice             // evidence_links.evidence_links_source_document_id_fkey
+	ExtractionJobs          ExtractionJobSlice            // extraction_jobs.extraction_jobs_source_document_id_fkey
+	AttachmentsAsChild      SourceDocumentAttachmentSlice // source_document_attachments.source_document_attachments_child_household_fkey
+	AttachmentsAsParent     SourceDocumentAttachmentSlice // source_document_attachments.source_document_attachments_parent_household_fkey
+	CreatedByMember         *Member                       // source_documents.source_documents_created_by_fkey
+	Household               *Household                    // source_documents.source_documents_household_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -72,13 +73,14 @@ type sourceDocumentR struct {
 
 // sourceDocumentRLoaded tracks which relationships on SourceDocument have been loaded.
 type sourceDocumentRLoaded struct {
-	DocumentConfirmations bool // document_confirmations.document_confirmations_source_document_id_fkey
-	EvidenceLinks         bool // evidence_links.evidence_links_source_document_id_fkey
-	ExtractionJobs        bool // extraction_jobs.extraction_jobs_source_document_id_fkey
-	AttachmentsAsChild    bool // source_document_attachments.source_document_attachments_child_household_fkey
-	AttachmentsAsParent   bool // source_document_attachments.source_document_attachments_parent_household_fkey
-	CreatedByMember       bool // source_documents.source_documents_created_by_fkey
-	Household             bool // source_documents.source_documents_household_id_fkey
+	CorrectionEvidenceLinks bool // correction_evidence_links.correction_evidence_links_household_id_source_document_id_fkey
+	DocumentConfirmations   bool // document_confirmations.document_confirmations_source_document_id_fkey
+	EvidenceLinks           bool // evidence_links.evidence_links_source_document_id_fkey
+	ExtractionJobs          bool // extraction_jobs.extraction_jobs_source_document_id_fkey
+	AttachmentsAsChild      bool // source_document_attachments.source_document_attachments_child_household_fkey
+	AttachmentsAsParent     bool // source_document_attachments.source_document_attachments_parent_household_fkey
+	CreatedByMember         bool // source_documents.source_documents_created_by_fkey
+	Household               bool // source_documents.source_documents_household_id_fkey
 }
 
 func buildSourceDocumentColumns(tableName string) sourceDocumentColumns {
@@ -790,6 +792,35 @@ func (o SourceDocumentSlice) ReloadAll(ctx context.Context, exec bob.Executor) e
 	return nil
 }
 
+// CorrectionEvidenceLinks starts a query for related objects on correction_evidence_links
+func (o *SourceDocument) CorrectionEvidenceLinks(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionEvidenceLinksQuery {
+	return CorrectionEvidenceLinks.Query(append(mods,
+		sm.Where(CorrectionEvidenceLinks.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(CorrectionEvidenceLinks.Columns.SourceDocumentID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os SourceDocumentSlice) CorrectionEvidenceLinks(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionEvidenceLinksQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return CorrectionEvidenceLinks.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "SourceDocumentID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "SourceDocumentID"),
+		)).As("bob_rel_keys").On(CorrectionEvidenceLinks.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), CorrectionEvidenceLinks.Columns.SourceDocumentID.EQ(psql.Quote("bob_rel_keys", "SourceDocumentID"))),
+	)...)
+}
+
 // DocumentConfirmations starts a query for related objects on document_confirmations
 func (o *SourceDocument) DocumentConfirmations(mods ...bob.Mod[*dialect.SelectQuery]) DocumentConfirmationsQuery {
 	return DocumentConfirmations.Query(append(mods,
@@ -975,6 +1006,78 @@ func (os SourceDocumentSlice) Household(mods ...bob.Mod[*dialect.SelectQuery]) H
 	return Households.Query(append(mods,
 		sm.Where(Households.Columns.ID.EQ(PKArgExpr)),
 	)...)
+}
+
+func insertSourceDocumentCorrectionEvidenceLinks0(ctx context.Context, exec bob.Executor, correctionEvidenceLinks1 []*CorrectionEvidenceLinkSetter, sourceDocument0 *SourceDocument) (CorrectionEvidenceLinkSlice, error) {
+	for i := range correctionEvidenceLinks1 {
+		correctionEvidenceLinks1[i].HouseholdID = func() *uuid.UUID { return &sourceDocument0.HouseholdID }()
+		correctionEvidenceLinks1[i].SourceDocumentID = func() *uuid.UUID { return &sourceDocument0.ID }()
+	}
+
+	ret, err := CorrectionEvidenceLinks.Insert(bob.ToMods(correctionEvidenceLinks1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertSourceDocumentCorrectionEvidenceLinks0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachSourceDocumentCorrectionEvidenceLinks0(ctx context.Context, exec bob.Executor, count int, correctionEvidenceLinks1 CorrectionEvidenceLinkSlice, sourceDocument0 *SourceDocument) (CorrectionEvidenceLinkSlice, error) {
+	setter := &CorrectionEvidenceLinkSetter{
+		HouseholdID:      func() *uuid.UUID { return &sourceDocument0.HouseholdID }(),
+		SourceDocumentID: func() *uuid.UUID { return &sourceDocument0.ID }(),
+	}
+
+	err := correctionEvidenceLinks1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachSourceDocumentCorrectionEvidenceLinks0: %w", err)
+	}
+
+	return correctionEvidenceLinks1, nil
+}
+
+func (sourceDocument0 *SourceDocument) InsertCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, related ...*CorrectionEvidenceLinkSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	correctionEvidenceLinks1, err := insertSourceDocumentCorrectionEvidenceLinks0(ctx, exec, related, sourceDocument0)
+	if err != nil {
+		return err
+	}
+
+	sourceDocument0.R.CorrectionEvidenceLinks = append(sourceDocument0.R.CorrectionEvidenceLinks, correctionEvidenceLinks1...)
+
+	for _, rel := range correctionEvidenceLinks1 {
+		rel.R.SourceDocument = sourceDocument0
+		rel.R.Loaded.SourceDocument = true
+	}
+	return nil
+}
+
+func (sourceDocument0 *SourceDocument) AttachCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, related ...*CorrectionEvidenceLink) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	correctionEvidenceLinks1 := CorrectionEvidenceLinkSlice(related)
+
+	_, err = attachSourceDocumentCorrectionEvidenceLinks0(ctx, exec, len(related), correctionEvidenceLinks1, sourceDocument0)
+	if err != nil {
+		return err
+	}
+
+	sourceDocument0.R.CorrectionEvidenceLinks = append(sourceDocument0.R.CorrectionEvidenceLinks, correctionEvidenceLinks1...)
+
+	for _, rel := range related {
+		rel.R.SourceDocument = sourceDocument0
+		rel.R.Loaded.SourceDocument = true
+	}
+
+	return nil
 }
 
 func insertSourceDocumentDocumentConfirmations0(ctx context.Context, exec bob.Executor, documentConfirmations1 []*DocumentConfirmationSetter, sourceDocument0 *SourceDocument) (DocumentConfirmationSlice, error) {
@@ -1404,6 +1507,21 @@ type sourceDocumentWhereR[Q psql.Filterable] struct {
 	cols sourceDocumentColumns
 }
 
+// HasCorrectionEvidenceLinks filters parents that have a matching CorrectionEvidenceLinks using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to CorrectionEvidenceLinks).
+func (w sourceDocumentWhereR[Q]) HasCorrectionEvidenceLinks(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(CorrectionEvidenceLinks.NameExpr()),
+		sm.Where(CorrectionEvidenceLinks.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(CorrectionEvidenceLinks.Columns.SourceDocumentID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasDocumentConfirmations filters parents that have a matching DocumentConfirmations using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -1634,6 +1752,22 @@ func (o *SourceDocument) Preload(name string, retrieved any) error {
 	}
 
 	switch name {
+	case "CorrectionEvidenceLinks":
+		rels, ok := retrieved.(CorrectionEvidenceLinkSlice)
+		if !ok {
+			return fmt.Errorf("sourceDocument cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.CorrectionEvidenceLinks = rels
+		o.R.Loaded.CorrectionEvidenceLinks = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.SourceDocument = o
+				rel.R.Loaded.SourceDocument = true
+			}
+		}
+		return nil
 	case "DocumentConfirmations":
 		rels, ok := retrieved.(DocumentConfirmationSlice)
 		if !ok {
@@ -1782,16 +1916,20 @@ func buildSourceDocumentPreloader() sourceDocumentPreloader {
 }
 
 type sourceDocumentThenLoader[Q orm.Loadable] struct {
-	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ExtractionJobs        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AttachmentsAsChild    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AttachmentsAsParent   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	CreatedByMember       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Household             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CorrectionEvidenceLinks func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	DocumentConfirmations   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	EvidenceLinks           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ExtractionJobs          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AttachmentsAsChild      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AttachmentsAsParent     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CreatedByMember         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Household               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildSourceDocumentThenLoader[Q orm.Loadable]() sourceDocumentThenLoader[Q] {
+	type CorrectionEvidenceLinksLoadInterface interface {
+		LoadCorrectionEvidenceLinks(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type DocumentConfirmationsLoadInterface interface {
 		LoadDocumentConfirmations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
@@ -1815,6 +1953,12 @@ func buildSourceDocumentThenLoader[Q orm.Loadable]() sourceDocumentThenLoader[Q]
 	}
 
 	return sourceDocumentThenLoader[Q]{
+		CorrectionEvidenceLinks: thenLoadBuilder[Q](
+			"CorrectionEvidenceLinks",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionEvidenceLinksLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCorrectionEvidenceLinks(ctx, exec, mods...)
+			},
+		),
 		DocumentConfirmations: thenLoadBuilder[Q](
 			"DocumentConfirmations",
 			func(ctx context.Context, exec bob.Executor, retrieved DocumentConfirmationsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -1858,6 +2002,75 @@ func buildSourceDocumentThenLoader[Q orm.Loadable]() sourceDocumentThenLoader[Q]
 			},
 		),
 	}
+}
+
+// LoadCorrectionEvidenceLinks loads the sourceDocument's CorrectionEvidenceLinks into the .R struct
+func (o *SourceDocument) LoadCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.CorrectionEvidenceLinks = nil
+	o.R.Loaded.CorrectionEvidenceLinks = false
+
+	related, err := o.CorrectionEvidenceLinks(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.SourceDocument = o
+		rel.R.Loaded.SourceDocument = true
+	}
+
+	o.R.CorrectionEvidenceLinks = related
+	o.R.Loaded.CorrectionEvidenceLinks = true
+	return nil
+}
+
+// LoadCorrectionEvidenceLinks loads the sourceDocument's CorrectionEvidenceLinks into the .R struct
+func (os SourceDocumentSlice) LoadCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	correctionEvidenceLinks, err := os.CorrectionEvidenceLinks(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.CorrectionEvidenceLinks = nil
+		o.R.Loaded.CorrectionEvidenceLinks = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range correctionEvidenceLinks {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.ID == rel.SourceDocumentID) {
+				continue
+			}
+
+			rel.R.SourceDocument = o
+			rel.R.Loaded.SourceDocument = true
+
+			o.R.CorrectionEvidenceLinks = append(o.R.CorrectionEvidenceLinks, rel)
+		}
+	}
+
+	return nil
 }
 
 // LoadDocumentConfirmations loads the sourceDocument's DocumentConfirmations into the .R struct
@@ -2372,11 +2585,12 @@ func (os SourceDocumentSlice) LoadHousehold(ctx context.Context, exec bob.Execut
 
 // sourceDocumentC is where relationship counts are stored.
 type sourceDocumentC struct {
-	DocumentConfirmations *int64
-	EvidenceLinks         *int64
-	ExtractionJobs        *int64
-	AttachmentsAsChild    *int64
-	AttachmentsAsParent   *int64
+	CorrectionEvidenceLinks *int64
+	DocumentConfirmations   *int64
+	EvidenceLinks           *int64
+	ExtractionJobs          *int64
+	AttachmentsAsChild      *int64
+	AttachmentsAsParent     *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -2386,6 +2600,8 @@ func (o *SourceDocument) PreloadCount(name string, count int64) error {
 	}
 
 	switch name {
+	case "CorrectionEvidenceLinks":
+		o.C.CorrectionEvidenceLinks = &count
 	case "DocumentConfirmations":
 		o.C.DocumentConfirmations = &count
 	case "EvidenceLinks":
@@ -2401,15 +2617,34 @@ func (o *SourceDocument) PreloadCount(name string, count int64) error {
 }
 
 type sourceDocumentCountPreloader struct {
-	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	ExtractionJobs        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	AttachmentsAsChild    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	AttachmentsAsParent   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CorrectionEvidenceLinks func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	DocumentConfirmations   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	EvidenceLinks           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ExtractionJobs          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AttachmentsAsChild      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AttachmentsAsParent     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildSourceDocumentCountPreloader() sourceDocumentCountPreloader {
 	return sourceDocumentCountPreloader{
+		CorrectionEvidenceLinks: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*SourceDocument]("CorrectionEvidenceLinks", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = SourceDocuments.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(CorrectionEvidenceLinks.NameAsExpr()),
+					sm.Where(psql.Quote(CorrectionEvidenceLinks.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(CorrectionEvidenceLinks.Alias(), "source_document_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		DocumentConfirmations: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*SourceDocument]("DocumentConfirmations", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -2501,14 +2736,18 @@ func buildSourceDocumentCountPreloader() sourceDocumentCountPreloader {
 }
 
 type sourceDocumentCountThenLoader[Q orm.Loadable] struct {
-	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ExtractionJobs        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AttachmentsAsChild    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AttachmentsAsParent   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CorrectionEvidenceLinks func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	DocumentConfirmations   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	EvidenceLinks           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ExtractionJobs          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AttachmentsAsChild      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AttachmentsAsParent     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildSourceDocumentCountThenLoader[Q orm.Loadable]() sourceDocumentCountThenLoader[Q] {
+	type CorrectionEvidenceLinksCountInterface interface {
+		LoadCountCorrectionEvidenceLinks(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type DocumentConfirmationsCountInterface interface {
 		LoadCountDocumentConfirmations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
@@ -2526,6 +2765,12 @@ func buildSourceDocumentCountThenLoader[Q orm.Loadable]() sourceDocumentCountThe
 	}
 
 	return sourceDocumentCountThenLoader[Q]{
+		CorrectionEvidenceLinks: countThenLoadBuilder[Q](
+			"CorrectionEvidenceLinks",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionEvidenceLinksCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountCorrectionEvidenceLinks(ctx, exec, mods...)
+			},
+		),
 		DocumentConfirmations: countThenLoadBuilder[Q](
 			"DocumentConfirmations",
 			func(ctx context.Context, exec bob.Executor, retrieved DocumentConfirmationsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -2557,6 +2802,116 @@ func buildSourceDocumentCountThenLoader[Q orm.Loadable]() sourceDocumentCountThe
 			},
 		),
 	}
+}
+
+// LoadCountCorrectionEvidenceLinks loads the count of CorrectionEvidenceLinks into the C struct
+func (o *SourceDocument) LoadCountCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.CorrectionEvidenceLinks(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.CorrectionEvidenceLinks = &count
+	return nil
+}
+
+// LoadCountCorrectionEvidenceLinks loads the count of CorrectionEvidenceLinks for a slice in a single batch query
+func (os SourceDocumentSlice) LoadCountCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			CorrectionEvidenceLinks.Columns.HouseholdID.As("household_id"),
+			CorrectionEvidenceLinks.Columns.SourceDocumentID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(CorrectionEvidenceLinks.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "SourceDocumentID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "SourceDocumentID"),
+		)).As("bob_rel_keys").On(
+			CorrectionEvidenceLinks.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			CorrectionEvidenceLinks.Columns.SourceDocumentID.EQ(psql.Quote("bob_rel_keys", "SourceDocumentID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(CorrectionEvidenceLinks.Columns.HouseholdID),
+		sm.GroupBy(CorrectionEvidenceLinks.Columns.SourceDocumentID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.CorrectionEvidenceLinks = &count
+	}
+
+	return nil
 }
 
 // LoadCountDocumentConfirmations loads the count of DocumentConfirmations into the C struct
@@ -3017,14 +3372,15 @@ func (os SourceDocumentSlice) LoadCountAttachmentsAsParent(ctx context.Context, 
 }
 
 type sourceDocumentJoins[Q dialect.Joinable] struct {
-	typ                   string
-	DocumentConfirmations modAs[Q, documentConfirmationColumns]
-	EvidenceLinks         modAs[Q, evidenceLinkColumns]
-	ExtractionJobs        modAs[Q, extractionJobColumns]
-	AttachmentsAsChild    modAs[Q, sourceDocumentAttachmentColumns]
-	AttachmentsAsParent   modAs[Q, sourceDocumentAttachmentColumns]
-	CreatedByMember       modAs[Q, memberColumns]
-	Household             modAs[Q, householdColumns]
+	typ                     string
+	CorrectionEvidenceLinks modAs[Q, correctionEvidenceLinkColumns]
+	DocumentConfirmations   modAs[Q, documentConfirmationColumns]
+	EvidenceLinks           modAs[Q, evidenceLinkColumns]
+	ExtractionJobs          modAs[Q, extractionJobColumns]
+	AttachmentsAsChild      modAs[Q, sourceDocumentAttachmentColumns]
+	AttachmentsAsParent     modAs[Q, sourceDocumentAttachmentColumns]
+	CreatedByMember         modAs[Q, memberColumns]
+	Household               modAs[Q, householdColumns]
 }
 
 func (j sourceDocumentJoins[Q]) aliasedAs(alias string) sourceDocumentJoins[Q] {
@@ -3034,6 +3390,20 @@ func (j sourceDocumentJoins[Q]) aliasedAs(alias string) sourceDocumentJoins[Q] {
 func buildSourceDocumentJoins[Q dialect.Joinable](cols sourceDocumentColumns, typ string) sourceDocumentJoins[Q] {
 	return sourceDocumentJoins[Q]{
 		typ: typ,
+		CorrectionEvidenceLinks: modAs[Q, correctionEvidenceLinkColumns]{
+			c: CorrectionEvidenceLinks.Columns,
+			f: func(to correctionEvidenceLinkColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, CorrectionEvidenceLinks.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.SourceDocumentID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
 		DocumentConfirmations: modAs[Q, documentConfirmationColumns]{
 			c: DocumentConfirmations.Columns,
 			f: func(to documentConfirmationColumns) bob.Mod[Q] {

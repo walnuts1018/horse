@@ -114,7 +114,7 @@ describe("purchase outbox storage", () => {
     const claims = [firstClaim, secondClaim].filter((claim) => claim !== undefined);
     expect(claims).toHaveLength(1);
     const claim = claims[0];
-    if (!claim?.leaseOwner) throw new Error("claimしたownerが見つかりません");
+    if (!claim.leaseOwner) throw new Error("claimしたownerが見つかりません");
 
     await markPurchaseOutboxFailed(
       memberId,

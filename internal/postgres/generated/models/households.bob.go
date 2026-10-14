@@ -51,35 +51,36 @@ type HouseholdsQuery = *psql.ViewQuery[*Household, HouseholdSlice]
 
 // householdR is where relationships are stored.
 type householdR struct {
-	AccountIncomes        AccountIncomeSlice        // account_incomes.account_incomes_household_id_fkey
-	AccountMovements      AccountMovementSlice      // account_movements.account_movements_household_id_fkey
-	AccountingPeriods     AccountingPeriodSlice     // accounting_periods.accounting_periods_household_id_fkey
-	Accounts              AccountSlice              // accounts.accounts_household_id_fkey
-	AllocationDefaults    AllocationDefaultSlice    // allocation_defaults.allocation_defaults_household_id_fkey
-	AllocationRules       AllocationRuleSlice       // allocation_rules.allocation_rules_household_id_fkey
-	Budgets               BudgetSlice               // budgets.budgets_household_id_fkey
-	Categories            CategorySlice             // categories.categories_household_id_fkey
-	Corrections           CorrectionSlice           // corrections.corrections_household_id_fkey
-	DocumentConfirmations DocumentConfirmationSlice // document_confirmations.document_confirmations_household_id_fkey
-	EvidenceLinks         EvidenceLinkSlice         // evidence_links.evidence_links_household_id_fkey
-	ExtractionJobs        ExtractionJobSlice        // extraction_jobs.extraction_jobs_household_id_fkey
-	FundingObligations    FundingObligationSlice    // funding_obligations.funding_obligations_household_id_fkey
-	FundingSchedules      FundingScheduleSlice      // funding_schedules.funding_schedules_household_id_fkey
-	HouseholdEvents       HouseholdEventSlice       // household_events.household_events_household_id_fkey
-	HouseholdInvitations  HouseholdInvitationSlice  // household_invitations.household_invitations_household_id_fkey
-	HouseholdMembers      HouseholdMemberSlice      // household_members.household_members_household_id_fkey
-	IdempotencyKeys       IdempotencyKeySlice       // idempotency_keys.idempotency_keys_household_id_fkey
-	Journals              JournalSlice              // journals.journals_household_id_fkey
-	LedgerEntries         LedgerEntrySlice          // ledger_entries.ledger_entries_household_id_fkey
-	Pools                 PoolSlice                 // pools.pools_household_id_fkey
-	ProductConcepts       ProductConceptSlice       // product_concepts.product_concepts_household_id_fkey
-	Purchases             PurchaseSlice             // purchases.purchases_household_id_fkey
-	RecurringExpenses     RecurringExpenseSlice     // recurring_expenses.recurring_expenses_household_id_fkey
-	SettlementAdjustments SettlementAdjustmentSlice // settlement_adjustments.settlement_adjustments_household_id_fkey
-	SettlementRuns        SettlementRunSlice        // settlement_runs.settlement_runs_household_id_fkey
-	SourceDocuments       SourceDocumentSlice       // source_documents.source_documents_household_id_fkey
-	Tags                  TagSlice                  // tags.tags_household_id_fkey
-	Transfers             TransferSlice             // transfers.transfers_household_id_fkey
+	AccountIncomes          AccountIncomeSlice          // account_incomes.account_incomes_household_id_fkey
+	AccountMovements        AccountMovementSlice        // account_movements.account_movements_household_id_fkey
+	AccountingPeriods       AccountingPeriodSlice       // accounting_periods.accounting_periods_household_id_fkey
+	Accounts                AccountSlice                // accounts.accounts_household_id_fkey
+	AllocationDefaults      AllocationDefaultSlice      // allocation_defaults.allocation_defaults_household_id_fkey
+	AllocationRules         AllocationRuleSlice         // allocation_rules.allocation_rules_household_id_fkey
+	Budgets                 BudgetSlice                 // budgets.budgets_household_id_fkey
+	Categories              CategorySlice               // categories.categories_household_id_fkey
+	CorrectionEvidenceLinks CorrectionEvidenceLinkSlice // correction_evidence_links.correction_evidence_links_household_id_fkey
+	Corrections             CorrectionSlice             // corrections.corrections_household_id_fkey
+	DocumentConfirmations   DocumentConfirmationSlice   // document_confirmations.document_confirmations_household_id_fkey
+	EvidenceLinks           EvidenceLinkSlice           // evidence_links.evidence_links_household_id_fkey
+	ExtractionJobs          ExtractionJobSlice          // extraction_jobs.extraction_jobs_household_id_fkey
+	FundingObligations      FundingObligationSlice      // funding_obligations.funding_obligations_household_id_fkey
+	FundingSchedules        FundingScheduleSlice        // funding_schedules.funding_schedules_household_id_fkey
+	HouseholdEvents         HouseholdEventSlice         // household_events.household_events_household_id_fkey
+	HouseholdInvitations    HouseholdInvitationSlice    // household_invitations.household_invitations_household_id_fkey
+	HouseholdMembers        HouseholdMemberSlice        // household_members.household_members_household_id_fkey
+	IdempotencyKeys         IdempotencyKeySlice         // idempotency_keys.idempotency_keys_household_id_fkey
+	Journals                JournalSlice                // journals.journals_household_id_fkey
+	LedgerEntries           LedgerEntrySlice            // ledger_entries.ledger_entries_household_id_fkey
+	Pools                   PoolSlice                   // pools.pools_household_id_fkey
+	ProductConcepts         ProductConceptSlice         // product_concepts.product_concepts_household_id_fkey
+	Purchases               PurchaseSlice               // purchases.purchases_household_id_fkey
+	RecurringExpenses       RecurringExpenseSlice       // recurring_expenses.recurring_expenses_household_id_fkey
+	SettlementAdjustments   SettlementAdjustmentSlice   // settlement_adjustments.settlement_adjustments_household_id_fkey
+	SettlementRuns          SettlementRunSlice          // settlement_runs.settlement_runs_household_id_fkey
+	SourceDocuments         SourceDocumentSlice         // source_documents.source_documents_household_id_fkey
+	Tags                    TagSlice                    // tags.tags_household_id_fkey
+	Transfers               TransferSlice               // transfers.transfers_household_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -88,35 +89,36 @@ type householdR struct {
 
 // householdRLoaded tracks which relationships on Household have been loaded.
 type householdRLoaded struct {
-	AccountIncomes        bool // account_incomes.account_incomes_household_id_fkey
-	AccountMovements      bool // account_movements.account_movements_household_id_fkey
-	AccountingPeriods     bool // accounting_periods.accounting_periods_household_id_fkey
-	Accounts              bool // accounts.accounts_household_id_fkey
-	AllocationDefaults    bool // allocation_defaults.allocation_defaults_household_id_fkey
-	AllocationRules       bool // allocation_rules.allocation_rules_household_id_fkey
-	Budgets               bool // budgets.budgets_household_id_fkey
-	Categories            bool // categories.categories_household_id_fkey
-	Corrections           bool // corrections.corrections_household_id_fkey
-	DocumentConfirmations bool // document_confirmations.document_confirmations_household_id_fkey
-	EvidenceLinks         bool // evidence_links.evidence_links_household_id_fkey
-	ExtractionJobs        bool // extraction_jobs.extraction_jobs_household_id_fkey
-	FundingObligations    bool // funding_obligations.funding_obligations_household_id_fkey
-	FundingSchedules      bool // funding_schedules.funding_schedules_household_id_fkey
-	HouseholdEvents       bool // household_events.household_events_household_id_fkey
-	HouseholdInvitations  bool // household_invitations.household_invitations_household_id_fkey
-	HouseholdMembers      bool // household_members.household_members_household_id_fkey
-	IdempotencyKeys       bool // idempotency_keys.idempotency_keys_household_id_fkey
-	Journals              bool // journals.journals_household_id_fkey
-	LedgerEntries         bool // ledger_entries.ledger_entries_household_id_fkey
-	Pools                 bool // pools.pools_household_id_fkey
-	ProductConcepts       bool // product_concepts.product_concepts_household_id_fkey
-	Purchases             bool // purchases.purchases_household_id_fkey
-	RecurringExpenses     bool // recurring_expenses.recurring_expenses_household_id_fkey
-	SettlementAdjustments bool // settlement_adjustments.settlement_adjustments_household_id_fkey
-	SettlementRuns        bool // settlement_runs.settlement_runs_household_id_fkey
-	SourceDocuments       bool // source_documents.source_documents_household_id_fkey
-	Tags                  bool // tags.tags_household_id_fkey
-	Transfers             bool // transfers.transfers_household_id_fkey
+	AccountIncomes          bool // account_incomes.account_incomes_household_id_fkey
+	AccountMovements        bool // account_movements.account_movements_household_id_fkey
+	AccountingPeriods       bool // accounting_periods.accounting_periods_household_id_fkey
+	Accounts                bool // accounts.accounts_household_id_fkey
+	AllocationDefaults      bool // allocation_defaults.allocation_defaults_household_id_fkey
+	AllocationRules         bool // allocation_rules.allocation_rules_household_id_fkey
+	Budgets                 bool // budgets.budgets_household_id_fkey
+	Categories              bool // categories.categories_household_id_fkey
+	CorrectionEvidenceLinks bool // correction_evidence_links.correction_evidence_links_household_id_fkey
+	Corrections             bool // corrections.corrections_household_id_fkey
+	DocumentConfirmations   bool // document_confirmations.document_confirmations_household_id_fkey
+	EvidenceLinks           bool // evidence_links.evidence_links_household_id_fkey
+	ExtractionJobs          bool // extraction_jobs.extraction_jobs_household_id_fkey
+	FundingObligations      bool // funding_obligations.funding_obligations_household_id_fkey
+	FundingSchedules        bool // funding_schedules.funding_schedules_household_id_fkey
+	HouseholdEvents         bool // household_events.household_events_household_id_fkey
+	HouseholdInvitations    bool // household_invitations.household_invitations_household_id_fkey
+	HouseholdMembers        bool // household_members.household_members_household_id_fkey
+	IdempotencyKeys         bool // idempotency_keys.idempotency_keys_household_id_fkey
+	Journals                bool // journals.journals_household_id_fkey
+	LedgerEntries           bool // ledger_entries.ledger_entries_household_id_fkey
+	Pools                   bool // pools.pools_household_id_fkey
+	ProductConcepts         bool // product_concepts.product_concepts_household_id_fkey
+	Purchases               bool // purchases.purchases_household_id_fkey
+	RecurringExpenses       bool // recurring_expenses.recurring_expenses_household_id_fkey
+	SettlementAdjustments   bool // settlement_adjustments.settlement_adjustments_household_id_fkey
+	SettlementRuns          bool // settlement_runs.settlement_runs_household_id_fkey
+	SourceDocuments         bool // source_documents.source_documents_household_id_fkey
+	Tags                    bool // tags.tags_household_id_fkey
+	Transfers               bool // transfers.transfers_household_id_fkey
 }
 
 func buildHouseholdColumns(tableName string) householdColumns {
@@ -875,6 +877,29 @@ func (os HouseholdSlice) Categories(mods ...bob.Mod[*dialect.SelectQuery]) Categ
 
 	return Categories.Query(append(mods,
 		sm.Where(Categories.Columns.HouseholdID.EQ(PKArgExpr)),
+	)...)
+}
+
+// CorrectionEvidenceLinks starts a query for related objects on correction_evidence_links
+func (o *Household) CorrectionEvidenceLinks(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionEvidenceLinksQuery {
+	return CorrectionEvidenceLinks.Query(append(mods,
+		sm.Where(CorrectionEvidenceLinks.Columns.HouseholdID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os HouseholdSlice) CorrectionEvidenceLinks(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionEvidenceLinksQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return CorrectionEvidenceLinks.Query(append(mods,
+		sm.Where(CorrectionEvidenceLinks.Columns.HouseholdID.EQ(PKArgExpr)),
 	)...)
 }
 
@@ -1912,6 +1937,76 @@ func (household0 *Household) AttachCategories(ctx context.Context, exec bob.Exec
 	}
 
 	household0.R.Categories = append(household0.R.Categories, categories1...)
+
+	for _, rel := range related {
+		rel.R.Household = household0
+		rel.R.Loaded.Household = true
+	}
+
+	return nil
+}
+
+func insertHouseholdCorrectionEvidenceLinks0(ctx context.Context, exec bob.Executor, correctionEvidenceLinks1 []*CorrectionEvidenceLinkSetter, household0 *Household) (CorrectionEvidenceLinkSlice, error) {
+	for i := range correctionEvidenceLinks1 {
+		correctionEvidenceLinks1[i].HouseholdID = func() *uuid.UUID { return &household0.ID }()
+	}
+
+	ret, err := CorrectionEvidenceLinks.Insert(bob.ToMods(correctionEvidenceLinks1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertHouseholdCorrectionEvidenceLinks0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachHouseholdCorrectionEvidenceLinks0(ctx context.Context, exec bob.Executor, count int, correctionEvidenceLinks1 CorrectionEvidenceLinkSlice, household0 *Household) (CorrectionEvidenceLinkSlice, error) {
+	setter := &CorrectionEvidenceLinkSetter{
+		HouseholdID: func() *uuid.UUID { return &household0.ID }(),
+	}
+
+	err := correctionEvidenceLinks1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachHouseholdCorrectionEvidenceLinks0: %w", err)
+	}
+
+	return correctionEvidenceLinks1, nil
+}
+
+func (household0 *Household) InsertCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, related ...*CorrectionEvidenceLinkSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	correctionEvidenceLinks1, err := insertHouseholdCorrectionEvidenceLinks0(ctx, exec, related, household0)
+	if err != nil {
+		return err
+	}
+
+	household0.R.CorrectionEvidenceLinks = append(household0.R.CorrectionEvidenceLinks, correctionEvidenceLinks1...)
+
+	for _, rel := range correctionEvidenceLinks1 {
+		rel.R.Household = household0
+		rel.R.Loaded.Household = true
+	}
+	return nil
+}
+
+func (household0 *Household) AttachCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, related ...*CorrectionEvidenceLink) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	correctionEvidenceLinks1 := CorrectionEvidenceLinkSlice(related)
+
+	_, err = attachHouseholdCorrectionEvidenceLinks0(ctx, exec, len(related), correctionEvidenceLinks1, household0)
+	if err != nil {
+		return err
+	}
+
+	household0.R.CorrectionEvidenceLinks = append(household0.R.CorrectionEvidenceLinks, correctionEvidenceLinks1...)
 
 	for _, rel := range related {
 		rel.R.Household = household0
@@ -3468,6 +3563,20 @@ func (w householdWhereR[Q]) HasCategories(filters ...bob.Mod[*dialect.SelectQuer
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasCorrectionEvidenceLinks filters parents that have a matching CorrectionEvidenceLinks using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to CorrectionEvidenceLinks).
+func (w householdWhereR[Q]) HasCorrectionEvidenceLinks(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(CorrectionEvidenceLinks.NameExpr()),
+		sm.Where(CorrectionEvidenceLinks.Columns.HouseholdID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasCorrections filters parents that have a matching Corrections using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -3994,6 +4103,22 @@ func (o *Household) Preload(name string, retrieved any) error {
 			}
 		}
 		return nil
+	case "CorrectionEvidenceLinks":
+		rels, ok := retrieved.(CorrectionEvidenceLinkSlice)
+		if !ok {
+			return fmt.Errorf("household cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.CorrectionEvidenceLinks = rels
+		o.R.Loaded.CorrectionEvidenceLinks = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Household = o
+				rel.R.Loaded.Household = true
+			}
+		}
+		return nil
 	case "Corrections":
 		rels, ok := retrieved.(CorrectionSlice)
 		if !ok {
@@ -4342,35 +4467,36 @@ func buildHouseholdPreloader() householdPreloader {
 }
 
 type householdThenLoader[Q orm.Loadable] struct {
-	AccountIncomes        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AccountMovements      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AccountingPeriods     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Accounts              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AllocationDefaults    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AllocationRules       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Budgets               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Categories            func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Corrections           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ExtractionJobs        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FundingObligations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FundingSchedules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	HouseholdEvents       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	HouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	HouseholdMembers      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	IdempotencyKeys       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Journals              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	LedgerEntries         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Pools                 func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ProductConcepts       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Purchases             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	RecurringExpenses     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	SettlementAdjustments func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	SettlementRuns        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	SourceDocuments       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Tags                  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Transfers             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AccountIncomes          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AccountMovements        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AccountingPeriods       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Accounts                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AllocationDefaults      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AllocationRules         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Budgets                 func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Categories              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CorrectionEvidenceLinks func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Corrections             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	DocumentConfirmations   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	EvidenceLinks           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ExtractionJobs          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FundingObligations      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FundingSchedules        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdEvents         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdInvitations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdMembers        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	IdempotencyKeys         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Journals                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	LedgerEntries           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Pools                   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ProductConcepts         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Purchases               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	RecurringExpenses       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementAdjustments   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementRuns          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SourceDocuments         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Tags                    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Transfers               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildHouseholdThenLoader[Q orm.Loadable]() householdThenLoader[Q] {
@@ -4397,6 +4523,9 @@ func buildHouseholdThenLoader[Q orm.Loadable]() householdThenLoader[Q] {
 	}
 	type CategoriesLoadInterface interface {
 		LoadCategories(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type CorrectionEvidenceLinksLoadInterface interface {
+		LoadCorrectionEvidenceLinks(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type CorrectionsLoadInterface interface {
 		LoadCorrections(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -4509,6 +4638,12 @@ func buildHouseholdThenLoader[Q orm.Loadable]() householdThenLoader[Q] {
 			"Categories",
 			func(ctx context.Context, exec bob.Executor, retrieved CategoriesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCategories(ctx, exec, mods...)
+			},
+		),
+		CorrectionEvidenceLinks: thenLoadBuilder[Q](
+			"CorrectionEvidenceLinks",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionEvidenceLinksLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCorrectionEvidenceLinks(ctx, exec, mods...)
 			},
 		),
 		Corrections: thenLoadBuilder[Q](
@@ -5225,6 +5360,80 @@ func (os HouseholdSlice) LoadCategories(ctx context.Context, exec bob.Executor, 
 			rel.R.Loaded.Household = true
 
 			o.R.Categories = append(o.R.Categories, rel)
+
+		}
+	}
+
+	return nil
+}
+
+// LoadCorrectionEvidenceLinks loads the household's CorrectionEvidenceLinks into the .R struct
+func (o *Household) LoadCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.CorrectionEvidenceLinks = nil
+	o.R.Loaded.CorrectionEvidenceLinks = false
+
+	related, err := o.CorrectionEvidenceLinks(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Household = o
+		rel.R.Loaded.Household = true
+	}
+
+	o.R.CorrectionEvidenceLinks = related
+	o.R.Loaded.CorrectionEvidenceLinks = true
+	return nil
+}
+
+// LoadCorrectionEvidenceLinks loads the household's CorrectionEvidenceLinks into the .R struct
+func (os HouseholdSlice) LoadCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	correctionEvidenceLinks, err := os.CorrectionEvidenceLinks(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.CorrectionEvidenceLinks = nil
+		o.R.Loaded.CorrectionEvidenceLinks = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	householdByKey := make(map[uuid.UUID][]*Household, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		householdByKey[o.ID] = append(householdByKey[o.ID], o)
+	}
+
+	for _, rel := range correctionEvidenceLinks {
+
+		owners, ok := householdByKey[rel.HouseholdID]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			rel.R.Household = o
+			rel.R.Loaded.Household = true
+
+			o.R.CorrectionEvidenceLinks = append(o.R.CorrectionEvidenceLinks, rel)
 
 		}
 	}
@@ -6788,35 +6997,36 @@ func (os HouseholdSlice) LoadTransfers(ctx context.Context, exec bob.Executor, m
 
 // householdC is where relationship counts are stored.
 type householdC struct {
-	AccountIncomes        *int64
-	AccountMovements      *int64
-	AccountingPeriods     *int64
-	Accounts              *int64
-	AllocationDefaults    *int64
-	AllocationRules       *int64
-	Budgets               *int64
-	Categories            *int64
-	Corrections           *int64
-	DocumentConfirmations *int64
-	EvidenceLinks         *int64
-	ExtractionJobs        *int64
-	FundingObligations    *int64
-	FundingSchedules      *int64
-	HouseholdEvents       *int64
-	HouseholdInvitations  *int64
-	HouseholdMembers      *int64
-	IdempotencyKeys       *int64
-	Journals              *int64
-	LedgerEntries         *int64
-	Pools                 *int64
-	ProductConcepts       *int64
-	Purchases             *int64
-	RecurringExpenses     *int64
-	SettlementAdjustments *int64
-	SettlementRuns        *int64
-	SourceDocuments       *int64
-	Tags                  *int64
-	Transfers             *int64
+	AccountIncomes          *int64
+	AccountMovements        *int64
+	AccountingPeriods       *int64
+	Accounts                *int64
+	AllocationDefaults      *int64
+	AllocationRules         *int64
+	Budgets                 *int64
+	Categories              *int64
+	CorrectionEvidenceLinks *int64
+	Corrections             *int64
+	DocumentConfirmations   *int64
+	EvidenceLinks           *int64
+	ExtractionJobs          *int64
+	FundingObligations      *int64
+	FundingSchedules        *int64
+	HouseholdEvents         *int64
+	HouseholdInvitations    *int64
+	HouseholdMembers        *int64
+	IdempotencyKeys         *int64
+	Journals                *int64
+	LedgerEntries           *int64
+	Pools                   *int64
+	ProductConcepts         *int64
+	Purchases               *int64
+	RecurringExpenses       *int64
+	SettlementAdjustments   *int64
+	SettlementRuns          *int64
+	SourceDocuments         *int64
+	Tags                    *int64
+	Transfers               *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -6842,6 +7052,8 @@ func (o *Household) PreloadCount(name string, count int64) error {
 		o.C.Budgets = &count
 	case "Categories":
 		o.C.Categories = &count
+	case "CorrectionEvidenceLinks":
+		o.C.CorrectionEvidenceLinks = &count
 	case "Corrections":
 		o.C.Corrections = &count
 	case "DocumentConfirmations":
@@ -6889,35 +7101,36 @@ func (o *Household) PreloadCount(name string, count int64) error {
 }
 
 type householdCountPreloader struct {
-	AccountIncomes        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	AccountMovements      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	AccountingPeriods     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	Accounts              func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	AllocationDefaults    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	AllocationRules       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	Budgets               func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	Categories            func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	Corrections           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	ExtractionJobs        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	FundingObligations    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	FundingSchedules      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	HouseholdEvents       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	HouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	HouseholdMembers      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	IdempotencyKeys       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	Journals              func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	LedgerEntries         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	Pools                 func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	ProductConcepts       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	Purchases             func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	RecurringExpenses     func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	SettlementAdjustments func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	SettlementRuns        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	SourceDocuments       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	Tags                  func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
-	Transfers             func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AccountIncomes          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AccountMovements        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AccountingPeriods       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Accounts                func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AllocationDefaults      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	AllocationRules         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Budgets                 func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Categories              func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	CorrectionEvidenceLinks func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Corrections             func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	DocumentConfirmations   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	EvidenceLinks           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ExtractionJobs          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	FundingObligations      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	FundingSchedules        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	HouseholdEvents         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	HouseholdInvitations    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	HouseholdMembers        func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	IdempotencyKeys         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Journals                func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	LedgerEntries           func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Pools                   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ProductConcepts         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Purchases               func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	RecurringExpenses       func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	SettlementAdjustments   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	SettlementRuns          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	SourceDocuments         func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Tags                    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	Transfers               func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildHouseholdCountPreloader() householdCountPreloader {
@@ -7053,6 +7266,23 @@ func buildHouseholdCountPreloader() householdCountPreloader {
 
 					sm.From(Categories.NameAsExpr()),
 					sm.Where(psql.Quote(Categories.Alias(), "household_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+		CorrectionEvidenceLinks: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Household]("CorrectionEvidenceLinks", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Households.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(CorrectionEvidenceLinks.NameAsExpr()),
+					sm.Where(psql.Quote(CorrectionEvidenceLinks.Alias(), "household_id").EQ(psql.Quote(parent, "id"))),
 				}
 				subqueryMods = append(subqueryMods, mods...)
 				return psql.Group(psql.Select(subqueryMods...).Expression)
@@ -7419,35 +7649,36 @@ func buildHouseholdCountPreloader() householdCountPreloader {
 }
 
 type householdCountThenLoader[Q orm.Loadable] struct {
-	AccountIncomes        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AccountMovements      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AccountingPeriods     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Accounts              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AllocationDefaults    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	AllocationRules       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Budgets               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Categories            func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Corrections           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	EvidenceLinks         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ExtractionJobs        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FundingObligations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	FundingSchedules      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	HouseholdEvents       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	HouseholdInvitations  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	HouseholdMembers      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	IdempotencyKeys       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Journals              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	LedgerEntries         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Pools                 func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ProductConcepts       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Purchases             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	RecurringExpenses     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	SettlementAdjustments func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	SettlementRuns        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	SourceDocuments       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Tags                  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Transfers             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AccountIncomes          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AccountMovements        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AccountingPeriods       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Accounts                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AllocationDefaults      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	AllocationRules         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Budgets                 func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Categories              func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	CorrectionEvidenceLinks func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Corrections             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	DocumentConfirmations   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	EvidenceLinks           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ExtractionJobs          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FundingObligations      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FundingSchedules        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdEvents         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdInvitations    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdMembers        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	IdempotencyKeys         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Journals                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	LedgerEntries           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Pools                   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ProductConcepts         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Purchases               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	RecurringExpenses       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementAdjustments   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SettlementRuns          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	SourceDocuments         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Tags                    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Transfers               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildHouseholdCountThenLoader[Q orm.Loadable]() householdCountThenLoader[Q] {
@@ -7474,6 +7705,9 @@ func buildHouseholdCountThenLoader[Q orm.Loadable]() householdCountThenLoader[Q]
 	}
 	type CategoriesCountInterface interface {
 		LoadCountCategories(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type CorrectionEvidenceLinksCountInterface interface {
+		LoadCountCorrectionEvidenceLinks(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type CorrectionsCountInterface interface {
 		LoadCountCorrections(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
@@ -7586,6 +7820,12 @@ func buildHouseholdCountThenLoader[Q orm.Loadable]() householdCountThenLoader[Q]
 			"Categories",
 			func(ctx context.Context, exec bob.Executor, retrieved CategoriesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountCategories(ctx, exec, mods...)
+			},
+		),
+		CorrectionEvidenceLinks: countThenLoadBuilder[Q](
+			"CorrectionEvidenceLinks",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionEvidenceLinksCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountCorrectionEvidenceLinks(ctx, exec, mods...)
 			},
 		),
 		Corrections: countThenLoadBuilder[Q](
@@ -8344,6 +8584,85 @@ func (os HouseholdSlice) LoadCountCategories(ctx context.Context, exec bob.Execu
 		}
 		count := countMap[o.ID]
 		o.C.Categories = &count
+	}
+
+	return nil
+}
+
+// LoadCountCorrectionEvidenceLinks loads the count of CorrectionEvidenceLinks into the C struct
+func (o *Household) LoadCountCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.CorrectionEvidenceLinks(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.CorrectionEvidenceLinks = &count
+	return nil
+}
+
+// LoadCountCorrectionEvidenceLinks loads the count of CorrectionEvidenceLinks for a slice in a single batch query
+func (os HouseholdSlice) LoadCountCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			CorrectionEvidenceLinks.Columns.HouseholdID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(CorrectionEvidenceLinks.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.Where(CorrectionEvidenceLinks.Columns.HouseholdID.EQ(PKArgExpr)),
+		// GROUP BY fk columns
+		sm.GroupBy(CorrectionEvidenceLinks.Columns.HouseholdID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Single-column FK: direct map lookup
+	countMap := make(map[uuid.UUID]int64, len(results))
+	for _, r := range results {
+		countMap[r.ID] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[o.ID]
+		o.C.CorrectionEvidenceLinks = &count
 	}
 
 	return nil
@@ -10009,36 +10328,37 @@ func (os HouseholdSlice) LoadCountTransfers(ctx context.Context, exec bob.Execut
 }
 
 type householdJoins[Q dialect.Joinable] struct {
-	typ                   string
-	AccountIncomes        modAs[Q, accountIncomeColumns]
-	AccountMovements      modAs[Q, accountMovementColumns]
-	AccountingPeriods     modAs[Q, accountingPeriodColumns]
-	Accounts              modAs[Q, accountColumns]
-	AllocationDefaults    modAs[Q, allocationDefaultColumns]
-	AllocationRules       modAs[Q, allocationRuleColumns]
-	Budgets               modAs[Q, budgetColumns]
-	Categories            modAs[Q, categoryColumns]
-	Corrections           modAs[Q, correctionColumns]
-	DocumentConfirmations modAs[Q, documentConfirmationColumns]
-	EvidenceLinks         modAs[Q, evidenceLinkColumns]
-	ExtractionJobs        modAs[Q, extractionJobColumns]
-	FundingObligations    modAs[Q, fundingObligationColumns]
-	FundingSchedules      modAs[Q, fundingScheduleColumns]
-	HouseholdEvents       modAs[Q, householdEventColumns]
-	HouseholdInvitations  modAs[Q, householdInvitationColumns]
-	HouseholdMembers      modAs[Q, householdMemberColumns]
-	IdempotencyKeys       modAs[Q, idempotencyKeyColumns]
-	Journals              modAs[Q, journalColumns]
-	LedgerEntries         modAs[Q, ledgerEntryColumns]
-	Pools                 modAs[Q, poolColumns]
-	ProductConcepts       modAs[Q, productConceptColumns]
-	Purchases             modAs[Q, purchaseColumns]
-	RecurringExpenses     modAs[Q, recurringExpenseColumns]
-	SettlementAdjustments modAs[Q, settlementAdjustmentColumns]
-	SettlementRuns        modAs[Q, settlementRunColumns]
-	SourceDocuments       modAs[Q, sourceDocumentColumns]
-	Tags                  modAs[Q, tagColumns]
-	Transfers             modAs[Q, transferColumns]
+	typ                     string
+	AccountIncomes          modAs[Q, accountIncomeColumns]
+	AccountMovements        modAs[Q, accountMovementColumns]
+	AccountingPeriods       modAs[Q, accountingPeriodColumns]
+	Accounts                modAs[Q, accountColumns]
+	AllocationDefaults      modAs[Q, allocationDefaultColumns]
+	AllocationRules         modAs[Q, allocationRuleColumns]
+	Budgets                 modAs[Q, budgetColumns]
+	Categories              modAs[Q, categoryColumns]
+	CorrectionEvidenceLinks modAs[Q, correctionEvidenceLinkColumns]
+	Corrections             modAs[Q, correctionColumns]
+	DocumentConfirmations   modAs[Q, documentConfirmationColumns]
+	EvidenceLinks           modAs[Q, evidenceLinkColumns]
+	ExtractionJobs          modAs[Q, extractionJobColumns]
+	FundingObligations      modAs[Q, fundingObligationColumns]
+	FundingSchedules        modAs[Q, fundingScheduleColumns]
+	HouseholdEvents         modAs[Q, householdEventColumns]
+	HouseholdInvitations    modAs[Q, householdInvitationColumns]
+	HouseholdMembers        modAs[Q, householdMemberColumns]
+	IdempotencyKeys         modAs[Q, idempotencyKeyColumns]
+	Journals                modAs[Q, journalColumns]
+	LedgerEntries           modAs[Q, ledgerEntryColumns]
+	Pools                   modAs[Q, poolColumns]
+	ProductConcepts         modAs[Q, productConceptColumns]
+	Purchases               modAs[Q, purchaseColumns]
+	RecurringExpenses       modAs[Q, recurringExpenseColumns]
+	SettlementAdjustments   modAs[Q, settlementAdjustmentColumns]
+	SettlementRuns          modAs[Q, settlementRunColumns]
+	SourceDocuments         modAs[Q, sourceDocumentColumns]
+	Tags                    modAs[Q, tagColumns]
+	Transfers               modAs[Q, transferColumns]
 }
 
 func (j householdJoins[Q]) aliasedAs(alias string) householdJoins[Q] {
@@ -10153,6 +10473,20 @@ func buildHouseholdJoins[Q dialect.Joinable](cols householdColumns, typ string) 
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, Categories.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
+		CorrectionEvidenceLinks: modAs[Q, correctionEvidenceLinkColumns]{
+			c: CorrectionEvidenceLinks.Columns,
+			f: func(to correctionEvidenceLinkColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, CorrectionEvidenceLinks.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.ID),
 					))
 				}

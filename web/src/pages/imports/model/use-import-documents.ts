@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { errorMessage } from "../../../shared/lib/errors";
 import { documentListURL } from "../api/documents";
 import {
+  asRecord,
   isProcessing,
   sourceKindLabel,
+  withStableEvidenceKeys,
   type DocumentFilters,
   type DocumentReview,
 } from "./imports";
@@ -13,7 +16,21 @@ type DocumentPage = {
   nextCursor: string | null;
 };
 
+function isDocumentPage(value: unknown): value is DocumentPage {
+  const record = asRecord(value);
+  return (
+    record !== undefined &&
+    Array.isArray(record.documents) &&
+    (record.nextCursor === null || typeof record.nextCursor === "string")
+  );
+}
+
+function toDocumentPage(value: unknown): DocumentPage {
+  return isDocumentPage(value) ? value : { documents: [], nextCursor: null };
+}
+
 function withDocumentName(document: DocumentReview, fallback?: DocumentReview) {
+  const keyed = withStableEvidenceKeys(document);
   const createdAt = document.createdAt
     ? new Date(document.createdAt).toLocaleString("ja-JP", {
         month: "numeric",
@@ -23,7 +40,7 @@ function withDocumentName(document: DocumentReview, fallback?: DocumentReview) {
       })
     : document.id.slice(0, 8);
   return {
-    ...document,
+    ...keyed,
     name:
       document.name ?? fallback?.name ?? `${sourceKindLabel(document.sourceKind)} · ${createdAt}`,
   };
@@ -51,7 +68,7 @@ export function useImportDocuments(
           credentials: "include",
         });
         if (!response.ok) throw new Error(`証拠一覧を取得できませんでした (${response.status})`);
-        const payload = (await response.json()) as DocumentPage;
+        const payload = toDocumentPage(await response.json());
         if (requestScope !== filterScopeRef.current) return;
         setDocuments((current) => [
           ...payload.documents.map((document) => {
@@ -68,9 +85,10 @@ export function useImportDocuments(
           ),
         ]);
         if (!loadedOlderPages.current) setNextDocumentCursor(payload.nextCursor);
-        setSelected((current) => current ?? payload.documents[0]?.id ?? null);
+        const firstDocumentId = payload.documents.at(0)?.id;
+        setSelected((current) => current ?? firstDocumentId ?? null);
       } catch (reason) {
-        if (!silent) onError((reason as Error).message);
+        if (!silent) onError(errorMessage(reason));
       }
     },
     [filterScope, filters, householdId, onError],
@@ -78,12 +96,15 @@ export function useImportDocuments(
 
   useEffect(() => {
     filterScopeRef.current = filterScope;
-    setDocuments([]);
-    setNextDocumentCursor(null);
     loadedOlderPages.current = false;
     editedReceiptDocuments.current.clear();
-    setSelected(null);
-    void refreshDocuments();
+    // 同期setStateを連鎖させると連鎖レンダーになるため、リセットは次のタスクへ送る
+    queueMicrotask(() => {
+      setDocuments([]);
+      setNextDocumentCursor(null);
+      setSelected(null);
+      void refreshDocuments();
+    });
   }, [filterScope, refreshDocuments]);
 
   const loadOlderDocuments = useCallback(async () => {
@@ -95,7 +116,7 @@ export function useImportDocuments(
         credentials: "include",
       });
       if (!response.ok) throw new Error(`証拠一覧を取得できませんでした (${response.status})`);
-      const payload = (await response.json()) as DocumentPage;
+      const payload = toDocumentPage(await response.json());
       if (requestScope !== filterScopeRef.current) return;
       setDocuments((current) => {
         const ids = new Set(current.map((document) => document.id));
@@ -109,7 +130,7 @@ export function useImportDocuments(
       setNextDocumentCursor(payload.nextCursor);
       loadedOlderPages.current = true;
     } catch (reason) {
-      onError((reason as Error).message);
+      onError(errorMessage(reason));
     } finally {
       setLoadingOlderDocuments(false);
     }

@@ -24,7 +24,7 @@ type ReceiptReviewProps = {
   purchaseDate: string;
   markUnsaved: () => void;
   setReviewTargetIndex: Dispatch<SetStateAction<number>>;
-  setReceiptPayments: Dispatch<SetStateAction<Record<string, ReceiptPaymentDraft[]>>>;
+  setReceiptPayments: Dispatch<SetStateAction<Record<string, ReceiptPaymentDraft[] | undefined>>>;
   editItem: (documentId: string, index: number, patch: Partial<ExtractedItem>) => void;
   onPurchaseDateChange: (date: string) => void;
   onMerchantChange: (merchant: string) => void;
@@ -33,8 +33,8 @@ type ReceiptReviewProps = {
   setSelectedCandidates: Dispatch<SetStateAction<Record<string, string>>>;
   manualAmountOverrides: Record<string, boolean>;
   setManualAmountOverrides: Dispatch<SetStateAction<Record<string, boolean>>>;
-  manualAmountOverrideReasons: Record<string, string>;
-  setManualAmountOverrideReasons: Dispatch<SetStateAction<Record<string, string>>>;
+  manualAmountOverrideReasons: Record<string, string | undefined>;
+  setManualAmountOverrideReasons: Dispatch<SetStateAction<Record<string, string | undefined>>>;
   pending: boolean;
   onConfirm: () => void;
 };
@@ -118,7 +118,7 @@ export function ReceiptReview({
           </label>
         </div>
         <div className="field-group" id="receipt-review-payments" tabIndex={-1}>
-          <label>決済内訳</label>
+          <span>決済内訳</span>
           {paymentDraftFor(selectedDocument).map((payment, index) => (
             <div className="review-merchant" key={payment.key}>
               {(payment.method || payment.cardLast4) && (
@@ -136,7 +136,9 @@ export function ReceiptReview({
                     ...current,
                     [selectedDocument.id]: paymentDraftFor(selectedDocument).map((entry) =>
                       entry.key === payment.key
-                        ? { ...entry, paymentAccountId: event.target.value }
+                        ? Object.assign({}, entry, {
+                            paymentAccountId: event.target.value,
+                          })
                         : entry,
                     ),
                   }));
@@ -162,7 +164,9 @@ export function ReceiptReview({
                     ...current,
                     [selectedDocument.id]: paymentDraftFor(selectedDocument).map((entry) =>
                       entry.key === payment.key
-                        ? { ...entry, amountYen: Number(event.target.value) || 0 }
+                        ? Object.assign({}, entry, {
+                            amountYen: Number(event.target.value) || 0,
+                          })
                         : entry,
                     ),
                   }));
@@ -234,7 +238,7 @@ export function ReceiptReview({
           </small>
         </div>
         {selectedDocument.result.receipt.items.map((item, index) => (
-          <div className="receipt-item-review" key={index}>
+          <div className="receipt-item-review" key={item.key}>
             <div>
               <input
                 id={`receipt-review-item-${index}`}
@@ -281,7 +285,7 @@ export function ReceiptReview({
               ¥
               <input
                 inputMode="numeric"
-                value={String(item.grossAmount ?? item.printedAmount)}
+                value={String(item.grossAmount)}
                 onChange={(event) => {
                   markUnsaved();
                   setManualAmountOverrides((current) => ({
@@ -449,6 +453,7 @@ export function ReceiptReview({
           </b>
         </div>
         <button
+          type="button"
           className="button button-primary button-wide"
           disabled={pending || !purchaseDate}
           onClick={() => onConfirm()}

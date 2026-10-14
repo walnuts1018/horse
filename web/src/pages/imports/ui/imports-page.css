@@ -229,6 +229,81 @@
   flex: none;
 }
 
+.statement-row-action {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+}
+
+.statement-row-action label {
+  display: grid;
+  gap: 3px;
+  justify-items: end;
+}
+
+.statement-row-action select {
+  max-width: min(260px, 58vw);
+}
+
+.review-image {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 9px;
+  background: var(--green-wash);
+  padding: 10px;
+  color: var(--green-dark);
+  font-size: 12px;
+}
+
+.candidate-review {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.candidate-review h3 {
+  margin: 3px 0 0;
+  font-size: 15px;
+}
+
+.candidate-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.candidate-option > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.candidate-option b,
+.candidate-option strong {
+  font-size: 12px;
+}
+
+.candidate-option small,
+.candidate-review > small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.candidate-selected {
+  border-color: var(--green);
+  background: var(--green-wash);
+}
+
 @media (width <= 600px) {
   .statement-row {
     padding: 10px 0;

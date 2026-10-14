@@ -6,10 +6,12 @@ import type { Dimension } from "./purchase-analytics";
 import { readBudgets } from "../../../entities/budget";
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { readRecurringExpenses } from "../../../entities/recurring-expense";
+import { errorMessage } from "../../../shared/lib";
 import {
   readAnalysisCategorySpending,
   readAnalysisMemberSpending,
 } from "../api/read-analysis-spending";
+import { exclusiveMonthEnd } from "./use-analysis-period";
 
 export function useAnalysisData(
   householdId: string,
@@ -23,7 +25,7 @@ export function useAnalysisData(
     100,
     {
       from: `${fromMonth}-01T00:00:00+09:00`,
-      to: `${toMonth}-01T00:00:00+09:00`,
+      to: exclusiveMonthEnd(toMonth),
       loadAll: true,
     },
   );
@@ -54,7 +56,7 @@ export function useAnalysisData(
     setSpendingError("");
     void readAnalysisCategorySpending(householdId, fromMonth, toMonth)
       .then((result) => active && setSpending(result))
-      .catch((reason) => active && setSpendingError((reason as Error).message))
+      .catch((reason) => active && setSpendingError(errorMessage(reason)))
       .finally(() => active && setSpendingLoading(false));
     return () => {
       active = false;
@@ -77,7 +79,7 @@ export function useAnalysisData(
         setMemberSpending(result.items);
         setHasUnattributedPurchases(result.hasUnattributedPurchases);
       })
-      .catch((reason) => active && setMemberSpendingError((reason as Error).message))
+      .catch((reason) => active && setMemberSpendingError(errorMessage(reason)))
       .finally(() => active && setMemberSpendingLoading(false));
     return () => {
       active = false;
@@ -89,7 +91,7 @@ export function useAnalysisData(
     setBudgetError("");
     void readBudgets(householdId, currentMonth)
       .then((result) => active && setBudgets(result))
-      .catch((reason) => active && setBudgetError((reason as Error).message));
+      .catch((reason) => active && setBudgetError(errorMessage(reason)));
     return () => {
       active = false;
     };
@@ -100,7 +102,7 @@ export function useAnalysisData(
     setRecurringError("");
     void readRecurringExpenses(householdId)
       .then((expenses) => active && setRecurringExpenses(expenses))
-      .catch((reason) => active && setRecurringError((reason as Error).message));
+      .catch((reason) => active && setRecurringError(errorMessage(reason)));
     return () => {
       active = false;
     };

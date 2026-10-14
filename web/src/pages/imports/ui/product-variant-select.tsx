@@ -15,33 +15,33 @@ export function ProductVariantSelect({
   value: string;
   onChange: (variantId: string) => void;
 }) {
-  const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
-  const [suggestionsQuery, setSuggestionsQuery] = useState("");
+  const [suggestionsState, setSuggestionsState] = useState<{
+    query: string;
+    suggestions: ProductSuggestion[];
+  }>({ query: "", suggestions: [] });
+  const [loadingState, setLoadingState] = useState<{ query: string; loading: boolean }>({
+    query: "",
+    loading: false,
+  });
   const [selectedSuggestion, setSelectedSuggestion] = useState<{
     itemName: string;
     suggestion: ProductSuggestion;
   } | null>(null);
   const [searchEnabled, setSearchEnabled] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const query = itemName.trim();
-    if (!searchEnabled || query.length < 2) {
-      setSuggestions([]);
-      setLoading(false);
-      return;
-    }
+    if (!searchEnabled || query.length < 2) return;
     let active = true;
     const timer = window.setTimeout(() => {
-      setLoading(true);
+      setLoadingState({ query, loading: true });
       void readProductSuggestions(householdId, query, merchant.trim() || null, 8)
         .then((result) => {
           if (!active) return;
-          setSuggestions(result);
-          setSuggestionsQuery(query);
+          setSuggestionsState({ query, suggestions: result });
         })
-        .catch(() => active && setSuggestions([]))
-        .finally(() => active && setLoading(false));
+        .catch(() => active && setSuggestionsState({ query, suggestions: [] }))
+        .finally(() => active && setLoadingState({ query, loading: false }));
     }, 220);
     return () => {
       active = false;
@@ -49,7 +49,10 @@ export function ProductVariantSelect({
     };
   }, [householdId, itemName, merchant, searchEnabled]);
 
-  const currentSuggestions = suggestionsQuery === itemName.trim() ? suggestions : [];
+  // 検索結果は検索したときのクエリと一致するときだけ参照する
+  const query = itemName.trim();
+  const currentSuggestions = suggestionsState.query === query ? suggestionsState.suggestions : [];
+  const loading = loadingState.loading && loadingState.query === query;
   const currentSelectedSuggestion =
     selectedSuggestion?.itemName === itemName ? selectedSuggestion.suggestion : null;
   const options = currentSuggestions.some((suggestion) => suggestion.variant.id === value)

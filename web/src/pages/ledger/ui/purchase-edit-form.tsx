@@ -3,6 +3,13 @@ import { Plus, X } from "lucide-react";
 import type { Household, Purchase } from "../../../shared/api";
 import type { PurchaseDraft } from "../model/purchase-draft";
 
+const yen = (amount = 0) =>
+  new Intl.NumberFormat("ja-JP", {
+    style: "currency",
+    currency: "JPY",
+    maximumFractionDigits: 0,
+  }).format(amount);
+
 export function PurchaseEditForm({
   purchase,
   draft,
@@ -18,13 +25,6 @@ export function PurchaseEditForm({
   onCancel: () => void;
   onSave: (purchase: Purchase) => void;
 }) {
-  const yen = (amount = 0) =>
-    new Intl.NumberFormat("ja-JP", {
-      style: "currency",
-      currency: "JPY",
-      maximumFractionDigits: 0,
-    }).format(amount);
-
   return (
     <form
       className="purchase-edit-form"
@@ -47,7 +47,10 @@ export function PurchaseEditForm({
       <div className="purchase-edit-payments">
         <b>決済内訳</b>
         {draft.paymentAllocations.map((payment, index) => (
-          <div className="purchase-edit-payment-row" key={index}>
+          <div
+            className="purchase-edit-payment-row"
+            key={payment.paymentAccountId || `payment-${index}`}
+          >
             <select
               aria-label={"決済元 " + (index + 1)}
               value={payment.paymentAccountId}
@@ -130,7 +133,9 @@ export function PurchaseEditForm({
         <button type="button" className="button button-soft" onClick={onCancel}>
           キャンセル
         </button>
-        <button className="button button-primary">買い物を保存</button>
+        <button className="button button-primary" type="submit">
+          買い物を保存
+        </button>
       </div>
     </form>
   );

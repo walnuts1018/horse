@@ -598,6 +598,15 @@ func (ClosePeriodUserError) IsMutationError()                {}
 func (this ClosePeriodUserError) GetCode() MutationErrorCode { return this.Code }
 func (this ClosePeriodUserError) GetMessage() string         { return this.Message }
 
+type CorrectPurchaseFromStatementInput struct {
+	HouseholdID      string                      `json:"householdId"`
+	SourceDocumentID string                      `json:"sourceDocumentId"`
+	SourceReference  string                      `json:"sourceReference"`
+	Target           *CorrectPurchaseTargetInput `json:"target"`
+	Reason           string                      `json:"reason"`
+	IdempotencyKey   string                      `json:"idempotencyKey"`
+}
+
 type CorrectPurchaseInput struct {
 	HouseholdID        string                      `json:"householdId"`
 	Target             *CorrectPurchaseTargetInput `json:"target"`

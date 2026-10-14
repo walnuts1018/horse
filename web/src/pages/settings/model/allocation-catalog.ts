@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "react";
 
 import type { AllocationRule, Household, ProductConcept } from "../../../shared/api";
 
+import { errorMessage } from "../../../shared/lib";
 import {
   createCatalogAlias,
   createCatalogConcept,
@@ -56,23 +57,23 @@ export function useAllocationCatalog({
     onFormCleanRef.current = onFormClean;
   }, [onFormClean, onNotice]);
 
-  const refreshRules = async () => {
+  const refreshRules = useCallback(async () => {
     const result = await readAllocationRules(household.id);
     setAllocationRules(result.edges.map((edge) => edge.node));
     setAllocationRulesCount(result.totalCount);
     setAllocationRulesCursor(result.pageInfo.endCursor ?? null);
     setAllocationRulesHasNextPage(result.pageInfo.hasNextPage);
-  };
+  }, [household.id]);
 
-  const refreshCatalog = async () => {
+  const refreshCatalog = useCallback(async () => {
     setCatalog(await readCatalog(household.id));
-  };
+  }, [household.id]);
 
   useEffect(() => {
     void Promise.all([refreshRules(), refreshCatalog()]).catch((reason) =>
-      onNoticeRef.current((reason as Error).message, "error"),
+      onNoticeRef.current(errorMessage(reason), "error"),
     );
-  }, [household.id]);
+  }, [refreshRules, refreshCatalog]);
 
   useEffect(() => {
     setRuleWeights(
@@ -80,7 +81,7 @@ export function useAllocationCatalog({
         household.pools.map((pool) => [pool.id, String(pool.defaultShareWeight || 1)]),
       ),
     );
-  }, [household.id, household.pools]);
+  }, [household.pools]);
 
   const loadMoreRules = async () => {
     if (!allocationRulesCursor || allocationRulesPageLoading) return;
@@ -91,13 +92,13 @@ export function useAllocationCatalog({
       setAllocationRulesCursor(result.pageInfo.endCursor ?? null);
       setAllocationRulesHasNextPage(result.pageInfo.hasNextPage);
     } catch (reason) {
-      onNoticeRef.current((reason as Error).message, "error");
+      onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setAllocationRulesPageLoading(false);
     }
   };
 
-  const saveRule = async (event: FormEvent) => {
+  const saveRule = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const allocations = household.pools
       .map((pool) => ({ poolId: pool.id, weight: Math.max(0, Number(ruleWeights[pool.id]) || 0) }))
@@ -126,13 +127,13 @@ export function useAllocationCatalog({
       onNoticeRef.current("負担ルールを保存しました", "success");
       setRuleMerchant("");
     } catch (reason) {
-      onNoticeRef.current((reason as Error).message, "error");
+      onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setPending(false);
     }
   };
 
-  const createConcept = async (event: FormEvent) => {
+  const createConcept = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPending(true);
     try {
@@ -146,13 +147,13 @@ export function useAllocationCatalog({
       await refreshCatalog();
       onNoticeRef.current("商品を追加しました", "success");
     } catch (reason) {
-      onNoticeRef.current((reason as Error).message, "error");
+      onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setPending(false);
     }
   };
 
-  const createVariant = async (event: FormEvent) => {
+  const createVariant = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!variantConceptId) return;
     setPending(true);
@@ -171,13 +172,13 @@ export function useAllocationCatalog({
       await refreshCatalog();
       onNoticeRef.current("バリエーションを追加しました", "success");
     } catch (reason) {
-      onNoticeRef.current((reason as Error).message, "error");
+      onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setPending(false);
     }
   };
 
-  const createAlias = async (event: FormEvent) => {
+  const createAlias = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!aliasVariantId) return;
     setPending(true);
@@ -193,7 +194,7 @@ export function useAllocationCatalog({
       await refreshCatalog();
       onNoticeRef.current("店名の別表記を登録しました", "success");
     } catch (reason) {
-      onNoticeRef.current((reason as Error).message, "error");
+      onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setPending(false);
     }

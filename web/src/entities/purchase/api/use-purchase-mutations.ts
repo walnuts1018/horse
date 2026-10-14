@@ -7,6 +7,8 @@ import {
   type BulkUpdatePurchasesMutation$data,
   type CorrectPurchaseMutation,
   type CorrectPurchaseMutation$data,
+  type CorrectPurchaseFromStatementMutation,
+  type CorrectPurchaseFromStatementMutation$data,
   type CreatePurchaseMutation,
   type CreatePurchaseMutation$data,
   type PostPurchaseMutation,
@@ -18,6 +20,7 @@ import {
   bulkUpdatePurchaseItemsMutation,
   bulkUpdatePurchasesMutation,
   correctPurchaseMutation,
+  correctPurchaseFromStatementMutation,
   createPurchaseMutation,
   postPurchaseMutation,
   updatePurchaseMutation,
@@ -93,6 +96,22 @@ export function useCorrectPurchaseMutation() {
     { correctPurchase: NonNullable<CorrectPurchaseMutation$data["correctPurchase"]["result"]> }
   >(correctPurchaseMutation, ({ correctPurchase }) => ({
     correctPurchase: readMutationResult(correctPurchase, "返品を記録できませんでした"),
+  }));
+}
+
+export function useCorrectPurchaseFromStatementMutation() {
+  return useTypedGraphqlMutation<
+    CorrectPurchaseFromStatementMutation,
+    {
+      correctPurchaseFromStatement: NonNullable<
+        CorrectPurchaseFromStatementMutation$data["correctPurchaseFromStatement"]["result"]
+      >;
+    }
+  >(correctPurchaseFromStatementMutation, ({ correctPurchaseFromStatement }) => ({
+    correctPurchaseFromStatement: readMutationResult(
+      correctPurchaseFromStatement,
+      "返品を明細へ記録できませんでした",
+    ),
   }));
 }
 

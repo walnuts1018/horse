@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	stdjson "encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -12,13 +14,16 @@ import (
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
+	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/settlement"
 	"github.com/walnuts1018/horse/internal/domain"
+	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -27,6 +32,82 @@ const correctionStatusClosed = "CLOSED"
 const correctionMaxMoney int64 = 1_000_000_000_000
 
 var correctionErrMissingPurchaseFundingSnapshot = settlement.ErrMissingPurchaseFundingSnapshot
+
+type statementRefundEvidence struct {
+	DocumentID     gofrsuuid.UUID
+	AmountDeltaYen int64
+	Region         *ingestion.Region
+	Observation    stdjson.RawMessage
+}
+
+func loadStatementRefundEvidence(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, documentID, reference string) (*statementRefundEvidence, error) {
+	documentUUID, err := parseUUID(documentID, "source document")
+	if err != nil {
+		return nil, err
+	}
+	document, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(documentUUID))), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && document.HouseholdID != householdID {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if document.SourceKind != "card" && document.SourceKind != "bank" {
+		return nil, fmt.Errorf("%w: refunds require a card or bank statement", ErrBadInput)
+	}
+	_, err = models.DocumentConfirmations.Query(sm.Where(psql.And(
+		models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)),
+		models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(reference)),
+	))).One(ctx, executor)
+	if err == nil {
+		return nil, fmt.Errorf("%w: statement row is already confirmed", ErrConflict)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	job, err := models.ExtractionJobs.Query(sm.Where(psql.And(
+		models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)),
+		models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
+	)), sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(), sm.Limit(1)).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: statement extraction is unavailable", ErrBadInput)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !job.Result.Valid {
+		return nil, fmt.Errorf("%w: statement extraction is unavailable", ErrBadInput)
+	}
+	var verification ingestion.Verification
+	if err := json.Unmarshal(job.Result.V.Val, &verification); err != nil {
+		return nil, err
+	}
+	index := slices.IndexFunc(verification.Statements, func(entry ingestion.StatementEntry) bool {
+		return entry.SourceReference == reference || entry.SourceReference == "" && reference == fmt.Sprintf("row:%d", entry.Row)
+	})
+	if index < 0 {
+		return nil, ErrNotFound
+	}
+	entry := verification.Statements[index]
+	if entry.Kind != "REFUND" || entry.Amount >= 0 || entry.Region == nil {
+		return nil, fmt.Errorf("%w: statement row is not a refundable negative amount", ErrBadInput)
+	}
+	observation, err := json.Marshal(struct {
+		JobID      string                   `json:"jobId"`
+		Statement  ingestion.StatementEntry `json:"statement"`
+		SourceHash string                   `json:"sourceHash"`
+	}{JobID: job.ID.String(), Statement: entry, SourceHash: document.Sha256})
+	if err != nil {
+		return nil, err
+	}
+	return &statementRefundEvidence{DocumentID: documentUUID, AmountDeltaYen: entry.Amount, Region: entry.Region, Observation: observation}, nil
+}
+
+func isUniqueViolation(err error) bool {
+	pgError, ok := errors.AsType[*pgconn.PgError](err)
+	return ok && pgError.Code == "23505"
+}
 
 func correctionAllocationWeights(ctx context.Context, tx pgx.Tx, purchaseID string, itemID *string) ([]domain.Weight, error) {
 	purchaseUUID, err := gofrsuuid.FromString(purchaseID)
@@ -167,7 +248,8 @@ func refundablePurchaseAmounts(ctx context.Context, executor bob.Executor, purch
 
 func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerprint [sha256.Size]byte) (CorrectionResult, error) {
 	purchaseID, itemID, delta := input.PurchaseID, input.ItemID, input.AmountDeltaYen
-	if delta == 0 || delta > correctionMaxMoney || delta < -correctionMaxMoney || strings.TrimSpace(input.Reason) == "" || input.IdempotencyKey == "" {
+	fromStatement := input.SourceDocumentID != "" || input.SourceReference != ""
+	if delta == 0 && !fromStatement || delta > correctionMaxMoney || delta < -correctionMaxMoney || strings.TrimSpace(input.Reason) == "" || input.IdempotencyKey == "" || fromStatement && (input.SourceDocumentID == "" || input.SourceReference == "" || len(input.SourceReference) > 256) {
 		return CorrectionResult{}, fmt.Errorf("%w: invalid correction", ErrBadInput)
 	}
 	householdUUID, err := parseUUID(input.HouseholdID, "household")
@@ -209,6 +291,9 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 		return CorrectionResult{}, err
 	}
 	operation := "correctPurchase"
+	if fromStatement {
+		operation = "correctPurchaseFromStatement"
+	}
 	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
 		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(input.IdempotencyKey)),
@@ -225,6 +310,17 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return CorrectionResult{}, err
+	}
+	var statementEvidence *statementRefundEvidence
+	if fromStatement {
+		statementEvidence, err = loadStatementRefundEvidence(ctx, executor, householdUUID, input.SourceDocumentID, input.SourceReference)
+		if err != nil {
+			return CorrectionResult{}, err
+		}
+		delta = statementEvidence.AmountDeltaYen
+		if delta == 0 || delta > 0 || delta < -correctionMaxMoney {
+			return CorrectionResult{}, fmt.Errorf("%w: statement row is not a refundable negative amount", ErrBadInput)
+		}
 	}
 	if purchaseRow.Status == draftStatus {
 		return CorrectionResult{}, fmt.Errorf("%w: corrections require a posted purchase", ErrBadInput)
@@ -423,6 +519,36 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 		EffectivePeriod: new(sql.Null[string]{V: effectivePeriod, Valid: true}),
 	}).Exec(ctx, executor); err != nil {
 		return CorrectionResult{}, err
+	}
+	if statementEvidence != nil {
+		correctionIDValue := sql.Null[gofrsuuid.UUID]{V: correctionUUID, Valid: true}
+		if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{
+			SourceDocumentID: &statementEvidence.DocumentID, SourceReference: &input.SourceReference,
+			HouseholdID: &householdUUID, CorrectionID: &correctionIDValue, CreatedBy: &actorUUID,
+		}).Exec(ctx, executor); err != nil {
+			if isUniqueViolation(err) {
+				return CorrectionResult{}, ErrConflict
+			}
+			return CorrectionResult{}, err
+		}
+		var region sql.Null[types.JSON[stdjson.RawMessage]]
+		if statementEvidence.Region != nil {
+			encoded, err := json.Marshal(statementEvidence.Region)
+			if err != nil {
+				return CorrectionResult{}, err
+			}
+			region = sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: encoded}, Valid: true}
+		}
+		observationJSON := types.JSON[stdjson.RawMessage]{Val: statementEvidence.Observation}
+		if _, err := models.CorrectionEvidenceLinks.Insert(&models.CorrectionEvidenceLinkSetter{
+			HouseholdID: &householdUUID, SourceDocumentID: &statementEvidence.DocumentID, SourceReference: &input.SourceReference,
+			CorrectionID: &correctionUUID, EvidenceRegion: &region, Observation: &observationJSON,
+		}).Exec(ctx, executor); err != nil {
+			if isUniqueViolation(err) {
+				return CorrectionResult{}, ErrConflict
+			}
+			return CorrectionResult{}, err
+		}
 	}
 	if err := snapshotCorrectionMemberBurden(ctx, executor, input.HouseholdID, correctionUUID, purchaseUUID, itemUUIDValue, shares, delta); err != nil {
 		return CorrectionResult{}, err

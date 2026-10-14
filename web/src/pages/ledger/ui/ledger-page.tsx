@@ -1,10 +1,12 @@
 import { BookOpen, ChevronDown, ChevronRight, Plus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { readTags } from "../../../entities/tag";
 import { type Household, type Tag } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
 import { EmptyState, InlineError } from "../../../shared/ui";
+import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
 import { useLedgerItemBulkEdit } from "../model/ledger-item-bulk-edit";
 import { toPurchaseAmountVariables, type LedgerSearch } from "../model/ledger-search";
 import { usePurchaseBulkEdit } from "../model/purchase-bulk-edit";
@@ -64,10 +66,10 @@ export function LedgerPage({
     search,
     fromMonth,
     toMonth,
-    categoryFilter,
-    poolFilter,
-    accountFilter,
-    tagFilter,
+    categoryFilter: rawCategoryFilter,
+    poolFilter: rawPoolFilter,
+    accountFilter: rawAccountFilter,
+    tagFilter: rawTagFilter,
     originFilter,
     evidenceFilter,
     observationSourceFilter,
@@ -75,6 +77,35 @@ export function LedgerPage({
     minimumAmount,
     maximumAmount,
   } = filters;
+  // タグ一覧は世帯ごとに保持し、読み込み完了までは検証に使わない
+  const [tagsState, setTagsState] = useState<{
+    householdId: string;
+    tags: Tag[];
+    loaded: boolean;
+  }>(() => ({ householdId: household.id, tags: [], loaded: false }));
+  const tags = tagsState.tags;
+  const tagsLoaded = tagsState.householdId === household.id && tagsState.loaded;
+  // 存在しない絞り込み条件は無効化してレンダー中に導出する(親の状態には書き戻さない)
+  const categoryFilter =
+    rawCategoryFilter &&
+    rawCategoryFilter !== "__uncategorized" &&
+    !household.categories.some((category) => category.id === rawCategoryFilter)
+      ? ""
+      : rawCategoryFilter;
+  const poolFilter =
+    rawPoolFilter && !household.pools.some((pool) => pool.id === rawPoolFilter)
+      ? ""
+      : rawPoolFilter;
+  const accountFilter =
+    rawAccountFilter && !household.accounts.some((account) => account.id === rawAccountFilter)
+      ? ""
+      : rawAccountFilter;
+  const tagFilter =
+    tagsLoaded && rawTagFilter && !tags.some((tag) => tag.id === rawTagFilter) ? "" : rawTagFilter;
+  const effectiveFilters = useMemo<LedgerSearch>(
+    () => ({ ...filters, categoryFilter, poolFilter, accountFilter, tagFilter }),
+    [filters, categoryFilter, poolFilter, accountFilter, tagFilter],
+  );
   const updateFilters = (updates: Partial<LedgerSearch>) => onFiltersChange(updates);
   const filtersActive = Boolean(
     search ||
@@ -89,6 +120,13 @@ export function LedgerPage({
     minimumAmount ||
     maximumAmount,
   );
+  const unmatchedObservations = useUnmatchedObservations(household.id, {
+    enabled: recordMode === "observations",
+    from: fromMonth || undefined,
+    to: toMonth || undefined,
+    sourceKind: observationSourceFilter || undefined,
+    state: observationStateFilter || undefined,
+  });
   const { purchases, loadingMore, moreError, hasNextPage, totalCount, loadMore, refresh } =
     useHouseholdPurchases(household.id, 100, {
       from: fromMonth ? `${fromMonth}-01T00:00:00+09:00` : undefined,
@@ -157,16 +195,6 @@ export function LedgerPage({
     ]),
   });
   const setBulkError = ledgerItemBulkEdit.setError;
-  const [observationCount, setObservationCount] = useState({ count: 0, totalCount: 0 });
-  const updateObservationCount = useCallback((count: number, totalCount: number) => {
-    setObservationCount((current) =>
-      current.count === count && current.totalCount === totalCount
-        ? current
-        : { count, totalCount },
-    );
-  }, []);
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [tagsLoaded, setTagsLoaded] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const { evidence: purchaseEvidence, error: evidenceError } = usePurchaseEvidence(expanded);
   const purchaseEditor = useLedgerPurchaseEditor({ household, refresh });
@@ -192,53 +220,21 @@ export function LedgerPage({
   } = purchaseEditor;
   const [highlightedEvidenceItem, setHighlightedEvidenceItem] = useState<string | null>(null);
   useEffect(() => {
-    setHighlightedEvidenceItem(null);
-  }, [expanded]);
-  useEffect(() => {
     let active = true;
-    setTagsLoaded(false);
     void readTags(household.id)
       .then((result) => {
         if (!active) return;
-        setTags(result);
-        setTagsLoaded(true);
+        setTagsState({ householdId: household.id, tags: result, loaded: true });
       })
       .catch((reason) => {
         if (!active) return;
-        setBulkError((reason as Error).message);
-        setTagsLoaded(true);
+        setBulkError(errorMessage(reason));
+        setTagsState((current) => ({ ...current, householdId: household.id, loaded: true }));
       });
     return () => {
       active = false;
     };
   }, [household.id, setBulkError]);
-  useEffect(() => {
-    const updates: Partial<LedgerSearch> = {};
-    if (
-      categoryFilter &&
-      categoryFilter !== "__uncategorized" &&
-      !household.categories.some((category) => category.id === categoryFilter)
-    )
-      updates.categoryFilter = "";
-    if (poolFilter && !household.pools.some((pool) => pool.id === poolFilter))
-      updates.poolFilter = "";
-    if (accountFilter && !household.accounts.some((account) => account.id === accountFilter))
-      updates.accountFilter = "";
-    if (tagsLoaded && tagFilter && !tags.some((tag) => tag.id === tagFilter))
-      updates.tagFilter = "";
-    if (Object.keys(updates).length) onFiltersChange(updates);
-  }, [
-    accountFilter,
-    categoryFilter,
-    household.accounts,
-    household.categories,
-    household.pools,
-    onFiltersChange,
-    poolFilter,
-    tagFilter,
-    tags,
-    tagsLoaded,
-  ]);
   const filtered = purchases;
   const filteredItems = purchases.flatMap((purchase) =>
     purchase.items.map((item) => ({ purchase, item })),
@@ -253,18 +249,18 @@ export function LedgerPage({
           <h1>帳簿</h1>
           <p>買い物の記録をまとめて確認</p>
         </div>
-        <button className="button button-primary" onClick={onAdd}>
+        <button className="button button-primary" type="button" onClick={onAdd}>
           <Plus size={17} />
           買い物を追加
         </button>
       </div>
       <LedgerFilters
         household={household}
-        filters={filters}
+        filters={effectiveFilters}
         tags={tags}
         recordCount={
           recordMode === "observations"
-            ? `${observationCount.count}/${observationCount.totalCount}件表示`
+            ? `${unmatchedObservations.observations.length}/${unmatchedObservations.totalCount}件表示`
             : viewMode === "items"
               ? `${filteredItems.length}品目表示 · ${purchases.length}/${totalCount}件購入取得`
               : `${filtered.length}件表示 · ${purchases.length}/${totalCount}件読込`
@@ -293,13 +289,18 @@ export function LedgerPage({
             <span>最新の記録: {conflict.serverValue}</span>
           </div>
           <div className="conflict-actions">
-            <button className="button button-soft" onClick={() => void conflict.discard()}>
+            <button
+              className="button button-soft"
+              type="button"
+              onClick={() => void conflict.discard()}
+            >
               最新の記録を使う
             </button>
             <button
               className="button button-primary"
+              type="button"
               onClick={() =>
-                void conflict.retry().catch((reason) => setEditError((reason as Error).message))
+                void conflict.retry().catch((reason) => setEditError(errorMessage(reason)))
               }
             >
               自分の変更を再適用
@@ -310,9 +311,8 @@ export function LedgerPage({
       {recordMode === "observations" && (
         <ObservationLedger
           household={household}
-          filters={{ fromMonth, toMonth, observationSourceFilter, observationStateFilter }}
+          unmatched={unmatchedObservations}
           onUnsavedChanges={onUnsavedChanges}
-          onCountChange={updateObservationCount}
         />
       )}
       {recordMode === "purchases" && viewMode === "items" && (
@@ -384,6 +384,7 @@ export function LedgerPage({
             <div className={styles.more}>
               <button
                 className="button button-soft"
+                type="button"
                 disabled={loadingMore}
                 onClick={() => loadMore()}
               >
@@ -432,9 +433,13 @@ export function LedgerPage({
                 </label>
                 <button
                   className="ledger-purchase"
-                  onClick={() => setExpanded(expanded === purchase.id ? null : purchase.id)}
+                  type="button"
+                  onClick={() => {
+                    setHighlightedEvidenceItem(null);
+                    setExpanded(expanded === purchase.id ? null : purchase.id);
+                  }}
                 >
-                  <div className="merchant-icon">{purchase.merchant?.slice(0, 1) || "買"}</div>
+                  <div className="merchant-icon">{purchase.merchant.slice(0, 1) || "買"}</div>
                   <div className="purchase-description">
                     <b>{purchase.merchant || "店舗未入力"}</b>
                     <span>
@@ -445,7 +450,7 @@ export function LedgerPage({
                         minute: "2-digit",
                       })}{" "}
                       · {purchase.items.length}品目 ·{" "}
-                      {purchase.paymentAllocations?.length
+                      {purchase.paymentAllocations.length
                         ? purchase.paymentAllocations
                             .map((payment) => {
                               const accountName =
@@ -519,7 +524,11 @@ export function LedgerPage({
                         onSave={(target) => void savePurchase(target)}
                       />
                     ) : (
-                      <button className="text-button" onClick={() => startEditing(purchase)}>
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() => startEditing(purchase)}
+                      >
                         買い物を編集
                       </button>
                     )}
@@ -567,10 +576,11 @@ export function LedgerPage({
                             categories={household.categories}
                             catalog={catalog}
                             onChange={(updates) =>
-                              setItemDrafts((current) => ({
-                                ...current,
-                                [item.id]: { ...current[item.id], ...updates },
-                              }))
+                              setItemDrafts((current) => {
+                                const draft = current[item.id];
+                                if (!draft) return current;
+                                return { ...current, [item.id]: { ...draft, ...updates } };
+                              })
                             }
                             onSave={() => void saveItem(purchase, item)}
                           />
@@ -608,7 +618,7 @@ export function LedgerPage({
                               onCancel={() => setCorrectionTarget(null)}
                               onSaved={async () => {
                                 setCorrectionTarget(null);
-                                await refresh();
+                                refresh();
                               }}
                             />
                           ) : (
@@ -633,7 +643,12 @@ export function LedgerPage({
       {recordMode === "purchases" && moreError && <InlineError message={moreError} />}
       {recordMode === "purchases" && hasNextPage && !moreError && (
         <div className={styles.more}>
-          <button className="button button-soft" disabled={loadingMore} onClick={() => loadMore()}>
+          <button
+            className="button button-soft"
+            type="button"
+            disabled={loadingMore}
+            onClick={() => loadMore()}
+          >
             {loadingMore
               ? "読み込み中"
               : filtersActive
@@ -644,7 +659,12 @@ export function LedgerPage({
       )}
       {recordMode === "purchases" && viewMode === "purchases" && moreError && hasNextPage && (
         <div className={styles.more}>
-          <button className="button button-soft" disabled={loadingMore} onClick={() => loadMore()}>
+          <button
+            className="button button-soft"
+            type="button"
+            disabled={loadingMore}
+            onClick={() => loadMore()}
+          >
             {loadingMore ? "読み込み中" : "取得を再試行"}
           </button>
         </div>

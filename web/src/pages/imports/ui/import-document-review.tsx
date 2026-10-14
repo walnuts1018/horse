@@ -1,9 +1,16 @@
+import { useState } from "react";
+
 import type { Household, Purchase } from "../../../shared/api";
 import type { EvidencePreviewController } from "../model/evidence-preview";
 import type { useDocumentEvidence } from "../model/use-document-evidence";
 import type { useImportConfirmation } from "../model/use-import-confirmation";
 
-import { statusLabel, type DocumentReview, type StatementEntry } from "../model/imports";
+import {
+  statusLabel,
+  statementSourceReference,
+  type DocumentReview,
+  type StatementEntry,
+} from "../model/imports";
 import { EvidenceMatching } from "./evidence-matching";
 import { EvidenceSourcePreview } from "./evidence-source-preview";
 import { ReceiptReview } from "./receipt-review";
@@ -26,6 +33,7 @@ export function ImportDocumentReview({
   onDirty,
   onConfirmReceipt,
   onConfirmStatement,
+  onConfirmRefund,
   onError,
   onLinked,
   onSelectDocument,
@@ -43,11 +51,23 @@ export function ImportDocumentReview({
   onPendingChange: (pending: boolean) => void;
   onDirty: () => void;
   onConfirmReceipt: () => void;
-  onConfirmStatement: (entry: StatementEntry) => void;
+  onConfirmStatement: (entry: StatementEntry, accountId: string) => void;
+  onConfirmRefund: (entry: StatementEntry, purchaseId: string, itemId?: string) => void;
   onError: (message: string) => void;
   onLinked: () => Promise<void> | void;
   onSelectDocument: (id: string) => void;
 }) {
+  const [selectedStatementRegion, setSelectedStatementRegion] = useState<{
+    documentId: string;
+    reference: string;
+  } | null>(null);
+  const selectedStatementReference =
+    selectedStatementRegion?.documentId === document.id ? selectedStatementRegion.reference : "";
+  const selectStatementRegion = (reference: string, page: number) => {
+    setSelectedStatementRegion({ documentId: document.id, reference });
+    previewState.selectPage(page);
+  };
+
   return (
     <>
       {document.attachmentParent && (
@@ -88,6 +108,8 @@ export function ImportDocumentReview({
           previewState={previewState}
           cropRegion={evidence.cropRegion}
           cropPending={evidence.pending}
+          selectedStatementReference={selectedStatementReference}
+          onSelectStatementRegion={selectStatementRegion}
           pending={pending}
           onCropRegionChange={evidence.setCropRegion}
           onSelectCropRegion={evidence.selectCropRegion}
@@ -126,9 +148,16 @@ export function ImportDocumentReview({
       </div>
       <StatementReview
         document={document}
+        purchases={purchases}
+        accounts={household.accounts}
         confirmedStatements={review.confirmedStatements}
         pending={pending}
         onConfirm={onConfirmStatement}
+        onConfirmRefund={onConfirmRefund}
+        onSelectRegion={(entry) => {
+          if (entry.region)
+            selectStatementRegion(statementSourceReference(entry), entry.region.page);
+        }}
       />
       {document.result && (
         <EvidenceMatching

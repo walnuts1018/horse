@@ -28,6 +28,6 @@ export function useUpdatePurchaseItem() {
   });
   return useCallback(
     (variables: UpdatePurchaseItemMutation["variables"]) => update.mutate(variables),
-    [update.mutate],
+    [update],
   );
 }

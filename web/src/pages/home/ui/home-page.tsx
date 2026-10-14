@@ -33,10 +33,8 @@ export function HomePage({
   onNavigateToPurchase: () => void;
 }) {
   const { purchases, totalCount } = useHouseholdPurchases(household.id, 8);
-  const currentMonth = japanMonth(new Date());
-  const purchaseRevision = purchases
-    .map((purchase) => `${purchase.id}:${purchase.revision}:${purchase.totalYen}`)
-    .join("|");
+  const [currentMonth] = useState(() => japanMonth(new Date()));
+  const [today] = useState(() => new Date());
   const [monthTotal, setMonthTotal] = useState<number | null>(null);
   const [homeSummary, setHomeSummary] = useState<HomeSummary | null>(null);
   const [settlement, setSettlement] = useState<HomeSettlement | null>(null);
@@ -50,7 +48,7 @@ export function HomePage({
     return () => {
       active = false;
     };
-  }, [household.id, totalCount, purchaseRevision]);
+  }, [household.id]);
   useEffect(() => {
     let active = true;
     void readHomeMonthlySpending(household.id, currentMonth)
@@ -68,19 +66,19 @@ export function HomePage({
     return () => {
       active = false;
     };
-  }, [household.id, currentMonth, totalCount, purchaseRevision]);
+  }, [household.id, currentMonth]);
   useEffect(() => {
     void readHomeSettlement(household.id, currentMonth)
       .then(setSettlement)
       .catch(() => setSettlement(null));
   }, [household.id, currentMonth]);
-  const nextDue = sum(settlement?.lines?.map((line) => line.amountDueYen) ?? []);
+  const nextDue = sum(settlement?.lines.map((line) => line.amountDueYen) ?? []);
   return (
     <div className="home-page">
       <div className="welcome-row">
         <div>
           <span className="eyebrow">
-            {new Date().toLocaleDateString("ja-JP", {
+            {today.toLocaleDateString("ja-JP", {
               year: "numeric",
               month: "long",
               day: "numeric",
@@ -229,7 +227,7 @@ function MiniBars({ dailySpending }: { dailySpending: HomeSummary["dailySpending
     })
     .join("、");
   return (
-    <div className="mini-chart" role="img" aria-label={`直近7日の支出。${spendingSummary}`}>
+    <figure className="mini-chart" aria-label={`直近7日の支出。${spendingSummary}`}>
       <div className="mini-bars">
         {dailySpending.map((day, index) => (
           <div key={day.date} className="bar-track" title={`${day.date}: ${yen(day.amountYen)}`}>
@@ -250,14 +248,14 @@ function MiniBars({ dailySpending }: { dailySpending: HomeSummary["dailySpending
           </span>
         ))}
       </div>
-    </div>
+    </figure>
   );
 }
 
 function PurchaseRow({ purchase }: { purchase: Purchase }) {
   return (
     <div className="purchase-row">
-      <div className="merchant-icon">{purchase.merchant?.slice(0, 1) || "買"}</div>
+      <div className="merchant-icon">{purchase.merchant.slice(0, 1) || "買"}</div>
       <div className="purchase-description">
         <b>{purchase.merchant || "店舗未入力"}</b>
         <span>

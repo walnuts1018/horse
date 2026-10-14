@@ -1,26 +1,29 @@
 import { AlertCircle, ChevronRight, FileImage, Upload, X } from "lucide-react";
 import { useState } from "react";
 
+import { isOneOf } from "../../../shared/lib/guard";
 import {
   canReclassifyAttachment,
   isCsvFile,
+  isEmailFile,
   sourceKindLabel,
   statusLabel,
+  uploadSourceKinds,
   type DocumentFilters,
   type DocumentReview,
   type PendingUpload,
   type StatementSourceKind,
+  type UploadSourceKind,
 } from "../model/imports";
 
 export function ImportDocumentList({
   files,
   documents,
-  csvKinds,
   selected,
   filters,
   onFiltersChange,
   onSearch,
-  onCsvKindChange,
+  onSourceKindChange,
   onRemoveFile,
   onSelectDocument,
   onRetryDocument,
@@ -33,12 +36,11 @@ export function ImportDocumentList({
 }: {
   files: PendingUpload[];
   documents: DocumentReview[];
-  csvKinds: Record<string, "card" | "bank">;
   selected: string | null;
   filters: DocumentFilters;
   onFiltersChange: (filters: DocumentFilters) => void;
   onSearch: () => void;
-  onCsvKindChange: (filename: string, kind: "card" | "bank") => void;
+  onSourceKindChange: (id: string, kind: UploadSourceKind) => void;
   onRemoveFile: (id: string) => void;
   onSelectDocument: (id: string) => void;
   onRetryDocument: (document: DocumentReview) => void;
@@ -131,16 +133,30 @@ export function ImportDocumentList({
             </small>
           </div>
           {upload.status === "failed" && <AlertCircle size={16} aria-label="送信失敗" />}
-          {isCsvFile(upload.file) && (
+          {!isEmailFile(upload.file) && (
             <select
-              aria-label={`${upload.file.name}の明細種別`}
-              value={csvKinds[upload.file.name] ?? "card"}
-              onChange={(event) =>
-                onCsvKindChange(upload.file.name, event.target.value as "card" | "bank")
-              }
+              aria-label={`${upload.file.name}の原本種別`}
+              value={upload.sourceKind}
+              onChange={(event) => {
+                const sourceKinds = uploadSourceKinds(upload.file);
+                if (isOneOf(event.target.value, sourceKinds)) {
+                  onSourceKindChange(upload.id, event.target.value);
+                }
+              }}
             >
-              <option value="card">カード明細</option>
-              <option value="bank">銀行明細</option>
+              {isCsvFile(upload.file) ? (
+                <>
+                  <option value="card">カード明細</option>
+                  <option value="bank">銀行明細</option>
+                </>
+              ) : (
+                <>
+                  <option value="receipt">レシート</option>
+                  <option value="order">注文履歴</option>
+                  <option value="card">カード明細</option>
+                  <option value="bank">銀行明細</option>
+                </>
+              )}
             </select>
           )}
           <button
@@ -209,7 +225,12 @@ export function ImportDocumentList({
         </button>
       )}
       {files.length > 0 && (
-        <button className="button button-primary button-wide" disabled={pending} onClick={onUpload}>
+        <button
+          type="button"
+          className="button button-primary button-wide"
+          disabled={pending}
+          onClick={onUpload}
+        >
           <Upload size={15} />
           {pending ? "送信しています" : "証拠を送信"}
         </button>
@@ -235,7 +256,11 @@ function AttachmentReclassification({
         aria-label={`${document.name ?? "添付文書"}の明細種別`}
         value={sourceKind}
         disabled={pending}
-        onChange={(event) => setSourceKind(event.target.value as StatementSourceKind | "")}
+        onChange={(event) => {
+          if (isOneOf(event.target.value, ["card", "bank", ""])) {
+            setSourceKind(event.target.value);
+          }
+        }}
       >
         <option value="">明細種別</option>
         <option value="card">カード明細</option>

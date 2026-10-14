@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 
 import type { Household } from "../../../shared/api";
 
+import { errorMessage } from "../../../shared/lib";
 import {
   createCategory as createCategoryMutation,
   setCategoryArchived as setCategoryArchivedMutation,
@@ -37,14 +38,14 @@ export function useSettingsMutations({
       onNotice("設定を保存しました", "success");
       return true;
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
       return false;
     } finally {
       setPending("settings", false);
     }
   };
 
-  const addCategory = (event: FormEvent) => {
+  const addCategory = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     void saveMutation(
       () => createCategoryMutation({ householdId: household.id, name: categoryName.trim() }),
@@ -52,7 +53,7 @@ export function useSettingsMutations({
     ).then((saved) => saved && setCategoryName(""));
   };
 
-  const saveAllocation = (event: FormEvent) => {
+  const saveAllocation = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     void saveMutation(
       () =>
@@ -76,7 +77,7 @@ export function useSettingsMutations({
       await onRefresh();
       onNotice(archived ? "カテゴリを非表示にしました" : "カテゴリを再表示しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
     } finally {
       setPending("settings", false);
     }

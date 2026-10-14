@@ -1986,113 +1986,6 @@ textarea:focus-visible,
   background: var(--green-wash);
 }
 
-.statement-row-action {
-  display: grid;
-  justify-items: end;
-  gap: 3px;
-}
-
-.review-image {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: 9px;
-  background: var(--green-wash);
-  padding: 10px;
-  color: var(--green-dark);
-  font-size: 12px;
-}
-
-.item-tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.item-tag-list i {
-  border-radius: 999px;
-  background: var(--green-wash);
-  padding: 2px 7px;
-  color: var(--green-dark);
-  font-size: 10px;
-  font-style: normal;
-}
-
-.account-balance-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin: 14px 0 8px;
-}
-
-.account-balance-summary > div {
-  display: grid;
-  gap: 4px;
-  padding: 12px;
-  border-radius: 10px;
-  background: #f4f7f4;
-}
-
-.account-balance-summary small,
-.account-balance-sign {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.account-balance-summary b {
-  font-size: 16px;
-}
-
-.conflict-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 14px;
-  padding: 15px;
-}
-
-.conflict-panel > div:first-child {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.conflict-panel b {
-  color: var(--green-dark);
-  font-size: 13px;
-}
-
-.conflict-panel span {
-  color: var(--muted);
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
-.conflict-actions,
-.edit-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.category-management {
-  display: grid;
-  gap: 7px;
-  margin: 13px 0;
-}
-
-.category-management-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.category-archived {
-  opacity: 0.5;
-}
-
 .allocation-rule-form {
   display: grid;
   gap: 10px;
@@ -2111,64 +2004,11 @@ textarea:focus-visible,
   font-size: 12px;
 }
 
-.candidate-review {
-  display: grid;
-  gap: 8px;
-  margin: 16px 0;
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
-}
-
-.candidate-review h3 {
-  margin: 3px 0 0;
-  font-size: 15px;
-}
-
-.candidate-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--paper);
-  padding: 10px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.candidate-option > span {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.candidate-option b,
-.candidate-option strong {
-  font-size: 12px;
-}
-
-.candidate-option small,
-.candidate-review > small {
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.candidate-selected {
-  border-color: var(--green);
-  background: var(--green-wash);
-}
-
 @media (width <= 700px) {
   .invitation-prompt {
     align-items: stretch;
     flex-direction: column;
     margin-inline: 12px;
-  }
-
-  .conflict-panel {
-    align-items: stretch;
-    flex-direction: column;
   }
 }
 

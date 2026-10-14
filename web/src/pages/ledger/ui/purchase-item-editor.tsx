@@ -1,6 +1,8 @@
 import type { ProductConcept, PurchaseItem } from "../../../shared/api";
 import type { LedgerItemDraft } from "../model/purchase-item-draft";
 
+import { isOneOf } from "../../../shared/lib";
+
 export function PurchaseItemEditor({
   item,
   draft,
@@ -66,10 +68,16 @@ export function PurchaseItemEditor({
         <>
           <select
             aria-label="商品名の学習範囲"
-            value={draft.productLearning ?? "ITEM_ONLY"}
+            value={draft.productLearning}
             onChange={(event) =>
               onChange({
-                productLearning: event.target.value as LedgerItemDraft["productLearning"],
+                productLearning: isOneOf(event.target.value, [
+                  "ITEM_ONLY",
+                  "MERCHANT_ALIAS",
+                  "VARIANT_NAME",
+                ])
+                  ? event.target.value
+                  : "ITEM_ONLY",
               })
             }
           >
@@ -80,7 +88,7 @@ export function PurchaseItemEditor({
           {draft.productLearning === "VARIANT_NAME" && (
             <input
               aria-label="バリエーション名"
-              value={draft.variantName ?? ""}
+              value={draft.variantName}
               onChange={(event) => onChange({ variantName: event.target.value })}
               placeholder="バリエーション名"
             />

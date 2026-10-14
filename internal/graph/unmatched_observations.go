@@ -10,6 +10,7 @@ import (
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/walnuts1018/horse/internal/graph/model"
@@ -83,8 +84,32 @@ func (r *queryResolver) unmatchedObservations(ctx context.Context, householdID s
 		return nil, err
 	}
 	confirmed := make(map[string]string, len(confirmations))
+	correctionIDs := make([]bob.Expression, 0, len(confirmations))
 	for _, confirmation := range confirmations {
-		confirmed[unmatchedCursor(confirmation.SourceDocumentID.String(), confirmation.SourceReference)] = confirmation.PurchaseID.String()
+		if confirmation.PurchaseID.Valid {
+			confirmed[unmatchedCursor(confirmation.SourceDocumentID.String(), confirmation.SourceReference)] = confirmation.PurchaseID.V.String()
+		} else if confirmation.CorrectionID.Valid {
+			correctionIDs = append(correctionIDs, psql.Arg(confirmation.CorrectionID.V))
+		}
+	}
+	if len(correctionIDs) > 0 {
+		corrections, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.ID.In(correctionIDs...))).All(ctx, executor)
+		if err != nil {
+			return nil, err
+		}
+		purchaseByCorrection := make(map[gofrsuuid.UUID]string, len(corrections))
+		for _, correction := range corrections {
+			purchaseByCorrection[correction.ID] = correction.PurchaseID.String()
+		}
+		for _, confirmation := range confirmations {
+			if confirmation.CorrectionID.Valid {
+				purchaseID, exists := purchaseByCorrection[confirmation.CorrectionID.V]
+				if !exists {
+					return nil, fmt.Errorf("correction confirmation has no correction")
+				}
+				confirmed[unmatchedCursor(confirmation.SourceDocumentID.String(), confirmation.SourceReference)] = purchaseID
+			}
+		}
 	}
 	jobs, err := models.ExtractionJobs.Query(
 		sm.Where(psql.And(models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(hhID)), models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")))),

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { makeIdempotencyKey, type Household, type Settlement } from "../../../shared/api";
-import { japanMonth } from "../../../shared/lib";
+import { errorMessage, japanMonth } from "../../../shared/lib";
 import { recordSettlementFunding } from "../api/settlement-mutations";
 import {
   clearFundingIntent,
@@ -40,16 +40,19 @@ export function useSettlementFunding({
     ) || fundingDestinationAccountId !== savedFundingDestinationAccountId;
 
   useEffect(() => {
-    try {
-      const funding: Record<string, FundingIntent> = {};
-      for (const member of household.members) {
-        const intent = getFundingIntent(household.id, member.id);
-        if (intent) funding[member.id] = intent;
+    //保存済み入金意図の復元と同期setStateはeffect直後ではなくマイクロタスクで走らせる
+    queueMicrotask(() => {
+      try {
+        const funding: Record<string, FundingIntent> = {};
+        for (const member of household.members) {
+          const intent = getFundingIntent(household.id, member.id);
+          if (intent) funding[member.id] = intent;
+        }
+        setPendingFunding(funding);
+      } catch (reason) {
+        setError(errorMessage(reason));
       }
-      setPendingFunding(funding);
-    } catch (reason) {
-      setError((reason as Error).message);
-    }
+    });
   }, [household.id, household.members, setError]);
 
   const record = async (memberId: string) => {
@@ -102,7 +105,7 @@ export function useSettlementFunding({
       );
       await onRecorded();
     } catch (reason) {
-      setError((reason as Error).message);
+      setError(errorMessage(reason));
     } finally {
       setPending(false);
     }

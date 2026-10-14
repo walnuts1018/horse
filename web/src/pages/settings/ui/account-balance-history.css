@@ -4,6 +4,31 @@
   gap: 8px;
 }
 
+.account-balance-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 8px;
+}
+
+.account-balance-summary > div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f4f7f4;
+}
+
+.account-balance-summary small,
+.account-balance-sign {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-balance-summary b {
+  font-size: 16px;
+}
+
 .account-balance-changes {
   display: grid;
   gap: 8px;

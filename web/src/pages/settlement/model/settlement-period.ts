@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Settlement } from "../../../shared/api";
 
-import { japanMonth } from "../../../shared/lib";
+import { errorMessage, japanMonth } from "../../../shared/lib";
 import { readSettlement } from "../api/read-settlement";
 
 export type SettlementSnapshot = {
@@ -15,18 +15,14 @@ export function useSettlementPeriod(householdId: string, refreshLedger: () => vo
   const [period, setPeriod] = useState(() => japanMonth(new Date()));
   const [snapshot, setSnapshot] = useState<SettlementSnapshot | null>(null);
   const [loadError, setLoadError] = useState("");
-  const activePeriod = useRef(period);
-  activePeriod.current = period;
-  const activeHouseholdId = useRef(householdId);
-  activeHouseholdId.current = householdId;
   const loadRequest = useRef(0);
   const settlement =
     snapshot?.householdId === householdId && snapshot.period === period ? snapshot.value : null;
 
   const load = useCallback(async () => {
     const request = ++loadRequest.current;
-    const requestedPeriod = activePeriod.current;
-    const requestedHouseholdId = activeHouseholdId.current;
+    const requestedPeriod = period;
+    const requestedHouseholdId = householdId;
     setLoadError("");
     try {
       refreshLedger();
@@ -38,13 +34,14 @@ export function useSettlementPeriod(householdId: string, refreshLedger: () => vo
         value: settlementData,
       });
     } catch (reason) {
-      if (request === loadRequest.current) setLoadError((reason as Error).message);
+      if (request === loadRequest.current) setLoadError(errorMessage(reason));
     }
-  }, [refreshLedger]);
+  }, [householdId, period, refreshLedger]);
 
   useEffect(() => {
-    void load();
-  }, [householdId, load, period]);
+    //読取の開始時に行う同期setStateはeffect直後ではなくマイクロタスクで走らせる
+    queueMicrotask(() => void load());
+  }, [load]);
 
   return { load, loadError, period, setPeriod, settlement, snapshot };
 }

@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { Settlement } from "../../../shared/api";
 import type { SettlementSnapshot } from "./settlement-period";
 
+import { errorMessage } from "../../../shared/lib";
 import { closeSettlementPeriod } from "../api/settlement-mutations";
 
 export function useSettlementPeriodClose({
@@ -37,7 +38,7 @@ export function useSettlementPeriodClose({
       setConfirmationOpen(false);
       await reload();
     } catch (reason) {
-      setError((reason as Error).message);
+      setError(errorMessage(reason));
     } finally {
       setPending(false);
     }

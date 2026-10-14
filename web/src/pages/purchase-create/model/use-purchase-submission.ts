@@ -1,9 +1,9 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type SyntheticEvent } from "react";
 
 import type { PaymentDraft } from "./purchase-payments";
 
 import { makeIdempotencyKey, type Household } from "../../../shared/api";
-import { enqueuePurchase, type PurchaseDraftItem } from "../../../shared/lib";
+import { enqueuePurchase, errorMessage, type PurchaseDraftItem } from "../../../shared/lib";
 import { convertPurchaseItems } from "./purchase-items";
 
 export function usePurchaseSubmission({
@@ -35,7 +35,7 @@ export function usePurchaseSubmission({
   const [message, setMessage] = useState("");
   const saving = useRef(false);
 
-  const submit = async (event: FormEvent) => {
+  const submit = async (event: SyntheticEvent) => {
     event.preventDefault();
     if (saving.current) return;
     if (!memberId.trim()) {
@@ -87,7 +87,7 @@ export function usePurchaseSubmission({
       onSaved();
       onQueued(idempotencyKey);
     } catch (reason) {
-      setMessage((reason as Error).message);
+      setMessage(errorMessage(reason));
     } finally {
       saving.current = false;
       setPending(false);

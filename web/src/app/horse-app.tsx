@@ -29,11 +29,12 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
-  type FormEvent,
   type ReactNode,
+  type SubmitEvent,
 } from "react";
 
 import {
@@ -47,8 +48,10 @@ import { ApiError, getViewer, type Household } from "../shared/api";
 import {
   claimPurchaseOutbox,
   completePurchaseOutbox,
+  errorMessage,
   markPurchaseOutboxFailed,
   renewPurchaseOutboxLease,
+  toError,
   usePurchaseOutbox,
 } from "../shared/lib";
 import { Notice, type NoticeKind } from "../shared/ui";
@@ -72,6 +75,39 @@ function getServerMobileViewport(): null {
   return null;
 }
 
+const pendingInvitationStorageKey = "horse:pending-household-invitation";
+const pendingInvitationChangeEvent = "horse:pending-household-invitation-change";
+
+function subscribeToPendingInvitation(onStoreChange: () => void) {
+  window.addEventListener(pendingInvitationChangeEvent, onStoreChange);
+  window.addEventListener("storage", onStoreChange);
+  return () => {
+    window.removeEventListener(pendingInvitationChangeEvent, onStoreChange);
+    window.removeEventListener("storage", onStoreChange);
+  };
+}
+
+function getPendingInvitationSnapshot() {
+  return (
+    new URLSearchParams(window.location.hash.slice(1)).get("invite") ??
+    window.sessionStorage.getItem(pendingInvitationStorageKey) ??
+    ""
+  );
+}
+
+function getServerPendingInvitationSnapshot() {
+  return "";
+}
+
+function clearPendingInvitation() {
+  window.sessionStorage.removeItem(pendingInvitationStorageKey);
+  window.dispatchEvent(new Event(pendingInvitationChangeEvent));
+}
+
+function dismissPendingInvitation() {
+  clearPendingInvitation();
+}
+
 export function App() {
   const navigate = useNavigate({ from: "/" });
   const params = useParams({ strict: false });
@@ -87,7 +123,6 @@ export function App() {
   );
   const outbox = usePurchaseOutbox(viewer?.id);
   const [households, setHouseholds] = useState<Array<{ id: string; name: string }>>([]);
-  const [householdRetryVersion, setHouseholdRetryVersion] = useState(0);
   const [household, setHousehold] = useState<Household | null>(null);
   const [householdLoading, setHouseholdLoading] = useState(false);
   const activeHousehold = household?.id === householdId ? household : null;
@@ -105,19 +140,32 @@ export function App() {
   const [notice, setNotice] = useState<{ message: string; kind: NoticeKind } | null>(null);
   const noticeTimeout = useRef<number | undefined>(undefined);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [pendingInvitation, setPendingInvitation] = useState("");
+  const pendingInvitation = useSyncExternalStore(
+    subscribeToPendingInvitation,
+    getPendingInvitationSnapshot,
+    getServerPendingInvitationSnapshot,
+  );
   const [acceptingInvitation, setAcceptingInvitation] = useState(false);
   const activeSends = useRef(new Set<string>());
   const senderId = useRef("");
   const currentPage = useRef(page);
-  currentPage.current = page;
   const purchaseCreatePreviousPage = useRef<AppPage>("home");
   const currentHouseholdId = useRef(household?.id);
-  currentHouseholdId.current = household?.id;
   const autoNavigateKey = useRef<string | null>(null);
   const appShellRef = useRef<HTMLDivElement>(null);
 
+  // レンダー中のref書き込みは並行レンダーで壊れるため、コミット後に最新値を反映する
   useEffect(() => {
+    currentPage.current = page;
+  }, [page]);
+  useEffect(() => {
+    currentHouseholdId.current = household?.id;
+  }, [household?.id]);
+
+  const previousPage = useRef(page);
+  useEffect(() => {
+    if (previousPage.current === page) return;
+    previousPage.current = page;
     setMobileMenu(false);
   }, [page]);
 
@@ -137,7 +185,6 @@ export function App() {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!hasUnsavedChangesRef.current) return;
       event.preventDefault();
-      event.returnValue = "";
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
@@ -147,47 +194,47 @@ export function App() {
     hasUnsavedChangesRef.current = unsaved;
   }, []);
 
-  const navigateToPage = (nextPage: AppPage) => {
-    if (page === nextPage) return;
-    if (nextPage === "new") {
-      if (page !== "new") purchaseCreatePreviousPage.current = page;
-    }
-    if (householdId) navigateToHouseholdPage(householdId, nextPage);
-  };
+  const navigateToHouseholdPage = useCallback(
+    (id: string, nextPage: AppPage, replace = false) => {
+      const toByPage = {
+        home: "/households/$householdId",
+        ledger: "/households/$householdId/ledger",
+        new: "/households/$householdId/new",
+        settlement: "/households/$householdId/settlement",
+        analysis: "/households/$householdId/analysis",
+        imports: "/households/$householdId/imports",
+        settings: "/households/$householdId/settings",
+      } as const;
+      void navigate({
+        to: toByPage[nextPage],
+        params: { householdId: id },
+        search: true,
+        replace,
+      });
+    },
+    [navigate],
+  );
 
-  const navigateToHouseholdPage = (id: string, nextPage: AppPage, replace = false) => {
-    const toByPage = {
-      home: "/households/$householdId",
-      ledger: "/households/$householdId/ledger",
-      new: "/households/$householdId/new",
-      settlement: "/households/$householdId/settlement",
-      analysis: "/households/$householdId/analysis",
-      imports: "/households/$householdId/imports",
-      settings: "/households/$householdId/settings",
-    } as const;
-    void navigate({
-      to: toByPage[nextPage],
-      params: { householdId: id },
-      search: true,
-      replace,
-    });
-  };
+  const navigateToPage = useCallback(
+    (nextPage: AppPage) => {
+      if (page === nextPage) return;
+      if (nextPage === "new") {
+        if (page !== "new") purchaseCreatePreviousPage.current = page;
+      }
+      if (householdId) navigateToHouseholdPage(householdId, nextPage);
+    },
+    [page, householdId, navigateToHouseholdPage],
+  );
 
-  const refreshHousehold = async (id: string) => {
+  const refreshHousehold = useCallback(async (id: string) => {
     setHousehold(await readHousehold(id));
-  };
+  }, []);
 
   useEffect(() => {
-    const key = "horse:pending-household-invitation";
-    const fragment = window.location.hash.slice(1);
-    const inviteToken = new URLSearchParams(fragment).get("invite");
-    if (inviteToken) {
-      window.sessionStorage.setItem(key, inviteToken);
-      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-      setPendingInvitation(inviteToken);
-    } else {
-      setPendingInvitation(window.sessionStorage.getItem(key) ?? "");
-    }
+    const inviteToken = new URLSearchParams(window.location.hash.slice(1)).get("invite");
+    if (!inviteToken) return;
+    window.sessionStorage.setItem(pendingInvitationStorageKey, inviteToken);
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
   }, []);
 
   useEffect(() => {
@@ -201,7 +248,7 @@ export function App() {
       })
       .catch((reason: unknown) => {
         if (!active) return;
-        const err = reason as Error;
+        const err = toError(reason);
         if (err instanceof ApiError && err.status === 401) setError("ログインして家計簿を開く");
         else setError(err.message || "データを読み込めませんでした");
       })
@@ -211,12 +258,18 @@ export function App() {
     };
   }, []);
 
+  const showNotice = useCallback((message: string, kind: NoticeKind = "info") => {
+    if (noticeTimeout.current !== undefined) window.clearTimeout(noticeTimeout.current);
+    setNotice({ message, kind });
+    noticeTimeout.current = window.setTimeout(() => setNotice(null), 3200);
+  }, []);
+
   useEffect(() => {
     if (!households.length) return;
     const requestedHousehold = households.find((item) => item.id === householdId);
     if (!requestedHousehold) {
       const target = households[0];
-      if (target) navigateToHouseholdPage(target.id, "home", true);
+      navigateToHouseholdPage(target.id, "home", true);
       return;
     }
     const target = requestedHousehold;
@@ -233,7 +286,7 @@ export function App() {
       })
       .catch((reason: unknown) => {
         if (!active) return;
-        showNoticeRef.current((reason as Error).message || "家計簿を読み込めませんでした", "error");
+        showNotice(errorMessage(reason) || "家計簿を読み込めませんでした", "error");
         const currentId = currentHouseholdId.current;
         if (currentId && currentId !== target.id)
           navigateToHouseholdPage(currentId, currentPage.current, true);
@@ -244,24 +297,21 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [households, householdId, navigate, householdRetryVersion]);
+  }, [households, householdId, navigateToHouseholdPage, showNotice]);
 
-  const showNotice = (message: string, kind: NoticeKind = "info") => {
-    if (noticeTimeout.current !== undefined) window.clearTimeout(noticeTimeout.current);
-    setNotice({ message, kind });
-    noticeTimeout.current = window.setTimeout(() => setNotice(null), 3200);
-  };
-  const onPurchaseQueued = (idempotencyKey: string) => {
-    autoNavigateKey.current = idempotencyKey;
-    showNotice("送信待ちに保存しました", "info");
-  };
-  const onBackFromPurchase = () => navigateToPage(purchaseCreatePreviousPage.current);
-  const showNoticeRef = useRef(showNotice);
-  showNoticeRef.current = showNotice;
-  const refreshHouseholdRef = useRef(refreshHousehold);
-  refreshHouseholdRef.current = refreshHousehold;
+  const onPurchaseQueued = useCallback(
+    (idempotencyKey: string) => {
+      autoNavigateKey.current = idempotencyKey;
+      showNotice("送信待ちに保存しました", "info");
+    },
+    [showNotice],
+  );
+  const onBackFromPurchase = useCallback(
+    () => navigateToPage(purchaseCreatePreviousPage.current),
+    [navigateToPage],
+  );
   useEffect(() => {
-    if (!viewer || !outbox.ready || outbox.online !== true) return;
+    if (!viewer || !outbox.ready || !outbox.online) return;
     if (!senderId.current) senderId.current = crypto.randomUUID();
     const owner = senderId.current;
     const availableHouseholds = new Set(households.map((item) => item.id));
@@ -289,8 +339,8 @@ export function App() {
           await createAndPostPurchase(request.input);
           await completePurchaseOutbox(viewer.id, entry.input.householdId, key, owner);
           if (currentHouseholdId.current === request.input.householdId) {
-            await refreshHouseholdRef.current(request.input.householdId);
-            showNoticeRef.current("買い物を帳簿に追加しました", "success");
+            await refreshHousehold(request.input.householdId);
+            showNotice("買い物を帳簿に追加しました", "success");
           }
           if (autoNavigateKey.current === key && currentPage.current === "new") {
             autoNavigateKey.current = null;
@@ -324,25 +374,24 @@ export function App() {
   }, [
     viewer,
     households,
-    outbox.entries,
-    outbox.ready,
-    outbox.online,
-    outbox.refresh,
+    outbox,
     createAndPostPurchase,
+    navigateToPage,
+    refreshHousehold,
+    showNotice,
   ]);
   const currentOutbox = outbox.entries.filter(
     (entry) => entry.input.householdId === activeHousehold?.id,
   );
   const failedOutboxCount = currentOutbox.filter((entry) => entry.status === "FAILED").length;
   const pendingOutboxCount = currentOutbox.filter((entry) => entry.status === "PENDING").length;
-  const syncLabel =
-    outbox.online === false
-      ? "オフライン"
-      : failedOutboxCount > 0
-        ? `送信失敗 ${failedOutboxCount}件`
-        : pendingOutboxCount > 0
-          ? `送信待ち ${pendingOutboxCount}件`
-          : "";
+  const syncLabel = !outbox.online
+    ? "オフライン"
+    : failedOutboxCount > 0
+      ? `送信失敗 ${failedOutboxCount}件`
+      : pendingOutboxCount > 0
+        ? `送信待ち ${pendingOutboxCount}件`
+        : "";
   const logout = async () => {
     const hadUnsavedChanges = hasUnsavedChangesRef.current;
     if (hadUnsavedChanges && !window.confirm("未保存の変更を破棄してログアウトしますか？")) return;
@@ -358,7 +407,7 @@ export function App() {
       window.location.reload();
     } catch (reason) {
       if (hadUnsavedChanges) hasUnsavedChangesRef.current = true;
-      showNotice((reason as Error).message, "error");
+      showNotice(errorMessage(reason), "error");
       setLoggingOut(false);
     }
   };
@@ -371,8 +420,7 @@ export function App() {
     setAcceptingInvitation(true);
     try {
       const result = await acceptHouseholdInvitation({ token: pendingInvitation });
-      window.sessionStorage.removeItem("horse:pending-household-invitation");
-      setPendingInvitation("");
+      clearPendingInvitation();
       setHouseholdMenu(false);
       setHouseholds((current) => [
         { id: result.id, name: result.name },
@@ -382,24 +430,55 @@ export function App() {
       showNotice("家計簿に参加しました", "success");
     } catch (reason) {
       if (hadUnsavedChanges) hasUnsavedChangesRef.current = true;
-      showNotice((reason as Error).message, "error");
+      showNotice(errorMessage(reason), "error");
     } finally {
       setAcceptingInvitation(false);
     }
-  };
-  const dismissInvitation = () => {
-    window.sessionStorage.removeItem("horse:pending-household-invitation");
-    setPendingInvitation("");
   };
   const selectHousehold = (id: string) => {
     if (!households.some((item) => item.id === id)) return;
     if (id === activeHousehold?.id) return;
     if (id === householdId) {
-      setHouseholdRetryVersion((version) => version + 1);
+      // 同じ家計簿を選び直したときは読み込みをやり直す
+      setHouseholdLoading(true);
+      void readHousehold(id)
+        .then((data) => setHousehold(data))
+        .catch((reason: unknown) => {
+          showNotice(errorMessage(reason) || "家計簿を読み込めませんでした", "error");
+        })
+        .finally(() => setHouseholdLoading(false));
       return;
     }
     navigateToHouseholdPage(id, page);
   };
+
+  const onNavigateToPurchase = useCallback(() => {
+    if (page !== "new") purchaseCreatePreviousPage.current = page;
+  }, [page]);
+  const routeContext = useMemo(
+    () => ({
+      household: activeHousehold,
+      viewerId: viewer?.id ?? null,
+      navigateToPage,
+      onNavigateToPurchase,
+      reportUnsavedChanges,
+      onPurchaseQueued,
+      onBackFromPurchase,
+      refreshHousehold,
+      showNotice,
+    }),
+    [
+      activeHousehold,
+      viewer?.id,
+      navigateToPage,
+      onNavigateToPurchase,
+      reportUnsavedChanges,
+      onPurchaseQueued,
+      onBackFromPurchase,
+      refreshHousehold,
+      showNotice,
+    ],
+  );
 
   if (loading)
     return (
@@ -429,20 +508,6 @@ export function App() {
         </div>
       </main>
     );
-
-  const routeContext = {
-    household: activeHousehold,
-    viewerId: viewer.id,
-    navigateToPage,
-    onNavigateToPurchase: () => {
-      if (page !== "new") purchaseCreatePreviousPage.current = page;
-    },
-    reportUnsavedChanges,
-    onPurchaseQueued,
-    onBackFromPurchase,
-    refreshHousehold,
-    showNotice,
-  };
 
   return (
     <Dialog.Root
@@ -492,10 +557,10 @@ export function App() {
               aria-expanded={householdMenuOpen}
               aria-controls={households.length > 1 ? "household-menu" : undefined}
             >
-              <span className="household-avatar">{activeHousehold?.name?.slice(0, 1) ?? "家"}</span>
+              <span className="household-avatar">{activeHousehold?.name.slice(0, 1) ?? "家"}</span>
               <div className="household-name">
                 <b>{activeHousehold?.name ?? "家計簿"}</b>
-                <small>{activeHousehold?.members?.length ?? 0}人で共有</small>
+                <small>{activeHousehold?.members.length ?? 0}人で共有</small>
               </div>
               <ChevronDown size={15} />
             </button>
@@ -558,7 +623,7 @@ export function App() {
               <div className="shared-status">
                 <span>メンバー</span>
                 <span className="shared-avatars">
-                  {activeHousehold?.members?.slice(0, 3).map((member) => (
+                  {activeHousehold?.members.slice(0, 3).map((member) => (
                     <i key={member.id}>{member.displayName.slice(0, 1)}</i>
                   ))}
                 </span>
@@ -621,7 +686,7 @@ export function App() {
                   aria-disabled={!household}
                   tabIndex={household ? undefined : -1}
                 >
-                  {outbox.online === false ? (
+                  {!outbox.online ? (
                     <WifiOff size={15} />
                   ) : failedOutboxCount ? (
                     <AlertCircle size={15} />
@@ -661,7 +726,7 @@ export function App() {
               >
                 {acceptingInvitation ? "参加中" : "招待を受け入れる"}
               </button>
-              <button className="text-button" type="button" onClick={dismissInvitation}>
+              <button className="text-button" type="button" onClick={dismissPendingInvitation}>
                 閉じる
               </button>
             </section>
@@ -818,14 +883,14 @@ function EmptyHousehold({
 }) {
   const [name, setName] = useState("わが家");
   const [pending, setPending] = useState(false);
-  const create = async (event: FormEvent) => {
+  const create = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPending(true);
     try {
       const household = await createHousehold({ name, memberNames: [] });
       onCreated(household.id);
     } catch (reason) {
-      window.alert((reason as Error).message);
+      window.alert(errorMessage(reason));
     } finally {
       setPending(false);
     }
@@ -837,7 +902,12 @@ function EmptyHousehold({
       {households.length > 0 && (
         <div className="household-options">
           {households.map((item) => (
-            <button key={item.id} className="household-option" onClick={() => onSelect(item.id)}>
+            <button
+              key={item.id}
+              className="household-option"
+              type="button"
+              onClick={() => onSelect(item.id)}
+            >
               <span className="household-avatar">{item.name.slice(0, 1)}</span>
               <b>{item.name}</b>
               <ChevronRight />
@@ -850,7 +920,7 @@ function EmptyHousehold({
           新しい家計簿名
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
-        <button className="button button-primary" disabled={pending}>
+        <button className="button button-primary" type="submit" disabled={pending}>
           家計簿を作成 <Plus size={16} />
         </button>
       </form>

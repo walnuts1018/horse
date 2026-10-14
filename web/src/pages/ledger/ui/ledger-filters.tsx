@@ -1,13 +1,9 @@
 import { Search } from "lucide-react";
 
-import type {
-  Household,
-  Purchase,
-  SourceKind,
-  Tag,
-  UnmatchedObservationState,
-} from "../../../shared/api";
+import type { Household, Tag } from "../../../shared/api";
 import type { LedgerSearch } from "../model/ledger-search";
+
+import { isOneOf } from "../../../shared/lib";
 
 import styles from "./ledger-search.module.css";
 
@@ -84,7 +80,9 @@ export function LedgerFilters({
           <select
             value={recordMode}
             onChange={(event) => {
-              const mode = event.target.value as "purchases" | "observations";
+              const mode = isOneOf(event.target.value, ["purchases", "observations"])
+                ? event.target.value
+                : "purchases";
               updateFilters({ recordMode: mode });
               if (mode === "observations") onClearSelection();
             }}
@@ -99,7 +97,11 @@ export function LedgerFilters({
             <select
               value={viewMode}
               onChange={(event) => {
-                updateFilters({ viewMode: event.target.value as "purchases" | "items" });
+                updateFilters({
+                  viewMode: isOneOf(event.target.value, ["purchases", "items"])
+                    ? event.target.value
+                    : "purchases",
+                });
                 onClearSelection();
               }}
             >
@@ -115,7 +117,11 @@ export function LedgerFilters({
               <select
                 value={originFilter}
                 onChange={(event) =>
-                  updateFilters({ originFilter: event.target.value as Purchase["origin"] | "" })
+                  updateFilters({
+                    originFilter: isOneOf(event.target.value, ["AI", "MANUAL", "UNKNOWN"])
+                      ? event.target.value
+                      : "",
+                  })
                 }
               >
                 <option value="">すべて</option>
@@ -129,7 +135,11 @@ export function LedgerFilters({
               <select
                 value={evidenceFilter}
                 onChange={(event) =>
-                  updateFilters({ evidenceFilter: event.target.value as "true" | "false" | "" })
+                  updateFilters({
+                    evidenceFilter: isOneOf(event.target.value, ["true", "false"])
+                      ? event.target.value
+                      : "",
+                  })
                 }
               >
                 <option value="">すべて</option>
@@ -225,7 +235,9 @@ export function LedgerFilters({
                 value={observationStateFilter}
                 onChange={(event) =>
                   updateFilters({
-                    observationStateFilter: event.target.value as UnmatchedObservationState | "",
+                    observationStateFilter: isOneOf(event.target.value, ["CONFIRMED", "UNMATCHED"])
+                      ? event.target.value
+                      : "",
                   })
                 }
               >
@@ -239,7 +251,17 @@ export function LedgerFilters({
               <select
                 value={observationSourceFilter}
                 onChange={(event) =>
-                  updateFilters({ observationSourceFilter: event.target.value as SourceKind | "" })
+                  updateFilters({
+                    observationSourceFilter: isOneOf(event.target.value, [
+                      "RECEIPT",
+                      "ORDER",
+                      "EMAIL",
+                      "CARD",
+                      "BANK",
+                    ])
+                      ? event.target.value
+                      : "",
+                  })
                 }
               >
                 <option value="">すべて</option>

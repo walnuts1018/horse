@@ -1,23 +1,27 @@
 import { useRouter } from "@tanstack/react-router";
 import { Camera, FileImage, ShieldCheck, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import "./imports-page.css";
 import { type Household } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib/errors";
 import { InlineError } from "../../../shared/ui";
 import { readDocument } from "../api/documents";
 import { useEvidencePreview } from "../model/evidence-preview";
 import {
-  isSupportedFile,
+  asRecord,
+  defaultUploadSourceKind,
   defaultDocumentFilters,
+  isSupportedFile,
   parseDocumentFilters,
   serializeDocumentFilters,
-  sourceKind,
+  withStableEvidenceKeys,
   type DocumentFilters,
   type DocumentReview,
   type PendingUpload,
   type StatementEntry,
   type StatementSourceKind,
+  type UploadSourceKind,
 } from "../model/imports";
 import { useDocumentEvidence } from "../model/use-document-evidence";
 import { useImportConfirmation } from "../model/use-import-confirmation";
@@ -39,8 +43,22 @@ export function ImportsPage({
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<CameraCaptureHandle>(null);
   const [files, setFiles] = useState<PendingUpload[]>([]);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [csvKinds, setCsvKinds] = useState<Record<string, "card" | "bank">>({});
+  // 親への未保存通知は effect で状態を push せず、変化したイベントから直接行う
+  const onUnsavedChangesRef = useRef(onUnsavedChanges);
+  const reportedUnsavedChanges = useRef(false);
+  useEffect(() => {
+    onUnsavedChangesRef.current = onUnsavedChanges;
+  }, [onUnsavedChanges]);
+  useEffect(() => {
+    return () => {
+      onUnsavedChangesRef.current(false);
+    };
+  }, []);
+  const setHasUnsavedChanges = useCallback((unsaved: boolean) => {
+    if (reportedUnsavedChanges.current === unsaved) return;
+    reportedUnsavedChanges.current = unsaved;
+    onUnsavedChangesRef.current(unsaved);
+  }, []);
   const [documentFilters, setDocumentFilters] = useState<DocumentFilters>(() =>
     typeof window === "undefined"
       ? defaultDocumentFilters
@@ -71,10 +89,11 @@ export function ImportsPage({
     const controller = new AbortController();
     void readDocument(selected, controller.signal)
       .then((document) => {
-        setRelatedDocuments((current) => ({ ...current, [document.id]: document }));
+        const keyed = withStableEvidenceKeys(document);
+        setRelatedDocuments((current) => ({ ...current, [keyed.id]: keyed }));
       })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setMessage((reason as Error).message);
+        if (!controller.signal.aborted) setMessage(errorMessage(reason));
       });
     return () => controller.abort();
   }, [selected, selectedDocument]);
@@ -110,10 +129,6 @@ export function ImportsPage({
     );
   };
   useEffect(() => {
-    onUnsavedChanges(hasUnsavedChanges);
-    return () => onUnsavedChanges(false);
-  }, [hasUnsavedChanges, onUnsavedChanges]);
-  useEffect(() => {
     const restoreFilters = () => {
       const filters = parseDocumentFilters(new URLSearchParams(window.location.search));
       setDocumentFilters(filters);
@@ -122,19 +137,27 @@ export function ImportsPage({
     window.addEventListener("popstate", restoreFilters);
     return () => window.removeEventListener("popstate", restoreFilters);
   }, []);
+  // フィルタスコープが変わったときだけ確認状態をリセットする
+  const confirmationScope = useRef(documentFilterScope);
   useEffect(() => {
-    review.setConfirmedStatements(new Set());
-    review.setSelectedCandidates({});
-  }, [documentFilterScope]);
-  const addFiles = (selected: FileList | null) => {
-    if (!selected) return;
-    const candidates = Array.from(selected);
+    if (confirmationScope.current === documentFilterScope) return;
+    confirmationScope.current = documentFilterScope;
+    review.resetConfirmation();
+  }, [documentFilterScope, review]);
+  const addFiles = (fileList: FileList | null) => {
+    if (!fileList) return;
+    const candidates = Array.from(fileList);
     const supported = candidates.filter(isSupportedFile);
     const unsupported = candidates.filter((file) => !isSupportedFile(file));
     if (supported.length) markUnsaved();
     setFiles((current) => [
       ...current,
-      ...supported.map((file) => ({ id: crypto.randomUUID(), file, status: "queued" as const })),
+      ...supported.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        sourceKind: defaultUploadSourceKind(file),
+        status: "queued" as const,
+      })),
     ]);
     setMessage(
       unsupported.length
@@ -161,47 +184,39 @@ export function ImportsPage({
         const body = new FormData();
         body.set("file", file);
         body.set("householdId", household.id);
-        body.set("sourceKind", sourceKind(file, csvKinds[file.name] ?? "card"));
+        body.set("sourceKind", entry.sourceKind);
         const response = await fetch("/documents", {
           method: "POST",
           credentials: "include",
           body,
         });
         if (!response.ok) throw new Error(`証拠を送信できませんでした (${response.status})`);
-        const accepted = (await response.json()) as {
-          id: string;
-          name?: string;
-          sha256: string;
-          status: string;
-          duplicateOf?: string;
-          duplicate?: boolean;
-          jobId?: string;
-        };
+        const accepted = asRecord(await response.json()) ?? {};
         const documentReview: DocumentReview = {
-          id: accepted.id,
-          jobId: accepted.jobId,
-          name: accepted.name ?? file.name,
-          status: accepted.status,
-          sourceKind: sourceKind(file, csvKinds[file.name] ?? "card"),
-          duplicateOf: accepted.duplicateOf,
-          sha256: accepted.sha256,
+          id: typeof accepted.id === "string" ? accepted.id : "",
+          jobId: typeof accepted.jobId === "string" ? accepted.jobId : undefined,
+          name: typeof accepted.name === "string" ? accepted.name : file.name,
+          status: typeof accepted.status === "string" ? accepted.status : "QUEUED",
+          sourceKind: entry.sourceKind,
+          duplicateOf: typeof accepted.duplicateOf === "string" ? accepted.duplicateOf : undefined,
+          sha256: typeof accepted.sha256 === "string" ? accepted.sha256 : "",
         };
         setDocuments((current) => [
           documentReview,
           ...current.filter((document) => document.id !== documentReview.id),
         ]);
-        setSelected((current) => current ?? accepted.id);
+        setSelected((current) => current ?? (typeof accepted.id === "string" ? accepted.id : null));
         setFiles((current) => current.filter((upload) => upload.id !== entry.id));
       } catch (reason) {
         failedUploads.add(entry.id);
         setFiles((current) =>
           current.map((upload) =>
             upload.id === entry.id
-              ? { ...upload, status: "failed", error: (reason as Error).message }
+              ? { ...upload, status: "failed", error: errorMessage(reason) }
               : upload,
           ),
         );
-        setMessage((current) => (current ? current : `${file.name}: ${(reason as Error).message}`));
+        setMessage((current) => (current ? current : `${file.name}: ${errorMessage(reason)}`));
       }
     };
     const worker = async () => {
@@ -234,15 +249,12 @@ export function ImportsPage({
       editedReceiptDocuments.current.delete(document.id);
       await refreshDocuments(true);
     } catch (reason) {
-      setMessage((reason as Error).message);
+      setMessage(errorMessage(reason));
     } finally {
       setPending(false);
     }
   };
-  const reclassifyAttachment = async (
-    document: DocumentReview,
-    sourceKind: StatementSourceKind,
-  ) => {
+  const reclassifyAttachment = async (document: DocumentReview, kind: StatementSourceKind) => {
     setPending(true);
     setMessage("");
     try {
@@ -250,13 +262,13 @@ export function ImportsPage({
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceKind }),
+        body: JSON.stringify({ sourceKind: kind }),
       });
       if (!response.ok) throw new Error(`明細種別を変更できませんでした (${response.status})`);
       editedReceiptDocuments.current.delete(document.id);
       await refreshDocuments(true);
     } catch (reason) {
-      setMessage((reason as Error).message);
+      setMessage(errorMessage(reason));
     } finally {
       setPending(false);
     }
@@ -267,18 +279,38 @@ export function ImportsPage({
     try {
       await review.confirm(document);
     } catch (reason) {
-      setMessage((reason as Error).message);
+      setMessage(errorMessage(reason));
     } finally {
       setPending(false);
     }
   };
-  const confirmStatement = async (document: DocumentReview, entry: StatementEntry) => {
+  const confirmStatement = async (
+    document: DocumentReview,
+    entry: StatementEntry,
+    paymentAccountId: string,
+  ) => {
     setPending(true);
     setMessage("");
     try {
-      await review.confirmStatement(document, entry);
+      await review.confirmStatement(document, entry, paymentAccountId);
     } catch (reason) {
-      setMessage((reason as Error).message);
+      setMessage(errorMessage(reason));
+    } finally {
+      setPending(false);
+    }
+  };
+  const confirmStatementRefund = async (
+    document: DocumentReview,
+    entry: StatementEntry,
+    purchaseId: string,
+    itemId?: string,
+  ) => {
+    setPending(true);
+    setMessage("");
+    try {
+      await review.confirmStatementRefund(document, entry, purchaseId, itemId);
+    } catch (reason) {
+      setMessage(errorMessage(reason));
     } finally {
       setPending(false);
     }
@@ -327,7 +359,15 @@ export function ImportsPage({
         onAdd={(file) => {
           markUnsaved();
           setMessage("");
-          setFiles((current) => [...current, { id: crypto.randomUUID(), file, status: "queued" }]);
+          setFiles((current) => [
+            ...current,
+            {
+              id: crypto.randomUUID(),
+              file,
+              sourceKind: defaultUploadSourceKind(file),
+              status: "queued",
+            },
+          ]);
         }}
       />
       <div className="import-layout">
@@ -379,14 +419,15 @@ export function ImportsPage({
           <ImportDocumentList
             files={files}
             documents={documents}
-            csvKinds={csvKinds}
             selected={selected}
             filters={documentFilterDraft}
             onFiltersChange={setDocumentFilterDraft}
             onSearch={() => applyDocumentFilters(documentFilterDraft)}
-            onCsvKindChange={(filename, kind) => {
+            onSourceKindChange={(id, kind) => {
               markUnsaved();
-              setCsvKinds((current) => ({ ...current, [filename]: kind }));
+              setFiles((current) =>
+                current.map((entry) => (entry.id === id ? { ...entry, sourceKind: kind } : entry)),
+              );
             }}
             onRemoveFile={(id) => {
               markUnsaved();
@@ -416,7 +457,12 @@ export function ImportsPage({
               onPendingChange={setPending}
               onDirty={markUnsaved}
               onConfirmReceipt={() => void confirmReceipt(selectedDocument)}
-              onConfirmStatement={(entry) => void confirmStatement(selectedDocument, entry)}
+              onConfirmStatement={(entry, paymentAccountId) =>
+                void confirmStatement(selectedDocument, entry, paymentAccountId)
+              }
+              onConfirmRefund={(entry, purchaseId, itemId) =>
+                void confirmStatementRefund(selectedDocument, entry, purchaseId, itemId)
+              }
               onError={setMessage}
               onLinked={async () => {
                 setHasUnsavedChanges(false);

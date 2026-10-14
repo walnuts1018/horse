@@ -1,5 +1,7 @@
 import type { DocumentFilters, DocumentReview } from "../model/imports";
 
+import { asRecord } from "../model/imports";
+
 export const documentListURL = (householdId: string, filters: DocumentFilters, after?: string) => {
   const query = new URLSearchParams({ householdId, first: "50" });
   if (filters.store.trim()) query.set("store", filters.store.trim());
@@ -11,6 +13,15 @@ export const documentListURL = (householdId: string, filters: DocumentFilters, a
   return `/documents?${query.toString()}`;
 };
 
+function isDocumentReview(value: unknown): value is DocumentReview {
+  const record = asRecord(value);
+  return record !== undefined && typeof record.id === "string" && typeof record.status === "string";
+}
+
+function toDocumentReview(value: unknown): DocumentReview {
+  return isDocumentReview(value) ? value : { id: "", status: "" };
+}
+
 export async function readDocument(
   documentId: string,
   signal?: AbortSignal,
@@ -20,7 +31,7 @@ export async function readDocument(
     signal,
   });
   if (!response.ok) throw new Error(`文書を取得できませんでした (${response.status})`);
-  return (await response.json()) as DocumentReview;
+  return toDocumentReview(await response.json());
 }
 
 export const importIdempotencyKey = async (documentId: string, sourceReference: string) => {

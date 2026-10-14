@@ -140,7 +140,7 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		t.Fatalf("origin and evidence filters did not remain independent: connection=%#v error=%v", filtered, err)
 	}
 	jobID := generatedUUID(uuid.NewV7().String())
-	jobVersion, jobStatus := int32(1), "succeeded"
+	jobVersion, jobStatus := int32(1), extractionJobSucceededStatus
 	jobResult := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`{"receipt":{"merchant":"` + testMerchant + `","purchasedAt":"` + occurredAt + `","items":[{"name":"item","amount":1000}],"total":1000}}`)}
 	jobResultValue := sql.Null[types.JSON[stdjson.RawMessage]]{V: jobResult, Valid: true}
 	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &jobID, HouseholdID: &householdID, SourceDocumentID: &sourceDocumentID, Version: &jobVersion, Status: &jobStatus, Result: &jobResultValue}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
@@ -157,7 +157,8 @@ func TestMonthlyMemberSpendingUsesSavedFundingSnapshotAndOriginalPurchaseMonth(t
 		t.Fatalf("unmatched observation variant was not returned: type=%T", observations.Edges[0].Node)
 	}
 	emptyReference := ""
-	if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{SourceDocumentID: &sourceDocumentID, HouseholdID: &householdID, PurchaseID: &purchaseUUID, CreatedBy: &memberAID, SourceReference: &emptyReference}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+	purchaseIDValue := sql.Null[gofrsuuid.UUID]{V: purchaseUUID, Valid: true}
+	if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{SourceDocumentID: &sourceDocumentID, HouseholdID: &householdID, PurchaseID: &purchaseIDValue, CreatedBy: &memberAID, SourceReference: &emptyReference}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
 	candidateState = model.UnmatchedObservationStateConfirmed

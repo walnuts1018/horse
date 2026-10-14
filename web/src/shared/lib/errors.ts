@@ -9,7 +9,12 @@ export function toError(value: unknown): Error {
   if (typeof value === "string") {
     return new Error(value);
   }
-  if (value !== null && typeof value === "object" && "message" in value && typeof value.message === "string") {
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    "message" in value &&
+    typeof value.message === "string"
+  ) {
     return new Error(value.message);
   }
   return new Error(String(value));

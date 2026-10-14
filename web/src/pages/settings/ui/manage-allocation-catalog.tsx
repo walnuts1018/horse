@@ -3,6 +3,7 @@ import { useEffect } from "react";
 
 import type { Household } from "../../../shared/api";
 
+import { isOneOf } from "../../../shared/lib/guard";
 import { useAllocationCatalog } from "../model/allocation-catalog";
 
 import styles from "./settings-page.module.css";
@@ -78,11 +79,11 @@ export function ManageAllocationCatalog({
         >
           <select
             value={model.ruleScope}
-            onChange={(event) =>
-              model.setRuleScope(
-                event.target.value as "CATEGORY" | "MERCHANT" | "PRODUCT" | "PRODUCT_VARIANT",
-              )
-            }
+            onChange={(event) => {
+              const scope = event.target.value;
+              if (isOneOf(scope, ["CATEGORY", "MERCHANT", "PRODUCT", "PRODUCT_VARIANT"]))
+                model.setRuleScope(scope);
+            }}
           >
             <option value="CATEGORY">カテゴリ</option>
             <option value="MERCHANT">店名</option>
@@ -164,7 +165,7 @@ export function ManageAllocationCatalog({
               </label>
             ))}
           </div>
-          <button className="button button-primary" disabled={model.pending}>
+          <button type="submit" className="button button-primary" disabled={model.pending}>
             <Check size={16} />
             ルールを保存
           </button>
@@ -230,7 +231,7 @@ export function ManageAllocationCatalog({
                 </option>
               ))}
           </select>
-          <button className="button button-soft" disabled={model.pending}>
+          <button type="submit" className="button button-soft" disabled={model.pending}>
             <Plus size={15} />
             追加
           </button>
@@ -270,7 +271,7 @@ export function ManageAllocationCatalog({
             onChange={(event) => model.setVariantPackageSize(event.target.value)}
             placeholder="内容量・規格"
           />
-          <button className="button button-soft" disabled={model.pending}>
+          <button type="submit" className="button button-soft" disabled={model.pending}>
             <Plus size={15} />
             バリエーションを追加
           </button>
@@ -308,7 +309,7 @@ export function ManageAllocationCatalog({
             placeholder="店頭の表記"
             required
           />
-          <button className="button button-soft" disabled={model.pending}>
+          <button type="submit" className="button button-soft" disabled={model.pending}>
             <Plus size={15} />
             別表記を追加
           </button>

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   deletePurchaseDraft,
+  errorMessage,
   loadPurchaseDraft,
   savePurchaseDraft,
+  toError,
   type PurchaseDraft,
 } from "../../../shared/lib";
 
@@ -36,10 +38,14 @@ export function usePurchaseDraft({
   const hasLocalDraft = useRef(false);
   const editVersion = useRef(0);
   const scope = JSON.stringify([memberId, householdId]);
-  draftRef.current = draft;
-  restoreRef.current = restore;
-  onLoadErrorRef.current = onLoadError;
-  onUnsavedChangesRef.current = onUnsavedChanges;
+
+  // refはレンダー中に読み書きすると再レンダーで巻き戻るため、コミット後に最新値を反映する
+  useEffect(() => {
+    draftRef.current = draft;
+    restoreRef.current = restore;
+    onLoadErrorRef.current = onLoadError;
+    onUnsavedChangesRef.current = onUnsavedChanges;
+  });
 
   const markUnsaved = useCallback(() => {
     editVersion.current += 1;
@@ -49,7 +55,7 @@ export function usePurchaseDraft({
   }, []);
 
   const persistDraft = useCallback(async () => {
-    const current = draftRef.current;
+    const current = draft;
     const version = editVersion.current;
     const hasContent =
       hasLocalDraft.current ||
@@ -71,11 +77,11 @@ export function usePurchaseDraft({
     } catch (reason) {
       if (editVersion.current === version) {
         onUnsavedChangesRef.current(true);
-        setSaveError((reason as Error).message);
+        setSaveError(errorMessage(reason));
         setHasUnsavedChanges(true);
       }
     }
-  }, [memberId, householdId]);
+  }, [memberId, householdId, draft]);
 
   useEffect(() => {
     let active = true;
@@ -91,7 +97,7 @@ export function usePurchaseDraft({
         }
         setDraftScope(scope);
       })
-      .catch((reason) => active && onLoadErrorRef.current(reason as Error))
+      .catch((reason) => active && onLoadErrorRef.current(toError(reason)))
       .finally(() => active && setStorageReady(true));
     return () => {
       active = false;
@@ -109,7 +115,7 @@ export function usePurchaseDraft({
     return () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
     };
-  }, [scope, storageReady, draftScope, draft, persistDraft]);
+  }, [scope, storageReady, draftScope, persistDraft]);
 
   useEffect(
     () => () => {

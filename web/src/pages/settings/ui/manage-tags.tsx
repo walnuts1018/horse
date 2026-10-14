@@ -1,8 +1,9 @@
 import { Plus } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type SubmitEvent } from "react";
 
 import { readTags } from "../../../entities/tag";
 import { type Tag } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 import { archiveTag, createTag, updateTag } from "../api/tag-management";
 
@@ -44,7 +45,7 @@ export function ManageTags({
           ),
         );
       } catch (reason) {
-        setLoadError((reason as Error).message);
+        setLoadError(errorMessage(reason));
         throw reason;
       }
     },
@@ -55,7 +56,7 @@ export function ManageTags({
     void refresh(undefined, true).catch(() => undefined);
   }, [refresh]);
 
-  const saveTag = async (event: FormEvent) => {
+  const saveTag = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const name = tagName.trim();
     if (!name) return;
@@ -68,7 +69,7 @@ export function ManageTags({
       await refresh();
       onNotice("タグを追加しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
     } finally {
       setPending(false);
       onPendingChange(false);
@@ -86,7 +87,7 @@ export function ManageTags({
       await refresh(tag.id);
       onNotice("タグ名を保存しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
     } finally {
       setPending(false);
       onPendingChange(false);
@@ -101,7 +102,7 @@ export function ManageTags({
       await refresh();
       onNotice(tag.archived ? "タグを再表示しました" : "タグを非表示にしました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
     } finally {
       setPending(false);
       onPendingChange(false);
@@ -132,6 +133,7 @@ export function ManageTags({
               }}
             />
             <button
+              type="button"
               className="text-button"
               disabled={
                 pending || tag.archived || (tagDrafts[tag.id] ?? tag.name).trim() === tag.name
@@ -153,6 +155,7 @@ export function ManageTags({
               </button>
             )}
             <button
+              type="button"
               className="text-button"
               disabled={pending}
               onClick={() => void toggleTagVisibility(tag)}
@@ -174,7 +177,7 @@ export function ManageTags({
           maxLength={80}
           required
         />
-        <button className="button button-soft" disabled={pending}>
+        <button type="submit" className="button button-soft" disabled={pending}>
           <Plus size={15} />
           追加
         </button>

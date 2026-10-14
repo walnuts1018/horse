@@ -57,6 +57,13 @@ describe("statement purchase confirmation", () => {
     expect(statementConfirmationIssue(entry)).toBeUndefined();
   });
 
+  it("allows negative refund rows and rejects non-negative refund rows", () => {
+    expect(statementConfirmationIssue({ ...entry, kind: "REFUND", amount: -100 })).toBeUndefined();
+    expect(statementConfirmationIssue({ ...entry, kind: "REFUND", amount: 100 })).toBe(
+      "返金額を確認してください",
+    );
+  });
+
   it("uses the parser row reference even when a transaction ID exists", () => {
     expect(
       statementSourceReference({ ...entry, sourceReference: "row:9", transactionId: "7" }),

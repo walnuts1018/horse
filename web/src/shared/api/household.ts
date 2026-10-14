@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { commitMutation } from "react-relay";
 import {
   Environment,
@@ -23,6 +23,10 @@ export type {
   CorrectPurchaseMutation,
   CorrectPurchaseMutation$data,
 } from "./__generated__/CorrectPurchaseMutation.graphql";
+export type {
+  CorrectPurchaseFromStatementMutation,
+  CorrectPurchaseFromStatementMutation$data,
+} from "./__generated__/CorrectPurchaseFromStatementMutation.graphql";
 export type {
   CreateAndPostPurchaseMutation,
   CreateAndPostPurchaseMutation$data,
@@ -434,6 +438,50 @@ export class ApiError extends Error {
 
 export class MutationUserError extends ApiError {}
 
+type GraphQLIssue = { message: string; extensions?: Record<string, unknown> };
+type GraphQLPayload = { data?: Record<string, unknown> | null; errors?: GraphQLIssue[] };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readGraphQLIssue(value: unknown): GraphQLIssue | null {
+  if (!isRecord(value) || typeof value.message !== "string") return null;
+  const extensions = value.extensions;
+  if (extensions !== undefined && !isRecord(extensions)) return null;
+  return { message: value.message, extensions };
+}
+
+/** JSONレスポンスをGraphQLのペイロードとして検証する。検証できない場合はnull。 */
+function readGraphQLPayload(value: unknown): GraphQLPayload | null {
+  if (!isRecord(value)) return null;
+  const data = value.data;
+  if (data !== undefined && data !== null && !isRecord(data)) return null;
+  const rawErrors = value.errors;
+  if (rawErrors === undefined) return { data };
+  if (!Array.isArray(rawErrors)) return null;
+  const errors: GraphQLIssue[] = [];
+  for (const rawError of rawErrors) {
+    const issue = readGraphQLIssue(rawError);
+    if (!issue) return null;
+    errors.push(issue);
+  }
+  return { data, errors };
+}
+
+function toGraphQLResponse(payload: GraphQLPayload): GraphQLResponse | null {
+  const { data, errors } = payload;
+  if (data !== undefined && data !== null) {
+    return errors?.length ? { data, errors } : { data };
+  }
+  return errors?.length ? { errors } : null;
+}
+
+function issueCode(issue: GraphQLIssue): string | undefined {
+  const code = issue.extensions?.code;
+  return typeof code === "string" ? code : undefined;
+}
+
 let environment: Environment | undefined;
 
 export function getRelayEnvironment() {
@@ -448,23 +496,25 @@ export function getRelayEnvironment() {
       });
       if (!response.ok)
         throw new ApiError(`GraphQL API returned ${response.status}`, undefined, response.status);
-      const result = (await response.json()) as {
-        data?: unknown;
-        errors?: Array<{ message: string; extensions?: { code?: string } }>;
-      };
-      if (result.errors?.length)
-        throw new ApiError(result.errors[0].message, result.errors[0].extensions?.code);
-      return result as GraphQLResponse;
+      const payload = readGraphQLPayload(await response.json());
+      if (!payload) throw new ApiError("GraphQL API returned an invalid response");
+      const issue = payload.errors?.[0];
+      if (issue) throw new ApiError(issue.message, issueCode(issue));
+      const graphQLResponse = toGraphQLResponse(payload);
+      if (!graphQLResponse) throw new ApiError("GraphQL API returned an invalid response");
+      return graphQLResponse;
     },
     (operation, variables) =>
       Observable.create<GraphQLResponse>((sink) => {
         const controller = new AbortController();
-        let stopped = false;
+        // abortはawaitの合間に他から走るため、narrowingを避ける関数経由で都度読む
+        const isAborted = () => controller.signal.aborted;
         let after = typeof variables.after === "string" ? variables.after : undefined;
 
         const run = async () => {
           let retryDelay = 1000;
-          while (!stopped) {
+          for (;;) {
+            if (controller.signal.aborted) return;
             try {
               const response = await fetch("/graphql", {
                 method: "POST",
@@ -490,13 +540,14 @@ export function getRelayEnvironment() {
               const reader = response.body.getReader();
               let buffer = "";
               let completed = false;
-              while (!stopped) {
+              for (;;) {
+                if (isAborted()) break;
                 const { done, value } = await reader.read();
                 if (done) break;
                 buffer += new TextDecoder().decode(value, { stream: true });
-                while (true) {
+                for (;;) {
                   const boundary = /\r?\n\r?\n/.exec(buffer);
-                  if (!boundary || boundary.index === undefined) break;
+                  if (!boundary) break;
                   const frame = buffer.slice(0, boundary.index).replace(/\r\n/g, "\n");
                   buffer = buffer.slice(boundary.index + boundary[0].length);
                   let eventName = "message";
@@ -510,23 +561,25 @@ export function getRelayEnvironment() {
                     break;
                   }
                   if (eventName !== "next" || data.length === 0) continue;
-                  const result = JSON.parse(data.join("\n")) as GraphQLResponse & {
-                    errors?: Array<{ message: string; extensions?: { code?: string } }>;
-                    data?: Record<string, { cursor?: unknown }>;
-                  };
-                  if (result.errors?.length)
-                    throw new ApiError(result.errors[0].message, result.errors[0].extensions?.code);
-                  const cursor = Object.values(result.data ?? {})[0]?.cursor;
-                  if (typeof cursor === "string") after = cursor;
-                  sink.next(result);
+                  const payload = readGraphQLPayload(JSON.parse(data.join("\n")));
+                  if (!payload) continue;
+                  const issue = payload.errors?.[0];
+                  if (issue) throw new ApiError(issue.message, issueCode(issue));
+                  const firstEntry = payload.data ? Object.values(payload.data)[0] : undefined;
+                  if (isRecord(firstEntry) && typeof firstEntry.cursor === "string") {
+                    after = firstEntry.cursor;
+                  }
+                  const frameResponse = toGraphQLResponse(payload);
+                  if (!frameResponse) continue;
+                  sink.next(frameResponse);
                   retryDelay = 1000;
                 }
                 if (completed) break;
               }
               await reader.cancel().catch(() => undefined);
-              if (stopped) return;
+              if (isAborted()) return;
             } catch (error) {
-              if (stopped || controller.signal.aborted) return;
+              if (isAborted()) return;
               if (error instanceof ApiError) {
                 sink.error(error);
                 return;
@@ -540,7 +593,6 @@ export function getRelayEnvironment() {
 
         void run();
         return () => {
-          stopped = true;
           controller.abort();
         };
       }),
@@ -596,22 +648,25 @@ export function useTypedGraphqlMutation<TOperation extends MutationParameters, T
       }),
     [operation, readResult],
   );
-  return { mutate, isInFlight: inFlightCount > 0 };
+  // 呼び出し側が依存配列に使えるよう、戻り値のオブジェクトも安定させる
+  return useMemo(() => ({ mutate, isInFlight: inFlightCount > 0 }), [mutate, inFlightCount]);
 }
 
 export async function getViewer(): Promise<{ id: string; displayName: string; email?: string }> {
   const response = await fetch("/auth/me", { credentials: "include" });
   if (!response.ok)
     throw new ApiError(`Session API returned ${response.status}`, undefined, response.status);
-  const data = (await response.json()) as {
-    authenticated?: boolean;
-    viewer?: { id: string; displayName?: string; email?: string };
-  };
-  if (data.authenticated === false)
+  const data: unknown = await response.json();
+  if (isRecord(data) && data.authenticated === false)
     throw new ApiError("ログインが必要です", "UNAUTHENTICATED", 401);
-  const viewer = data.viewer;
-  if (!viewer?.id) throw new ApiError("ログイン情報を取得できませんでした");
-  return { id: viewer.id, displayName: viewer.displayName ?? "メンバー", email: viewer.email };
+  const viewer = isRecord(data) ? data.viewer : undefined;
+  if (!isRecord(viewer) || typeof viewer.id !== "string")
+    throw new ApiError("ログイン情報を取得できませんでした");
+  return {
+    id: viewer.id,
+    displayName: typeof viewer.displayName === "string" ? viewer.displayName : "メンバー",
+    email: typeof viewer.email === "string" ? viewer.email : undefined,
+  };
 }
 
 export function makeIdempotencyKey() {

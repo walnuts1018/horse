@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { Purchase } from "../../../shared/api";
 
@@ -6,6 +6,7 @@ import {
   useBulkUpdatePurchaseItemsMutation,
   type BulkUpdatePurchaseItemsMutation$variables,
 } from "../../../entities/purchase";
+import { errorMessage } from "../../../shared/lib";
 
 type LedgerItemBulkPatch = BulkUpdatePurchaseItemsMutation$variables["input"]["patch"];
 
@@ -14,6 +15,26 @@ type LedgerItemBulkUndo = Array<{
   baseRevision: number;
   patch: LedgerItemBulkPatch;
 }>;
+
+// 選択状態はスコープ(世帯×フィルタ)ごとに持ち、スコープが一致しない値は導出値として破棄する
+type LedgerItemSelectionState = {
+  scope: string;
+  ids: Set<string>;
+  anchor: { context: string; id: string } | null;
+};
+
+// undoとエラーは世帯ごとに持ち、世帯が一致しない値は導出値として初期値に戻す
+type LedgerItemBulkSessionState = {
+  householdId: string;
+  undo: LedgerItemBulkUndo | null;
+  error: string;
+};
+
+const EMPTY_SELECTION_IDS = new Set<string>();
+
+function createBulkSession(householdId: string): LedgerItemBulkSessionState {
+  return { householdId, undo: null, error: "" };
+}
 
 export function useLedgerItemBulkEdit({
   householdId,
@@ -27,32 +48,49 @@ export function useLedgerItemBulkEdit({
   refresh: () => void | Promise<void>;
 }) {
   const { mutate: mutateBulkUpdatePurchaseItems } = useBulkUpdatePurchaseItemsMutation();
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(() => new Set());
-  const selectionAnchor = useRef<{ context: string; id: string } | null>(null);
+  const selectionScope = `${householdId}\u0000${selectionKey}`;
+  const [selection, setSelection] = useState<LedgerItemSelectionState>(() => ({
+    scope: selectionScope,
+    ids: new Set<string>(),
+    anchor: null,
+  }));
+  const currentSelection: LedgerItemSelectionState =
+    selection.scope === selectionScope
+      ? selection
+      : { scope: selectionScope, ids: EMPTY_SELECTION_IDS, anchor: null };
+  const selectedItems = currentSelection.ids;
+  const [session, setSession] = useState<LedgerItemBulkSessionState>(() =>
+    createBulkSession(householdId),
+  );
+  const currentSession: LedgerItemBulkSessionState =
+    session.householdId === householdId ? session : createBulkSession(householdId);
   const [category, setCategory] = useState("");
   const [allocationsActive, setAllocationsActive] = useState(false);
-  const [allocations, setAllocations] = useState<Record<string, string>>({});
+  const [allocations, setAllocations] = useState<Record<string, string | undefined>>({});
   const [variantId, setVariantId] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagsActive, setTagsActive] = useState(false);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  const [undo, setUndo] = useState<LedgerItemBulkUndo | null>(null);
 
-  useEffect(() => {
-    setSelectedItems(new Set());
-    selectionAnchor.current = null;
-  }, [selectionKey]);
-  useEffect(() => {
-    setSelectedItems(new Set());
-    selectionAnchor.current = null;
-    setUndo(null);
-    setError("");
-  }, [householdId]);
+  const patchSession = (patch: Partial<LedgerItemBulkSessionState>) => {
+    setSession((current) => ({
+      ...(current.householdId === householdId ? current : createBulkSession(householdId)),
+      ...patch,
+    }));
+  };
+  // effectの依存配列で使われるため、世帯が変わるときだけ参照を更新する
+  const setError = useCallback(
+    (message: string) => {
+      setSession((current) => ({
+        ...(current.householdId === householdId ? current : createBulkSession(householdId)),
+        error: message,
+      }));
+    },
+    [householdId],
+  );
 
   const clearSelection = () => {
-    setSelectedItems(new Set());
-    selectionAnchor.current = null;
+    setSelection({ scope: selectionScope, ids: new Set<string>(), anchor: null });
   };
   const toggleSelection = (
     context: string,
@@ -61,8 +99,8 @@ export function useLedgerItemBulkEdit({
     shiftKey: boolean,
   ) => {
     const anchorIndex =
-      shiftKey && selectionAnchor.current?.context === context
-        ? visibleIds.indexOf(selectionAnchor.current.id)
+      shiftKey && currentSelection.anchor?.context === context
+        ? visibleIds.indexOf(currentSelection.anchor.id)
         : -1;
     const targetIndex = visibleIds.indexOf(id);
     const range =
@@ -74,16 +112,19 @@ export function useLedgerItemBulkEdit({
         : null;
     const additions = range?.filter((targetId) => !selectedItems.has(targetId)) ?? [];
     if (selectedItems.size + additions.length > 100) {
-      setError("一括変更は100品目までです");
+      patchSession({ error: "一括変更は100品目までです" });
       return;
     }
     const next = new Set(selectedItems);
     if (range) range.forEach((targetId) => next.add(targetId));
     else if (next.has(id)) next.delete(id);
     else next.add(id);
-    if (!shiftKey) selectionAnchor.current = { context, id };
-    setError("");
-    setSelectedItems(next);
+    setSelection({
+      scope: selectionScope,
+      ids: next,
+      anchor: shiftKey ? currentSelection.anchor : { context, id },
+    });
+    patchSession({ error: "" });
   };
 
   const apply = async () => {
@@ -95,8 +136,7 @@ export function useLedgerItemBulkEdit({
     );
     if (!targets.length) return;
     setPending(true);
-    setError("");
-    setUndo(null);
+    patchSession({ error: "", undo: null });
     try {
       const patch: BulkUpdatePurchaseItemsMutation$variables["input"]["patch"] = {};
       if (category) patch.categoryId = category === "__uncategorized" ? null : category;
@@ -112,7 +152,7 @@ export function useLedgerItemBulkEdit({
           patch,
         },
       });
-      const undoEntries: NonNullable<typeof undo> = targets.map(({ item }) => {
+      const undoEntries: LedgerItemBulkUndo = targets.map(({ item }) => {
         const undoPatch: LedgerItemBulkPatch = {};
         if (category) undoPatch.categoryId = item.categoryId ?? null;
         if (allocationsActive)
@@ -129,7 +169,7 @@ export function useLedgerItemBulkEdit({
           patch: undoPatch,
         };
       });
-      setUndo(undoEntries.length ? undoEntries : null);
+      patchSession({ undo: undoEntries.length ? undoEntries : null });
       clearSelection();
       setCategory("");
       setAllocationsActive(false);
@@ -139,7 +179,7 @@ export function useLedgerItemBulkEdit({
       setTagsActive(false);
       await refresh();
     } catch (reason) {
-      setError((reason as Error).message);
+      patchSession({ error: errorMessage(reason) });
       await refresh();
     } finally {
       setPending(false);
@@ -147,13 +187,14 @@ export function useLedgerItemBulkEdit({
   };
 
   const undoChanges = async () => {
-    if (!undo?.length) return;
+    const undoEntries = currentSession.undo;
+    if (!undoEntries?.length) return;
     setPending(true);
-    setError("");
+    patchSession({ error: "" });
     const completed = new Set<number>();
     try {
       const groups = new Map<string, Array<{ index: number; entry: LedgerItemBulkUndo[number] }>>();
-      undo.forEach((entry, index) => {
+      undoEntries.forEach((entry, index) => {
         const key = JSON.stringify(entry.patch);
         groups.set(key, [...(groups.get(key) ?? []), { index, entry }]);
       });
@@ -167,11 +208,13 @@ export function useLedgerItemBulkEdit({
         });
         group.forEach(({ index }) => completed.add(index));
       }
-      setUndo(null);
+      patchSession({ undo: null });
       await refresh();
     } catch (reason) {
-      setError((reason as Error).message);
-      setUndo(undo.filter((_, index) => !completed.has(index)));
+      patchSession({
+        error: errorMessage(reason),
+        undo: undoEntries.filter((_, index) => !completed.has(index)),
+      });
       await refresh();
     } finally {
       setPending(false);
@@ -196,9 +239,9 @@ export function useLedgerItemBulkEdit({
     tagsActive,
     setTagsActive,
     pending,
-    error,
+    error: currentSession.error,
     setError,
-    undo,
+    undo: currentSession.undo,
     apply,
     undoChanges,
   };

@@ -550,8 +550,18 @@ func (s *Server) loadDocumentConfirmations(ctx context.Context, document *docume
 	}
 	document.Confirmations = make([]documentConfirmation, 0)
 	for _, confirmation := range confirmations {
+		purchaseID := ""
+		if confirmation.PurchaseID.Valid {
+			purchaseID = confirmation.PurchaseID.V.String()
+		} else if confirmation.CorrectionID.Valid {
+			correction, err := models.Corrections.Query(sm.Where(models.Corrections.Columns.ID.EQ(psql.Arg(confirmation.CorrectionID.V)))).One(ctx, bobpgx.NewPool(s.db))
+			if err != nil {
+				return err
+			}
+			purchaseID = correction.PurchaseID.String()
+		}
 		document.Confirmations = append(document.Confirmations, documentConfirmation{
-			SourceReference: confirmation.SourceReference, PurchaseID: confirmation.PurchaseID.String(),
+			SourceReference: confirmation.SourceReference, PurchaseID: purchaseID,
 		})
 	}
 	return nil
@@ -574,8 +584,15 @@ func loadDocumentEvidence(ctx context.Context, exec bob.Executor, documents ...*
 	if err != nil {
 		return err
 	}
+	correctionLinks, err := models.CorrectionEvidenceLinks.Query(sm.Where(models.CorrectionEvidenceLinks.Columns.SourceDocumentID.In(ids...))).All(ctx, exec)
+	if err != nil {
+		return err
+	}
 	evidenced := make(map[string]struct{}, len(links))
 	for _, link := range links {
+		evidenced[link.SourceDocumentID.String()] = struct{}{}
+	}
+	for _, link := range correctionLinks {
 		evidenced[link.SourceDocumentID.String()] = struct{}{}
 	}
 	for _, document := range documents {
@@ -1121,7 +1138,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
 		models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(input.SourceReference)),
 	))).One(r.Context(), executor)
-	if err == nil && confirmation.PurchaseID != purchase.ID {
+	if err == nil && (!confirmation.PurchaseID.Valid || confirmation.PurchaseID.V != purchase.ID || confirmation.CorrectionID.Valid) {
 		http.Error(w, "document is already confirmed for another purchase", http.StatusConflict)
 		return
 	}
@@ -1129,9 +1146,10 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
 		return
 	}
+	purchaseIDValue := sql.Null[gofrsuuid.UUID]{V: purchase.ID, Valid: true}
 	if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{
 		SourceDocumentID: &document.ID, SourceReference: &input.SourceReference,
-		HouseholdID: &document.HouseholdID, PurchaseID: &purchase.ID, CreatedBy: &memberID,
+		HouseholdID: &document.HouseholdID, PurchaseID: &purchaseIDValue, CreatedBy: &memberID,
 	}, im.OnConflict("source_document_id", "source_reference").DoNothing()).Exec(r.Context(), executor); err != nil {
 		http.Error(w, "document confirmation failed", http.StatusConflict)
 		return

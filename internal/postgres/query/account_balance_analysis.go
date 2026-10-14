@@ -68,9 +68,15 @@ func AccountBalanceAnalysisForPeriod(ctx context.Context, db bob.Executor, house
 			change = &accountBalanceJournalChange{journal: journal}
 			changesByJournal[journal.ID] = change
 		}
-		amount := entry.DebitYen - entry.CreditYen
+		var amount int64
+		var ok bool
 		if account.Kind == "CARD" {
-			amount = entry.CreditYen - entry.DebitYen
+			amount, ok = checkedAccountBalanceSubtract(entry.CreditYen, entry.DebitYen)
+		} else {
+			amount, ok = checkedAccountBalanceSubtract(entry.DebitYen, entry.CreditYen)
+		}
+		if !ok {
+			return nil, ErrAccountBalanceOverflow
 		}
 		next, ok := checkedAccountBalanceAdd(change.amount, amount)
 		if !ok {
@@ -256,4 +262,11 @@ func checkedAccountBalanceAdd(left, right int64) (int64, bool) {
 		return 0, false
 	}
 	return left + right, true
+}
+
+func checkedAccountBalanceSubtract(left, right int64) (int64, bool) {
+	if right > 0 && left < math.MinInt64+right || right < 0 && left > math.MaxInt64+right {
+		return 0, false
+	}
+	return left - right, true
 }

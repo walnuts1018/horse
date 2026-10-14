@@ -109,7 +109,6 @@ export function PurchaseItemEntry({
               <div
                 className="suggestions"
                 id="purchase-item-suggestions"
-                role="listbox"
                 aria-label="購入履歴の商品候補"
               >
                 {suggestions.map((name, index) => (
@@ -117,8 +116,7 @@ export function PurchaseItemEntry({
                     type="button"
                     key={name}
                     id={`purchase-item-suggestion-${index}`}
-                    role="option"
-                    aria-selected={activeSuggestionIndex === index}
+                    aria-current={activeSuggestionIndex === index}
                     style={{ background: activeSuggestionIndex === index ? "#f3f7f3" : undefined }}
                     onMouseDown={(event) => event.preventDefault()}
                     onMouseEnter={() => onSuggestionHover(index)}
@@ -138,7 +136,6 @@ export function PurchaseItemEntry({
               <div
                 className="suggestions product-suggestions"
                 id="purchase-item-suggestions"
-                role="listbox"
                 aria-label="商品候補"
               >
                 {productSuggestions.map((candidate, index) => (
@@ -146,8 +143,7 @@ export function PurchaseItemEntry({
                     type="button"
                     key={candidate.variant.id}
                     id={`purchase-item-suggestion-${index}`}
-                    role="option"
-                    aria-selected={activeSuggestionIndex === index}
+                    aria-current={activeSuggestionIndex === index}
                     style={{ background: activeSuggestionIndex === index ? "#f3f7f3" : undefined }}
                     onMouseDown={(event) => event.preventDefault()}
                     onMouseEnter={() => onSuggestionHover(index)}

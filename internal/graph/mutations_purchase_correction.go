@@ -49,6 +49,30 @@ func (r *mutationResolver) correctPurchase(ctx context.Context, input model.Corr
 	return loadPurchase(ctx, r.DB, result.PurchaseID)
 }
 
+func (r *mutationResolver) correctPurchaseFromStatement(ctx context.Context, input model.CorrectPurchaseFromStatementInput) (*model.Purchase, error) {
+	purchaseID, itemID, err := correctionTarget(input.Target)
+	if err != nil {
+		return nil, err
+	}
+	user, err := requireMember(ctx, r.DB, input.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	fingerprint, err := mutationRequestFingerprint(input)
+	if err != nil {
+		return nil, err
+	}
+	result, err := purchase.NewService(r.DB).Correct(ctx, purchase.CorrectionCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, PurchaseID: purchaseID, ItemID: itemID,
+		Reason: input.Reason, IdempotencyKey: input.IdempotencyKey,
+		SourceDocumentID: input.SourceDocumentID, SourceReference: input.SourceReference,
+	}, fingerprint)
+	if err != nil {
+		return nil, err
+	}
+	return loadPurchase(ctx, r.DB, result.PurchaseID)
+}
+
 func sameAllocationWeights(inputs []*model.AllocationInput, saved []domain.Weight) bool {
 	allocations := make([]purchase.Allocation, 0, len(inputs))
 	for _, input := range inputs {

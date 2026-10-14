@@ -1,17 +1,31 @@
 import type { ObservationCandidates } from "../model/imports";
 
-export async function readDocumentMatches(documentId: string): Promise<{
+import { asRecord } from "../model/imports";
+
+type DocumentMatches = {
   observations: ObservationCandidates[];
   truncated: boolean;
-}> {
+};
+
+function isDocumentMatches(value: unknown): value is DocumentMatches {
+  const record = asRecord(value);
+  return (
+    record !== undefined &&
+    Array.isArray(record.observations) &&
+    typeof record.truncated === "boolean"
+  );
+}
+
+function toDocumentMatches(value: unknown): DocumentMatches {
+  return isDocumentMatches(value) ? value : { observations: [], truncated: false };
+}
+
+export async function readDocumentMatches(documentId: string): Promise<DocumentMatches> {
   const response = await fetch(`/documents/${encodeURIComponent(documentId)}/matches`, {
     credentials: "include",
   });
   if (!response.ok) throw new Error(`照合候補を取得できませんでした (${response.status})`);
-  return (await response.json()) as {
-    observations: ObservationCandidates[];
-    truncated: boolean;
-  };
+  return toDocumentMatches(await response.json());
 }
 
 export type EvidenceSource = {

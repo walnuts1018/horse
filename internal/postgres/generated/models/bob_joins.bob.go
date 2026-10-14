@@ -39,6 +39,7 @@ type joins[Q dialect.Joinable] struct {
 	AllocationRules                 joinSet[allocationRuleJoins[Q]]
 	Budgets                         joinSet[budgetJoins[Q]]
 	Categories                      joinSet[categoryJoins[Q]]
+	CorrectionEvidenceLinks         joinSet[correctionEvidenceLinkJoins[Q]]
 	CorrectionMemberBurdens         joinSet[correctionMemberBurdenJoins[Q]]
 	CorrectionPayments              joinSet[correctionPaymentJoins[Q]]
 	Corrections                     joinSet[correctionJoins[Q]]
@@ -100,6 +101,7 @@ func getJoins[Q dialect.Joinable]() joins[Q] {
 		AllocationRules:                 buildJoinSet[allocationRuleJoins[Q]](AllocationRules.Columns, buildAllocationRuleJoins),
 		Budgets:                         buildJoinSet[budgetJoins[Q]](Budgets.Columns, buildBudgetJoins),
 		Categories:                      buildJoinSet[categoryJoins[Q]](Categories.Columns, buildCategoryJoins),
+		CorrectionEvidenceLinks:         buildJoinSet[correctionEvidenceLinkJoins[Q]](CorrectionEvidenceLinks.Columns, buildCorrectionEvidenceLinkJoins),
 		CorrectionMemberBurdens:         buildJoinSet[correctionMemberBurdenJoins[Q]](CorrectionMemberBurdens.Columns, buildCorrectionMemberBurdenJoins),
 		CorrectionPayments:              buildJoinSet[correctionPaymentJoins[Q]](CorrectionPayments.Columns, buildCorrectionPaymentJoins),
 		Corrections:                     buildJoinSet[correctionJoins[Q]](Corrections.Columns, buildCorrectionJoins),

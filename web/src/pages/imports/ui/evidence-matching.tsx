@@ -1,8 +1,9 @@
 import { AlertCircle, Link2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type SetStateAction } from "react";
 
 import type { Purchase } from "../../../shared/api";
 
+import { errorMessage } from "../../../shared/lib/errors";
 import { linkPurchaseEvidence, readDocumentMatches } from "../api/document-matches";
 import {
   sourceKindLabel,
@@ -12,6 +13,16 @@ import {
 } from "../model/imports";
 
 import styles from "./imports-page.module.css";
+
+// 取得結果は対象 document と一致するときだけ参照し、それ以外は未取得として扱う
+const NO_MATCHES = new Set<string>();
+
+type MatchingState = {
+  document: DocumentReview;
+  observations: ObservationCandidates[];
+  truncated: boolean;
+  selectedMatches: Set<string>;
+};
 
 export function EvidenceMatching({
   document,
@@ -36,9 +47,12 @@ export function EvidenceMatching({
   onError: (message: string) => void;
   onLinked: () => Promise<void> | void;
 }) {
-  const [observations, setObservations] = useState<ObservationCandidates[]>([]);
-  const [truncated, setTruncated] = useState(false);
-  const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
+  const [matchingState, setMatchingState] = useState<MatchingState>({
+    document,
+    observations: [],
+    truncated: false,
+    selectedMatches: new Set(),
+  });
   const [targetPurchaseId, setTargetPurchaseId] = useState("");
   const [targetItemId, setTargetItemId] = useState("");
   const [activeObservationRef, setActiveObservationRef] = useState("");
@@ -46,32 +60,39 @@ export function EvidenceMatching({
   const targetPurchase = purchases.find((purchase) => purchase.id === targetPurchaseId);
   const receiptItems = document.result?.receipt?.items ?? [];
   const hasReceiptItems = receiptItems.length > 0;
+  const synced = matchingState.document === document;
+  const observations = synced ? matchingState.observations : [];
+  const truncated = synced ? matchingState.truncated : false;
+  const selectedMatches = synced ? matchingState.selectedMatches : NO_MATCHES;
+  const setSelectedMatches = (action: SetStateAction<Set<string>>) => {
+    setMatchingState((current) => {
+      if (current.document !== document) return current;
+      const keys = typeof action === "function" ? action(current.selectedMatches) : action;
+      return { ...current, selectedMatches: keys };
+    });
+  };
 
   useEffect(() => {
-    if (!document.result) {
-      setObservations([]);
-      setTruncated(false);
-      setSelectedMatches(new Set());
-      return;
-    }
+    if (!document.result) return;
     let active = true;
-    setObservations([]);
-    setTruncated(false);
-    setSelectedMatches(new Set());
     void readDocumentMatches(document.id)
       .then((payload) => {
         if (!active) return;
-        setObservations(payload.observations);
-        setTruncated(payload.truncated);
+        setMatchingState({
+          document,
+          observations: payload.observations,
+          truncated: payload.truncated,
+          selectedMatches: new Set(),
+        });
         setActiveObservationRef(
-          hasReceiptItems ? "" : (payload.observations[0]?.sourceReference ?? ""),
+          hasReceiptItems ? "" : (payload.observations.at(0)?.sourceReference ?? ""),
         );
       })
-      .catch((reason) => active && onError((reason as Error).message));
+      .catch((reason) => active && onError(errorMessage(reason)));
     return () => {
       active = false;
     };
-  }, [document.id, document.jobId, document.status, hasReceiptItems, onError]);
+  }, [document, hasReceiptItems, onError]);
 
   const markDirty = () => {
     onDirty();
@@ -86,11 +107,15 @@ export function EvidenceMatching({
             `${observation.sourceReference}\u0000${candidate.documentId}\u0000${candidate.sourceReference}`,
           ),
         )
-        .map((candidate) => ({
-          documentId: candidate.documentId,
-          sourceReference: candidate.sourceReference,
-          ...(targetItemId ? { itemId: targetItemId } : {}),
-        })),
+        .map((candidate) =>
+          Object.assign(
+            {
+              documentId: candidate.documentId,
+              sourceReference: candidate.sourceReference,
+            },
+            targetItemId ? { itemId: targetItemId } : {},
+          ),
+        ),
     );
     const isReceiptObservation = receiptItems.length > 0 && !activeObservationRef;
     const receiptIndex = Number(receiptEvidenceIndex);
@@ -112,8 +137,7 @@ export function EvidenceMatching({
       setSelectedMatches(new Set());
       await onLinked();
     } catch (reason) {
-      const errorMessage = (reason as Error).message;
-      onError(errorMessage);
+      onError(errorMessage(reason));
     } finally {
       setSubmitting(false);
       onPendingChange(false);
@@ -132,9 +156,9 @@ export function EvidenceMatching({
         <Link2 size={18} />
       </div>
       {truncated && (
-        <small role="status">
+        <output>
           <AlertCircle aria-hidden size={14} /> 候補を直近100件に絞っています
-        </small>
+        </output>
       )}
       <label className="select-filter">
         <span>照合元</span>
@@ -248,7 +272,7 @@ export function EvidenceMatching({
             }}
           >
             {receiptItems.map((item, index) => (
-              <option key={index} value={index}>
+              <option key={item.key} value={index}>
                 {item.name}
               </option>
             ))}

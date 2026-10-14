@@ -26,6 +26,7 @@ func Where[Q psql.Filterable]() struct {
 	AllocationRules                 allocationRuleWhere[Q]
 	Budgets                         budgetWhere[Q]
 	Categories                      categoryWhere[Q]
+	CorrectionEvidenceLinks         correctionEvidenceLinkWhere[Q]
 	CorrectionMemberBurdens         correctionMemberBurdenWhere[Q]
 	CorrectionPayments              correctionPaymentWhere[Q]
 	Corrections                     correctionWhere[Q]
@@ -78,6 +79,7 @@ func Where[Q psql.Filterable]() struct {
 		AllocationRules                 allocationRuleWhere[Q]
 		Budgets                         budgetWhere[Q]
 		Categories                      categoryWhere[Q]
+		CorrectionEvidenceLinks         correctionEvidenceLinkWhere[Q]
 		CorrectionMemberBurdens         correctionMemberBurdenWhere[Q]
 		CorrectionPayments              correctionPaymentWhere[Q]
 		Corrections                     correctionWhere[Q]
@@ -129,6 +131,7 @@ func Where[Q psql.Filterable]() struct {
 		AllocationRules:                 buildAllocationRuleWhere[Q](AllocationRules.Columns),
 		Budgets:                         buildBudgetWhere[Q](Budgets.Columns),
 		Categories:                      buildCategoryWhere[Q](Categories.Columns),
+		CorrectionEvidenceLinks:         buildCorrectionEvidenceLinkWhere[Q](CorrectionEvidenceLinks.Columns),
 		CorrectionMemberBurdens:         buildCorrectionMemberBurdenWhere[Q](CorrectionMemberBurdens.Columns),
 		CorrectionPayments:              buildCorrectionPaymentWhere[Q](CorrectionPayments.Columns),
 		Corrections:                     buildCorrectionWhere[Q](Corrections.Columns),

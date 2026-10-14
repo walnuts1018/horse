@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { readHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type Purchase, type UnmatchedObservation } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 
 type MatchCandidate = {
@@ -35,9 +36,6 @@ export function ObservationLinker({
   const [selectedPurchaseId, setSelectedPurchaseId] = useState("");
   const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
 
-  useEffect(() => {
-    onDirtyChange(observationId, pending || selectedPurchaseId !== "" || selectedMatches.size > 0);
-  }, [observationId, onDirtyChange, pending, selectedMatches, selectedPurchaseId]);
   useEffect(() => () => onDirtyChange(observationId, false), [observationId, onDirtyChange]);
 
   const discard = () => {
@@ -66,18 +64,47 @@ export function ObservationLinker({
       ]);
       if (!matchResponse.ok)
         throw new Error(`照合候補を取得できませんでした (${matchResponse.status})`);
-      const payload = (await matchResponse.json()) as {
-        observations: ObservationMatches[];
-        truncated: boolean;
-      };
-      const sourceMatches = payload.observations.find(
+      const payload: unknown = await matchResponse.json();
+      if (
+        payload === null ||
+        typeof payload !== "object" ||
+        !("observations" in payload) ||
+        !Array.isArray(payload.observations) ||
+        !("truncated" in payload) ||
+        typeof payload.truncated !== "boolean"
+      )
+        throw new Error("照合候補の形式が正しくありません");
+      const matchesData = payload.observations.filter(
+        (entry: unknown): entry is ObservationMatches =>
+          entry !== null &&
+          typeof entry === "object" &&
+          "sourceReference" in entry &&
+          typeof entry.sourceReference === "string" &&
+          "matches" in entry &&
+          Array.isArray(entry.matches) &&
+          entry.matches.every(
+            (candidate: unknown) =>
+              candidate !== null &&
+              typeof candidate === "object" &&
+              "documentId" in candidate &&
+              typeof candidate.documentId === "string" &&
+              "sourceReference" in candidate &&
+              typeof candidate.sourceReference === "string" &&
+              "state" in candidate &&
+              typeof candidate.state === "string" &&
+              "reasons" in candidate &&
+              Array.isArray(candidate.reasons) &&
+              candidate.reasons.every((reason: unknown) => typeof reason === "string"),
+          ),
+      );
+      const sourceMatches = matchesData.find(
         (entry) => entry.sourceReference === observation.sourceReference,
       );
       setMatches(sourceMatches?.matches ?? []);
       setMatchesTruncated(payload.truncated);
       setPurchases(purchaseResult);
     } catch (reason) {
-      setError((reason as Error).message);
+      setError(errorMessage(reason));
     } finally {
       setLoading(false);
     }
@@ -112,7 +139,7 @@ export function ObservationLinker({
       onDirtyChange(observationId, false);
       onConfirmed();
     } catch (reason) {
-      setError((reason as Error).message);
+      setError(errorMessage(reason));
     } finally {
       setPending(false);
     }
@@ -136,9 +163,9 @@ export function ObservationLinker({
           ) : (
             <>
               {matchesTruncated && (
-                <small role="status">
+                <output>
                   <AlertCircle aria-hidden size={14} /> 候補を直近100件に絞っています
-                </small>
+                </output>
               )}
               {matches.length > 0 && (
                 <fieldset>
@@ -150,14 +177,16 @@ export function ObservationLinker({
                         <input
                           type="checkbox"
                           checked={selectedMatches.has(key)}
-                          onChange={(event) =>
-                            setSelectedMatches((current) => {
-                              const next = new Set(current);
-                              if (event.target.checked) next.add(key);
-                              else next.delete(key);
-                              return next;
-                            })
-                          }
+                          onChange={(event) => {
+                            const next = new Set(selectedMatches);
+                            if (event.target.checked) next.add(key);
+                            else next.delete(key);
+                            setSelectedMatches(next);
+                            onDirtyChange(
+                              observationId,
+                              pending || selectedPurchaseId !== "" || next.size > 0,
+                            );
+                          }}
                         />
                         {candidate.sourceReference || candidate.documentId} · {candidate.state}
                         {candidate.reasons.length ? ` · ${candidate.reasons.join("、")}` : ""}
@@ -170,7 +199,14 @@ export function ObservationLinker({
                 <span>既存購入</span>
                 <select
                   value={selectedPurchaseId}
-                  onChange={(event) => setSelectedPurchaseId(event.target.value)}
+                  onChange={(event) => {
+                    const purchaseId = event.target.value;
+                    setSelectedPurchaseId(purchaseId);
+                    onDirtyChange(
+                      observationId,
+                      pending || purchaseId !== "" || selectedMatches.size > 0,
+                    );
+                  }}
                 >
                   <option value="">購入を選択</option>
                   {purchases.map((purchase) => (

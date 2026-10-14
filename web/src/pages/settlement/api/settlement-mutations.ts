@@ -13,7 +13,7 @@ import {
 type MutationResult = {
   __typename: string;
   message?: string | null;
-  result?: unknown | null;
+  result?: unknown;
 };
 
 function commitSettlementMutation<TOperation extends MutationParameters>(

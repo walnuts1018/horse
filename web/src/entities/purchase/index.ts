@@ -3,6 +3,7 @@ export {
   useBulkUpdatePurchaseItemsMutation,
   useBulkUpdatePurchasesMutation,
   useCorrectPurchaseMutation,
+  useCorrectPurchaseFromStatementMutation,
   useCreatePurchaseMutation,
   usePostPurchaseMutation,
   useUpdatePurchaseMutation,

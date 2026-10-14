@@ -26,7 +26,7 @@ export function SettlementPreview({
   period: string;
   totalDue: number;
   pending: boolean;
-  pendingFunding: Record<string, FundingIntent>;
+  pendingFunding: Partial<Record<string, FundingIntent>>;
   fundingSourceAccounts: Record<string, string>;
   fundingDestinationAccountId: string;
   savedFundingSourceAccounts: Record<string, string>;
@@ -73,112 +73,116 @@ export function SettlementPreview({
             <span>精算する入金はありません</span>
           </div>
         ) : (
-          settlement.lines.map((line) => (
-            <div className="settlement-line" key={line.memberId}>
-              <div className="profile-avatar">{line.memberName.slice(0, 1)}</div>
-              <div className="settlement-person">
-                <b>{line.memberName}</b>
-                <dl className="settlement-breakdown">
-                  <div>
-                    <dt>今月予定</dt>
-                    <dd>{formatSettlementYen(line.scheduledYen)}</dd>
-                  </div>
-                  <div>
-                    <dt>前月残高</dt>
-                    <dd>{formatSettlementYen(line.priorBalanceYen)}</dd>
-                  </div>
-                  <div>
-                    <dt>月次調整</dt>
-                    <dd>{formatSettlementYen(line.monthlyAdjustmentYen)}</dd>
-                  </div>
-                  <div>
-                    <dt>入金済み</dt>
-                    <dd>{formatSettlementYen(line.paidYen)}</dd>
-                  </div>
-                  <div>
-                    <dt>立替充当</dt>
-                    <dd>{formatSettlementYen(line.advanceCreditYen)}</dd>
-                  </div>
-                </dl>
-              </div>
-              <div className="settlement-amount">
-                <b className={line.amountDueYen < 0 ? "settlement-credit" : undefined}>
-                  {formatSettlementYen(line.amountDueYen)}
-                </b>
-                <small>次回精算残高</small>
-                <label className="settlement-account-select">
-                  <span>拠出元</span>
-                  <select
-                    value={fundingSourceAccounts[line.memberId] ?? ""}
-                    disabled={pending || Boolean(pendingFunding[line.memberId])}
-                    onChange={(event) => onFundingSourceChange(line.memberId, event.target.value)}
-                  >
-                    <option value="">口座外</option>
-                    {household.accounts
-                      .filter((account) => {
-                        const pool = household.pools.find(
-                          (candidate) => candidate.id === account.poolId,
-                        );
-                        return (
-                          pool?.__typename === "PersonalPool" &&
-                          pool.ownerMemberId === line.memberId
-                        );
-                      })
-                      .map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                <label className="settlement-account-select">
-                  <span>入金先</span>
-                  <select
-                    value={fundingDestinationAccountId}
-                    disabled={pending || Boolean(pendingFunding[line.memberId])}
-                    onChange={(event) => onFundingDestinationChange(event.target.value)}
-                  >
-                    <option value="">未指定</option>
-                    {household.accounts
-                      .filter((account) => {
-                        const sharedPool = household.pools.find(
-                          (pool) =>
-                            pool.__typename === "SharedPool" ||
-                            pool.__typename === "UnconfiguredSharedPool",
-                        );
-                        return sharedPool?.id === account.poolId && account.kind !== "CARD";
-                      })
-                      .map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                <button
-                  className="text-button"
-                  disabled={pending || (line.amountDueYen <= 0 && !pendingFunding[line.memberId])}
-                  onClick={() => onRecordFunding(line.memberId)}
-                >
-                  {pendingFunding[line.memberId]
-                    ? `入金を再試行 (${formatSettlementYen(pendingFunding[line.memberId].input.amountYen)})`
-                    : "入金を記録"}
-                </button>
-                {((fundingSourceAccounts[line.memberId] ?? "") !==
-                  (savedFundingSourceAccounts[line.memberId] ?? "") ||
-                  fundingDestinationAccountId !== savedFundingDestinationAccountId) && (
+          settlement.lines.map((line) => {
+            const pendingIntent = pendingFunding[line.memberId];
+            return (
+              <div className="settlement-line" key={line.memberId}>
+                <div className="profile-avatar">{line.memberName.slice(0, 1)}</div>
+                <div className="settlement-person">
+                  <b>{line.memberName}</b>
+                  <dl className="settlement-breakdown">
+                    <div>
+                      <dt>今月予定</dt>
+                      <dd>{formatSettlementYen(line.scheduledYen)}</dd>
+                    </div>
+                    <div>
+                      <dt>前月残高</dt>
+                      <dd>{formatSettlementYen(line.priorBalanceYen)}</dd>
+                    </div>
+                    <div>
+                      <dt>月次調整</dt>
+                      <dd>{formatSettlementYen(line.monthlyAdjustmentYen)}</dd>
+                    </div>
+                    <div>
+                      <dt>入金済み</dt>
+                      <dd>{formatSettlementYen(line.paidYen)}</dd>
+                    </div>
+                    <div>
+                      <dt>立替充当</dt>
+                      <dd>{formatSettlementYen(line.advanceCreditYen)}</dd>
+                    </div>
+                  </dl>
+                </div>
+                <div className="settlement-amount">
+                  <b className={line.amountDueYen < 0 ? "settlement-credit" : undefined}>
+                    {formatSettlementYen(line.amountDueYen)}
+                  </b>
+                  <small>次回精算残高</small>
+                  <label className="settlement-account-select">
+                    <span>拠出元</span>
+                    <select
+                      value={fundingSourceAccounts[line.memberId] ?? ""}
+                      disabled={pending || Boolean(pendingIntent)}
+                      onChange={(event) => onFundingSourceChange(line.memberId, event.target.value)}
+                    >
+                      <option value="">口座外</option>
+                      {household.accounts
+                        .filter((account) => {
+                          const pool = household.pools.find(
+                            (candidate) => candidate.id === account.poolId,
+                          );
+                          return (
+                            pool?.__typename === "PersonalPool" &&
+                            pool.ownerMemberId === line.memberId
+                          );
+                        })
+                        .map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="settlement-account-select">
+                    <span>入金先</span>
+                    <select
+                      value={fundingDestinationAccountId}
+                      disabled={pending || Boolean(pendingIntent)}
+                      onChange={(event) => onFundingDestinationChange(event.target.value)}
+                    >
+                      <option value="">未指定</option>
+                      {household.accounts
+                        .filter((account) => {
+                          const sharedPool = household.pools.find(
+                            (pool) =>
+                              pool.__typename === "SharedPool" ||
+                              pool.__typename === "UnconfiguredSharedPool",
+                          );
+                          return sharedPool?.id === account.poolId && account.kind !== "CARD";
+                        })
+                        .map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
                   <button
                     className="text-button"
                     type="button"
-                    disabled={pending}
-                    onClick={() => onRestoreFunding(line.memberId)}
+                    disabled={pending || (line.amountDueYen <= 0 && !pendingIntent)}
+                    onClick={() => onRecordFunding(line.memberId)}
                   >
-                    選択を戻す
+                    {pendingIntent
+                      ? `入金を再試行 (${formatSettlementYen(pendingIntent.input.amountYen)})`
+                      : "入金を記録"}
                   </button>
-                )}
+                  {((fundingSourceAccounts[line.memberId] ?? "") !==
+                    (savedFundingSourceAccounts[line.memberId] ?? "") ||
+                    fundingDestinationAccountId !== savedFundingDestinationAccountId) && (
+                    <button
+                      className="text-button"
+                      type="button"
+                      disabled={pending}
+                      onClick={() => onRestoreFunding(line.memberId)}
+                    >
+                      選択を戻す
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </section>
     </>

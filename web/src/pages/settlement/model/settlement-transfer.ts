@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 
 import { makeIdempotencyKey, type Household } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
 import { recordSettlementTransfer } from "../api/settlement-mutations";
 import {
   clearTransferIntent,
@@ -43,29 +44,32 @@ export function useSettlementTransfer({
   const hasPendingTransfer = Boolean(pendingTransfer);
 
   useEffect(() => {
-    try {
-      const transfer = getTransferIntent(household.id);
-      setPendingTransfer(transfer?.input.kind === "REPAYMENT" ? null : transfer);
-      if (transfer) {
-        const input = transfer.input;
-        if (input.kind !== "REPAYMENT") {
-          setTransferKind(input.kind);
-          setTransferFrom(input.fromMemberId);
-          setTransferTo(input.toMemberId);
-          setTransferAmount(String(input.amountYen));
-          setTransferDescription(input.description);
-          setTransferPaymentAccountId(input.paymentAccountId ?? "");
-          setTransferDestinationAccountId(input.destinationAccountId ?? "");
-          setTransferOpen(true);
-        } else {
-          setTransferOpen(false);
+    //保存済み送金意図の復元と同期setStateはeffect直後ではなくマイクロタスクで走らせる
+    queueMicrotask(() => {
+      try {
+        const transfer = getTransferIntent(household.id);
+        setPendingTransfer(transfer?.input.kind === "REPAYMENT" ? null : transfer);
+        if (transfer) {
+          const input = transfer.input;
+          if (input.kind !== "REPAYMENT") {
+            setTransferKind(input.kind);
+            setTransferFrom(input.fromMemberId);
+            setTransferTo(input.toMemberId);
+            setTransferAmount(String(input.amountYen));
+            setTransferDescription(input.description);
+            setTransferPaymentAccountId(input.paymentAccountId ?? "");
+            setTransferDestinationAccountId(input.destinationAccountId ?? "");
+            setTransferOpen(true);
+          } else {
+            setTransferOpen(false);
+          }
+          setHasUnsavedTransfer(false);
         }
-        setHasUnsavedTransfer(false);
+      } catch (reason) {
+        setError(errorMessage(reason));
       }
-    } catch (reason) {
-      setError((reason as Error).message);
-    }
-  }, [household.id, household.members, setError]);
+    });
+  }, [household.id, setError]);
 
   const markUnsaved = () => setHasUnsavedTransfer(true);
   const toggle = (hasPendingLoanRepayment: boolean) => {
@@ -81,7 +85,7 @@ export function useSettlementTransfer({
     setError("");
     setTransferOpen(true);
   };
-  const save = async (event: FormEvent) => {
+  const save = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPending(true);
     setError("");
@@ -143,7 +147,7 @@ export function useSettlementTransfer({
       );
       await onRecorded();
     } catch (reason) {
-      setError((reason as Error).message);
+      setError(errorMessage(reason));
     } finally {
       setPending(false);
     }

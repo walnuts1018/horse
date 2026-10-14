@@ -2,7 +2,10 @@ import type { Dispatch, SetStateAction } from "react";
 
 import type { Dimension } from "../model/purchase-analytics";
 
+import { isOneOf } from "../../../shared/lib";
 import { analysisDimensionLabels } from "./analysis-dimension-labels";
+
+const dimensions: Dimension[] = ["category", "merchant", "item", "pool", "account", "member"];
 
 type Props = {
   annual: boolean;
@@ -71,7 +74,11 @@ export function AnalysisControls({
           <span>集計</span>
           <select
             value={dimension}
-            onChange={(event) => setDimension(event.target.value as Dimension)}
+            onChange={(event) => {
+              if (isOneOf(event.target.value, dimensions)) {
+                setDimension(event.target.value);
+              }
+            }}
           >
             {Object.entries(analysisDimensionLabels).map(([value, label]) => (
               <option value={value} key={value}>

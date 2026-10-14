@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import type { SubmitEvent } from "react";
 
 import { Activity, Check } from "lucide-react";
 
@@ -19,7 +19,7 @@ export function ManageDefaultAllocationSection({
   disabled: boolean;
   hidden: boolean;
   onShareWeightChange: (poolId: string, weight: string) => void;
-  onSave: (event: FormEvent) => void;
+  onSave: (event: SubmitEvent<HTMLFormElement>) => void;
 }) {
   return (
     <section
@@ -59,6 +59,7 @@ export function ManageDefaultAllocationSection({
           <span>変更後の買い物から適用</span>
           <button
             className={`button button-primary ${styles.settingsSaveButton}`}
+            type="submit"
             disabled={disabled}
           >
             <Check size={16} />

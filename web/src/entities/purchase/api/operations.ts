@@ -336,6 +336,24 @@ export const correctPurchaseMutation = graphql`
   }
 `;
 
+export const correctPurchaseFromStatementMutation = graphql`
+  mutation CorrectPurchaseFromStatementMutation($input: CorrectPurchaseFromStatementInput!) {
+    correctPurchaseFromStatement(input: $input) {
+      __typename
+      ... on CorrectPurchaseSuccess {
+        result {
+          id
+          revision
+        }
+      }
+      ... on MutationError {
+        code
+        message
+      }
+    }
+  }
+`;
+
 export const bulkUpdatePurchaseItemsMutation = graphql`
   mutation BulkUpdatePurchaseItemsMutation($input: BulkUpdatePurchaseItemsInput!) {
     bulkUpdatePurchaseItems(input: $input) {

@@ -16,11 +16,7 @@ export function SettlementFeedback({
   return (
     <>
       {error && <InlineError message={error} />}
-      {success && (
-        <p className="settlement-confirmation" role="status">
-          {success}
-        </p>
-      )}
+      {success && <output className="settlement-confirmation">{success}</output>}
       {loadError && (
         <div className="settlement-load-error">
           <InlineError message={loadError} />

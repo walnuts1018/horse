@@ -55,6 +55,7 @@ type CorrectionsQuery = *psql.ViewQuery[*Correction, CorrectionSlice]
 
 // correctionR is where relationships are stored.
 type correctionR struct {
+	CorrectionEvidenceLinks CorrectionEvidenceLinkSlice // correction_evidence_links.correction_evidence_links_household_id_correction_id_fkey
 	CorrectionMemberBurdens CorrectionMemberBurdenSlice // correction_member_burdens.correction_member_burdens_household_id_correction_id_fkey
 	CorrectionPayments      CorrectionPaymentSlice      // correction_payments.correction_payments_correction_id_fkey
 	CreatedByMember         *Member                     // corrections.corrections_created_by_fkey
@@ -63,6 +64,7 @@ type correctionR struct {
 	Purchase                *Purchase                   // corrections.corrections_household_id_purchase_id_fkey
 	Journal                 *Journal                    // corrections.corrections_journal_id_fkey
 	PurchaseItem            *PurchaseItem               // corrections.corrections_purchase_id_item_id_fkey
+	DocumentConfirmations   DocumentConfirmationSlice   // document_confirmations.document_confirmations_correction_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -71,6 +73,7 @@ type correctionR struct {
 
 // correctionRLoaded tracks which relationships on Correction have been loaded.
 type correctionRLoaded struct {
+	CorrectionEvidenceLinks bool // correction_evidence_links.correction_evidence_links_household_id_correction_id_fkey
 	CorrectionMemberBurdens bool // correction_member_burdens.correction_member_burdens_household_id_correction_id_fkey
 	CorrectionPayments      bool // correction_payments.correction_payments_correction_id_fkey
 	CreatedByMember         bool // corrections.corrections_created_by_fkey
@@ -79,6 +82,7 @@ type correctionRLoaded struct {
 	Purchase                bool // corrections.corrections_household_id_purchase_id_fkey
 	Journal                 bool // corrections.corrections_journal_id_fkey
 	PurchaseItem            bool // corrections.corrections_purchase_id_item_id_fkey
+	DocumentConfirmations   bool // document_confirmations.document_confirmations_correction_id_fkey
 }
 
 func buildCorrectionColumns(tableName string) correctionColumns {
@@ -792,6 +796,35 @@ func (o CorrectionSlice) ReloadAll(ctx context.Context, exec bob.Executor) error
 	return nil
 }
 
+// CorrectionEvidenceLinks starts a query for related objects on correction_evidence_links
+func (o *Correction) CorrectionEvidenceLinks(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionEvidenceLinksQuery {
+	return CorrectionEvidenceLinks.Query(append(mods,
+		sm.Where(CorrectionEvidenceLinks.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(CorrectionEvidenceLinks.Columns.CorrectionID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os CorrectionSlice) CorrectionEvidenceLinks(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionEvidenceLinksQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return CorrectionEvidenceLinks.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "CorrectionID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "CorrectionID"),
+		)).As("bob_rel_keys").On(CorrectionEvidenceLinks.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), CorrectionEvidenceLinks.Columns.CorrectionID.EQ(psql.Quote("bob_rel_keys", "CorrectionID"))),
+	)...)
+}
+
 // CorrectionMemberBurdens starts a query for related objects on correction_member_burdens
 func (o *Correction) CorrectionMemberBurdens(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionMemberBurdensQuery {
 	return CorrectionMemberBurdens.Query(append(mods,
@@ -1019,6 +1052,101 @@ func (os CorrectionSlice) PurchaseItem(mods ...bob.Mod[*dialect.SelectQuery]) Pu
 			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkPurchaseID), "uuid[]"), psql.Cast(psql.Arg(pkItemID), "uuid[]"))).As("bob_rel_keys_src", "PurchaseID", "ID"),
 		)).As("bob_rel_keys").On(PurchaseItems.Columns.PurchaseID.EQ(psql.Quote("bob_rel_keys", "PurchaseID")), PurchaseItems.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
 	)...)
+}
+
+// DocumentConfirmations starts a query for related objects on document_confirmations
+func (o *Correction) DocumentConfirmations(mods ...bob.Mod[*dialect.SelectQuery]) DocumentConfirmationsQuery {
+	return DocumentConfirmations.Query(append(mods,
+		sm.Where(DocumentConfirmations.Columns.CorrectionID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os CorrectionSlice) DocumentConfirmations(mods ...bob.Mod[*dialect.SelectQuery]) DocumentConfirmationsQuery {
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	return DocumentConfirmations.Query(append(mods,
+		sm.Where(DocumentConfirmations.Columns.CorrectionID.EQ(PKArgExpr)),
+	)...)
+}
+
+func insertCorrectionCorrectionEvidenceLinks0(ctx context.Context, exec bob.Executor, correctionEvidenceLinks1 []*CorrectionEvidenceLinkSetter, correction0 *Correction) (CorrectionEvidenceLinkSlice, error) {
+	for i := range correctionEvidenceLinks1 {
+		correctionEvidenceLinks1[i].HouseholdID = func() *uuid.UUID { return &correction0.HouseholdID }()
+		correctionEvidenceLinks1[i].CorrectionID = func() *uuid.UUID { return &correction0.ID }()
+	}
+
+	ret, err := CorrectionEvidenceLinks.Insert(bob.ToMods(correctionEvidenceLinks1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertCorrectionCorrectionEvidenceLinks0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachCorrectionCorrectionEvidenceLinks0(ctx context.Context, exec bob.Executor, count int, correctionEvidenceLinks1 CorrectionEvidenceLinkSlice, correction0 *Correction) (CorrectionEvidenceLinkSlice, error) {
+	setter := &CorrectionEvidenceLinkSetter{
+		HouseholdID:  func() *uuid.UUID { return &correction0.HouseholdID }(),
+		CorrectionID: func() *uuid.UUID { return &correction0.ID }(),
+	}
+
+	err := correctionEvidenceLinks1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachCorrectionCorrectionEvidenceLinks0: %w", err)
+	}
+
+	return correctionEvidenceLinks1, nil
+}
+
+func (correction0 *Correction) InsertCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, related ...*CorrectionEvidenceLinkSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	correctionEvidenceLinks1, err := insertCorrectionCorrectionEvidenceLinks0(ctx, exec, related, correction0)
+	if err != nil {
+		return err
+	}
+
+	correction0.R.CorrectionEvidenceLinks = append(correction0.R.CorrectionEvidenceLinks, correctionEvidenceLinks1...)
+
+	for _, rel := range correctionEvidenceLinks1 {
+		rel.R.Correction = correction0
+		rel.R.Loaded.Correction = true
+	}
+	return nil
+}
+
+func (correction0 *Correction) AttachCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, related ...*CorrectionEvidenceLink) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	correctionEvidenceLinks1 := CorrectionEvidenceLinkSlice(related)
+
+	_, err = attachCorrectionCorrectionEvidenceLinks0(ctx, exec, len(related), correctionEvidenceLinks1, correction0)
+	if err != nil {
+		return err
+	}
+
+	correction0.R.CorrectionEvidenceLinks = append(correction0.R.CorrectionEvidenceLinks, correctionEvidenceLinks1...)
+
+	for _, rel := range related {
+		rel.R.Correction = correction0
+		rel.R.Loaded.Correction = true
+	}
+
+	return nil
 }
 
 func insertCorrectionCorrectionMemberBurdens0(ctx context.Context, exec bob.Executor, correctionMemberBurdens1 []*CorrectionMemberBurdenSetter, correction0 *Correction) (CorrectionMemberBurdenSlice, error) {
@@ -1466,6 +1594,76 @@ func (correction0 *Correction) AttachPurchaseItem(ctx context.Context, exec bob.
 	return nil
 }
 
+func insertCorrectionDocumentConfirmations0(ctx context.Context, exec bob.Executor, documentConfirmations1 []*DocumentConfirmationSetter, correction0 *Correction) (DocumentConfirmationSlice, error) {
+	for i := range documentConfirmations1 {
+		documentConfirmations1[i].CorrectionID = func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: correction0.ID, Valid: true}; return &v }()
+	}
+
+	ret, err := DocumentConfirmations.Insert(bob.ToMods(documentConfirmations1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertCorrectionDocumentConfirmations0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachCorrectionDocumentConfirmations0(ctx context.Context, exec bob.Executor, count int, documentConfirmations1 DocumentConfirmationSlice, correction0 *Correction) (DocumentConfirmationSlice, error) {
+	setter := &DocumentConfirmationSetter{
+		CorrectionID: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: correction0.ID, Valid: true}; return &v }(),
+	}
+
+	err := documentConfirmations1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachCorrectionDocumentConfirmations0: %w", err)
+	}
+
+	return documentConfirmations1, nil
+}
+
+func (correction0 *Correction) InsertDocumentConfirmations(ctx context.Context, exec bob.Executor, related ...*DocumentConfirmationSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	documentConfirmations1, err := insertCorrectionDocumentConfirmations0(ctx, exec, related, correction0)
+	if err != nil {
+		return err
+	}
+
+	correction0.R.DocumentConfirmations = append(correction0.R.DocumentConfirmations, documentConfirmations1...)
+
+	for _, rel := range documentConfirmations1 {
+		rel.R.Correction = correction0
+		rel.R.Loaded.Correction = true
+	}
+	return nil
+}
+
+func (correction0 *Correction) AttachDocumentConfirmations(ctx context.Context, exec bob.Executor, related ...*DocumentConfirmation) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	documentConfirmations1 := DocumentConfirmationSlice(related)
+
+	_, err = attachCorrectionDocumentConfirmations0(ctx, exec, len(related), documentConfirmations1, correction0)
+	if err != nil {
+		return err
+	}
+
+	correction0.R.DocumentConfirmations = append(correction0.R.DocumentConfirmations, documentConfirmations1...)
+
+	for _, rel := range related {
+		rel.R.Correction = correction0
+		rel.R.Loaded.Correction = true
+	}
+
+	return nil
+}
+
 type correctionWhere[Q psql.Filterable] struct {
 	cols            correctionColumns
 	ID              psql.WhereMod[Q, uuid.UUID]
@@ -1507,6 +1705,21 @@ func buildCorrectionWhere[Q psql.Filterable](cols correctionColumns) correctionW
 // R struct — so they cannot collide with column-based filter fields.
 type correctionWhereR[Q psql.Filterable] struct {
 	cols correctionColumns
+}
+
+// HasCorrectionEvidenceLinks filters parents that have a matching CorrectionEvidenceLinks using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to CorrectionEvidenceLinks).
+func (w correctionWhereR[Q]) HasCorrectionEvidenceLinks(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(CorrectionEvidenceLinks.NameExpr()),
+		sm.Where(CorrectionEvidenceLinks.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(CorrectionEvidenceLinks.Columns.CorrectionID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
 // HasCorrectionMemberBurdens filters parents that have a matching CorrectionMemberBurdens using a
@@ -1620,6 +1833,20 @@ func (w correctionWhereR[Q]) HasPurchaseItem(filters ...bob.Mod[*dialect.SelectQ
 		sm.From(PurchaseItems.NameExpr()),
 		sm.Where(PurchaseItems.Columns.PurchaseID.EQ(w.cols.PurchaseID)),
 		sm.Where(PurchaseItems.Columns.ID.EQ(w.cols.ItemID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasDocumentConfirmations filters parents that have a matching DocumentConfirmations using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to DocumentConfirmations).
+func (w correctionWhereR[Q]) HasDocumentConfirmations(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(DocumentConfirmations.NameExpr()),
+		sm.Where(DocumentConfirmations.Columns.CorrectionID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -1753,6 +1980,22 @@ func (o *Correction) Preload(name string, retrieved any) error {
 	}
 
 	switch name {
+	case "CorrectionEvidenceLinks":
+		rels, ok := retrieved.(CorrectionEvidenceLinkSlice)
+		if !ok {
+			return fmt.Errorf("correction cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.CorrectionEvidenceLinks = rels
+		o.R.Loaded.CorrectionEvidenceLinks = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Correction = o
+				rel.R.Loaded.Correction = true
+			}
+		}
+		return nil
 	case "CorrectionMemberBurdens":
 		rels, ok := retrieved.(CorrectionMemberBurdenSlice)
 		if !ok {
@@ -1863,6 +2106,22 @@ func (o *Correction) Preload(name string, retrieved any) error {
 			rel.R.Corrections = CorrectionSlice{o}
 		}
 		return nil
+	case "DocumentConfirmations":
+		rels, ok := retrieved.(DocumentConfirmationSlice)
+		if !ok {
+			return fmt.Errorf("correction cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.DocumentConfirmations = rels
+		o.R.Loaded.DocumentConfirmations = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Correction = o
+				rel.R.Loaded.Correction = true
+			}
+		}
+		return nil
 	default:
 		return fmt.Errorf("correction has no relationship %q", name)
 	}
@@ -1961,6 +2220,7 @@ func buildCorrectionPreloader() correctionPreloader {
 }
 
 type correctionThenLoader[Q orm.Loadable] struct {
+	CorrectionEvidenceLinks func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CorrectionMemberBurdens func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CorrectionPayments      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByMember         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -1969,9 +2229,13 @@ type correctionThenLoader[Q orm.Loadable] struct {
 	Purchase                func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Journal                 func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	PurchaseItem            func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	DocumentConfirmations   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildCorrectionThenLoader[Q orm.Loadable]() correctionThenLoader[Q] {
+	type CorrectionEvidenceLinksLoadInterface interface {
+		LoadCorrectionEvidenceLinks(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type CorrectionMemberBurdensLoadInterface interface {
 		LoadCorrectionMemberBurdens(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
@@ -1996,8 +2260,17 @@ func buildCorrectionThenLoader[Q orm.Loadable]() correctionThenLoader[Q] {
 	type PurchaseItemLoadInterface interface {
 		LoadPurchaseItem(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
+	type DocumentConfirmationsLoadInterface interface {
+		LoadDocumentConfirmations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 
 	return correctionThenLoader[Q]{
+		CorrectionEvidenceLinks: thenLoadBuilder[Q](
+			"CorrectionEvidenceLinks",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionEvidenceLinksLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCorrectionEvidenceLinks(ctx, exec, mods...)
+			},
+		),
 		CorrectionMemberBurdens: thenLoadBuilder[Q](
 			"CorrectionMemberBurdens",
 			func(ctx context.Context, exec bob.Executor, retrieved CorrectionMemberBurdensLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -2046,7 +2319,82 @@ func buildCorrectionThenLoader[Q orm.Loadable]() correctionThenLoader[Q] {
 				return retrieved.LoadPurchaseItem(ctx, exec, mods...)
 			},
 		),
+		DocumentConfirmations: thenLoadBuilder[Q](
+			"DocumentConfirmations",
+			func(ctx context.Context, exec bob.Executor, retrieved DocumentConfirmationsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadDocumentConfirmations(ctx, exec, mods...)
+			},
+		),
 	}
+}
+
+// LoadCorrectionEvidenceLinks loads the correction's CorrectionEvidenceLinks into the .R struct
+func (o *Correction) LoadCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.CorrectionEvidenceLinks = nil
+	o.R.Loaded.CorrectionEvidenceLinks = false
+
+	related, err := o.CorrectionEvidenceLinks(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Correction = o
+		rel.R.Loaded.Correction = true
+	}
+
+	o.R.CorrectionEvidenceLinks = related
+	o.R.Loaded.CorrectionEvidenceLinks = true
+	return nil
+}
+
+// LoadCorrectionEvidenceLinks loads the correction's CorrectionEvidenceLinks into the .R struct
+func (os CorrectionSlice) LoadCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	correctionEvidenceLinks, err := os.CorrectionEvidenceLinks(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.CorrectionEvidenceLinks = nil
+		o.R.Loaded.CorrectionEvidenceLinks = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range correctionEvidenceLinks {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.ID == rel.CorrectionID) {
+				continue
+			}
+
+			rel.R.Correction = o
+			rel.R.Loaded.Correction = true
+
+			o.R.CorrectionEvidenceLinks = append(o.R.CorrectionEvidenceLinks, rel)
+		}
+	}
+
+	return nil
 }
 
 // LoadCorrectionMemberBurdens loads the correction's CorrectionMemberBurdens into the .R struct
@@ -2621,10 +2969,90 @@ func (os CorrectionSlice) LoadPurchaseItem(ctx context.Context, exec bob.Executo
 	return nil
 }
 
+// LoadDocumentConfirmations loads the correction's DocumentConfirmations into the .R struct
+func (o *Correction) LoadDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.DocumentConfirmations = nil
+	o.R.Loaded.DocumentConfirmations = false
+
+	related, err := o.DocumentConfirmations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Correction = o
+		rel.R.Loaded.Correction = true
+	}
+
+	o.R.DocumentConfirmations = related
+	o.R.Loaded.DocumentConfirmations = true
+	return nil
+}
+
+// LoadDocumentConfirmations loads the correction's DocumentConfirmations into the .R struct
+func (os CorrectionSlice) LoadDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	documentConfirmations, err := os.DocumentConfirmations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.DocumentConfirmations = nil
+		o.R.Loaded.DocumentConfirmations = true
+	}
+	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
+	correctionByKey := make(map[uuid.UUID][]*Correction, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		correctionByKey[o.ID] = append(correctionByKey[o.ID], o)
+	}
+
+	for _, rel := range documentConfirmations {
+
+		if !rel.CorrectionID.Valid {
+			continue
+		}
+
+		owners, ok := correctionByKey[rel.CorrectionID.V]
+		if !ok {
+			continue
+		}
+
+		for _, o := range owners {
+
+			rel.R.Correction = o
+			rel.R.Loaded.Correction = true
+
+			o.R.DocumentConfirmations = append(o.R.DocumentConfirmations, rel)
+
+		}
+	}
+
+	return nil
+}
+
 // correctionC is where relationship counts are stored.
 type correctionC struct {
+	CorrectionEvidenceLinks *int64
 	CorrectionMemberBurdens *int64
 	CorrectionPayments      *int64
+	DocumentConfirmations   *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -2634,21 +3062,45 @@ func (o *Correction) PreloadCount(name string, count int64) error {
 	}
 
 	switch name {
+	case "CorrectionEvidenceLinks":
+		o.C.CorrectionEvidenceLinks = &count
 	case "CorrectionMemberBurdens":
 		o.C.CorrectionMemberBurdens = &count
 	case "CorrectionPayments":
 		o.C.CorrectionPayments = &count
+	case "DocumentConfirmations":
+		o.C.DocumentConfirmations = &count
 	}
 	return nil
 }
 
 type correctionCountPreloader struct {
+	CorrectionEvidenceLinks func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	CorrectionMemberBurdens func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	CorrectionPayments      func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	DocumentConfirmations   func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildCorrectionCountPreloader() correctionCountPreloader {
 	return correctionCountPreloader{
+		CorrectionEvidenceLinks: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Correction]("CorrectionEvidenceLinks", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Corrections.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(CorrectionEvidenceLinks.NameAsExpr()),
+					sm.Where(psql.Quote(CorrectionEvidenceLinks.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(CorrectionEvidenceLinks.Alias(), "correction_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		CorrectionMemberBurdens: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*Correction]("CorrectionMemberBurdens", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -2684,23 +3136,54 @@ func buildCorrectionCountPreloader() correctionCountPreloader {
 				return psql.Group(psql.Select(subqueryMods...).Expression)
 			})
 		},
+		DocumentConfirmations: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Correction]("DocumentConfirmations", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Corrections.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(DocumentConfirmations.NameAsExpr()),
+					sm.Where(psql.Quote(DocumentConfirmations.Alias(), "correction_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 	}
 }
 
 type correctionCountThenLoader[Q orm.Loadable] struct {
+	CorrectionEvidenceLinks func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CorrectionMemberBurdens func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CorrectionPayments      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	DocumentConfirmations   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildCorrectionCountThenLoader[Q orm.Loadable]() correctionCountThenLoader[Q] {
+	type CorrectionEvidenceLinksCountInterface interface {
+		LoadCountCorrectionEvidenceLinks(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type CorrectionMemberBurdensCountInterface interface {
 		LoadCountCorrectionMemberBurdens(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 	type CorrectionPaymentsCountInterface interface {
 		LoadCountCorrectionPayments(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
+	type DocumentConfirmationsCountInterface interface {
+		LoadCountDocumentConfirmations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 
 	return correctionCountThenLoader[Q]{
+		CorrectionEvidenceLinks: countThenLoadBuilder[Q](
+			"CorrectionEvidenceLinks",
+			func(ctx context.Context, exec bob.Executor, retrieved CorrectionEvidenceLinksCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountCorrectionEvidenceLinks(ctx, exec, mods...)
+			},
+		),
 		CorrectionMemberBurdens: countThenLoadBuilder[Q](
 			"CorrectionMemberBurdens",
 			func(ctx context.Context, exec bob.Executor, retrieved CorrectionMemberBurdensCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -2713,7 +3196,123 @@ func buildCorrectionCountThenLoader[Q orm.Loadable]() correctionCountThenLoader[
 				return retrieved.LoadCountCorrectionPayments(ctx, exec, mods...)
 			},
 		),
+		DocumentConfirmations: countThenLoadBuilder[Q](
+			"DocumentConfirmations",
+			func(ctx context.Context, exec bob.Executor, retrieved DocumentConfirmationsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountDocumentConfirmations(ctx, exec, mods...)
+			},
+		),
 	}
+}
+
+// LoadCountCorrectionEvidenceLinks loads the count of CorrectionEvidenceLinks into the C struct
+func (o *Correction) LoadCountCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.CorrectionEvidenceLinks(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.CorrectionEvidenceLinks = &count
+	return nil
+}
+
+// LoadCountCorrectionEvidenceLinks loads the count of CorrectionEvidenceLinks for a slice in a single batch query
+func (os CorrectionSlice) LoadCountCorrectionEvidenceLinks(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			CorrectionEvidenceLinks.Columns.HouseholdID.As("household_id"),
+			CorrectionEvidenceLinks.Columns.CorrectionID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(CorrectionEvidenceLinks.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "CorrectionID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "CorrectionID"),
+		)).As("bob_rel_keys").On(
+			CorrectionEvidenceLinks.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			CorrectionEvidenceLinks.Columns.CorrectionID.EQ(psql.Quote("bob_rel_keys", "CorrectionID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(CorrectionEvidenceLinks.Columns.HouseholdID),
+		sm.GroupBy(CorrectionEvidenceLinks.Columns.CorrectionID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.CorrectionEvidenceLinks = &count
+	}
+
+	return nil
 }
 
 // LoadCountCorrectionMemberBurdens loads the count of CorrectionMemberBurdens into the C struct
@@ -2905,8 +3504,88 @@ func (os CorrectionSlice) LoadCountCorrectionPayments(ctx context.Context, exec 
 	return nil
 }
 
+// LoadCountDocumentConfirmations loads the count of DocumentConfirmations into the C struct
+func (o *Correction) LoadCountDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.DocumentConfirmations(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.DocumentConfirmations = &count
+	return nil
+}
+
+// LoadCountDocumentConfirmations loads the count of DocumentConfirmations for a slice in a single batch query
+func (os CorrectionSlice) LoadCountDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkID = append(pkID, o.ID)
+	}
+	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			DocumentConfirmations.Columns.CorrectionID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(DocumentConfirmations.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.Where(DocumentConfirmations.Columns.CorrectionID.EQ(PKArgExpr)),
+		// GROUP BY fk columns
+		sm.GroupBy(DocumentConfirmations.Columns.CorrectionID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Single-column FK: direct map lookup
+	countMap := make(map[uuid.UUID]int64, len(results))
+	for _, r := range results {
+		countMap[r.ID] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[o.ID]
+		o.C.DocumentConfirmations = &count
+	}
+
+	return nil
+}
+
 type correctionJoins[Q dialect.Joinable] struct {
 	typ                     string
+	CorrectionEvidenceLinks modAs[Q, correctionEvidenceLinkColumns]
 	CorrectionMemberBurdens modAs[Q, correctionMemberBurdenColumns]
 	CorrectionPayments      modAs[Q, correctionPaymentColumns]
 	CreatedByMember         modAs[Q, memberColumns]
@@ -2915,6 +3594,7 @@ type correctionJoins[Q dialect.Joinable] struct {
 	Purchase                modAs[Q, purchaseColumns]
 	Journal                 modAs[Q, journalColumns]
 	PurchaseItem            modAs[Q, purchaseItemColumns]
+	DocumentConfirmations   modAs[Q, documentConfirmationColumns]
 }
 
 func (j correctionJoins[Q]) aliasedAs(alias string) correctionJoins[Q] {
@@ -2924,6 +3604,20 @@ func (j correctionJoins[Q]) aliasedAs(alias string) correctionJoins[Q] {
 func buildCorrectionJoins[Q dialect.Joinable](cols correctionColumns, typ string) correctionJoins[Q] {
 	return correctionJoins[Q]{
 		typ: typ,
+		CorrectionEvidenceLinks: modAs[Q, correctionEvidenceLinkColumns]{
+			c: CorrectionEvidenceLinks.Columns,
+			f: func(to correctionEvidenceLinkColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, CorrectionEvidenceLinks.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.CorrectionID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
 		CorrectionMemberBurdens: modAs[Q, correctionMemberBurdenColumns]{
 			c: CorrectionMemberBurdens.Columns,
 			f: func(to correctionMemberBurdenColumns) bob.Mod[Q] {
@@ -3030,6 +3724,20 @@ func buildCorrectionJoins[Q dialect.Joinable](cols correctionColumns, typ string
 				{
 					mods = append(mods, dialect.Join[Q](typ, PurchaseItems.NameExpr().As(to.Alias())).On(
 						to.PurchaseID.EQ(cols.PurchaseID), to.ID.EQ(cols.ItemID),
+					))
+				}
+
+				return mods
+			},
+		},
+		DocumentConfirmations: modAs[Q, documentConfirmationColumns]{
+			c: DocumentConfirmations.Columns,
+			f: func(to documentConfirmationColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, DocumentConfirmations.NameExpr().As(to.Alias())).On(
+						to.CorrectionID.EQ(cols.ID),
 					))
 				}
 

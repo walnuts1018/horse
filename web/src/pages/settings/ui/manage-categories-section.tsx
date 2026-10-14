@@ -1,9 +1,10 @@
-import type { FormEvent } from "react";
+import type { SubmitEvent } from "react";
 
 import { Plus } from "lucide-react";
 
 import type { Household } from "../../../shared/api";
 
+import "./settings-page.css";
 import styles from "./settings-page.module.css";
 
 export function ManageCategoriesSection({
@@ -20,7 +21,7 @@ export function ManageCategoriesSection({
   disabled: boolean;
   hidden: boolean;
   onCategoryNameChange: (value: string) => void;
-  onAdd: (event: FormEvent) => void;
+  onAdd: (event: SubmitEvent<HTMLFormElement>) => void;
   onArchive: (categoryId: string, archived: boolean) => void;
 }) {
   return (
@@ -43,6 +44,7 @@ export function ManageCategoriesSection({
               {category.name}
             </span>
             <button
+              type="button"
               className="text-button"
               disabled={disabled}
               onClick={() => onArchive(category.id, !category.archived)}
@@ -59,7 +61,7 @@ export function ManageCategoriesSection({
           placeholder="カテゴリ名"
           required
         />
-        <button className="button button-soft" disabled={disabled}>
+        <button type="submit" className="button button-soft" disabled={disabled}>
           <Plus size={15} />
           追加
         </button>

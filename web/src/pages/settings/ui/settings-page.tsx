@@ -34,7 +34,7 @@ export function SettingsPage({
 }) {
   const navigation = useSettingsNavigation();
   const changes = useSettingsChangeTracking(onUnsavedChanges);
-  const balances = useSettingsAccountBalances({ household, isOwner, onNotice });
+  const balances = useSettingsAccountBalances({ household, onNotice });
   const mutations = useSettingsMutations({
     household,
     onRefresh,

@@ -1,0 +1,16 @@
+.category-management {
+  display: grid;
+  gap: 7px;
+  margin: 13px 0;
+}
+
+.category-management-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.category-archived {
+  opacity: 0.5;
+}

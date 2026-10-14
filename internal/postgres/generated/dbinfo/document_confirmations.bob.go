@@ -36,9 +36,9 @@ var DocumentConfirmations = Table[
 		PurchaseID: column{
 			Name:      "purchase_id",
 			DBType:    "uuid",
-			Default:   "",
+			Default:   "NULL",
 			Comment:   "",
-			Nullable:  false,
+			Nullable:  true,
 			Generated: false,
 			AutoIncr:  false,
 		},
@@ -66,6 +66,15 @@ var DocumentConfirmations = Table[
 			Default:   "''::text",
 			Comment:   "",
 			Nullable:  false,
+			Generated: false,
+			AutoIncr:  false,
+		},
+		CorrectionID: column{
+			Name:      "correction_id",
+			DBType:    "uuid",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
 			Generated: false,
 			AutoIncr:  false,
 		},
@@ -100,6 +109,15 @@ var DocumentConfirmations = Table[
 		Comment: "",
 	},
 	ForeignKeys: documentConfirmationForeignKeys{
+		DocumentConfirmationsDocumentConfirmationsCorrectionIDFkey: foreignKey{
+			constraint: constraint{
+				Name:    "document_confirmations.document_confirmations_correction_id_fkey",
+				Columns: []string{"correction_id"},
+				Comment: "",
+			},
+			ForeignTable:   "corrections",
+			ForeignColumns: []string{"id"},
+		},
 		DocumentConfirmationsDocumentConfirmationsCreatedByFkey: foreignKey{
 			constraint: constraint{
 				Name:    "document_confirmations.document_confirmations_created_by_fkey",
@@ -147,6 +165,14 @@ var DocumentConfirmations = Table[
 			},
 			Expression: "(length(source_reference) <= 256)",
 		},
+		DocumentConfirmationsTargetCheck: check{
+			constraint: constraint{
+				Name:    "document_confirmations_target_check",
+				Columns: []string{"purchase_id", "correction_id"},
+				Comment: "",
+			},
+			Expression: "((purchase_id IS NOT NULL) <> (correction_id IS NOT NULL))",
+		},
 	},
 	Comment: "",
 }
@@ -158,11 +184,12 @@ type documentConfirmationColumns struct {
 	CreatedBy        column
 	CreatedAt        column
 	SourceReference  column
+	CorrectionID     column
 }
 
 func (c documentConfirmationColumns) AsSlice() []column {
 	return []column{
-		c.SourceDocumentID, c.HouseholdID, c.PurchaseID, c.CreatedBy, c.CreatedAt, c.SourceReference,
+		c.SourceDocumentID, c.HouseholdID, c.PurchaseID, c.CreatedBy, c.CreatedAt, c.SourceReference, c.CorrectionID,
 	}
 }
 
@@ -177,6 +204,7 @@ func (i documentConfirmationIndexes) AsSlice() []index {
 }
 
 type documentConfirmationForeignKeys struct {
+	DocumentConfirmationsDocumentConfirmationsCorrectionIDFkey          foreignKey
 	DocumentConfirmationsDocumentConfirmationsCreatedByFkey             foreignKey
 	DocumentConfirmationsDocumentConfirmationsHouseholdIDFkey           foreignKey
 	DocumentConfirmationsDocumentConfirmationsHouseholdIDPurchaseIDFkey foreignKey
@@ -185,7 +213,7 @@ type documentConfirmationForeignKeys struct {
 
 func (f documentConfirmationForeignKeys) AsSlice() []foreignKey {
 	return []foreignKey{
-		f.DocumentConfirmationsDocumentConfirmationsCreatedByFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDPurchaseIDFkey, f.DocumentConfirmationsDocumentConfirmationsSourceDocumentIDFkey,
+		f.DocumentConfirmationsDocumentConfirmationsCorrectionIDFkey, f.DocumentConfirmationsDocumentConfirmationsCreatedByFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDPurchaseIDFkey, f.DocumentConfirmationsDocumentConfirmationsSourceDocumentIDFkey,
 	}
 }
 
@@ -197,10 +225,11 @@ func (u documentConfirmationUniques) AsSlice() []constraint {
 
 type documentConfirmationChecks struct {
 	DocumentConfirmationsSourceReferenceLength check
+	DocumentConfirmationsTargetCheck           check
 }
 
 func (c documentConfirmationChecks) AsSlice() []check {
 	return []check{
-		c.DocumentConfirmationsSourceReferenceLength,
+		c.DocumentConfirmationsSourceReferenceLength, c.DocumentConfirmationsTargetCheck,
 	}
 }

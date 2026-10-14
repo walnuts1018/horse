@@ -1265,7 +1265,7 @@ func (purchase0 *Purchase) AttachCorrections(ctx context.Context, exec bob.Execu
 func insertPurchaseDocumentConfirmations0(ctx context.Context, exec bob.Executor, documentConfirmations1 []*DocumentConfirmationSetter, purchase0 *Purchase) (DocumentConfirmationSlice, error) {
 	for i := range documentConfirmations1 {
 		documentConfirmations1[i].HouseholdID = func() *uuid.UUID { return &purchase0.HouseholdID }()
-		documentConfirmations1[i].PurchaseID = func() *uuid.UUID { return &purchase0.ID }()
+		documentConfirmations1[i].PurchaseID = func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: purchase0.ID, Valid: true}; return &v }()
 	}
 
 	ret, err := DocumentConfirmations.Insert(bob.ToMods(documentConfirmations1...)).All(ctx, exec)
@@ -1279,7 +1279,7 @@ func insertPurchaseDocumentConfirmations0(ctx context.Context, exec bob.Executor
 func attachPurchaseDocumentConfirmations0(ctx context.Context, exec bob.Executor, count int, documentConfirmations1 DocumentConfirmationSlice, purchase0 *Purchase) (DocumentConfirmationSlice, error) {
 	setter := &DocumentConfirmationSetter{
 		HouseholdID: func() *uuid.UUID { return &purchase0.HouseholdID }(),
-		PurchaseID:  func() *uuid.UUID { return &purchase0.ID }(),
+		PurchaseID:  func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: purchase0.ID, Valid: true}; return &v }(),
 	}
 
 	err := documentConfirmations1.UpdateAll(ctx, exec, *setter)
@@ -2560,7 +2560,10 @@ func (os PurchaseSlice) LoadDocumentConfirmations(ctx context.Context, exec bob.
 				continue
 			}
 
-			if !(o.ID == rel.PurchaseID) {
+			if !rel.PurchaseID.Valid {
+				continue
+			}
+			if !(rel.PurchaseID.Valid && o.ID == rel.PurchaseID.V) {
 				continue
 			}
 

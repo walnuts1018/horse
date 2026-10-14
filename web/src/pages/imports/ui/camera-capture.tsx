@@ -8,6 +8,8 @@ import {
   type PointerEvent,
 } from "react";
 
+import { errorMessage } from "../../../shared/lib/errors";
+
 import "./camera-capture.css";
 
 type Crop = { left: number; top: number; right: number; bottom: number };
@@ -20,12 +22,13 @@ export const CameraCapture = forwardRef<
   { onAdd: (file: File) => void; onError: (message: string) => void }
 >(function CameraCapture({ onAdd, onError }, ref) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const dialogRef = useRef<HTMLElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const cropStart = useRef<{ x: number; y: number } | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const [draft, setDraft] = useState<CameraDraft | null>(null);
+  const draftOpen = draft !== null;
 
   useImperativeHandle(ref, () => ({
     open: () => {
@@ -36,12 +39,13 @@ export const CameraCapture = forwardRef<
   }));
 
   useEffect(() => {
-    if (!draft) return;
-    return () => URL.revokeObjectURL(draft.src);
+    const src = draft?.src;
+    if (!src) return;
+    return () => URL.revokeObjectURL(src);
   }, [draft?.src]);
 
   useEffect(() => {
-    if (!draft) return;
+    if (!draftOpen) return;
     closeRef.current?.focus();
     const handleDialogKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -75,7 +79,7 @@ export const CameraCapture = forwardRef<
       document.removeEventListener("keydown", handleDialogKeyDown);
       returnFocus.current?.focus();
     };
-  }, [draft === null]);
+  }, [draftOpen]);
 
   const reviewFile = (files: FileList | null) => {
     const file = files?.[0];
@@ -109,7 +113,7 @@ export const CameraCapture = forwardRef<
       });
       setDraft({ file, src: URL.createObjectURL(file), crop: null });
     } catch (reason) {
-      onError((reason as Error).message);
+      onError(errorMessage(reason));
     }
   };
 
@@ -163,7 +167,7 @@ export const CameraCapture = forwardRef<
       onAdd(file);
       setDraft(null);
     } catch (reason) {
-      onError((reason as Error).message);
+      onError(errorMessage(reason));
     }
   };
 
@@ -196,13 +200,13 @@ export const CameraCapture = forwardRef<
             background: "rgb(20 30 24 / 68%)",
           }}
         >
-          <section
+          <dialog
             ref={dialogRef}
-            role="dialog"
             aria-modal="true"
             aria-labelledby="camera-review-title"
             className="panel camera-capture-dialog"
             style={{ width: "min(720px, 100%)", maxHeight: "100%", overflow: "auto", padding: 20 }}
+            open
           >
             <div className="panel-heading">
               <div>
@@ -332,10 +336,10 @@ export const CameraCapture = forwardRef<
                       step="1"
                       value={value * 100}
                       onChange={(event) => {
-                        const value = Number(event.target.value) / 100;
+                        const nextValue = Number(event.target.value) / 100;
                         setDraft((current) =>
                           current?.crop
-                            ? { ...current, crop: { ...current.crop, [edge]: value } }
+                            ? { ...current, crop: { ...current.crop, [edge]: nextValue } }
                             : current,
                         );
                       }}
@@ -344,7 +348,7 @@ export const CameraCapture = forwardRef<
                 ))}
               </fieldset>
             )}
-          </section>
+          </dialog>
         </div>
       )}
     </>

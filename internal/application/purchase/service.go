@@ -287,7 +287,10 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 			models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(sourceReference)),
 		))).One(ctx, executor)
 		if err == nil {
-			return CreateResult{PurchaseID: confirmation.PurchaseID.String()}, nil
+			if confirmation.CorrectionID.Valid || !confirmation.PurchaseID.Valid {
+				return CreateResult{}, fmt.Errorf("%w: source row is already confirmed as a correction", ErrConflict)
+			}
+			return CreateResult{PurchaseID: confirmation.PurchaseID.V.String()}, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return CreateResult{}, err
@@ -650,7 +653,8 @@ func linkSourceDocument(ctx context.Context, executor bob.Executor, householdID,
 	if input.SourceReference != nil {
 		sourceReference = *input.SourceReference
 	}
-	if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{SourceDocumentID: &documentID, SourceReference: &sourceReference, HouseholdID: &householdID, PurchaseID: &purchaseID, CreatedBy: &actorID}).Exec(ctx, executor); err != nil {
+	purchaseIDValue := sql.Null[gofrsuuid.UUID]{V: purchaseID, Valid: true}
+	if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{SourceDocumentID: &documentID, SourceReference: &sourceReference, HouseholdID: &householdID, PurchaseID: &purchaseIDValue, CreatedBy: &actorID}).Exec(ctx, executor); err != nil {
 		return err
 	}
 	if sourceReference != "" {

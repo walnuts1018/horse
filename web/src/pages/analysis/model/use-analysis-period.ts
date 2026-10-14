@@ -13,13 +13,20 @@ const monthRange = (current: string, count: number) => {
   });
 };
 
+export function exclusiveMonthEnd(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const endYear = year + Math.floor(monthNumber / 12);
+  const endMonth = (monthNumber % 12) + 1;
+  return `${endYear}-${String(endMonth).padStart(2, "0")}-01T00:00:00+09:00`;
+}
+
 export function useAnalysisPeriod() {
+  const [currentMonth] = useState(() => japanMonth(new Date()));
   const [periodLength, setPeriodLength] = useState(6);
   const [annual, setAnnual] = useState(false);
-  const [annualYear, setAnnualYear] = useState(Number(japanMonth(new Date()).slice(0, 4)));
+  const [annualYear, setAnnualYear] = useState(Number(currentMonth.slice(0, 4)));
   const [dimension, setDimension] = useState<Dimension>("category");
   const [itemMetric, setItemMetric] = useState<ItemMetric>("amount");
-  const currentMonth = japanMonth(new Date());
   const months = annual
     ? monthRange(`${annualYear}-12`, 12)
     : monthRange(currentMonth, periodLength);

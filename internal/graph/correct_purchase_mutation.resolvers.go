@@ -22,3 +22,15 @@ func (r *mutationResolver) CorrectPurchase(ctx context.Context, input model.Corr
 	}
 	return &model.CorrectPurchaseSuccess{Result: result}, nil
 }
+
+// CorrectPurchaseFromStatement is the resolver for the correctPurchaseFromStatement field.
+func (r *mutationResolver) CorrectPurchaseFromStatement(ctx context.Context, input model.CorrectPurchaseFromStatementInput) (model.CorrectPurchaseResult, error) {
+	result, err := r.correctPurchaseFromStatement(ctx, input)
+	if err != nil {
+		if result, ok := mutationErrorResult(err); ok {
+			return &model.CorrectPurchaseUserError{Code: result.Code, Message: result.Message}, nil
+		}
+		return nil, err
+	}
+	return &model.CorrectPurchaseSuccess{Result: result}, nil
+}

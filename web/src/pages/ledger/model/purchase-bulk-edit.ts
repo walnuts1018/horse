@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import type { Purchase } from "../../../shared/api";
 
@@ -6,6 +6,7 @@ import {
   useBulkUpdatePurchasesMutation,
   type BulkUpdatePurchasesMutation$variables,
 } from "../../../entities/purchase";
+import { errorMessage } from "../../../shared/lib";
 
 type PurchaseBulkPatch = BulkUpdatePurchasesMutation$variables["input"]["targets"][number]["patch"];
 
@@ -14,6 +15,40 @@ type PurchaseBulkUndo = Array<{
   baseRevision: number;
   patch: PurchaseBulkPatch;
 }>;
+
+// 選択状態はスコープ(世帯×フィルタ)ごとに持ち、スコープが一致しない値は導出値として破棄する
+type PurchaseSelectionState = {
+  scope: string;
+  ids: Set<string>;
+  anchor: string | null;
+};
+
+// フォーム状態は世帯ごとに持ち、世帯が一致しない値は導出値として初期値に戻す
+type PurchaseBulkFormState = {
+  householdId: string;
+  merchantActive: boolean;
+  merchant: string;
+  occurredAtActive: boolean;
+  occurredAt: string;
+  paymentAccountId: string;
+  undo: PurchaseBulkUndo | null;
+  error: string;
+};
+
+const EMPTY_SELECTION_IDS = new Set<string>();
+
+function createBulkForm(householdId: string): PurchaseBulkFormState {
+  return {
+    householdId,
+    merchantActive: false,
+    merchant: "",
+    occurredAtActive: false,
+    occurredAt: "",
+    paymentAccountId: "",
+    undo: null,
+    error: "",
+  };
+}
 
 export function usePurchaseBulkEdit({
   householdId,
@@ -27,34 +62,32 @@ export function usePurchaseBulkEdit({
   refresh: () => void | Promise<void>;
 }) {
   const { mutate: mutateBulkUpdatePurchases } = useBulkUpdatePurchasesMutation();
-  const [selectedPurchases, setSelectedPurchases] = useState<Set<string>>(() => new Set());
-  const selectionAnchor = useRef<string | null>(null);
-  const [merchantActive, setMerchantActive] = useState(false);
-  const [merchant, setMerchant] = useState("");
-  const [occurredAtActive, setOccurredAtActive] = useState(false);
-  const [occurredAt, setOccurredAt] = useState("");
-  const [paymentAccountId, setPaymentAccountId] = useState("");
+  const selectionScope = `${householdId}\u0000${selectionKey}`;
+  const [selection, setSelection] = useState<PurchaseSelectionState>(() => ({
+    scope: selectionScope,
+    ids: new Set<string>(),
+    anchor: null,
+  }));
+  const currentSelection: PurchaseSelectionState =
+    selection.scope === selectionScope
+      ? selection
+      : { scope: selectionScope, ids: EMPTY_SELECTION_IDS, anchor: null };
+  const selectedPurchases = currentSelection.ids;
+  const [form, setForm] = useState<PurchaseBulkFormState>(() => createBulkForm(householdId));
+  const currentForm: PurchaseBulkFormState =
+    form.householdId === householdId ? form : createBulkForm(householdId);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  const [undo, setUndo] = useState<PurchaseBulkUndo | null>(null);
 
-  useEffect(() => {
-    setSelectedPurchases(new Set());
-    selectionAnchor.current = null;
-  }, [selectionKey]);
-  useEffect(() => {
-    setUndo(null);
-    setError("");
-    setMerchantActive(false);
-    setMerchant("");
-    setOccurredAtActive(false);
-    setOccurredAt("");
-    setPaymentAccountId("");
-  }, [householdId]);
+  const patchForm = (patch: Partial<PurchaseBulkFormState>) => {
+    setForm((current) => ({
+      ...(current.householdId === householdId ? current : createBulkForm(householdId)),
+      ...patch,
+    }));
+  };
 
   const selectPurchase = (visibleIds: string[], id: string, shiftKey: boolean) => {
     const anchorIndex =
-      shiftKey && selectionAnchor.current ? visibleIds.indexOf(selectionAnchor.current) : -1;
+      shiftKey && currentSelection.anchor ? visibleIds.indexOf(currentSelection.anchor) : -1;
     const targetIndex = visibleIds.indexOf(id);
     const range =
       anchorIndex >= 0 && targetIndex >= 0
@@ -65,24 +98,28 @@ export function usePurchaseBulkEdit({
         : null;
     const additions = range?.filter((targetId) => !selectedPurchases.has(targetId)) ?? [];
     if (selectedPurchases.size + additions.length > 100) {
-      setError("一括変更は100件までです");
+      patchForm({ error: "一括変更は100件までです" });
       return;
     }
     const next = new Set(selectedPurchases);
     if (range) range.forEach((targetId) => next.add(targetId));
     else if (next.has(id)) next.delete(id);
     else next.add(id);
-    if (!shiftKey) selectionAnchor.current = id;
-    setError("");
-    setSelectedPurchases(next);
+    setSelection({
+      scope: selectionScope,
+      ids: next,
+      anchor: shiftKey ? currentSelection.anchor : id,
+    });
+    patchForm({ error: "" });
   };
 
   const clearSelection = () => {
-    setSelectedPurchases(new Set());
-    selectionAnchor.current = null;
+    setSelection({ scope: selectionScope, ids: new Set<string>(), anchor: null });
   };
 
   const apply = async () => {
+    const { merchantActive, merchant, occurredAtActive, occurredAt, paymentAccountId } =
+      currentForm;
     const targets = purchases.filter((purchase) => selectedPurchases.has(purchase.id));
     const changedFields = [
       ...(merchantActive ? ["merchant"] : []),
@@ -92,8 +129,7 @@ export function usePurchaseBulkEdit({
     if (!targets.length || !changedFields.length) return;
     const occurredAtValue = occurredAtActive ? new Date(occurredAt).toISOString() : undefined;
     setPending(true);
-    setError("");
-    setUndo(null);
+    patchForm({ error: "", undo: null });
     const undoEntries: PurchaseBulkUndo = [];
     try {
       const result = await mutateBulkUpdatePurchases({
@@ -132,17 +168,11 @@ export function usePurchaseBulkEdit({
           patch,
         });
       }
-      setUndo(undoEntries.length ? undoEntries : null);
+      setForm({ ...createBulkForm(householdId), undo: undoEntries.length ? undoEntries : null });
       clearSelection();
-      setMerchantActive(false);
-      setMerchant("");
-      setOccurredAtActive(false);
-      setOccurredAt("");
-      setPaymentAccountId("");
       await refresh();
     } catch (reason) {
-      setError((reason as Error).message);
-      setUndo(undoEntries.length ? undoEntries : null);
+      patchForm({ error: errorMessage(reason), undo: undoEntries.length ? undoEntries : null });
       clearSelection();
       await refresh();
     } finally {
@@ -151,23 +181,24 @@ export function usePurchaseBulkEdit({
   };
 
   const undoChanges = async () => {
-    if (!undo?.length) return;
+    const undoEntries = currentForm.undo;
+    if (!undoEntries?.length) return;
     setPending(true);
-    setError("");
+    patchForm({ error: "" });
     try {
       await mutateBulkUpdatePurchases({
         input: {
-          targets: undo.map((entry) => ({
+          targets: undoEntries.map((entry) => ({
             purchaseId: entry.purchaseId,
             baseRevision: entry.baseRevision,
             patch: entry.patch,
           })),
         },
       });
-      setUndo(null);
+      patchForm({ undo: null });
       await refresh();
     } catch (reason) {
-      setError((reason as Error).message);
+      patchForm({ error: errorMessage(reason) });
       await refresh();
     } finally {
       setPending(false);
@@ -179,19 +210,19 @@ export function usePurchaseBulkEdit({
     selectedCount: selectedPurchases.size,
     selectPurchase,
     clearSelection,
-    merchantActive,
-    setMerchantActive,
-    merchant,
-    setMerchant,
-    occurredAtActive,
-    setOccurredAtActive,
-    occurredAt,
-    setOccurredAt,
-    paymentAccountId,
-    setPaymentAccountId,
+    merchantActive: currentForm.merchantActive,
+    setMerchantActive: (value: boolean) => patchForm({ merchantActive: value }),
+    merchant: currentForm.merchant,
+    setMerchant: (value: string) => patchForm({ merchant: value }),
+    occurredAtActive: currentForm.occurredAtActive,
+    setOccurredAtActive: (value: boolean) => patchForm({ occurredAtActive: value }),
+    occurredAt: currentForm.occurredAt,
+    setOccurredAt: (value: string) => patchForm({ occurredAt: value }),
+    paymentAccountId: currentForm.paymentAccountId,
+    setPaymentAccountId: (value: string) => patchForm({ paymentAccountId: value }),
     pending,
-    error,
-    undo,
+    error: currentForm.error,
+    undo: currentForm.undo,
     apply,
     undoChanges,
   };

@@ -16,6 +16,8 @@ export function EvidenceSourcePreview({
   cropRegion,
   cropPending,
   pending,
+  selectedStatementReference,
+  onSelectStatementRegion,
   onCropRegionChange,
   onSelectCropRegion,
   onDirty,
@@ -26,6 +28,8 @@ export function EvidenceSourcePreview({
   cropRegion: Region | null;
   cropPending: boolean;
   pending: boolean;
+  selectedStatementReference: string;
+  onSelectStatementRegion: (reference: string, page: number) => void;
   onCropRegionChange: Dispatch<SetStateAction<Region | null>>;
   onSelectCropRegion: (region: Region) => void;
   onDirty: () => void;
@@ -88,7 +92,7 @@ export function EvidenceSourcePreview({
                 {document.result?.receipt?.items?.map((item, index) =>
                   item.region?.page === page ? (
                     <button
-                      key={`item-${index}`}
+                      key={item.key}
                       type="button"
                       className={`${styles.evidenceRegion} ${Number(receiptEvidenceIndex) === index ? styles.evidenceRegionSelected : ""}`}
                       style={{
@@ -102,10 +106,10 @@ export function EvidenceSourcePreview({
                     />
                   ) : null,
                 )}
-                {document.result?.ocrLines?.map((line, index) =>
+                {document.result?.ocrLines?.map((line) =>
                   line.region?.page === page ? (
                     <button
-                      key={`line-${index}`}
+                      key={line.key}
                       type="button"
                       className={`${styles.evidenceRegion} ${styles.evidenceRegionOcr}`}
                       style={{
@@ -116,6 +120,22 @@ export function EvidenceSourcePreview({
                     />
                   ) : null,
                 )}
+                {document.result?.statements?.map((entry) => {
+                  const reference = entry.sourceReference || `row:${entry.row}`;
+                  return entry.region?.page === page ? (
+                    <button
+                      key={reference}
+                      type="button"
+                      className={`${styles.evidenceRegion} ${selectedStatementReference === reference ? styles.evidenceRegionSelected : styles.evidenceRegionOcr}`}
+                      style={{
+                        clipPath: `polygon(${regionPolygon(entry.region, preview.transform)})`,
+                      }}
+                      aria-label={`${entry.merchant}の明細位置`}
+                      aria-pressed={selectedStatementReference === reference}
+                      onClick={() => onSelectStatementRegion(reference, entry.region!.page)}
+                    />
+                  ) : null;
+                })}
               </div>
             )}
           </>
@@ -132,10 +152,10 @@ export function EvidenceSourcePreview({
             <span>{cropRegion ? `ページ ${cropRegion.page + 1}` : "範囲未選択"}</span>
           </div>
           <div className={styles.evidenceSourceItems}>
-            {document.result?.receipt?.items?.map((item, index) => (
+            {document.result.receipt?.items?.map((item, index) => (
               <button
                 type="button"
-                key={index}
+                key={item.key}
                 className={`text-button ${Number(receiptEvidenceIndex) === index ? styles.evidenceItemSelected : ""}`}
                 aria-pressed={Number(receiptEvidenceIndex) === index}
                 disabled={!item.region}
@@ -144,20 +164,20 @@ export function EvidenceSourcePreview({
                   if (item.region) onSelectCropRegion(item.region);
                 }}
               >
-                {item.name} · {yen(item.grossAmount ?? item.printedAmount)}
+                {item.name} · {yen(item.grossAmount)}
               </button>
             ))}
           </div>
-          {!!document.result?.ocrLines?.length && (
+          {!!document.result.ocrLines?.length && (
             <div className={styles.evidenceOcrLines}>
               {document.result.ocrLines
                 .filter((line) => line.region)
                 .slice(0, 80)
-                .map((line, index) => (
+                .map((line) => (
                   <button
                     type="button"
                     className="text-button"
-                    key={`${line.text}-${index}`}
+                    key={line.key}
                     onClick={() => onSelectCropRegion(line.region!)}
                   >
                     {line.text} · ページ {line.region!.page + 1}

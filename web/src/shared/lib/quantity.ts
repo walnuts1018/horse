@@ -26,9 +26,11 @@ export function parseQuantity(value: string, unitValue: string): Quantity | null
   } else {
     const decimal = /^(\d+)(?:\.(\d+))?$/.exec(raw);
     if (!decimal) throw new Error("数量は整数、小数、分数で入力してください");
-    const places = decimal[2]?.length ?? 0;
+    // 小数部グループは小数がないとundefinedになる
+    const decimalPart = decimal.at(2);
+    const places = decimalPart?.length ?? 0;
     denominator = 10n ** BigInt(places);
-    numerator = BigInt(decimal[1]) * denominator + BigInt(decimal[2] ?? "0");
+    numerator = BigInt(decimal[1]) * denominator + BigInt(decimalPart ?? "0");
   }
   if (numerator <= 0n || denominator <= 0n) throw new Error("数量は0より大きい値にしてください");
   const divisor = gcd(numerator, denominator);

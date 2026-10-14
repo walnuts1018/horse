@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "react";
 
+import { errorMessage } from "../../../shared/lib";
 import {
   createHouseholdInvitation,
   readHouseholdInvitations,
@@ -32,6 +33,11 @@ export function ManageHouseholdInvitations({
   const [invitationLink, setInvitationLink] = useState("");
   const [issuedInvitationId, setIssuedInvitationId] = useState("");
   const [expiresInDays, setExpiresInDays] = useState("7");
+  const onNoticeRef = useRef(onNotice);
+
+  useEffect(() => {
+    onNoticeRef.current = onNotice;
+  }, [onNotice]);
 
   const refreshInvitations = useCallback(async () => {
     const page = await readHouseholdInvitations(householdId);
@@ -49,7 +55,7 @@ export function ManageHouseholdInvitations({
       setInvitationsCursor(page.endCursor);
       setInvitationsHasNextPage(page.hasNextPage);
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setInvitationsPageLoading(false);
     }
@@ -58,10 +64,10 @@ export function ManageHouseholdInvitations({
   useEffect(() => {
     setInvitationLink("");
     setIssuedInvitationId("");
-    void refreshInvitations().catch((reason) => onNotice((reason as Error).message, "error"));
-  }, [householdId, onNotice, refreshInvitations]);
+    void refreshInvitations().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+  }, [refreshInvitations]);
 
-  const issueInvitation = async (event: FormEvent) => {
+  const issueInvitation = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     onPendingChange(true);
     try {
@@ -73,7 +79,7 @@ export function ManageHouseholdInvitations({
       await refreshInvitations();
       onNotice("招待を発行しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
     } finally {
       onPendingChange(false);
     }
@@ -90,7 +96,7 @@ export function ManageHouseholdInvitations({
       await refreshInvitations();
       onNotice("招待を失効しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
     } finally {
       onPendingChange(false);
     }
@@ -124,7 +130,7 @@ export function ManageHouseholdInvitations({
             <option value="30">30日</option>
           </select>
         </label>
-        <button className="button button-primary" disabled={disabled}>
+        <button type="submit" className="button button-primary" disabled={disabled}>
           <Plus size={15} />
           招待リンクを発行
         </button>
@@ -166,6 +172,7 @@ export function ManageHouseholdInvitations({
             </div>
             {invitation.__typename === "PendingHouseholdInvitation" && (
               <button
+                type="button"
                 className="text-button"
                 disabled={disabled}
                 onClick={() => void revokeInvitation(invitation.id)}

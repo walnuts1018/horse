@@ -1,8 +1,10 @@
-import type { FormEvent } from "react";
+import type { SubmitEvent } from "react";
 
 import { Check } from "lucide-react";
 
 import type { Household } from "../../../shared/api";
+
+import { isOneOf } from "../../../shared/lib";
 
 export function SettlementTransferForm({
   household,
@@ -36,7 +38,7 @@ export function SettlementTransferForm({
   transferAmount: string;
   transferDescription: string;
   invalidTransferAmount: boolean;
-  onSubmit: (event: FormEvent) => void;
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
   onKindChange: (kind: "ADVANCE" | "LOAN" | "GIFT") => void;
   onFromChange: (memberId: string) => void;
   onToChange: (memberId: string) => void;
@@ -52,7 +54,11 @@ export function SettlementTransferForm({
         <select
           value={transferKind}
           disabled={pending || hasPendingTransfer}
-          onChange={(event) => onKindChange(event.target.value as typeof transferKind)}
+          onChange={(event) => {
+            if (isOneOf(event.target.value, ["ADVANCE", "LOAN", "GIFT"] as const)) {
+              onKindChange(event.target.value);
+            }
+          }}
         >
           <option value="ADVANCE">立て替え</option>
           <option value="LOAN">貸し借り</option>
@@ -139,6 +145,7 @@ export function SettlementTransferForm({
       </label>
       <button
         className="button button-primary"
+        type="submit"
         disabled={
           pending ||
           household.members.length < 2 ||

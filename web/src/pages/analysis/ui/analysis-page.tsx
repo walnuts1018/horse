@@ -1,4 +1,5 @@
 import { BarChart3 } from "lucide-react";
+import { useState } from "react";
 
 import type { Household } from "../../../shared/api";
 
@@ -16,6 +17,15 @@ import { RecurringExpensePanel } from "./recurring-expense-panel";
 import "./analysis-page.css";
 
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
+const sorted = <T,>(values: T[], compare: (left: T, right: T) => number): T[] => {
+  const result: T[] = [];
+  for (const value of values) {
+    const index = result.findIndex((current) => compare(value, current) < 0);
+    if (index === -1) result.push(value);
+    else result.splice(index, 0, value);
+  }
+  return result;
+};
 export function AnalysisPage({ household }: { household: Household }) {
   const period = useAnalysisPeriod();
   const {
@@ -66,22 +76,25 @@ export function AnalysisPage({ household }: { household: Household }) {
   const aggregateReady = !aggregateError && !aggregateLoading;
   const data = aggregateReady && usesPurchases ? purchaseDimensions(purchases, household) : null;
   const categories = aggregateReady
-    ? Array.from(
-        spending
-          .reduce((totals, entry) => {
-            const id = entry.categoryId ?? "uncategorized";
-            const current = totals.get(id) ?? {
-              id,
-              name: entry.categoryName ?? "未分類",
-              amount: 0,
-              count: 0,
-            };
-            current.amount += entry.amountYen;
-            totals.set(id, current);
-            return totals;
-          }, new Map<string, AnalyticsRow>())
-          .values(),
-      ).sort((a, b) => b.amount - a.amount)
+    ? sorted(
+        Array.from(
+          spending
+            .reduce((totals, entry) => {
+              const id = entry.categoryId ?? "uncategorized";
+              const current = totals.get(id) ?? {
+                id,
+                name: entry.categoryName ?? "未分類",
+                amount: 0,
+                count: 0,
+              };
+              current.amount += entry.amountYen;
+              totals.set(id, current);
+              return totals;
+            }, new Map<string, AnalyticsRow>())
+            .values(),
+        ),
+        (a, b) => b.amount - a.amount,
+      )
     : [];
   const categorySeries = categories.slice(0, 5).map((category, index) => ({
     id: category.id,
@@ -125,7 +138,7 @@ export function AnalysisPage({ household }: { household: Household }) {
         : data
           ? Array.from(data.rows[dimension].values())
           : [];
-  const rows = selectedRows.sort((a, b) => b.amount - a.amount).slice(0, 8);
+  const rows = sorted(selectedRows, (a, b) => b.amount - a.amount).slice(0, 8);
   const monthly = aggregateReady
     ? months.map((month) => ({
         month,
@@ -164,12 +177,14 @@ export function AnalysisPage({ household }: { household: Household }) {
   const maxCategoryNegative = Math.max(...categoryMonthTotals.map(({ negative }) => negative), 1);
   const peakRow = rows[0];
   const loadError = budgetError || recurringError;
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  const [today] = useState(() =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date()),
+  );
   const activeRecurringExpenses = recurringExpenses.filter(
     (expense) => expense.startsOn <= today && (!expense.endsOn || expense.endsOn >= today),
   );
@@ -197,7 +212,7 @@ export function AnalysisPage({ household }: { household: Household }) {
       {loadError && <InlineError message={loadError} />}
       {aggregateError && <InlineError message={aggregateError} />}
       {usesPurchases && moreError && hasNextPage && (
-        <button className="text-button" onClick={loadMore}>
+        <button className="text-button" type="button" onClick={loadMore}>
           再試行
         </button>
       )}

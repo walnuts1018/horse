@@ -3,6 +3,7 @@ import { useEffect } from "react";
 
 import type { Household } from "../../../shared/api";
 
+import { isOneOf } from "../../../shared/lib/guard";
 import { InlineError } from "../../../shared/ui";
 import { useAccountActivity } from "../model/account-activity";
 
@@ -96,6 +97,7 @@ export function ManageAccountActivity({
           placeholder="入金の摘要"
         />
         <button
+          type="submit"
           className="button button-soft"
           disabled={
             activity.pending || (!activity.pendingIncomeIntent && !activity.incomeAccountId)
@@ -113,9 +115,10 @@ export function ManageAccountActivity({
         <select
           value={activity.movementKind}
           disabled={activity.pending || Boolean(activity.pendingMovementIntent)}
-          onChange={(event) =>
-            activity.setMovementKind(event.target.value as "TRANSFER" | "CARD_BILL_PAYMENT")
-          }
+          onChange={(event) => {
+            if (isOneOf(event.target.value, ["TRANSFER", "CARD_BILL_PAYMENT"]))
+              activity.setMovementKind(event.target.value);
+          }}
         >
           <option value="TRANSFER">口座移動</option>
           <option value="CARD_BILL_PAYMENT">カード請求の支払い</option>
@@ -185,6 +188,7 @@ export function ManageAccountActivity({
           placeholder="摘要"
         />
         <button
+          type="submit"
           className="button button-primary"
           disabled={
             activity.pending ||
@@ -215,6 +219,7 @@ export function ManageAccountActivity({
         {activity.incomePageError && <InlineError message={activity.incomePageError} />}
         {activity.incomeHasNextPage && (
           <button
+            type="button"
             className="button button-soft"
             disabled={activity.incomePageLoading}
             onClick={() => void activity.loadMoreIncomes()}
@@ -237,6 +242,7 @@ export function ManageAccountActivity({
         {activity.movementPageError && <InlineError message={activity.movementPageError} />}
         {activity.movementHasNextPage && (
           <button
+            type="button"
             className="button button-soft"
             disabled={activity.movementPageLoading}
             onClick={() => void activity.loadMoreMovements()}

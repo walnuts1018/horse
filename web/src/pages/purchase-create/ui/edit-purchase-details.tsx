@@ -53,7 +53,9 @@ export function EditPurchaseDetails({
             {Array.from(new Set(history.map((item) => item.merchant).filter(Boolean)))
               .slice(0, 8)
               .map((name) => (
-                <option key={name} value={name} />
+                <option key={name} value={name}>
+                  {name}
+                </option>
               ))}
           </datalist>
         </div>
@@ -105,10 +107,10 @@ export function EditPurchaseDetails({
                 ))}
               </div>
               {copiedPurchase && (
-                <small role="status">
+                <output>
                   {copiedPurchase.merchant || "店名未入力"}
                   の品目と前回価格をコピーしました。価格、日時、決済元を確認してください。
-                </small>
+                </output>
               )}
             </div>
           )}

@@ -11,6 +11,7 @@ type MonthTotal = { month: string; amount: number };
 type CategorySeries = { id: string; name: string; colorIndex: number };
 
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
+type ChartScaleStyle = CSSProperties & { "--chart-scale": number };
 
 export function AnalysisBreakdown({
   dimension,
@@ -95,10 +96,9 @@ export function AnalysisBreakdown({
               .map((segment) => `${segment.name} ${yen(segment.amount)}`)
               .join("、");
             return (
-              <div
+              <figure
                 className="month-column category-month-column"
                 key={row.month}
-                role="img"
                 aria-label={`${row.month}: ${monthlyBreakdown}、合計${yen(row.amount)}`}
               >
                 <b>{yen(row.amount)}</b>
@@ -106,9 +106,7 @@ export function AnalysisBreakdown({
                   <div
                     className="category-positive"
                     style={
-                      {
-                        "--chart-scale": positiveTotal / maxCategoryPositive,
-                      } as CSSProperties
+                      { "--chart-scale": positiveTotal / maxCategoryPositive } as ChartScaleStyle
                     }
                   >
                     {positiveSegments.map((segment) => (
@@ -123,9 +121,7 @@ export function AnalysisBreakdown({
                   <div
                     className="category-negative"
                     style={
-                      {
-                        "--chart-scale": negativeTotal / maxCategoryNegative,
-                      } as CSSProperties
+                      { "--chart-scale": negativeTotal / maxCategoryNegative } as ChartScaleStyle
                     }
                   >
                     {negativeSegments.map((segment) => (
@@ -138,7 +134,7 @@ export function AnalysisBreakdown({
                   </div>
                 </div>
                 <span>{Number(row.month.slice(5))}月</span>
-              </div>
+              </figure>
             );
           })}
         </div>

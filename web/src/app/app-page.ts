@@ -7,7 +7,7 @@ export type AppPage =
   | "imports"
   | "settings";
 
-const appPages = new Set<AppPage>([
+const appPages = new Set<string>([
   "home",
   "ledger",
   "new",
@@ -18,4 +18,4 @@ const appPages = new Set<AppPage>([
 ]);
 
 export const isAppPage = (value: unknown): value is AppPage =>
-  typeof value === "string" && appPages.has(value as AppPage);
+  typeof value === "string" && appPages.has(value);

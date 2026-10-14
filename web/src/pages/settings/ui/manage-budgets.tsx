@@ -1,8 +1,9 @@
 import { Check } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "react";
 
 import { readBudgets } from "../../../entities/budget";
 import { type Budget, type Household } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
 import { archiveBudget, createBudget, updateBudget } from "../api/budget-management";
 
 import styles from "./settings-page.module.css";
@@ -56,10 +57,10 @@ export function ManageBudgets({
   }, [budgetPeriod, householdId]);
 
   useEffect(() => {
-    void refresh().catch((reason) => onNoticeRef.current((reason as Error).message, "error"));
+    void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
   }, [refresh]);
 
-  const saveBudget = async (event: FormEvent) => {
+  const saveBudget = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const amountYen = Number(budgetAmount);
     if (!amountYen || amountYen < 1) return;
@@ -95,7 +96,7 @@ export function ManageBudgets({
       await refresh();
       onNotice("予算を保存しました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
     } finally {
       setPending(false);
       onPendingChange(false);
@@ -122,7 +123,7 @@ export function ManageBudgets({
       await refresh();
       onNotice(budget.archived ? "予算を再表示しました" : "予算を非表示にしました", "success");
     } catch (reason) {
-      onNotice((reason as Error).message, "error");
+      onNotice(errorMessage(reason), "error");
     } finally {
       setPending(false);
       onPendingChange(false);
@@ -159,10 +160,16 @@ export function ManageBudgets({
                 </small>
                 <progress max="100" value={ratio} aria-label={`${budget.name}の予算使用率`} />
               </div>
-              <button className="text-button" disabled={pending} onClick={() => editBudget(budget)}>
+              <button
+                type="button"
+                className="text-button"
+                disabled={pending}
+                onClick={() => editBudget(budget)}
+              >
                 編集
               </button>
               <button
+                type="button"
                 className="text-button"
                 disabled={pending}
                 onClick={() => void toggleBudgetVisibility(budget)}
@@ -206,7 +213,7 @@ export function ManageBudgets({
           placeholder="予算額"
           required
         />
-        <button className="button button-primary" disabled={pending}>
+        <button type="submit" className="button button-primary" disabled={pending}>
           <Check size={15} />
           {editingBudget ? "変更を保存" : "予算を追加"}
         </button>

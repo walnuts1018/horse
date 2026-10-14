@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 
 import type { Purchase } from "../../../shared/api";
 
+import { isOneOf } from "../../../shared/lib";
 import { yen } from "../model/format-yen";
 import {
   formatExactYen,
@@ -9,6 +10,20 @@ import {
   type AnalyticsRow,
   type ItemMetric,
 } from "../model/purchase-analytics";
+
+const format = (value: string) => {
+  const [numerator, denominator] = value.split("/");
+  return denominator ? formatExactYen(numerator, denominator) : yen(Number(value));
+};
+const sortBy = <T,>(values: T[], compare: (left: T, right: T) => number): T[] => {
+  const result: T[] = [];
+  for (const value of values) {
+    const index = result.findIndex((current) => compare(value, current) < 0);
+    if (index === -1) result.push(value);
+    else result.splice(index, 0, value);
+  }
+  return result;
+};
 
 export function ItemPricePanel({
   rows,
@@ -43,7 +58,11 @@ export function ItemPricePanel({
           <select
             aria-label="価格指標"
             value={itemMetric}
-            onChange={(event) => setItemMetric(event.target.value as ItemMetric)}
+            onChange={(event) => {
+              if (isOneOf(event.target.value, ["amount", "effective", "printed"] as const)) {
+                setItemMetric(event.target.value);
+              }
+            }}
           >
             <option value="amount">購入額</option>
             <option value="effective">実効単価</option>
@@ -52,9 +71,10 @@ export function ItemPricePanel({
         </label>
       </div>
       {rows.slice(0, 5).map((row) => {
-        const prices = (data?.monthly.item ?? [])
-          .filter((entry) => entry.id === row.id)
-          .sort((left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt));
+        const prices = sortBy(
+          (data?.monthly.item ?? []).filter((entry) => entry.id === row.id),
+          (left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt),
+        );
         const trend =
           itemMetric === "amount" ? null : itemPriceSeries(purchases, row.id, itemMetric);
         return (
@@ -76,12 +96,6 @@ export function ItemPricePanel({
                 {trend?.series.map((series) => {
                   const first = series.points[0];
                   const last = series.points[series.points.length - 1];
-                  const format = (value: string) => {
-                    const [numerator, denominator] = value.split("/");
-                    return denominator
-                      ? formatExactYen(numerator, denominator)
-                      : yen(Number(value));
-                  };
                   return (
                     <small className="price-change" key={series.label}>
                       {series.label}: {format(first.value)} → {format(last.value)} ·{" "}

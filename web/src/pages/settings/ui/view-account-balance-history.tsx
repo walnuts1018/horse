@@ -1,13 +1,24 @@
-import "./account-balance-history.css";
 import { useEffect, useRef, useState } from "react";
 
+import "./account-balance-history.css";
 import { type AccountBalanceAnalysis, type Household } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 import { readAccountBalanceAnalysis } from "../api/read-account-balance-analysis";
 
 import styles from "./settings-page.module.css";
 
 type Account = Household["accounts"][number];
+
+/** 残高分析の取得条件を一意に表すキーを作る。古い応答を弾くための識別子として使う。 */
+const buildRequestKey = (params: {
+  householdId: string;
+  accountId: string;
+  from: string;
+  to: string;
+  refreshRevision: number;
+}) =>
+  `${params.householdId}|${params.accountId}|${params.from}|${params.to}|${params.refreshRevision}`;
 
 const currentMonth = () =>
   new Intl.DateTimeFormat("en-CA", {
@@ -65,7 +76,7 @@ export function ViewAccountBalanceHistory({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [moreError, setMoreError] = useState("");
-  const generation = useRef(0);
+  const activeRequestKey = useRef<string | null>(null);
   const request = useRef(false);
 
   useEffect(() => {
@@ -74,7 +85,8 @@ export function ViewAccountBalanceHistory({
     }
   }, [accounts, accountId]);
   useEffect(() => {
-    const currentGeneration = ++generation.current;
+    const requestKey = buildRequestKey({ householdId, accountId, from, to, refreshRevision });
+    activeRequestKey.current = requestKey;
     request.current = false;
     if (!accountId) {
       setBalanceHistory(null);
@@ -110,17 +122,14 @@ export function ViewAccountBalanceHistory({
       first: 100,
     })
       .then((result) => {
-        if (generation.current === currentGeneration) setBalanceHistory(result);
+        if (activeRequestKey.current === requestKey) setBalanceHistory(result);
       })
       .catch((reason) => {
-        if (generation.current === currentGeneration) setError((reason as Error).message);
+        if (activeRequestKey.current === requestKey) setError(errorMessage(reason));
       })
       .finally(() => {
-        if (generation.current === currentGeneration) setLoading(false);
+        if (activeRequestKey.current === requestKey) setLoading(false);
       });
-    return () => {
-      if (generation.current === currentGeneration) generation.current++;
-    };
   }, [householdId, accountId, from, to, refreshRevision]);
   const loadMoreBalanceChanges = async () => {
     const after = balanceHistory?.changes.pageInfo.endCursor;
@@ -131,7 +140,8 @@ export function ViewAccountBalanceHistory({
       request.current
     )
       return;
-    const currentGeneration = generation.current;
+    const requestKey = buildRequestKey({ householdId, accountId, from, to, refreshRevision });
+    if (activeRequestKey.current !== requestKey) return;
     request.current = true;
     setLoadingMore(true);
     setMoreError("");
@@ -144,7 +154,7 @@ export function ViewAccountBalanceHistory({
         first: 100,
         after,
       });
-      if (generation.current !== currentGeneration) return;
+      if (activeRequestKey.current !== requestKey) return;
       setBalanceHistory((current) => {
         if (!current || current.accountId !== result.accountId) return current;
         return {
@@ -156,9 +166,9 @@ export function ViewAccountBalanceHistory({
         };
       });
     } catch (reason) {
-      if (generation.current === currentGeneration) setMoreError((reason as Error).message);
+      if (activeRequestKey.current === requestKey) setMoreError(errorMessage(reason));
     } finally {
-      if (generation.current === currentGeneration) {
+      if (activeRequestKey.current === requestKey) {
         request.current = false;
         setLoadingMore(false);
       }

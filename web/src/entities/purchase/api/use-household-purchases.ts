@@ -13,9 +13,10 @@ import type {
   PurchaseAmountTarget,
   PurchasesQuery,
 } from "..";
-import type { Purchase, PurchaseOrigin } from "../../../shared/api";
+import type { Purchase, PurchaseListFragment$data, PurchaseOrigin } from "../../../shared/api";
 
 import { getRelayEnvironment } from "../../../shared/api";
+import { isOneOf } from "../../../shared/lib";
 import { mapPurchaseItem } from "./map-purchase-item";
 import {
   purchaseChangesSubscription,
@@ -40,6 +41,29 @@ type Options = {
   amountTarget?: PurchaseAmountTarget | null;
   loadAll?: boolean;
 };
+
+type RelayPurchaseCorrection =
+  PurchaseListFragment$data["purchases"]["edges"][number]["node"]["corrections"]["edges"][number]["node"];
+
+/** Relayが返す訂正履歴を画面で使うPurchaseCorrectionへ変換する。 */
+function toPurchaseCorrection(correction: RelayPurchaseCorrection) {
+  const fields = {
+    id: correction.id,
+    amountDeltaYen: correction.amountDeltaYen,
+    reason: correction.reason,
+    occurredAt: correction.occurredAt,
+    settlementMonth: correction.settlementMonth,
+    paymentAllocations: correction.paymentAllocations.map((allocation) => ({
+      paymentAccountId: allocation.paymentAccountId,
+      amountYen: allocation.amountYen,
+      account: allocation.account,
+    })),
+  };
+  if (correction.__typename === "PurchaseItemCorrection" && correction.itemId !== undefined) {
+    return { ...fields, __typename: "PurchaseItemCorrection", itemId: correction.itemId } as const;
+  }
+  return { ...fields, __typename: "PurchaseWideCorrection" } as const;
+}
 
 export function useHouseholdPurchases(householdId: string, first = 100, options: Options = {}) {
   const variables = useMemo(
@@ -96,22 +120,23 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   const moreError = moreErrorState?.requestKey === requestKey ? moreErrorState.message : "";
   useEffect(() => {
     activeRequestKey.current = requestKey;
-    setMoreErrorState(null);
   }, [requestKey]);
   const [completeCorrections, setCompleteCorrections] = useState<
-    Record<string, NonNullable<Purchase["corrections"]>>
+    Record<string, NonNullable<Purchase["corrections"]> | undefined>
   >({});
   const purchases: Purchase[] = data.purchases.edges.map(({ node }) => {
     const corrections =
       completeCorrections[`${node.id}:${node.revision}`] ??
-      node.corrections.edges.map(({ node: correction }) => correction);
+      node.corrections.edges.map(({ node: correction }) => toPurchaseCorrection(correction));
     return {
       ...node,
-      origin: node.origin as PurchaseOrigin,
+      origin: isOneOf(node.origin, ["AI", "MANUAL", "UNKNOWN"]) ? node.origin : "UNKNOWN",
+      sourceKinds: [...node.sourceKinds],
+      paymentAllocations: [...node.paymentAllocations],
       status: node.status,
       corrections,
       items: node.items.map(mapPurchaseItem),
-    } as Purchase;
+    };
   });
   useEffect(() => {
     let cancelled = false;
@@ -143,9 +168,7 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
               after = connection.pageInfo.endCursor;
               hasNextPage = connection.pageInfo.hasNextPage;
             }
-            loadedByPurchase[`${node.id}:${node.revision}`] = corrections as NonNullable<
-              Purchase["corrections"]
-            >;
+            loadedByPurchase[`${node.id}:${node.revision}`] = corrections.map(toPurchaseCorrection);
           }),
         );
         if (!cancelled) setCompleteCorrections((current) => ({ ...current, ...loadedByPurchase }));
@@ -191,7 +214,10 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   }, [data.purchases.syncCursor, householdId, refresh]);
 
   useEffect(() => {
-    if (options.loadAll && hasNext && !isLoadingNext && !moreError) loadMore();
+    if (options.loadAll && hasNext && !isLoadingNext && !moreError) {
+      // Relayのページングは同期的にsetStateするため、effect直後ではなくマイクロタスクで起動する
+      queueMicrotask(loadMore);
+    }
   }, [hasNext, isLoadingNext, loadMore, moreError, options.loadAll]);
 
   return {

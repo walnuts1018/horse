@@ -1,7 +1,8 @@
 import { Check, Plus, Wallet } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "react";
 
 import { makeIdempotencyKey, type Household, type LoanBalance } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 import { readLoanBalances } from "../api/read-settlement";
 import { recordSettlementRepayment } from "../api/settlement-mutations";
@@ -18,6 +19,7 @@ const yen = (amount = 0) =>
     currency: "JPY",
     maximumFractionDigits: 0,
   }).format(amount);
+const currentTimestamp = () => new Date().toISOString();
 
 export function SettlementLoans({
   household,
@@ -63,7 +65,8 @@ export function SettlementLoans({
     parsedAmount < 1 ||
     (selectedLoan !== undefined && parsedAmount > selectedLoan.balanceYen);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    const requestedRefreshSignal = refreshSignal;
     const currentRequest = ++request.current;
     setLoading(true);
     setLoadError("");
@@ -73,16 +76,16 @@ export function SettlementLoans({
     setLoadingMore(false);
     try {
       const result = await readLoanBalances(household.id, { first: 50 });
-      if (currentRequest !== request.current) return;
+      if (currentRequest !== request.current || requestedRefreshSignal !== refreshSignal) return;
       setLoans(result.loans);
       setCursor(result.endCursor);
       setHasNextPage(result.hasNextPage);
     } catch (reason) {
-      if (currentRequest === request.current) setLoadError((reason as Error).message);
+      if (currentRequest === request.current) setLoadError(errorMessage(reason));
     } finally {
       if (currentRequest === request.current) setLoading(false);
     }
-  };
+  }, [household.id, refreshSignal]);
 
   const loadMore = async () => {
     if (!cursor || loadingMore) return;
@@ -96,43 +99,48 @@ export function SettlementLoans({
       setCursor(result.endCursor);
       setHasNextPage(result.hasNextPage);
     } catch (reason) {
-      if (currentRequest === request.current) setLoadError((reason as Error).message);
+      if (currentRequest === request.current) setLoadError(errorMessage(reason));
     } finally {
       if (currentRequest === request.current) setLoadingMore(false);
     }
   };
 
   useEffect(() => {
-    void load();
+    //読取の開始時に行う同期setStateはeffect直後ではなくマイクロタスクで走らせる
+    queueMicrotask(() => void load());
     return () => {
       request.current += 1;
     };
-  }, [household.id, refreshSignal]);
+  }, [load]);
 
   useEffect(() => {
-    const intent = getTransferIntent(household.id);
-    if (intent?.input.kind === "REPAYMENT") {
-      setPendingIntent(intent);
-      onPendingIntentChange(true);
-      setSelectedLoanId(intent.input.loanId);
-      setAmount(String(intent.input.amountYen));
-      setDescription(intent.input.description);
-      setPaymentAccountId(intent.input.paymentAccountId ?? "");
-      setDestinationAccountId(intent.input.destinationAccountId ?? "");
-      setHasUnsavedForm(false);
-    } else {
-      setPendingIntent(null);
-      onPendingIntentChange(false);
-      setSelectedLoanId("");
-      setAmount("");
-      setDescription("");
-      setPaymentAccountId("");
-      setDestinationAccountId("");
-    }
+    //保存済み返済意図の復元と同期setStateはeffect直後ではなくマイクロタスクで走らせる
+    queueMicrotask(() => {
+      const intent = getTransferIntent(household.id);
+      if (intent?.input.kind === "REPAYMENT") {
+        setPendingIntent(intent);
+        onPendingIntentChange(true);
+        setSelectedLoanId(intent.input.loanId);
+        setAmount(String(intent.input.amountYen));
+        setDescription(intent.input.description);
+        setPaymentAccountId(intent.input.paymentAccountId ?? "");
+        setDestinationAccountId(intent.input.destinationAccountId ?? "");
+        setHasUnsavedForm(false);
+      } else {
+        setPendingIntent(null);
+        onPendingIntentChange(false);
+        setSelectedLoanId("");
+        setAmount("");
+        setDescription("");
+        setPaymentAccountId("");
+        setDestinationAccountId("");
+      }
+    });
   }, [household.id, onPendingIntentChange]);
 
   useEffect(() => {
-    onUnsavedChanges(hasUnsavedForm);
+    //未保存状態の親への通知はeffect直後ではなくマイクロタスクで行う
+    queueMicrotask(() => onUnsavedChanges(hasUnsavedForm));
     return () => onUnsavedChanges(false);
   }, [hasUnsavedForm, onUnsavedChanges]);
 
@@ -145,7 +153,7 @@ export function SettlementLoans({
     setHasUnsavedForm(true);
   };
 
-  const saveRepayment = async (event: FormEvent) => {
+  const saveRepayment = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
     setPending(true);
@@ -170,7 +178,7 @@ export function SettlementLoans({
                 paymentAccountId: paymentAccountId || null,
                 destinationAccountId: destinationAccountId || null,
                 amountYen: parsedAmount,
-                occurredAt: new Date().toISOString(),
+                occurredAt: currentTimestamp(),
                 description: description.trim() || "貸付の返済",
                 idempotencyKey,
                 kind: "REPAYMENT" as const,
@@ -207,7 +215,7 @@ export function SettlementLoans({
       await load();
       onRecorded();
     } catch (reason) {
-      setError((reason as Error).message);
+      setError(errorMessage(reason));
     } finally {
       setPending(false);
     }
@@ -236,9 +244,7 @@ export function SettlementLoans({
       </div>
       {error && !(selectedLoan || pendingIntent) && <InlineError message={error} />}
       {success && !(selectedLoan || pendingIntent) && (
-        <p className="settlement-confirmation" role="status">
-          {success}
-        </p>
+        <output className="settlement-confirmation">{success}</output>
       )}
       {loadError && (
         <div className="settlement-load-error">
@@ -297,11 +303,7 @@ export function SettlementLoans({
       {(selectedLoan || pendingIntent) && (
         <form className="transfer-form" onSubmit={saveRepayment}>
           {error && <InlineError message={error} />}
-          {success && (
-            <p className="settlement-confirmation" role="status">
-              {success}
-            </p>
-          )}
+          {success && <output className="settlement-confirmation">{success}</output>}
           <label>
             貸付
             <select
@@ -413,6 +415,7 @@ export function SettlementLoans({
           </label>
           <button
             className="button button-primary"
+            type="submit"
             disabled={
               pending ||
               household.members.length < 2 ||

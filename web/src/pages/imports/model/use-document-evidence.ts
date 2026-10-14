@@ -1,14 +1,22 @@
-import {
-  useEffect,
-  useState,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
-} from "react";
+import { useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 
 import type { Region } from "./evidence-geometry";
 import type { EvidencePreviewController } from "./evidence-preview";
 import type { DocumentReview } from "./imports";
+
+import { errorMessage } from "../../../shared/lib/errors";
+import { asRecord } from "./imports";
+
+function isJobStatus(value: unknown): value is { jobId: string; status: string } {
+  const record = asRecord(value);
+  return (
+    record !== undefined && typeof record.jobId === "string" && typeof record.status === "string"
+  );
+}
+
+function toJobStatus(value: unknown): { jobId: string; status: string } {
+  return isJobStatus(value) ? value : { jobId: "", status: "" };
+}
 
 export function useDocumentEvidence({
   document,
@@ -22,17 +30,27 @@ export function useDocumentEvidence({
   document: DocumentReview | undefined;
   preview: EvidencePreviewController;
   setDocuments: Dispatch<SetStateAction<DocumentReview[]>>;
-  editedReceiptDocuments: MutableRefObject<Set<string>>;
+  editedReceiptDocuments: RefObject<Set<string>>;
   refreshDocuments: (silent?: boolean) => Promise<void>;
   markUnsaved: () => void;
   onError: (message: string) => void;
 }) {
-  const [cropRegion, setCropRegion] = useState<Region | null>(null);
+  const [cropRegionState, setCropRegionState] = useState<{
+    documentId: string;
+    region: Region | null;
+  }>({ documentId: "", region: null });
   const [pending, setPending] = useState(false);
 
-  useEffect(() => {
-    setCropRegion(null);
-  }, [document?.id]);
+  const documentId = document?.id ?? "";
+  // 文書が切り替わった直後は前の文書の範囲を選択していない状態として扱う
+  const cropRegion = cropRegionState.documentId === documentId ? cropRegionState.region : null;
+  const setCropRegion: Dispatch<SetStateAction<Region | null>> = (action) => {
+    setCropRegionState((current) => {
+      const previous = current.documentId === documentId ? current.region : null;
+      const region = typeof action === "function" ? action(previous) : action;
+      return { documentId, region };
+    });
+  };
 
   const selectCropRegion = (region: Region) => {
     markUnsaved();
@@ -53,7 +71,7 @@ export function useDocumentEvidence({
       });
       if (!response.ok) throw new Error(`範囲を再抽出できませんでした (${response.status})`);
       editedReceiptDocuments.current.delete(document.id);
-      const accepted = (await response.json()) as { jobId: string; status: string };
+      const accepted = toJobStatus(await response.json());
       setDocuments((current) =>
         current.map((entry) =>
           entry.id === document.id
@@ -64,7 +82,7 @@ export function useDocumentEvidence({
       setCropRegion(null);
       await refreshDocuments(true);
     } catch (reason) {
-      onError((reason as Error).message);
+      onError(errorMessage(reason));
     } finally {
       setPending(false);
     }

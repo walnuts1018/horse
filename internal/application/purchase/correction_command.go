@@ -10,6 +10,8 @@ type CorrectionCommand struct {
 	IdempotencyKey     string
 	Allocations        []Allocation
 	PaymentAllocations []Payment
+	SourceDocumentID   string
+	SourceReference    string
 }
 
 type CorrectionResult struct {

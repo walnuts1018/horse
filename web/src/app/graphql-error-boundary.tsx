@@ -16,6 +16,7 @@ export class GraphQLErrorBoundary extends Component<{ children: ReactNode }, Sta
           <p>データを取得できませんでした</p>
           <button
             className="button button-soft"
+            type="button"
             onClick={() =>
               this.setState((state) => ({ error: null, retryKey: state.retryKey + 1 }))
             }

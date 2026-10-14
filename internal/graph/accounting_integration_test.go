@@ -372,7 +372,7 @@ func TestAccountingFlowUsesScheduleAndActualFundingSeparately(t *testing.T) {
 	}
 	jobID := uuid.NewV7().String()
 	jobUUID, _ := gofrsuuid.FromString(jobID)
-	jobVersion, jobStatus := int32(1), "succeeded"
+	jobVersion, jobStatus := int32(1), extractionJobSucceededStatus
 	verified := ingestion.Verification{
 		Receipt: ingestion.Receipt{Total: 250, Items: []ingestion.Item{
 			{Name: testMilkName, PrintedName: "milk original", PrintedAmount: 150, GrossAmount: 150, Region: &ingestion.Region{Page: 1, Top: 0.1, Left: 0.2, Bottom: 0.3, Right: 0.4}},

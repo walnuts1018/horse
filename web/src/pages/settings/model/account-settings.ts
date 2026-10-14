@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
 
 import {
   isPersonalPool,
@@ -6,6 +6,7 @@ import {
   type Household,
   type SharedPoolSettlementPolicy,
 } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
 import {
   createAccount,
   createPool,
@@ -77,9 +78,9 @@ export function useAccountSettings({
         ]),
       ),
     );
-  }, [household.id, household.pools, household.members]);
+  }, [household.pools, household.members]);
 
-  const addPool = (event: FormEvent) => {
+  const addPool = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPending(true);
     void createPool({ householdId: household.id, name: poolName.trim(), kind: poolKind })
@@ -89,11 +90,11 @@ export function useAccountSettings({
         await onRefresh();
         onNoticeRef.current("設定を保存しました", "success");
       })
-      .catch((reason) => onNoticeRef.current((reason as Error).message, "error"))
+      .catch((reason) => onNoticeRef.current(errorMessage(reason), "error"))
       .finally(() => setPending(false));
   };
 
-  const addAccount = (event: FormEvent) => {
+  const addAccount = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (
       openingBalanceYen !== "" &&
@@ -124,11 +125,11 @@ export function useAccountSettings({
         await onRefreshBalances();
         onNoticeRef.current("口座を追加しました", "success");
       })
-      .catch((reason) => onNoticeRef.current((reason as Error).message, "error"))
+      .catch((reason) => onNoticeRef.current(errorMessage(reason), "error"))
       .finally(() => setPending(false));
   };
 
-  const saveFundingRule = async (event: FormEvent, poolId: string) => {
+  const saveFundingRule = async (event: SubmitEvent<HTMLFormElement>, poolId: string) => {
     event.preventDefault();
     const pool = household.pools.find((item) => item.id === poolId);
     const draft = fundingDrafts[poolId];
@@ -161,7 +162,7 @@ export function useAccountSettings({
       await onRefresh();
       onNoticeRef.current("精算設定を保存しました", "success");
     } catch (reason) {
-      onNoticeRef.current((reason as Error).message, "error");
+      onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setPending(false);
     }

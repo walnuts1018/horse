@@ -28,7 +28,7 @@ function EmptyState({
       {icon}
       <span>{title}</span>
       {actionLink ?? (
-        <button className="text-button" onClick={onClick}>
+        <button className="text-button" type="button" onClick={onClick}>
           {action} <ChevronRight size={15} />
         </button>
       )}

@@ -26,6 +26,7 @@ type preloaders struct {
 	AllocationRule                 allocationRulePreloader
 	Budget                         budgetPreloader
 	Category                       categoryPreloader
+	CorrectionEvidenceLink         correctionEvidenceLinkPreloader
 	CorrectionMemberBurden         correctionMemberBurdenPreloader
 	CorrectionPayment              correctionPaymentPreloader
 	Correction                     correctionPreloader
@@ -79,6 +80,7 @@ func getPreloaders() preloaders {
 		AllocationRule:                 buildAllocationRulePreloader(),
 		Budget:                         buildBudgetPreloader(),
 		Category:                       buildCategoryPreloader(),
+		CorrectionEvidenceLink:         buildCorrectionEvidenceLinkPreloader(),
 		CorrectionMemberBurden:         buildCorrectionMemberBurdenPreloader(),
 		CorrectionPayment:              buildCorrectionPaymentPreloader(),
 		Correction:                     buildCorrectionPreloader(),
@@ -138,6 +140,7 @@ type thenLoaders[Q orm.Loadable] struct {
 	AllocationRule                 allocationRuleThenLoader[Q]
 	Budget                         budgetThenLoader[Q]
 	Category                       categoryThenLoader[Q]
+	CorrectionEvidenceLink         correctionEvidenceLinkThenLoader[Q]
 	CorrectionMemberBurden         correctionMemberBurdenThenLoader[Q]
 	CorrectionPayment              correctionPaymentThenLoader[Q]
 	Correction                     correctionThenLoader[Q]
@@ -191,6 +194,7 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		AllocationRule:                 buildAllocationRuleThenLoader[Q](),
 		Budget:                         buildBudgetThenLoader[Q](),
 		Category:                       buildCategoryThenLoader[Q](),
+		CorrectionEvidenceLink:         buildCorrectionEvidenceLinkThenLoader[Q](),
 		CorrectionMemberBurden:         buildCorrectionMemberBurdenThenLoader[Q](),
 		CorrectionPayment:              buildCorrectionPaymentThenLoader[Q](),
 		Correction:                     buildCorrectionThenLoader[Q](),

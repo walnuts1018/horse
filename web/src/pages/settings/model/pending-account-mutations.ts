@@ -32,23 +32,32 @@ function storageKey(householdId: string, operation: string) {
   return `horse:settings:${operation}:${encodeURIComponent(householdId)}`;
 }
 
-function readIntent<T>(key: string): T | null {
+function readIntent<T>(key: string, isIntent: (value: unknown) => value is T): T | null {
   const value = window.localStorage.getItem(key);
   if (!value) return null;
   try {
-    return JSON.parse(value) as T;
+    const parsed: unknown = JSON.parse(value);
+    if (isIntent(parsed)) return parsed;
+    window.localStorage.removeItem(key);
+    return null;
   } catch {
     window.localStorage.removeItem(key);
     return null;
   }
 }
 
-function writeIntent<T>(key: string, intent: T) {
+function writeIntent(key: string, intent: AccountIncomeIntent | AccountMovementIntent) {
   window.localStorage.setItem(key, JSON.stringify(intent));
 }
 
 export function getAccountIncomeIntent(householdId: string) {
-  return readIntent<AccountIncomeIntent>(storageKey(householdId, "account-income"));
+  return readIntent(storageKey(householdId, "account-income"), isAccountIncomeIntent);
+}
+
+function isAccountIncomeIntent(value: unknown): value is AccountIncomeIntent {
+  return (
+    typeof value === "object" && value !== null && "idempotencyKey" in value && "input" in value
+  );
 }
 
 export function saveAccountIncomeIntent(householdId: string, intent: AccountIncomeIntent) {
@@ -60,7 +69,13 @@ export function clearAccountIncomeIntent(householdId: string) {
 }
 
 export function getAccountMovementIntent(householdId: string) {
-  return readIntent<AccountMovementIntent>(storageKey(householdId, "account-movement"));
+  return readIntent(storageKey(householdId, "account-movement"), isAccountMovementIntent);
+}
+
+function isAccountMovementIntent(value: unknown): value is AccountMovementIntent {
+  return (
+    typeof value === "object" && value !== null && "idempotencyKey" in value && "input" in value
+  );
 }
 
 export function saveAccountMovementIntent(householdId: string, intent: AccountMovementIntent) {

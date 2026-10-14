@@ -120,10 +120,27 @@ export function serializeLedgerSearch(filters: LedgerSearch): Omit<
   const result: Omit<Partial<LedgerSearch>, "observationStateFilter"> & {
     observationStateFilter?: UnmatchedObservationState | "ALL";
   } = {};
-  for (const key of Object.keys(defaultLedgerSearch) as Array<keyof LedgerSearch>) {
-    if (key === "observationStateFilter") continue;
-    if (filters[key] !== defaultLedgerSearch[key]) result[key] = filters[key] as never;
-  }
+  if (filters.recordMode !== defaultLedgerSearch.recordMode) result.recordMode = filters.recordMode;
+  if (filters.viewMode !== defaultLedgerSearch.viewMode) result.viewMode = filters.viewMode;
+  if (filters.search !== defaultLedgerSearch.search) result.search = filters.search;
+  if (filters.fromMonth !== defaultLedgerSearch.fromMonth) result.fromMonth = filters.fromMonth;
+  if (filters.toMonth !== defaultLedgerSearch.toMonth) result.toMonth = filters.toMonth;
+  if (filters.categoryFilter !== defaultLedgerSearch.categoryFilter)
+    result.categoryFilter = filters.categoryFilter;
+  if (filters.poolFilter !== defaultLedgerSearch.poolFilter) result.poolFilter = filters.poolFilter;
+  if (filters.accountFilter !== defaultLedgerSearch.accountFilter)
+    result.accountFilter = filters.accountFilter;
+  if (filters.tagFilter !== defaultLedgerSearch.tagFilter) result.tagFilter = filters.tagFilter;
+  if (filters.originFilter !== defaultLedgerSearch.originFilter)
+    result.originFilter = filters.originFilter;
+  if (filters.evidenceFilter !== defaultLedgerSearch.evidenceFilter)
+    result.evidenceFilter = filters.evidenceFilter;
+  if (filters.observationSourceFilter !== defaultLedgerSearch.observationSourceFilter)
+    result.observationSourceFilter = filters.observationSourceFilter;
+  if (filters.minimumAmount !== defaultLedgerSearch.minimumAmount)
+    result.minimumAmount = filters.minimumAmount;
+  if (filters.maximumAmount !== defaultLedgerSearch.maximumAmount)
+    result.maximumAmount = filters.maximumAmount;
   if (filters.observationStateFilter !== defaultLedgerSearch.observationStateFilter)
     result.observationStateFilter = filters.observationStateFilter || "ALL";
   return result;

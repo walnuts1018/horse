@@ -32,6 +32,6 @@ export function useCreateAndPostPurchase() {
       const result = await submit.mutate({ input: mapCreateAndPostPurchaseInput(input) });
       return { createPurchase: result };
     },
-    [submit.mutate],
+    [submit],
   );
 }

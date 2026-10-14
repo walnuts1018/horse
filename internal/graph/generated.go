@@ -642,44 +642,45 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		AcceptHouseholdInvitation func(childComplexity int, input model.AcceptHouseholdInvitationInput) int
-		ArchiveBudget             func(childComplexity int, input model.ArchiveBudgetInput) int
-		ArchiveRecurringExpense   func(childComplexity int, input model.ArchiveRecurringExpenseInput) int
-		ArchiveTag                func(childComplexity int, input model.ArchiveTagInput) int
-		BulkUpdatePurchaseItems   func(childComplexity int, input model.BulkUpdatePurchaseItemsInput) int
-		BulkUpdatePurchases       func(childComplexity int, input model.BulkUpdatePurchasesInput) int
-		ClosePeriod               func(childComplexity int, input model.ClosePeriodInput) int
-		CorrectPurchase           func(childComplexity int, input model.CorrectPurchaseInput) int
-		CreateAccount             func(childComplexity int, input model.CreateAccountInput) int
-		CreateAndPostPurchase     func(childComplexity int, input model.CreatePurchaseInput) int
-		CreateBudget              func(childComplexity int, input model.CreateBudgetInput) int
-		CreateCategory            func(childComplexity int, input model.CreateCategoryInput) int
-		CreateHousehold           func(childComplexity int, input model.CreateHouseholdInput) int
-		CreateHouseholdInvitation func(childComplexity int, input model.CreateHouseholdInvitationInput) int
-		CreatePool                func(childComplexity int, input model.CreatePoolInput) int
-		CreateProductConcept      func(childComplexity int, input model.CreateProductConceptInput) int
-		CreateProductVariant      func(childComplexity int, input model.CreateProductVariantInput) int
-		CreatePurchase            func(childComplexity int, input model.CreatePurchaseInput) int
-		CreateRecurringExpense    func(childComplexity int, input model.CreateRecurringExpenseInput) int
-		CreateTag                 func(childComplexity int, input model.CreateTagInput) int
-		PostPurchase              func(childComplexity int, input model.PostPurchaseInput) int
-		RecordAccountMovement     func(childComplexity int, input model.RecordAccountMovementInput) int
-		RecordExternalIncome      func(childComplexity int, input model.RecordExternalIncomeInput) int
-		RecordFunding             func(childComplexity int, input model.RecordFundingInput) int
-		RecordRepayment           func(childComplexity int, input model.RecordRepaymentInput) int
-		RecordTransfer            func(childComplexity int, input model.RecordTransferInput) int
-		RevokeHouseholdInvitation func(childComplexity int, input model.RevokeHouseholdInvitationInput) int
-		SetAllocationRule         func(childComplexity int, input model.SetAllocationRuleInput) int
-		SetCategoryArchived       func(childComplexity int, input model.SetCategoryArchivedInput) int
-		SetDefaultAllocation      func(childComplexity int, input model.SetDefaultAllocationInput) int
-		SetFundingSchedule        func(childComplexity int, input model.SetFundingScheduleInput) int
-		SetPoolFundingRule        func(childComplexity int, input model.SetPoolFundingRuleInput) int
-		SetProductAlias           func(childComplexity int, input model.SetProductAliasInput) int
-		UpdateBudget              func(childComplexity int, input model.UpdateBudgetInput) int
-		UpdatePurchase            func(childComplexity int, input model.UpdatePurchaseInput) int
-		UpdatePurchaseItem        func(childComplexity int, input model.UpdatePurchaseItemInput) int
-		UpdateRecurringExpense    func(childComplexity int, input model.UpdateRecurringExpenseInput) int
-		UpdateTag                 func(childComplexity int, input model.UpdateTagInput) int
+		AcceptHouseholdInvitation    func(childComplexity int, input model.AcceptHouseholdInvitationInput) int
+		ArchiveBudget                func(childComplexity int, input model.ArchiveBudgetInput) int
+		ArchiveRecurringExpense      func(childComplexity int, input model.ArchiveRecurringExpenseInput) int
+		ArchiveTag                   func(childComplexity int, input model.ArchiveTagInput) int
+		BulkUpdatePurchaseItems      func(childComplexity int, input model.BulkUpdatePurchaseItemsInput) int
+		BulkUpdatePurchases          func(childComplexity int, input model.BulkUpdatePurchasesInput) int
+		ClosePeriod                  func(childComplexity int, input model.ClosePeriodInput) int
+		CorrectPurchase              func(childComplexity int, input model.CorrectPurchaseInput) int
+		CorrectPurchaseFromStatement func(childComplexity int, input model.CorrectPurchaseFromStatementInput) int
+		CreateAccount                func(childComplexity int, input model.CreateAccountInput) int
+		CreateAndPostPurchase        func(childComplexity int, input model.CreatePurchaseInput) int
+		CreateBudget                 func(childComplexity int, input model.CreateBudgetInput) int
+		CreateCategory               func(childComplexity int, input model.CreateCategoryInput) int
+		CreateHousehold              func(childComplexity int, input model.CreateHouseholdInput) int
+		CreateHouseholdInvitation    func(childComplexity int, input model.CreateHouseholdInvitationInput) int
+		CreatePool                   func(childComplexity int, input model.CreatePoolInput) int
+		CreateProductConcept         func(childComplexity int, input model.CreateProductConceptInput) int
+		CreateProductVariant         func(childComplexity int, input model.CreateProductVariantInput) int
+		CreatePurchase               func(childComplexity int, input model.CreatePurchaseInput) int
+		CreateRecurringExpense       func(childComplexity int, input model.CreateRecurringExpenseInput) int
+		CreateTag                    func(childComplexity int, input model.CreateTagInput) int
+		PostPurchase                 func(childComplexity int, input model.PostPurchaseInput) int
+		RecordAccountMovement        func(childComplexity int, input model.RecordAccountMovementInput) int
+		RecordExternalIncome         func(childComplexity int, input model.RecordExternalIncomeInput) int
+		RecordFunding                func(childComplexity int, input model.RecordFundingInput) int
+		RecordRepayment              func(childComplexity int, input model.RecordRepaymentInput) int
+		RecordTransfer               func(childComplexity int, input model.RecordTransferInput) int
+		RevokeHouseholdInvitation    func(childComplexity int, input model.RevokeHouseholdInvitationInput) int
+		SetAllocationRule            func(childComplexity int, input model.SetAllocationRuleInput) int
+		SetCategoryArchived          func(childComplexity int, input model.SetCategoryArchivedInput) int
+		SetDefaultAllocation         func(childComplexity int, input model.SetDefaultAllocationInput) int
+		SetFundingSchedule           func(childComplexity int, input model.SetFundingScheduleInput) int
+		SetPoolFundingRule           func(childComplexity int, input model.SetPoolFundingRuleInput) int
+		SetProductAlias              func(childComplexity int, input model.SetProductAliasInput) int
+		UpdateBudget                 func(childComplexity int, input model.UpdateBudgetInput) int
+		UpdatePurchase               func(childComplexity int, input model.UpdatePurchaseInput) int
+		UpdatePurchaseItem           func(childComplexity int, input model.UpdatePurchaseItemInput) int
+		UpdateRecurringExpense       func(childComplexity int, input model.UpdateRecurringExpenseInput) int
+		UpdateTag                    func(childComplexity int, input model.UpdateTagInput) int
 	}
 
 	OpenSettlement struct {
@@ -1339,6 +1340,7 @@ type MutationResolver interface {
 	BulkUpdatePurchases(ctx context.Context, input model.BulkUpdatePurchasesInput) (model.BulkUpdatePurchasesResult, error)
 	ClosePeriod(ctx context.Context, input model.ClosePeriodInput) (model.ClosePeriodResult, error)
 	CorrectPurchase(ctx context.Context, input model.CorrectPurchaseInput) (model.CorrectPurchaseResult, error)
+	CorrectPurchaseFromStatement(ctx context.Context, input model.CorrectPurchaseFromStatementInput) (model.CorrectPurchaseResult, error)
 	CreateAccount(ctx context.Context, input model.CreateAccountInput) (model.CreateAccountResult, error)
 	CreateAndPostPurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreateAndPostPurchaseResult, error)
 	CreateBudget(ctx context.Context, input model.CreateBudgetInput) (model.CreateBudgetResult, error)
@@ -3397,6 +3399,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.CorrectPurchase(childComplexity, args["input"].(model.CorrectPurchaseInput)), true
+	case "Mutation.correctPurchaseFromStatement":
+		if e.ComplexityRoot.Mutation.CorrectPurchaseFromStatement == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_correctPurchaseFromStatement_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.CorrectPurchaseFromStatement(childComplexity, args["input"].(model.CorrectPurchaseFromStatementInput)), true
 	case "Mutation.createAccount":
 		if e.ComplexityRoot.Mutation.CreateAccount == nil {
 			break
@@ -5766,6 +5779,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputBulkUpdatePurchasesInput,
 		ec.unmarshalInputClosePeriodInput,
 		ec.unmarshalInputCorrectPurchaseAllocationInput,
+		ec.unmarshalInputCorrectPurchaseFromStatementInput,
 		ec.unmarshalInputCorrectPurchaseInput,
 		ec.unmarshalInputCorrectPurchasePaymentInput,
 		ec.unmarshalInputCorrectPurchaseTargetInput,
@@ -5913,14 +5927,18 @@ func newExecutionContext(
 
 var sources = []*ast.Source{
 	{Name: "../../graphql/accept_household_invitation_mutation.graphql", Input: `extend type Mutation {
-  acceptHouseholdInvitation(input: AcceptHouseholdInvitationInput!): AcceptHouseholdInvitationResult!
+  acceptHouseholdInvitation(
+    input: AcceptHouseholdInvitationInput!
+  ): AcceptHouseholdInvitationResult!
 }
 
 input AcceptHouseholdInvitationInput {
   token: String!
 }
 
-union AcceptHouseholdInvitationResult = AcceptHouseholdInvitationSuccess | AcceptHouseholdInvitationUserError
+union AcceptHouseholdInvitationResult =
+  | AcceptHouseholdInvitationSuccess
+  | AcceptHouseholdInvitationUserError
 
 type AcceptHouseholdInvitationSuccess {
   result: Household!
@@ -5984,7 +6002,20 @@ type AccountBalanceChangeConnection {
   totalCount: Int!
 }
 
-union AccountBalanceSource = AccountOpeningBalance | Purchase | PurchaseWideCorrection | PurchaseItemCorrection | CorrectionLedgerEntry | FundingLedgerEntry | PurchaseLedgerEntry | AdvanceTransferLedgerEntry | LoanTransferLedgerEntry | RepaymentTransferLedgerEntry | GiftTransferLedgerEntry | AccountMovement | AccountIncome
+union AccountBalanceSource =
+  | AccountOpeningBalance
+  | Purchase
+  | PurchaseWideCorrection
+  | PurchaseItemCorrection
+  | CorrectionLedgerEntry
+  | FundingLedgerEntry
+  | PurchaseLedgerEntry
+  | AdvanceTransferLedgerEntry
+  | LoanTransferLedgerEntry
+  | RepaymentTransferLedgerEntry
+  | GiftTransferLedgerEntry
+  | AccountMovement
+  | AccountIncome
 
 type AccountOpeningBalance implements Node {
   id: ID!
@@ -5992,7 +6023,14 @@ type AccountOpeningBalance implements Node {
 }
 
 extend type Query {
-  accountBalanceAnalysis(householdId: ID! @nodeID(of: "Household"), accountId: ID! @nodeID(of: "Account"), from: YearMonth!, to: YearMonth!, first: Int, after: String): AccountBalanceAnalysis!
+  accountBalanceAnalysis(
+    householdId: ID! @nodeID(of: "Household")
+    accountId: ID! @nodeID(of: "Account")
+    from: YearMonth!
+    to: YearMonth!
+    first: Int
+    after: String
+  ): AccountBalanceAnalysis!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/account_income.graphql", Input: `type AccountIncome implements Node {
@@ -6018,7 +6056,13 @@ type AccountIncomeConnection {
 }
 
 extend type Query {
-  accountIncomes(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AccountIncomeConnection!
+  accountIncomes(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): AccountIncomeConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/account_movement.graphql", Input: `type AccountMovement implements Node {
@@ -6053,7 +6097,13 @@ enum AccountMovementKind {
 }
 
 extend type Query {
-  accountMovements(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AccountMovementConnection!
+  accountMovements(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): AccountMovementConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/allocation.graphql", Input: `type Allocation {
@@ -6090,7 +6140,13 @@ type AllocationRuleConnection {
 }
 
 extend type Query {
-  allocationRules(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): AllocationRuleConnection!
+  allocationRules(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): AllocationRuleConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/archive_budget_mutation.graphql", Input: `extend type Mutation {
@@ -6124,7 +6180,9 @@ input ArchiveRecurringExpenseInput {
   archived: Boolean!
 }
 
-union ArchiveRecurringExpenseResult = ArchiveRecurringExpenseSuccess | ArchiveRecurringExpenseUserError
+union ArchiveRecurringExpenseResult =
+  | ArchiveRecurringExpenseSuccess
+  | ArchiveRecurringExpenseUserError
 
 type ArchiveRecurringExpenseSuccess {
   result: RecurringExpense!
@@ -6182,14 +6240,23 @@ type BudgetConnection {
 }
 
 extend type Query {
-  budgets(householdId: ID! @nodeID(of: "Household"), period: YearMonth!, after: String, before: String, first: Int, last: Int): BudgetConnection!
+  budgets(
+    householdId: ID! @nodeID(of: "Household")
+    period: YearMonth!
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): BudgetConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/bulk_update_purchase_items_mutation.graphql", Input: `extend type Mutation {
   bulkUpdatePurchaseItems(input: BulkUpdatePurchaseItemsInput!): BulkUpdatePurchaseItemsResult!
 }
 
-union BulkUpdatePurchaseItemsResult = BulkUpdatePurchaseItemsSuccess | BulkUpdatePurchaseItemsUserError
+union BulkUpdatePurchaseItemsResult =
+  | BulkUpdatePurchaseItemsSuccess
+  | BulkUpdatePurchaseItemsUserError
 
 type BulkUpdatePurchaseItemsSuccess {
   items: [PurchaseItem!]!
@@ -6288,6 +6355,16 @@ type ClosePeriodUserError implements MutationError {
 `, BuiltIn: false},
 	{Name: "../../graphql/correct_purchase_mutation.graphql", Input: `extend type Mutation {
   correctPurchase(input: CorrectPurchaseInput!): CorrectPurchaseResult!
+  correctPurchaseFromStatement(input: CorrectPurchaseFromStatementInput!): CorrectPurchaseResult!
+}
+
+input CorrectPurchaseFromStatementInput {
+  householdId: ID! @nodeID(of: "Household")
+  sourceDocumentId: ID!
+  sourceReference: String!
+  target: CorrectPurchaseTargetInput!
+  reason: String!
+  idempotencyKey: String!
 }
 
 union CorrectPurchaseResult = CorrectPurchaseSuccess | CorrectPurchaseUserError
@@ -6434,10 +6511,14 @@ type CreateCategoryUserError implements MutationError {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/create_household_invitation_mutation.graphql", Input: `extend type Mutation {
-  createHouseholdInvitation(input: CreateHouseholdInvitationInput!): CreateHouseholdInvitationResult!
+  createHouseholdInvitation(
+    input: CreateHouseholdInvitationInput!
+  ): CreateHouseholdInvitationResult!
 }
 
-union CreateHouseholdInvitationResult = CreateHouseholdInvitationSuccess | CreateHouseholdInvitationUserError
+union CreateHouseholdInvitationResult =
+  | CreateHouseholdInvitationSuccess
+  | CreateHouseholdInvitationUserError
 
 type CreatedHouseholdInvitation {
   invitation: HouseholdInvitation!
@@ -6692,7 +6773,14 @@ type FundingScheduleConnection {
 }
 
 extend type Query {
-  fundingSchedules(householdId: ID! @nodeID(of: "Household"), active: Boolean, after: String, before: String, first: Int, last: Int): FundingScheduleConnection!
+  fundingSchedules(
+    householdId: ID! @nodeID(of: "Household")
+    active: Boolean
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): FundingScheduleConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/home_summary.graphql", Input: `type HomeDailySpending {
@@ -6776,7 +6864,13 @@ type HouseholdInvitationConnection {
 }
 
 extend type Query {
-  householdInvitations(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): HouseholdInvitationConnection!
+  householdInvitations(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): HouseholdInvitationConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/ledger_entry.graphql", Input: `interface LedgerEntry implements Node {
@@ -6800,7 +6894,13 @@ type LedgerConnection {
 }
 
 extend type Query {
-  ledger(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): LedgerConnection!
+  ledger(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): LedgerConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/loan_balance.graphql", Input: `type LoanBalance implements Node {
@@ -6825,7 +6925,13 @@ type LoanBalanceConnection {
 }
 
 extend type Query {
-  loanBalances(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): LoanBalanceConnection!
+  loanBalances(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): LoanBalanceConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/member.graphql", Input: `enum MemberRole {
@@ -6847,7 +6953,11 @@ type Member implements Node {
 }
 
 extend type Query {
-  monthlyCategorySpending(householdId: ID! @nodeID(of: "Household"), from: YearMonth!, to: YearMonth!): [MonthlyCategorySpending!]!
+  monthlyCategorySpending(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth!
+    to: YearMonth!
+  ): [MonthlyCategorySpending!]!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/monthly_member_spending.graphql", Input: `type MonthlyMemberSpending {
@@ -6863,7 +6973,11 @@ type MonthlyMemberSpendingReport {
 }
 
 extend type Query {
-  monthlyMemberSpending(householdId: ID! @nodeID(of: "Household"), from: YearMonth!, to: YearMonth!): MonthlyMemberSpendingReport!
+  monthlyMemberSpending(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth!
+    to: YearMonth!
+  ): MonthlyMemberSpendingReport!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/observation.graphql", Input: `interface Observation implements Node {
@@ -6920,7 +7034,17 @@ type UnmatchedObservationConnection {
 }
 
 extend type Query {
-  unmatchedObservations(householdId: ID! @nodeID(of: "Household"), from: YearMonth, to: YearMonth, sourceKind: SourceKind, state: UnmatchedObservationState, after: String, before: String, first: Int, last: Int): UnmatchedObservationConnection!
+  unmatchedObservations(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth
+    to: YearMonth
+    sourceKind: SourceKind
+    state: UnmatchedObservationState
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): UnmatchedObservationConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/pool.graphql", Input: `interface Pool implements Node {
@@ -7034,7 +7158,13 @@ type ProductConceptConnection {
 }
 
 extend type Query {
-  productCatalog(householdId: ID! @nodeID(of: "Household"), after: String, before: String, first: Int, last: Int): ProductConceptConnection!
+  productCatalog(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): ProductConceptConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/product_suggestion.graphql", Input: `type ProductSuggestion {
@@ -7045,7 +7175,12 @@ extend type Query {
 }
 
 extend type Query {
-  productSuggestions(householdId: ID! @nodeID(of: "Household"), query: String!, merchant: String, first: Int! = 8): [ProductSuggestion!]!
+  productSuggestions(
+    householdId: ID! @nodeID(of: "Household")
+    query: String!
+    merchant: String
+    first: Int! = 8
+  ): [ProductSuggestion!]!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/product_variant.graphql", Input: `type ProductVariant implements Node & AllocationRuleTarget {
@@ -7080,7 +7215,8 @@ type Purchase implements Node {
   sourceKinds: [SourceKind!]!
   paymentAllocations: [PurchasePayment!]!
   items: [PurchaseItem!]!
-  corrections(first: Int, after: String): PurchaseCorrectionConnection! @goField(name: "CorrectionsConnection", forceResolver: true)
+  corrections(first: Int, after: String): PurchaseCorrectionConnection!
+    @goField(name: "CorrectionsConnection", forceResolver: true)
   totalYen: Long!
   currency: String!
   revision: Int!
@@ -7136,7 +7272,13 @@ type PurchaseConnection {
 }
 
 extend type Query {
-  purchases(filter: PurchaseFilter!, after: String, before: String, first: Int, last: Int): PurchaseConnection!
+  purchases(
+    filter: PurchaseFilter!
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): PurchaseConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/purchase_correction.graphql", Input: `interface PurchaseCorrection implements Node {
@@ -7179,7 +7321,11 @@ type PurchaseCorrectionConnection {
 }
 
 extend type Query {
-  purchaseCorrections(purchaseId: ID! @nodeID(of: "Purchase"), first: Int, after: String): PurchaseCorrectionConnection!
+  purchaseCorrections(
+    purchaseId: ID! @nodeID(of: "Purchase")
+    first: Int
+    after: String
+  ): PurchaseCorrectionConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/purchase_item.graphql", Input: `type PurchaseItem implements Node {
@@ -7441,7 +7587,14 @@ enum RecurringExpenseCadence {
 }
 
 extend type Query {
-  recurringExpenses(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean! = false, after: String, before: String, first: Int, last: Int): RecurringExpenseConnection!
+  recurringExpenses(
+    householdId: ID! @nodeID(of: "Household")
+    includeArchived: Boolean! = false
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): RecurringExpenseConnection!
 }
 
 type RecurringExpenseEdge {
@@ -7456,7 +7609,9 @@ type RecurringExpenseConnection {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/revoke_household_invitation_mutation.graphql", Input: `extend type Mutation {
-  revokeHouseholdInvitation(input: RevokeHouseholdInvitationInput!): RevokeHouseholdInvitationResult!
+  revokeHouseholdInvitation(
+    input: RevokeHouseholdInvitationInput!
+  ): RevokeHouseholdInvitationResult!
 }
 
 input RevokeHouseholdInvitationInput {
@@ -7464,7 +7619,9 @@ input RevokeHouseholdInvitationInput {
   invitationId: ID! @nodeID(of: "HouseholdInvitation")
 }
 
-union RevokeHouseholdInvitationResult = RevokeHouseholdInvitationSuccess | RevokeHouseholdInvitationUserError
+union RevokeHouseholdInvitationResult =
+  | RevokeHouseholdInvitationSuccess
+  | RevokeHouseholdInvitationUserError
 
 type RevokeHouseholdInvitationSuccess {
   result: HouseholdInvitation!
@@ -7480,7 +7637,11 @@ scalar DateTime
 scalar Long
 scalar YearMonth
 
-directive @goField(forceResolver: Boolean, name: String, omittable: Boolean) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
+directive @goField(
+  forceResolver: Boolean
+  name: String
+  omittable: Boolean
+) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
 directive @nodeID(of: String!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
 directive @oneOf on INPUT_OBJECT
 
@@ -7742,7 +7903,14 @@ type TagConnection {
 }
 
 extend type Query {
-  tags(householdId: ID! @nodeID(of: "Household"), includeArchived: Boolean! = false, after: String, before: String, first: Int, last: Int): TagConnection!
+  tags(
+    householdId: ID! @nodeID(of: "Household")
+    includeArchived: Boolean! = false
+    after: String
+    before: String
+    first: Int
+    last: Int
+  ): TagConnection!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/transfer_ledger_entry.graphql", Input: `interface TransferLedgerEntry implements LedgerEntry & Node {
@@ -9209,6 +9377,20 @@ func (ec *executionContext) field_Mutation_closePeriod_args(ctx context.Context,
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.ClosePeriodInput, error) {
 			return ec.unmarshalNClosePeriodInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐClosePeriodInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_correctPurchaseFromStatement_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.CorrectPurchaseFromStatementInput, error) {
+			return ec.unmarshalNCorrectPurchaseFromStatementInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCorrectPurchaseFromStatementInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -19206,6 +19388,50 @@ func (ec *executionContext) fieldContext_Mutation_correctPurchase(ctx context.Co
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_correctPurchase_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_correctPurchaseFromStatement(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_correctPurchaseFromStatement(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CorrectPurchaseFromStatement(ctx, fc.Args["input"].(model.CorrectPurchaseFromStatementInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.CorrectPurchaseResult) graphql.Marshaler {
+			return ec.marshalNCorrectPurchaseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCorrectPurchaseResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_correctPurchaseFromStatement(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type CorrectPurchaseResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_correctPurchaseFromStatement_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -30537,6 +30763,91 @@ func (ec *executionContext) unmarshalInputCorrectPurchaseAllocationInput(ctx con
 				return it, err
 			}
 			it.Weight = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputCorrectPurchaseFromStatementInput(ctx context.Context, obj any) (model.CorrectPurchaseFromStatementInput, error) {
+	var it model.CorrectPurchaseFromStatementInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId", "sourceDocumentId", "sourceReference", "target", "reason", "idempotencyKey"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Household")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.HouseholdID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "sourceDocumentId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceDocumentId"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceDocumentID = data
+		case "sourceReference":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceReference"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceReference = data
+		case "target":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("target"))
+			data, err := ec.unmarshalNCorrectPurchaseTargetInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCorrectPurchaseTargetInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Target = data
+		case "reason":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("reason"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Reason = data
+		case "idempotencyKey":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("idempotencyKey"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.IdempotencyKey = data
 		}
 	}
 	return it, nil
@@ -43252,6 +43563,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "correctPurchaseFromStatement":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_correctPurchaseFromStatement(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "createAccount":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createAccount(ctx, field)
@@ -50451,6 +50769,11 @@ func (ec *executionContext) marshalNClosePeriodResult2githubᚗcomᚋwalnuts1018
 func (ec *executionContext) unmarshalNCorrectPurchaseAllocationInput2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAllocationInput(ctx context.Context, v any) (*model.AllocationInput, error) {
 	res, err := ec.unmarshalInputCorrectPurchaseAllocationInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNCorrectPurchaseFromStatementInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCorrectPurchaseFromStatementInput(ctx context.Context, v any) (model.CorrectPurchaseFromStatementInput, error) {
+	res, err := ec.unmarshalInputCorrectPurchaseFromStatementInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalNCorrectPurchaseInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐCorrectPurchaseInput(ctx context.Context, v any) (model.CorrectPurchaseInput, error) {

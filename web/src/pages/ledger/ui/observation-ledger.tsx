@@ -1,48 +1,31 @@
 import { BookOpen } from "lucide-react";
-import { useEffect } from "react";
 
 import type { Household } from "../../../shared/api";
-import type { LedgerSearch } from "../model/ledger-search";
+import type { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
 
 import { InlineError } from "../../../shared/ui";
-import { useUnmatchedObservations } from "../api/observation/use-unmatched-observations";
 import { useObservationDirtyState } from "../model/observation-dirty";
 import { ObservationLinker } from "./observation-linker";
 
 import styles from "./ledger-search.module.css";
 
+const yen = (amount = 0) =>
+  new Intl.NumberFormat("ja-JP", {
+    style: "currency",
+    currency: "JPY",
+    maximumFractionDigits: 0,
+  }).format(amount);
+
 export function ObservationLedger({
   household,
-  filters,
+  unmatched,
   onUnsavedChanges,
-  onCountChange,
 }: {
   household: Household;
-  filters: Pick<
-    LedgerSearch,
-    "fromMonth" | "toMonth" | "observationSourceFilter" | "observationStateFilter"
-  >;
+  unmatched: ReturnType<typeof useUnmatchedObservations>;
   onUnsavedChanges: (unsaved: boolean) => void;
-  onCountChange: (count: number, totalCount: number) => void;
 }) {
-  const unmatched = useUnmatchedObservations(household.id, {
-    enabled: true,
-    from: filters.fromMonth || undefined,
-    to: filters.toMonth || undefined,
-    sourceKind: filters.observationSourceFilter || undefined,
-    state: filters.observationStateFilter || undefined,
-  });
   const reportObservationDirty = useObservationDirtyState(onUnsavedChanges);
-  useEffect(() => {
-    onCountChange(unmatched.observations.length, unmatched.totalCount);
-  }, [onCountChange, unmatched.observations.length, unmatched.totalCount]);
-
-  const yen = (amount = 0) =>
-    new Intl.NumberFormat("ja-JP", {
-      style: "currency",
-      currency: "JPY",
-      maximumFractionDigits: 0,
-    }).format(amount);
 
   return (
     <section className="panel ledger-list">
@@ -109,6 +92,7 @@ export function ObservationLedger({
         <div className={styles.more}>
           <button
             className="button button-soft"
+            type="button"
             disabled={unmatched.loadingMore}
             onClick={() => void unmatched.loadMore()}
           >

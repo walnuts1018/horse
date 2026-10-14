@@ -31,7 +31,7 @@ export function EditPurchasePayments({
 }) {
   return (
     <div className="field-group payment-allocation-field">
-      <label>決済内訳</label>
+      <span className="field-legend">決済内訳</span>
       <div className="payment-allocation-list">
         {rows.map((payment, index) => (
           <div className="payment-allocation-row" key={payment.key}>

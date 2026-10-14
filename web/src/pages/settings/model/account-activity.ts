@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "react";
 
 import { makeIdempotencyKey, MutationUserError } from "../../../shared/api";
+import { errorMessage } from "../../../shared/lib";
 import {
   readAccountActivity,
   readMoreAccountIncomes,
@@ -75,7 +76,7 @@ export function useAccountActivity({
     onNoticeRef.current = onNotice;
   }, [onNotice]);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const result = await readAccountActivity(householdId);
     setMovements(result.movements.edges.map((edge) => edge.node));
     setMovementCursor(result.movements.pageInfo.endCursor);
@@ -83,10 +84,10 @@ export function useAccountActivity({
     setIncomes(result.incomes.edges.map((edge) => edge.node));
     setIncomeCursor(result.incomes.pageInfo.endCursor);
     setIncomeHasNextPage(result.incomes.pageInfo.hasNextPage);
-  };
+  }, [householdId]);
 
   useEffect(() => {
-    void refresh().catch((reason) => onNoticeRef.current((reason as Error).message, "error"));
+    void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
     const incomeIntent = getAccountIncomeIntent(householdId);
     if (incomeIntent) {
       setPendingIncomeIntent(incomeIntent);
@@ -109,7 +110,7 @@ export function useAccountActivity({
     } else {
       setPendingMovementIntent(null);
     }
-  }, [householdId]);
+  }, [householdId, refresh]);
 
   useEffect(() => {
     const sourceAccounts = accounts.filter((account) =>
@@ -158,7 +159,7 @@ export function useAccountActivity({
     }
   };
 
-  const saveIncome = async (event: FormEvent) => {
+  const saveIncome = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!pendingIncomeIntent && (!incomeAccountId || !Number(incomeAmount))) return;
     setPending(true);
@@ -196,13 +197,13 @@ export function useAccountActivity({
         clearAccountIncomeIntent(householdId);
         setPendingIncomeIntent(null);
       }
-      onNoticeRef.current((reason as Error).message, "error");
+      onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setPending(false);
     }
   };
 
-  const saveMovement = async (event: FormEvent) => {
+  const saveMovement = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (
       !pendingMovementIntent &&
@@ -249,7 +250,7 @@ export function useAccountActivity({
         clearAccountMovementIntent(householdId);
         setPendingMovementIntent(null);
       }
-      onNoticeRef.current((reason as Error).message, "error");
+      onNoticeRef.current(errorMessage(reason), "error");
     } finally {
       setPending(false);
     }

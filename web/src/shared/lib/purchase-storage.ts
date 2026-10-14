@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type { CreatePurchaseInput } from "../api";
+
+import { errorMessage } from "./errors";
+import { isRecord } from "./guard";
 
 export type PurchaseDraftItem = {
   key: string;
@@ -39,6 +42,36 @@ export type PurchaseOutboxEntry = {
   leaseUntil?: number;
 };
 
+function isPurchaseDraft(
+  value: unknown,
+): value is PurchaseDraft & { storageKey: string; cleared?: boolean } {
+  return (
+    isRecord(value) &&
+    typeof value.storageKey === "string" &&
+    typeof value.merchant === "string" &&
+    typeof value.occurredAt === "string" &&
+    typeof value.itemName === "string" &&
+    typeof value.itemAmount === "string" &&
+    typeof value.categoryId === "string" &&
+    Array.isArray(value.items)
+  );
+}
+
+function isPurchaseOutboxEntry(value: unknown): value is PurchaseOutboxEntry {
+  return (
+    isRecord(value) &&
+    typeof value.storageKey === "string" &&
+    typeof value.memberId === "string" &&
+    typeof value.householdId === "string" &&
+    typeof value.idempotencyKey === "string" &&
+    typeof value.createdAt === "number" &&
+    typeof value.updatedAt === "number" &&
+    (value.status === "PENDING" || value.status === "FAILED") &&
+    isRecord(value.input) &&
+    Array.isArray(value.input.items)
+  );
+}
+
 const databaseName = "horse-browser-data";
 const legacyDraftsStore = "purchase-drafts";
 const legacyOutboxStore = "purchase-outbox";
@@ -66,11 +99,11 @@ function requestDatabaseReload(message: string) {
     window.dispatchEvent(new CustomEvent(databaseReloadEvent, { detail: message }));
 }
 
-function migrateStore<T>(
+function migrateStore(
   transaction: IDBTransaction,
   sourceName: string,
   targetName: string,
-  normalize: (value: unknown, key: IDBValidKey) => T | undefined,
+  normalize: (value: unknown, key: IDBValidKey) => unknown,
 ) {
   const database = transaction.db;
   if (!database.objectStoreNames.contains(sourceName)) return;
@@ -87,8 +120,8 @@ function migrateStore<T>(
 }
 
 function migrateDraft(value: unknown, key: IDBValidKey) {
-  if (!value || typeof value !== "object") return undefined;
-  const draft = value as Record<string, unknown>;
+  if (!isRecord(value)) return undefined;
+  const draft = value;
   const householdId = [draft.householdId, draft.id, key].find(
     (candidate): candidate is string => typeof candidate === "string" && candidate.length > 0,
   );
@@ -97,9 +130,10 @@ function migrateDraft(value: unknown, key: IDBValidKey) {
 }
 
 function migrateOutbox(value: unknown, key: IDBValidKey): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const entry = value as Record<string, unknown>;
-  const input = (entry.input ?? entry.request ?? entry) as CreatePurchaseInput | undefined;
+  if (!isRecord(value)) return undefined;
+  const entry = value;
+  const rawInput = entry.input ?? entry.request ?? entry;
+  const input = isRecord(rawInput) ? rawInput : undefined;
   const idempotencyKey = [
     entry.idempotencyKey,
     entry.key,
@@ -197,13 +231,15 @@ function notifyOutboxChanged() {
   window.dispatchEvent(new Event(outboxChangeEvent));
   if (typeof BroadcastChannel !== "undefined") {
     outboxBroadcast ??= new BroadcastChannel(outboxChangeEvent);
+    // BroadcastChannelのpostMessageにはtargetOrigin引数が存在しないため、このルールの対象外
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin
     outboxBroadcast.postMessage("changed");
   }
 }
 
 let outboxBroadcast: BroadcastChannel | undefined;
 
-function writeValue<T>(storeName: string, value: T) {
+function writeValue(storeName: string, value: unknown) {
   return openDatabase().then(
     (database) =>
       new Promise<void>((resolve, reject) => {
@@ -247,15 +283,15 @@ function deleteValue(storeName: string, key: IDBValidKey) {
   );
 }
 
-function readValue<T>(storeName: string, key: IDBValidKey) {
+function readValue(storeName: string, key: IDBValidKey) {
   return openDatabase().then(
     (database) =>
-      new Promise<T | undefined>((resolve, reject) => {
+      new Promise<unknown>((resolve, reject) => {
         const transaction = database.transaction(storeName, "readonly");
         const request = transaction.objectStore(storeName).get(key);
-        let value: T | undefined;
+        let value: unknown;
         request.onsuccess = () => {
-          value = request.result as T | undefined;
+          value = request.result;
         };
         transaction.oncomplete = () => {
           database.close();
@@ -269,15 +305,15 @@ function readValue<T>(storeName: string, key: IDBValidKey) {
   );
 }
 
-function readAllByIndex<T>(storeName: string, indexName: string, key: IDBValidKey) {
+function readAllByIndex(storeName: string, indexName: string, key: IDBValidKey) {
   return openDatabase().then(
     (database) =>
-      new Promise<T[]>((resolve, reject) => {
+      new Promise<unknown[]>((resolve, reject) => {
         const transaction = database.transaction(storeName, "readonly");
         const request = transaction.objectStore(storeName).index(indexName).getAll(key);
-        let values: T[] = [];
+        let values: unknown[] = [];
         request.onsuccess = () => {
-          values = request.result as T[];
+          values = request.result;
         };
         transaction.oncomplete = () => {
           database.close();
@@ -296,15 +332,10 @@ export async function loadPurchaseDraft(
   householdId: string,
 ): Promise<PurchaseDraft | undefined> {
   const storageKey = draftStorageKey(memberId, householdId);
-  const current = await readValue<PurchaseDraft & { storageKey: string; cleared?: boolean }>(
-    draftsStore,
-    storageKey,
-  );
-  if (current?.cleared) {
-    return undefined;
-  }
-  if (current) return current;
-  return undefined;
+  const current = await readValue(draftsStore, storageKey);
+  if (!isPurchaseDraft(current)) return undefined;
+  if (current.cleared) return undefined;
+  return current;
 }
 
 export function savePurchaseDraft(memberId: string, householdId: string, draft: PurchaseDraft) {
@@ -319,11 +350,12 @@ export function deletePurchaseDraft(memberId: string, householdId: string) {
 }
 
 export async function listPurchaseOutbox(memberId: string, householdId?: string) {
-  return readAllByIndex<PurchaseOutboxEntry>(
+  const values = await readAllByIndex(
     outboxStore,
     householdId ? "memberHousehold" : "memberId",
     householdId ? [memberId, householdId] : memberId,
   );
+  return values.filter(isPurchaseOutboxEntry);
 }
 
 export async function enqueuePurchase(input: CreatePurchaseInput, memberId: string) {
@@ -373,7 +405,8 @@ export async function claimPurchaseOutbox(
     const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
     let claimed: PurchaseOutboxEntry | undefined;
     request.onsuccess = () => {
-      const entry = request.result as PurchaseOutboxEntry | undefined;
+      const result: unknown = request.result;
+      const entry = isPurchaseOutboxEntry(result) ? result : undefined;
       if (
         !entry ||
         entry.memberId !== memberId ||
@@ -421,7 +454,8 @@ export async function markPurchaseOutboxFailed(
       const store = transaction.objectStore(outboxStore);
       const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
       request.onsuccess = () => {
-        const entry = request.result as PurchaseOutboxEntry | undefined;
+        const result: unknown = request.result;
+        const entry = isPurchaseOutboxEntry(result) ? result : undefined;
         if (
           !entry ||
           entry.memberId !== memberId ||
@@ -463,7 +497,8 @@ export async function completePurchaseOutbox(
       const store = transaction.objectStore(outboxStore);
       const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
       request.onsuccess = () => {
-        const entry = request.result as PurchaseOutboxEntry | undefined;
+        const result: unknown = request.result;
+        const entry = isPurchaseOutboxEntry(result) ? result : undefined;
         if (
           entry?.memberId === memberId &&
           entry.householdId === householdId &&
@@ -496,7 +531,8 @@ export async function renewPurchaseOutboxLease(
       const store = transaction.objectStore(outboxStore);
       const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
       request.onsuccess = () => {
-        const entry = request.result as PurchaseOutboxEntry | undefined;
+        const result: unknown = request.result;
+        const entry = isPurchaseOutboxEntry(result) ? result : undefined;
         if (
           !entry ||
           entry.memberId !== memberId ||
@@ -531,7 +567,8 @@ export async function retryPurchaseOutbox(
       const store = transaction.objectStore(outboxStore);
       const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
       request.onsuccess = () => {
-        const entry = request.result as PurchaseOutboxEntry | undefined;
+        const result: unknown = request.result;
+        const entry = isPurchaseOutboxEntry(result) ? result : undefined;
         if (!entry || entry.memberId !== memberId || entry.householdId !== householdId) return;
         store.put({
           ...entry,
@@ -563,15 +600,29 @@ export async function discardPurchaseOutbox(
   notifyOutboxChanged();
 }
 
+// onlineはnavigatorを外部ストアとして扱い、購読はイベントリスナーで賄う
+const subscribeOnline = (onStoreChange: () => void) => {
+  window.addEventListener("online", onStoreChange);
+  window.addEventListener("offline", onStoreChange);
+  return () => {
+    window.removeEventListener("online", onStoreChange);
+    window.removeEventListener("offline", onStoreChange);
+  };
+};
+const getOnlineSnapshot = () => typeof navigator === "undefined" || navigator.onLine;
+const getServerOnlineSnapshot = () => true;
+
 export function usePurchaseOutbox(memberId?: string, householdId?: string) {
   const [entries, setEntries] = useState<PurchaseOutboxEntry[]>([]);
   const [entriesMemberId, setEntriesMemberId] = useState<string>();
-  const [online, setOnline] = useState<boolean | null>(null);
+  const online = useSyncExternalStore(subscribeOnline, getOnlineSnapshot, getServerOnlineSnapshot);
   const [readyMemberId, setReadyMemberId] = useState<string>();
   const [storageError, setStorageError] = useState("");
   const [reloadMessage, setReloadMessage] = useState("");
   const memberIdRef = useRef(memberId);
-  memberIdRef.current = memberId;
+  useEffect(() => {
+    memberIdRef.current = memberId;
+  }, [memberId]);
   const refresh = useCallback(async () => {
     if (!memberId) {
       setEntries([]);
@@ -588,28 +639,26 @@ export function usePurchaseOutbox(memberId?: string, householdId?: string) {
       setStorageError("");
     } catch (reason) {
       if (memberIdRef.current !== memberId) return;
-      setStorageError((reason as Error).message);
+      setStorageError(errorMessage(reason));
     } finally {
       if (memberIdRef.current === memberId) setReadyMemberId(memberId);
     }
   }, [memberId, householdId]);
   useEffect(() => {
-    const updateOnline = () => setOnline(navigator.onLine);
     const updateOutbox = () => void refresh();
-    const showReloadMessage = (event: Event) =>
-      setReloadMessage((event as CustomEvent<string>).detail);
-    updateOnline();
-    void refresh();
-    window.addEventListener("online", updateOnline);
-    window.addEventListener("offline", updateOnline);
+    const showReloadMessage = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail: unknown = event.detail;
+      if (typeof detail === "string") setReloadMessage(detail);
+    };
+    // refreshはmemberId未設定時に同期でsetStateするため、effect直後ではなくマイクロタスクで走らせる
+    queueMicrotask(() => void refresh());
     window.addEventListener(outboxChangeEvent, updateOutbox);
     window.addEventListener(databaseReloadEvent, showReloadMessage);
     const channel =
       typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel(outboxChangeEvent);
     if (channel) channel.onmessage = updateOutbox;
     return () => {
-      window.removeEventListener("online", updateOnline);
-      window.removeEventListener("offline", updateOnline);
       window.removeEventListener(outboxChangeEvent, updateOutbox);
       window.removeEventListener(databaseReloadEvent, showReloadMessage);
       channel?.close();
@@ -639,14 +688,30 @@ export function usePurchaseOutbox(memberId?: string, householdId?: string) {
     },
     [memberId, householdId, refresh],
   );
-  return {
-    entries: memberId && entriesMemberId === memberId ? entries : [],
-    online,
-    ready: !memberId || readyMemberId === memberId,
-    storageError,
-    reloadMessage,
-    refresh,
-    retry,
-    discard,
-  };
+  const ready = !memberId || readyMemberId === memberId;
+  // 戻り値を安定させることで、呼び出し側がeffectの依存にoutboxそのものを指定できる
+  return useMemo(
+    () => ({
+      entries: memberId && entriesMemberId === memberId ? entries : [],
+      online,
+      ready,
+      storageError,
+      reloadMessage,
+      refresh,
+      retry,
+      discard,
+    }),
+    [
+      entries,
+      memberId,
+      entriesMemberId,
+      online,
+      ready,
+      storageError,
+      reloadMessage,
+      refresh,
+      retry,
+      discard,
+    ],
+  );
 }

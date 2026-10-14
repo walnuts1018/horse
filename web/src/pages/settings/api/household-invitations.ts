@@ -29,6 +29,20 @@ export type CreatedHouseholdInvitation = {
   invitation: HouseholdInvitation;
 };
 
+/**
+ * Relayのミューテーション実行に必要な型を生成済みデータ型から組み立てる。
+ * shared/apiからエクスポートされていない操作型の代わりに利用する。応答を型付きで受け取れるようになる。
+ */
+type CreateHouseholdInvitationOperation = {
+  response: CreateHouseholdInvitationMutation$data;
+  variables: { input: { householdId: string; expiresAt: string } };
+};
+
+type RevokeHouseholdInvitationOperation = {
+  response: RevokeHouseholdInvitationMutation$data;
+  variables: { input: { householdId: string; invitationId: string } };
+};
+
 type HouseholdInvitationRecord =
   HouseholdInvitationsQuery$data["householdInvitations"]["edges"][number]["node"];
 
@@ -55,7 +69,7 @@ export function createHouseholdInvitation(input: {
   expiresAt: string;
 }): Promise<CreatedHouseholdInvitation> {
   return new Promise((resolve, reject) =>
-    commitMutation(getRelayEnvironment(), {
+    commitMutation<CreateHouseholdInvitationOperation>(getRelayEnvironment(), {
       mutation: createHouseholdInvitationMutation,
       variables: { input },
       onCompleted: (response, errors) => {
@@ -63,8 +77,7 @@ export function createHouseholdInvitation(input: {
           reject(new Error(errors[0].message));
           return;
         }
-        const result = (response as CreateHouseholdInvitationMutation$data)
-          .createHouseholdInvitation;
+        const result = response.createHouseholdInvitation;
         switch (result.__typename) {
           case "CreateHouseholdInvitationSuccess": {
             if (!result.result) {
@@ -94,7 +107,7 @@ export function revokeHouseholdInvitation(input: {
   invitationId: string;
 }): Promise<void> {
   return new Promise((resolve, reject) =>
-    commitMutation(getRelayEnvironment(), {
+    commitMutation<RevokeHouseholdInvitationOperation>(getRelayEnvironment(), {
       mutation: revokeHouseholdInvitationMutation,
       variables: { input },
       onCompleted: (response, errors) => {
@@ -102,8 +115,7 @@ export function revokeHouseholdInvitation(input: {
           reject(new Error(errors[0].message));
           return;
         }
-        const result = (response as RevokeHouseholdInvitationMutation$data)
-          .revokeHouseholdInvitation;
+        const result = response.revokeHouseholdInvitation;
         switch (result.__typename) {
           case "RevokeHouseholdInvitationSuccess":
             if (!result.result) {

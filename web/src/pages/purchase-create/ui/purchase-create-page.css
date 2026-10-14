@@ -15,6 +15,12 @@
   grid-column: 1 / -1;
 }
 
+.payment-allocation-field > .field-legend {
+  font-size: max(12px, 1em);
+  color: #5f6d65;
+  font-weight: 600;
+}
+
 .payment-allocation-list {
   display: grid;
   gap: 6px;
