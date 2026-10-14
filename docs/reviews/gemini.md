@@ -1,6 +1,6 @@
 # Gemini連携の未解決項目
 
-## 1. 無料枠回復時刻の予測
+## 1. Google側のquota上限と回復時刻
 
 Worker間で共有するRPM・TPM・RPD予約をPostgreSQLへ保存し、`CountTokens`の入力数を呼び出し前に予約します。成功時は実績のprompt token数へ更新します。`GEMINI_QUOTA_LIMITS`にroute/model別の上限がなければ予約制御は無効です。無料Projectのquota超過で有料Projectへ切り替えず、`Retry-After`または予約枠が空くまで待ちます。
 
