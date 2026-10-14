@@ -17,6 +17,7 @@ linters:
     - forbidigo
     - ginkgolinter
     - gocheckcompilerdirectives
+    - gochecksumtype
     - goconst
     - gosec
     - govet
@@ -32,13 +33,16 @@ linters:
     - nlreturn
     - noctx
     - nolintlint
+    - nosprintfhostport
     - paralleltest
+    - perfsprint
     - prealloc
     - predeclared
     - reassign
     - revive
     - rowserrcheck
     - sloglint
+    - spancheck
     - sqlclosecheck
     - staticcheck
     - testableexamples
