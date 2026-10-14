@@ -426,7 +426,7 @@ Importsの8 Mutationで繰り返していたsuccess union判定を`shared/api`�
 
 ### 2026年10月14日の共有Gemini cooldown
 
-Gemini 429の`Retry-After`または既存のjob retry delayをDBの`(project_route, model)`単位の`blocked_until`へ保存します。加えて、確認済みのroute/model別RPM・TPM・RPD値を`GEMINI_QUOTA_LIMITS`で設定できるようにし、PostgreSQLのroute/model lock下で入力token数とrequest数を予約します。事前token数は`CountTokens`の結果、成功後は実績のprompt token数を使用します。未設定のroute/modelでは既存挙動を維持し、実測していない上限値は設定しません。無料Projectのquota超過で有料Projectへ自動切替しません。rolling windowではGoogle AI StudioのRPD reset時刻を予測できないため、回復予測は未解決として`docs/reviews/gemini.md`に残します。
+Gemini 429の`Retry-After`または既存のjob retry delayをDBの`(project_route, model)`単位の`blocked_until`へ保存します。確認済みのroute/model別RPM・TPM・RPD値は`GEMINI_QUOTA_LIMITS`で設定し、PostgreSQLのroute/model lock下で入力token数とrequest数を予約します。RPM・TPMの予約窓は直近1分のまま維持し、RPDは`America/Los_Angeles`の暦日で集計します。日次上限到達後の再試行は次の太平洋時間午前0時まで待ち、DST切替を現地暦日で処理します。Go実行イメージでtimezone dataがなくてもIANA locationを使えるよう、`time/tzdata`を埋め込みます。事前token数は`CountTokens`の結果、成功後は実績のprompt token数を使用します。未設定のroute/modelでは既存挙動を維持し、実測していない上限値は設定しません。無料Projectのquota超過で有料Projectへ自動切替しません。上限値を取得する公開APIは確認できていないため、運用者がGoogle AI StudioでProject・modelごとの値を確認して`GEMINI_QUOTA_LIMITS`へ反映します。動的な上限値取得とGoogle側のquota回復時刻取得は未対応として`docs/reviews/gemini.md`に残します。
 
 ### 2026年10月14日のSettings tab URL
 

@@ -165,8 +165,53 @@ func TestPostgresGeminiQuotaReservationsAreAtomic(t *testing.T) {
 	}
 	if _, retryAfter, err := control.Reserve(ctx, ProjectFree, modelDaily, 1, GeminiQuotaLimit{
 		RequestsPerMinute: 5, InputTokensMinute: 100, RequestsPerDay: 1,
-	}); err != nil || retryAfter < 22*time.Hour {
-		t.Fatalf("daily limit retry-after=%s error=%v, want approximately 23 hours", retryAfter, err)
+	}); err != nil || retryAfter <= 0 || retryAfter > 24*time.Hour {
+		t.Fatalf("daily limit retry-after=%s error=%v, want next Pacific midnight within 24 hours", retryAfter, err)
+	}
+}
+
+func TestGeminiQuotaDayBoundsFollowPacificCalendar(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		now       time.Time
+		wantStart time.Time
+		wantReset time.Time
+	}{
+		{
+			name:      "spring DST transition",
+			now:       time.Date(2026, time.March, 8, 8, 30, 0, 0, time.UTC),
+			wantStart: time.Date(2026, time.March, 8, 8, 0, 0, 0, time.UTC),
+			wantReset: time.Date(2026, time.March, 9, 7, 0, 0, 0, time.UTC),
+		},
+		{
+			name:      "fall DST transition",
+			now:       time.Date(2026, time.November, 1, 7, 30, 0, 0, time.UTC),
+			wantStart: time.Date(2026, time.November, 1, 7, 0, 0, 0, time.UTC),
+			wantReset: time.Date(2026, time.November, 2, 8, 0, 0, 0, time.UTC),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			start, reset, err := geminiQuotaDayBounds(test.now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !start.Equal(test.wantStart) || !reset.Equal(test.wantReset) {
+				t.Fatalf("quota day bounds = [%s, %s), want [%s, %s)", start, reset, test.wantStart, test.wantReset)
+			}
+			usage := geminiQuotaUsage{requestsDay: 1}
+			delay := quotaRetryAfter(usage, test.now, reset, 1, GeminiQuotaLimit{
+				RequestsPerMinute: 2,
+				InputTokensMinute: 2,
+				RequestsPerDay:    1,
+			})
+			if want := reset.Sub(test.now); delay != want {
+				t.Fatalf("daily limit retry delay = %s, want %s", delay, want)
+			}
+		})
 	}
 }
 

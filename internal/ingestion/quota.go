@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
@@ -42,6 +43,8 @@ type postgresGeminiRateControl struct {
 }
 
 var errGeminiQuotaRequestTooLarge = errors.New("Gemini input exceeds configured token quota")
+
+const geminiQuotaDayLocation = "America/Los_Angeles"
 
 type geminiQuotaUsage struct {
 	requestsMinute int64
@@ -137,6 +140,10 @@ func (c postgresGeminiRateControl) Reserve(ctx context.Context, projectRoute, mo
 		return "", 0, errGeminiQuotaRequestTooLarge
 	}
 	now := time.Now().UTC()
+	dayStart, dayReset, err := geminiQuotaDayBounds(now)
+	if err != nil {
+		return "", 0, err
+	}
 	reservationID, err := uuid.NewV7()
 	if err != nil {
 		return "", 0, fmt.Errorf("create Gemini quota reservation ID: %w", err)
@@ -171,7 +178,6 @@ func (c postgresGeminiRateControl) Reserve(ctx context.Context, projectRoute, mo
 	} else if queryErr != nil && !errors.Is(queryErr, sql.ErrNoRows) {
 		return "", 0, abort(fmt.Errorf("load Gemini quota cooldown: %w", queryErr))
 	}
-	dayStart := now.Add(-24 * time.Hour)
 	_, err = models.GeminiQuotaReservations.Delete(dm.Where(psql.And(
 		models.GeminiQuotaReservations.Columns.ProjectRoute.EQ(psql.Arg(projectRoute)),
 		models.GeminiQuotaReservations.Columns.Model.EQ(psql.Arg(model)),
@@ -190,7 +196,7 @@ func (c postgresGeminiRateControl) Reserve(ctx context.Context, projectRoute, mo
 	}
 	usage := quotaUsage(reservations, now)
 	if usage.requestsMinute+1 > limits.RequestsPerMinute || usage.tokensMinute+inputTokens > limits.InputTokensMinute || usage.requestsDay+1 > limits.RequestsPerDay {
-		delay := quotaRetryAfter(usage, now, inputTokens, limits)
+		delay := quotaRetryAfter(usage, now, dayReset, inputTokens, limits)
 		if err := abort(nil); err != nil {
 			return "", 0, err
 		}
@@ -207,6 +213,17 @@ func (c postgresGeminiRateControl) Reserve(ctx context.Context, projectRoute, mo
 		return "", 0, fmt.Errorf("commit Gemini quota reservation: %w", err)
 	}
 	return reservationID.String(), 0, nil
+}
+
+func geminiQuotaDayBounds(now time.Time) (time.Time, time.Time, error) {
+	location, err := time.LoadLocation(geminiQuotaDayLocation)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("load Gemini quota day location: %w", err)
+	}
+	localNow := now.In(location)
+	start := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
+	reset := start.AddDate(0, 0, 1)
+	return start.UTC(), reset.UTC(), nil
 }
 
 func (c postgresGeminiRateControl) Settle(ctx context.Context, reservationID string, actualInputTokens int64) error {
@@ -284,10 +301,10 @@ func quotaUsage(reservations models.GeminiQuotaReservationSlice, now time.Time) 
 	return usage
 }
 
-func quotaRetryAfter(usage geminiQuotaUsage, now time.Time, inputTokens int64, limits GeminiQuotaLimit) time.Duration {
+func quotaRetryAfter(usage geminiQuotaUsage, now, dayReset time.Time, inputTokens int64, limits GeminiQuotaLimit) time.Duration {
 	var delays []time.Duration
 	if usage.requestsMinute+1 > limits.RequestsPerMinute {
-		delays = append(delays, time.Until(usage.minuteRows[0].ReservedAt.Add(time.Minute)))
+		delays = append(delays, usage.minuteRows[0].ReservedAt.Add(time.Minute).Sub(now))
 	}
 	if usage.tokensMinute+inputTokens > limits.InputTokensMinute {
 		remaining := usage.tokensMinute
@@ -298,13 +315,13 @@ func quotaRetryAfter(usage geminiQuotaUsage, now time.Time, inputTokens int64, l
 			}
 			remaining -= reservedTokens
 			if remaining+inputTokens <= limits.InputTokensMinute {
-				delays = append(delays, time.Until(reservation.ReservedAt.Add(time.Minute)))
+				delays = append(delays, reservation.ReservedAt.Add(time.Minute).Sub(now))
 				break
 			}
 		}
 	}
 	if usage.requestsDay+1 > limits.RequestsPerDay {
-		delays = append(delays, time.Until(usage.dayRows[0].ReservedAt.Add(24*time.Hour)))
+		delays = append(delays, dayReset.Sub(now))
 	}
 	var retryAfter time.Duration
 	for _, delay := range delays {

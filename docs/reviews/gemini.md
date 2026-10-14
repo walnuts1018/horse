@@ -4,7 +4,7 @@
 
 Worker間で共有するRPM・TPM・RPD予約をPostgreSQLへ保存し、`CountTokens`の入力数を呼び出し前に予約します。成功時は実績のprompt token数へ更新します。`GEMINI_QUOTA_LIMITS`にroute/model別の上限がなければ予約制御は無効です。無料Projectのquota超過で有料Projectへ切り替えず、`Retry-After`または予約枠が空くまで待ちます。
 
-現在のRPD予約は直近24時間のrolling windowです。Google AI Studioのモデル別上限値を取得して太平洋時間の午前0時に行われるRPD resetを予測する処理はありません。実際の上限値の確認とreset時刻に基づく回復予測を実装してください。[Gemini APIのrate limits](https://ai.google.dev/gemini-api/docs/rate-limits)を参照してください。
+RPD予約は`America/Los_Angeles`の暦日で集計し、日次上限到達後は次の太平洋時間午前0時まで再試行を待ちます。DST切替日も現地の暦日境界を使います。Google AI StudioはProject・modelごとの実際のRPM・TPM・RPD上限を表示しますが、このアプリからその上限値を取得する公開APIは確認できていません。`GEMINI_QUOTA_LIMITS`の設定値は運用者がAI Studioで手動確認し、変更時に更新する必要があります。上限値の動的取得とGoogle側の実際のquota回復時刻の取得は未対応です。[Gemini APIのrate limits](https://ai.google.dev/gemini-api/docs/rate-limits)を参照してください。
 
 ## 2. Flex tierとBatch APIの到達経路
 
