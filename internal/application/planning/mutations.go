@@ -423,6 +423,7 @@ func (s *Service) MatchRecurringExpense(ctx context.Context, command MatchRecurr
 		return RecurringExpenseResult{}, err
 	}
 	expense.NextDueOn, expense.Revision = nextDueOn, revision
+
 	return recurringExpenseResult(expense), nil
 }
 
@@ -433,11 +434,13 @@ func nextRecurringDue(start, due time.Time, cadence string) (time.Time, error) {
 	case "MONTHLY":
 		monthStart := time.Date(due.Year(), due.Month()+1, 1, 0, 0, 0, 0, due.Location())
 		day := min(start.Day(), monthStart.AddDate(0, 1, -1).Day())
+
 		return time.Date(monthStart.Year(), monthStart.Month(), day, 0, 0, 0, 0, due.Location()), nil
 	case "YEARLY":
 		nextYear := due.Year() + 1
 		monthStart := time.Date(nextYear, start.Month(), 1, 0, 0, 0, 0, due.Location())
 		day := min(start.Day(), monthStart.AddDate(0, 1, -1).Day())
+
 		return time.Date(nextYear, start.Month(), day, 0, 0, 0, 0, due.Location()), nil
 	default:
 		return time.Time{}, fmt.Errorf("%w: invalid recurring expense cadence", ErrBadInput)

@@ -16,6 +16,10 @@ run = "go test ./... -v"
 description = "Goの静的解析"
 run = "golangci-lint run ./..."
 
+[tasks."lint:changed"]
+description = "変更したGoコードの静的解析"
+run = "golangci-lint run --new-from-rev=${LINT_BASE_REV:-HEAD^} ./..."
+
 [tasks."lint:actions"]
 description = "GitHub Actionsの静的解析"
 run = "jactionlint"
