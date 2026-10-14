@@ -1,4 +1,4 @@
-import { Check, Plus, X } from "lucide-react";
+import { Check, Plus, Undo2, X } from "lucide-react";
 import { useEffect, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 
 import type { Household } from "../../../shared/api";
@@ -42,6 +42,8 @@ type ReceiptReviewProps = {
   reviewTargets: ReviewTarget[];
   activeReviewIndex: number;
   activeReviewTarget: ReviewTarget | undefined;
+  canUndoItemDeletion: boolean;
+  undoItemDeletion: () => void;
   paymentDraftFor: (document: DocumentReview) => ReceiptPaymentDraft[];
   receiptTotal: (document: DocumentReview) => number;
   purchaseDate: string;
@@ -90,6 +92,8 @@ export function ReceiptReview({
   reviewTargets,
   activeReviewIndex,
   activeReviewTarget,
+  canUndoItemDeletion,
+  undoItemDeletion,
   paymentDraftFor,
   receiptTotal,
   purchaseDate,
@@ -324,6 +328,14 @@ export function ReceiptReview({
             </button>
           </div>
         </section>
+      )}
+      {canUndoItemDeletion && (
+        <output className={styles.receiptDeleteUndo}>
+          <button type="button" className="button button-soft" onClick={undoItemDeletion}>
+            <Undo2 size={16} />
+            品目を復元
+          </button>
+        </output>
       )}
       {compactReview && (
         <section className={styles.receiptSummary} aria-label="購入内容の概要">

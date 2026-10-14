@@ -11,10 +11,16 @@ import {
   reconcileReceiptConfirmationState,
   reconcileReceiptReviewDraft,
   rekeyReceiptConfirmationAfterStructureChange,
+  restoreDeletedReceiptItem,
+  restoreReceiptItemDeletion,
 } from "./receipt-review-draft";
 
 function item(name: string, printedAmount: number, grossAmount: number, confidence = 0.9) {
   return { name, printedAmount, grossAmount, confidence, verification: "UNRESOLVED" };
+}
+
+function hasChangedReceiptItems(result: DocumentReview["result"] | undefined): boolean {
+  return Boolean(result && "reviewReceiptItemsChanged" in result && result.reviewReceiptItemsChanged);
 }
 
 function draftResult(value: NonNullable<DocumentReview["result"]>) {
@@ -308,6 +314,140 @@ describe("receipt item structure changes", () => {
 
     expect(state.amountDrafts).toEqual({ [keyed[1].key!]: "200x" });
     expect(state.purchaseDate).toBe("2026-10-14");
+  });
+
+  it("品目削除を元に戻し、品目状態を復元して残存品目の変更を保つ", () => {
+    const original = [item("パン", 100, 110), item("牛乳", 200, 220)];
+    const keyed = ensureReceiptItemKeys(original);
+    const deletedKey = keyed[0].key!;
+    const retainedKey = keyed[1].key!;
+    const confirmationState = {
+      selectedCandidate: {
+        id: "candidate-1",
+        amounts: [110, 220],
+        computedTotal: 330,
+        consistent: true,
+        issues: [],
+      },
+      manualAmountOverrides: { [deletedKey]: 105, [retainedKey]: 215 },
+      manualAmountOverrideReason: "OCRの読み間違い",
+      amountDrafts: { [deletedKey]: "1,0" },
+      itemAllocations: {
+        [deletedKey]: [{ poolId: "pool-1", weight: 2 }],
+      },
+      receiptItemReviewStates: { [deletedKey]: "CORRECTED" as const },
+      payments: [{ key: "payment-1", paymentAccountId: "account-1", amountYen: 320 }],
+      purchaseDate: "2026-10-14",
+      purchaseTime: "09:30",
+    };
+    const deletedItems = deleteReceiptItemByKey(keyed, deletedKey);
+    const afterDelete = rekeyReceiptConfirmationAfterStructureChange(
+      confirmationState,
+      original,
+      keyed,
+      deletedItems,
+    );
+    const afterAnotherEdit = {
+      ...afterDelete,
+      manualAmountOverrides: { ...afterDelete.manualAmountOverrides, [retainedKey]: 210 },
+    };
+    const undo = {
+      documentId: "document-1",
+      item: keyed[0],
+      index: 0,
+      reviewTargetIndex: 1,
+      remainingItemKeys: deletedItems.map((entry) => entry.key!),
+      remainingItems: deletedItems,
+      confirmationState,
+      balanced: true,
+    };
+    const document: DocumentReview = {
+      id: "document-1",
+      status: "SUCCEEDED",
+      receiptConfirmationState: afterAnotherEdit,
+      result: {
+        balanced: false,
+        reviewReceiptItemsChanged: true,
+        receipt: { items: deletedItems },
+        candidates: [confirmationState.selectedCandidate],
+      } as NonNullable<DocumentReview["result"]> & { reviewReceiptItemsChanged: boolean },
+    };
+    const restored = restoreReceiptItemDeletion(document, undo);
+
+    expect(restored?.result?.receipt?.items).toEqual(keyed);
+    expect(restored?.result?.balanced).toBe(true);
+    expect(hasChangedReceiptItems(restored?.result)).toBe(false);
+    expect(restored?.receiptConfirmationState).toEqual({
+      ...confirmationState,
+      manualAmountOverrides: { [deletedKey]: 105, [retainedKey]: 210 },
+    });
+  });
+
+  it("Undo前に別品目を編集した場合は編集値を残して税候補を無効にする", () => {
+    const original = [item("パン", 100, 110), item("牛乳", 200, 220)];
+    const keyed = ensureReceiptItemKeys(original);
+    const confirmationState = {
+      selectedCandidate: {
+        id: "candidate-1",
+        amounts: [110, 220],
+        computedTotal: 330,
+        consistent: true,
+        issues: [],
+      },
+    };
+    const remainingItems = deleteReceiptItemByKey(keyed, keyed[0].key!);
+    const changedItem = { ...remainingItems[0], name: "低脂肪乳", grossAmount: 225 };
+    const restored = restoreReceiptItemDeletion(
+      {
+        id: "document-1",
+        status: "SUCCEEDED",
+        result: {
+          balanced: false,
+          reviewReceiptItemsChanged: true,
+          receipt: { items: [changedItem] },
+          candidates: [confirmationState.selectedCandidate],
+        } as NonNullable<DocumentReview["result"]> & { reviewReceiptItemsChanged: boolean },
+      },
+      {
+        documentId: "document-1",
+        item: keyed[0],
+        index: 0,
+        reviewTargetIndex: 0,
+        remainingItemKeys: remainingItems.map((entry) => entry.key!),
+        remainingItems,
+        confirmationState,
+      },
+    );
+    expect(restored?.result?.receipt?.items?.map((entry) => entry.name)).toEqual([
+      "パン",
+      "低脂肪乳",
+    ]);
+    expect(restored?.result?.balanced).toBe(false);
+    expect(hasChangedReceiptItems(restored?.result)).toBe(true);
+    expect(restored?.receiptConfirmationState?.selectedCandidate).toBeUndefined();
+  });
+
+  it("ほかの品目が追加・削除された後は古い削除操作を適用しない", () => {
+    const original = [item("パン", 100, 110), item("牛乳", 200, 220)];
+    const keyed = ensureReceiptItemKeys(original);
+    const deletedItems = deleteReceiptItemByKey(keyed, keyed[0].key!);
+    const changedItems = addManualReceiptItem(deletedItems, "manual:new");
+
+    expect(
+      restoreDeletedReceiptItem(
+        changedItems,
+        {},
+        {
+          documentId: "document-1",
+          item: keyed[0],
+          index: 0,
+          reviewTargetIndex: 0,
+          remainingItemKeys: deletedItems.map((entry) => entry.key!),
+          remainingItems: deletedItems,
+          confirmationState: {},
+        },
+      ),
+    ).toBeUndefined();
   });
 });
 

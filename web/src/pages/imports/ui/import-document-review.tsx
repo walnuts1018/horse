@@ -133,6 +133,8 @@ export function ImportDocumentReview({
               reviewTargets={review.reviewTargets}
               activeReviewIndex={review.activeReviewIndex}
               activeReviewTarget={review.activeReviewTarget}
+              canUndoItemDeletion={review.canUndoReceiptItemDeletion}
+              undoItemDeletion={review.undoReceiptItemDeletion}
               paymentDraftFor={review.paymentDraftFor}
               receiptTotal={review.receiptTotal}
               purchaseDate={review.purchaseDateFor(document)}

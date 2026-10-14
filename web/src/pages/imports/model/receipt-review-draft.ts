@@ -3,6 +3,18 @@ import type { DocumentReview, ExtractedItem, ReceiptConfirmationState } from "./
 
 import { isRecord } from "../../../shared/lib/guard";
 
+export type ReceiptItemDeletionUndo = {
+  documentId: string;
+  item: ExtractedItem;
+  index: number;
+  reviewTargetIndex: number;
+  remainingItemKeys: string[];
+  remainingItems: ExtractedItem[];
+  confirmationState: ReceiptConfirmationState;
+  balanced?: boolean;
+  reviewReceiptItemsChanged?: boolean;
+};
+
 function equal(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (Array.isArray(left) && Array.isArray(right)) {
@@ -83,6 +95,121 @@ export function addManualReceiptItem(items: ExtractedItem[], key: string): Extra
 
 export function deleteReceiptItemByKey(items: ExtractedItem[], itemKey: string): ExtractedItem[] {
   return ensureReceiptItemKeys(items).filter((item) => item.key !== itemKey);
+}
+
+export function restoreDeletedReceiptItem(
+  items: ExtractedItem[],
+  confirmationState: ReceiptConfirmationState,
+  undo: ReceiptItemDeletionUndo,
+): { items: ExtractedItem[]; confirmationState: ReceiptConfirmationState } | undefined {
+  const keyedItems = ensureReceiptItemKeys(items);
+  if (
+    undo.item.key === undefined ||
+    keyedItems.some((item) => item.key === undo.item.key) ||
+    keyedItems.length !== undo.remainingItemKeys.length ||
+    keyedItems.some((item, index) => item.key !== undo.remainingItemKeys[index])
+  ) {
+    return undefined;
+  }
+
+  const restoredItems = [...keyedItems];
+  restoredItems.splice(Math.min(undo.index, restoredItems.length), 0, undo.item);
+  const restoreItemValue = <T>(
+    current: Record<string, T> | undefined,
+    previous: Record<string, T> | undefined,
+  ) => {
+    const value = previous?.[undo.item.key!];
+    if (value === undefined) return current;
+    return { ...current, [undo.item.key!]: value };
+  };
+  const amountDrafts = restoreItemValue(
+    confirmationState.amountDrafts,
+    undo.confirmationState.amountDrafts,
+  );
+  const manualAmountOverrides = restoreItemValue(
+    confirmationState.manualAmountOverrides,
+    undo.confirmationState.manualAmountOverrides,
+  );
+  const itemAllocations = restoreItemValue(
+    confirmationState.itemAllocations,
+    undo.confirmationState.itemAllocations,
+  );
+  const receiptItemReviewStates = restoreItemValue(
+    confirmationState.receiptItemReviewStates,
+    undo.confirmationState.receiptItemReviewStates,
+  );
+  const restoredState: ReceiptConfirmationState = {
+    ...confirmationState,
+    ...(confirmationState.selectedCandidate || !undo.confirmationState.selectedCandidate
+      ? {}
+      : { selectedCandidate: undo.confirmationState.selectedCandidate }),
+    ...(confirmationState.manualAmountOverrideReason !== undefined ||
+    undo.confirmationState.manualAmountOverrideReason === undefined
+      ? {}
+      : { manualAmountOverrideReason: undo.confirmationState.manualAmountOverrideReason }),
+    ...(amountDrafts ? { amountDrafts } : {}),
+    ...(manualAmountOverrides ? { manualAmountOverrides } : {}),
+    ...(itemAllocations ? { itemAllocations } : {}),
+    ...(receiptItemReviewStates ? { receiptItemReviewStates } : {}),
+  };
+  return { items: restoredItems, confirmationState: restoredState };
+}
+
+export function restoreReceiptItemDeletion(
+  document: DocumentReview,
+  undo: ReceiptItemDeletionUndo,
+): DocumentReview | undefined {
+  const currentResult = document.result;
+  const currentItems = currentResult?.receipt?.items;
+  if (document.id !== undo.documentId || !currentResult?.receipt || !currentItems) return undefined;
+  const restored = restoreDeletedReceiptItem(
+    currentItems,
+    document.receiptConfirmationState ?? {},
+    undo,
+  );
+  if (!restored) return undefined;
+
+  const candidate = undo.confirmationState.selectedCandidate;
+  const currentCandidate = currentResult.candidates?.find((entry) => entry.id === candidate?.id);
+  const changedRemainingItems = undo.remainingItems.some(
+    (item, index) =>
+      JSON.stringify(item) !== JSON.stringify(ensureReceiptItemKeys(currentItems)[index]),
+  );
+  const candidateIsCurrent = Boolean(
+    candidate &&
+    !changedRemainingItems &&
+    currentCandidate &&
+    currentCandidate.computedTotal === candidate.computedTotal &&
+    currentCandidate.consistent === candidate.consistent &&
+    currentCandidate.amounts.length === candidate.amounts.length &&
+    currentCandidate.amounts.every((amount, index) => amount === candidate.amounts[index]) &&
+    currentCandidate.issues.length === candidate.issues.length &&
+    currentCandidate.issues.every((issue, index) => issue === candidate.issues[index]),
+  );
+  const { selectedCandidate: _candidate, ...stateWithoutCandidate } = restored.confirmationState;
+  const confirmationState = candidateIsCurrent
+    ? { ...stateWithoutCandidate, selectedCandidate: currentCandidate }
+    : stateWithoutCandidate;
+  const {
+    balanced: _balanced,
+    reviewReceiptItemsChanged: _reviewReceiptItemsChanged,
+    ...resultWithoutPreviousStructureFlags
+  } = currentResult as typeof currentResult & { reviewReceiptItemsChanged?: boolean };
+  const result = {
+    ...resultWithoutPreviousStructureFlags,
+    ...(changedRemainingItems
+      ? { balanced: false, reviewReceiptItemsChanged: true }
+      : {
+          ...(undo.balanced !== undefined ? { balanced: undo.balanced } : {}),
+          ...(undo.reviewReceiptItemsChanged ? { reviewReceiptItemsChanged: true } : {}),
+        }),
+    receipt: { ...currentResult.receipt, items: restored.items },
+  };
+  return {
+    ...document,
+    result,
+    receiptConfirmationState: Object.keys(confirmationState).length ? confirmationState : undefined,
+  };
 }
 
 export function rekeyReceiptItemValues<T>(

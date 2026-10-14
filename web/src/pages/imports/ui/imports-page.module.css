@@ -18,6 +18,12 @@
   padding: 12px;
 }
 
+.receiptDeleteUndo {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 14px;
+}
+
 .receiptIssues h3 {
   margin: 0 0 8px;
   font-size: 14px;

@@ -24,6 +24,8 @@ import {
   ensureReceiptItemKeys,
   rekeyReceiptConfirmationAfterStructureChange,
   rekeyReceiptItemValues,
+  restoreReceiptItemDeletion,
+  type ReceiptItemDeletionUndo,
 } from "./receipt-review-draft";
 import {
   createStatementExternalIncomeInput,
@@ -142,6 +144,7 @@ export function useImportConfirmation({
     documentId: string;
     index: number;
   }>({ documentId: "", index: 0 });
+  const [receiptItemDeletionUndo, setReceiptItemDeletionUndo] = useState<ReceiptItemDeletionUndo>();
   const selectedDocumentId = selectedDocument?.id ?? "";
   const confirmationState = selectedDocument?.receiptConfirmationState;
   const defaultCandidate = selectedDocument
@@ -496,6 +499,23 @@ export function useImportConfirmation({
         ? appendManualReceiptItem(keyedItems, `manual:${crypto.randomUUID()}`)
         : deleteReceiptItemByKey(keyedItems, action.deleteKey);
     if (nextItems.length === keyedItems.length) return;
+    if (action === "add") {
+      setReceiptItemDeletionUndo(undefined);
+    } else {
+      const deletedIndex = keyedItems.findIndex((item) => item.key === action.deleteKey);
+      if (deletedIndex < 0) return;
+      setReceiptItemDeletionUndo({
+        documentId,
+        item: keyedItems[deletedIndex],
+        index: deletedIndex,
+        reviewTargetIndex,
+        remainingItemKeys: nextItems.flatMap((item) => (item.key ? [item.key] : [])),
+        remainingItems: nextItems,
+        confirmationState: selectedDocument.receiptConfirmationState ?? {},
+        balanced: selectedDocument.result?.balanced,
+        reviewReceiptItemsChanged: receiptItemsChanged(selectedDocument),
+      });
+    }
     editedReceiptDocuments.current.add(documentId);
     markUnsaved();
     updateReceiptConfirmationState(documentId, (state) => {
@@ -525,6 +545,24 @@ export function useImportConfirmation({
   const addReceiptItem = (documentId: string) => changeReceiptItemStructure(documentId, "add");
   const deleteReceiptItem = (documentId: string, itemKey: string) =>
     changeReceiptItemStructure(documentId, { deleteKey: itemKey });
+
+  const undoReceiptItemDeletion = () => {
+    const undo = receiptItemDeletionUndo;
+    const document = selectedDocument;
+    if (!undo || !document) return;
+    const restored = restoreReceiptItemDeletion(document, undo);
+    if (!restored) {
+      setReceiptItemDeletionUndo(undefined);
+      return;
+    }
+    editedReceiptDocuments.current.add(restored.id);
+    markUnsaved();
+    setDocuments((current) =>
+      current.map((entry) => (entry.id === restored.id ? restored : entry)),
+    );
+    setReviewTargetIndex(undo.reviewTargetIndex);
+    setReceiptItemDeletionUndo(undefined);
+  };
 
   const editReceiptItemAllocations = (
     documentId: string,
@@ -651,6 +689,7 @@ export function useImportConfirmation({
       idempotencyKey: await importIdempotencyKey(document.id, "receipt"),
     });
     await clearReceiptDraft(document.id);
+    setReceiptItemDeletionUndo(undefined);
     setHasUnsavedChanges(false);
     refreshPurchases();
     onAdded();
@@ -979,6 +1018,8 @@ export function useImportConfirmation({
     editItem,
     addReceiptItem,
     deleteReceiptItem,
+    canUndoReceiptItemDeletion: receiptItemDeletionUndo?.documentId === selectedDocumentId,
+    undoReceiptItemDeletion,
     editMerchant,
     resetConfirmation,
     confirm,
