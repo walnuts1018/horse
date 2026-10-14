@@ -36,10 +36,10 @@ const (
 )
 
 func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (UpdateResult, error) {
-	return s.updateItem(ctx, command, nil)
+	return s.updateItem(ctx, command, nil, false, nil)
 }
 
-func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sharedTx pgx.Tx) (UpdateResult, error) {
+func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sharedTx pgx.Tx, deferAccountingSync bool, accountingChanged *bool) (UpdateResult, error) {
 	if err := inputvalidation.Check(command); err != nil {
 		return UpdateResult{}, err
 	}
@@ -234,6 +234,9 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	if err != nil {
 		return UpdateResult{}, err
 	}
+	if accountingChanged != nil {
+		*accountingChanged = *accountingChanged || plan.allocationsChanged
+	}
 	if learningScope == itemLearningVariantName {
 		variantName := strings.TrimSpace(*learningVariantName)
 		variantKey := normalizeProductName(variantName)
@@ -328,7 +331,7 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	if err := accounting.RecordEvent(ctx, executor, householdID, itemUUID, "purchase.item.updated", plan.revision, command.ChangedFields, actorUUID); err != nil {
 		return UpdateResult{}, err
 	}
-	if status == postedStatus {
+	if status == postedStatus && plan.allocationsChanged && !deferAccountingSync {
 		if err := syncPostedPurchaseAccounting(ctx, executor, purchase); err != nil {
 			return UpdateResult{}, err
 		}

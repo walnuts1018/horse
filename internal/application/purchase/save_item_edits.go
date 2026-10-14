@@ -119,10 +119,11 @@ func (s *Service) SaveItemEdits(ctx context.Context, command SaveItemEditsComman
 	}
 
 	result := SaveItemEditsResult{Items: make([]BulkUpdatedItem, 0, len(command.Items))}
+	accountingChanged := false
 	for index, item := range command.Items {
 		item.ItemID = itemIDs[index].String()
 		item.ActorID = actorID.String()
-		updated, err := s.updateItem(ctx, item, tx)
+		updated, err := s.updateItem(ctx, item, tx, true, &accountingChanged)
 		if err != nil {
 			return SaveItemEditsResult{}, err
 		}
@@ -132,8 +133,28 @@ func (s *Service) SaveItemEdits(ctx context.Context, command SaveItemEditsComman
 		purchaseUpdate := *command.PurchaseUpdate
 		purchaseUpdate.ActorID = actorID.String()
 		purchaseUpdate.PurchaseID = purchaseID.String()
-		if _, err := s.update(ctx, purchaseUpdate, tx); err != nil {
+		if _, err := s.update(ctx, purchaseUpdate, tx, true, &accountingChanged); err != nil {
 			return SaveItemEditsResult{}, err
+		}
+	}
+	merchantChanged := command.PurchaseUpdate != nil && slices.Contains(command.PurchaseUpdate.ChangedFields, updateFieldMerchant)
+	if purchase.Status == postedStatus && (accountingChanged || merchantChanged) {
+		purchase, err = models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, executor)
+		if err != nil {
+			return SaveItemEditsResult{}, err
+		}
+		if accountingChanged {
+			if err := syncPostedPurchaseAccounting(ctx, executor, purchase); err != nil {
+				return SaveItemEditsResult{}, err
+			}
+		} else {
+			total, err := purchaseItemsTotal(ctx, executor, purchaseID)
+			if err != nil {
+				return SaveItemEditsResult{}, err
+			}
+			if err := updatePostedPurchaseLedgerEntries(ctx, executor, purchase, total); err != nil {
+				return SaveItemEditsResult{}, err
+			}
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {

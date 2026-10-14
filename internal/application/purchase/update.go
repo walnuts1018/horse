@@ -30,10 +30,10 @@ const (
 )
 
 func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResult, error) {
-	return s.update(ctx, command, nil)
+	return s.update(ctx, command, nil, false, nil)
 }
 
-func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pgx.Tx) (UpdateResult, error) {
+func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pgx.Tx, deferAccountingSync bool, accountingChanged *bool) (UpdateResult, error) {
 	if err := inputvalidation.Check(command); err != nil {
 		return UpdateResult{}, err
 	}
@@ -156,6 +156,10 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 		merchant := strings.TrimSpace(*command.Merchant)
 		purchase.Merchant = merchant
 	}
+	purchaseAccountingChanged := updatePayments || !purchase.OccurredAt.Equal(observed.OccurredAt)
+	if accountingChanged != nil {
+		*accountingChanged = *accountingChanged || purchaseAccountingChanged
+	}
 	if updatePayments {
 		payments := *command.PaymentAllocations
 		var total int64
@@ -202,9 +206,19 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 	).Exec(ctx, executor); err != nil {
 		return UpdateResult{}, err
 	}
-	if status == postedStatus {
-		if err := syncPostedPurchaseAccounting(ctx, executor, purchase); err != nil {
-			return UpdateResult{}, err
+	if status == postedStatus && !deferAccountingSync {
+		if purchaseAccountingChanged {
+			if err := syncPostedPurchaseAccounting(ctx, executor, purchase); err != nil {
+				return UpdateResult{}, err
+			}
+		} else if slices.Contains(command.ChangedFields, updateFieldMerchant) {
+			total, err := purchaseItemsTotal(ctx, executor, purchaseUUID)
+			if err != nil {
+				return UpdateResult{}, err
+			}
+			if err := updatePostedPurchaseLedgerEntries(ctx, executor, purchase, total); err != nil {
+				return UpdateResult{}, err
+			}
 		}
 	}
 	if err := insertPurchaseUpdateEvent(ctx, executor, purchase.HouseholdID, actorUUID, purchaseUUID, newRevision, command.ChangedFields); err != nil {
@@ -216,6 +230,40 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 		}
 	}
 	return UpdateResult{PurchaseID: command.PurchaseID}, nil
+}
+
+func updatePostedPurchaseLedgerEntries(ctx context.Context, executor bob.Executor, purchase *models.Purchase, total int64) error {
+	ledgers, err := models.LedgerEntries.Query(sm.Where(psql.And(
+		models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
+		models.LedgerEntries.Columns.SourcePurchaseID.EQ(psql.Arg(purchase.ID)),
+	))).All(ctx, executor)
+	if err != nil {
+		return err
+	}
+	for _, ledger := range ledgers {
+		if _, err := models.LedgerEntries.Update((&models.LedgerEntrySetter{
+			OccurredAt: &purchase.OccurredAt, Description: &purchase.Merchant, AmountYen: &total,
+		}).UpdateMod(), um.Where(models.LedgerEntries.Columns.ID.EQ(psql.Arg(ledger.ID)))).Exec(ctx, executor); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func purchaseItemsTotal(ctx context.Context, executor bob.Executor, purchaseID gofrsuuid.UUID) (int64, error) {
+	items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseID)))).All(ctx, executor)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, item := range items {
+		var ok bool
+		total, ok = checkedAdd(total, item.AmountYen)
+		if !ok {
+			return 0, fmt.Errorf("%w: purchase total is too large", ErrBadInput)
+		}
+	}
+	return total, nil
 }
 
 func validDatePrecision(value string) bool {
