@@ -137,6 +137,17 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	if value, ok := got[7].(model.PoolVariant); !ok || value.GetID() != pool.ID {
 		t.Fatalf("nodes[7] = %#v, want authorized pool", got[7])
 	}
+	memberNodes, err := (&queryResolver{Resolver: &Resolver{DB: db}}).nodes(ownerContext, []string{
+		globalID(nodeTypeMember, memberID), globalID(nodeTypeMember, memberID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, node := range memberNodes {
+		if value, ok := node.(*model.Member); !ok || value.ID != memberID {
+			t.Fatalf("memberNodes[%d] = %#v, want authorized member", index, node)
+		}
+	}
 
 	purchaseID := globalID(nodeTypePurchase, ownedPurchase.ID)
 	query := &queryResolver{Resolver: &Resolver{DB: db}}
