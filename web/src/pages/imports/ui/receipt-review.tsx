@@ -21,7 +21,7 @@ import {
   type ReceiptItemReviewState,
 } from "../model/receipt-item-review";
 import { addReceiptPayment, updateReceiptPaymentAmount } from "../model/receipt-payment-split";
-import { parseReceiptReviewAmountDraft } from "../model/receipt-review-amount";
+import { receiptReviewAmountDraftOnBlur } from "../model/receipt-review-amount";
 import { ensureReceiptItemKeys } from "../model/receipt-review-draft";
 import {
   candidateAmountDifferences,
@@ -683,19 +683,18 @@ export function ReceiptReview({
                         }}
                         onBlur={() => {
                           if (!hasDraft) return;
-                          const nextAmount = parseReceiptReviewAmountDraft(draft);
-                          if (nextAmount !== null) {
-                            setManualAmountOverrides((current) => ({
-                              ...current,
-                              [selectedDocument.id]: {
-                                ...current[selectedDocument.id],
-                                [itemKey]: nextAmount,
-                              },
-                            }));
-                            editItem(selectedDocument.id, index, {
-                              grossAmount: nextAmount,
-                            });
-                          }
+                          const blurResult = receiptReviewAmountDraftOnBlur(draft);
+                          if (blurResult.kind === "keep") return;
+                          setManualAmountOverrides((current) => ({
+                            ...current,
+                            [selectedDocument.id]: {
+                              ...current[selectedDocument.id],
+                              [itemKey]: blurResult.amount,
+                            },
+                          }));
+                          editItem(selectedDocument.id, index, {
+                            grossAmount: blurResult.amount,
+                          });
                           setReceiptAmountDrafts((current) => {
                             const documentDrafts = { ...current[selectedDocument.id] };
                             delete documentDrafts[itemKey];
