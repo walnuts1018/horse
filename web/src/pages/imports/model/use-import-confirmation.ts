@@ -17,7 +17,7 @@ import {
   uniqueConsistentReceiptCandidate,
 } from "./receipt-confirmation";
 import { receiptItemsNeedingReview } from "./receipt-item-review";
-import { receiptPaymentAccountId } from "./receipt-payment-account";
+import { receiptPaymentAccountId, soleReceiptPaymentAccountId } from "./receipt-payment-account";
 import {
   addManualReceiptItem as appendManualReceiptItem,
   deleteReceiptItemByKey,
@@ -346,7 +346,7 @@ export function useImportConfirmation({
     return [
       {
         key: "default",
-        paymentAccountId: household.accounts[0]?.id ?? "",
+        paymentAccountId: soleReceiptPaymentAccountId(household.accounts),
         amountYen: receiptTotal(document),
       },
     ];
@@ -381,7 +381,9 @@ export function useImportConfirmation({
               ? !selectedCandidate.consistent
               : selectedDocument.result.balanced === false);
           const needsPaymentReview =
-            household.accounts.length > 0 && paymentsTotal !== receiptTotal(selectedDocument);
+            household.accounts.length > 0 &&
+            (paymentDraftFor(selectedDocument).some((payment) => !payment.paymentAccountId) ||
+              paymentsTotal !== receiptTotal(selectedDocument));
           return [
             ...(needsPurchaseDate
               ? [{ key: "date", label: "購入日", elementId: "receipt-review-purchase-date" }]

@@ -80,11 +80,14 @@ export function createReceiptPurchaseInput({
   }
   if (
     accountCount > 0 &&
+    (paymentDraft.length === 0 || paymentDraft.some((payment) => !payment.paymentAccountId))
+  ) {
+    throw new Error("決済口座を選択してください");
+  }
+  if (
+    accountCount > 0 &&
     (paymentDraft.some(
-      (payment) =>
-        !payment.paymentAccountId ||
-        !Number.isSafeInteger(payment.amountYen) ||
-        payment.amountYen < 0,
+      (payment) => !Number.isSafeInteger(payment.amountYen) || payment.amountYen < 0,
     ) ||
       paymentDraft.reduce((total, payment) => total + payment.amountYen, 0) !== totalYen)
   ) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Account } from "../../../shared/api";
 
-import { receiptPaymentAccountId } from "./receipt-payment-account";
+import { receiptPaymentAccountId, soleReceiptPaymentAccountId } from "./receipt-payment-account";
 
 const accounts: Account[] = [
   { id: "card-1234", name: "Visa", kind: "CARD", cardLast4: "1234" },
@@ -31,5 +31,13 @@ describe("receiptPaymentAccountId", () => {
 
   it("4桁数字でない抽出値では既存判定を維持する", () => {
     expect(receiptPaymentAccountId(accounts, "Visa", "12345")).toBe("card-1234");
+  });
+});
+
+describe("soleReceiptPaymentAccountId", () => {
+  it("口座が1件の場合だけ決済元を補完する", () => {
+    expect(soleReceiptPaymentAccountId([accounts[0]])).toBe("card-1234");
+    expect(soleReceiptPaymentAccountId(accounts)).toBe("");
+    expect(soleReceiptPaymentAccountId([])).toBe("");
   });
 });

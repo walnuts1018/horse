@@ -144,6 +144,25 @@ describe("createReceiptPurchaseInput", () => {
     ).toThrow("決済内訳と購入額を一致させてください");
   });
 
+  it("決済口座が未選択の場合は確定を拒否する", () => {
+    expect(() =>
+      createReceiptPurchaseInput({
+        document,
+        householdId: "household-1",
+        occurredAt: "2026-10-14T03:00:00.000Z",
+        candidateId: "candidate-1",
+        requiresCandidateSelection: false,
+        requiresOverrideReason: false,
+        overrideReason: "",
+        paymentDraft: [{ key: "payment-1", paymentAccountId: "", amountYen: 330 }],
+        accountCount: 2,
+        manualAmounts: undefined,
+        allocations: undefined,
+        suggestedCategoryIds: [],
+      }),
+    ).toThrow("決済口座を選択してください");
+  });
+
   it("時刻のない日付を購入日時としてAPIへ渡さない", () => {
     for (const occurredAt of [null, "2026-10-14"]) {
       expect(() =>

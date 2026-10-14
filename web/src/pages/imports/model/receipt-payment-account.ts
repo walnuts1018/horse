@@ -24,3 +24,7 @@ export function receiptPaymentAccountId(
   );
   return methodMatches.length === 1 ? methodMatches[0].id : "";
 }
+
+export function soleReceiptPaymentAccountId(accounts: Account[]): string {
+  return accounts.length === 1 ? accounts[0].id : "";
+}
