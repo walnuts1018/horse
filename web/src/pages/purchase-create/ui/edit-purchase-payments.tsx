@@ -1,5 +1,6 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role */
 import { Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import type { Household, Purchase } from "../../../shared/api";
 import type { PaymentDraft } from "../model/purchase-payments";
@@ -23,8 +24,10 @@ function PaymentAccountPicker({
   describedBy?: string;
   onSelect: (id: string) => void;
 }) {
+  const listId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
   const selected = accounts.find((account) => account.id === payment.paymentAccountId);
   const filtered = accounts.filter((account) =>
     account.name.toLocaleLowerCase("ja-JP").includes(query.trim().toLocaleLowerCase("ja-JP")),
@@ -45,41 +48,65 @@ function PaymentAccountPicker({
     >
       <input
         aria-label={`決済元を検索 ${index + 1}`}
+        aria-autocomplete="list"
+        aria-controls={listId}
+        aria-expanded={open}
+        aria-activedescendant={
+          open && activeIndex < filtered.length ? `${listId}-${activeIndex}` : undefined
+        }
         aria-invalid={invalid}
         aria-describedby={describedBy}
         autoComplete="off"
+        role="combobox"
         type="search"
         value={open ? query : (selected?.name ?? "")}
         placeholder="決済元を選択"
         onFocus={() => {
           setQuery("");
+          setActiveIndex(0);
           setOpen(true);
         }}
         onChange={(event) => {
           setQuery(event.target.value);
+          setActiveIndex(0);
           setOpen(true);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape") {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setActiveIndex((current) => Math.min(current + 1, Math.max(filtered.length - 1, 0)));
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setActiveIndex((current) => Math.max(current - 1, 0));
+          } else if (event.key === "Enter" && open) {
+            event.preventDefault();
+            if (activeIndex < filtered.length) choose(filtered[activeIndex].id);
+          } else if (event.key === "Escape") {
             setOpen(false);
             setQuery("");
           }
         }}
       />
       {open && (
-        <ul className={styles.options}>
-          {filtered.map((account) => (
-            <li key={account.id}>
-              <button
-                aria-pressed={account.id === payment.paymentAccountId}
-                type="button"
+        <div className={styles.options} id={listId} role="listbox">
+          {filtered.map((account, optionIndex) => (
+            <div key={account.id}>
+              <div
+                aria-selected={account.id === payment.paymentAccountId}
+                id={`${listId}-${optionIndex}`}
+                role="option"
+                tabIndex={-1}
+                onMouseDown={(event) => event.preventDefault()}
                 onClick={() => choose(account.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") choose(account.id);
+                }}
               >
                 {account.name}
-              </button>
-            </li>
+              </div>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
