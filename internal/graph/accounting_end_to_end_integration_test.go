@@ -185,6 +185,31 @@ func assertHouseholdJournalsBalance(t *testing.T, ctx context.Context, db *pgxpo
 			t.Errorf("journal %s (%s) has no entries", journal.ID, journal.SourceKind)
 		}
 	}
+	items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.HouseholdID.EQ(psql.Arg(householdID)))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocations, err := models.ItemAllocations.Query(sm.Where(models.ItemAllocations.Columns.HouseholdID.EQ(psql.Arg(householdID)))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type itemAllocationTotal struct {
+		amount int64
+		count  int
+	}
+	totals := make(map[gofrsuuid.UUID]itemAllocationTotal, len(items))
+	for _, allocation := range allocations {
+		total := totals[allocation.ItemID]
+		total.amount += allocation.AmountYen
+		total.count++
+		totals[allocation.ItemID] = total
+	}
+	for _, item := range items {
+		total := totals[item.ID]
+		if total.count == 0 || total.amount != item.AmountYen {
+			t.Errorf("purchase item %s allocation total does not match its amount: item=%d allocated=%d rows=%d", item.ID, item.AmountYen, total.amount, total.count)
+		}
+	}
 }
 
 func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeriod(t *testing.T) {

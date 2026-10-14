@@ -250,4 +250,5 @@ func TestStatementLoanConfirmationIsAtomicAndIdempotent(t *testing.T) {
 	if err != nil || len(transfers) != 3 {
 		t.Fatalf("failed statement requests created transfer records: transfers=%#v error=%v", transfers, err)
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, householdUUID)
 }

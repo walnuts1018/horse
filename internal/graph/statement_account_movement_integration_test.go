@@ -309,4 +309,5 @@ func TestStatementAccountTransferConfirmationIsAtomicAndIdempotent(t *testing.T)
 			t.Fatalf("card bill payment did not debit the card and credit the bank: %#v", journalEntries)
 		}
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, householdUUID)
 }

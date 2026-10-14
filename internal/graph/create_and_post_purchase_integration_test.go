@@ -151,6 +151,7 @@ func TestCreateAndPostPurchaseIsAtomicAndIdempotent(t *testing.T) {
 	if len(journals) != 1 || len(ledgers) != 1 {
 		t.Fatalf("purchase journals=%d ledgers=%d, want exactly one of each", len(journals), len(ledgers))
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, householdUUID)
 
 	document := createAndPostSourceDocument(t, ctx, db, householdUUID, memberUUID, "atomic-rollback")
 	documentID := document.ID.String()

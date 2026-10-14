@@ -274,4 +274,5 @@ func TestCorrectPurchaseFromStatementKeepsRowEvidenceAtomic(t *testing.T) {
 			t.Fatalf("%s-mismatched refund was linked to the existing correction: %v", mismatch.name, err)
 		}
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, householdUUID)
 }

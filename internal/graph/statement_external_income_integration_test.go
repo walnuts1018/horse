@@ -218,4 +218,5 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 	if err != nil || len(entries) != 2 || entries[0].DebitYen+entries[1].DebitYen != entries[0].CreditYen+entries[1].CreditYen {
 		t.Fatalf("income did not create exactly two balanced journal entries: entries=%#v error=%v", entries, err)
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, householdUUID)
 }

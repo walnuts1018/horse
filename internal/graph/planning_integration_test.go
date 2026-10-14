@@ -290,6 +290,7 @@ func TestPlanningMutationsAreAtomicAndHouseholdScoped(t *testing.T) {
 	if _, err := resolver.recordAccountMovement(ctx, model.RecordAccountMovementInput{HouseholdID: household.ID, Kind: model.AccountMovementKindCardBillPayment, FromAccountID: card.ID, ToAccountID: bank.ID, AmountYen: 800, OccurredAt: movementInput.OccurredAt, IdempotencyKey: uuid.NewV7().String()}); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("card bill payment must debit a bank account into a card account: %v", err)
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, generatedUUID(household.ID))
 }
 
 func amountForPool(allocations []*model.PurchaseItemAllocation, poolID string) model.Long {

@@ -1024,6 +1024,7 @@ func TestPersonalCardPaysSharedPoolPurchase(t *testing.T) {
 	if lines[memberA].AdvanceCreditYen != 400 || lines[memberA].AmountDueYen != -400 || lines[memberB].MonthlyAdjustmentYen != 400 || lines[memberB].AmountDueYen != 400 {
 		t.Fatalf("shared purchase paid by A's personal card should settle the 60/40 responsibility against A's 1000 yen advance: %#v", lines)
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, generatedUUID(household.ID))
 }
 
 func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
@@ -1482,6 +1483,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if sourceAccountCredit != 5000 || destinationAccountDebit != 5000 {
 		t.Fatalf("repayment journal did not reduce the shared bank and increase the lender bank: source credit=%d destination debit=%d", sourceAccountCredit, destinationAccountDebit)
 	}
+	assertHouseholdJournalsBalance(t, ctx, db, generatedUUID(household.ID))
 }
 
 func settlementByMember(t *testing.T, lines []*model.SettlementLine) map[string]*model.SettlementLine {
