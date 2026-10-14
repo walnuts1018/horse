@@ -8,6 +8,7 @@ type CreateCommand struct {
 	ActorID                    string
 	HouseholdID                string
 	OccurredAt                 time.Time
+	DatePrecision              string
 	IdempotencyKey             string `validate:"required,max=200"`
 	SourceDocumentID           *string
 	SourceReference            *string `validate:"omitempty,max=256"`

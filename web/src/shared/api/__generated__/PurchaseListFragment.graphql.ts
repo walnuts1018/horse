@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3a6d75a0a163936a0f6fc64ba53d1968>>
+ * @generated SignedSource<<7f8ab91e3c86efa29cdef834375b1ca9>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ReaderFragment } from 'relay-runtime';
+export type PurchaseDatePrecision = "DATE_ONLY" | "DATE_TIME" | "%future added value";
 export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN" | "%future added value";
 export type PurchaseStatus = "CLOSED" | "DRAFT" | "POSTED" | "%future added value";
 export type SourceKind = "BANK" | "CARD" | "EMAIL" | "ORDER" | "RECEIPT" | "%future added value";
@@ -20,6 +21,7 @@ export type PurchaseListFragment$data = {
         readonly correctionAmountYen: any;
         readonly correctionCount: number;
         readonly createdAt: string;
+        readonly datePrecision: PurchaseDatePrecision;
         readonly hasEvidence: boolean;
         readonly householdId: string;
         readonly id: string;
@@ -257,6 +259,13 @@ return {
                   "args": null,
                   "kind": "ScalarField",
                   "name": "occurredAt",
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "kind": "ScalarField",
+                  "name": "datePrecision",
                   "storageKey": null
                 },
                 {
@@ -581,6 +590,6 @@ return {
 };
 })();
 
-(node as any).hash = "3f6af73ab1a72fceb4dab78a82c46a6c";
+(node as any).hash = "3240bb6cc1c153f7f3495187c59f4baf";
 
 export default node;

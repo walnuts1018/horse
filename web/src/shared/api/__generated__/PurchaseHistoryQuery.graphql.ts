@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<667387d156b9c81e0af9efd83834f960>>
+ * @generated SignedSource<<6535133a3240cf335aea749fa0820468>>
  * @lightSyntaxTransform
  */
 
@@ -9,6 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type PurchaseAmountTarget = "ITEM" | "PURCHASE" | "%future added value";
+export type PurchaseDatePrecision = "DATE_ONLY" | "DATE_TIME" | "%future added value";
 export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN" | "%future added value";
 export type PurchaseStatus = "CLOSED" | "DRAFT" | "POSTED" | "%future added value";
 export type SourceKind = "BANK" | "CARD" | "EMAIL" | "ORDER" | "RECEIPT" | "%future added value";
@@ -41,6 +42,7 @@ export type PurchaseHistoryQuery$data = {
         readonly correctionAmountYen: any;
         readonly correctionCount: number;
         readonly createdAt: string;
+        readonly datePrecision: PurchaseDatePrecision;
         readonly hasEvidence: boolean;
         readonly householdId: string;
         readonly id: string;
@@ -255,6 +257,13 @@ v11 = [
                 "args": null,
                 "kind": "ScalarField",
                 "name": "occurredAt",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "datePrecision",
                 "storageKey": null
               },
               {
@@ -593,16 +602,16 @@ return {
     "selections": (v11/*:: as any*/)
   },
   "params": {
-    "cacheID": "c8e213b2e35af7bb043688f80127ebf4",
+    "cacheID": "5bd2a042e1bb09b9baa3f8042c7ce76a",
     "id": null,
     "metadata": {},
     "name": "PurchaseHistoryQuery",
     "operationKind": "query",
-    "text": "query PurchaseHistoryQuery(\n  $filter: PurchaseFilter!\n  $first: Int\n  $after: String\n) {\n  purchases(filter: $filter, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          remainingRefundableAmountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        correctionAmountYen\n        correctionCount\n        remainingRefundableAmountYen\n        revision\n        status\n        createdAt\n        updatedAt\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
+    "text": "query PurchaseHistoryQuery(\n  $filter: PurchaseFilter!\n  $first: Int\n  $after: String\n) {\n  purchases(filter: $filter, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        datePrecision\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          remainingRefundableAmountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        correctionAmountYen\n        correctionCount\n        remainingRefundableAmountYen\n        revision\n        status\n        createdAt\n        updatedAt\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "d7f5ab28a075c7f37c73135f4e8ec2e3";
+(node as any).hash = "13ef77ddc54026b9d16d7b96c7948c09";
 
 export default node;

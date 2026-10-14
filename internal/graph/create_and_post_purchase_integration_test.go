@@ -81,11 +81,22 @@ func TestCreateAndPostPurchaseIsAtomicAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	directPurchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: testPurchaseTime, Merchant: "Direct purchase",
+		Items: []*model.PurchaseItemInput{{Name: testItemName, AmountYen: 1}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if directPurchase.DatePrecision != model.PurchaseDatePrecisionDateTime {
+		t.Fatalf("direct purchase date precision = %s, want DATE_TIME", directPurchase.DatePrecision)
+	}
+
 	successDocument := createAndPostSourceDocument(t, ctx, db, householdUUID, memberUUID, "atomic-success")
 	successDocumentID := successDocument.ID.String()
 	extractionID, extractionVersion, extractionStatus := generatedUUID(uuid.NewV7().String()), int32(1), extractionJobSucceededStatus
 	verification := ingestion.Verification{
-		Receipt: ingestion.Receipt{Total: 120, Items: []ingestion.Item{{
+		Receipt: ingestion.Receipt{DatePrecision: "DATE_ONLY", PurchasedAt: "2026-04-20", Total: 120, Items: []ingestion.Item{{
 			PrintedName: "Atomic printed item", Name: testItemName, PrintedAmount: 120, GrossAmount: 120,
 			Region: &ingestion.Region{Page: 1, Top: 0.1, Left: 0.2, Bottom: 0.3, Right: 0.4},
 		}}},
@@ -102,8 +113,9 @@ func TestCreateAndPostPurchaseIsAtomicAndIdempotent(t *testing.T) {
 	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
+	dateOnly := model.PurchaseDatePrecisionDateOnly
 	input := model.CreatePurchaseInput{
-		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: testPurchaseTime, Merchant: "Atomic purchase",
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-04-20T03:00:00Z", DatePrecision: &dateOnly, Merchant: "Atomic purchase",
 		SourceDocumentID:   &successDocumentID,
 		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 120}},
 		Items:              []*model.PurchaseItemInput{{Name: testItemName, AmountYen: 120}},
@@ -114,6 +126,9 @@ func TestCreateAndPostPurchaseIsAtomicAndIdempotent(t *testing.T) {
 	}
 	if createdPurchase.Status != model.PurchaseStatusPosted || createdPurchase.Revision != 2 {
 		t.Fatalf("purchase state = %s at revision %d, want POSTED at revision 2", createdPurchase.Status, createdPurchase.Revision)
+	}
+	if createdPurchase.DatePrecision != model.PurchaseDatePrecisionDateOnly {
+		t.Fatalf("purchase date precision = %s, want DATE_ONLY", createdPurchase.DatePrecision)
 	}
 	purchaseUUID := generatedUUID(createdPurchase.ID)
 	assertSourceDocumentLinked(t, ctx, db, householdUUID, successDocument.ID, purchaseUUID)

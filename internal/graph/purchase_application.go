@@ -53,10 +53,13 @@ func createPurchaseCommand(input model.CreatePurchaseInput, actorID string) (pur
 		return purchase.CreateCommand{}, err
 	}
 	command := purchase.CreateCommand{
-		ActorID: actorID, HouseholdID: input.HouseholdID, OccurredAt: occurredAt,
+		ActorID: actorID, HouseholdID: input.HouseholdID, OccurredAt: occurredAt, DatePrecision: "DATE_TIME",
 		IdempotencyKey: input.IdempotencyKey, SourceDocumentID: input.SourceDocumentID,
 		SourceReference: input.SourceReference, ReceiptCandidateID: input.ReceiptCandidateID,
 		ManualAmountOverrideReason: input.ManualAmountOverrideReason, Merchant: input.Merchant,
+	}
+	if input.DatePrecision != nil {
+		command.DatePrecision = string(*input.DatePrecision)
 	}
 	if input.Origin != nil {
 		command.Origin = string(*input.Origin)

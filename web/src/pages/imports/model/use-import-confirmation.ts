@@ -83,11 +83,24 @@ function receiptItemsChanged(document?: DocumentReview) {
   );
 }
 
+function purchaseDatePrecisionFor(document: DocumentReview): "DATE_TIME" | "DATE_ONLY" {
+  if (document.receiptConfirmationState?.purchaseTime !== undefined) {
+    return document.receiptConfirmationState.purchaseTime ? "DATE_TIME" : "DATE_ONLY";
+  }
+  return (
+    document.result?.receipt?.datePrecision ??
+    (/[T ]\d{2}:\d{2}/.test(document.result?.receipt?.purchasedAt ?? "")
+      ? "DATE_TIME"
+      : "DATE_ONLY")
+  );
+}
+
 function purchaseOccurredAtFor(document: DocumentReview) {
   return receiptOccurredAt(
     document.result?.receipt?.purchasedAt,
     document.receiptConfirmationState?.purchaseDate,
     document.receiptConfirmationState?.purchaseTime,
+    purchaseDatePrecisionFor(document),
   );
 }
 
@@ -101,7 +114,7 @@ function purchaseDateFor(document: DocumentReview) {
 function purchaseTimeFor(document: DocumentReview) {
   return (
     document.receiptConfirmationState?.purchaseTime ??
-    receiptTimeInputValue(document.result?.receipt?.purchasedAt)
+    receiptTimeInputValue(document.result?.receipt?.purchasedAt, purchaseDatePrecisionFor(document))
   );
 }
 
@@ -607,13 +620,18 @@ export function useImportConfirmation({
           document.result.receipt?.purchasedAt,
           date,
           document.receiptConfirmationState?.purchaseTime,
+          purchaseDatePrecisionFor(document),
         );
         return purchasedAt
           ? {
               ...document,
               result: {
                 ...document.result,
-                receipt: { ...document.result.receipt, purchasedAt },
+                receipt: {
+                  ...document.result.receipt,
+                  purchasedAt,
+                  datePrecision: purchaseDatePrecisionFor(document),
+                },
               },
             }
           : document;
@@ -632,14 +650,19 @@ export function useImportConfirmation({
           document.result.receipt?.purchasedAt,
           document.receiptConfirmationState?.purchaseDate ??
             receiptDateInputValue(document.result.receipt?.purchasedAt),
-          time,
+          time || undefined,
+          time ? "DATE_TIME" : "DATE_ONLY",
         );
         return purchasedAt
           ? {
               ...document,
               result: {
                 ...document.result,
-                receipt: { ...document.result.receipt, purchasedAt },
+                receipt: {
+                  ...document.result.receipt,
+                  purchasedAt,
+                  datePrecision: time ? "DATE_TIME" : "DATE_ONLY",
+                },
               },
             }
           : document;
@@ -681,6 +704,7 @@ export function useImportConfirmation({
       document,
       householdId: household.id,
       occurredAt,
+      datePrecision: purchaseDatePrecisionFor(document),
       candidateId: candidateID,
       requiresCandidateSelection: Boolean(
         !receiptItemsChanged(document) && document.result?.candidates?.length && !candidate,

@@ -60,6 +60,7 @@ describe("createReceiptPurchaseInput", () => {
         document,
         householdId: "household-1",
         occurredAt: "2026-10-14T03:00:00.000Z",
+        datePrecision: "DATE_TIME",
         candidateId: "candidate-1",
         requiresCandidateSelection: true,
         requiresOverrideReason: false,
@@ -99,6 +100,7 @@ describe("createReceiptPurchaseInput", () => {
       document,
       householdId: "household-1",
       occurredAt: "2026-10-14T03:00:00.000Z",
+      datePrecision: "DATE_TIME",
       candidateId: "candidate-1",
       requiresCandidateSelection: true,
       requiresOverrideReason: false,
@@ -119,6 +121,7 @@ describe("createReceiptPurchaseInput", () => {
       document,
       householdId: "household-1",
       occurredAt: "2026-10-14T03:00:00.000Z",
+      datePrecision: "DATE_TIME",
       candidateId: "candidate-1",
       requiresCandidateSelection: false,
       requiresOverrideReason: true,
@@ -140,6 +143,7 @@ describe("createReceiptPurchaseInput", () => {
         document,
         householdId: "household-1",
         occurredAt: "2026-10-14T03:00:00.000Z",
+        datePrecision: "DATE_TIME",
         candidateId: "candidate-1",
         requiresCandidateSelection: true,
         requiresOverrideReason: false,
@@ -159,6 +163,7 @@ describe("createReceiptPurchaseInput", () => {
         document,
         householdId: "household-1",
         occurredAt: "2026-10-14T03:00:00.000Z",
+        datePrecision: "DATE_TIME",
         candidateId: "candidate-1",
         requiresCandidateSelection: false,
         requiresOverrideReason: false,
@@ -172,13 +177,36 @@ describe("createReceiptPurchaseInput", () => {
     ).toThrow("決済口座を選択してください");
   });
 
-  it("時刻のない日付を購入日時としてAPIへ渡さない", () => {
-    for (const occurredAt of [null, "2026-10-14"]) {
+  it("DATE_ONLYで日付だけのレシートを確定する", () => {
+    const input = createReceiptPurchaseInput({
+      document,
+      householdId: "household-1",
+      occurredAt: "2026-10-14T03:00:00.000Z",
+      datePrecision: "DATE_ONLY",
+      candidateId: "",
+      requiresCandidateSelection: false,
+      requiresOverrideReason: false,
+      overrideReason: "",
+      paymentDraft: [],
+      accountCount: 0,
+      manualAmounts: undefined,
+      allocations: undefined,
+      suggestedCategoryIds: [],
+    });
+    expect(input).toMatchObject({
+      occurredAt: "2026-10-14T03:00:00.000Z",
+      datePrecision: "DATE_ONLY",
+    });
+  });
+
+  it("購入日を解決できない場合は確定を拒否する", () => {
+    for (const occurredAt of [null, "invalid-date"]) {
       expect(() =>
         createReceiptPurchaseInput({
           document,
           householdId: "household-1",
           occurredAt,
+          datePrecision: "DATE_ONLY",
           candidateId: "candidate-1",
           requiresCandidateSelection: false,
           requiresOverrideReason: false,
@@ -189,7 +217,7 @@ describe("createReceiptPurchaseInput", () => {
           allocations: undefined,
           suggestedCategoryIds: [],
         }),
-      ).toThrow("購入日時を入力してください");
+      ).toThrow("購入日を入力してください");
     }
   });
 });

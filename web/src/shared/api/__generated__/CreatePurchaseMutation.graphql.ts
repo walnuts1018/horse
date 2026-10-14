@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<d0765aaebb79cf40283227e159f4102e>>
+ * @generated SignedSource<<b1d68d27351cca9a1b73ba7b0819e22b>>
  * @lightSyntaxTransform
  */
 
@@ -9,9 +9,11 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
+export type PurchaseDatePrecision = "DATE_ONLY" | "DATE_TIME" | "%future added value";
 export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN" | "%future added value";
 export type PurchaseStatus = "CLOSED" | "DRAFT" | "POSTED" | "%future added value";
 export type CreatePurchaseInput = {
+  datePrecision?: PurchaseDatePrecision | null | undefined;
   householdId: string;
   idempotencyKey: string;
   items: ReadonlyArray<PurchaseItemInput>;
@@ -59,6 +61,7 @@ export type CreatePurchaseMutation$data = {
     readonly code?: MutationErrorCode;
     readonly message?: string;
     readonly result?: {
+      readonly datePrecision: PurchaseDatePrecision;
       readonly householdId: string;
       readonly id: string;
       readonly items: ReadonlyArray<{
@@ -221,6 +224,13 @@ v8 = [
                 "args": null,
                 "kind": "ScalarField",
                 "name": "occurredAt",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "datePrecision",
                 "storageKey": null
               },
               {
@@ -444,16 +454,16 @@ return {
     "selections": (v8/*:: as any*/)
   },
   "params": {
-    "cacheID": "6e5d6e0a4d5776866658522352e36223",
+    "cacheID": "86808f371662d467b30372e3d8afd7ca",
     "id": null,
     "metadata": {},
     "name": "CreatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    __typename\n    ... on CreatePurchaseSuccess {\n      result {\n        id\n        householdId\n        occurredAt\n        merchant\n        totalYen\n        revision\n        status\n        items {\n          id\n          name\n          amountYen\n          remainingRefundableAmountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreatePurchaseMutation(\n  $input: CreatePurchaseInput!\n) {\n  createPurchase(input: $input) {\n    __typename\n    ... on CreatePurchaseSuccess {\n      result {\n        id\n        householdId\n        occurredAt\n        datePrecision\n        merchant\n        totalYen\n        revision\n        status\n        items {\n          id\n          name\n          amountYen\n          remainingRefundableAmountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "c422b11c0d89da5d47e7360b5c318673";
+(node as any).hash = "4de6d50a040492f77b5c566282d0d0b7";
 
 export default node;

@@ -132,6 +132,15 @@ var Purchases = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		DatePrecision: column{
+			Name:      "date_precision",
+			DBType:    "text",
+			Default:   "'DATE_TIME'::text",
+			Comment:   "",
+			Nullable:  false,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: purchaseIndexes{
 		PurchasesPkey: index{
@@ -275,6 +284,14 @@ var Purchases = Table[
 		},
 	},
 	Checks: purchaseChecks{
+		PurchasesDatePrecisionCheck: check{
+			constraint: constraint{
+				Name:    "purchases_date_precision_check",
+				Columns: []string{"date_precision"},
+				Comment: "",
+			},
+			Expression: "(date_precision = ANY (ARRAY['DATE_TIME'::text, 'DATE_ONLY'::text]))",
+		},
 		PurchasesOriginCheck: check{
 			constraint: constraint{
 				Name:    "purchases_origin_check",
@@ -317,11 +334,12 @@ type purchaseColumns struct {
 	CreatedAt             column
 	UpdatedAt             column
 	Origin                column
+	DatePrecision         column
 }
 
 func (c purchaseColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.OccurredAt, c.Merchant, c.PaymentAccountID, c.Status, c.Revision, c.FieldRevisions, c.AllocationRuleVersion, c.CreatedBy, c.CreatedAt, c.UpdatedAt, c.Origin,
+		c.ID, c.HouseholdID, c.OccurredAt, c.Merchant, c.PaymentAccountID, c.Status, c.Revision, c.FieldRevisions, c.AllocationRuleVersion, c.CreatedBy, c.CreatedAt, c.UpdatedAt, c.Origin, c.DatePrecision,
 	}
 }
 
@@ -361,13 +379,14 @@ func (u purchaseUniques) AsSlice() []constraint {
 }
 
 type purchaseChecks struct {
-	PurchasesOriginCheck   check
-	PurchasesRevisionCheck check
-	PurchasesStatusCheck   check
+	PurchasesDatePrecisionCheck check
+	PurchasesOriginCheck        check
+	PurchasesRevisionCheck      check
+	PurchasesStatusCheck        check
 }
 
 func (c purchaseChecks) AsSlice() []check {
 	return []check{
-		c.PurchasesOriginCheck, c.PurchasesRevisionCheck, c.PurchasesStatusCheck,
+		c.PurchasesDatePrecisionCheck, c.PurchasesOriginCheck, c.PurchasesRevisionCheck, c.PurchasesStatusCheck,
 	}
 }

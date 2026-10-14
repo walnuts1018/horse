@@ -429,11 +429,10 @@ export function ReceiptReview({
                 onChange={(event) => onPurchaseDateChange(event.target.value)}
               />
             </label>
-            {!purchaseTime && <small>時刻を入力してください</small>}
             <details className={styles.purchaseTimeEditor}>
-              <summary>{purchaseTime ? "時刻を編集" : "時刻を入力"}</summary>
+              <summary>{purchaseTime ? "時刻を編集" : "時刻を追加（任意）"}</summary>
               <label>
-                購入時刻
+                購入時刻（任意）
                 <input
                   type="time"
                   value={purchaseTime}
@@ -1022,7 +1021,7 @@ export function ReceiptReview({
         <button
           type="button"
           className="button button-primary button-wide"
-          disabled={pending || !purchaseDate || !purchaseTime || !validReceiptItems}
+          disabled={pending || !purchaseDate || !validReceiptItems}
           onClick={() => onConfirm()}
         >
           <Check size={16} />

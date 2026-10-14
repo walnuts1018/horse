@@ -216,10 +216,13 @@ export type PurchaseItem = {
   allocations: PurchaseItemAllocation[];
   tags: Tag[];
 };
+export type PurchaseDatePrecision = "DATE_TIME" | "DATE_ONLY";
+export type PurchaseDatePrecisionValue = PurchaseDatePrecision | "%future added value";
 export type Purchase = {
   id: string;
   householdId: string;
   occurredAt: string;
+  datePrecision: PurchaseDatePrecisionValue;
   merchant: string;
   origin: "AI" | "MANUAL" | "UNKNOWN";
   hasEvidence: boolean;
@@ -240,6 +243,7 @@ export type CreatePurchaseInput = {
   idempotencyKey: string;
   householdId: string;
   occurredAt: string;
+  datePrecision?: PurchaseDatePrecision;
   merchant: string;
   origin?: "AI" | "MANUAL" | "UNKNOWN";
   sourceDocumentId?: string | null;

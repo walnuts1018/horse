@@ -367,7 +367,7 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 	for _, purchase := range purchases {
 		loaded := &model.Purchase{
 			ID: purchase.ID.String(), HouseholdID: purchase.HouseholdID.String(),
-			OccurredAt: timeString(purchase.OccurredAt), Merchant: purchase.Merchant,
+			OccurredAt: timeString(purchase.OccurredAt), DatePrecision: model.PurchaseDatePrecision(purchase.DatePrecision), Merchant: purchase.Merchant,
 			Origin: model.PurchaseOrigin(purchase.Origin), SourceKinds: make([]model.SourceKind, 0),
 			Revision: int(purchase.Revision), Status: model.PurchaseStatus(purchase.Status), Currency: currencyJPY,
 			CreatedAt: timeString(purchase.CreatedAt), UpdatedAt: timeString(purchase.UpdatedAt),

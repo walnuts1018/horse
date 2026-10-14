@@ -5,6 +5,7 @@ import type { LedgerItemDraft } from "./purchase-item-draft";
 import { readProductCatalog } from "../../../entities/product";
 import {
   mapUpdatePurchaseItemInput,
+  purchaseOccurredAtLabel,
   usePostPurchaseMutation,
   useSavePurchaseItemEdits,
 } from "../../../entities/purchase";
@@ -329,7 +330,10 @@ export function useLedgerPurchaseEditor({
     }
     const patch = {
       merchant: purchaseDraft.merchant.trim(),
-      occurredAt: new Date(purchaseDraft.occurredAt).toISOString(),
+      occurredAt:
+        purchaseDraft.datePrecision === "DATE_ONLY"
+          ? new Date(`${purchaseDraft.occurredAt}T12:00:00+09:00`).toISOString()
+          : new Date(purchaseDraft.occurredAt).toISOString(),
       paymentAllocations,
     };
     const purchasePatch = {
@@ -383,8 +387,8 @@ export function useLedgerPurchaseEditor({
         if (latest)
           setConflict({
             label: "買い物と品目",
-            localValue: `${patch.merchant} · ${new Date(patch.occurredAt).toLocaleString("ja-JP")}`,
-            serverValue: `${latest.merchant} · ${new Date(latest.occurredAt).toLocaleString("ja-JP")}`,
+            localValue: `${patch.merchant} · ${purchaseOccurredAtLabel(patch.occurredAt, purchase.datePrecision)}`,
+            serverValue: `${latest.merchant} · ${purchaseOccurredAtLabel(latest.occurredAt, latest.datePrecision)}`,
             retry: async () => {
               const latestItemRevisions = new Map(
                 latest.items.map((item) => [item.id, item.revision]),

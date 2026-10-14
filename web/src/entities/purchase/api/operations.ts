@@ -15,6 +15,7 @@ export const purchaseHistoryQuery = graphql`
           id
           householdId
           occurredAt
+          datePrecision
           merchant
           origin
           hasEvidence
@@ -101,6 +102,7 @@ export const purchaseListFragment = graphql`
           id
           householdId
           occurredAt
+          datePrecision
           merchant
           origin
           hasEvidence
@@ -155,6 +157,7 @@ export const createPurchaseMutation = graphql`
           id
           householdId
           occurredAt
+          datePrecision
           merchant
           totalYen
           revision
@@ -222,6 +225,7 @@ export const updatePurchaseMutation = graphql`
           id
           revision
           occurredAt
+          datePrecision
           merchant
         }
       }

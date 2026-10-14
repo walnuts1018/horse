@@ -955,6 +955,7 @@ type CreatePurchaseInput struct {
 	IdempotencyKey             string                  `json:"idempotencyKey"`
 	HouseholdID                string                  `json:"householdId"`
 	OccurredAt                 DateTime                `json:"occurredAt"`
+	DatePrecision              *PurchaseDatePrecision  `json:"datePrecision,omitempty"`
 	Merchant                   string                  `json:"merchant"`
 	Origin                     *PurchaseOrigin         `json:"origin,omitempty"`
 	PaymentAllocations         []*PurchasePaymentInput `json:"paymentAllocations,omitempty"`
@@ -1565,6 +1566,7 @@ type Purchase struct {
 	ID                           string                        `json:"id"`
 	HouseholdID                  string                        `json:"householdId"`
 	OccurredAt                   DateTime                      `json:"occurredAt"`
+	DatePrecision                PurchaseDatePrecision         `json:"datePrecision"`
 	Merchant                     string                        `json:"merchant"`
 	Origin                       PurchaseOrigin                `json:"origin"`
 	HasEvidence                  bool                          `json:"hasEvidence"`
@@ -3095,6 +3097,61 @@ func (e *PurchaseChangeKind) UnmarshalJSON(b []byte) error {
 }
 
 func (e PurchaseChangeKind) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type PurchaseDatePrecision string
+
+const (
+	PurchaseDatePrecisionDateTime PurchaseDatePrecision = "DATE_TIME"
+	PurchaseDatePrecisionDateOnly PurchaseDatePrecision = "DATE_ONLY"
+)
+
+var AllPurchaseDatePrecision = []PurchaseDatePrecision{
+	PurchaseDatePrecisionDateTime,
+	PurchaseDatePrecisionDateOnly,
+}
+
+func (e PurchaseDatePrecision) IsValid() bool {
+	switch e {
+	case PurchaseDatePrecisionDateTime, PurchaseDatePrecisionDateOnly:
+		return true
+	}
+	return false
+}
+
+func (e PurchaseDatePrecision) String() string {
+	return string(e)
+}
+
+func (e *PurchaseDatePrecision) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = PurchaseDatePrecision(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid PurchaseDatePrecision", str)
+	}
+	return nil
+}
+
+func (e PurchaseDatePrecision) MarshalGQL(w io.Writer) {
+	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *PurchaseDatePrecision) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e PurchaseDatePrecision) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

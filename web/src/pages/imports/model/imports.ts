@@ -55,6 +55,7 @@ export type UploadSourceKind = "receipt" | "order" | "email" | StatementSourceKi
 
 export function receiptDateInputValue(purchasedAt?: string): string {
   if (!purchasedAt) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(purchasedAt)) return purchasedAt;
   const date = new Date(purchasedAt);
   if (Number.isNaN(date.getTime())) return "";
   const parts = new Intl.DateTimeFormat("en", {
@@ -67,8 +68,12 @@ export function receiptDateInputValue(purchasedAt?: string): string {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
-export function receiptTimeInputValue(purchasedAt?: string): string {
-  if (!purchasedAt || !/[T ]\d{2}:\d{2}/.test(purchasedAt)) return "";
+export function receiptTimeInputValue(
+  purchasedAt?: string,
+  datePrecision?: "DATE_TIME" | "DATE_ONLY",
+): string {
+  if (datePrecision === "DATE_ONLY" || !purchasedAt || !/[T ]\d{2}:\d{2}/.test(purchasedAt))
+    return "";
   const date = new Date(purchasedAt);
   if (Number.isNaN(date.getTime())) return "";
   const parts = Object.fromEntries(
@@ -88,9 +93,15 @@ export function receiptOccurredAt(
   purchasedAt?: string,
   manualDate?: string,
   manualTime?: string,
+  datePrecision?: "DATE_TIME" | "DATE_ONLY",
 ): string | null {
-  if (manualDate === undefined && manualTime !== undefined) {
-    return receiptOccurredAt(purchasedAt, receiptDateInputValue(purchasedAt), manualTime);
+  if (manualDate === undefined && (manualTime !== undefined || datePrecision === "DATE_ONLY")) {
+    return receiptOccurredAt(
+      purchasedAt,
+      receiptDateInputValue(purchasedAt),
+      manualTime,
+      datePrecision,
+    );
   }
   if (manualDate !== undefined) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(manualDate)) return null;
@@ -104,6 +115,9 @@ export function receiptOccurredAt(
     if (manualTime !== undefined) {
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(manualTime)) return null;
       return new Date(`${manualDate}T${manualTime}:00+09:00`).toISOString();
+    }
+    if (datePrecision === "DATE_ONLY" || !purchasedAt || !/[T ]\d{2}:\d{2}/.test(purchasedAt)) {
+      return new Date(`${manualDate}T12:00:00+09:00`).toISOString();
     }
     const extractedDate =
       purchasedAt && /[T ]\d{2}:\d{2}/.test(purchasedAt) ? new Date(purchasedAt) : null;
@@ -238,6 +252,7 @@ export type DocumentReview = {
     receipt?: {
       merchant?: string;
       purchasedAt?: string;
+      datePrecision?: "DATE_TIME" | "DATE_ONLY";
       total?: number;
       items?: ExtractedItem[];
       taxGroups?: Array<{

@@ -17,11 +17,17 @@ describe("receipt purchase date confirmation", () => {
 
   it("uses the extracted date in Japan time for the date input", () => {
     expect(receiptDateInputValue("2025-04-01T00:30:00+09:00")).toBe("2025-04-01");
+    expect(receiptDateInputValue("2025-04-01")).toBe("2025-04-01");
   });
 
-  it("does not invent a time when only a date is available", () => {
-    expect(receiptOccurredAt(undefined, "2025-04-01")).toBeNull();
-    expect(receiptOccurredAt("2025-04-01", "2025-04-01")).toBeNull();
+  it("uses a representative timestamp for a date-only purchase without showing it as the actual time", () => {
+    expect(receiptOccurredAt("2025-04-01", undefined, undefined, "DATE_ONLY")).toBe(
+      "2025-04-01T03:00:00.000Z",
+    );
+    expect(receiptOccurredAt(undefined, "2025-04-01", undefined, "DATE_ONLY")).toBe(
+      "2025-04-01T03:00:00.000Z",
+    );
+    expect(receiptTimeInputValue("2025-04-01T03:00:00.000Z", "DATE_ONLY")).toBe("");
     expect(receiptTimeInputValue("2025-04-01")).toBe("");
   });
 

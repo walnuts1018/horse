@@ -54,8 +54,8 @@ export function PurchaseEditForm({
         onChange={(event) => onChange({ ...draft, merchant: event.target.value })}
       />
       <input
-        aria-label="購入日時"
-        type="datetime-local"
+        aria-label={draft.datePrecision === "DATE_ONLY" ? "購入日" : "購入日時"}
+        type={draft.datePrecision === "DATE_ONLY" ? "date" : "datetime-local"}
         value={draft.occurredAt}
         onChange={(event) => onChange({ ...draft, occurredAt: event.target.value })}
       />

@@ -894,6 +894,7 @@ type ComplexityRoot struct {
 		Corrections                  func(childComplexity int, first *int, after *string) int
 		CreatedAt                    func(childComplexity int) int
 		Currency                     func(childComplexity int) int
+		DatePrecision                func(childComplexity int) int
 		HasEvidence                  func(childComplexity int) int
 		HouseholdID                  func(childComplexity int) int
 		ID                           func(childComplexity int) int
@@ -4730,6 +4731,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Purchase.Currency(childComplexity), true
+	case "Purchase.datePrecision":
+		if e.ComplexityRoot.Purchase.DatePrecision == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Purchase.DatePrecision(childComplexity), true
 	case "Purchase.hasEvidence":
 		if e.ComplexityRoot.Purchase.HasEvidence == nil {
 			break
@@ -7512,6 +7519,7 @@ type CreateProductVariantUserError implements MutationError {
   idempotencyKey: String!
   householdId: ID! @nodeID(of: "Household")
   occurredAt: DateTime!
+  datePrecision: PurchaseDatePrecision
   merchant: String!
   origin: PurchaseOrigin
   paymentAllocations: [CreatePurchasePaymentInput!]
@@ -8180,7 +8188,12 @@ extend type Query {
   aliases: [ProductAlias!]!
 }
 `, BuiltIn: false},
-	{Name: "../../graphql/purchase.graphql", Input: `enum SourceKind {
+	{Name: "../../graphql/purchase.graphql", Input: `enum PurchaseDatePrecision {
+  DATE_TIME
+  DATE_ONLY
+}
+
+enum SourceKind {
   RECEIPT
   ORDER
   EMAIL
@@ -8192,6 +8205,7 @@ type Purchase implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   occurredAt: DateTime!
+  datePrecision: PurchaseDatePrecision!
   merchant: String!
   origin: PurchaseOrigin!
   hasEvidence: Boolean!
@@ -10075,6 +10089,8 @@ func (ec *executionContext) childFields_Purchase(ctx context.Context, field grap
 		return ec.fieldContext_Purchase_householdId(ctx, field)
 	case "occurredAt":
 		return ec.fieldContext_Purchase_occurredAt(ctx, field)
+	case "datePrecision":
+		return ec.fieldContext_Purchase_datePrecision(ctx, field)
 	case "merchant":
 		return ec.fieldContext_Purchase_merchant(ctx, field)
 	case "origin":
@@ -25426,6 +25442,29 @@ func (ec *executionContext) fieldContext_Purchase_occurredAt(_ context.Context, 
 	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
+func (ec *executionContext) _Purchase_datePrecision(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Purchase_datePrecision(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.DatePrecision, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.PurchaseDatePrecision) graphql.Marshaler {
+			return ec.marshalNPurchaseDatePrecision2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDatePrecision(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Purchase_datePrecision(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type PurchaseDatePrecision does not have child fields"))
+}
+
 func (ec *executionContext) _Purchase_merchant(ctx context.Context, field graphql.CollectedField, obj *model.Purchase) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -35869,7 +35908,7 @@ func (ec *executionContext) unmarshalInputCreatePurchaseInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"idempotencyKey", "householdId", "occurredAt", "merchant", "origin", "paymentAllocations", "sourceDocumentId", "sourceReference", "receiptCandidateId", "manualAmountOverrideReason", "items"}
+	fieldsInOrder := [...]string{"idempotencyKey", "householdId", "occurredAt", "datePrecision", "merchant", "origin", "paymentAllocations", "sourceDocumentId", "sourceReference", "receiptCandidateId", "manualAmountOverrideReason", "items"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -35917,6 +35956,13 @@ func (ec *executionContext) unmarshalInputCreatePurchaseInput(ctx context.Contex
 				return it, err
 			}
 			it.OccurredAt = data
+		case "datePrecision":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("datePrecision"))
+			data, err := ec.unmarshalOPurchaseDatePrecision2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDatePrecision(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DatePrecision = data
 		case "merchant":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("merchant"))
 			data, err := ec.unmarshalNString2string(ctx, v)
@@ -51820,6 +51866,11 @@ func (ec *executionContext) _Purchase(ctx context.Context, sel ast.SelectionSet,
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "datePrecision":
+			out.Values[i] = ec._Purchase_datePrecision(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
 		case "merchant":
 			out.Values[i] = ec._Purchase_merchant(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -59497,6 +59548,16 @@ func (ec *executionContext) marshalNPurchaseCorrectionEdge2ᚖgithubᚗcomᚋwal
 	return ec._PurchaseCorrectionEdge(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNPurchaseDatePrecision2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDatePrecision(ctx context.Context, v any) (model.PurchaseDatePrecision, error) {
+	var res model.PurchaseDatePrecision
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNPurchaseDatePrecision2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDatePrecision(ctx context.Context, sel ast.SelectionSet, v model.PurchaseDatePrecision) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNPurchaseDefault2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDefaultᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.PurchaseDefault) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -61003,6 +61064,22 @@ func (ec *executionContext) unmarshalOPurchaseCorrectionPurchaseTargetInput2ᚖg
 	}
 	res, err := ec.unmarshalInputPurchaseCorrectionPurchaseTargetInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalOPurchaseDatePrecision2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDatePrecision(ctx context.Context, v any) (*model.PurchaseDatePrecision, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.PurchaseDatePrecision)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOPurchaseDatePrecision2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDatePrecision(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseDatePrecision) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
 }
 
 func (ec *executionContext) unmarshalOPurchaseOrigin2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseOrigin(ctx context.Context, v any) (*model.PurchaseOrigin, error) {

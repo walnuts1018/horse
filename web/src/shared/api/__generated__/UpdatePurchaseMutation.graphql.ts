@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a4b637a0f55aa81d9dc3caf498b05ea4>>
+ * @generated SignedSource<<6dc4ff0550a56fd1547ab7ce608a31be>>
  * @lightSyntaxTransform
  */
 
@@ -9,6 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
+export type PurchaseDatePrecision = "DATE_ONLY" | "DATE_TIME" | "%future added value";
 export type UpdatePurchaseInput = {
   baseRevision: number;
   patch: PurchasePatch;
@@ -32,6 +33,7 @@ export type UpdatePurchaseMutation$data = {
     readonly code?: MutationErrorCode;
     readonly message?: string;
     readonly result?: {
+      readonly datePrecision: PurchaseDatePrecision;
       readonly id: string;
       readonly merchant: string;
       readonly occurredAt: string;
@@ -110,6 +112,13 @@ v1 = [
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
+                "name": "datePrecision",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
                 "name": "merchant",
                 "storageKey": null
               }
@@ -163,16 +172,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "dd8491f5be8c2f4d79d15e767545dc08",
+    "cacheID": "3ee44694bc6b24217d9b6acc0edeb459",
     "id": null,
     "metadata": {},
     "name": "UpdatePurchaseMutation",
     "operationKind": "mutation",
-    "text": "mutation UpdatePurchaseMutation(\n  $input: UpdatePurchaseInput!\n) {\n  updatePurchase(input: $input) {\n    __typename\n    ... on UpdatePurchaseSuccess {\n      result {\n        id\n        revision\n        occurredAt\n        merchant\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation UpdatePurchaseMutation(\n  $input: UpdatePurchaseInput!\n) {\n  updatePurchase(input: $input) {\n    __typename\n    ... on UpdatePurchaseSuccess {\n      result {\n        id\n        revision\n        occurredAt\n        datePrecision\n        merchant\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "a0e3dae3ed399af49b16389b1f3ca54a";
+(node as any).hash = "eafeb3f7807f182e6933ffe96a23a4a9";
 
 export default node;

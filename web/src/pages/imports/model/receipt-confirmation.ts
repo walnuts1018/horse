@@ -30,6 +30,7 @@ type ReceiptConfirmationInput = {
   document: DocumentReview;
   householdId: string;
   occurredAt: string | null;
+  datePrecision: "DATE_TIME" | "DATE_ONLY";
   candidateId: string;
   requiresCandidateSelection: boolean;
   requiresOverrideReason: boolean;
@@ -55,6 +56,7 @@ export function createReceiptPurchaseInput({
   document,
   householdId,
   occurredAt,
+  datePrecision,
   candidateId,
   requiresCandidateSelection,
   requiresOverrideReason,
@@ -76,7 +78,7 @@ export function createReceiptPurchaseInput({
 
   if (!items.length) throw new Error("確定できる品目がありません");
   if (!occurredAt || !/[T ]\d{2}:\d{2}/.test(occurredAt) || Number.isNaN(Date.parse(occurredAt))) {
-    throw new Error("購入日時を入力してください");
+    throw new Error("購入日を入力してください");
   }
   if (requiresCandidateSelection && !candidate) throw new Error("税計算候補を選択してください");
   if (requiresOverrideReason && overrideReason.length < 3) {
@@ -103,6 +105,7 @@ export function createReceiptPurchaseInput({
     origin: "AI",
     sourceDocumentId: document.id,
     occurredAt,
+    datePrecision,
     merchant: receipt?.merchant ?? "",
     paymentAllocations: paymentDraft
       .filter((payment) => payment.paymentAccountId && payment.amountYen > 0)

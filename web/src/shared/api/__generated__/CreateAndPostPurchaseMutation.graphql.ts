@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<bded8cbbb0f5d499762e7ed682aa35e3>>
+ * @generated SignedSource<<55c3b70128cf6f5a777545722f0cbe00>>
  * @lightSyntaxTransform
  */
 
@@ -9,9 +9,11 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
+export type PurchaseDatePrecision = "DATE_ONLY" | "DATE_TIME" | "%future added value";
 export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN" | "%future added value";
 export type PurchaseStatus = "CLOSED" | "DRAFT" | "POSTED" | "%future added value";
 export type CreatePurchaseInput = {
+  datePrecision?: PurchaseDatePrecision | null | undefined;
   householdId: string;
   idempotencyKey: string;
   items: ReadonlyArray<PurchaseItemInput>;

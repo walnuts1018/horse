@@ -1,7 +1,7 @@
 import { BookOpen, ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useHouseholdPurchases } from "../../../entities/purchase";
+import { purchaseOccurredAtLabel, useHouseholdPurchases } from "../../../entities/purchase";
 import { readTags } from "../../../entities/tag";
 import { type Household, type Tag } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib";
@@ -578,13 +578,8 @@ export function LedgerPage({
                   <div className="purchase-description">
                     <b>{purchase.merchant || "店舗未入力"}</b>
                     <span>
-                      {new Date(purchase.occurredAt).toLocaleString("ja-JP", {
-                        month: "numeric",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}{" "}
-                      · {purchase.items.length}品目 ·{" "}
+                      {purchaseOccurredAtLabel(purchase.occurredAt, purchase.datePrecision)} ·{" "}
+                      {purchase.items.length}品目 ·{" "}
                       {purchase.paymentAllocations.length
                         ? purchase.paymentAllocations
                             .map((payment) => {

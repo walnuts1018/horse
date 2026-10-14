@@ -61,6 +61,7 @@ type Payment struct {
 type Receipt struct {
 	Merchant        string              `json:"merchant"`
 	PurchasedAt     string              `json:"purchasedAt"`
+	DatePrecision   string              `json:"datePrecision"`
 	OrderID         string              `json:"orderId"`
 	TransactionID   string              `json:"transactionId"`
 	Currency        string              `json:"currency"`

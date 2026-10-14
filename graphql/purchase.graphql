@@ -1,3 +1,8 @@
+enum PurchaseDatePrecision {
+  DATE_TIME
+  DATE_ONLY
+}
+
 enum SourceKind {
   RECEIPT
   ORDER
@@ -10,6 +15,7 @@ type Purchase implements Node {
   id: ID! @goField(forceResolver: true)
   householdId: ID! @goField(forceResolver: true)
   occurredAt: DateTime!
+  datePrecision: PurchaseDatePrecision!
   merchant: String!
   origin: PurchaseOrigin!
   hasEvidence: Boolean!

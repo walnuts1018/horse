@@ -2,6 +2,7 @@ input CreatePurchaseInput {
   idempotencyKey: String!
   householdId: ID! @nodeID(of: "Household")
   occurredAt: DateTime!
+  datePrecision: PurchaseDatePrecision
   merchant: String!
   origin: PurchaseOrigin
   paymentAllocations: [CreatePurchasePaymentInput!]

@@ -121,6 +121,7 @@ func (s *Service) CreateAndPost(ctx context.Context, command CreateCommand, fing
 		if errors.Is(err, sql.ErrNoRows) {
 			return CreateResult{}, ErrNotFound
 		}
+
 		return CreateResult{}, err
 	}
 	created, err := s.create(ctx, tx, command, fingerprint)
@@ -168,6 +169,9 @@ func validateCreateCommand(input CreateCommand) error {
 			origin = "AI"
 		}
 	}
+	if input.DatePrecision != "" && input.DatePrecision != "DATE_TIME" && input.DatePrecision != "DATE_ONLY" {
+		return fmt.Errorf("%w: invalid purchase date precision", ErrBadInput)
+	}
 	if origin != "AI" && origin != manualOrigin && origin != "UNKNOWN" {
 		return fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
 	}
@@ -190,6 +194,12 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 		if input.SourceDocumentID != nil {
 			origin = "AI"
 		}
+	}
+	if input.DatePrecision == "" {
+		input.DatePrecision = "DATE_TIME"
+	}
+	if input.DatePrecision != "DATE_TIME" && input.DatePrecision != "DATE_ONLY" {
+		return CreateResult{}, fmt.Errorf("%w: invalid purchase date precision", ErrBadInput)
 	}
 	if origin != "AI" && origin != manualOrigin && origin != "UNKNOWN" {
 		return CreateResult{}, fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
@@ -228,6 +238,7 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
 			return CreateResult{}, err
 		}
+
 		return CreateResult{PurchaseID: existing.ResourceID.V.String()}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -299,7 +310,7 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 	createdBy := actorUUID
 	purchaseStatus := draftStatus
 	if _, err := models.Purchases.Insert(&models.PurchaseSetter{
-		ID: &purchaseUUID, HouseholdID: &householdUUID, OccurredAt: &input.OccurredAt, Merchant: &merchant,
+		ID: &purchaseUUID, HouseholdID: &householdUUID, OccurredAt: &input.OccurredAt, DatePrecision: &input.DatePrecision, Merchant: &merchant,
 		Status: &purchaseStatus, AllocationRuleVersion: &ruleVersion, CreatedBy: &createdBy, Origin: &origin,
 	}).Exec(ctx, executor); err != nil {
 		return CreateResult{}, err
