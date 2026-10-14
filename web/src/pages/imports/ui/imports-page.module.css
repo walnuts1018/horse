@@ -61,6 +61,59 @@
   margin-top: 8px;
 }
 
+.receiptSummary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) repeat(2, minmax(76px, 0.65fr));
+  gap: 10px 14px;
+  margin: 0 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.receiptSummary > div {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.receiptSummary span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.receiptSummary strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.receiptSummaryPayment {
+  grid-column: 1 / -1;
+}
+
+.receiptEditor {
+  min-width: 0;
+}
+
+.receiptEditor > summary {
+  width: fit-content;
+  margin: 0 0 12px;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.receiptEditor:not(.receiptEditorCompact) > summary {
+  display: none;
+}
+
+.receiptEditor:not([open]) > :not(summary) {
+  display: none;
+}
+
 .receiptItemReviewState {
   display: flex;
   flex-wrap: wrap;
@@ -280,6 +333,15 @@
 
   .receiptSequence > button {
     flex: none;
+  }
+
+  .receiptSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .receiptSummaryMerchant,
+  .receiptSummaryPayment {
+    grid-column: 1 / -1;
   }
 
   .evidenceReviewLayout {

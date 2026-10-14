@@ -274,6 +274,7 @@ export function LedgerPage({
   );
   const itemCoverageComplete = !loadingMore && !hasNextPage && !moreError;
   const { selectedItems, pending: bulkPending, toggleSelection } = ledgerItemBulkEdit;
+  const [inlineEditingItem, setInlineEditingItem] = useState<string | null>(null);
   return (
     <>
       <div className="page-heading">
@@ -368,7 +369,9 @@ export function LedgerPage({
           ) : (
             filteredItems.map(({ purchase, item }) => (
               <div className="ledger-entry" key={item.id}>
-                <div className="ledger-item-row">
+                <div
+                  className={`ledger-item-row ${editing === purchase.id ? "ledger-item-row-editing" : ""}`}
+                >
                   <input
                     className="item-select"
                     type="checkbox"
@@ -388,36 +391,107 @@ export function LedgerPage({
                     }
                     disabled={bulkPending || purchase.status === "CLOSED"}
                   />
-                  <div className="purchase-description">
-                    <b>{item.name}</b>
-                    <span>
-                      {purchase.merchant || "店舗未入力"} · {purchaseMonth(purchase.occurredAt)} ·{" "}
-                      {household.categories.find((category) => category.id === item.categoryId)
-                        ?.name ?? "未分類"}
-                      {item.allocations.length > 0 &&
-                        ` · ${item.allocations.map((allocation) => allocation.poolName).join("・")}`}
-                      {item.tags.length > 0 && ` · ${item.tags.map((tag) => tag.name).join("・")}`}
-                      {purchase.status === "CLOSED" && " · 締め済み"}
-                    </span>
-                  </div>
-                  <div className="purchase-meta">
-                    <b>{yen(item.amountYen)}</b>
-                    <span>購入 {yen(purchase.totalYen)}</span>
-                  </div>
-                  <button
-                    className="text-button"
-                    type="button"
-                    onClick={() => {
-                      updateFilters({
-                        recordMode: "purchases",
-                        viewMode: "purchases",
-                        purchaseId: purchase.id,
-                      });
-                      setHighlightedEvidenceItem(item.id);
-                    }}
-                  >
-                    購入を開く
-                  </button>
+                  {editing === purchase.id &&
+                  inlineEditingItem === item.id &&
+                  itemDrafts[item.id] ? (
+                    <div className="ledger-item-inline-editor">
+                      <PurchaseItemEditor
+                        item={item}
+                        draft={itemDrafts[item.id]}
+                        household={household}
+                        merchant={purchase.merchant}
+                        categories={household.categories}
+                        catalog={catalog}
+                        onChange={(updates) => updateItemDraft(item.id, updates)}
+                      />
+                      <div className="ledger-item-edit-actions">
+                        <output
+                          className={`purchase-edit-status purchase-edit-status-${purchaseSaveState}`}
+                          aria-live="polite"
+                        >
+                          {purchaseSaveState === "saving"
+                            ? "保存中"
+                            : purchaseSaveState === "conflict"
+                              ? "競合があります"
+                              : purchaseSaveState === "unsaved"
+                                ? "未保存"
+                                : "保存済み"}
+                        </output>
+                        <button
+                          className="button button-soft"
+                          type="button"
+                          disabled={purchaseSaveState === "saving"}
+                          onClick={() => {
+                            setInlineEditingItem(null);
+                            cancelEditing();
+                          }}
+                        >
+                          編集を終了
+                        </button>
+                        <button
+                          className="button button-primary"
+                          type="button"
+                          disabled={purchaseSaveState !== "unsaved"}
+                          onClick={() => void savePurchase(purchase)}
+                        >
+                          変更を保存
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="purchase-description">
+                        <b>{item.name}</b>
+                        <span>
+                          {purchase.merchant || "店舗未入力"} · {purchaseMonth(purchase.occurredAt)}{" "}
+                          ·{" "}
+                          {household.categories.find((category) => category.id === item.categoryId)
+                            ?.name ?? "未分類"}
+                          {item.allocations.length > 0 &&
+                            ` · ${item.allocations.map((allocation) => allocation.poolName).join("・")}`}
+                          {item.tags.length > 0 &&
+                            ` · ${item.tags.map((tag) => tag.name).join("・")}`}
+                          {purchase.status === "CLOSED" && " · 締め済み"}
+                        </span>
+                      </div>
+                      <div className="purchase-meta">
+                        <b>{yen(item.amountYen)}</b>
+                        <span>購入 {yen(purchase.totalYen)}</span>
+                      </div>
+                      <div className="ledger-item-row-actions">
+                        <button
+                          className="text-button"
+                          type="button"
+                          disabled={
+                            editing !== null ||
+                            correctionTarget !== null ||
+                            purchase.status === "CLOSED"
+                          }
+                          onClick={() => {
+                            setInlineEditingItem(item.id);
+                            startEditing(purchase);
+                          }}
+                        >
+                          品目を編集
+                        </button>
+                        <button
+                          className="text-button"
+                          type="button"
+                          disabled={editing !== null}
+                          onClick={() => {
+                            updateFilters({
+                              recordMode: "purchases",
+                              viewMode: "purchases",
+                              purchaseId: purchase.id,
+                            });
+                            setHighlightedEvidenceItem(item.id);
+                          }}
+                        >
+                          購入を開く
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             ))
