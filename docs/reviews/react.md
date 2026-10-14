@@ -1,6 +1,6 @@
 # Horse Frontend Reactの未解決項目
 
-現行の`web/src`を確認し、解決済みの指摘を除きました。購入履歴と帳簿一覧はRelayのConnectionとpaginationを使い、Importsの一覧・詳細・プレビューはTanStack Queryを使います。画面のpathはTanStack Routerのfile-based routingを使い、LedgerとImportsのfilterはURLに保存します。
+現行の`web/src`を確認し、解決済みの指摘を除きました。購入履歴と帳簿一覧はRelayのConnectionとpaginationを使い、Importsの一覧・詳細・プレビューはTanStack Queryを使います。画面のpathはTanStack Routerのfile-based routingを使い、Ledger、Imports、Settingsの選択状態はURLに保存します。
 
 ## ブラウザー離脱時の未保存確認
 
@@ -16,11 +16,9 @@
 
 Homeはsummary、月間支出、精算を3つのEffectで別々に取得し、Analysisも支出、メンバー別支出、予算、定期支出を別々のEffectで取得します（`web/src/pages/home/ui/home-page.tsx:41-72`、`web/src/pages/analysis/model/use-analysis-data.ts:53-129`）。どちらもRelay operationの結果を画面local stateで保持しているため、再訪問時のquery再利用と複数データのloading/error管理が分かれています。Relayのquery hookとcacheを使う単位を整理してください。
 
-## RouterのloaderとSettingsのURL状態
+## Routerのloader
 
 認証情報と世帯一覧は`horse-app.tsx`のmount後に取得し、世帯詳細も別Effectで取得しています（`web/src/app/horse-app.tsx:240-259,267-295`）。TanStack Routerの`beforeLoad`や`loader`を使っていないため、初期表示で認証・世帯一覧・世帯詳細の取得が続きます。route contextとloaderで依存関係を整理してください。
-
-Settingsのtab選択は`useState`で保持し、URLへ書き込みません（`web/src/pages/settings/model/settings-navigation.ts:28-43`）。再読み込みや共有URLからtabを復元する必要があるため、TanStack Routerのsearch stateへ移してください。
 
 ## 帳簿のEvidence highlight
 

@@ -328,6 +328,10 @@ ImportsのREST一覧はTanStack Queryの`useInfiniteQuery`、選択文書とプ�
 
 世帯内の画面はTanStack Startのfile-based routingでpathを切り替え、取り込みフィルターはTanStack Routerのsearch stateから読み書きします。未保存状態は世帯とページをscopeとするregistryに集約し、画面遷移は`useBlocker`、ブラウザー離脱は`enableBeforeUnload`で確認します。モバイル幅では`html`とdrawerに`overscroll-behavior-y: none`を設定し、drawer背景はBase UI Dialogのmodal scroll lockで固定します。registryはページ内の複数フォームを個別登録しないため、共有callbackを使う画面は各フォームの状態を内部で集約します。route contextの対象test、型検査、対象oxlint、Steiger、format検査が成功しました。ブラウザー更新・タブ終了時の離脱確認は未解決です。
 
+### 2026年10月14日のSettings tab URL
+
+Settingsの選択中tabはTanStack Routerの`tab` search valueで管理します。直接URL、再読み込み、Back/Forwardで同じtabを復元し、未指定・不正値は`accounts`にします。設定導線で使う既存hashからのtab選択は維持し、Pages sliceからApp routeへのimportを作らないようrouteがtab値と変更callbackを渡します。
+
 ### 2026年10月14日の購入メール転送
 
 購入メールの取り込みには、世帯ごとに発行・失効できるHorse専用転送先を使います。転送先tokenのhashだけをDBへ保存し、平文のtokenと完全な転送先アドレスは発行・交換時にだけ返します。再表示できないため、転送先を失った場合は交換します。IMAPS接続はread-onlyで行い、mailboxの既読状態やメッセージを変更しません。mailboxの`UIDVALIDITY`と`UID`をDBへ保存し、原本・添付文書・抽出jobの登録とcursor更新を同一DB transactionで確定します。SeaweedFSへの原本・添付保存はDB transaction外の操作なので、DB rollback時に孤立objectが残る可能性があります。メール本文はアプリケーション側でAES-GCM暗号化して保存し、本文のSHA-256ではなく暗号化用keyによるHMACをobject識別値として使います。workerは新旧key ID付き暗号形式を読み取ります。

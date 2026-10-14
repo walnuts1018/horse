@@ -1,6 +1,17 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 export type SettingsTab = "accounts" | "allocation" | "catalog" | "planning" | "members";
+export const defaultSettingsTab: SettingsTab = "accounts";
+
+export function isSettingsTab(value: unknown): value is SettingsTab {
+  return (
+    value === "accounts" ||
+    value === "allocation" ||
+    value === "catalog" ||
+    value === "planning" ||
+    value === "members"
+  );
+}
 
 export const settingsTabs: { id: SettingsTab; label: string }[] = [
   { id: "accounts", label: "口座" },
@@ -27,23 +38,23 @@ const subscribeSetupHash = (onStoreChange: () => void) => {
   return () => window.removeEventListener("hashchange", onStoreChange);
 };
 
-export function useSettingsNavigation() {
-  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("accounts");
+export function useSettingsNavigation(
+  activeSettingsTab: SettingsTab,
+  selectTab: (tab: SettingsTab) => void,
+) {
   const setupHashTarget = useSyncExternalStore(
     subscribeSetupHash,
     getSetupHashSnapshot,
     getSetupHashServerSnapshot,
   );
+  const appliedHash = useRef<string | null>(null);
 
   useEffect(() => {
+    if (appliedHash.current === setupHashTarget) return;
+    appliedHash.current = setupHashTarget;
     const tab = getTabFromHash(setupHashTarget);
-    if (tab === undefined || tab === activeSettingsTab) return;
-    queueMicrotask(() => setActiveSettingsTab(tab));
-  }, [setupHashTarget, activeSettingsTab]);
-
-  const selectTab = (tab: SettingsTab) => {
-    setActiveSettingsTab(tab);
-  };
+    if (tab !== undefined && tab !== activeSettingsTab) selectTab(tab);
+  }, [setupHashTarget, activeSettingsTab, selectTab]);
 
   return { activeSettingsTab, selectTab };
 }

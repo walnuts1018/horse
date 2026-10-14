@@ -7,7 +7,7 @@ import { useAccountSettings } from "../model/account-settings";
 import { useAllocationCatalog } from "../model/allocation-catalog";
 import { useSettingsChangeTracking } from "../model/settings-change-tracking";
 import { useSettingsMutations } from "../model/settings-mutations";
-import { useSettingsNavigation } from "../model/settings-navigation";
+import { useSettingsNavigation, type SettingsTab } from "../model/settings-navigation";
 import { MailForwardingAddress } from "./mail-forwarding-address";
 import { ManageAccountActivity } from "./manage-account-activity";
 import { ManageAccountSettings } from "./manage-account-settings";
@@ -32,6 +32,8 @@ export function SettingsPage({
   onNotice,
   onUnsavedChanges,
   isOwner,
+  activeTab,
+  onSelectTab,
 }: {
   household: Household;
   viewerId: string | null;
@@ -40,8 +42,10 @@ export function SettingsPage({
   onNotice: (message: string, kind?: "success" | "error" | "warning" | "info") => void;
   onUnsavedChanges: (unsaved: boolean) => void;
   isOwner: boolean;
+  activeTab: SettingsTab;
+  onSelectTab: (tab: SettingsTab) => void;
 }) {
-  const navigation = useSettingsNavigation();
+  const navigation = useSettingsNavigation(activeTab, onSelectTab);
   const changes = useSettingsChangeTracking();
   const balances = useSettingsAccountBalances({ household, onNotice });
   const accountSettings = useAccountSettings({
@@ -63,7 +67,6 @@ export function SettingsPage({
     markFormClean: changes.markFormClean,
     setPending: changes.setPending,
   });
-  const activeTab = navigation.activeSettingsTab;
   const isPending = changes.isPending;
 
   const overallPending =
