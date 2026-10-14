@@ -4,15 +4,8 @@ import { type SubmitEvent, useEffect, useState } from "react";
 import { type Household, type Purchase, type UnmatchedObservation } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
+import { readObservationMatches, type ObservationMatch } from "../api/observation/matches";
 import { readLinkablePurchases } from "../api/read-linkable-purchases";
-
-type MatchCandidate = {
-  documentId: string;
-  sourceReference: string;
-  state: string;
-  reasons: string[];
-};
-type ObservationMatches = { sourceReference: string; matches: MatchCandidate[] };
 
 export function ObservationLinker({
   household,
@@ -32,7 +25,7 @@ export function ObservationLinker({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [matches, setMatches] = useState<MatchCandidate[]>([]);
+  const [matches, setMatches] = useState<ObservationMatch[]>([]);
   const [purchaseSearch, setPurchaseSearch] = useState("");
   const [purchaseSearchTerm, setPurchaseSearchTerm] = useState("");
   const [purchaseAfter, setPurchaseAfter] = useState<string | null | undefined>(null);
@@ -59,49 +52,11 @@ export function ObservationLinker({
     setLoading(true);
     setError("");
     try {
-      const [matchResponse, purchasePage] = await Promise.all([
-        fetch(`/documents/${encodeURIComponent(observation.documentId)}/matches`, {
-          credentials: "include",
-        }),
+      const [observationMatches, purchasePage] = await Promise.all([
+        readObservationMatches(observation.documentId, observation.sourceReference),
         readLinkablePurchases(household.id, ""),
       ]);
-      if (!matchResponse.ok)
-        throw new Error(`照合候補を取得できませんでした (${matchResponse.status})`);
-      const payload: unknown = await matchResponse.json();
-      if (
-        payload === null ||
-        typeof payload !== "object" ||
-        !("observations" in payload) ||
-        !Array.isArray(payload.observations)
-      )
-        throw new Error("照合候補の形式が正しくありません");
-      const matchesData = payload.observations.filter(
-        (entry: unknown): entry is ObservationMatches =>
-          entry !== null &&
-          typeof entry === "object" &&
-          "sourceReference" in entry &&
-          typeof entry.sourceReference === "string" &&
-          "matches" in entry &&
-          Array.isArray(entry.matches) &&
-          entry.matches.every(
-            (candidate: unknown) =>
-              candidate !== null &&
-              typeof candidate === "object" &&
-              "documentId" in candidate &&
-              typeof candidate.documentId === "string" &&
-              "sourceReference" in candidate &&
-              typeof candidate.sourceReference === "string" &&
-              "state" in candidate &&
-              typeof candidate.state === "string" &&
-              "reasons" in candidate &&
-              Array.isArray(candidate.reasons) &&
-              candidate.reasons.every((reason: unknown) => typeof reason === "string"),
-          ),
-      );
-      const sourceMatches = matchesData.find(
-        (entry) => entry.sourceReference === observation.sourceReference,
-      );
-      setMatches(sourceMatches?.matches ?? []);
+      setMatches(observationMatches);
       setPurchases(purchasePage.purchases);
       setPurchaseSearchTerm("");
       setPurchaseAfter(purchasePage.after);
