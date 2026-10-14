@@ -13,14 +13,11 @@ import { z } from "zod";
 
 import type { PurchaseDraftItem } from "../../../shared/lib";
 
-import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
+import { type ProductSuggestion } from "../../../entities/product";
+import { useProductSuggestions } from "../../../features/product-variant-select";
 import { type Household, type Purchase } from "../../../shared/api";
 import { parsePastedPurchaseItems } from "../model/pasted-purchase-items";
-import {
-  purchaseEntrySuggestions,
-  productSuggestionsForQuery,
-  type ProductSuggestionResponse,
-} from "../model/product-suggestions";
+import { purchaseEntrySuggestions } from "../model/product-suggestions";
 import {
   emptyPurchaseEditHistory,
   recordPurchaseEdit,
@@ -90,15 +87,13 @@ export function EditPurchaseItems({
   const allocationUndoGroup = useRef<{ key: string; timer: number } | null>(null);
   const onChangeRef = useRef(onChange);
   const selectedProductVariantId = draft.selectedProductVariantId;
-  const [productSuggestionResponse, setProductSuggestionResponse] =
-    useState<ProductSuggestionResponse<ProductSuggestion>>(null);
-  const productSuggestions = productSuggestionsForQuery(
+  const { suggestions: productSuggestions } = useProductSuggestions({
     householdId,
-    draft.itemName,
+    query: draft.itemName,
     merchant,
-    productSuggestionResponse,
-  );
-  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+    limit: 6,
+    delay: 220,
+  });
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const historyRef = useRef<PurchaseEditHistory>(emptyPurchaseEditHistory());
   const [selectedItemKeys, setSelectedItemKeys] = useState<Set<string>>(() => new Set());
@@ -194,10 +189,6 @@ export function EditPurchaseItems({
   );
   const changeItemName = useCallback(
     (name: string) => {
-      if (name.trim() !== draftRef.current.itemName.trim()) {
-        setProductSuggestionResponse(null);
-      }
-      setActiveSuggestionIndex(-1);
       setSuggestionsDismissed(false);
       patchDraft({ itemName: name, selectedProductVariantId: "" });
     },
@@ -248,7 +239,6 @@ export function EditPurchaseItems({
     setCategoryManuallySelected(false);
     clearAllocationUndoGroup();
     updateHistory(emptyPurchaseEditHistory());
-    setProductSuggestionResponse(null);
     update(empty);
   }, [clearAllocationUndoGroup, updateHistory, update]);
   const undo = useCallback(() => {
@@ -381,42 +371,6 @@ export function EditPurchaseItems({
   );
   useEffect(() => () => clearAllocationUndoGroup(), [clearAllocationUndoGroup]);
 
-  useEffect(() => {
-    const query = draft.itemName.trim();
-    if (query.length < 2) {
-      queueMicrotask(() => setProductSuggestionResponse(null));
-      return;
-    }
-    let active = true;
-    const timer = window.setTimeout(() => {
-      void readProductSuggestions(householdId, query, merchant.trim() || null, 6)
-        .then((result) => {
-          if (!active) return;
-          setProductSuggestionResponse({
-            householdId,
-            query,
-            merchant: merchant.trim() || null,
-            suggestions: result,
-          });
-          setActiveSuggestionIndex(-1);
-        })
-        .catch(() => {
-          if (!active) return;
-          setProductSuggestionResponse({
-            householdId,
-            query,
-            merchant: merchant.trim() || null,
-            suggestions: [],
-          });
-          setActiveSuggestionIndex(-1);
-        });
-    }, 220);
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [householdId, draft.itemName, merchant]);
-
   const suggestions = useMemo(
     () => purchaseEntrySuggestions(history, draft.itemName, productSuggestions),
     [history, draft.itemName, productSuggestions],
@@ -443,7 +397,6 @@ export function EditPurchaseItems({
       categoryId: "",
     });
     setCategoryManuallySelected(false);
-    setProductSuggestionResponse(null);
     setInvalidEntryField(null);
     setFocused("name");
     nameRef.current?.focus();
@@ -465,7 +418,6 @@ export function EditPurchaseItems({
         ? { categoryId: candidate.concept.categoryId }
         : {}),
     });
-    setProductSuggestionResponse(null);
     amountRef.current?.focus();
     setFocused("amount");
   };
@@ -484,7 +436,6 @@ export function EditPurchaseItems({
       itemName: suggestion.name,
       selectedProductVariantId: suggestion.candidate.variant.id,
     });
-    setProductSuggestionResponse(null);
     amountRef.current?.focus();
     setFocused("amount");
   };
@@ -494,40 +445,13 @@ export function EditPurchaseItems({
     setFocused("name");
     nameRef.current?.focus();
   };
-  const visibleSuggestionCount = selectedProductVariantId ? 0 : suggestions.length;
   const onNameKey = (event: KeyboardEvent<HTMLInputElement>) => {
     if (
-      (event.key === "Escape" || event.key === "ArrowDown" || event.key === "ArrowUp") &&
-      (event.nativeEvent.isComposing || composing.current)
-    )
-      return;
-    if (event.key === "Escape" && visibleSuggestionCount > 0) {
-      event.preventDefault();
-      setSuggestionsDismissed(true);
-      setActiveSuggestionIndex(-1);
-      return;
-    }
-    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && visibleSuggestionCount > 0) {
-      event.preventDefault();
-      setSuggestionsDismissed(false);
-      setActiveSuggestionIndex((index) => {
-        if (event.key === "ArrowDown") return (index + 1) % visibleSuggestionCount;
-        return index <= 0 ? visibleSuggestionCount - 1 : index - 1;
-      });
-      return;
-    }
-    if (
       event.key === "Enter" &&
-      activeSuggestionIndex >= 0 &&
+      !event.currentTarget.getAttribute("aria-activedescendant") &&
       !event.nativeEvent.isComposing &&
       !composing.current
     ) {
-      event.preventDefault();
-      const suggestion = suggestions[activeSuggestionIndex];
-      selectEntrySuggestion(suggestion);
-      return;
-    }
-    if (event.key === "Enter" && !event.nativeEvent.isComposing && !composing.current) {
       event.preventDefault();
       if (!draft.itemName.trim()) return;
       amountRef.current?.focus();
@@ -831,7 +755,6 @@ export function EditPurchaseItems({
         categories={enabledCategories}
         suggestions={suggestions}
         selectedProductVariantId={selectedProductVariantId}
-        activeSuggestionIndex={activeSuggestionIndex}
         suggestionsDismissed={suggestionsDismissed}
         focused={focused}
         classNames={{
@@ -861,7 +784,7 @@ export function EditPurchaseItems({
         }}
         onSelectSuggestion={selectEntrySuggestion}
         onClearProductSelection={clearProductSelection}
-        onSuggestionHover={setActiveSuggestionIndex}
+        onSuggestionsOpenChange={(open) => setSuggestionsDismissed(!open)}
         onAmountChange={(amount) => {
           markDirty();
           setInvalidEntryField(null);

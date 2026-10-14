@@ -1,11 +1,15 @@
 import type { ClipboardEvent, KeyboardEvent, RefObject } from "react";
 
+import { Combobox } from "@base-ui/react/combobox";
 import { Plus } from "lucide-react";
 
 import type { Household } from "../../../shared/api";
 import type { PurchaseEntrySuggestion } from "../model/product-suggestions";
 
-import { ProductCandidateOption } from "../../../features/product-variant-select";
+import {
+  ProductCandidateList,
+  ProductCandidateOption,
+} from "../../../features/product-variant-select";
 
 export function PurchaseItemEntry({
   itemName,
@@ -14,7 +18,6 @@ export function PurchaseItemEntry({
   categories,
   suggestions,
   selectedProductVariantId,
-  activeSuggestionIndex,
   suggestionsDismissed,
   focused,
   classNames,
@@ -29,7 +32,7 @@ export function PurchaseItemEntry({
   onCompositionEnd,
   onSelectSuggestion,
   onClearProductSelection,
-  onSuggestionHover,
+  onSuggestionsOpenChange,
   onAmountChange,
   onAmountFocus,
   onAmountBlur,
@@ -44,7 +47,6 @@ export function PurchaseItemEntry({
   categories: Household["categories"];
   suggestions: PurchaseEntrySuggestion[];
   selectedProductVariantId: string;
-  activeSuggestionIndex: number;
   suggestionsDismissed: boolean;
   focused: "name" | "amount" | null;
   classNames: { entryForm: string; entryHint: string; entryInputTarget: string };
@@ -59,7 +61,7 @@ export function PurchaseItemEntry({
   onCompositionEnd: () => void;
   onSelectSuggestion: (suggestion: PurchaseEntrySuggestion) => void;
   onClearProductSelection: () => void;
-  onSuggestionHover: (index: number) => void;
+  onSuggestionsOpenChange: (open: boolean) => void;
   onAmountChange: (amount: string) => void;
   onAmountFocus: () => void;
   onAmountBlur: () => void;
@@ -68,94 +70,92 @@ export function PurchaseItemEntry({
   onAdd: () => void;
   invalidEntryField: "name" | "amount" | null;
 }) {
-  const visibleSuggestionCount = selectedProductVariantId ? 0 : suggestions.length;
+  const suggestionsVisible =
+    focused === "name" &&
+    suggestions.length > 0 &&
+    !selectedProductVariantId &&
+    !suggestionsDismissed;
 
   return (
     <>
       <div className={`entry-form ${focused ? "entry-focused" : ""} ${classNames.entryForm}`}>
         <div className={`entry-input-wrap name-wrap ${classNames.entryInputTarget}`}>
-          <input
-            ref={nameRef}
-            value={itemName}
-            onChange={(event) => onNameChange(event.target.value)}
-            onFocus={onNameFocus}
-            onBlur={onNameBlur}
-            onKeyDown={onNameKey}
-            onPaste={onPaste}
-            onCompositionStart={onCompositionStart}
-            onCompositionEnd={onCompositionEnd}
-            enterKeyHint="next"
-            placeholder="品名を入力"
-            aria-label="品名"
-            aria-invalid={invalidEntryField === "name"}
-            aria-describedby={
-              invalidEntryField === "name" ? "purchase-item-entry-error" : undefined
-            }
-            role="combobox"
-            aria-autocomplete="list"
-            aria-controls="purchase-item-suggestions"
-            aria-expanded={
-              focused === "name" && visibleSuggestionCount > 0 && !suggestionsDismissed
-            }
-            aria-activedescendant={
-              activeSuggestionIndex >= 0 && !suggestionsDismissed
-                ? `purchase-item-suggestion-${activeSuggestionIndex}`
-                : undefined
-            }
-            autoComplete="off"
-          />
-          <kbd>Enter</kbd>
-          {focused === "name" &&
-            !suggestionsDismissed &&
-            suggestions.length > 0 &&
-            !selectedProductVariantId && (
-              <div
-                className="suggestions product-suggestions"
-                id="purchase-item-suggestions"
-                aria-label="確認済み商品、購入履歴、推定商品候補"
-              >
-                {suggestions.map((suggestion, index) => (
-                  <button
-                    type="button"
-                    key={
-                      suggestion.kind === "catalog" || suggestion.kind === "confirmed"
-                        ? suggestion.candidate.variant.id
-                        : `${suggestion.kind}-${suggestion.name}`
-                    }
-                    id={`purchase-item-suggestion-${index}`}
-                    aria-current={activeSuggestionIndex === index}
-                    style={{ background: activeSuggestionIndex === index ? "#f3f7f3" : undefined }}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onMouseEnter={() => onSuggestionHover(index)}
-                    onClick={() => onSelectSuggestion(suggestion)}
-                  >
-                    {suggestion.kind === "catalog" ? (
-                      <ProductCandidateOption
-                        label={suggestion.candidate.matchedName}
-                        description={`${suggestion.candidate.concept.name} · ${suggestion.candidate.variant.name}`}
-                        meta={suggestion.candidate.variant.packageSize ?? undefined}
-                        badge="推定候補"
-                      />
-                    ) : (
-                      <ProductCandidateOption
-                        label={suggestion.name}
-                        description={
-                          suggestion.kind === "confirmed"
-                            ? `${suggestion.candidate.concept.name} · ${suggestion.candidate.variant.name}`
-                            : undefined
-                        }
-                        meta={
-                          suggestion.kind === "confirmed"
-                            ? (suggestion.candidate.variant.packageSize ?? undefined)
-                            : undefined
-                        }
-                        badge={suggestion.kind === "confirmed" ? "確認済み商品" : "購入履歴"}
-                      />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+          <Combobox.Root
+            value={null}
+            inputValue={itemName}
+            open={suggestionsVisible}
+            onOpenChange={onSuggestionsOpenChange}
+            onInputValueChange={onNameChange}
+            onValueChange={(value) => {
+              const index = Number(value);
+              const suggestion = Number.isInteger(index) ? suggestions[index] : undefined;
+              if (suggestion) onSelectSuggestion(suggestion);
+            }}
+            itemToStringLabel={(value) => {
+              const index = Number(value);
+              const suggestion = Number.isInteger(index) ? suggestions[index] : undefined;
+              return suggestion
+                ? suggestion.kind === "catalog"
+                  ? suggestion.candidate.matchedName
+                  : suggestion.name
+                : "";
+            }}
+            filter={null}
+            autoHighlight
+          >
+            <Combobox.Input
+              ref={nameRef}
+              onFocus={onNameFocus}
+              onBlur={onNameBlur}
+              onKeyDown={onNameKey}
+              onPaste={onPaste}
+              onCompositionStart={onCompositionStart}
+              onCompositionEnd={onCompositionEnd}
+              enterKeyHint="next"
+              placeholder="品名を入力"
+              aria-label="品名"
+              aria-invalid={invalidEntryField === "name"}
+              aria-describedby={
+                invalidEntryField === "name" ? "purchase-item-entry-error" : undefined
+              }
+              autoComplete="off"
+            />
+            <kbd>Enter</kbd>
+            <Combobox.Positioner>
+              <Combobox.Popup className="suggestions product-suggestions product-variant-select__popup">
+                <ProductCandidateList
+                  label="確認済み商品、購入履歴、推定商品候補"
+                  candidates={suggestions.map((suggestion, index) => ({
+                    id: String(index),
+                    content:
+                      suggestion.kind === "catalog" ? (
+                        <ProductCandidateOption
+                          label={suggestion.candidate.matchedName}
+                          description={`${suggestion.candidate.concept.name} · ${suggestion.candidate.variant.name}`}
+                          meta={suggestion.candidate.variant.packageSize ?? undefined}
+                          badge="推定候補"
+                        />
+                      ) : (
+                        <ProductCandidateOption
+                          label={suggestion.name}
+                          description={
+                            suggestion.kind === "confirmed"
+                              ? `${suggestion.candidate.concept.name} · ${suggestion.candidate.variant.name}`
+                              : undefined
+                          }
+                          meta={
+                            suggestion.kind === "confirmed"
+                              ? (suggestion.candidate.variant.packageSize ?? undefined)
+                              : undefined
+                          }
+                          badge={suggestion.kind === "confirmed" ? "確認済み商品" : "購入履歴"}
+                        />
+                      ),
+                  }))}
+                />
+              </Combobox.Popup>
+            </Combobox.Positioner>
+          </Combobox.Root>
           {selectedProductVariantId && (
             <div className="selected-product-label">
               <span>商品を選択済み</span>

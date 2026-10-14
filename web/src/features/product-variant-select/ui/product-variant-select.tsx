@@ -3,6 +3,7 @@ import { useId, useRef } from "react";
 
 import type { ProductSuggestion } from "../../../entities/product";
 
+import { ProductCandidateList } from "./product-candidate-list";
 import { ProductCandidateOption } from "./product-candidate-option";
 
 import "./product-variant-select.css";
@@ -95,24 +96,20 @@ export function ProductVariantSelect({
           />
           <Combobox.Positioner>
             <Combobox.Popup className="product-variant-select__popup">
-              <Combobox.List className="product-variant-select__list" aria-label="商品候補">
-                {suggestions.map((suggestion) => (
-                  <Combobox.Item
-                    key={suggestion.variant.id}
-                    value={suggestion.variant.id}
-                    disabled={suggestion.variant.id === value}
-                  >
+              <ProductCandidateList
+                empty={!loading && !error && search.length >= 2 && "商品候補がありません"}
+                candidates={suggestions.map((suggestion) => ({
+                  id: suggestion.variant.id,
+                  disabled: suggestion.variant.id === value,
+                  content: (
                     <ProductCandidateOption
                       label={suggestionLabel(suggestion)}
                       meta={suggestion.variant.packageSize ?? undefined}
                       badge={suggestion.variant.id === value ? "選択中" : undefined}
                     />
-                  </Combobox.Item>
-                ))}
-                <Combobox.Empty>
-                  {!loading && !error && search.length >= 2 && "商品候補がありません"}
-                </Combobox.Empty>
-              </Combobox.List>
+                  ),
+                }))}
+              />
               <div
                 className="product-variant-select__status"
                 aria-live="polite"

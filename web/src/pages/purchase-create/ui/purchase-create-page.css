@@ -29,7 +29,8 @@
   box-shadow: 0 9px 22px #304c3b18;
 }
 
-.suggestions button {
+.suggestions button,
+.suggestions [role="option"] {
   width: 100%;
   display: flex;
   align-items: center;
@@ -44,11 +45,13 @@
   cursor: pointer;
 }
 
-.suggestions button:hover {
+.suggestions button:hover,
+.suggestions [role="option"][data-highlighted] {
   background: #f3f7f3;
 }
 
-.suggestions button svg {
+.suggestions button svg,
+.suggestions [role="option"] svg {
   color: #98a69e;
 }
 

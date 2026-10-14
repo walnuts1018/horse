@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
-import { ProductVariantSelect as ProductVariantSelectFeature } from "../../../features/product-variant-select";
+import { type ProductSuggestion } from "../../../entities/product";
+import {
+  ProductVariantSelect as ProductVariantSelectFeature,
+  useProductSuggestions,
+} from "../../../features/product-variant-select";
 
 export function ProductVariantSelect({
   householdId,
@@ -18,41 +21,16 @@ export function ProductVariantSelect({
 }) {
   const [queryState, setQueryState] = useState({ itemName, query: itemName.trim() });
   const query = queryState.itemName === itemName ? queryState.query : itemName.trim();
-  const [suggestionsState, setSuggestionsState] = useState<{
-    query: string;
-    suggestions: ProductSuggestion[];
-  }>({ query: "", suggestions: [] });
-  const [loadingQuery, setLoadingQuery] = useState("");
   const [selectedSuggestion, setSelectedSuggestion] = useState<ProductSuggestion | null>(null);
 
-  useEffect(() => {
-    const search = query.trim();
-    if (search.length < 2) return;
-
-    let active = true;
-    const timer = window.setTimeout(
-      () => {
-        void readProductSuggestions(householdId, search, merchant.trim() || null, 20)
-          .then((suggestions) => {
-            if (active) setSuggestionsState({ query: search, suggestions });
-          })
-          .catch(() => {
-            if (active) setSuggestionsState({ query: search, suggestions: [] });
-          })
-          .finally(() => {
-            if (active) setLoadingQuery((current) => (current === search ? "" : current));
-          });
-      },
-      search === itemName.trim() ? 0 : 180,
-    );
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [householdId, itemName, merchant, query]);
-
   const search = query.trim();
-  const suggestions = suggestionsState.query === search ? suggestionsState.suggestions : [];
+  const { suggestions, loading } = useProductSuggestions({
+    householdId,
+    query,
+    merchant,
+    limit: 20,
+    delay: search === itemName.trim() ? 0 : 180,
+  });
   const currentSelection =
     suggestions.find((suggestion) => suggestion.variant.id === value) ??
     (selectedSuggestion?.variant.id === value ? selectedSuggestion : null);
@@ -65,11 +43,10 @@ export function ProductVariantSelect({
       query={query}
       suggestions={suggestions}
       selectedSuggestion={currentSelection}
-      loading={loadingQuery === search && search.length >= 2}
+      loading={loading}
       error={false}
       onQueryChange={(nextQuery) => {
         setQueryState({ itemName, query: nextQuery });
-        setLoadingQuery(nextQuery.trim());
       }}
       onSelect={(suggestion) => {
         setSelectedSuggestion(suggestion);
