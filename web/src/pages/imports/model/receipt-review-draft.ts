@@ -1,8 +1,5 @@
-import type {
-  ImportReceiptConfirmationState,
-  ImportReceiptDraft,
-} from "../../../shared/lib/purchase-storage";
-import type { DocumentReview, ExtractedItem } from "./imports";
+import type { ImportReceiptDraft } from "../../../shared/lib/purchase-storage";
+import type { DocumentReview, ExtractedItem, ReceiptConfirmationState } from "./imports";
 
 import { isRecord } from "../../../shared/lib/guard";
 
@@ -113,14 +110,20 @@ export function rekeyReceiptItemValues<T>(
 }
 
 export function rekeyReceiptConfirmationAfterStructureChange(
-  state: ImportReceiptConfirmationState,
+  state: ReceiptConfirmationState,
   originalItems: ExtractedItem[],
   keyedItems: ExtractedItem[],
   nextItems: ExtractedItem[],
-): ImportReceiptConfirmationState {
+): ReceiptConfirmationState {
   const survivingKeys = new Set(nextItems.flatMap((item) => (item.key ? [item.key] : [])));
   const manualAmountOverrides = rekeyReceiptItemValues(
     state.manualAmountOverrides,
+    originalItems,
+    keyedItems,
+    survivingKeys,
+  );
+  const amountDrafts = rekeyReceiptItemValues(
+    state.amountDrafts,
     originalItems,
     keyedItems,
     survivingKeys,
@@ -139,6 +142,7 @@ export function rekeyReceiptConfirmationAfterStructureChange(
   );
   const {
     selectedCandidate: _selectedCandidate,
+    amountDrafts: _amountDrafts,
     manualAmountOverrides: _manualAmountOverrides,
     itemAllocations: _itemAllocations,
     manualAmountOverrideReason: _manualAmountOverrideReason,
@@ -147,6 +151,7 @@ export function rekeyReceiptConfirmationAfterStructureChange(
   } = state;
   return {
     ...rest,
+    ...(amountDrafts && Object.keys(amountDrafts).length ? { amountDrafts } : {}),
     ...(manualAmountOverrides && Object.keys(manualAmountOverrides).length
       ? { manualAmountOverrides }
       : {}),
@@ -358,8 +363,8 @@ export function reconcileReceiptReviewDraft(
 export function reconcileReceiptConfirmationState(
   baseResult: ImportReceiptDraft["baseResult"],
   latestResult: DocumentReview["result"],
-  state: ImportReceiptConfirmationState | undefined,
-): { state: ImportReceiptConfirmationState | undefined; conflicts: string[] } {
+  state: ReceiptConfirmationState | undefined,
+): { state: ReceiptConfirmationState | undefined; conflicts: string[] } {
   if (!state) return { state, conflicts: [] };
   const conflicts: string[] = [];
   const baseItems = ensureReceiptItemKeys(receiptItems(baseResult));
@@ -424,6 +429,9 @@ export function reconcileReceiptConfirmationState(
 
   return {
     state: {
+      ...(state.amountDrafts ? { amountDrafts: mapItemKeys(state.amountDrafts) } : {}),
+      ...(state.purchaseDate !== undefined ? { purchaseDate: state.purchaseDate } : {}),
+      ...(state.purchaseTime !== undefined ? { purchaseTime: state.purchaseTime } : {}),
       ...(selectedCandidate ? { selectedCandidate } : {}),
       ...(state.manualAmountOverrides
         ? { manualAmountOverrides: mapItemKeys(state.manualAmountOverrides) }
@@ -464,7 +472,7 @@ export function createImportReceiptDraft(
   documentId: string,
   baseResult: DocumentReview["result"],
   editedResult: DocumentReview["result"],
-  confirmationState?: ImportReceiptConfirmationState,
+  confirmationState?: ReceiptConfirmationState,
 ): ImportReceiptDraft | undefined {
   if (!baseResult || !editedResult) return undefined;
   return {

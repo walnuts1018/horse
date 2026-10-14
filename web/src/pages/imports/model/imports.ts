@@ -1,6 +1,12 @@
 import type { ImportReceiptConfirmationState } from "../../../shared/lib/purchase-storage";
 import type { Region } from "./evidence-geometry";
 
+export type ReceiptConfirmationState = ImportReceiptConfirmationState & {
+  amountDrafts?: Record<string, string>;
+  purchaseDate?: string;
+  purchaseTime?: string;
+};
+
 export type ExtractedItem = {
   key?: string;
   name: string;
@@ -218,7 +224,7 @@ export type DocumentReview = {
   duplicateOf?: string;
   hasEvidence?: boolean;
   deletionPending?: boolean;
-  receiptConfirmationState?: ImportReceiptConfirmationState;
+  receiptConfirmationState?: ReceiptConfirmationState;
   confirmations?: Array<{
     sourceReference: string;
     purchaseId: string;

@@ -1,14 +1,12 @@
 import { useEffect, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 
 import type { Household } from "../../../shared/api";
-import type {
-  ImportReceiptConfirmationState,
-  ImportReceiptItemReviewState,
-} from "../../../shared/lib/purchase-storage";
+import type { ImportReceiptItemReviewState } from "../../../shared/lib/purchase-storage";
 import type {
   DocumentReview,
   ExtractedItem,
   ReceiptPaymentDraft,
+  ReceiptConfirmationState,
   ReviewTarget,
   StatementEntry,
 } from "./imports";
@@ -82,6 +80,28 @@ function receiptItemsChanged(document?: DocumentReview) {
   );
 }
 
+function purchaseOccurredAtFor(document: DocumentReview) {
+  return receiptOccurredAt(
+    document.result?.receipt?.purchasedAt,
+    document.receiptConfirmationState?.purchaseDate,
+    document.receiptConfirmationState?.purchaseTime,
+  );
+}
+
+function purchaseDateFor(document: DocumentReview) {
+  return (
+    document.receiptConfirmationState?.purchaseDate ??
+    receiptDateInputValue(document.result?.receipt?.purchasedAt)
+  );
+}
+
+function purchaseTimeFor(document: DocumentReview) {
+  return (
+    document.receiptConfirmationState?.purchaseTime ??
+    receiptTimeInputValue(document.result?.receipt?.purchasedAt)
+  );
+}
+
 export function useImportConfirmation({
   household,
   selectedDocument,
@@ -122,8 +142,6 @@ export function useImportConfirmation({
     documentId: string;
     index: number;
   }>({ documentId: "", index: 0 });
-  const [manualPurchaseDates, setManualPurchaseDates] = useState<Record<string, string>>({});
-  const [manualPurchaseTimes, setManualPurchaseTimes] = useState<Record<string, string>>({});
   const selectedDocumentId = selectedDocument?.id ?? "";
   const confirmationState = selectedDocument?.receiptConfirmationState;
   const defaultCandidate = selectedDocument
@@ -155,15 +173,15 @@ export function useImportConfirmation({
   const receiptPayments = selectedDocument
     ? { [selectedDocument.id]: confirmationState?.payments }
     : {};
+  const receiptAmountDrafts = selectedDocument
+    ? { [selectedDocument.id]: confirmationState?.amountDrafts ?? {} }
+    : {};
   const receiptItemAllocations = selectedDocument
     ? { [selectedDocument.id]: confirmationState?.itemAllocations ?? {} }
     : {};
   const updateReceiptConfirmationState = (
     documentId: string,
-    update: (
-      state: ImportReceiptConfirmationState,
-      document: DocumentReview,
-    ) => ImportReceiptConfirmationState,
+    update: (state: ReceiptConfirmationState, document: DocumentReview) => ReceiptConfirmationState,
   ) => {
     setDocuments((current) =>
       current.map((document) => {
@@ -247,6 +265,19 @@ export function useImportConfirmation({
       return next[document.id] !== undefined ? { ...rest, payments: next[document.id] } : rest;
     });
   };
+  const setReceiptAmountDraftsPersisted: Dispatch<
+    SetStateAction<Record<string, Record<string, string>>>
+  > = (action) => {
+    if (!selectedDocument) return;
+    updateReceiptConfirmationState(selectedDocument.id, (state) => {
+      const current = { [selectedDocument.id]: state.amountDrafts ?? {} };
+      const next = typeof action === "function" ? action(current) : action;
+      const { amountDrafts: _amountDrafts, ...rest } = state;
+      return Object.keys(next[selectedDocument.id] ?? {}).length > 0
+        ? { ...rest, amountDrafts: next[selectedDocument.id] }
+        : rest;
+    });
+  };
   // 文書が切り替わった直後は前の文書の確認位置を引き継がない
   const reviewTargetIndex =
     reviewTargetState.documentId === selectedDocumentId ? reviewTargetState.index : 0;
@@ -317,13 +348,6 @@ export function useImportConfirmation({
       },
     ];
   }
-
-  const purchaseOccurredAtFor = (document: DocumentReview) =>
-    receiptOccurredAt(
-      document.result?.receipt?.purchasedAt,
-      manualPurchaseDates[document.id],
-      manualPurchaseTimes[document.id],
-    );
 
   const reviewTargets: ReviewTarget[] = selectedDocument?.result?.receipt?.items
     ? [
@@ -533,25 +557,17 @@ export function useImportConfirmation({
     );
   };
 
-  const purchaseDateFor = (document: DocumentReview) =>
-    manualPurchaseDates[document.id] ??
-    receiptDateInputValue(document.result?.receipt?.purchasedAt);
-
-  const purchaseTimeFor = (document: DocumentReview) =>
-    manualPurchaseTimes[document.id] ??
-    receiptTimeInputValue(document.result?.receipt?.purchasedAt);
-
   const editPurchaseDate = (documentId: string, date: string) => {
     editedReceiptDocuments.current.add(documentId);
     markUnsaved();
-    setManualPurchaseDates((current) => ({ ...current, [documentId]: date }));
+    updateReceiptConfirmationState(documentId, (state) => ({ ...state, purchaseDate: date }));
     setDocuments((current) =>
       current.map((document) => {
         if (document.id !== documentId || !document.result) return document;
         const purchasedAt = receiptOccurredAt(
           document.result.receipt?.purchasedAt,
           date,
-          manualPurchaseTimes[documentId],
+          document.receiptConfirmationState?.purchaseTime,
         );
         return purchasedAt
           ? {
@@ -569,13 +585,13 @@ export function useImportConfirmation({
   const editPurchaseTime = (documentId: string, time: string) => {
     editedReceiptDocuments.current.add(documentId);
     markUnsaved();
-    setManualPurchaseTimes((current) => ({ ...current, [documentId]: time }));
+    updateReceiptConfirmationState(documentId, (state) => ({ ...state, purchaseTime: time }));
     setDocuments((current) =>
       current.map((document) => {
         if (document.id !== documentId || !document.result) return document;
         const purchasedAt = receiptOccurredAt(
           document.result.receipt?.purchasedAt,
-          manualPurchaseDates[documentId] ??
+          document.receiptConfirmationState?.purchaseDate ??
             receiptDateInputValue(document.result.receipt?.purchasedAt),
           time,
         );
@@ -946,6 +962,8 @@ export function useImportConfirmation({
     setManualAmountOverrideReasons: setManualAmountOverrideReasonsPersisted,
     receiptPayments,
     setReceiptPayments: setReceiptPaymentsPersisted,
+    receiptAmountDrafts,
+    setReceiptAmountDrafts: setReceiptAmountDraftsPersisted,
     itemAllocationsFor: (documentId: string, itemKey: string) =>
       receiptItemAllocations[documentId]?.[itemKey] ?? [],
     editReceiptItemAllocations,

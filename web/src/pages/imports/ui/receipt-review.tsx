@@ -1,12 +1,5 @@
 import { Check, Plus, X } from "lucide-react";
-import {
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type Dispatch,
-  type SetStateAction,
-} from "react";
+import { useEffect, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 
 import type { Household } from "../../../shared/api";
 
@@ -56,6 +49,8 @@ type ReceiptReviewProps = {
   markUnsaved: () => void;
   setReviewTargetIndex: Dispatch<SetStateAction<number>>;
   setReceiptPayments: Dispatch<SetStateAction<Record<string, ReceiptPaymentDraft[] | undefined>>>;
+  receiptAmountDrafts: Record<string, Record<string, string>>;
+  setReceiptAmountDrafts: Dispatch<SetStateAction<Record<string, Record<string, string>>>>;
   editItem: (documentId: string, index: number, patch: Partial<ExtractedItem>) => void;
   addItem: (documentId: string) => void;
   deleteItem: (documentId: string, itemKey: string) => void;
@@ -102,6 +97,8 @@ export function ReceiptReview({
   markUnsaved,
   setReviewTargetIndex,
   setReceiptPayments,
+  receiptAmountDrafts,
+  setReceiptAmountDrafts,
   editItem,
   addItem,
   deleteItem,
@@ -122,7 +119,6 @@ export function ReceiptReview({
   pending,
   onConfirm,
 }: ReceiptReviewProps) {
-  const [amountDrafts, setAmountDrafts] = useState<Record<string, Record<string, string>>>({});
   const focusNewItem = useRef(false);
   const itemNameInputs = useRef(new Map<string, HTMLInputElement>());
   const result = selectedDocument.result;
@@ -260,7 +256,7 @@ export function ReceiptReview({
   const updateAmountDraftKeys = (previousItems: ExtractedItem[], nextItems: ExtractedItem[]) => {
     const previousKeys = ensureReceiptItemKeys(previousItems);
     const nextKeys = ensureReceiptItemKeys(nextItems);
-    setAmountDrafts((current) => {
+    setReceiptAmountDrafts((current) => {
       const previousDrafts = current[selectedDocument.id] ?? {};
       const nextDrafts: Record<string, string> = {};
       for (const [index, previousItem] of previousKeys.entries()) {
@@ -628,10 +624,10 @@ export function ReceiptReview({
                       manualAmountOverrides[selectedDocument.id],
                     );
                     const hasDraft = Object.hasOwn(
-                      amountDrafts[selectedDocument.id] ?? {},
+                      receiptAmountDrafts[selectedDocument.id] ?? {},
                       itemKey,
                     );
-                    const draft = amountDrafts[selectedDocument.id]?.[itemKey];
+                    const draft = receiptAmountDrafts[selectedDocument.id]?.[itemKey];
                     return (
                       <input
                         aria-label={`${item.name}の帳簿に登録する金額`}
@@ -639,7 +635,7 @@ export function ReceiptReview({
                         value={hasDraft ? draft : String(amount)}
                         onChange={(event) => {
                           markUnsaved();
-                          setAmountDrafts((current) => ({
+                          setReceiptAmountDrafts((current) => ({
                             ...current,
                             [selectedDocument.id]: {
                               ...current[selectedDocument.id],
@@ -662,7 +658,7 @@ export function ReceiptReview({
                               grossAmount: nextAmount,
                             });
                           }
-                          setAmountDrafts((current) => {
+                          setReceiptAmountDrafts((current) => {
                             const documentDrafts = { ...current[selectedDocument.id] };
                             delete documentDrafts[itemKey];
                             return { ...current, [selectedDocument.id]: documentDrafts };

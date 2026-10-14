@@ -140,6 +140,8 @@ export function ImportDocumentReview({
               markUnsaved={onDirty}
               setReviewTargetIndex={review.setReviewTargetIndex}
               setReceiptPayments={review.setReceiptPayments}
+              receiptAmountDrafts={review.receiptAmountDrafts}
+              setReceiptAmountDrafts={review.setReceiptAmountDrafts}
               editItem={review.editItem}
               addItem={review.addReceiptItem}
               deleteItem={review.deleteReceiptItem}

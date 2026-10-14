@@ -266,6 +266,49 @@ describe("receipt item structure changes", () => {
       payments: [{ key: "payment", paymentAccountId: "account-1", amountYen: 300 }],
     });
   });
+
+  it("品目の編集中金額と購入日時を解析更新後も復元する", () => {
+    const baseItems = [item("牛乳", 200, 220), item("パン", 100, 110)];
+    const keyedItems = ensureReceiptItemKeys(baseItems);
+    const baseResult = { receipt: { items: baseItems } };
+    const latest: DocumentReview = {
+      id: "document-1",
+      status: "SUCCEEDED",
+      result: { receipt: { items: [item("パン", 100, 110), item("牛乳", 200, 220)] } },
+    };
+    const result = reconcileReceiptConfirmationState(baseResult, latest.result, {
+      amountDrafts: { [keyedItems[0].key!]: "2,2" },
+      purchaseDate: "",
+      purchaseTime: "09:3",
+    });
+
+    expect(result.state).toEqual({
+      amountDrafts: {
+        [ensureReceiptItemKeys(latest.result!.receipt!.items ?? [])[1].key!]: "2,2",
+      },
+      purchaseDate: "",
+      purchaseTime: "09:3",
+    });
+    expect(result.conflicts).toEqual([]);
+  });
+
+  it("品目削除時に対応する編集中金額だけを下書きから除く", () => {
+    const original = [item("パン", 100, 100), item("牛乳", 200, 200)];
+    const keyed = ensureReceiptItemKeys(original);
+    const nextItems = deleteReceiptItemByKey(keyed, keyed[0].key!);
+    const state = rekeyReceiptConfirmationAfterStructureChange(
+      {
+        amountDrafts: { [keyed[0].key!]: "100x", [keyed[1].key!]: "200x" },
+        purchaseDate: "2026-10-14",
+      },
+      original,
+      keyed,
+      nextItems,
+    );
+
+    expect(state.amountDrafts).toEqual({ [keyed[1].key!]: "200x" });
+    expect(state.purchaseDate).toBe("2026-10-14");
+  });
 });
 
 describe("reconcileReceiptConfirmationState", () => {
